@@ -91,6 +91,19 @@ These hold across the whole repo. Individual package `CLAUDE.md`s add more.
 - **YAML:** 2-space indent, lowercase-kebab IDs (pattern `^[a-z][a-z0-9-]*$`), `apiVersion: swarmkit/v1` at top of every artifact.
 - **Markdown:** sentence case in headings, fenced code blocks with language tags, link to design sections by number not title.
 
+## Feature delivery workflow — MANDATORY
+
+Every feature, big or small, follows this lifecycle. No exceptions. Never push directly to `main`.
+
+1. **Design first.** Write a short design note at `design/details/<feature-slug>.md` — or, if the v0.6 doc already covers it, reference the section. Must state: goal, non-goals, API shape, test plan, demo plan. For large features open a design-only PR and get review before implementation.
+2. **Branch.** `feat/<scope>-<slug>`, `fix/<scope>-<slug>`, `design/<slug>`, `docs/<slug>`, etc. One feature per branch.
+3. **Tests are mandatory.** Every feature ships with tests — unit, integration, or both as appropriate. No "tests later." A PR without tests is not reviewable.
+4. **Demo every feature.** Every feature — small or big — ships a demo: a runnable script under `examples/`, a recorded terminal transcript in the PR body, a screenshot for UI changes, or a `just demo-<feature>` target. The demo proves the feature works for a real user, not just the compiler.
+5. **PR against `main`.** The PR description must link the design note, show the demo, and summarise test coverage. Use the template at `.github/pull_request_template.md`.
+6. **Review + green CI + merge.** Delete the branch after merge.
+
+This applies to this CLAUDE.md change too — these rules arrived via `feat/workflow-rules-and-plan`.
+
 ## Commit style
 
 Conventional-ish: `type(scope): subject`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `design`. Scopes are package names (`runtime`, `schema`, `ui`) or areas (`topology`, `skills`, `governance`, `cli`).
@@ -99,6 +112,10 @@ Examples:
 - `feat(runtime): load topology YAML and validate against schema`
 - `design(v0.7): resolve §21 sandboxing question`
 - `chore(workspace): bump biome to 1.10`
+
+## Implementation plan
+
+`design/IMPLEMENTATION-PLAN.md` tracks the phased roadmap to v1.0. Each milestone lists its features; each feature becomes its own design note + PR. Update the plan as features land (check off items, adjust ordering) — the plan is a living document.
 
 ## When in doubt
 
