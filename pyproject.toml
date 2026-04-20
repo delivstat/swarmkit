@@ -1,0 +1,55 @@
+[project]
+name = "swarmkit-workspace"
+version = "0.0.0"
+description = "SwarmKit monorepo root — not published. See packages/ for distributable projects."
+requires-python = ">=3.11"
+
+[tool.uv.workspace]
+members = [
+    "packages/runtime",
+    "packages/schema/python",
+]
+
+[tool.uv.sources]
+swarmkit-runtime = { workspace = true }
+swarmkit-schema = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "PL",   # pylint
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "PLR0913",  # too many args — common in framework code
+    "PLR2004",  # magic values — noisy
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["packages/runtime/tests", "packages/schema/python/tests"]
+addopts = "-ra --strict-markers --strict-config"

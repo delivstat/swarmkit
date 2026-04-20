@@ -1,0 +1,79 @@
+[project]
+name = "swarmkit-runtime"
+version = "0.0.1"
+description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Srijith Kartha" }]
+keywords = ["agents", "multi-agent", "swarm", "langgraph", "mcp", "agt"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+# Dependencies below are intentionally un-pinned placeholders. Lock concrete
+# versions once Phase 1 implementation begins — see design §20.1.
+dependencies = [
+    # Core
+    "pydantic>=2.8",
+    "pyyaml>=6.0",
+    "typer>=0.12",           # CLI — `swarmkit` entrypoint
+    "rich>=13.7",            # terminal rendering for authoring chat
+    "httpx>=0.27",
+    "anyio>=4.4",
+
+    # Execution engine (design §7, §14)
+    # "langgraph>=0.2",
+    # "langchain-core>=0.3",
+
+    # Governance — Microsoft AGT (design §8, §16). Pin once AGT Python SDK
+    # publishes to PyPI; tracked in §21 open question on version pinning.
+    # "agt-agent-os-kernel",
+    # "agt-agentmesh-platform",
+    # "agt-agent-sre",
+    # "agt-agent-compliance",
+    # "agt-agent-runtime",
+
+    # MCP (design §18)
+    # "mcp>=1.0",
+
+    # LLM SDK for authoring swarms + default judges
+    "anthropic>=0.39",
+
+    # HTTP server for persistent mode (design §14.1)
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+
+    # Storage / checkpointing (design §14.5)
+    "sqlalchemy>=2.0",
+    # "psycopg[binary]>=3.2",  # optional Postgres backend
+
+    # Schema package (workspace sibling)
+    "swarmkit-schema",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "types-pyyaml",
+]
+
+[project.scripts]
+swarmkit = "swarmkit_runtime.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/swarmkit_runtime"]

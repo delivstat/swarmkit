@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/skill.schema.json",
+  "title": "SwarmKit Skill",
+  "description": "A discrete capability an agent can exercise. See design §6.",
+  "type": "object",
+  "required": ["id", "name", "category", "description", "implementation", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Globally unique skill ID. References in topologies use this."
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "category": {
+      "$comment": "design §6.2",
+      "enum": ["capability", "decision", "coordination", "persistence"]
+    },
+    "description": { "type": "string", "minLength": 10 },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/field" }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/field" }
+    },
+    "implementation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "server", "tool"],
+          "properties": {
+            "type": { "const": "mcp_tool" },
+            "server": { "type": "string" },
+            "tool": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "model", "prompt"],
+          "properties": {
+            "type": { "const": "llm_prompt" },
+            "model": { "type": "object" },
+            "prompt": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "composes"],
+          "properties": {
+            "type": { "const": "composed" },
+            "composes": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      ]
+    },
+    "iam": {
+      "type": "object",
+      "properties": {
+        "required_scopes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "properties": {
+        "max_latency_ms": { "type": "integer", "minimum": 1 },
+        "retry": { "type": "object" },
+        "on_failure": { "type": "string" }
+      }
+    },
+    "provenance": {
+      "$comment": "design §6.4 — trust posture derives from this.",
+      "type": "object",
+      "required": ["authored_by", "version"],
+      "properties": {
+        "authored_by": {
+          "enum": [
+            "human",
+            "authored_by_swarm",
+            "derived_from_template",
+            "imported_from_registry",
+            "vendor_published"
+          ]
+        },
+        "authored_date": { "type": "string", "format": "date" },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+      }
+    }
+  },
+  "$defs": {
+    "field": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string" },
+        "required": { "type": "boolean" },
+        "description": { "type": "string" },
+        "values": { "type": "array" },
+        "range": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+        "items": { "type": "object" }
+      }
+    }
+  }
+}

@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+.nox/
+
+# Node / TypeScript
+node_modules/
+.next/
+out/
+.turbo/
+.nx/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+.yarn/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*~
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# SwarmKit runtime artifacts (per design §9.3)
+.swarmkit/
+*.sqlite
+*.sqlite-journal
+
+# Claude Code
+.claude/settings.local.json
+
+# Build / logs
+*.log
+.cache/

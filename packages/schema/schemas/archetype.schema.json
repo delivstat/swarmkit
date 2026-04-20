@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/archetype.schema.json",
+  "title": "SwarmKit Archetype",
+  "description": "A kind of agent (noun). See design §6.6 and §13.",
+  "type": "object",
+  "required": ["id", "role", "defaults", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "role": { "enum": ["root", "leader", "worker"] },
+    "description": { "type": "string" },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "object" },
+        "prompt": { "type": "object" },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "iam": { "type": "object" }
+      }
+    },
+    "provenance": {
+      "$comment": "design §13, same values as skill provenance.",
+      "type": "object",
+      "required": ["authored_by", "version"],
+      "properties": {
+        "authored_by": {
+          "enum": [
+            "human",
+            "authored_by_swarm",
+            "derived_from_template",
+            "imported_from_registry",
+            "vendor_published"
+          ]
+        },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+      }
+    }
+  }
+}

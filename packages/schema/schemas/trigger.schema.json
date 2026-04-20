@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/trigger.schema.json",
+  "title": "SwarmKit Trigger",
+  "description": "Workspace-level schedule / webhook / file-watch trigger. See design §5.4.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "type", "targets"],
+  "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "Trigger" },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": { "name": { "type": "string" } }
+    },
+    "type": { "enum": ["cron", "webhook", "file_watch", "manual"] },
+    "config": { "type": "object" },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "description": "Topology name this trigger fires." }
+    }
+  }
+}

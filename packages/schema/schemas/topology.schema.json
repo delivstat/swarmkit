@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/topology.schema.json",
+  "title": "SwarmKit Topology",
+  "description": "A complete swarm definition. See design §10.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "agents"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "swarmkit/v1",
+      "description": "Schema version. Breaking changes bump this major."
+    },
+    "kind": { "const": "Topology" },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "description": { "type": "string" }
+      }
+    },
+    "runtime": {
+      "$comment": "design §10.1",
+      "type": "object",
+      "properties": {
+        "mode": { "enum": ["one-shot", "persistent", "scheduled"] },
+        "max_concurrent_tasks": { "type": "integer", "minimum": 1 },
+        "task_timeout_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "agents": {
+      "$comment": "design §5.2, §10.2 — tree structure, one parent per agent.",
+      "type": "object",
+      "required": ["root"],
+      "properties": {
+        "root": { "$ref": "#/$defs/agent" },
+        "leaders": { "type": "array", "items": { "$ref": "#/$defs/agent" } }
+      }
+    },
+    "artifacts": {
+      "$comment": "design §5.4",
+      "type": "object",
+      "properties": {
+        "knowledge_bases": { "type": "array" },
+        "review_queues": { "type": "array" },
+        "audit": {
+          "type": "object",
+          "properties": {
+            "level": { "enum": ["minimal", "standard", "detailed"] },
+            "storage": { "enum": ["sqlite", "postgres"] },
+            "retention_days": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "skill_gap_logging": {
+          "$comment": "design §12.1",
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "surface_threshold": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "agent": {
+      "$comment": "design §10.2 — skills unified into a single array per v0.2.",
+      "type": "object",
+      "required": ["id", "role"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "archetype": { "type": "string" },
+        "role": { "enum": ["root", "leader", "worker"] },
+        "parent": { "type": "string" },
+        "model": { "type": "object" },
+        "prompt": { "type": "object" },
+        "skills": {
+          "type": "array",
+          "items": { "type": "string", "description": "Skill ID reference (design §6.1)." }
+        },
+        "skills_additional": { "type": "array", "items": { "type": "string" } },
+        "iam": {
+          "type": "object",
+          "properties": {
+            "base_scope": { "type": "array", "items": { "type": "string" } },
+            "elevated_scopes": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

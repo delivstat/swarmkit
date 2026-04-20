@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/workspace.schema.json",
+  "title": "SwarmKit Workspace",
+  "description": "Workspace-level config: IAM, shared resources, governance. See design §9.3.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata"],
+  "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "Workspace" },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "governance": {
+      "$comment": "design §8.5, §16 — GovernanceProvider selection and config.",
+      "type": "object",
+      "properties": {
+        "provider": { "enum": ["agt", "custom"] },
+        "config": { "type": "object" }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "provider": { "enum": ["builtin", "auth0", "okta", "google", "azure-ad", "oidc"] }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "checkpoints": { "enum": ["sqlite", "postgres"] },
+        "audit": { "type": "object" }
+      }
+    }
+  }
+}
