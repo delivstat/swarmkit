@@ -58,3 +58,14 @@ def test_archetype_valid_fixtures(fixture: Path) -> None:
 def test_archetype_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("archetype", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("workspace"), ids=lambda p: p.name)
+def test_workspace_valid_fixtures(fixture: Path) -> None:
+    validate("workspace", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("workspace-invalid"), ids=lambda p: p.name)
+def test_workspace_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("workspace", _load_yaml(fixture))

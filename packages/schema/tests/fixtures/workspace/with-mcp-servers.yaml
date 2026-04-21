@@ -1,0 +1,34 @@
+# Mixes stdio + http + sandboxed MCP servers (design §8.8, §18).
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: mcp-heavy-workspace
+  name: MCP-Heavy Workspace
+credentials:
+  github_pat:
+    source: env
+    config:
+      env: GITHUB_TOKEN
+  rynko_api_key:
+    source: env
+    config:
+      env: RYNKO_API_KEY
+mcp_servers:
+  - id: github
+    transport: stdio
+    command: ["mcp-github"]
+    credentials_ref: github_pat
+    sandboxed: false
+  - id: rynko-flow
+    transport: http
+    endpoint: https://mcp.rynko.dev
+    credentials_ref: rynko_api_key
+    sandboxed: false
+  - id: acme-internal-scaffolded
+    transport: stdio
+    command: ["python", "-m", "acme_swarmkit.scaffolded_server"]
+    sandboxed: true       # scaffolded by the Skill Authoring Swarm — Docker-isolated
+  - id: weather
+    transport: http
+    endpoint: https://mcp.example.com/weather
+    sandboxed: false

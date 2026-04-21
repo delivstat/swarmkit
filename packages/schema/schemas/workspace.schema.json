@@ -2,39 +2,202 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.swarmkit.dev/v1/workspace.schema.json",
   "title": "SwarmKit Workspace",
-  "description": "Workspace-level config: IAM, shared resources, governance. See design §9.3.",
+  "description": "Deployment-level config: identity, governance, model providers, MCP registry, storage. See design §9.3 and design/details/workspace-schema-v1.md.",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata"],
+  "additionalProperties": false,
   "properties": {
     "apiVersion": { "const": "swarmkit/v1" },
     "kind": { "const": "Workspace" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "organisation": { "$ref": "#/$defs/org_or_team" },
+    "team": { "$ref": "#/$defs/org_or_team" },
+    "governance": { "$ref": "#/$defs/governance" },
+    "identity": { "$ref": "#/$defs/identity" },
+    "model_providers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/model_provider_registration" }
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/credential_ref" }
+    },
+    "mcp_servers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mcp_server" }
+    },
+    "storage": { "$ref": "#/$defs/storage" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
     "metadata": {
       "type": "object",
-      "required": ["name"],
+      "additionalProperties": false,
+      "required": ["id", "name"],
       "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
         "name": { "type": "string", "minLength": 1 },
         "description": { "type": "string" }
       }
     },
-    "governance": {
-      "$comment": "design §8.5, §16 — GovernanceProvider selection and config.",
+    "org_or_team": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
       "properties": {
-        "provider": { "enum": ["agt", "custom"] },
-        "config": { "type": "object" }
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string" }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
+      "properties": {
+        "provider": {
+          "enum": ["agt", "mock", "custom"],
+          "description": "GovernanceProvider implementation (design §8.5)."
+        },
+        "policy_language": {
+          "enum": ["yaml", "rego", "cedar"],
+          "description": "§21 open question — default yaml for v1.0."
+        },
+        "config": { "type": "object", "additionalProperties": true }
       }
     },
     "identity": {
       "type": "object",
+      "additionalProperties": false,
+      "required": ["provider"],
       "properties": {
-        "provider": { "enum": ["builtin", "auth0", "okta", "google", "azure-ad", "oidc"] }
+        "provider": {
+          "enum": ["builtin", "auth0", "okta", "google", "azure-ad", "oidc"],
+          "description": "Human-identity provider (design §16.1)."
+        },
+        "config": { "type": "object", "additionalProperties": true }
       }
+    },
+    "model_provider_registration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "provider_id"],
+      "properties": {
+        "class": {
+          "type": "string",
+          "description": "Fully-qualified Python class path."
+        },
+        "provider_id": { "$ref": "#/$defs/identifier" },
+        "config": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "credential_ref": {
+      "$comment": "Credentials are never stored literally in workspace.yaml. Each entry is a reference with a uniform shape: { source, config }. The runtime dispatches to the SecretsProvider identified by `source` and validates `config` against that provider's contract. See design note for the provider list and per-source config shapes. `source: plugin` additionally requires `provider_id` to identify a SecretsProvider registered via entry points.",
+      "type": "object",
+      "required": ["source", "config"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "enum": [
+            "env",
+            "file",
+            "hashicorp-vault",
+            "aws-secrets-manager",
+            "gcp-secret-manager",
+            "azure-key-vault",
+            "plugin"
+          ]
+        },
+        "provider_id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Required when source=plugin. Names the registered SecretsProvider."
+        },
+        "config": {
+          "type": "object",
+          "description": "Provider-specific configuration. Runtime validates shape per source.",
+          "additionalProperties": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "plugin" } },
+            "required": ["source"]
+          },
+          "then": { "required": ["provider_id"] }
+        }
+      ]
+    },
+    "mcp_server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "transport"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "transport": { "enum": ["stdio", "http"] },
+        "command": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Required when transport=stdio."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Required when transport=http."
+        },
+        "credentials_ref": { "type": "string" },
+        "sandboxed": {
+          "type": "boolean",
+          "description": "True forces Docker-or-equivalent isolation (design §8.8)."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "transport": { "const": "stdio" } },
+            "required": ["transport"]
+          },
+          "then": { "required": ["command"] }
+        },
+        {
+          "if": {
+            "properties": { "transport": { "const": "http" } },
+            "required": ["transport"]
+          },
+          "then": { "required": ["endpoint"] }
+        }
+      ]
     },
     "storage": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "checkpoints": { "enum": ["sqlite", "postgres"] },
-        "audit": { "type": "object" }
+        "checkpoints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "backend": { "enum": ["sqlite", "postgres"] },
+            "path": { "type": "string" },
+            "url": { "type": "string" }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "backend": { "enum": ["agt", "sqlite", "postgres"] },
+            "retention_days": { "type": "integer", "minimum": 1 },
+            "url": { "type": "string" }
+          }
+        },
+        "knowledge_bases": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "default_backend": { "enum": ["sqlite", "postgres"] }
+          }
+        }
       }
     }
   }
