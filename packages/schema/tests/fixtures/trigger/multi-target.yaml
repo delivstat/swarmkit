@@ -1,0 +1,15 @@
+# One trigger firing multiple topologies — the second half of the
+# §5.4 statement "one schedule can trigger multiple swarms."
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: nightly-sweep
+  name: Nightly Sweep
+type: cron
+targets:
+  - code-review-swarm
+  - content-generation-swarm
+  - cleanup-swarm
+config:
+  expression: "0 1 * * *"
+  timezone: UTC

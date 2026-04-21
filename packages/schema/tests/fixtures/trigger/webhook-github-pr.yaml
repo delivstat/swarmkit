@@ -1,0 +1,20 @@
+# Webhook fired by GitHub when a pull request is opened / synchronised.
+# HMAC auth reuses the workspace credentials entry named github_webhook_secret.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: github-pr-webhook
+  name: GitHub PR Webhook
+  description: |
+    Runs the Code Review Swarm against any pull request opened or updated
+    on the core repos. HMAC validation via the standard X-Hub-Signature-256
+    header (GitHub's signing scheme).
+type: webhook
+targets:
+  - code-review-swarm
+config:
+  path: /webhooks/github/pr
+  auth:
+    method: hmac
+    credentials_ref: github_webhook_secret
+    header: X-Hub-Signature-256
