@@ -1,3 +1,10 @@
+---
+title: Pydantic model codegen
+description: Generate pydantic v2 models from the five canonical JSON Schemas. Shape-vs-full-validation split documented.
+tags: [schema, codegen, pydantic, m0]
+status: implemented
+---
+
 # Pydantic model codegen
 
 **Scope:** `packages/schema/python/src/swarmkit_schema/models/`

@@ -1,3 +1,10 @@
+---
+title: Implementation Plan — SwarmKit v1.0
+description: Phased roadmap decomposing design §20.1 into eleven milestones, each with a concrete exit demo.
+tags: [plan, milestones, roadmap]
+status: active
+---
+
 # Implementation Plan — SwarmKit v1.0
 
 **Source of truth:** `design/SwarmKit-Design-v0.6.md` (§20.1 lists the Phase 1 scope). This plan decomposes that scope into milestones and features, each of which becomes one or more PRs under the [feature delivery workflow](../CLAUDE.md#feature-delivery-workflow--mandatory).
@@ -36,6 +43,8 @@ Run in parallel with the milestones above:
 - **CI:** GitHub Actions pipeline (lint + typecheck + test on push/PR; matrix on py 3.11, 3.12, 3.13) — first PR, before milestone 1. Design note at `design/details/ci-pipeline.md`.
 - **Packaging:** PyPI + npm + Docker publish workflows finalised in milestone 10. Trial runs in milestone 5+.
 - **Governance hardening:** every milestone that touches `governance/` is reviewed against §8 Separation of Powers invariants.
+- **LLM-friendly knowledge (new).** Usability is a product feature — SwarmKit docs are consumed primarily by LLMs on behalf of users. Every milestone maintains: (a) `llms.txt` current as new docs land; (b) frontmatter on new design notes (see `docs/notes/llm-friendly-knowledge.md`); (c) error messages readable-as-docs; (d) a usability-first review pass per PR (see `docs/notes/usability-first.md`). Task #23 (`swarmkit validate` human-readable errors) blocks M1 completion. Task #24 (`swarmkit knowledge-pack` CLI) lands in M1. Task #25 (knowledge MCP server design) targets M5. Task #26 (authoring-swarm continuation past init) is an M8 design question.
+- **Schema hosting.** JSON Schemas declare `$id` URLs under `schemas.swarmkit.dev/v1/*.schema.json`. Until hosted, any tool doing remote `$ref` resolution fails. Promoted from M10 to a blocking task for v1.0 launch; practical path is GitHub Pages under a controlled domain. Tracked as future task when the domain question is resolved.
 
 ---
 
@@ -71,9 +80,11 @@ Run in parallel with the milestones above:
 - [ ] `feat(runtime): skill resolver` — validates each referenced skill, resolves composed skills.
 - [ ] `feat(runtime): ResolvedTopology data model` — frozen Pydantic model that the compiler consumes.
 - [ ] `feat(cli): swarmkit validate <path>` — prints resolution report; non-zero exit on failure.
+- [ ] `feat(cli): human-readable validate errors` — **task #23, M1-blocking.** Errors cite the schema rule, the YAML path, and a suggested remediation. Errors are documentation consumed at the moment of failure (see `docs/notes/llm-friendly-knowledge.md`).
+- [ ] `feat(cli): swarmkit knowledge-pack` — **task #24.** Bundles the entire SwarmKit corpus + current workspace state into a paste-ready prompt for any LLM. First-class escape hatch for the "I'm stuck — ask an LLM" flow.
 - [ ] `test(runtime): resolve every reference/ artifact` — covers at least the three v1.0 topologies once their YAML lands.
 
-**Exit demo:** `swarmkit validate examples/hello-swarm/workspace/` prints a resolved tree with all archetype/skill refs expanded.
+**Exit demo:** `swarmkit validate examples/hello-swarm/workspace/` prints a resolved tree with all archetype/skill refs expanded. A first-time user can understand a deliberate validation failure from the error message alone — no design-doc lookup required.
 
 ## Milestone 2 — GovernanceProvider + AGT Tier 1
 
@@ -159,6 +170,7 @@ Run in parallel with the milestones above:
 - [ ] `feat(mcp): sandboxed server supervisor` — Docker-based, matches §8.8 sandboxing requirement.
 - [ ] `feat(skills): github-repo-read reference capability skill` — wraps a public MCP server.
 - [ ] `feat(skills): slack-notify reference capability skill` — wraps Slack MCP (or local mock).
+- [ ] `design/details/knowledge-mcp-server.md` — **task #25.** Spec an MCP server that exposes the SwarmKit corpus (design docs + schemas + examples + current workspace state) so any MCP client can query it live. Landing implementation can fold into this milestone's MCP infrastructure or slip to M6.
 
 **Exit demo:** topology reads a public GitHub repo via MCP, passes the diff to a judge, writes result to audit. Kill the MCP server mid-run; runtime reports the failure gracefully through the policy-engine failure path.
 
@@ -208,8 +220,9 @@ Run in parallel with the milestones above:
 - [ ] `feat(reference): workspace-authoring-swarm topology.yaml`.
 - [ ] `feat(cli): swarmkit init` — launches in empty directory.
 - [ ] `feat(runtime): workspace scaffold generator` — writes topology + archetypes + skills + workspace.yaml based on conversation outputs.
+- [ ] **Open design question — task #26:** does the Workspace Authoring Swarm stay interactive past `init`? The analyst path benefits from a "keep going" mode where the same conversation can add/modify agents after the initial scaffold. Decide during this milestone's design note.
 
-**Exit demo:** `mkdir my-swarm && cd my-swarm && swarmkit init` — user answers a few questions; a runnable workspace exists at the end; `swarmkit run` executes it. Design doc's 15-minute first-run promise (§3.4) validated.
+**Exit demo:** `mkdir my-swarm && cd my-swarm && swarmkit init` — user answers a few questions; a runnable workspace exists at the end; `swarmkit run` executes it. Design doc's 15-minute first-run promise (§3.4) validated. A first-time analyst (no prior SwarmKit context) completes this without reading the design doc.
 
 ## Milestone 9 — Eject, HTTP server, scheduled mode
 

@@ -1,3 +1,10 @@
+---
+title: SwarmKit Design v0.6
+description: Authoritative architecture document — product vision, core concepts, skills, Separation of Powers governance, system architecture, schemas, reference topologies, release plan.
+tags: [design, architecture, authoritative, v0.6]
+status: approved
+---
+
 PRODUCT & ARCHITECTURE DESIGN
 SwarmKit
 An open-source framework for composing, running,

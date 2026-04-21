@@ -1,3 +1,10 @@
+---
+title: Model provider abstraction
+description: ModelProvider ABC, built-in providers (anthropic, openai, google, ollama, mock), plugin path. Mirrors GovernanceProvider (§8.5). Blocks M3.
+tags: [runtime, model-provider, abstraction, m2.5]
+status: approved
+---
+
 # Model provider abstraction
 
 **Scope:** `packages/runtime/src/swarmkit_runtime/model_providers/`

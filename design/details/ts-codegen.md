@@ -1,3 +1,10 @@
+---
+title: TypeScript type codegen
+description: Generate TypeScript interfaces from the canonical JSON Schemas via quicktype. Mirror of pydantic codegen.
+tags: [schema, codegen, typescript, m0]
+status: implemented
+---
+
 # TypeScript type codegen
 
 **Scope:** `packages/schema/typescript/src/types/`

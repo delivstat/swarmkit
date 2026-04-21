@@ -1,3 +1,10 @@
+---
+title: CI pipeline
+description: GitHub Actions — Python 3.11/3.12/3.13 matrix, JavaScript, schema validity, codegen drift. Gates every PR.
+tags: [ci, workflow, infra]
+status: implemented
+---
+
 # CI pipeline
 
 **Scope:** workspace

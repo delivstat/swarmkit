@@ -1,3 +1,10 @@
+---
+title: Trigger schema v1
+description: Unified schedules + triggers. Cron / webhook / file_watch / manual / plugin discriminator.
+tags: [schema, trigger, m0]
+status: implemented
+---
+
 # Trigger schema v1
 
 **Scope:** `packages/schema`

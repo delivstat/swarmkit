@@ -1,3 +1,10 @@
+---
+title: Design directory
+description: Authoritative architecture documents. Markdown is canonical; docx archived.
+tags: [meta, docs]
+status: active
+---
+
 # Design
 
 Authoritative architecture documents for SwarmKit.

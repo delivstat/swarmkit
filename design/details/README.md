@@ -1,3 +1,10 @@
+---
+title: Per-feature design notes
+description: Directory for per-feature design notes. One file per feature, written before implementation.
+tags: [meta, discipline]
+status: active
+---
+
 # design/details/
 
 Per-feature design notes. One file per feature, named `<scope>-<slug>.md`.

@@ -1,0 +1,58 @@
+# SwarmKit
+
+> An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
+
+**Status:** pre-v1.0. Design is at v0.6 and approved in principle. Implementation is in progress on Milestone 0 (schema foundation).
+
+## Start here
+
+- [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, layout, status.
+- [CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/CLAUDE.md): repo-wide invariants and feature-delivery workflow. The primary reference when working in the repo.
+- [SwarmKit Design v0.6](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md): the authoritative architecture document. What the framework is, why, and how. Read sections §1 (Executive Summary), §3 (Product Vision), §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §9 (System Architecture), §14 (Runtime).
+- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): phased roadmap to v1.0 with per-milestone exit demos.
+
+## Schemas
+
+The five canonical artifact schemas (JSON Schema 2020-12). The shape of everything in a SwarmKit workspace.
+
+- [topology.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/topology.schema.json): the swarm itself — agents, runtime config, artifacts.
+- [skill.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/skill.schema.json): a discrete capability an agent exercises. Four categories: capability, decision, coordination, persistence.
+- [archetype.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/archetype.schema.json): a kind of agent — reusable agent configuration.
+- [workspace.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/workspace.schema.json): deployment-level config — governance provider, identity, model providers, MCP registry, credentials, storage.
+- [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json): schedules, webhooks, file watches, plugin triggers.
+
+## Per-feature design notes
+
+Each feature that lands in the repo has a short design note under `design/details/` stating goal, non-goals, API shape, test plan, demo plan. The authoritative contracts for individual features.
+
+- [Topology schema v1](https://github.com/delivstat/swarmkit/blob/main/design/details/topology-schema-v1.md)
+- [Skill schema v1](https://github.com/delivstat/swarmkit/blob/main/design/details/skill-schema-v1.md)
+- [Archetype schema v1](https://github.com/delivstat/swarmkit/blob/main/design/details/archetype-schema-v1.md)
+- [Workspace schema v1](https://github.com/delivstat/swarmkit/blob/main/design/details/workspace-schema-v1.md)
+- [Trigger schema v1](https://github.com/delivstat/swarmkit/blob/main/design/details/trigger-schema-v1.md)
+- [Model provider abstraction](https://github.com/delivstat/swarmkit/blob/main/design/details/model-provider-abstraction.md)
+- [Pydantic model codegen](https://github.com/delivstat/swarmkit/blob/main/design/details/pydantic-codegen.md)
+- [TypeScript type codegen](https://github.com/delivstat/swarmkit/blob/main/design/details/ts-codegen.md)
+- [CI pipeline](https://github.com/delivstat/swarmkit/blob/main/design/details/ci-pipeline.md)
+
+## Fixtures (examples of valid artifacts)
+
+Concrete YAML examples of every artifact type. Good for showing an LLM "what a SwarmKit X looks like."
+
+- [Topology fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/topology)
+- [Skill fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/skill)
+- [Archetype fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/archetype)
+- [Workspace fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/workspace)
+- [Trigger fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/trigger)
+
+## Cross-cutting notes
+
+- [Schema change discipline](https://github.com/delivstat/swarmkit/blob/main/docs/notes/schema-change-discipline.md): how to change a schema without breaking validators or generated types.
+- [Usability-first](https://github.com/delivstat/swarmkit/blob/main/docs/notes/usability-first.md): the per-PR checklist for friction reduction.
+- [LLM-friendly knowledge](https://github.com/delivstat/swarmkit/blob/main/docs/notes/llm-friendly-knowledge.md): conventions for keeping documentation LLM-queryable.
+
+## Optional
+
+- [packages/runtime CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/packages/runtime/CLAUDE.md): per-package invariants for the Python runtime.
+- [packages/schema CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/packages/schema/CLAUDE.md): per-package invariants for the schema package.
+- [packages/ui CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/packages/ui/CLAUDE.md): per-package invariants for the Next.js UI (deferred to v1.1).
