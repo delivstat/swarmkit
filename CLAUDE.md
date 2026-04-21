@@ -104,7 +104,7 @@ Every feature, big or small, follows this lifecycle. No exceptions. Never push d
 
 This applies to this CLAUDE.md change too — these rules arrived via `feat/workflow-rules-and-plan`.
 
-## Commit style
+## Commit and PR style
 
 Conventional-ish: `type(scope): subject`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `design`. Scopes are package names (`runtime`, `schema`, `ui`) or areas (`topology`, `skills`, `governance`, `cli`).
 
@@ -112,6 +112,8 @@ Examples:
 - `feat(runtime): load topology YAML and validate against schema`
 - `design(v0.7): resolve §21 sandboxing question`
 - `chore(workspace): bump biome to 1.10`
+
+**Authorship:** commit messages and PR bodies carry **delivstat authorship only**. Do not add `Co-Authored-By:` trailers. Do not add `🤖 Generated with …` footers. The body is subject + substance; nothing else.
 
 ## Implementation plan
 
