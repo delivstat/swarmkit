@@ -43,19 +43,31 @@ describe("swarmkit-schema", () => {
 	}
 });
 
-describe("topology fixtures", () => {
-	for (const file of fixtures("topology")) {
-		it(`accepts ${file}`, () => {
-			const result = validate("topology", loadYaml("topology", file));
-			if (!result.valid) {
-				throw new Error(`validation failed: ${JSON.stringify(result.errors)}`);
-			}
-		});
-	}
-	for (const file of fixtures("topology-invalid")) {
-		it(`rejects ${file}`, () => {
-			const result = validate("topology", loadYaml("topology-invalid", file));
-			expect(result.valid).toBe(false);
-		});
-	}
-});
+function describeFixtures(
+	label: string,
+	validDir: string,
+	invalidDir: string,
+	schemaName: SchemaName,
+) {
+	describe(`${label} fixtures`, () => {
+		for (const file of fixtures(validDir)) {
+			it(`accepts ${file}`, () => {
+				const result = validate(schemaName, loadYaml(validDir, file));
+				if (!result.valid) {
+					throw new Error(
+						`validation failed: ${JSON.stringify(result.errors)}`,
+					);
+				}
+			});
+		}
+		for (const file of fixtures(invalidDir)) {
+			it(`rejects ${file}`, () => {
+				const result = validate(schemaName, loadYaml(invalidDir, file));
+				expect(result.valid).toBe(false);
+			});
+		}
+	});
+}
+
+describeFixtures("topology", "topology", "topology-invalid", "topology");
+describeFixtures("skill", "skill", "skill-invalid", "skill");

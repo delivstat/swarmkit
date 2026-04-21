@@ -1,11 +1,11 @@
-// Demo: validate every committed topology fixture from the TS validator.
-// Used by `just demo-topology-schema`.
+// Demo: validate every committed fixture for a given schema and print
+// pass/fail. Parallel of scripts/demo_schema.py. Used by
+// `just demo-<artifact>-schema`.
 //
-// Runs without requiring a prior build — imports ajv directly and reads the
-// canonical JSON Schemas from their source-of-truth location. Equivalent to
-// what `@swarmkit/schema`'s public API does.
+// Usage:  node demo-schema.mjs <artifact>
+//   where <artifact> is topology | skill | archetype | workspace | trigger.
 
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,22 +13,39 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { parse as parseYaml } from "yaml";
 
+const ALLOWED = ["topology", "skill", "archetype", "workspace", "trigger"];
+
 const here = dirname(fileURLToPath(import.meta.url));
 const SCHEMAS_ROOT = resolve(here, "..", "..", "schemas");
 const FIXTURE_ROOT = resolve(here, "..", "..", "tests", "fixtures");
 
-const topologySchema = JSON.parse(
-  readFileSync(resolve(SCHEMAS_ROOT, "topology.schema.json"), "utf-8"),
+const schema = process.argv[2];
+if (!ALLOWED.includes(schema)) {
+  console.error(`usage: demo-schema.mjs <${ALLOWED.join(" | ")}>`);
+  process.exit(2);
+}
+
+const schemaJson = JSON.parse(
+  readFileSync(resolve(SCHEMAS_ROOT, `${schema}.schema.json`), "utf-8"),
 );
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);
-const validator = ajv.compile(topologySchema);
+const validator = ajv.compile(schemaJson);
 
 function load(kind, file) {
   return parseYaml(readFileSync(resolve(FIXTURE_ROOT, kind, file), "utf-8"));
 }
 
+function exists(p) {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function run(dir, shouldPass) {
+  if (!exists(resolve(FIXTURE_ROOT, dir))) return true;
   const files = readdirSync(resolve(FIXTURE_ROOT, dir))
     .filter((f) => f.endsWith(".yaml"))
     .sort();
@@ -51,10 +68,10 @@ function run(dir, shouldPass) {
   return allOk;
 }
 
-console.log("valid fixtures:");
-const validOk = run("topology", true);
-console.log("invalid fixtures (should fail validation):");
-const invalidOk = run("topology-invalid", false);
+console.log(`valid fixtures (${schema}):`);
+const validOk = run(schema, true);
+console.log(`invalid fixtures (${schema}) — should fail validation:`);
+const invalidOk = run(`${schema}-invalid`, false);
 
 console.log();
 const allOk = validOk && invalidOk;

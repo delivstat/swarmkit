@@ -1,0 +1,14 @@
+# composed implementation must compose at least one skill.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken
+  name: Broken
+  description: Composed skill with an empty composes list is meaningless.
+category: decision
+implementation:
+  type: composed
+  composes: []
+provenance:
+  authored_by: human
+  version: 1.0.0

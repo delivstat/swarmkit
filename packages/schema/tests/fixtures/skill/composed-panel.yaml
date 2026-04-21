@@ -1,0 +1,40 @@
+# Composition — a multi-persona panel (design §6.5, §8.6 Tier 3).
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: multi-persona-panel
+  name: Multi-Persona Evaluation Panel
+  description: |
+    Runs three specialised judges in parallel and combines their verdicts via
+    majority consensus. Escalates to HITL on disagreement.
+category: decision
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail, needs-review]
+  confidence:
+    type: number
+    range: [0, 1]
+  reasoning:
+    type: string
+    description: |
+      Combined rationale from the panel — cites each judge's verdict and
+      explains the consensus (or disagreement) in 2-3 sentences.
+  panel_votes:
+    type: array
+    items:
+      type: object
+      properties:
+        judge: { type: string }
+        verdict: { type: string }
+        confidence: { type: number, range: [0, 1] }
+implementation:
+  type: composed
+  composes:
+    - llm-judge-correctness
+    - llm-judge-security
+    - llm-judge-style
+  strategy: parallel-consensus
+provenance:
+  authored_by: human
+  version: 0.1.0

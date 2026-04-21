@@ -1,0 +1,17 @@
+# Scopes must match ^[a-z][a-z0-9_-]*:[a-z*][a-z0-9_*-]*$ — uppercase rejected.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken
+  name: Broken
+  description: Scope "REPO:read" violates the lowercase pattern constraint.
+category: capability
+implementation:
+  type: mcp_tool
+  server: foo
+  tool: bar
+iam:
+  required_scopes: [REPO:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

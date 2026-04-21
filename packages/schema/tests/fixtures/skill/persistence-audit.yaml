@@ -1,0 +1,29 @@
+# Persistence skill — append to the audit log (design §5.4, §16.4).
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: audit-log-write
+  name: Audit Log Write
+  description: |
+    Records an agent event into the append-only audit log via the
+    GovernanceProvider. Append-only; no update or delete path exists.
+category: persistence
+inputs:
+  event_type:
+    type: string
+    required: true
+  payload:
+    type: object
+    required: true
+outputs:
+  recorded:
+    type: boolean
+implementation:
+  type: mcp_tool
+  server: agt_sre
+  tool: record_event
+iam:
+  required_scopes: [audit:append]
+provenance:
+  authored_by: human
+  version: 1.0.0

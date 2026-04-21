@@ -1,0 +1,15 @@
+# provenance.version must be semver.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken
+  name: Broken
+  description: Version should match \d+\.\d+\.\d+ but is "1.0".
+category: capability
+implementation:
+  type: mcp_tool
+  server: foo
+  tool: bar
+provenance:
+  authored_by: human
+  version: "1.0"
