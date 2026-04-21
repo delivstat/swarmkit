@@ -1,0 +1,11 @@
+# role is required.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: broken
+  name: Broken
+  description: Archetype without the required role field.
+defaults: {}
+provenance:
+  authored_by: human
+  version: 0.1.0
