@@ -8,11 +8,7 @@ Language-agnostic JSON Schemas for SwarmKit's five core artifact types, plus Pyt
 
 **`schemas/*.schema.json` is the source of truth.** Both the Python and TypeScript packages consume those files — neither may redefine shape. Validation behaviour, error formatting, and framework integration (pydantic, Zod, etc.) are language-specific and live in the respective package.
 
-When the JSON Schema changes:
-1. Update the `.schema.json` file.
-2. Re-run codegen in both language packages (pydantic models, TS types).
-3. Add or update tests in both packages.
-4. Bump the schema version per the `apiVersion` rule (design §10.1).
+**If you're about to touch a schema, read [`docs/notes/schema-change-discipline.md`](../../docs/notes/schema-change-discipline.md) first.** It's the authoritative checklist — which files change, which get regenerated, what tests / fixtures / demos must land alongside. Keep it in sync when the schema surface grows.
 
 ## Schema versioning
 

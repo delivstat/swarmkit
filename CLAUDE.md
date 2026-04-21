@@ -26,13 +26,16 @@ swarmkit/
 │   ├── schema/          # Canonical JSON Schemas + Python & TS validators
 │   └── ui/              # Next.js: composer, authoring interface, dashboard (v1.1)
 ├── reference/           # v1.0 reference topologies, archetypes, skills (YAML)
-├── docs/                # User-facing docs
+├── docs/                # User-facing docs + cross-cutting notes
+│   └── notes/           # Discipline / gotcha / "don't forget" notes (schema-change-discipline.md, etc.)
 ├── scripts/             # Dev scripts
 ├── .claude/             # Claude Code config
 └── justfile             # Cross-language task runner
 ```
 
 Each package has its own `CLAUDE.md` with package-specific invariants and style. Read those when working in a subdirectory.
+
+**Before making a cross-cutting change, check `docs/notes/` for a matching discipline note** (e.g. schema changes: `docs/notes/schema-change-discipline.md`). If your change introduces a new "remember to also touch Y when you change X" rule, add a note.
 
 ## Tooling
 
