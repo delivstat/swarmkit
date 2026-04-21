@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: judge-correctness
+  name: Judge — Correctness
+  description: Single-persona LLM judge focused on correctness.
+category: decision
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail]
+  confidence:
+    type: number
+    range: [0, 1]
+  reasoning:
+    type: string
+implementation:
+  type: llm_prompt
+  prompt: |
+    Evaluate correctness of the candidate output; return JSON.
+provenance:
+  authored_by: human
+  version: 0.1.0

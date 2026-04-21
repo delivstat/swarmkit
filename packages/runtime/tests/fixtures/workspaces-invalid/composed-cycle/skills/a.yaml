@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: skill-a
+  name: Skill A
+  description: Composes skill-b; skill-b composes back to skill-a. Cycle.
+category: decision
+outputs:
+  verdict: { type: string }
+  reasoning: { type: string }
+implementation:
+  type: composed
+  composes:
+    - skill-b
+provenance:
+  authored_by: human
+  version: 0.1.0

@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: panel
+  name: Panel
+  description: Multi-persona evaluation panel — composed of two single judges.
+category: decision
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail]
+  confidence:
+    type: number
+    range: [0, 1]
+  reasoning:
+    type: string
+implementation:
+  type: composed
+  composes:
+    - judge-correctness
+    - judge-style
+  strategy: parallel-consensus
+provenance:
+  authored_by: human
+  version: 0.1.0

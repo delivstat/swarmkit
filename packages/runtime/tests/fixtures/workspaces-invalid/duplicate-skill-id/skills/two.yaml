@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: same-id
+  name: Second
+  description: Second skill with the same id — registry must reject.
+category: capability
+implementation:
+  type: mcp_tool
+  server: x
+  tool: two
+provenance:
+  authored_by: human
+  version: 0.1.0
