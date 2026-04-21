@@ -65,13 +65,25 @@ build-js:
 design-extract:
     uv run python scripts/extract_design.py
 
-# Load every committed topology fixture and print pass/fail in Python + TS.
-demo-topology-schema:
+# Internal: run the cross-language schema demo for one artifact type.
+_demo-schema artifact:
     @echo "── Python (swarmkit-schema) ──"
-    @uv run python scripts/demo_topology_schema.py
+    @uv run python scripts/demo_schema.py {{artifact}}
     @echo ""
     @echo "── TypeScript (@swarmkit/schema) ──"
-    @pnpm --silent --filter @swarmkit/schema exec node scripts/demo-topology-schema.mjs
+    @pnpm --silent --filter @swarmkit/schema exec node scripts/demo-schema.mjs {{artifact}}
+
+# Per-artifact demos (valid + invalid fixtures in both Python and TS).
+demo-topology-schema:   (_demo-schema "topology")
+demo-skill-schema:      (_demo-schema "skill")
+demo-archetype-schema:  (_demo-schema "archetype")
+demo-workspace-schema:  (_demo-schema "workspace")
+demo-trigger-schema:    (_demo-schema "trigger")
+
+# Aggregate: run every per-artifact demo. Exit criterion for Milestone 0
+# once all five schemas have landed. Only includes schemas that have
+# fixtures; silently skips those without.
+demo-schema: demo-topology-schema demo-skill-schema
 
 # Quickstart runtime CLI (once implemented)
 run *args:

@@ -1,0 +1,44 @@
+# Decision skill implemented as a single LLM call (the Tier 2 judge shape
+# from design §8.6 / §17.2).
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: llm-judge-correctness
+  name: LLM Judge — Correctness
+  description: |
+    Evaluates an output against a correctness rubric using a single LLM judge.
+    Returns a verdict and a calibrated confidence score.
+category: decision
+inputs:
+  output:
+    type: string
+    required: true
+  expected:
+    type: string
+    required: false
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail]
+  confidence:
+    type: number
+    range: [0, 1]
+  reasoning:
+    type: string
+    description: Two to three sentences explaining why this verdict was reached.
+implementation:
+  type: llm_prompt
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0
+  prompt: |
+    You are a correctness judge. Given the candidate output and (optionally)
+    the expected output, return JSON
+    {"verdict": "pass"|"fail", "confidence": 0-1, "reasoning": "<2-3 sentences>"}.
+constraints:
+  timeout_seconds: 10
+  on_failure: fail
+provenance:
+  authored_by: human
+  version: 0.1.0

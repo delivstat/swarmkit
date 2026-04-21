@@ -1,0 +1,35 @@
+# Coordination skill — a peer handoff between leaders (design §5.3, §18.2).
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: peer-handoff-qa
+  name: Peer Handoff — QA
+  description: |
+    Hands a completed engineering task to the QA leader for verification.
+    Uses A2A mutual authentication (design §18.2).
+category: coordination
+inputs:
+  task_payload:
+    type: object
+    required: true
+  originating_leader:
+    type: string
+    required: true
+outputs:
+  handoff_id:
+    type: string
+  status:
+    type: enum
+    values: [accepted, rejected, queued]
+implementation:
+  type: mcp_tool
+  server: a2a
+  tool: handoff_task
+iam:
+  required_scopes: [a2a:send]
+constraints:
+  timeout_seconds: 30
+  on_failure: escalate_to_human
+provenance:
+  authored_by: human
+  version: 1.0.0

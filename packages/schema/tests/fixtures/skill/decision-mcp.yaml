@@ -1,0 +1,57 @@
+# Adapted from design doc §6.3 — the canonical skill anatomy example.
+# Decision category requires `reasoning: string` (plain-language summary);
+# per-criterion structured detail lives in a separately-named `criteria` field.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: code-quality-review
+  name: Code Quality Review
+  description: |
+    Evaluates a code diff for quality issues including SRP, error handling,
+    and naming conventions. Returns pass/fail verdict with confidence score,
+    a plain-language rationale, and per-criterion reasoning.
+category: decision
+inputs:
+  diff:
+    type: string
+    required: true
+  language:
+    type: enum
+    values: [python, typescript, go]
+    required: true
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail]
+  confidence:
+    type: number
+    range: [0, 1]
+  reasoning:
+    type: string
+    description: |
+      Two to three sentences summarising why this verdict was reached.
+      Recorded on every decision for audit and review (design §16.4).
+  criteria:
+    type: array
+    items:
+      type: object
+      properties:
+        criterion: { type: string }
+        verdict: { type: string }
+        notes: { type: string }
+implementation:
+  type: mcp_tool
+  server: rynko_flow
+  tool: validate_code_review_v2
+iam:
+  required_scopes: [repo:read]
+constraints:
+  max_latency_ms: 2000
+  retry:
+    attempts: 2
+    backoff: exponential
+  on_failure: escalate_to_human
+provenance:
+  authored_by: human
+  authored_date: "2026-04-15"
+  version: 1.0.0

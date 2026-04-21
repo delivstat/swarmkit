@@ -36,3 +36,14 @@ def test_topology_valid_fixtures(fixture: Path) -> None:
 def test_topology_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("topology", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("skill"), ids=lambda p: p.name)
+def test_skill_valid_fixtures(fixture: Path) -> None:
+    validate("skill", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("skill-invalid"), ids=lambda p: p.name)
+def test_skill_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("skill", _load_yaml(fixture))
