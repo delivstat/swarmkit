@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken-panel
+  name: Broken Panel
+  description: References a nonexistent skill; registry must reject.
+category: decision
+outputs:
+  verdict: { type: string }
+  reasoning: { type: string }
+implementation:
+  type: composed
+  composes:
+    - not-defined-anywhere
+provenance:
+  authored_by: human
+  version: 0.1.0

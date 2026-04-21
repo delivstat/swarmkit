@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: abstract-worker
+  name: Abstract Worker
+  description: |
+    Worker archetype that uses an abstract skill placeholder — the concrete
+    skill binds at topology-load time (phase 3c / M1.5).
+role: worker
+defaults:
+  skills:
+    - abstract:
+        category: decision
+        capability: content_review
+    - audit-log-write
+provenance:
+  authored_by: human
+  version: 0.1.0

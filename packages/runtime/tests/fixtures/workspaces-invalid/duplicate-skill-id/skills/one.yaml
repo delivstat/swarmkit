@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: same-id
+  name: First
+  description: First skill with this id.
+category: capability
+implementation:
+  type: mcp_tool
+  server: x
+  tool: one
+provenance:
+  authored_by: human
+  version: 0.1.0

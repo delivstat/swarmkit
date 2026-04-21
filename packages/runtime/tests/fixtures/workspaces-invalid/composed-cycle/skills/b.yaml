@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: skill-b
+  name: Skill B
+  description: Composes skill-a — closes the cycle.
+category: decision
+outputs:
+  verdict: { type: string }
+  reasoning: { type: string }
+implementation:
+  type: composed
+  composes:
+    - skill-a
+provenance:
+  authored_by: human
+  version: 0.1.0
