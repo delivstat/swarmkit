@@ -1,6 +1,6 @@
 # Implementation Plan — SwarmKit v1.0
 
-**Source of truth:** `design/SwarmKit-Design-v0.6.extracted.md` (§20.1 lists the Phase 1 scope). This plan decomposes that scope into milestones and features, each of which becomes one or more PRs under the [feature delivery workflow](../CLAUDE.md#feature-delivery-workflow--mandatory).
+**Source of truth:** `design/SwarmKit-Design-v0.6.md` (§20.1 lists the Phase 1 scope). This plan decomposes that scope into milestones and features, each of which becomes one or more PRs under the [feature delivery workflow](../CLAUDE.md#feature-delivery-workflow--mandatory).
 
 **Status:** drafted 2026-04-21. Living document — update as milestones land.
 

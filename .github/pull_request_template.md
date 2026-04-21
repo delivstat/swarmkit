@@ -6,7 +6,7 @@
 
 ## Design reference
 
-<!-- Link the design note: design/details/<slug>.md — or the section of design/SwarmKit-Design-v0.6.extracted.md this implements (e.g. §14.3). -->
+<!-- Link the design note: design/details/<slug>.md — or the section of design/SwarmKit-Design-v0.6.md this implements (e.g. §14.3). -->
 
 ## Tests
 

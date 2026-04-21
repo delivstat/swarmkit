@@ -37,7 +37,7 @@ We considered three paths to close it: (1) rewriting every `allOf`/`if-then` rul
 
 Reasoning:
 
-- The primary path users take to produce any SwarmKit artifact is a conversation with an authoring swarm (`swarmkit init` / `swarmkit author …`) — see `design/SwarmKit-Design-v0.6.extracted.md` §11–12. The Skill Authoring Swarm's Review Leader (§12.3) validates drafts against the schema before presenting them, so the conditional rules are caught at authoring time.
+- The primary path users take to produce any SwarmKit artifact is a conversation with an authoring swarm (`swarmkit init` / `swarmkit author …`) — see `design/SwarmKit-Design-v0.6.md` §11–12. The Skill Authoring Swarm's Review Leader (§12.3) validates drafts against the schema before presenting them, so the conditional rules are caught at authoring time.
 - The secondary path — hand-written YAML — hits `swarmkit validate` which uses jsonschema and catches every rule.
 - The runtime load path calls `validate()` before pydantic model construction, so the gap is not reachable through any documented path.
 - The only place the gap could bite is new runtime code that instantiates `SwarmKitX.model_validate(…)` on raw data without running `validate()` first — a reviewable, narrow contribution point.

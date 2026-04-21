@@ -10,7 +10,7 @@ An open-source framework for composing, running, and **growing** multi-agent AI 
 2. **Skills are the only extension primitive.** Capability / decision / coordination / persistence — one mental model.
 3. **Swarms grow through human-approved authoring.** Gap detection → surface → author → test → publish, gated at every step.
 
-The authoritative architecture lives in `design/SwarmKit-Design-v0.6.docx`. A plain-text extraction is at `design/SwarmKit-Design-v0.6.extracted.md` — read that when answering "what did the design say about X?"
+The authoritative architecture lives in `design/SwarmKit-Design-v0.6.md` — markdown, canonical, LLM-queryable. Read that when answering "what did the design say about X?" (The original `.docx` is archived under `design/archive/` as historical reference only; it is not authoritative and is not updated.)
 
 **Status:** pre-v1.0. Design is at v0.6 and approved-in-principle. Phase 1 implementation (13–16 weeks per §20.1) has not started. This repo is currently scaffolding only.
 
@@ -125,6 +125,6 @@ Examples:
 
 ## When in doubt
 
-- Read the relevant section of `design/SwarmKit-Design-v0.6.extracted.md`.
+- Read the relevant section of `design/SwarmKit-Design-v0.6.md`.
 - If the design is silent or contradictory, it's an open question — flag it in `design/` rather than deciding unilaterally.
 - The three pillars of the product story (topology-as-data, skills-as-extension, growth-through-authoring) are tie-breakers for architectural calls.

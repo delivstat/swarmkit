@@ -4,7 +4,7 @@
 
 `swarmkit-runtime` — the Python component of the three-package system. Loads topology files, compiles them into LangGraph graphs, enforces governance through the `GovernanceProvider` abstraction, and exposes the `swarmkit` CLI + FastAPI server.
 
-The design doc is the authoritative source for architectural decisions — see `design/SwarmKit-Design-v0.6.extracted.md` (or the .docx). §9, §14, §16, §18 are the most relevant sections to this package.
+The design doc is the authoritative source for architectural decisions — see `design/SwarmKit-Design-v0.6.md`. §9, §14, §16, §18 are the most relevant sections to this package.
 
 ## Module map
 
