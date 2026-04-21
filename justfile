@@ -85,6 +85,20 @@ demo-trigger-schema:    (_demo-schema "trigger")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema
 
+# Regenerate the pydantic models from the canonical JSON Schemas. Run after
+# any schema edit per docs/notes/schema-change-discipline.md.
+schema-codegen:
+    uv run python scripts/codegen_pydantic.py
+
+# Drift check — regenerate and fail if the working tree is dirty. Used in CI.
+schema-codegen-check:
+    uv run python scripts/codegen_pydantic.py
+    @git diff --quiet --exit-code -- packages/schema/python/src/swarmkit_schema/models || (echo "schema codegen drift detected — run 'just schema-codegen' and commit the result" && git --no-pager diff --stat -- packages/schema/python/src/swarmkit_schema/models && exit 1)
+
+# Show a typed object loaded through the generated pydantic models.
+demo-codegen:
+    @uv run python scripts/demo_codegen.py
+
 # Quickstart runtime CLI (once implemented)
 run *args:
     uv run swarmkit {{args}}

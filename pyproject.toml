@@ -13,6 +13,11 @@ dev = [
     "ruff>=0.6",
     "types-pyyaml",
     "types-jsonschema",
+    # Pydantic model codegen from the canonical JSON Schemas. See
+    # docs/notes/schema-change-discipline.md — generated models live under
+    # packages/schema/python/src/swarmkit_schema/models/ and must be
+    # regenerated whenever a schema changes (`just schema-codegen`).
+    "datamodel-code-generator>=0.26",
 ]
 
 [tool.uv.workspace]
@@ -28,7 +33,14 @@ swarmkit-schema = { workspace = true }
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = [".venv", "build", "dist"]
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+    # Generated pydantic models — codegen'd from JSON Schemas. See
+    # design/details/pydantic-codegen.md.
+    "packages/schema/python/src/swarmkit_schema/models",
+]
 
 [tool.ruff.lint]
 select = [
