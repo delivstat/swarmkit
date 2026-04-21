@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: ambiguous-worker
+  name: Ambiguous Worker
+  description: Requests an abstract decision skill for "content-review" — ambiguous.
+role: worker
+defaults:
+  skills:
+    - abstract:
+        category: decision
+        capability: content-review
+provenance:
+  authored_by: human
+  version: 0.1.0

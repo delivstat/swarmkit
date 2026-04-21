@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: orphan-trigger
+  name: Orphan Trigger
+type: manual
+targets:
+  - no-such-topology

@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: content-review-lenient
+  name: Content Review — Lenient
+  description: Another decision skill matching capability=content-review.
+category: decision
+outputs:
+  verdict: { type: string }
+  reasoning: { type: string }
+implementation:
+  type: llm_prompt
+  prompt: Evaluate leniently.
+provenance:
+  authored_by: human
+  version: 0.1.0

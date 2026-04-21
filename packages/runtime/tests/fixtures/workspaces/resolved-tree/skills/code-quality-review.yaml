@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: code-quality-review
+  name: Code Quality Review
+  description: Evaluates a code diff against a quality rubric; returns verdict + reasoning.
+category: decision
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail]
+  confidence:
+    type: number
+    range: [0, 1]
+  reasoning:
+    type: string
+implementation:
+  type: mcp_tool
+  server: rynko-flow
+  tool: validate_code_review
+provenance:
+  authored_by: human
+  version: 1.0.0

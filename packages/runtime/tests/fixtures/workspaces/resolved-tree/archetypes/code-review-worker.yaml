@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: code-review-worker
+  name: Code Review Worker
+  description: Worker archetype bundled with repo-read + code-quality-review skills.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.2
+  prompt:
+    system: You are a senior code reviewer.
+  skills:
+    - github-repo-read
+    - code-quality-review
+  iam:
+    base_scope: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
