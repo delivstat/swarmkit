@@ -85,19 +85,33 @@ demo-trigger-schema:    (_demo-schema "trigger")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema
 
-# Regenerate the pydantic models from the canonical JSON Schemas. Run after
-# any schema edit per docs/notes/schema-change-discipline.md.
-schema-codegen:
+# Regenerate both pydantic models and TypeScript types from the canonical
+# JSON Schemas. Run after any schema edit per
+# docs/notes/schema-change-discipline.md.
+schema-codegen: schema-codegen-py schema-codegen-ts
+
+schema-codegen-py:
     uv run python scripts/codegen_pydantic.py
 
+schema-codegen-ts:
+    @pnpm --silent --filter @swarmkit/schema exec node scripts/codegen-types.mjs
+
 # Drift check — regenerate and fail if the working tree is dirty. Used in CI.
-schema-codegen-check:
+schema-codegen-check: schema-codegen-py-check schema-codegen-ts-check
+
+schema-codegen-py-check:
     uv run python scripts/codegen_pydantic.py
-    @git diff --quiet --exit-code -- packages/schema/python/src/swarmkit_schema/models || (echo "schema codegen drift detected — run 'just schema-codegen' and commit the result" && git --no-pager diff --stat -- packages/schema/python/src/swarmkit_schema/models && exit 1)
+    @git diff --quiet --exit-code -- packages/schema/python/src/swarmkit_schema/models || (echo "pydantic codegen drift detected — run 'just schema-codegen-py' and commit the result" && git --no-pager diff --stat -- packages/schema/python/src/swarmkit_schema/models && exit 1)
+
+schema-codegen-ts-check:
+    @pnpm --silent --filter @swarmkit/schema exec node scripts/codegen-types.mjs
+    @git diff --quiet --exit-code -- packages/schema/typescript/src/types || (echo "ts codegen drift detected — run 'just schema-codegen-ts' and commit the result" && git --no-pager diff --stat -- packages/schema/typescript/src/types && exit 1)
 
 # Show a typed object loaded through the generated pydantic models.
 demo-codegen:
     @uv run python scripts/demo_codegen.py
+    @echo ""
+    @pnpm --silent --filter @swarmkit/schema exec node scripts/demo-codegen.mjs
 
 # Quickstart runtime CLI (once implemented)
 run *args:

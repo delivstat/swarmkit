@@ -66,3 +66,15 @@ export function validate(
 	const ok = v(instance);
 	return ok ? { valid: true } : { valid: false, errors: v.errors ?? [] };
 }
+
+// Re-export generated TypeScript types so consumers can import both the
+// validator and typed interfaces from a single module. See
+// design/details/ts-codegen.md for the shape-vs-full-validation split
+// (same story as pydantic — see design/details/pydantic-codegen.md).
+export type {
+	SwarmKitArchetype,
+	SwarmKitSkill,
+	SwarmKitTopology,
+	SwarmKitTrigger,
+	SwarmKitWorkspace,
+} from "./types/index.js";
