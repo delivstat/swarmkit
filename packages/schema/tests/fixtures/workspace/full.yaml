@@ -1,0 +1,53 @@
+# Exercises every top-level block. Used as the round-trip reference.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: acme-engineering
+  name: Acme Engineering Swarms
+  description: |
+    Production workspace running the Code Review Swarm and the Skill
+    Authoring Swarm for the Acme engineering org.
+organisation:
+  id: acme
+  name: Acme Inc.
+team:
+  id: engineering
+  name: Engineering
+governance:
+  provider: agt
+  policy_language: yaml
+  config:
+    policies_dir: ./policies
+    trust_decay_half_life_hours: 168
+identity:
+  provider: builtin
+  config:
+    session_ttl_hours: 24
+credentials:
+  anthropic_api_key:
+    source: env
+    config:
+      env: ANTHROPIC_API_KEY
+  github_pat:
+    source: env
+    config:
+      env: GITHUB_TOKEN
+mcp_servers:
+  - id: github
+    transport: stdio
+    command: ["mcp-github"]
+    credentials_ref: github_pat
+    sandboxed: false
+  - id: rynko-flow
+    transport: http
+    endpoint: https://mcp.rynko.dev
+    sandboxed: false
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
+  audit:
+    backend: agt
+    retention_days: 365
+  knowledge_bases:
+    default_backend: sqlite

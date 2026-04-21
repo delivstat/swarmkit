@@ -1,0 +1,10 @@
+# model_provider registration requires both class and provider_id.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+model_providers:
+  - provider_id: acme-internal
+    config:
+      base_url: https://llm.acme.internal
