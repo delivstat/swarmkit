@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: bad
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    children:
+      - id: w
+        role: worker
+        archetype: decision-worker

@@ -1,16 +1,18 @@
-"""Workspace resolver — phase 2 only for now (validation).
+"""Workspace resolver - orchestrates phases 1-4 of the M1 pipeline.
 
-Runs ``swarmkit_schema.validate()`` against every discovered artifact,
-converts jsonschema errors into structured :class:`ResolutionError`
-entries, and aggregates across every artifact before failing. Does not
-short-circuit: a workspace with three broken skills and one broken
-topology produces one error report listing all four.
+Phase 1: discovery  (:mod:`swarmkit_runtime.workspace`)
+Phase 2: schema validation  (this module, :func:`validate_discovered`)
+Phase 3: resolution
+  - 3a skill registry        (:mod:`swarmkit_runtime.skills`)
+  - 3b archetype registry    (:mod:`swarmkit_runtime.archetypes`)
+  - 3c topology resolution   (``_topology.build_topology_registry``)
+  - 3d trigger resolution    (``_triggers.build_trigger_registry``)
+Phase 4: :class:`ResolvedWorkspace` construction (:func:`resolve_workspace`)
 
-Phases 3 (resolution) and 4 (ResolvedTopology construction) land in
-M1.4 and M1.5 respectively. The end-to-end entry point
-``resolve_workspace()`` lands in M1.5 and calls this module.
+:func:`resolve_workspace` is the single public entry point. Both the
+``swarmkit validate`` CLI (M1.6) and the runtime go through it.
 
-Design reference: ``design/details/topology-loader.md`` phase 2.
+Design reference: ``design/details/topology-loader.md``.
 """
 
 from __future__ import annotations
@@ -19,9 +21,13 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 from jsonschema import ValidationError
+from pydantic import ValidationError as PydanticValidationError
 from swarmkit_schema import SchemaName, validate
+from swarmkit_schema.models import SwarmKitWorkspace
 
+from swarmkit_runtime.archetypes import build_archetype_registry
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors, yaml_pointer
+from swarmkit_runtime.skills import build_skill_registry
 from swarmkit_runtime.workspace import (
     ArtifactKind,
     ArtifactKindMismatchError,
@@ -32,7 +38,18 @@ from swarmkit_runtime.workspace import (
     MissingWorkspaceFileError,
     WorkspaceNotFoundError,
     YAMLParseError,
+    discover,
 )
+
+from ._resolved import (
+    AgentRole,
+    ResolvedAgent,
+    ResolvedTopology,
+    ResolvedTrigger,
+    ResolvedWorkspace,
+)
+from ._topology import build_topology_registry
+from ._triggers import build_trigger_registry
 
 # jsonschema validator keyword → SwarmKit error code.
 # The keyword is which JSON-Schema rule the artifact violated. Unmapped
@@ -313,16 +330,91 @@ def errors_or_raise(
 ) -> None:
     """Raise :class:`ResolutionErrors` if either list is non-empty.
 
-    Helper for ``resolve_workspace()`` (M1.5); separated out so the
-    aggregation logic is independently testable.
+    Helper for ``resolve_workspace()``; separated out so the aggregation
+    logic is independently testable.
     """
     combined: list[ResolutionError] = [*discovery_errors, *validation_errors]
     if combined:
         raise ResolutionErrors(combined)
 
 
+def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
+    """Load a SwarmKit workspace and produce a fully-resolved, typed tree.
+
+    Runs every phase of the resolver pipeline in order. Collects errors
+    without short-circuit and raises :class:`ResolutionErrors` at the
+    first phase that surfaces any.
+
+    The returned :class:`ResolvedWorkspace` is frozen and deterministic:
+    the same workspace on disk produces byte-identical output (within
+    dataclass equality).
+    """
+    try:
+        artifacts = list(discover(root))
+    except DiscoveryError as exc:
+        raise ResolutionErrors([resolution_error_from_discovery(exc)]) from exc
+
+    validation_errors = validate_discovered(artifacts)
+    if validation_errors:
+        raise ResolutionErrors(validation_errors)
+
+    # Phase 3 — registries + topologies + triggers, aggregated.
+    errors: list[ResolutionError] = []
+    skills, skill_errors = build_skill_registry(artifacts)
+    errors.extend(skill_errors)
+    archetypes, arch_errors = build_archetype_registry(artifacts, skills)
+    errors.extend(arch_errors)
+    topologies, topo_errors = build_topology_registry(artifacts, skills, archetypes)
+    errors.extend(topo_errors)
+    triggers, trigger_errors = build_trigger_registry(artifacts, topologies)
+    errors.extend(trigger_errors)
+
+    if errors:
+        raise ResolutionErrors(errors)
+
+    # Phase 4 — construct the workspace. We already know validation
+    # passed; pydantic model construction is a formality, but we still
+    # surface a clean error rather than a bare pydantic trace if it ever
+    # fails.
+    workspace_artifact = next(a for a in artifacts if a.kind == "workspace")
+    try:
+        workspace_model = SwarmKitWorkspace.model_validate(dict(workspace_artifact.raw))
+    except PydanticValidationError as exc:
+        raise ResolutionErrors(
+            [
+                ResolutionError(
+                    code="workspace.model-construction",
+                    message=(
+                        f"workspace at {workspace_artifact.path} could not "
+                        "be constructed as a pydantic SwarmKitWorkspace model."
+                    ),
+                    artifact_path=workspace_artifact.path,
+                    suggestion=f"pydantic raised: {exc.errors()[0]['msg']}",
+                )
+            ]
+        ) from exc
+
+    return ResolvedWorkspace(
+        raw=workspace_model,
+        source_path=workspace_artifact.path,
+        topologies=topologies,
+        skills=skills,
+        archetypes=archetypes,
+        triggers=tuple(triggers),
+    )
+
+
 __all__ = [
+    "AgentRole",
+    "ResolutionError",
+    "ResolutionErrors",
+    "ResolvedAgent",
+    "ResolvedTopology",
+    "ResolvedTrigger",
+    "ResolvedWorkspace",
     "errors_or_raise",
     "resolution_error_from_discovery",
+    "resolve_workspace",
     "validate_discovered",
+    "yaml_pointer",
 ]
