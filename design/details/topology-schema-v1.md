@@ -1,3 +1,10 @@
+---
+title: Topology schema v1
+description: Full v1 spec for the topology artifact — apiVersion, kind, metadata, runtime, agents (recursive tree), artifacts.
+tags: [schema, topology, m0]
+status: implemented
+---
+
 # Topology schema v1
 
 **Scope:** `packages/schema`

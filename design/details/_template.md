@@ -1,3 +1,10 @@
+---
+title: Design note template
+description: Template for new entries under design/details/.
+tags: [meta, template]
+status: active
+---
+
 # <feature name>
 
 **Scope:** <package / area>

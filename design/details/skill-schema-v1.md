@@ -1,3 +1,10 @@
+---
+title: Skill schema v1
+description: Four-category discriminator, composition rules, provenance, decision-category reasoning contract.
+tags: [schema, skill, m0]
+status: implemented
+---
+
 # Skill schema v1
 
 **Scope:** `packages/schema`

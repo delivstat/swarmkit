@@ -1,3 +1,10 @@
+---
+title: Archetype schema v1
+description: Reusable agent configuration with abstract-skill placeholder support.
+tags: [schema, archetype, m0]
+status: implemented
+---
+
 # Archetype schema v1
 
 **Scope:** `packages/schema`

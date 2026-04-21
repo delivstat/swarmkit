@@ -1,3 +1,10 @@
+---
+title: Workspace schema v1
+description: Deployment-level config — governance provider, identity, model providers, MCP registry, credentials, storage.
+tags: [schema, workspace, m0]
+status: implemented
+---
+
 # Workspace schema v1
 
 **Scope:** `packages/schema`
