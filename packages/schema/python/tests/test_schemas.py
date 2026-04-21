@@ -47,3 +47,14 @@ def test_skill_valid_fixtures(fixture: Path) -> None:
 def test_skill_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("skill", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("archetype"), ids=lambda p: p.name)
+def test_archetype_valid_fixtures(fixture: Path) -> None:
+    validate("archetype", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("archetype-invalid"), ids=lambda p: p.name)
+def test_archetype_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("archetype", _load_yaml(fixture))

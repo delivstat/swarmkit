@@ -1,0 +1,30 @@
+# The canonical leader archetype from design §13.1 catalogue. Basic delegation
+# — no built-in specialisation beyond coordination and handoffs.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: supervisor-leader
+  name: Supervisor Leader
+  description: |
+    Default leader archetype. Delegates work to child workers, coordinates
+    handoffs, and surfaces escalations. Used as the starting point for
+    most leader agents across the reference topologies.
+role: leader
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.3
+  prompt:
+    system: |
+      You are a team leader. Your job is to delegate work to your workers,
+      coordinate handoffs across peer leaders, and surface any escalation
+      that exceeds your workers' scope.
+  skills:
+    - peer-handoff-qa
+    - audit-log-write
+  iam:
+    base_scope: [coordination:read, coordination:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

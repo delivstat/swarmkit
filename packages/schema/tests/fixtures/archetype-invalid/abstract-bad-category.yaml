@@ -1,0 +1,17 @@
+# Abstract skill placeholder's `category` must match the skill category enum
+# (capability | decision | coordination | persistence).
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: broken
+  name: Broken
+  description: Abstract placeholder uses a non-existent skill category.
+role: worker
+defaults:
+  skills:
+    - abstract:
+        category: evaluation        # not a valid skill category
+        capability: content_review
+provenance:
+  authored_by: human
+  version: 0.1.0

@@ -1,0 +1,12 @@
+# role must be one of root | leader | worker.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: broken
+  name: Broken
+  description: Role "supervisor" is not one of the three recognised roles.
+role: supervisor
+defaults: {}
+provenance:
+  authored_by: human
+  version: 0.1.0

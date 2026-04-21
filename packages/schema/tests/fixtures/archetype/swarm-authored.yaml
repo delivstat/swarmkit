@@ -1,0 +1,30 @@
+# Exercises the authored_by_swarm provenance variant (design §13).
+# Archetypes produced by the Archetype Authoring Swarm (M8) require human
+# review before being used to instantiate production agents.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: summary-writer-worker
+  name: Summary Writer Worker
+  description: |
+    Produces concise multi-paragraph summaries of longer documents. Authored
+    conversationally by the Archetype Authoring Swarm on 2026-04-20; pending
+    human review before any production instantiation.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.4
+  prompt:
+    system: |
+      You summarise technical documents. Lead with the key claim; keep each
+      paragraph self-contained; prefer plain language.
+  skills:
+    - audit-log-write
+  iam:
+    base_scope: [content:read]
+provenance:
+  authored_by: authored_by_swarm
+  authored_date: "2026-04-20"
+  version: 0.1.0

@@ -71,3 +71,4 @@ function describeFixtures(
 
 describeFixtures("topology", "topology", "topology-invalid", "topology");
 describeFixtures("skill", "skill", "skill-invalid", "skill");
+describeFixtures("archetype", "archetype", "archetype-invalid", "archetype");

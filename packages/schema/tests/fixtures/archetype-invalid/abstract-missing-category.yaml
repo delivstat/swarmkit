@@ -1,0 +1,15 @@
+# Abstract skill placeholders require `category`.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: broken
+  name: Broken
+  description: Abstract placeholder missing the required `category` field.
+role: worker
+defaults:
+  skills:
+    - abstract:
+        capability: content_review
+provenance:
+  authored_by: human
+  version: 0.1.0
