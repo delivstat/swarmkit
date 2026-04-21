@@ -1,0 +1,10 @@
+# kind must be "Topology".
+apiVersion: swarmkit/v1
+kind: NotATopology
+metadata:
+  name: broken
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root

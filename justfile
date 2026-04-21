@@ -65,6 +65,14 @@ build-js:
 design-extract:
     uv run python scripts/extract_design.py
 
+# Load every committed topology fixture and print pass/fail in Python + TS.
+demo-topology-schema:
+    @echo "── Python (swarmkit-schema) ──"
+    @uv run python scripts/demo_topology_schema.py
+    @echo ""
+    @echo "── TypeScript (@swarmkit/schema) ──"
+    @pnpm --silent --filter @swarmkit/schema exec node scripts/demo-topology-schema.mjs
+
 # Quickstart runtime CLI (once implemented)
 run *args:
     uv run swarmkit {{args}}

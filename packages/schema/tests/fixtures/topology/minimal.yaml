@@ -1,0 +1,11 @@
+# The smallest valid topology: a single root agent with an archetype reference.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minimal
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root

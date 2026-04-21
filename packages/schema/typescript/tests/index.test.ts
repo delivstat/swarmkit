@@ -1,27 +1,61 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parse as parseYaml } from "yaml";
 import { describe, expect, it } from "vitest";
 
-import { getSchema, validate } from "../src/index.js";
+import { getSchema, validate, type SchemaName } from "../src/index.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
+// Fixtures live at packages/schema/tests/fixtures — shared with the Python
+// validator so both languages round-trip the same artifacts.
+const FIXTURE_ROOT = resolve(here, "..", "..", "tests", "fixtures");
+
+const ALL_SCHEMAS: SchemaName[] = [
+	"topology",
+	"skill",
+	"archetype",
+	"workspace",
+	"trigger",
+];
+
+function fixtures(kind: string): string[] {
+	try {
+		return readdirSync(resolve(FIXTURE_ROOT, kind))
+			.filter((f) => f.endsWith(".yaml"))
+			.sort();
+	} catch {
+		return [];
+	}
+}
+
+function loadYaml(kind: string, file: string): unknown {
+	return parseYaml(
+		readFileSync(resolve(FIXTURE_ROOT, kind, file), "utf-8"),
+	);
+}
 
 describe("swarmkit-schema", () => {
-  it("exposes all five canonical schemas", () => {
-    for (const name of [
-      "topology",
-      "skill",
-      "archetype",
-      "workspace",
-      "trigger",
-    ] as const) {
-      expect(getSchema(name)).toBeTypeOf("object");
-    }
-  });
+	for (const name of ALL_SCHEMAS) {
+		it(`exposes ${name} schema`, () => {
+			expect(getSchema(name)).toBeTypeOf("object");
+		});
+	}
+});
 
-  it("validates a minimal topology", () => {
-    const result = validate("topology", {
-      apiVersion: "swarmkit/v1",
-      kind: "Topology",
-      metadata: { name: "hello-swarm", version: "0.1.0" },
-      agents: { root: { id: "root", role: "root" } },
-    });
-    expect(result.valid).toBe(true);
-  });
+describe("topology fixtures", () => {
+	for (const file of fixtures("topology")) {
+		it(`accepts ${file}`, () => {
+			const result = validate("topology", loadYaml("topology", file));
+			if (!result.valid) {
+				throw new Error(`validation failed: ${JSON.stringify(result.errors)}`);
+			}
+		});
+	}
+	for (const file of fixtures("topology-invalid")) {
+		it(`rejects ${file}`, () => {
+			const result = validate("topology", loadYaml("topology-invalid", file));
+			expect(result.valid).toBe(false);
+		});
+	}
 });
