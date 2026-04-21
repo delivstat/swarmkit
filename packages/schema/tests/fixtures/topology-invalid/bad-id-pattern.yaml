@@ -1,0 +1,10 @@
+# id must match ^[a-z][a-z0-9-]*$ — "Root" is uppercase, "1root" starts with digit.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: broken
+  version: 0.1.0
+agents:
+  root:
+    id: Root
+    role: root

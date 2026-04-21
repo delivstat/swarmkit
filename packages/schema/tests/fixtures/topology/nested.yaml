@@ -1,0 +1,30 @@
+# Root with a leader that has a sub-leader. Tests recursion beyond three levels.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: nested
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root
+    children:
+      - id: engineering-leader
+        role: leader
+        archetype: supervisor-leader
+        children:
+          - id: backend-leader
+            role: leader
+            archetype: supervisor-leader
+            children:
+              - id: api-worker
+                role: worker
+                archetype: code-gen-worker
+          - id: frontend-leader
+            role: leader
+            archetype: supervisor-leader
+            children:
+              - id: ui-worker
+                role: worker
+                archetype: code-gen-worker
