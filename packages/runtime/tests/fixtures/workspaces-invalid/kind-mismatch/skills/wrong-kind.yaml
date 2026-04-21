@@ -1,0 +1,11 @@
+# This file sits under skills/ but declares kind: Topology.
+# Discovery must raise ArtifactKindMismatchError.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: misplaced
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root

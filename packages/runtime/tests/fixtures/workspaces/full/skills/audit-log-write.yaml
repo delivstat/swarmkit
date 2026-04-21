@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: audit-log-write
+  name: Audit Log Write
+  description: Writes an append-only event into the workspace audit log.
+category: persistence
+implementation:
+  type: mcp_tool
+  server: agt-sre
+  tool: record_event
+provenance:
+  authored_by: human
+  version: 1.0.0

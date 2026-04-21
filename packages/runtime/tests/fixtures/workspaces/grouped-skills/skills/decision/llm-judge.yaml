@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: llm-judge
+  name: LLM Judge
+  description: Single-LLM-call judge returning a verdict plus reasoning.
+category: decision
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail]
+  confidence:
+    type: number
+    range: [0, 1]
+  reasoning:
+    type: string
+implementation:
+  type: llm_prompt
+  prompt: |
+    Evaluate the candidate against the rubric and return a JSON verdict.
+provenance:
+  authored_by: human
+  version: 0.1.0

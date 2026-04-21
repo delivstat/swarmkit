@@ -1,0 +1,16 @@
+# Two levels of subdirectory under skills/ — rejected by the discover()
+# one-level-only rule. Flat-or-one-level-group only.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: too-deep
+  name: Too Deep
+  description: Deeply nested skill — discover() must reject it.
+category: capability
+implementation:
+  type: mcp_tool
+  server: noop
+  tool: noop
+provenance:
+  authored_by: human
+  version: 0.0.1
