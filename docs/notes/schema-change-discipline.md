@@ -19,8 +19,8 @@ packages/schema/
 |---|---|---|
 | `schemas/*.schema.json` | **Yes — the one source of truth.** | Both validators, both test suites, the runtime, the UI. |
 | `tests/fixtures/*/` | Yes. | Both Python and TS tests read the same files. |
-| `python/src/swarmkit_schema/models/` (pending) | **No — generated.** | Runtime code as typed pydantic models. |
-| `typescript/src/types/` (pending) | **No — generated.** | UI code as TS types. |
+| `python/src/swarmkit_schema/models/` | **No — generated.** Regenerate with `just schema-codegen`. | Runtime code as typed pydantic models. |
+| `typescript/src/types/` (pending M0 #15) | **No — generated.** | UI code as TS types. |
 | `python/src/swarmkit_schema/__init__.py` | Yes. | Thin wrapper; loads + validates against the JSON Schemas. Does not redefine shape. |
 | `typescript/src/index.ts` | Yes. | Thin wrapper; same rule. |
 
@@ -35,14 +35,16 @@ Every time you change anything under `packages/schema/schemas/`:
 1. **Edit the `.schema.json` file.** That's the change.
 2. **Add or update fixtures** under `packages/schema/tests/fixtures/<artifact>/` — at least one valid fixture exercising the new surface, and where relevant one invalid fixture that the new rule would reject.
 3. **Do not touch `validate` or `getSchema` wrappers unless the public API shape changes.** They re-read the schema on every call or via import-time load — the new shape is picked up automatically.
-4. **Regenerate models and types** (once codegen lands in M0):
-   - `just schema-codegen` — regenerates pydantic models + TS types from the JSON Schemas.
-   - Commit the regenerated files in the same PR as the schema change.
-   - CI checks that generated files are in sync by running codegen in a dirty check; uncommitted regenerated output fails the build.
+4. **Regenerate pydantic models.** `just schema-codegen` regenerates the files under `packages/schema/python/src/swarmkit_schema/models/`. Commit the regenerated output in the same PR as the schema change. CI's `schema codegen drift` job runs codegen and fails if the working tree would be dirty — uncommitted regenerated output breaks the build. TS types (M0 #15) will work the same way when they land.
 5. **Run the matching demo target:**
    - `just demo-topology-schema` for topology changes
-   - `just demo-schema` (lands at end of M0) for a combined run
+   - `just demo-schema` for a combined run across every artifact
+   - `just demo-codegen` to see a typed object loaded through the generated models
 6. **Design note.** If the change is non-trivial, add or update `design/details/<artifact>-schema-v1.md`. If the change is a cosmetic fix (typo, description rewording), a PR without a design note is fine.
+
+### Shape vs full validation
+
+Pydantic models cover shape (required fields, types, enums, patterns). Full validation — including `allOf` / `if-then` conditional rules — happens through `swarmkit_schema.validate()`. Runtime code calls `validate()` first, then loads data into the pydantic model. See `design/details/pydantic-codegen.md` for the enumerated list of rules pydantic does not translate.
 
 ## Why this matters
 
