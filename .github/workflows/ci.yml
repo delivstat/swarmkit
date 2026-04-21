@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs on the same branch when a new commit arrives.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: python (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set Python version
+        run: echo "${{ matrix.python-version }}" > .python-version
+
+      - name: Install dependencies
+        run: uv sync --all-packages --group dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+
+      - name: Typecheck (mypy)
+        run: uv run mypy packages/runtime packages/schema/python
+
+      - name: Test (pytest)
+        run: uv run pytest
+
+  javascript:
+    name: javascript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (biome)
+        run: pnpm -r run lint
+
+      - name: Typecheck (tsc)
+        run: pnpm -r run typecheck
+
+      - name: Test (vitest)
+        run: pnpm -r run test
+
+  schema-validity:
+    name: schema validity (json-schema draft 2020-12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --all-packages --group dev
+
+      - name: Validate each canonical schema
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+
+          schemas = sorted(Path("packages/schema/schemas").glob("*.schema.json"))
+          assert schemas, "No canonical schemas found."
+          for path in schemas:
+              data = json.loads(path.read_text())
+              Draft202012Validator.check_schema(data)
+              print(f"✓ {path.name}")
+          PY

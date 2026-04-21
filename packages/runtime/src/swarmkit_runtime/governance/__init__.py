@@ -59,7 +59,7 @@ class GovernanceProvider(ABC):
 
     @abstractmethod
     def get_trust_score(self, agent_id: str) -> float:
-        """Return the current trust score for the agent (0.0–1.0 normalised)."""
+        """Return the current trust score for the agent (0.0-1.0 normalised)."""
 
 
 __all__ = [

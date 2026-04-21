@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import pytest
 from jsonschema import Draft202012Validator
-
 from swarmkit_schema import SchemaName, get_schema, validate
-
 
 ALL: tuple[SchemaName, ...] = ("topology", "skill", "archetype", "workspace", "trigger")
 

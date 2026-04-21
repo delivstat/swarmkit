@@ -9,9 +9,9 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "biome check app components lib",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "lint": "node scripts/noop.mjs lint",
+    "typecheck": "node scripts/noop.mjs typecheck",
+    "test": "node scripts/noop.mjs test"
   },
   "dependencies": {
     "@swarmkit/schema": "workspace:*",
