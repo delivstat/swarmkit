@@ -22,7 +22,7 @@ status: active
 
 | # | Milestone | Exit demo |
 |---|-----------|-----------|
-| 0 | Schemas nailed down | Load every v0.6 example in the design doc; valid in both Python and TS validators. |
+| 0 ✅ | Schemas nailed down (done 2026-04-21) | `just demo-schema` loads every fixture in both Python and TS with full drift protection. |
 | 1 | Topology loading & resolution | `swarmkit validate path/to/topology.yaml` prints a resolved tree; archetype and skill refs resolved. |
 | 2 | `GovernanceProvider` abstraction + AGT Tier 1 | Policy decisions roundtrip through `AGTGovernanceProvider` for a real scope check; mock provider used in unit tests. |
 | 2.5 | `ModelProvider` abstraction | Topology with two agents on different providers (e.g. Anthropic leader + Ollama worker) loads, `just demo-model-providers` prints green per installed provider. |
@@ -54,18 +54,20 @@ Run in parallel with the milestones above:
 
 **Design reference:** §6.3, §10, §13, §9.3.
 
+**Status: ✅ COMPLETE** (2026-04-21). All features landed via PRs #5–#13; M0 exit demo verified via `just demo-schema` across both languages.
+
 **Features:**
 
-- [ ] `design/topology-schema-v1.md` — promote the v0.6 sketch to a detailed spec (required fields, constraint rules, extensibility).
-- [ ] `design/skill-schema-v1.md` — finalise the four-category discriminator, composition, provenance.
-- [ ] `design/archetype-schema-v1.md` — abstract-skill placeholders (§6.6 edge case).
-- [ ] `design/workspace-schema-v1.md` — governance provider selection, identity provider, storage config.
-- [ ] `design/trigger-schema-v1.md` — cron, webhook, file_watch, manual.
-- [ ] `feat(schema): pydantic model codegen from JSON Schema` — generated models live in `swarmkit_schema.models`.
-- [ ] `feat(schema): typescript type codegen from JSON Schema` — generated types in `@swarmkit/schema/types`.
-- [ ] `test(schema): round-trip every v0.6 example` — fixtures lifted verbatim from the design doc.
+- [x] `design/details/topology-schema-v1.md` — PR #5.
+- [x] `design/details/skill-schema-v1.md` — PR #8.
+- [x] `design/details/archetype-schema-v1.md` — PR #9.
+- [x] `design/details/workspace-schema-v1.md` — PR #10.
+- [x] `design/details/trigger-schema-v1.md` — PR #11.
+- [x] `feat(schema): pydantic model codegen from JSON Schema` — PR #12. Generated models live in `swarmkit_schema.models`.
+- [x] `feat(schema): typescript type codegen from JSON Schema` — PR #13. Generated types re-exported from `@swarmkit/schema`.
+- [x] `test(schema): round-trip every v0.6 example` — 182 Python / 108 TS tests pass across all fixtures.
 
-**Exit demo:** `just demo-schema` loads every example artifact and prints a green validation report.
+**Exit demo (verified):** `just demo-schema` loads every valid + invalid fixture across all five schemas in both Python and TypeScript and prints a green validation report. Drift protection (`just schema-codegen-check`) runs in CI on every PR.
 
 ## Milestone 1 — Topology loading & resolution
 
