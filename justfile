@@ -80,10 +80,10 @@ demo-archetype-schema:  (_demo-schema "archetype")
 demo-workspace-schema:  (_demo-schema "workspace")
 demo-trigger-schema:    (_demo-schema "trigger")
 
-# Aggregate: run every per-artifact demo. Exit criterion for Milestone 0
-# once all five schemas have landed. Only includes schemas that have
-# fixtures; silently skips those without.
-demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema
+# Aggregate: run every per-artifact demo. Exit criterion for Milestone 0 —
+# all five schemas exercised in both Python and TypeScript against committed
+# valid + invalid fixtures.
+demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema
 
 # Quickstart runtime CLI (once implemented)
 run *args:

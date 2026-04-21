@@ -73,3 +73,4 @@ describeFixtures("topology", "topology", "topology-invalid", "topology");
 describeFixtures("skill", "skill", "skill-invalid", "skill");
 describeFixtures("archetype", "archetype", "archetype-invalid", "archetype");
 describeFixtures("workspace", "workspace", "workspace-invalid", "workspace");
+describeFixtures("trigger", "trigger", "trigger-invalid", "trigger");

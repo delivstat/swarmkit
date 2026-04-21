@@ -1,0 +1,13 @@
+# Temporarily disabled trigger — loads but does not fire. Useful for
+# pausing a trigger without deleting it (audit-friendly).
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: paused-weekend-run
+  name: Paused Weekend Run
+type: cron
+enabled: false
+targets:
+  - content-generation-swarm
+config:
+  expression: "0 10 * * 0,6"

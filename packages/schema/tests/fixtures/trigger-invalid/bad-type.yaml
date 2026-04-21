@@ -1,0 +1,10 @@
+# type must be one of cron | webhook | file_watch | manual | plugin.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: broken
+  name: Broken
+type: pubsub
+targets:
+  - hello-swarm
+config: {}

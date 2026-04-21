@@ -1,0 +1,9 @@
+# type=cron requires a config block (expression is then runtime-validated).
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: broken
+  name: Broken
+type: cron
+targets:
+  - hello-swarm

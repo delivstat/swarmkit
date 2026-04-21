@@ -69,3 +69,14 @@ def test_workspace_valid_fixtures(fixture: Path) -> None:
 def test_workspace_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("workspace", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("trigger"), ids=lambda p: p.name)
+def test_trigger_valid_fixtures(fixture: Path) -> None:
+    validate("trigger", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("trigger-invalid"), ids=lambda p: p.name)
+def test_trigger_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("trigger", _load_yaml(fixture))

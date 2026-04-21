@@ -1,0 +1,12 @@
+# Cron with an explicit IANA timezone.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: nightly-cleanup
+  name: Nightly Cleanup
+type: cron
+targets:
+  - cleanup-swarm
+config:
+  expression: "0 2 * * *"
+  timezone: America/Los_Angeles

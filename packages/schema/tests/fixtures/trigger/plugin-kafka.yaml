@@ -1,0 +1,16 @@
+# Plugin trigger — provider_id names a TriggerProvider registered via the
+# `swarmkit.trigger_providers` entry-points group. Runtime validates the
+# config shape; schema only enforces provider_id presence.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: kafka-agent-tasks
+  name: Kafka Agent Tasks
+type: plugin
+provider_id: acme-kafka-trigger
+targets:
+  - agent-task-processor
+config:
+  bootstrap_servers: [kafka.acme.internal:9092]
+  topic: agent-tasks
+  group_id: swarmkit-consumer
