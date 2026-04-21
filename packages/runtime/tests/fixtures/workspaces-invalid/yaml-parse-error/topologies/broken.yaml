@@ -1,0 +1,6 @@
+# Deliberate YAML parse error — an unclosed bracket at the top level.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: [broken
+  version: 0.1.0

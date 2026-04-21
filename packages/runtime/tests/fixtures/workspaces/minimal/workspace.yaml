@@ -1,0 +1,5 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: minimal-workspace
+  name: Minimal Workspace

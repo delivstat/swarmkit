@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: grouped-skills-workspace
+  name: Grouped Skills Workspace
+  description: |
+    Uses one level of subdirectory nesting to group skills by category —
+    decision/ and capability/. Discovery must walk these.

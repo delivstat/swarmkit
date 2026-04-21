@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: hello
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root
