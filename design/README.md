@@ -2,10 +2,16 @@
 
 Authoritative architecture documents for SwarmKit.
 
-- **`SwarmKit-Design-v0.6.docx`** — source of truth (Word).
-- **`SwarmKit-Design-v0.6.extracted.md`** — plain-text extraction for easy reading by humans and Claude. Regenerate when the docx changes (see `scripts/extract_design.py`).
+- **`SwarmKit-Design-v0.6.md`** — **canonical source of truth.** Edit this file directly.
+- **`details/`** — per-feature design notes. One file per feature, produced before implementation; see `details/README.md` for the template.
+- **`IMPLEMENTATION-PLAN.md`** — phased roadmap to v1.0.
+- **`archive/SwarmKit-Design-v0.6.docx`** — the original Word document. Kept for historical reference; **not authoritative.** Do not edit — changes land on the `.md` file.
 
-Detailed design specs (schema, runtime API, GovernanceProvider, per-topology designs) will live alongside v0.6 in this directory once produced. See §21 of v0.6 for the expected list.
+## Why the markdown is canonical
+
+SwarmKit's documentation is consumed primarily by LLMs (on behalf of users, reviewers, and contributors). A binary `.docx` is hostile to that: it requires a script to extract readable text, it diff-s poorly in PRs, and it's invisible to retrieval tooling (`llms.txt`, GitHub search, etc.). The markdown is the artifact every consumer actually reads; treating it as source removes the extraction step and eliminates drift between source and readable copy.
+
+If a Word-format export is ever needed, generate it from the markdown (e.g. via `pandoc design/SwarmKit-Design-v0.6.md -o out.docx`). The reverse conversion (`docx → md`) is now a one-time historical thing and does not have a checked-in script.
 
 ## Reading order
 

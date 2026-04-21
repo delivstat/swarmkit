@@ -6,7 +6,7 @@ Every feature gets a design note **before** implementation starts (see root `CLA
 
 1. **Goal** — what problem this solves in one sentence.
 2. **Non-goals** — what this explicitly does not do.
-3. **Design reference** — section(s) of `design/SwarmKit-Design-v0.6.extracted.md` this implements.
+3. **Design reference** — section(s) of `design/SwarmKit-Design-v0.6.md` this implements.
 4. **API shape** — public surface (function signatures, CLI flags, schema fragments).
 5. **Test plan** — what the tests cover; unit vs integration; test data.
 6. **Demo plan** — how a human sees this working end-to-end. Terminal transcript, screenshot, `examples/` script, etc.
