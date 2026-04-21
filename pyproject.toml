@@ -4,6 +4,17 @@ version = "0.0.0"
 description = "SwarmKit monorepo root — not published. See packages/ for distributable projects."
 requires-python = ">=3.11"
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "types-pyyaml",
+    "types-jsonschema",
+]
+
 [tool.uv.workspace]
 members = [
     "packages/runtime",

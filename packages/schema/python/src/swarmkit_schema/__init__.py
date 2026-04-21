@@ -1,14 +1,19 @@
 """SwarmKit schema validators (Python).
 
-The JSON Schema files under `swarmkit_schema._schemas` are the source of truth —
+The JSON Schema files under `packages/schema/schemas/` are the source of truth —
 this package only validates against them. See `packages/schema/CLAUDE.md` for
 the dual-surface rule.
+
+Resolution order:
+  1. `_schemas/` inside the installed package (wheel builds via hatch
+     `force-include`).
+  2. `packages/schema/schemas/` relative to this file (editable / dev mode).
 """
 
 from __future__ import annotations
 
 import json
-from importlib import resources
+from pathlib import Path
 from typing import Any, Literal
 
 import jsonschema
@@ -17,10 +22,24 @@ __version__ = "0.0.1"
 
 SchemaName = Literal["topology", "skill", "archetype", "workspace", "trigger"]
 
+_HERE = Path(__file__).resolve().parent
+
+
+def _schema_root() -> Path:
+    installed = _HERE / "_schemas"
+    if installed.is_dir():
+        return installed
+    # Editable dev mode: packages/schema/python/src/swarmkit_schema → ../../../schemas
+    dev = _HERE.parent.parent.parent / "schemas"
+    if dev.is_dir():
+        return dev
+    raise RuntimeError(f"Canonical JSON Schemas not found. Looked in:\n  {installed}\n  {dev}")
+
 
 def _load(name: SchemaName) -> dict[str, Any]:
-    path = resources.files("swarmkit_schema._schemas") / f"{name}.schema.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    path = _schema_root() / f"{name}.schema.json"
+    data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return data
 
 
 def get_schema(name: SchemaName) -> dict[str, Any]:
@@ -34,4 +53,4 @@ def validate(name: SchemaName, instance: Any) -> None:
     jsonschema.validate(instance=instance, schema=schema)
 
 
-__all__ = ["__version__", "SchemaName", "get_schema", "validate"]
+__all__ = ["SchemaName", "__version__", "get_schema", "validate"]

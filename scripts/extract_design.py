@@ -22,9 +22,8 @@ NS = {"w": W_NS}
 
 
 def extract(docx_path: Path, out_path: Path) -> None:
-    with zipfile.ZipFile(docx_path) as z:
-        with z.open("word/document.xml") as f:
-            content = f.read().decode("utf-8")
+    with zipfile.ZipFile(docx_path) as z, z.open("word/document.xml") as f:
+        content = f.read().decode("utf-8")
 
     root = ET.fromstring(content)
     body = root.find("w:body", NS)
