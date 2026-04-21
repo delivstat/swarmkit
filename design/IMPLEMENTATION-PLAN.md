@@ -18,6 +18,7 @@
 | 0 | Schemas nailed down | Load every v0.6 example in the design doc; valid in both Python and TS validators. |
 | 1 | Topology loading & resolution | `swarmkit validate path/to/topology.yaml` prints a resolved tree; archetype and skill refs resolved. |
 | 2 | `GovernanceProvider` abstraction + AGT Tier 1 | Policy decisions roundtrip through `AGTGovernanceProvider` for a real scope check; mock provider used in unit tests. |
+| 2.5 | `ModelProvider` abstraction | Topology with two agents on different providers (e.g. Anthropic leader + Ollama worker) loads, `just demo-model-providers` prints green per installed provider. |
 | 3 | LangGraph compiler — capability + coordination | `swarmkit run hello-topology.yaml` executes a two-agent swarm and prints the final state. |
 | 4 | Decision + persistence skills | Same topology, now with an LLM judge and an audit-log write; audit entries survive process restart. |
 | 5 | MCP integration | Topology calls a real MCP server (filesystem or a simple HTTP tool); AGT security gateway wraps the call. |
@@ -90,6 +91,23 @@ Run in parallel with the milestones above:
 - [ ] `test(governance): separation-of-powers invariants` — executive cannot modify audit, cannot bypass policy.
 
 **Exit demo:** a unit-test swarm where a worker tries to invoke a skill it lacks the scope for; policy denies; audit records the attempt; test asserts both.
+
+## Milestone 2.5 — Model provider abstraction
+
+**Goal:** topology YAML picks an LLM provider per agent (Anthropic, OpenAI, Google, Ollama, custom); the runtime dispatches through a `ModelProvider` interface with built-in implementations and a plugin path. Mirror of `GovernanceProvider`. Blocks M3 because the compiler needs a dispatch seam.
+
+**Design reference:** `design/details/model-provider-abstraction.md`; mirrors §8.5.
+
+**Features:**
+
+- [x] `design/details/model-provider-abstraction.md` — ABC, built-in providers, registration, credentials contract.
+- [ ] `feat(runtime): ModelProvider ABC + MockModelProvider + AnthropicModelProvider` — minimum to unblock M3.
+- [ ] `feat(runtime): OpenAI + Google + Ollama providers` — three sibling PRs, each with recorded-response unit tests.
+- [ ] `design/details/model-provider-tool-calling.md` — canonical tool-call format and per-provider translation (blocks M5).
+- [ ] `feat(runtime): provider registry + entry-point discovery + workspace.yaml overrides`.
+- [ ] `test(runtime): topology with a non-registered provider fails load with a clear error`.
+
+**Exit demo:** `just demo-model-providers` — a minimal completion through each installed provider; missing SDKs / creds report `skipped` (not failed). `examples/model-choice/` — two-agent topology with a Claude leader and an Ollama worker; one YAML, one README.
 
 ## Milestone 3 — LangGraph compiler (capability + coordination)
 

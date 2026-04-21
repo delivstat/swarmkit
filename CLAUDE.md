@@ -79,10 +79,11 @@ These hold across the whole repo. Individual package `CLAUDE.md`s add more.
 1. **Topology-as-data, always.** No generating Python as the output of a "topology compiler" — we interpret. `swarmkit eject` is the one path that produces code, and it's a user-facing export, not a runtime mechanism.
 2. **Skills are the only extension primitive.** When tempted to add a parallel extension mechanism, ask how it could be a skill category or a composed skill instead.
 3. **All governance goes through the `GovernanceProvider` interface** (design §8.5). Only `packages/runtime/src/swarmkit_runtime/governance/` imports AGT directly.
-4. **Audit log is append-only from executive perspective.** No update/delete path exposed to agents, ever (design §8.3, §8.7).
-5. **Human approval gates are structural, not prompt-suggested.** Scopes reserved for human identity (`skills:activate`, `mcp_servers:deploy`, `topologies:modify`, `iam:modify`) are enforced by the policy engine — no agent can be granted them regardless of prompt (design §8.7).
-6. **Eject must stay intact.** Any runtime feature needs an ejection story — if it can't be expressed in generated LangGraph code, reconsider.
-7. **v1.0 UI is deferred.** CLI chat mode is the v1.0 on-ramp. Do not add UI features before the design question in §15.3 is re-confirmed.
+4. **All LLM calls go through the `ModelProvider` interface** (`design/details/model-provider-abstraction.md`). Only `packages/runtime/src/swarmkit_runtime/model_providers/` imports `anthropic` / `openai` / `google-genai` / Ollama's HTTP client. Same shape as the governance rule; same reasoning — no vendor lock-in at framework level.
+5. **Audit log is append-only from executive perspective.** No update/delete path exposed to agents, ever (design §8.3, §8.7).
+6. **Human approval gates are structural, not prompt-suggested.** Scopes reserved for human identity (`skills:activate`, `mcp_servers:deploy`, `topologies:modify`, `iam:modify`) are enforced by the policy engine — no agent can be granted them regardless of prompt (design §8.7).
+7. **Eject must stay intact.** Any runtime feature needs an ejection story — if it can't be expressed in generated LangGraph code, reconsider.
+8. **v1.0 UI is deferred.** CLI chat mode is the v1.0 on-ramp. Do not add UI features before the design question in §15.3 is re-confirmed.
 
 ## Style
 
