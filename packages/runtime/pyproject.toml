@@ -29,8 +29,8 @@ dependencies = [
     "anyio>=4.4",
 
     # Execution engine (design §7, §14)
-    # "langgraph>=0.2",
-    # "langchain-core>=0.3",
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
 
     # Governance — Microsoft AGT (design §8, §16).
     # Pinned to 3.x; AGT is iterating fast (public preview, v1→v3 in 7 weeks).

@@ -74,7 +74,7 @@ no_implicit_optional = true
 
 # AGT v3.x (public preview) doesn't ship py.typed markers yet.
 [[tool.mypy.overrides]]
-module = ["agent_os.*", "agent_control_plane.*", "agentmesh.*", "agent_sre.*", "google.*"]
+module = ["agent_os.*", "agent_control_plane.*", "agentmesh.*", "agent_sre.*", "google.*", "langgraph.*", "langchain_core.*", "langsmith.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
