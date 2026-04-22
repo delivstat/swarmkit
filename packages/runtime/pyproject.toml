@@ -46,6 +46,8 @@ dependencies = [
     # Only model_providers/ imports these; everything else goes through ModelProvider ABC.
     "anthropic>=0.39",
     "google-genai>=1.0",
+    "openai>=1.50",
+    # Ollama uses httpx only (already in core deps) — no dedicated SDK.
 
     # HTTP server for persistent mode (design §14.1)
     "fastapi>=0.115",
