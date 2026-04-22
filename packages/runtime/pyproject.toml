@@ -32,13 +32,12 @@ dependencies = [
     # "langgraph>=0.2",
     # "langchain-core>=0.3",
 
-    # Governance — Microsoft AGT (design §8, §16). Pin once AGT Python SDK
-    # publishes to PyPI; tracked in §21 open question on version pinning.
-    # "agt-agent-os-kernel",
-    # "agt-agentmesh-platform",
-    # "agt-agent-sre",
-    # "agt-agent-compliance",
-    # "agt-agent-runtime",
+    # Governance — Microsoft AGT (design §8, §16).
+    # Pinned to 3.x; AGT is iterating fast (public preview, v1→v3 in 7 weeks).
+    # The GovernanceProvider ABC (§8.5) isolates the runtime from AGT API churn.
+    "agent-os-kernel>=3.2.0,<4.0",
+    "agentmesh-platform>=3.2.0,<4.0",
+    "agent-sre>=3.2.0,<4.0",
 
     # MCP (design §18)
     # "mcp>=1.0",
