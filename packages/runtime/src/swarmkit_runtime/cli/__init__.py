@@ -17,6 +17,7 @@ import typer
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 
+from ._knowledge import build_pack, find_repo_root
 from ._render import render_errors, render_success, should_colour
 
 app = typer.Typer(
@@ -214,6 +215,65 @@ def _identifier(value: object) -> str:
 
 def _stderr(msg: str) -> None:
     typer.echo(msg, err=True)
+
+
+# ---- knowledge-pack -----------------------------------------------------
+
+
+@app.command(name="knowledge-pack")
+def knowledge_pack(
+    workspace: Annotated[
+        Path | None,
+        typer.Argument(
+            help=(
+                "Optional workspace directory. If given, the workspace YAML "
+                "and the output of `swarmkit validate` against it are "
+                "appended to the pack."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Write the pack to FILE instead of stdout.",
+            show_default=False,
+        ),
+    ] = None,
+    include_fixtures: Annotated[
+        bool,
+        typer.Option(
+            "--fixtures/--no-fixtures",
+            help="Include schema fixtures (valid + invalid examples).",
+        ),
+    ] = True,
+) -> None:
+    """Bundle SwarmKit docs + schemas + workspace state into a paste-ready prompt."""
+    repo_root = find_repo_root()
+    if repo_root is None:
+        _stderr(
+            "swarmkit knowledge-pack: could not locate the SwarmKit repo on disk. "
+            "This command currently requires a source checkout (the corpus is not "
+            "yet bundled as package data — see design/details/knowledge-pack-cli.md)."
+        )
+        raise typer.Exit(_EXIT_USAGE)
+
+    if workspace is not None and not workspace.exists():
+        _stderr(f"swarmkit knowledge-pack: workspace path not found: {workspace}")
+        raise typer.Exit(_EXIT_USAGE)
+
+    pack = build_pack(
+        repo_root,
+        workspace=workspace.resolve() if workspace else None,
+        include_fixtures=include_fixtures,
+    )
+
+    if output is not None:
+        output.write_text(pack, encoding="utf-8")
+        return
+    typer.echo(pack, nl=False)
 
 
 # ---- stubs for later milestones ----------------------------------------

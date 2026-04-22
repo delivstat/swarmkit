@@ -128,6 +128,16 @@ demo-resolver:
     @echo "── examples/hello-swarm/workspace-broken (deliberate typo) ──"
     -@uv run swarmkit validate examples/hello-swarm/workspace-broken --no-color
 
+# Show the size and the first 60 lines of the knowledge pack against the
+# hello-swarm example. Confirms task #24 end-to-end without dumping the
+# full ~350 KB pack to the terminal.
+demo-knowledge-pack:
+    @echo "── pack size (valid workspace overlay) ──"
+    @uv run swarmkit knowledge-pack examples/hello-swarm/workspace | wc -c
+    @echo ""
+    @echo "── pack head (broken workspace overlay) ──"
+    @uv run swarmkit knowledge-pack examples/hello-swarm/workspace-broken | head -60
+
 # Quickstart runtime CLI (once implemented)
 run *args:
     uv run swarmkit {{args}}
