@@ -3,68 +3,113 @@
 The runtime interacts with governance only through this interface. AGT is the
 v1.0 implementation; future implementations replace it without changes to the
 topology schema, runtime, or user experience.
+
+See ``design/details/governance-provider-interface.md`` for the finalised
+method signatures, type contracts, and async rationale.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from datetime import datetime
+
+# ---- types --------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class PolicyDecision:
+    """Result of a governance policy evaluation (§8.6 tiered model)."""
+
     allowed: bool
     reason: str
-    metadata: dict[str, Any] | None = None
-
-
-@dataclass(frozen=True)
-class Credential:
-    agent_id: str
-    signature: bytes
-    issued_at: float
+    tier: int  # 1 (deterministic), 2 (single LLM judge), 3 (panel)
+    scopes_granted: frozenset[str] = field(default_factory=frozenset)
+    scopes_denied: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
 class AuditEvent:
-    agent_id: str
+    """Append-only event emitted through the media pillar (§8.3)."""
+
     event_type: str
-    payload: dict[str, Any]
-    timestamp: float
+    agent_id: str
+    timestamp: datetime
+    payload: dict[str, object] = field(default_factory=dict)
+    topology_id: str | None = None
+    skill_id: str | None = None
+
+
+@dataclass(frozen=True)
+class AgentCredential:
+    """Opaque credential presented for identity verification (§16.1)."""
+
+    credential_type: str  # "ed25519", "did", "mock"
+    value: str
+
+
+@dataclass(frozen=True)
+class IdentityVerification:
+    """Result of an identity verification request."""
+
+    verified: bool
+    agent_id: str
+
+
+@dataclass(frozen=True)
+class TrustScore:
+    """Behavioural trust score for an agent (§16.1, 0.0-1.0)."""
+
+    score: float
+    tier: str
+
+
+# ---- ABC ----------------------------------------------------------------
 
 
 class GovernanceProvider(ABC):
     """Narrow, stable interface over the governance toolkit.
 
-    See design §8.5 for rationale — this is the abstraction that keeps SwarmKit
-    portable across governance implementations. Everything above this interface
-    (topology schema, runtime, skills, archetypes, UI) stays unchanged when the
-    underlying toolkit is swapped.
+    See design §8.5 for rationale — this is the abstraction that keeps
+    SwarmKit portable across governance implementations. All methods are
+    async (governance calls may involve I/O) and keyword-only past
+    ``self`` (prevents positional mix-ups as signatures evolve).
     """
 
     @abstractmethod
-    def evaluate_action(
-        self, agent_id: str, action: str, context: dict[str, Any]
+    async def evaluate_action(
+        self,
+        *,
+        agent_id: str,
+        action: str,
+        scopes_required: frozenset[str],
+        context: dict[str, object] | None = None,
     ) -> PolicyDecision:
         """Ask the governance layer whether this action is allowed."""
 
     @abstractmethod
-    def verify_identity(self, agent_id: str, credential: Credential) -> bool:
-        """Verify the agent's identity."""
+    async def verify_identity(
+        self,
+        *,
+        agent_id: str,
+        credential: AgentCredential,
+    ) -> IdentityVerification:
+        """Verify the agent's identity credential."""
 
     @abstractmethod
-    def record_event(self, event: AuditEvent) -> None:
+    async def record_event(self, event: AuditEvent) -> None:
         """Append an event to the audit log (append-only; no update/delete)."""
 
     @abstractmethod
-    def get_trust_score(self, agent_id: str) -> float:
-        """Return the current trust score for the agent (0.0-1.0 normalised)."""
+    async def get_trust_score(self, *, agent_id: str) -> TrustScore:
+        """Return the current trust score for the agent."""
 
 
 __all__ = [
+    "AgentCredential",
     "AuditEvent",
-    "Credential",
     "GovernanceProvider",
+    "IdentityVerification",
     "PolicyDecision",
+    "TrustScore",
 ]
