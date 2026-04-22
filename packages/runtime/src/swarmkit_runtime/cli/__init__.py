@@ -1,18 +1,204 @@
 """SwarmKit CLI — entry points for authoring and execution (design §14.2).
 
-Implementation stub. The `app` object is the Typer application wired to
-`swarmkit` in `pyproject.toml` [project.scripts].
+``swarmkit validate`` is the first real command (M1.6). The others are
+stubs awaiting their milestones.
 """
 
 from __future__ import annotations
 
+import json
+import sys
+from dataclasses import asdict
+from pathlib import Path
+from typing import Annotated
+
 import typer
+
+from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
+from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
+
+from ._render import render_errors, render_success, should_colour
 
 app = typer.Typer(
     name="swarmkit",
     help="Compose, run, and grow multi-agent swarms.",
     no_args_is_help=True,
 )
+
+
+# ---- validate -----------------------------------------------------------
+
+_EXIT_OK = 0
+_EXIT_RESOLUTION_ERROR = 1
+_EXIT_USAGE = 2
+
+
+@app.command()
+def validate(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            help="Workspace root (directory containing workspace.yaml).",
+            show_default=False,
+        ),
+    ] = Path("."),
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit JSONL instead of human-formatted output.",
+        ),
+    ] = False,
+    tree: Annotated[
+        bool,
+        typer.Option(
+            "--tree",
+            help="On success, print the fully-expanded resolved agent tree.",
+        ),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Suppress the success summary; errors still print.",
+        ),
+    ] = False,
+    color: Annotated[
+        bool | None,
+        typer.Option(
+            "--color/--no-color",
+            help=(
+                "Override TTY auto-detection for coloured output. "
+                "NO_COLOR env var always suppresses."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Validate a SwarmKit workspace and print a resolved tree or errors."""
+    use_colour = should_colour(sys.stdout.isatty(), color)
+    workspace_root = path.resolve()
+
+    try:
+        workspace = resolve_workspace(workspace_root)
+    except ResolutionErrors as exc:
+        _emit_errors(
+            list(exc.errors),
+            json_mode=json_output,
+            workspace_root=workspace_root,
+            color=use_colour,
+        )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    except FileNotFoundError as exc:
+        _stderr(f"error: {exc}")
+        raise typer.Exit(_EXIT_USAGE) from exc
+
+    if quiet:
+        return
+
+    _emit_success(
+        workspace,
+        json_mode=json_output,
+        tree=tree,
+        color=use_colour,
+    )
+
+
+def _emit_errors(
+    errors: list[ResolutionError],
+    *,
+    json_mode: bool,
+    workspace_root: Path,
+    color: bool,
+) -> None:
+    if json_mode:
+        for err in errors:
+            typer.echo(json.dumps(_error_to_json(err)))
+        n_files = len({err.artifact_path for err in errors})
+        typer.echo(
+            json.dumps(
+                {
+                    "event": "validate.summary",
+                    "status": "failed",
+                    "errors": len(errors),
+                    "files_affected": n_files,
+                }
+            )
+        )
+    else:
+        typer.echo(
+            render_errors(errors, workspace_root=workspace_root, color=color),
+            err=False,
+        )
+
+
+def _emit_success(
+    workspace: ResolvedWorkspace,
+    *,
+    json_mode: bool,
+    tree: bool,
+    color: bool,
+) -> None:
+    if json_mode:
+        typer.echo(
+            json.dumps(
+                {
+                    "event": "validate.ok",
+                    "workspace": _identifier(workspace.raw.metadata.id),
+                    "topologies": len(workspace.topologies),
+                    "skills": len(workspace.skills),
+                    "archetypes": len(workspace.archetypes),
+                    "triggers": len(workspace.triggers),
+                }
+            )
+        )
+        if tree:
+            for topology_id in sorted(workspace.topologies.keys()):
+                topology = workspace.topologies[topology_id]
+                typer.echo(
+                    json.dumps(
+                        {
+                            "event": "validate.topology",
+                            "id": topology_id,
+                            "root": _agent_to_json(topology.root),
+                        }
+                    )
+                )
+        return
+
+    typer.echo(render_success(workspace, tree=tree, color=color))
+
+
+def _error_to_json(err: ResolutionError) -> dict[str, object]:
+    data = asdict(err)
+    # Paths aren't JSON-serialisable by default.
+    data["artifact_path"] = str(err.artifact_path)
+    data["related"] = [_error_to_json(r) for r in err.related]
+    data["event"] = "validate.error"
+    return data
+
+
+def _agent_to_json(agent: object) -> dict[str, object]:
+    return {
+        "id": getattr(agent, "id", None),
+        "role": getattr(agent, "role", None),
+        "archetype": getattr(agent, "source_archetype", None),
+        "model": dict(getattr(agent, "model", None) or {}),
+        "skills": [s.id for s in getattr(agent, "skills", ())],
+        "children": [_agent_to_json(c) for c in getattr(agent, "children", ())],
+    }
+
+
+def _identifier(value: object) -> str:
+    root = getattr(value, "root", value)
+    return str(root)
+
+
+def _stderr(msg: str) -> None:
+    typer.echo(msg, err=True)
+
+
+# ---- stubs for later milestones ----------------------------------------
 
 
 @app.command()

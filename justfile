@@ -113,6 +113,12 @@ demo-codegen:
     @echo ""
     @pnpm --silent --filter @swarmkit/schema exec node scripts/demo-codegen.mjs
 
+# Run `swarmkit validate` against representative valid + invalid workspaces
+# and show the output a real user would see. First-time UX sanity check for
+# task #31 (the CLI) and task #23 (human-readable errors).
+demo-validate:
+    @uv run python scripts/demo_validate.py
+
 # Quickstart runtime CLI (once implemented)
 run *args:
     uv run swarmkit {{args}}
