@@ -83,7 +83,7 @@ Run in parallel with the milestones above:
 - [x] `feat(runtime): ResolvedTopology data model` — PR #21. Frozen dataclass tree consumed by downstream compilers.
 - [x] `feat(cli): swarmkit validate <path>` + `human-readable validate errors` — PR #23 (tasks #31 + #23). `--json`/`--tree`/`--quiet`/`--color` flags; errors carry file, JSON pointer, rule id, suggestion.
 - [x] `feat(example): hello-swarm on-ramp + demo-resolver` — this PR. Valid + deliberately-broken variants under `examples/hello-swarm/`; `just demo-resolver` runs both.
-- [ ] `feat(cli): swarmkit knowledge-pack` — **task #24.** Bundles the entire SwarmKit corpus + current workspace state into a paste-ready prompt for any LLM. First-class escape hatch for the "I'm stuck — ask an LLM" flow.
+- [x] `feat(cli): swarmkit knowledge-pack` — **task #24**, this PR. Bundles the SwarmKit corpus + optional workspace + validation state into a paste-ready markdown prompt (~350 KB). Auto-discovers `design/details/*.md` and `docs/notes/*.md` so new notes land without editing the CLI.
 - [ ] `test(runtime): resolve every reference/ artifact` — gated on the v1.0 reference topologies landing (`reference/` currently empty). Tracked as a follow-up of the reference-topology authoring work.
 
 **Exit demo (verified):** `just demo-resolver` validates `examples/hello-swarm/workspace/` (exit 0, resolved tree printed) and `examples/hello-swarm/workspace-broken/` (exit 1, `agent.unknown-archetype` error with file pointer + suggestion). A first-time user understands the deliberate failure from the error alone.
