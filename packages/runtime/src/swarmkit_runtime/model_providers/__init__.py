@@ -13,6 +13,8 @@ Same rule as ``governance/`` for AGT. See root CLAUDE.md invariant #4.
 from ._anthropic import AnthropicModelProvider
 from ._google import GoogleModelProvider
 from ._mock import MockModelProvider
+from ._ollama import OllamaModelProvider
+from ._openai import OpenAIModelProvider
 from ._registry import ProviderRegistry
 from ._types import (
     CompletionRequest,
@@ -31,6 +33,8 @@ __all__ = [
     "GoogleModelProvider",
     "Message",
     "MockModelProvider",
+    "OllamaModelProvider",
+    "OpenAIModelProvider",
     "ProviderRegistry",
     "ToolSpec",
     "Usage",

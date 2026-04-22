@@ -15,6 +15,8 @@ from swarmkit_runtime.model_providers import (
     GoogleModelProvider,
     Message,
     MockModelProvider,
+    OllamaModelProvider,
+    OpenAIModelProvider,
     ProviderRegistry,
     Usage,
 )
@@ -164,6 +166,40 @@ def test_google_supports_gemini_models() -> None:
     assert provider.supports("gpt-4o") is False
 
 
+# ---- OpenAIModelProvider (unit-level) ------------------------------------
+
+
+def test_openai_supports_gpt_and_o_models() -> None:
+    provider = OpenAIModelProvider(api_key="dummy")
+    assert provider.supports("gpt-4o") is True
+    assert provider.supports("gpt-4o-mini") is True
+    assert provider.supports("o1-preview") is True
+    assert provider.supports("o3-mini") is True
+    assert provider.supports("claude-sonnet-4-6") is False
+    assert provider.supports("gemini-2.5-flash") is False
+
+
+# ---- OllamaModelProvider (unit-level) ------------------------------------
+
+
+def test_ollama_supports_any_model() -> None:
+    provider = OllamaModelProvider()
+    assert provider.supports("llama3.1") is True
+    assert provider.supports("mistral") is True
+    assert provider.supports("any-local-model") is True
+
+
+def test_registry_all_five_providers() -> None:
+    reg = ProviderRegistry()
+    reg.register(MockModelProvider())
+    reg.register(AnthropicModelProvider(api_key="dummy"))
+    reg.register(GoogleModelProvider(api_key="dummy"))
+    reg.register(OpenAIModelProvider(api_key="dummy"))
+    reg.register(OllamaModelProvider())
+    assert reg.provider_ids == ["anthropic", "google", "mock", "ollama", "openai"]
+    assert len(reg) == 5
+
+
 # ---- integration tests (gated on API keys) ------------------------------
 
 
@@ -198,6 +234,37 @@ async def test_google_live_completion() -> None:
     assert resp.stop_reason in ("end_turn", "max_tokens")
     assert any(b.text for b in resp.content)
     assert resp.usage.input_tokens > 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_openai_live_completion() -> None:
+    provider = OpenAIModelProvider()
+    resp = await provider.complete(
+        CompletionRequest(
+            model="gpt-4o-mini",
+            messages=(Message(role="user", content="Say 'ready' and nothing else."),),
+            max_tokens=16,
+        )
+    )
+    assert resp.stop_reason in ("end_turn", "max_tokens")
+    assert any(b.text for b in resp.content)
+    assert resp.usage.input_tokens > 0
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_ollama_live_completion() -> None:
+    provider = OllamaModelProvider()
+    resp = await provider.complete(
+        CompletionRequest(
+            model="llama3.2",
+            messages=(Message(role="user", content="Say 'ready' and nothing else."),),
+            max_tokens=16,
+        )
+    )
+    assert resp.stop_reason in ("end_turn", "max_tokens")
+    assert any(b.text for b in resp.content)
 
 
 # ---- cross-provider: different models per agent (design §10.2) ----------
