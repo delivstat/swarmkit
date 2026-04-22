@@ -78,16 +78,15 @@ Run in parallel with the milestones above:
 
 **Features:**
 
-- [ ] `feat(runtime): workspace directory loader` — enumerates topologies/, archetypes/, skills/; reports conflicts.
-- [ ] `feat(runtime): archetype resolver` — merges archetype defaults into agent definitions with overrides.
-- [ ] `feat(runtime): skill resolver` — validates each referenced skill, resolves composed skills.
-- [ ] `feat(runtime): ResolvedTopology data model` — frozen Pydantic model that the compiler consumes.
-- [ ] `feat(cli): swarmkit validate <path>` — prints resolution report; non-zero exit on failure.
-- [ ] `feat(cli): human-readable validate errors` — **task #23, M1-blocking.** Errors cite the schema rule, the YAML path, and a suggested remediation. Errors are documentation consumed at the moment of failure (see `docs/notes/llm-friendly-knowledge.md`).
+- [x] `feat(runtime): workspace directory loader` — PR #18. Enumerates topologies/, archetypes/, skills/; reports conflicts.
+- [x] `feat(runtime): archetype + skill resolvers` — PRs #20, #21. Merges archetype defaults, validates skill refs, detects composed-skill cycles.
+- [x] `feat(runtime): ResolvedTopology data model` — PR #21. Frozen dataclass tree consumed by downstream compilers.
+- [x] `feat(cli): swarmkit validate <path>` + `human-readable validate errors` — PR #23 (tasks #31 + #23). `--json`/`--tree`/`--quiet`/`--color` flags; errors carry file, JSON pointer, rule id, suggestion.
+- [x] `feat(example): hello-swarm on-ramp + demo-resolver` — this PR. Valid + deliberately-broken variants under `examples/hello-swarm/`; `just demo-resolver` runs both.
 - [ ] `feat(cli): swarmkit knowledge-pack` — **task #24.** Bundles the entire SwarmKit corpus + current workspace state into a paste-ready prompt for any LLM. First-class escape hatch for the "I'm stuck — ask an LLM" flow.
-- [ ] `test(runtime): resolve every reference/ artifact` — covers at least the three v1.0 topologies once their YAML lands.
+- [ ] `test(runtime): resolve every reference/ artifact` — gated on the v1.0 reference topologies landing (`reference/` currently empty). Tracked as a follow-up of the reference-topology authoring work.
 
-**Exit demo:** `swarmkit validate examples/hello-swarm/workspace/` prints a resolved tree with all archetype/skill refs expanded. A first-time user can understand a deliberate validation failure from the error message alone — no design-doc lookup required.
+**Exit demo (verified):** `just demo-resolver` validates `examples/hello-swarm/workspace/` (exit 0, resolved tree printed) and `examples/hello-swarm/workspace-broken/` (exit 1, `agent.unknown-archetype` error with file pointer + suggestion). A first-time user understands the deliberate failure from the error alone.
 
 ## Milestone 2 — GovernanceProvider + AGT Tier 1
 

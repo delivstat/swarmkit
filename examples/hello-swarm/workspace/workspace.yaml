@@ -1,0 +1,6 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: hello-swarm
+  name: Hello Swarm
+  description: Minimal two-agent workspace — the SwarmKit on-ramp example.
