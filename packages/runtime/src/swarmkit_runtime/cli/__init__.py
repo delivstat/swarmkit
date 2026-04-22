@@ -31,6 +31,24 @@ app = typer.Typer(
 _EXIT_OK = 0
 _EXIT_RESOLUTION_ERROR = 1
 _EXIT_USAGE = 2
+# Stubbed subcommands share the usage exit code — a command the user typed
+# correctly but that isn't wired yet is, functionally, not-usable-as-typed.
+_EXIT_NOT_IMPLEMENTED = _EXIT_USAGE
+
+
+def _not_implemented(command: str, *, milestone: str) -> None:
+    """Exit with a clean user-facing message for a stubbed subcommand.
+
+    Replaces raw ``NotImplementedError`` — which leaks a Python traceback
+    to stderr and makes the CLI feel broken. See
+    ``design/details/cli-unimplemented-stubs.md``.
+    """
+    typer.echo(
+        f"swarmkit {command}: not yet implemented — planned for {milestone}. "
+        "See design/IMPLEMENTATION-PLAN.md for the roadmap.",
+        err=True,
+    )
+    raise typer.Exit(_EXIT_NOT_IMPLEMENTED)
 
 
 @app.command()
@@ -199,12 +217,16 @@ def _stderr(msg: str) -> None:
 
 
 # ---- stubs for later milestones ----------------------------------------
+#
+# Milestone refs trace to `design/IMPLEMENTATION-PLAN.md`. Update the label
+# if a subcommand's target milestone changes so the user-visible message
+# stays honest.
 
 
 @app.command()
 def init() -> None:
     """Launch the Workspace Authoring Swarm in terminal chat mode (design §14.2)."""
-    raise NotImplementedError("Workspace Authoring Swarm wiring pending — see design §11.")
+    _not_implemented("init", milestone="M8 (Workspace Authoring Swarm)")
 
 
 author_app = typer.Typer(help="Conversational authoring for topologies, skills, archetypes.")
@@ -214,37 +236,37 @@ app.add_typer(author_app, name="author")
 @author_app.command("topology")
 def author_topology(name: str | None = typer.Argument(None)) -> None:
     """Launch the Topology Authoring Swarm variant (design §14.2)."""
-    raise NotImplementedError
+    _not_implemented("author topology", milestone="M7+ (authoring swarms)")
 
 
 @author_app.command("skill")
 def author_skill(name: str | None = typer.Argument(None)) -> None:
     """Launch the Skill Authoring Swarm (design §12)."""
-    raise NotImplementedError
+    _not_implemented("author skill", milestone="M7 (Skill Authoring Swarm)")
 
 
 @author_app.command("archetype")
 def author_archetype(name: str | None = typer.Argument(None)) -> None:
     """Launch the Archetype Authoring Swarm variant (design §14.2)."""
-    raise NotImplementedError
+    _not_implemented("author archetype", milestone="M7+ (authoring swarms)")
 
 
 @app.command()
 def run(topology: str, input: str | None = None) -> None:
     """One-shot execution of a topology (design §14.1)."""
-    raise NotImplementedError
+    _not_implemented("run", milestone="M3 (LangGraph compiler)")
 
 
 @app.command()
 def serve(path: str, port: int = 8000) -> None:
     """Persistent / scheduled mode (design §14.1)."""
-    raise NotImplementedError
+    _not_implemented("serve", milestone="M9 (HTTP server + scheduled mode)")
 
 
 @app.command()
 def eject(topology: str, output: str = "./generated/") -> None:
     """Export the LangGraph code the runtime would execute (design §14.4)."""
-    raise NotImplementedError
+    _not_implemented("eject", milestone="M9 (eject)")
 
 
 if __name__ == "__main__":
