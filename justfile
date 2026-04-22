@@ -119,6 +119,15 @@ demo-codegen:
 demo-validate:
     @uv run python scripts/demo_validate.py
 
+# M1 exit demo — resolve the hello-swarm example end-to-end. The broken
+# variant is expected to exit 1; the leading `-` keeps just from failing.
+demo-resolver:
+    @echo "── examples/hello-swarm/workspace (valid) ───────────────────"
+    @uv run swarmkit validate examples/hello-swarm/workspace --tree --no-color
+    @echo ""
+    @echo "── examples/hello-swarm/workspace-broken (deliberate typo) ──"
+    -@uv run swarmkit validate examples/hello-swarm/workspace-broken --no-color
+
 # Quickstart runtime CLI (once implemented)
 run *args:
     uv run swarmkit {{args}}

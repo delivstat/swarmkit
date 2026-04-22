@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: greeter
+  name: Greeter Worker
+  description: Worker that produces a short greeting for a given audience.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.3
+  prompt:
+    system: |
+      You are a friendly greeter. Given an audience description, return a
+      one-sentence greeting tailored to them.
+  skills:
+    - say-hello
+provenance:
+  authored_by: human
+  version: 1.0.0
