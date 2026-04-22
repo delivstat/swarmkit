@@ -42,8 +42,10 @@ dependencies = [
     # MCP (design §18)
     # "mcp>=1.0",
 
-    # LLM SDK for authoring swarms + default judges
+    # LLM SDKs — one per ModelProvider built-in (design/details/model-provider-abstraction.md).
+    # Only model_providers/ imports these; everything else goes through ModelProvider ABC.
     "anthropic>=0.39",
+    "google-genai>=1.0",
 
     # HTTP server for persistent mode (design §14.1)
     "fastapi>=0.115",

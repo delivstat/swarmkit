@@ -74,10 +74,13 @@ no_implicit_optional = true
 
 # AGT v3.x (public preview) doesn't ship py.typed markers yet.
 [[tool.mypy.overrides]]
-module = ["agent_os.*", "agent_control_plane.*", "agentmesh.*", "agent_sre.*"]
+module = ["agent_os.*", "agent_control_plane.*", "agentmesh.*", "agent_sre.*", "google.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["packages/runtime/tests", "packages/schema/python/tests"]
-addopts = "-ra --strict-markers --strict-config"
+addopts = "-ra --strict-markers --strict-config -m 'not integration'"
+markers = [
+    "integration: tests that call live external APIs (deselected by default)",
+]
