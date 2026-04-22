@@ -8,13 +8,19 @@ Milestone 1 closes with this example. `swarmkit validate` against
 `workspace/` resolves cleanly; against `workspace-broken/` it prints the
 kind of error a first-time user will actually hit.
 
-## Run it
+## From a fresh clone
+
+Prerequisites: Python 3.11+, [`uv`](https://astral.sh/uv), and optionally
+[`just`](https://github.com/casey/just). You do **not** need `pnpm` —
+this example is pure Python.
 
 ```bash
-just demo-resolver
+git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
+uv sync --all-packages            # installs runtime + schema
+just demo-resolver                # runs both workspaces below
 ```
 
-Or manually:
+Without `just`, run the CLI directly:
 
 ```bash
 uv run swarmkit validate examples/hello-swarm/workspace --tree
@@ -24,6 +30,11 @@ uv run swarmkit validate examples/hello-swarm/workspace-broken
 The first exits `0` and prints the resolved agent tree. The second exits
 `1` and prints an `agent.unknown-archetype` error with a file pointer and
 a `try:` line.
+
+**Today "run" means validate + resolve + inspect** — the execution engine
+lands in Milestone 2+ (see `design/IMPLEMENTATION-PLAN.md`). Edit any
+file under `workspace/` and re-run the command to see the error it
+produces.
 
 ## The pieces
 
