@@ -33,17 +33,12 @@ class GoogleModelProvider:
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         contents = _to_google_contents(request)
         config = _to_google_config(request)
-        google_tools = _to_google_tools(request) if request.tools else None
 
-        kwargs: dict[str, Any] = {
-            "model": request.model,
-            "contents": contents,
-            "config": config,
-        }
-        if google_tools:
-            kwargs["tools"] = google_tools
-
-        raw = await self._client.aio.models.generate_content(**kwargs)
+        raw = await self._client.aio.models.generate_content(
+            model=request.model,
+            contents=contents,
+            config=config,
+        )
         return _from_google_response(raw)
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:
@@ -146,6 +141,8 @@ def _to_google_config(
         kwargs["max_output_tokens"] = request.max_tokens
     if request.system:
         kwargs["system_instruction"] = request.system
+    if request.tools:
+        kwargs["tools"] = _to_google_tools(request)
     return gtypes.GenerateContentConfig(**kwargs)
 
 
