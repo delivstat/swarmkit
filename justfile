@@ -138,7 +138,12 @@ demo-knowledge-pack:
     @echo "── pack head (broken workspace overlay) ──"
     @uv run swarmkit knowledge-pack examples/hello-swarm/workspace-broken | head -60
 
-# Quickstart runtime CLI (once implemented)
+# M3 exit demo — run the hello-swarm topology end-to-end with mock providers.
+demo-run:
+    @echo "── swarmkit run (hello-swarm, mock providers) ──"
+    @uv run swarmkit run examples/hello-swarm/workspace hello --input "Greet the engineering team" --no-color
+
+# Quickstart runtime CLI
 run *args:
     uv run swarmkit {{args}}
 

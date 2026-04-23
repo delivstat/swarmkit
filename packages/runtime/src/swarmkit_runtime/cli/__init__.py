@@ -6,6 +6,7 @@ stubs awaiting their milestones.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from dataclasses import asdict
@@ -15,6 +16,9 @@ from typing import Annotated
 import typer
 
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
+from swarmkit_runtime.governance._mock import MockGovernanceProvider
+from swarmkit_runtime.langgraph_compiler import compile_topology
+from swarmkit_runtime.model_providers import MockModelProvider
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 
 from ._knowledge import build_pack, find_repo_root
@@ -312,9 +316,89 @@ def author_archetype(name: str | None = typer.Argument(None)) -> None:
 
 
 @app.command()
-def run(topology: str, input: str | None = None) -> None:
+def run(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Workspace root directory (containing workspace.yaml).",
+            show_default=False,
+        ),
+    ],
+    topology_name: Annotated[
+        str,
+        typer.Argument(help="Name of the topology to run."),
+    ],
+    input_text: Annotated[
+        str | None,
+        typer.Option(
+            "--input",
+            "-i",
+            help="User input to send to the swarm. Reads from stdin if omitted.",
+        ),
+    ] = None,
+    color: Annotated[
+        bool | None,
+        typer.Option("--color/--no-color"),
+    ] = None,
+) -> None:
     """One-shot execution of a topology (design §14.1)."""
-    _not_implemented("run", milestone="M3 (LangGraph compiler)")
+    use_colour = should_colour(sys.stdout.isatty(), color)
+    ws_root = workspace_path.resolve()
+
+    try:
+        workspace = resolve_workspace(ws_root)
+    except ResolutionErrors as exc:
+        _emit_errors(
+            list(exc.errors),
+            json_mode=False,
+            workspace_root=ws_root,
+            color=use_colour,
+        )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    if topology_name not in workspace.topologies:
+        available = sorted(workspace.topologies.keys())
+        _stderr(
+            f"Topology '{topology_name}' not found in workspace. "
+            f"Available: {', '.join(available) or '(none)'}."
+        )
+        raise typer.Exit(_EXIT_USAGE)
+
+    topology = workspace.topologies[topology_name]
+
+    # Resolve providers from workspace config.
+    # For M3, use mock providers — real provider wiring lands when the
+    # workspace schema gains a model_providers config block.
+    model_provider = MockModelProvider()
+    governance = MockGovernanceProvider()
+
+    graph = compile_topology(
+        topology,
+        model_provider=model_provider,
+        governance=governance,
+    )
+
+    user_input = input_text or ""
+    if not user_input and not sys.stdin.isatty():
+        user_input = sys.stdin.read().strip()
+    if not user_input:
+        user_input = "hello"
+
+    result = asyncio.run(
+        graph.ainvoke(
+            {
+                "input": user_input,
+                "messages": [],
+                "agent_results": {},
+                "current_agent": "",
+                "output": "",
+            }
+        )
+    )
+
+    output = result.get("output", "")
+    if output:
+        typer.echo(output)
 
 
 @app.command()
