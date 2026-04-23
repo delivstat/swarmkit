@@ -83,6 +83,18 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
         options["num_predict"] = request.max_tokens
     if options:
         payload["options"] = options
+    if request.tools:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.input_schema or {"type": "object", "properties": {}},
+                },
+            }
+            for t in request.tools
+        ]
     return payload
 
 
@@ -93,9 +105,22 @@ def _from_ollama_response(data: dict[str, Any]) -> CompletionResponse:
     if content_text:
         blocks.append(ContentBlock(type="text", text=content_text))
 
+    for tc in msg.get("tool_calls", []):
+        fn = tc.get("function", {})
+        blocks.append(
+            ContentBlock(
+                type="tool_use",
+                tool_use_id=tc.get("id", ""),
+                tool_name=fn.get("name", ""),
+                tool_input=fn.get("arguments"),
+            )
+        )
+
     stop_reason: Any = "end_turn"
     if data.get("done_reason") == "length":
         stop_reason = "max_tokens"
+    if msg.get("tool_calls"):
+        stop_reason = "tool_use"
 
     eval_count = data.get("eval_count", 0) or 0
     prompt_eval_count = data.get("prompt_eval_count", 0) or 0
