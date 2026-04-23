@@ -15,6 +15,7 @@ from ._google import GoogleModelProvider
 from ._mock import MockModelProvider
 from ._ollama import OllamaModelProvider
 from ._openai import OpenAIModelProvider
+from ._openai_compat import GroqModelProvider, OpenRouterModelProvider, TogetherModelProvider
 from ._registry import ProviderRegistry
 from ._types import (
     CompletionRequest,
@@ -31,11 +32,14 @@ __all__ = [
     "CompletionResponse",
     "ContentBlock",
     "GoogleModelProvider",
+    "GroqModelProvider",
     "Message",
     "MockModelProvider",
     "OllamaModelProvider",
     "OpenAIModelProvider",
+    "OpenRouterModelProvider",
     "ProviderRegistry",
+    "TogetherModelProvider",
     "ToolSpec",
     "Usage",
 ]

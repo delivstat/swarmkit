@@ -22,10 +22,13 @@ from swarmkit_runtime.langgraph_compiler import compile_topology
 from swarmkit_runtime.model_providers import (
     AnthropicModelProvider,
     GoogleModelProvider,
+    GroqModelProvider,
     MockModelProvider,
     OllamaModelProvider,
     OpenAIModelProvider,
+    OpenRouterModelProvider,
     ProviderRegistry,
+    TogetherModelProvider,
 )
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 
@@ -424,6 +427,12 @@ def _register_available_providers(registry: ProviderRegistry) -> None:
         registry.register(GoogleModelProvider())
     if os.environ.get("OPENAI_API_KEY"):
         registry.register(OpenAIModelProvider())
+    if os.environ.get("OPENROUTER_API_KEY"):
+        registry.register(OpenRouterModelProvider())
+    if os.environ.get("GROQ_API_KEY"):
+        registry.register(GroqModelProvider())
+    if os.environ.get("TOGETHER_API_KEY"):
+        registry.register(TogetherModelProvider())
 
     registry.register(OllamaModelProvider())
 
