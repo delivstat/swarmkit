@@ -371,12 +371,13 @@ def _build_prompt_messages(
 
 
 def _build_tools(agent: ResolvedAgent) -> list[ToolSpec]:
-    """Map an agent's skills + children to ToolSpec objects."""
-    tools: list[ToolSpec] = []
+    """Map an agent's children to delegation ToolSpec objects.
 
-    for skill in agent.skills:
-        desc = getattr(skill, "description", "") or skill.id
-        tools.append(ToolSpec(name=skill.id, description=desc))
+    Skill tools are excluded until skill execution is wired (M5 — MCP
+    integration). Including tools that can't be executed causes models
+    to make unserviceable tool calls and return empty responses.
+    """
+    tools: list[ToolSpec] = []
 
     for child in agent.children:
         tools.append(
