@@ -147,6 +147,19 @@ def _build_agent_node(
         messages = _build_prompt_messages(agent, state)
         tools = _build_tools(agent)
 
+        # Remove delegation tools if children already returned results —
+        # the agent should synthesise, not re-delegate.
+        agent_results = state.get("agent_results", {})
+        completed_children = {
+            c.id
+            for c in agent.children
+            if c.id in agent_results
+            and isinstance(agent_results[c.id], str)
+            and not str(agent_results[c.id]).startswith("__delegated__:")
+        }
+        if completed_children:
+            tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
         system_prompt = _build_system_prompt(agent, tools)
 
