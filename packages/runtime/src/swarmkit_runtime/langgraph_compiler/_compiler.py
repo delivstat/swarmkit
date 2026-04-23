@@ -334,14 +334,16 @@ def _build_prompt_messages(
     }
 
     if child_results:
-        results_text = "\n".join(f"[{cid}]: {result}" for cid, result in child_results.items())
+        results_text = "\n\n".join(f"[{cid}]:\n{result}" for cid, result in child_results.items())
         messages.append(
             Message(
                 role="user",
                 content=(
                     f"Original request: {state.get('input', '')}\n\n"
-                    f"Your workers have completed their tasks:\n{results_text}\n\n"
-                    f"Produce the final response for the user."
+                    f"Your workers have produced the following results:\n\n{results_text}\n\n"
+                    f"Present the workers' output directly to the user as the final response. "
+                    f"Do not add commentary about the workers or the delegation process — "
+                    f"just deliver the result as if you produced it yourself."
                 ),
             )
         )
