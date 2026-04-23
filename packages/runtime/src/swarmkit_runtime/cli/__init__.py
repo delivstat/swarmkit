@@ -390,6 +390,8 @@ def run(
     if not user_input:
         user_input = "hello"
 
+    _MAX_GRAPH_STEPS = 10
+
     try:
         result = asyncio.run(
             graph.ainvoke(
@@ -399,7 +401,8 @@ def run(
                     "agent_results": {},
                     "current_agent": "",
                     "output": "",
-                }
+                },
+                config={"recursion_limit": _MAX_GRAPH_STEPS},
             )
         )
     except Exception as exc:
