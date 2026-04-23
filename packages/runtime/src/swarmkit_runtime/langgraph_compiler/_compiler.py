@@ -303,19 +303,45 @@ def _build_prompt_messages(
     agent: ResolvedAgent,
     state: SwarmState,
 ) -> list[Message]:
-    """Build the message list for an agent's model call."""
+    """Build the message list for an agent's model call.
+
+    If child agents have produced results (delegation completed), the
+    prompt includes those results so the agent can synthesise a final
+    answer instead of re-delegating.
+    """
     messages: list[Message] = []
+    agent_results = state.get("agent_results", {})
 
-    task = state.get("input", "")
+    child_results = {
+        cid: agent_results[cid]
+        for cid in [c.id for c in agent.children]
+        if cid in agent_results
+        and isinstance(agent_results[cid], str)
+        and not agent_results[cid].startswith("__delegated__:")
+    }
 
-    last_human = None
-    for msg in reversed(state.get("messages", [])):
-        if isinstance(msg, HumanMessage):
-            last_human = msg.content
-            break
+    if child_results:
+        results_text = "\n".join(f"[{cid}]: {result}" for cid, result in child_results.items())
+        messages.append(
+            Message(
+                role="user",
+                content=(
+                    f"Original request: {state.get('input', '')}\n\n"
+                    f"Your workers have completed their tasks:\n{results_text}\n\n"
+                    f"Produce the final response for the user."
+                ),
+            )
+        )
+    else:
+        task = state.get("input", "")
+        last_human = None
+        for msg in reversed(state.get("messages", [])):
+            if isinstance(msg, HumanMessage):
+                last_human = msg.content
+                break
+        content = last_human or task
+        messages.append(Message(role="user", content=str(content)))
 
-    content = last_human or task
-    messages.append(Message(role="user", content=str(content)))
     return messages
 
 
