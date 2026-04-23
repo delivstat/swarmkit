@@ -6,6 +6,7 @@ See ``design/details/langgraph-compiler.md``.
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,9 +19,10 @@ from swarmkit_runtime.model_providers import (
     CompletionRequest,
     CompletionResponse,
     Message,
+    MockModelProvider,
     ToolSpec,
 )
-from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
+from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
 
 from ._state import SwarmState
@@ -29,7 +31,8 @@ from ._state import SwarmState
 def compile_topology(
     topology: ResolvedTopology,
     *,
-    model_provider: ModelProviderProtocol,
+    model_provider: ModelProviderProtocol | None = None,
+    provider_registry: ProviderRegistry | None = None,
     governance: GovernanceProvider,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
@@ -38,12 +41,17 @@ def compile_topology(
     Children are reachable via ``delegate_to_<child>`` tool calls that
     the root's model produces. The graph runs until the root returns a
     text response (no more delegation).
+
+    Pass ``provider_registry`` for per-agent model resolution (each agent
+    resolves to its own provider based on ``model.provider``). Pass
+    ``model_provider`` as a shortcut when all agents share one provider.
     """
     graph: StateGraph[Any] = StateGraph(SwarmState)
     agents = _collect_agents(topology.root)
 
     for agent in agents.values():
-        node_fn = _build_agent_node(agent, model_provider, governance, agents)
+        agent_provider = _resolve_agent_provider(agent, provider_registry, model_provider)
+        node_fn = _build_agent_node(agent, agent_provider, governance, agents)
         graph.add_node(agent.id, node_fn)
 
     graph.add_edge(START, topology.root.id)
@@ -53,6 +61,28 @@ def compile_topology(
 
 
 # ---- agent collection ---------------------------------------------------
+
+
+def _resolve_agent_provider(
+    agent: ResolvedAgent,
+    registry: ProviderRegistry | None,
+    fallback: ModelProviderProtocol | None,
+) -> ModelProviderProtocol:
+    """Resolve the model provider for a single agent.
+
+    Uses the agent's ``model.provider`` field to look up in the registry.
+    Falls back to the explicit ``fallback`` provider if no registry is
+    given or the provider isn't found.
+    """
+    if registry is not None:
+        provider_id = os.environ.get("SWARMKIT_PROVIDER") or (agent.model or {}).get("provider")
+        if provider_id:
+            provider = registry.get(provider_id)
+            if provider is not None:
+                return provider
+    if fallback is not None:
+        return fallback
+    return MockModelProvider()
 
 
 def _collect_agents(root: ResolvedAgent) -> dict[str, ResolvedAgent]:
@@ -117,7 +147,7 @@ def _build_agent_node(
         messages = _build_prompt_messages(agent, state)
         tools = _build_tools(agent)
 
-        model_name = (agent.model or {}).get("name", "mock")
+        model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
         system_prompt = (agent.prompt or {}).get("system")
 
         request = CompletionRequest(

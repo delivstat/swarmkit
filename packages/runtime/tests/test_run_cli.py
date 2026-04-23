@@ -7,10 +7,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from swarmkit_runtime.cli import app
 from typer.testing import CliRunner
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _force_mock_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force mock provider in all run tests so they don't hit real APIs."""
+    monkeypatch.setenv("SWARMKIT_PROVIDER", "mock")
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace"

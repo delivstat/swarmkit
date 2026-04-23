@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -18,7 +19,14 @@ import typer
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
-from swarmkit_runtime.model_providers import MockModelProvider
+from swarmkit_runtime.model_providers import (
+    AnthropicModelProvider,
+    GoogleModelProvider,
+    MockModelProvider,
+    OllamaModelProvider,
+    OpenAIModelProvider,
+    ProviderRegistry,
+)
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 
 from ._knowledge import build_pack, find_repo_root
@@ -366,15 +374,13 @@ def run(
 
     topology = workspace.topologies[topology_name]
 
-    # Resolve providers from workspace config.
-    # For M3, use mock providers — real provider wiring lands when the
-    # workspace schema gains a model_providers config block.
-    model_provider = MockModelProvider()
+    registry = ProviderRegistry()
+    _register_available_providers(registry)
     governance = MockGovernanceProvider()
 
     graph = compile_topology(
         topology,
-        model_provider=model_provider,
+        provider_registry=registry,
         governance=governance,
     )
 
@@ -384,21 +390,39 @@ def run(
     if not user_input:
         user_input = "hello"
 
-    result = asyncio.run(
-        graph.ainvoke(
-            {
-                "input": user_input,
-                "messages": [],
-                "agent_results": {},
-                "current_agent": "",
-                "output": "",
-            }
+    try:
+        result = asyncio.run(
+            graph.ainvoke(
+                {
+                    "input": user_input,
+                    "messages": [],
+                    "agent_results": {},
+                    "current_agent": "",
+                    "output": "",
+                }
+            )
         )
-    )
+    except Exception as exc:
+        _stderr(f"error: execution failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
 
     output = result.get("output", "")
     if output:
         typer.echo(output)
+
+
+def _register_available_providers(registry: ProviderRegistry) -> None:
+    """Register all providers that have credentials available."""
+    registry.register(MockModelProvider())
+
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        registry.register(AnthropicModelProvider())
+    if os.environ.get("GOOGLE_API_KEY"):
+        registry.register(GoogleModelProvider())
+    if os.environ.get("OPENAI_API_KEY"):
+        registry.register(OpenAIModelProvider())
+
+    registry.register(OllamaModelProvider())
 
 
 @app.command()
