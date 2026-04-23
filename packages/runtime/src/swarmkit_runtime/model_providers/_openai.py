@@ -50,6 +50,30 @@ class OpenAIModelProvider:
 
 
 def _to_openai_kwargs(request: CompletionRequest) -> dict[str, Any]:
+    messages = _build_openai_messages(request)
+    kwargs: dict[str, Any] = {"model": request.model, "messages": messages}
+    if request.max_tokens is not None:
+        kwargs["max_tokens"] = request.max_tokens
+    if request.temperature is not None:
+        kwargs["temperature"] = request.temperature
+    if request.tools:
+        kwargs["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.input_schema or {"type": "object", "properties": {}},
+                },
+            }
+            for t in request.tools
+        ]
+    if request.extra:
+        kwargs.update(request.extra)
+    return kwargs
+
+
+def _build_openai_messages(request: CompletionRequest) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     if request.system:
         messages.append({"role": "system", "content": request.system})
@@ -89,15 +113,7 @@ def _to_openai_kwargs(request: CompletionRequest) -> dict[str, Any]:
                     continue
             if parts:
                 messages.append({"role": msg.role, "content": parts})
-
-    kwargs: dict[str, Any] = {"model": request.model, "messages": messages}
-    if request.max_tokens is not None:
-        kwargs["max_tokens"] = request.max_tokens
-    if request.temperature is not None:
-        kwargs["temperature"] = request.temperature
-    if request.extra:
-        kwargs.update(request.extra)
-    return kwargs
+    return messages
 
 
 def _from_openai_response(raw: Any) -> CompletionResponse:
