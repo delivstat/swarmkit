@@ -198,9 +198,7 @@ def _build_agent_node(
         # have results, pass through the child output directly.
         if result_text == "(no response)" and completed_children:
             child_texts = [
-                str(agent_results[cid])
-                for cid in completed_children
-                if cid in agent_results
+                str(agent_results[cid]) for cid in completed_children if cid in agent_results
             ]
             result_text = "\n\n".join(child_texts)
 
