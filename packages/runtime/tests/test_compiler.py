@@ -22,6 +22,8 @@ from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology, resolve_w
 # Use a real resolved topology from the hello-swarm example.
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+SCOPED_WS = FIXTURES / "workspaces" / "resolved-tree"
 
 
 # ---- helpers for building test topologies --------------------------------
@@ -212,3 +214,122 @@ async def test_tools_include_skills_and_delegation() -> None:
     first_call = mock_model.calls[0]
     tool_names = [t.name for t in (first_call.tools or ())]
     assert f"delegate_to_{child.id}" in tool_names
+
+
+# ---- governance middleware -----------------------------------------------
+
+
+def _scoped_topology() -> ResolvedTopology:
+    """Topology with agents that have IAM scopes (reviewer has repo:read)."""
+    ws = resolve_workspace(SCOPED_WS)
+    return ws.topologies["review"]
+
+
+@pytest.mark.asyncio
+async def test_governance_denies_agent_without_required_scopes() -> None:
+    """Reviewer has base_scope=[repo:read] but governance provider allows
+    nothing → root delegates to reviewer → reviewer is denied.
+    """
+    topo = _scoped_topology()
+    call_count = 0
+    reviewer_id = "reviewer"
+
+    class DelegatingMock(MockModelProvider):
+        async def complete(self, request: CompletionRequest) -> CompletionResponse:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return CompletionResponse(
+                    content=(
+                        ContentBlock(
+                            type="tool_use",
+                            tool_use_id="c1",
+                            tool_name=f"delegate_to_{reviewer_id}",
+                            tool_input={"task": "review code"},
+                        ),
+                    ),
+                    stop_reason="tool_use",
+                    usage=Usage(),
+                )
+            return CompletionResponse(
+                content=(ContentBlock(type="text", text="got denied result"),),
+                stop_reason="end_turn",
+                usage=Usage(),
+            )
+
+    mock_gov = MockGovernanceProvider(allowed_scopes=frozenset())
+    graph = compile_topology(topo, model_provider=DelegatingMock(), governance=mock_gov)
+
+    await graph.ainvoke(
+        {"input": "test", "messages": [], "agent_results": {}, "current_agent": "", "output": ""}
+    )
+
+    assert any(e.event_type == "policy.denied" for e in mock_gov.events)
+    denied = [e for e in mock_gov.events if e.event_type == "policy.denied"]
+    assert any(e.agent_id == reviewer_id for e in denied)
+
+
+@pytest.mark.asyncio
+async def test_governance_allows_agent_with_matching_scopes() -> None:
+    """Reviewer's repo:read is in the allowed set → model call proceeds."""
+    topo = _scoped_topology()
+
+    class DirectMock(MockModelProvider):
+        async def complete(self, request: CompletionRequest) -> CompletionResponse:
+            return CompletionResponse(
+                content=(ContentBlock(type="text", text="allowed"),),
+                stop_reason="end_turn",
+                usage=Usage(),
+            )
+
+    mock_gov = MockGovernanceProvider(allowed_scopes=frozenset({"repo:read", "repo:write"}))
+    graph = compile_topology(topo, model_provider=DirectMock(), governance=mock_gov)
+
+    result = await graph.ainvoke(
+        {"input": "test", "messages": [], "agent_results": {}, "current_agent": "", "output": ""}
+    )
+
+    assert result["output"] == "allowed"
+    assert not any(e.event_type == "policy.denied" for e in mock_gov.events)
+
+
+@pytest.mark.asyncio
+async def test_governance_deny_records_scopes_in_audit() -> None:
+    """Denied agent's audit event includes the missing scopes."""
+    topo = _scoped_topology()
+    reviewer_id = "reviewer"
+    call_count = 0
+
+    class DelegatingMock(MockModelProvider):
+        async def complete(self, request: CompletionRequest) -> CompletionResponse:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return CompletionResponse(
+                    content=(
+                        ContentBlock(
+                            type="tool_use",
+                            tool_use_id="c1",
+                            tool_name=f"delegate_to_{reviewer_id}",
+                            tool_input={"task": "review"},
+                        ),
+                    ),
+                    stop_reason="tool_use",
+                    usage=Usage(),
+                )
+            return CompletionResponse(
+                content=(ContentBlock(type="text", text="done"),),
+                stop_reason="end_turn",
+                usage=Usage(),
+            )
+
+    mock_gov = MockGovernanceProvider(allowed_scopes=frozenset())
+    graph = compile_topology(topo, model_provider=DelegatingMock(), governance=mock_gov)
+
+    await graph.ainvoke(
+        {"input": "test", "messages": [], "agent_results": {}, "current_agent": "", "output": ""}
+    )
+
+    denied_events = [e for e in mock_gov.events if e.event_type == "policy.denied"]
+    assert len(denied_events) >= 1
+    assert "scopes_denied" in denied_events[0].payload

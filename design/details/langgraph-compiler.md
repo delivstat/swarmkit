@@ -387,6 +387,76 @@ swarmkit run <workspace> <topology> [--input "..."] [--resume] [--no-color]
 - Invokes with the user's input
 - Prints the final output
 
+## Structured output governance (M4, architectural note)
+
+Skills that declare an `outputs` block in their YAML get deterministic
+output validation in the compiler's tool-use loop. This is an
+architectural commitment — the compiler is where it's enforced, even
+though the design note lands in M4.
+
+### Why — the Rynko insight
+
+Production experience with Rynko gate validation shows that
+**structured constraints + field-specific error feedback** eliminates
+most hallucination without any LLM judge. When a model is constrained
+to produce `{verdict: "pass"|"fail", confidence: 0.0-1.0}` via
+structured generation, and the response is validated against the
+schema, shape-level hallucination is impossible. The remaining errors
+(wrong value, not wrong shape) are caught by deterministic business
+rules and fed back as targeted corrections.
+
+### The four-tier output governance model
+
+| Tier | What | Cost | When |
+|---|---|---|---|
+| 0 | **Structured generation** — provider JSON mode / tool_use constrains the model at generation time | Zero extra | Always, when skill declares `outputs` |
+| 1 | **Schema validation** — JSON Schema check on the response | Near-zero | Always, after model response |
+| 2 | **Business rules** — deterministic field-level checks (ranges, enums, cross-field consistency) | Near-zero | When skill declares `validation_rules` |
+| 3 | **LLM judge** — semantic evaluation against a rubric | Tokens | When configured (Tier 2/3 judicial) |
+
+### Auto-correction via field-specific errors
+
+When Tier 1 or 2 validation fails, the error is field-specific:
+`"confidence must be between 0 and 1, got 1.5"`. The compiler feeds
+this back to the model as a tool_result error in the agentic loop:
+
+```
+Model returns: {verdict: "pass", confidence: 1.5}
+Validation: FAIL — confidence out of range [0, 1]
+Re-prompt: "Validation error on field 'confidence': must be between 0 and 1, got 1.5. Correct this field."
+Model returns: {verdict: "pass", confidence: 0.85}
+Validation: PASS
+```
+
+The model corrects one field — not the entire response. This is:
+- **Cheaper** than regenerating from scratch (fewer tokens)
+- **More reliable** than a generic "try again" (the error is specific)
+- **Deterministic** in the validation step (no LLM judge needed for
+  shape/range errors)
+
+The retry budget is configurable per skill (`max_retries`, default 2).
+If the model can't produce a valid response after retries, it
+escalates to the judicial pillar (Tier 3 LLM judge or HITL).
+
+### Where this lives in the compiler
+
+In the agentic tool-use loop inside `_build_agent_node`:
+
+```
+1. Model call (with structured generation if skill has outputs)
+2. Parse response
+3. If tool_use → execute tool → validate output → if invalid, re-prompt with field errors
+4. If text → return (no output governance on free-text responses)
+```
+
+Output governance only fires for skills with declared `outputs` blocks.
+Free-text agent responses (e.g. the root's final answer to the user)
+are not schema-validated — they're evaluated by Tier 3 judges if
+configured.
+
+Implementation lands in M4. This section is an architectural
+commitment so the compiler's loop design leaves room for it.
+
 ## Implementation plan (PRs)
 
 1. **This PR:** design note only.

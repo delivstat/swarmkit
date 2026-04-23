@@ -148,15 +148,17 @@ Run in parallel with the milestones above:
 
 **Features:**
 
+- [ ] `design/structured-output-governance.md` — **task #43.** Deterministic output validation + auto-correction. When a skill declares an `outputs` block, the runtime: (a) uses provider-level structured generation (JSON mode / tool_use) to constrain the model, (b) validates the response against the output schema, (c) applies deterministic business rules. On validation failure, field-specific errors are fed back to the model as a targeted re-prompt ("confidence must be 0-1, got 1.5") for auto-correction — fixes one field instead of regenerating the entire response. Eliminates shape-level hallucination before any LLM judge is invoked. Insight from production Rynko gate validation: structured constraints + field-specific error feedback produces consistent results with minimal hallucinations.
 - [ ] `design/decision-skills.md` — how verdicts and confidence scores flow through state.
 - [ ] `feat(skills): llm-judge primitive skill` — uses Anthropic SDK; rubric-driven; returns verdict+confidence.
 - [ ] `feat(skills): schema-validator primitive skill` — deterministic, jsonschema-backed.
+- [ ] `feat(runtime): structured output enforcement` — compiler reads skill `outputs` block, wires provider JSON mode + schema validation + retry-with-field-errors into the agent's tool-use loop.
 - [ ] `feat(skills): multi-persona panel composition (Tier 3)` — fan-out + consensus.
 - [ ] `feat(runtime): review queue primitive` — file-backed in v1.0, pluggable storage.
 - [ ] `feat(runtime): skill gap log primitive` — automatic entry when HITL thresholds are crossed (§12.1).
 - [ ] `feat(governance): AGT trust scoring integration` — trust-score decay on repeated judicial escalations.
 
-**Exit demo:** extend the hello-world topology: worker output goes through a Tier 2 LLM judge; low-confidence verdicts land in the review queue; one failing run appears in the skill gap log.
+**Exit demo:** extend the hello-world topology: worker output goes through a Tier 2 LLM judge; low-confidence verdicts land in the review queue; one failing run appears in the skill gap log. Additionally: a skill with a declared `outputs` schema produces valid structured output on first attempt (structured generation), and when given an intentionally malformed response, the auto-correction loop fixes the invalid field and succeeds on retry.
 
 ## Milestone 5 — MCP integration
 

@@ -80,8 +80,40 @@ def _build_agent_node(
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:
         agent_id = agent.id
+        iam = agent.iam or {}
+        scopes_required = frozenset(iam.get("base_scope", []))
 
-        # Build messages for this agent's model call
+        decision = await governance.evaluate_action(
+            agent_id=agent_id,
+            action="agent:execute",
+            scopes_required=scopes_required,
+        )
+
+        if not decision.allowed:
+            await governance.record_event(
+                AuditEvent(
+                    event_type="policy.denied",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={
+                        "action": "agent:execute",
+                        "reason": decision.reason,
+                        "scopes_denied": sorted(decision.scopes_denied),
+                    },
+                )
+            )
+            return {
+                "current_agent": agent_id,
+                "agent_results": {agent_id: f"DENIED: {decision.reason}"},
+                "messages": [
+                    AIMessage(
+                        content=f"[{agent_id}] DENIED: {decision.reason}",
+                        name=agent_id,
+                    )
+                ],
+                "output": f"DENIED: {decision.reason}",
+            }
+
         messages = _build_prompt_messages(agent, state)
         tools = _build_tools(agent)
 
