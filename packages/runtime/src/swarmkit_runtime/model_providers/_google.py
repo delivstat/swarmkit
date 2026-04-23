@@ -33,12 +33,17 @@ class GoogleModelProvider:
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         contents = _to_google_contents(request)
         config = _to_google_config(request)
+        google_tools = _to_google_tools(request) if request.tools else None
 
-        raw = await self._client.aio.models.generate_content(
-            model=request.model,
-            contents=contents,
-            config=config,
-        )
+        kwargs: dict[str, Any] = {
+            "model": request.model,
+            "contents": contents,
+            "config": config,
+        }
+        if google_tools:
+            kwargs["tools"] = google_tools
+
+        raw = await self._client.aio.models.generate_content(**kwargs)
         return _from_google_response(raw)
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:
@@ -115,6 +120,20 @@ def _to_google_contents(
                     )
             contents.append(gtypes.Content(parts=parts, role=role))
     return contents
+
+
+def _to_google_tools(request: CompletionRequest) -> list[gtypes.Tool]:
+    if not request.tools:
+        return []
+    declarations = [
+        gtypes.FunctionDeclaration(
+            name=t.name,
+            description=t.description,
+            parameters=t.input_schema or {"type": "object", "properties": {}},  # type: ignore[arg-type]
+        )
+        for t in request.tools
+    ]
+    return [gtypes.Tool(function_declarations=declarations)]
 
 
 def _to_google_config(

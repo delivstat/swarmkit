@@ -148,7 +148,7 @@ def _build_agent_node(
         tools = _build_tools(agent)
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
-        system_prompt = (agent.prompt or {}).get("system")
+        system_prompt = _build_system_prompt(agent, tools)
 
         request = CompletionRequest(
             model=model_name,
@@ -260,6 +260,40 @@ def _parent_of(agent: ResolvedAgent, root: ResolvedAgent) -> str | None:
         return None
 
     return search(root, agent.id)
+
+
+# ---- prompt construction -------------------------------------------------
+
+
+def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | None:
+    """Build the system prompt, injecting tool-use instructions when needed.
+
+    The topology author's system prompt is preserved. The compiler appends
+    a brief instruction block listing available tools so the model knows
+    to call them instead of describing what it would do in text.
+    """
+    base = (agent.prompt or {}).get("system", "") or ""
+    if not tools:
+        return base or None
+
+    delegation_tools = [t for t in tools if t.name.startswith("delegate_to_")]
+    skill_tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+
+    parts = [base.rstrip()] if base else []
+    parts.append(
+        "\nYou have the following tools available. "
+        "Use them to act - do not describe what you would do."
+    )
+
+    if delegation_tools:
+        names = ", ".join(f"`{t.name}`" for t in delegation_tools)
+        parts.append(f"To delegate work to a child agent, call one of: {names}")
+
+    if skill_tools:
+        names = ", ".join(f"`{t.name}`" for t in skill_tools)
+        parts.append(f"Skills available: {names}")
+
+    return "\n".join(parts)
 
 
 # ---- tool / message construction ----------------------------------------
