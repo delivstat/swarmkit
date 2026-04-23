@@ -194,6 +194,16 @@ def _build_agent_node(
         # No delegation — agent produced a final text response
         result_text = _extract_text(response)
 
+        # Fallback: if the model returned nothing useful but children
+        # have results, pass through the child output directly.
+        if result_text == "(no response)" and completed_children:
+            child_texts = [
+                str(agent_results[cid])
+                for cid in completed_children
+                if cid in agent_results
+            ]
+            result_text = "\n\n".join(child_texts)
+
         await governance.record_event(
             AuditEvent(
                 event_type="agent.completed",
