@@ -19,7 +19,6 @@ STUBS: list[tuple[list[str], str]] = [
     (["author", "topology"], "author topology"),
     (["author", "skill"], "author skill"),
     (["author", "archetype"], "author archetype"),
-    (["run", "some-topology.yaml"], "run"),
     (["serve", "some/workspace"], "serve"),
     (["eject", "some-topology.yaml"], "eject"),
 ]

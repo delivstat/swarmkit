@@ -40,6 +40,15 @@ class AnthropicModelProvider:
             kwargs["system"] = request.system
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
+        if request.tools:
+            kwargs["tools"] = [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.input_schema or {"type": "object", "properties": {}},
+                }
+                for t in request.tools
+            ]
         if request.extra:
             kwargs.update(request.extra)
 

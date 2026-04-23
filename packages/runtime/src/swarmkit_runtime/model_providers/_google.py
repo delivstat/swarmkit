@@ -117,6 +117,20 @@ def _to_google_contents(
     return contents
 
 
+def _to_google_tools(request: CompletionRequest) -> list[gtypes.Tool]:
+    if not request.tools:
+        return []
+    declarations = [
+        gtypes.FunctionDeclaration(
+            name=t.name,
+            description=t.description,
+            parameters=t.input_schema or {"type": "object", "properties": {}},  # type: ignore[arg-type]
+        )
+        for t in request.tools
+    ]
+    return [gtypes.Tool(function_declarations=declarations)]
+
+
 def _to_google_config(
     request: CompletionRequest,
 ) -> gtypes.GenerateContentConfig:
@@ -127,6 +141,8 @@ def _to_google_config(
         kwargs["max_output_tokens"] = request.max_tokens
     if request.system:
         kwargs["system_instruction"] = request.system
+    if request.tools:
+        kwargs["tools"] = _to_google_tools(request)
     return gtypes.GenerateContentConfig(**kwargs)
 
 

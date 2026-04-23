@@ -6,7 +6,9 @@ stubs awaiting their milestones.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -15,6 +17,19 @@ from typing import Annotated
 import typer
 
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
+from swarmkit_runtime.governance._mock import MockGovernanceProvider
+from swarmkit_runtime.langgraph_compiler import compile_topology
+from swarmkit_runtime.model_providers import (
+    AnthropicModelProvider,
+    GoogleModelProvider,
+    GroqModelProvider,
+    MockModelProvider,
+    OllamaModelProvider,
+    OpenAIModelProvider,
+    OpenRouterModelProvider,
+    ProviderRegistry,
+    TogetherModelProvider,
+)
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 
 from ._knowledge import build_pack, find_repo_root
@@ -312,9 +327,114 @@ def author_archetype(name: str | None = typer.Argument(None)) -> None:
 
 
 @app.command()
-def run(topology: str, input: str | None = None) -> None:
+def run(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Workspace root directory (containing workspace.yaml).",
+            show_default=False,
+        ),
+    ],
+    topology_name: Annotated[
+        str,
+        typer.Argument(help="Name of the topology to run."),
+    ],
+    input_text: Annotated[
+        str | None,
+        typer.Option(
+            "--input",
+            "-i",
+            help="User input to send to the swarm. Reads from stdin if omitted.",
+        ),
+    ] = None,
+    color: Annotated[
+        bool | None,
+        typer.Option("--color/--no-color"),
+    ] = None,
+) -> None:
     """One-shot execution of a topology (design §14.1)."""
-    _not_implemented("run", milestone="M3 (LangGraph compiler)")
+    use_colour = should_colour(sys.stdout.isatty(), color)
+    ws_root = workspace_path.resolve()
+
+    try:
+        workspace = resolve_workspace(ws_root)
+    except ResolutionErrors as exc:
+        _emit_errors(
+            list(exc.errors),
+            json_mode=False,
+            workspace_root=ws_root,
+            color=use_colour,
+        )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    if topology_name not in workspace.topologies:
+        available = sorted(workspace.topologies.keys())
+        _stderr(
+            f"Topology '{topology_name}' not found in workspace. "
+            f"Available: {', '.join(available) or '(none)'}."
+        )
+        raise typer.Exit(_EXIT_USAGE)
+
+    topology = workspace.topologies[topology_name]
+
+    registry = ProviderRegistry()
+    _register_available_providers(registry)
+    governance = MockGovernanceProvider()
+
+    graph = compile_topology(
+        topology,
+        provider_registry=registry,
+        governance=governance,
+    )
+
+    user_input = input_text or ""
+    if not user_input and not sys.stdin.isatty():
+        user_input = sys.stdin.read().strip()
+    if not user_input:
+        user_input = "hello"
+
+    _MAX_GRAPH_STEPS = 10
+
+    try:
+        result = asyncio.run(
+            graph.ainvoke(
+                {
+                    "input": user_input,
+                    "messages": [],
+                    "agent_results": {},
+                    "current_agent": "",
+                    "output": "",
+                },
+                config={"recursion_limit": _MAX_GRAPH_STEPS},
+            )
+        )
+    except Exception as exc:
+        _stderr(f"error: execution failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    output = result.get("output", "")
+    if output:
+        typer.echo(output)
+
+
+def _register_available_providers(registry: ProviderRegistry) -> None:
+    """Register all providers that have credentials available."""
+    registry.register(MockModelProvider())
+
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        registry.register(AnthropicModelProvider())
+    if os.environ.get("GOOGLE_API_KEY"):
+        registry.register(GoogleModelProvider())
+    if os.environ.get("OPENAI_API_KEY"):
+        registry.register(OpenAIModelProvider())
+    if os.environ.get("OPENROUTER_API_KEY"):
+        registry.register(OpenRouterModelProvider())
+    if os.environ.get("GROQ_API_KEY"):
+        registry.register(GroqModelProvider())
+    if os.environ.get("TOGETHER_API_KEY"):
+        registry.register(TogetherModelProvider())
+
+    registry.register(OllamaModelProvider())
 
 
 @app.command()

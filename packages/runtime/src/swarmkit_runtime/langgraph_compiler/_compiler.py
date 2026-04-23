@@ -6,6 +6,7 @@ See ``design/details/langgraph-compiler.md``.
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,9 +19,10 @@ from swarmkit_runtime.model_providers import (
     CompletionRequest,
     CompletionResponse,
     Message,
+    MockModelProvider,
     ToolSpec,
 )
-from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
+from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
 
 from ._state import SwarmState
@@ -29,7 +31,8 @@ from ._state import SwarmState
 def compile_topology(
     topology: ResolvedTopology,
     *,
-    model_provider: ModelProviderProtocol,
+    model_provider: ModelProviderProtocol | None = None,
+    provider_registry: ProviderRegistry | None = None,
     governance: GovernanceProvider,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
@@ -38,12 +41,17 @@ def compile_topology(
     Children are reachable via ``delegate_to_<child>`` tool calls that
     the root's model produces. The graph runs until the root returns a
     text response (no more delegation).
+
+    Pass ``provider_registry`` for per-agent model resolution (each agent
+    resolves to its own provider based on ``model.provider``). Pass
+    ``model_provider`` as a shortcut when all agents share one provider.
     """
     graph: StateGraph[Any] = StateGraph(SwarmState)
     agents = _collect_agents(topology.root)
 
     for agent in agents.values():
-        node_fn = _build_agent_node(agent, model_provider, governance, agents)
+        agent_provider = _resolve_agent_provider(agent, provider_registry, model_provider)
+        node_fn = _build_agent_node(agent, agent_provider, governance, agents)
         graph.add_node(agent.id, node_fn)
 
     graph.add_edge(START, topology.root.id)
@@ -53,6 +61,28 @@ def compile_topology(
 
 
 # ---- agent collection ---------------------------------------------------
+
+
+def _resolve_agent_provider(
+    agent: ResolvedAgent,
+    registry: ProviderRegistry | None,
+    fallback: ModelProviderProtocol | None,
+) -> ModelProviderProtocol:
+    """Resolve the model provider for a single agent.
+
+    Uses the agent's ``model.provider`` field to look up in the registry.
+    Falls back to the explicit ``fallback`` provider if no registry is
+    given or the provider isn't found.
+    """
+    if registry is not None:
+        provider_id = os.environ.get("SWARMKIT_PROVIDER") or (agent.model or {}).get("provider")
+        if provider_id:
+            provider = registry.get(provider_id)
+            if provider is not None:
+                return provider
+    if fallback is not None:
+        return fallback
+    return MockModelProvider()
 
 
 def _collect_agents(root: ResolvedAgent) -> dict[str, ResolvedAgent]:
@@ -117,8 +147,21 @@ def _build_agent_node(
         messages = _build_prompt_messages(agent, state)
         tools = _build_tools(agent)
 
-        model_name = (agent.model or {}).get("name", "mock")
-        system_prompt = (agent.prompt or {}).get("system")
+        # Remove delegation tools if children already returned results —
+        # the agent should synthesise, not re-delegate.
+        agent_results = state.get("agent_results", {})
+        completed_children = {
+            c.id
+            for c in agent.children
+            if c.id in agent_results
+            and isinstance(agent_results[c.id], str)
+            and not str(agent_results[c.id]).startswith("__delegated__:")
+        }
+        if completed_children:
+            tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+
+        model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
+        system_prompt = _build_system_prompt(agent, tools)
 
         request = CompletionRequest(
             model=model_name,
@@ -150,6 +193,14 @@ def _build_agent_node(
 
         # No delegation — agent produced a final text response
         result_text = _extract_text(response)
+
+        # Fallback: if the model returned nothing useful but children
+        # have results, pass through the child output directly.
+        if result_text == "(no response)" and completed_children:
+            child_texts = [
+                str(agent_results[cid]) for cid in completed_children if cid in agent_results
+            ]
+            result_text = "\n\n".join(child_texts)
 
         await governance.record_event(
             AuditEvent(
@@ -232,6 +283,40 @@ def _parent_of(agent: ResolvedAgent, root: ResolvedAgent) -> str | None:
     return search(root, agent.id)
 
 
+# ---- prompt construction -------------------------------------------------
+
+
+def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | None:
+    """Build the system prompt, injecting tool-use instructions when needed.
+
+    The topology author's system prompt is preserved. The compiler appends
+    a brief instruction block listing available tools so the model knows
+    to call them instead of describing what it would do in text.
+    """
+    base = (agent.prompt or {}).get("system", "") or ""
+    if not tools:
+        return base or None
+
+    delegation_tools = [t for t in tools if t.name.startswith("delegate_to_")]
+    skill_tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+
+    parts = [base.rstrip()] if base else []
+    parts.append(
+        "\nYou have the following tools available. "
+        "Use them to act - do not describe what you would do."
+    )
+
+    if delegation_tools:
+        names = ", ".join(f"`{t.name}`" for t in delegation_tools)
+        parts.append(f"To delegate work to a child agent, call one of: {names}")
+
+    if skill_tools:
+        names = ", ".join(f"`{t.name}`" for t in skill_tools)
+        parts.append(f"Skills available: {names}")
+
+    return "\n".join(parts)
+
+
 # ---- tool / message construction ----------------------------------------
 
 
@@ -239,29 +324,58 @@ def _build_prompt_messages(
     agent: ResolvedAgent,
     state: SwarmState,
 ) -> list[Message]:
-    """Build the message list for an agent's model call."""
+    """Build the message list for an agent's model call.
+
+    If child agents have produced results (delegation completed), the
+    prompt includes those results so the agent can synthesise a final
+    answer instead of re-delegating.
+    """
     messages: list[Message] = []
+    agent_results = state.get("agent_results", {})
 
-    task = state.get("input", "")
+    child_results = {
+        cid: agent_results[cid]
+        for cid in [c.id for c in agent.children]
+        if cid in agent_results
+        and isinstance(agent_results[cid], str)
+        and not agent_results[cid].startswith("__delegated__:")
+    }
 
-    last_human = None
-    for msg in reversed(state.get("messages", [])):
-        if isinstance(msg, HumanMessage):
-            last_human = msg.content
-            break
+    if child_results:
+        results_text = "\n\n".join(f"[{cid}]:\n{result}" for cid, result in child_results.items())
+        messages.append(
+            Message(
+                role="user",
+                content=(
+                    f"Original request: {state.get('input', '')}\n\n"
+                    f"Your workers have produced the following results:\n\n{results_text}\n\n"
+                    f"Present the workers' output directly to the user as the final response. "
+                    f"Do not add commentary about the workers or the delegation process — "
+                    f"just deliver the result as if you produced it yourself."
+                ),
+            )
+        )
+    else:
+        task = state.get("input", "")
+        last_human = None
+        for msg in reversed(state.get("messages", [])):
+            if isinstance(msg, HumanMessage):
+                last_human = msg.content
+                break
+        content = last_human or task
+        messages.append(Message(role="user", content=str(content)))
 
-    content = last_human or task
-    messages.append(Message(role="user", content=str(content)))
     return messages
 
 
 def _build_tools(agent: ResolvedAgent) -> list[ToolSpec]:
-    """Map an agent's skills + children to ToolSpec objects."""
-    tools: list[ToolSpec] = []
+    """Map an agent's children to delegation ToolSpec objects.
 
-    for skill in agent.skills:
-        desc = getattr(skill, "description", "") or skill.id
-        tools.append(ToolSpec(name=skill.id, description=desc))
+    Skill tools are excluded until skill execution is wired (M5 — MCP
+    integration). Including tools that can't be executed causes models
+    to make unserviceable tool calls and return empty responses.
+    """
+    tools: list[ToolSpec] = []
 
     for child in agent.children:
         tools.append(
