@@ -16,6 +16,7 @@ from typing import Annotated
 
 import typer
 
+from swarmkit_runtime.authoring import run_authoring_session
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
@@ -30,6 +31,7 @@ from swarmkit_runtime.model_providers import (
     ProviderRegistry,
     TogetherModelProvider,
 )
+from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 
 from ._knowledge import build_pack, find_repo_root
@@ -299,9 +301,20 @@ def knowledge_pack(
 
 
 @app.command()
-def init() -> None:
-    """Launch the Workspace Authoring Swarm in terminal chat mode (design §14.2)."""
-    _not_implemented("init", milestone="M8 (Workspace Authoring Swarm)")
+def init(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Directory to create the workspace in.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Create a new SwarmKit workspace through conversation."""
+    provider, model = _resolve_authoring_provider()
+    run_authoring_session(
+        mode="init",
+        model_provider=provider,
+        model_name=model,
+        workspace_path=path.resolve(),
+    )
 
 
 author_app = typer.Typer(help="Conversational authoring for topologies, skills, archetypes.")
@@ -309,21 +322,90 @@ app.add_typer(author_app, name="author")
 
 
 @author_app.command("topology")
-def author_topology(name: str | None = typer.Argument(None)) -> None:
-    """Launch the Topology Authoring Swarm variant (design §14.2)."""
-    _not_implemented("author topology", milestone="M7+ (authoring swarms)")
+def author_topology(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace directory.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Author a new topology through conversation."""
+    provider, model = _resolve_authoring_provider()
+    run_authoring_session(
+        mode="topology",
+        model_provider=provider,
+        model_name=model,
+        workspace_path=workspace_path.resolve(),
+    )
 
 
 @author_app.command("skill")
-def author_skill(name: str | None = typer.Argument(None)) -> None:
-    """Launch the Skill Authoring Swarm (design §12)."""
-    _not_implemented("author skill", milestone="M7 (Skill Authoring Swarm)")
+def author_skill(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace directory.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Author a new skill through conversation."""
+    provider, model = _resolve_authoring_provider()
+    run_authoring_session(
+        mode="skill",
+        model_provider=provider,
+        model_name=model,
+        workspace_path=workspace_path.resolve(),
+    )
 
 
 @author_app.command("archetype")
-def author_archetype(name: str | None = typer.Argument(None)) -> None:
-    """Launch the Archetype Authoring Swarm variant (design §14.2)."""
-    _not_implemented("author archetype", milestone="M7+ (authoring swarms)")
+def author_archetype(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace directory.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Author a new archetype through conversation."""
+    provider, model = _resolve_authoring_provider()
+    run_authoring_session(
+        mode="archetype",
+        model_provider=provider,
+        model_name=model,
+        workspace_path=workspace_path.resolve(),
+    )
+
+
+def _resolve_authoring_provider() -> tuple[ModelProviderProtocol, str]:
+    """Resolve which model provider + model name to use for authoring.
+
+    Checks SWARMKIT_AUTHOR_MODEL (format: provider/model), then falls
+    back to SWARMKIT_PROVIDER + SWARMKIT_MODEL, then first available
+    real provider.
+    """
+    author_model = os.environ.get("SWARMKIT_AUTHOR_MODEL", "")
+    if "/" in author_model:
+        provider_id, model_name = author_model.split("/", 1)
+    else:
+        provider_id = os.environ.get("SWARMKIT_PROVIDER", "")
+        model_name = os.environ.get("SWARMKIT_MODEL", "")
+
+    registry = ProviderRegistry()
+    _register_available_providers(registry)
+
+    if provider_id:
+        provider = registry.get(provider_id)
+        if provider is not None:
+            return provider, model_name or "claude-sonnet-4-6"
+
+    for pid in registry.provider_ids:
+        if pid == "mock":
+            continue
+        provider = registry.get(pid)
+        if provider is not None:
+            return provider, model_name or "claude-sonnet-4-6"
+
+    _stderr(
+        "No model provider available for authoring. Set SWARMKIT_PROVIDER "
+        "and the corresponding API key (e.g. GROQ_API_KEY)."
+    )
+    raise typer.Exit(_EXIT_USAGE)
 
 
 @app.command()

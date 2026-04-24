@@ -140,6 +140,21 @@ Run in parallel with the milestones above:
 
 **Exit demo:** two-agent hello-world topology runs end-to-end: root agent hands off to a worker, worker echoes input with a transform, root returns final state. Checkpoint file persists; re-run with `--resume` picks up state.
 
+## Milestone 3.5 — Conversational authoring (v1)
+
+**Goal:** users describe what they want in natural language; a single conversational agent asks clarifying questions, generates YAML artifacts, validates in real-time, and writes files on approval. **The user never writes YAML.** This is the primary user interface — moved from M7-M8 because conversational authoring is the product, not a late-stage feature.
+
+**Design reference:** §11, §12, §14.2, `design/details/conversational-authoring.md`.
+
+**Features:**
+
+- [ ] `design/details/conversational-authoring.md` — conversation flow, tools, system prompt, provider resolution.
+- [ ] `feat(authoring): authoring agent loop + tools` — validate_yaml, write_files, read_workspace, list_schemas.
+- [ ] `feat(cli): swarmkit init` — interactive workspace creation from scratch.
+- [ ] `feat(cli): swarmkit author topology/skill/archetype` — interactive artifact authoring in an existing workspace.
+
+**Exit demo:** `swarmkit init` — user answers 3-4 questions, gets a working workspace. `swarmkit validate` passes. `swarmkit run` produces output.
+
 ## Milestone 4 — Decision + persistence skills
 
 **Goal:** LLM judge skills (Tier 2), deterministic validator skills, audit-log writes, review-queue primitive, skill-gap log primitive.

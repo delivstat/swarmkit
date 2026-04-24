@@ -15,10 +15,6 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 STUBS: list[tuple[list[str], str]] = [
-    (["init"], "init"),
-    (["author", "topology"], "author topology"),
-    (["author", "skill"], "author skill"),
-    (["author", "archetype"], "author archetype"),
     (["serve", "some/workspace"], "serve"),
     (["eject", "some-topology.yaml"], "eject"),
 ]
