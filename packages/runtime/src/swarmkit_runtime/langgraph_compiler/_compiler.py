@@ -35,6 +35,7 @@ from swarmkit_runtime.skills._output_validator import (
 from ._state import SwarmState
 
 _MAX_OUTPUT_RETRIES = 2
+_TRUST_DENY_THRESHOLD = 0.2
 
 
 def compile_topology(
@@ -152,6 +153,40 @@ def _build_agent_node(
                 ],
                 "output": f"DENIED: {decision.reason}",
             }
+
+        trust = await governance.get_trust_score(agent_id=agent_id)
+        if trust.score < _TRUST_DENY_THRESHOLD:
+            await governance.record_event(
+                AuditEvent(
+                    event_type="trust.denied",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={
+                        "score": trust.score,
+                        "tier": trust.tier,
+                    },
+                )
+            )
+            return {
+                "current_agent": agent_id,
+                "agent_results": {agent_id: f"DENIED: trust score {trust.score} below threshold"},
+                "messages": [
+                    AIMessage(
+                        content=f"[{agent_id}] DENIED: trust score too low ({trust.score})",
+                        name=agent_id,
+                    )
+                ],
+                "output": f"DENIED: trust score {trust.score} below threshold",
+            }
+        if trust.tier == "degraded":
+            await governance.record_event(
+                AuditEvent(
+                    event_type="trust.degraded",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={"score": trust.score, "tier": trust.tier},
+                )
+            )
 
         messages = _build_prompt_messages(agent, state)
         tools = _build_tools(agent)

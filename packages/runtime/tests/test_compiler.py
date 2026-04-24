@@ -337,6 +337,83 @@ async def test_governance_deny_records_scopes_in_audit() -> None:
     assert "scopes_denied" in denied_events[0].payload
 
 
+# ---- trust scoring -------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_low_trust_denies_execution() -> None:
+    """Agent with trust score below threshold is denied."""
+    topo = _simple_topology()
+    mock_model = MockModelProvider(
+        default_response=CompletionResponse(
+            content=(ContentBlock(type="text", text="should not run"),),
+            stop_reason="end_turn",
+            usage=Usage(),
+        )
+    )
+    mock_gov = MockGovernanceProvider(trust_scores={"root": 0.1})
+    graph = compile_topology(topo, model_provider=mock_model, governance=mock_gov)
+
+    result = await graph.ainvoke(
+        {"input": "test", "messages": [], "agent_results": {}, "current_agent": "", "output": ""}
+    )
+
+    assert "DENIED" in result["output"]
+    assert "trust" in result["output"].lower()
+    trust_events = [e for e in mock_gov.events if e.event_type == "trust.denied"]
+    assert len(trust_events) >= 1
+    assert len(mock_model.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_degraded_trust_logs_warning_but_continues() -> None:
+    """Agent with degraded trust executes but logs a warning event."""
+    topo = _simple_topology()
+    mock_model = MockModelProvider(
+        default_response=CompletionResponse(
+            content=(ContentBlock(type="text", text="done"),),
+            stop_reason="end_turn",
+            usage=Usage(),
+        )
+    )
+    mock_gov = MockGovernanceProvider(trust_scores={"root": 0.5})
+    graph = compile_topology(topo, model_provider=mock_model, governance=mock_gov)
+
+    result = await graph.ainvoke(
+        {"input": "test", "messages": [], "agent_results": {}, "current_agent": "", "output": ""}
+    )
+
+    assert result["output"] == "done"
+    degraded_events = [e for e in mock_gov.events if e.event_type == "trust.degraded"]
+    assert len(degraded_events) >= 1
+    assert degraded_events[0].payload["tier"] == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_full_trust_no_warnings() -> None:
+    """Agent with full trust — no trust-related events."""
+    topo = _simple_topology()
+    mock_model = MockModelProvider(
+        default_response=CompletionResponse(
+            content=(ContentBlock(type="text", text="done"),),
+            stop_reason="end_turn",
+            usage=Usage(),
+        )
+    )
+    mock_gov = MockGovernanceProvider()
+    graph = compile_topology(topo, model_provider=mock_model, governance=mock_gov)
+
+    result = await graph.ainvoke(
+        {"input": "test", "messages": [], "agent_results": {}, "current_agent": "", "output": ""}
+    )
+
+    assert result["output"] == "done"
+    trust_events = [
+        e for e in mock_gov.events if e.event_type in ("trust.denied", "trust.degraded")
+    ]
+    assert len(trust_events) == 0
+
+
 # ---- output governance (auto-correction) ---------------------------------
 
 DECISION_SCHEMA = {
