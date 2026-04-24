@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  name: security
+  version: 0.1.0
+defaults:
+  skills:
+    - code-diff-read
+    - security-vulnerability-scan
+    - review-summary-write
+  prompt:
+    system: You are a security reviewer for Python code.

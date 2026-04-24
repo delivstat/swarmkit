@@ -1,0 +1,7 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  name: review-summary-write
+  version: 0.1.0
+category: capability
+description: Writes a review summary.

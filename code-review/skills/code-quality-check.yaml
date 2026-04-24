@@ -1,0 +1,11 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  name: code-quality-check
+  version: 0.1.0
+category: decision
+description: Checks the code quality.
+outputs:
+  verdict: pass/fail
+  confidence: 0-1
+  reasoning: description

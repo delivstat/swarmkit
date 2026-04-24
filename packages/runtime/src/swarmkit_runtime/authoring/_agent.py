@@ -23,7 +23,8 @@ from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from ._prompts import AuthoringMode, get_system_prompt
 from ._tools import _read_workspace, execute_tool, get_authoring_tools
 
-_MAX_TOOL_ROUNDS = 10
+_MAX_TOOL_ROUNDS = 15
+_MAX_WRITE_RETRIES = 3
 
 
 def run_authoring_session(
@@ -153,8 +154,13 @@ async def _safe_complete(
         raise
 
 
+_write_attempt = 0
+
+
 def _handle_tool_call(tc: ContentBlock) -> str:
     """Execute a single tool call, with user confirmation for writes."""
+    global _write_attempt  # noqa: PLW0603
+
     tool_input = tc.tool_input
     if isinstance(tool_input, str):
         try:
@@ -166,13 +172,35 @@ def _handle_tool_call(tc: ContentBlock) -> str:
 
     if tool_name == "write_files" and isinstance(tool_input, dict):
         files = tool_input.get("files", {})
-        if files:
+        if not files:
+            return execute_tool(tool_name, tool_input or {})
+
+        _write_attempt += 1
+        if _write_attempt == 1:
             _print_agent(_format_file_plan(files))
             if not _read_confirm():
+                _write_attempt = 0
                 return "User declined. Ask what they'd like to change."
-            result = execute_tool(tool_name, tool_input)
-            _print_status(result)
+
+        result = execute_tool(tool_name, tool_input)
+        _print_status(result)
+
+        if "validation FAILED" in result:
+            if _write_attempt >= _MAX_WRITE_RETRIES:
+                _write_attempt = 0
+                _print_status(
+                    f"  ✗ Validation failed after {_MAX_WRITE_RETRIES} attempts. "
+                    "Files written but may need manual corrections."
+                )
+                return result
+            _print_status(
+                f"  ↻ Validation failed (attempt {_write_attempt}/{_MAX_WRITE_RETRIES}). "
+                "Asking AI to fix..."
+            )
             return result
+
+        _write_attempt = 0
+        return result
 
     result = execute_tool(tool_name, tool_input or {})
     if tool_name == "validate_workspace":
