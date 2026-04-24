@@ -6,8 +6,11 @@ metadata:
   description: Another decision skill matching capability=content-review.
 category: decision
 outputs:
-  verdict: { type: string }
-  reasoning: { type: string }
+  type: object
+  properties:
+    verdict: { type: string }
+    reasoning: { type: string }
+  required: [verdict, reasoning]
 implementation:
   type: llm_prompt
   prompt: Evaluate leniently.

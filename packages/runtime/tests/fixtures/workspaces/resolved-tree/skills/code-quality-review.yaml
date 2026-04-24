@@ -6,14 +6,18 @@ metadata:
   description: Evaluates a code diff against a quality rubric; returns verdict + reasoning.
 category: decision
 outputs:
-  verdict:
-    type: enum
-    values: [pass, fail]
-  confidence:
-    type: number
-    range: [0, 1]
-  reasoning:
-    type: string
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+  required: [verdict, confidence, reasoning]
 implementation:
   type: mcp_tool
   server: rynko-flow

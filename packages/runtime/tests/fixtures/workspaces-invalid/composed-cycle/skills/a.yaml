@@ -6,8 +6,11 @@ metadata:
   description: Composes skill-b; skill-b composes back to skill-a. Cycle.
 category: decision
 outputs:
-  verdict: { type: string }
-  reasoning: { type: string }
+  type: object
+  properties:
+    verdict: { type: string }
+    reasoning: { type: string }
+  required: [verdict, reasoning]
 implementation:
   type: composed
   composes:

@@ -6,8 +6,11 @@ metadata:
   description: Composes skill-a — closes the cycle.
 category: decision
 outputs:
-  verdict: { type: string }
-  reasoning: { type: string }
+  type: object
+  properties:
+    verdict: { type: string }
+    reasoning: { type: string }
+  required: [verdict, reasoning]
 implementation:
   type: composed
   composes:

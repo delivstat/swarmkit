@@ -14,8 +14,16 @@
       "enum": ["capability", "decision", "coordination", "persistence"],
       "description": "Runtime semantics differ by category (design §6.2)."
     },
-    "inputs": { "$ref": "#/$defs/fields" },
-    "outputs": { "$ref": "#/$defs/fields" },
+    "inputs": {
+      "type": "object",
+      "description": "JSON Schema (draft 2020-12) defining the skill's input shape.",
+      "additionalProperties": true
+    },
+    "outputs": {
+      "type": "object",
+      "description": "JSON Schema defining the skill's output shape. Passed to providers for structured generation (Tier 0) and used for deterministic validation (Tier 1). See design/details/structured-output-governance.md.",
+      "additionalProperties": true
+    },
     "implementation": { "$ref": "#/$defs/implementation" },
     "iam": { "$ref": "#/$defs/iam" },
     "constraints": { "$ref": "#/$defs/constraints" },
@@ -32,11 +40,10 @@
         "required": ["outputs"],
         "properties": {
           "outputs": {
-            "required": ["reasoning"],
+            "required": ["properties"],
             "properties": {
-              "reasoning": {
-                "properties": { "type": { "const": "string" } },
-                "required": ["type"]
+              "properties": {
+                "required": ["reasoning"]
               }
             }
           }

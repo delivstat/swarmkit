@@ -12,33 +12,38 @@ metadata:
     a plain-language rationale, and per-criterion reasoning.
 category: decision
 inputs:
-  diff:
-    type: string
-    required: true
-  language:
-    type: enum
-    values: [python, typescript, go]
-    required: true
+  type: object
+  properties:
+    diff:
+      type: string
+    language:
+      type: string
+      enum: [python, typescript, go]
+  required: [diff, language]
 outputs:
-  verdict:
-    type: enum
-    values: [pass, fail]
-  confidence:
-    type: number
-    range: [0, 1]
-  reasoning:
-    type: string
-    description: |
-      Two to three sentences summarising why this verdict was reached.
-      Recorded on every decision for audit and review (design §16.4).
-  criteria:
-    type: array
-    items:
-      type: object
-      properties:
-        criterion: { type: string }
-        verdict: { type: string }
-        notes: { type: string }
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+      description: |
+        Two to three sentences summarising why this verdict was reached.
+        Recorded on every decision for audit and review (design §16.4).
+    criteria:
+      type: array
+      items:
+        type: object
+        properties:
+          criterion: { type: string }
+          verdict: { type: string }
+          notes: { type: string }
+  required: [verdict, confidence, reasoning, criteria]
 implementation:
   type: mcp_tool
   server: rynko_flow
