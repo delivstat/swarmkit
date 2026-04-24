@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
+from swarmkit_runtime.langgraph_compiler._compiler import _validate_and_correct
 from swarmkit_runtime.model_providers import (
     CompletionRequest,
     CompletionResponse,
@@ -17,6 +18,7 @@ from swarmkit_runtime.model_providers import (
     MockModelProvider,
     Usage,
 )
+from swarmkit_runtime.model_providers import Message as ProviderMessage
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology, resolve_workspace
 
 # Use a real resolved topology from the hello-swarm example.
@@ -333,3 +335,103 @@ async def test_governance_deny_records_scopes_in_audit() -> None:
     denied_events = [e for e in mock_gov.events if e.event_type == "policy.denied"]
     assert len(denied_events) >= 1
     assert "scopes_denied" in denied_events[0].payload
+
+
+# ---- output governance (auto-correction) ---------------------------------
+
+DECISION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "verdict": {"type": "string", "enum": ["pass", "fail"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "reasoning": {"type": "string"},
+    },
+    "required": ["verdict", "confidence", "reasoning"],
+}
+
+
+@pytest.mark.asyncio
+async def test_valid_json_passes_output_validation() -> None:
+    """Valid JSON matching schema → output.validated audit event."""
+    valid_json = '{"verdict": "pass", "confidence": 0.85, "reasoning": "Code is clean."}'
+    mock_model = MockModelProvider()
+    mock_gov = MockGovernanceProvider()
+
+    result = await _validate_and_correct(
+        valid_json,
+        DECISION_SCHEMA,
+        model_provider=mock_model,
+        model_name="mock",
+        system_prompt=None,
+        messages=[ProviderMessage(role="user", content="test")],
+        governance=mock_gov,
+        agent_id="test-agent",
+    )
+
+    assert result == valid_json
+    validated = [e for e in mock_gov.events if e.event_type == "output.validated"]
+    assert len(validated) == 1
+    assert validated[0].payload["valid"] is True
+
+
+@pytest.mark.asyncio
+async def test_invalid_json_triggers_autocorrect() -> None:
+    """Invalid output → re-prompt with field errors → corrected on retry."""
+    call_count = 0
+
+    class CorrectionMock(MockModelProvider):
+        async def complete(self, request: CompletionRequest) -> CompletionResponse:
+            nonlocal call_count
+            call_count += 1
+            good = '{"verdict": "pass", "confidence": 0.85, "reasoning": "Code is clean."}'
+            return CompletionResponse(
+                content=(ContentBlock(type="text", text=good),),
+                stop_reason="end_turn",
+                usage=Usage(),
+            )
+
+    mock_gov = MockGovernanceProvider()
+    bad_json = '{"verdict": "pass", "confidence": 1.5, "reasoning": "ok"}'
+
+    await _validate_and_correct(
+        bad_json,
+        DECISION_SCHEMA,
+        model_provider=CorrectionMock(),
+        model_name="mock",
+        system_prompt=None,
+        messages=[ProviderMessage(role="user", content="test")],
+        governance=mock_gov,
+        agent_id="test-agent",
+    )
+
+    assert call_count >= 1
+    validated = [e for e in mock_gov.events if e.event_type == "output.validated"]
+    assert len(validated) == 1
+
+
+@pytest.mark.asyncio
+async def test_exhausted_retries_records_failure() -> None:
+    """Invalid output every time → validation_failed event after max retries."""
+    always_bad = MockModelProvider(
+        default_response=CompletionResponse(
+            content=(ContentBlock(type="text", text='{"verdict": "maybe"}'),),
+            stop_reason="end_turn",
+            usage=Usage(),
+        )
+    )
+    mock_gov = MockGovernanceProvider()
+
+    await _validate_and_correct(
+        '{"verdict": "maybe"}',
+        DECISION_SCHEMA,
+        model_provider=always_bad,
+        model_name="mock",
+        system_prompt=None,
+        messages=[ProviderMessage(role="user", content="test")],
+        governance=mock_gov,
+        agent_id="test-agent",
+    )
+
+    failed = [e for e in mock_gov.events if e.event_type == "output.validation_failed"]
+    assert len(failed) == 1
+    assert "errors" in failed[0].payload

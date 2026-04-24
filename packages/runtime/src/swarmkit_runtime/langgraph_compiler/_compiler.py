@@ -24,8 +24,14 @@ from swarmkit_runtime.model_providers import (
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
+from swarmkit_runtime.skills._output_validator import (
+    format_correction_prompt,
+    validate_all_skill_output,
+)
 
 from ._state import SwarmState
+
+_MAX_OUTPUT_RETRIES = 2
 
 
 def compile_topology(
@@ -191,8 +197,21 @@ def _build_agent_node(
                 ],
             }
 
-        # No delegation — agent produced a final text response
+        # No delegation — agent produced a final text response.
+        # If skills have output schemas, validate + auto-correct.
         result_text = _extract_text(response)
+        outputs_schema = _get_outputs_schema(agent)
+        if outputs_schema and result_text != "(no response)":
+            result_text = await _validate_and_correct(
+                result_text,
+                outputs_schema,
+                model_provider=model_provider,
+                model_name=model_name,
+                system_prompt=system_prompt,
+                messages=messages,
+                governance=governance,
+                agent_id=agent_id,
+            )
 
         # Fallback: if the model returned nothing useful but children
         # have results, pass through the child output directly.
@@ -429,3 +448,100 @@ def _extract_text(response: CompletionResponse) -> str:
         if block.type == "text" and block.text:
             parts.append(block.text)
     return "\n".join(parts) or "(no response)"
+
+
+# ---- output governance --------------------------------------------------
+
+
+def _get_outputs_schema(agent: ResolvedAgent) -> dict[str, Any] | None:
+    """Return the JSON Schema for the agent's first skill with outputs, or None."""
+    for skill in agent.skills:
+        outputs = getattr(skill.raw, "outputs", None)
+        if outputs is not None:
+            return dict(outputs) if not isinstance(outputs, dict) else outputs
+    return None
+
+
+async def _validate_and_correct(
+    result_text: str,
+    outputs_schema: dict[str, Any],
+    *,
+    model_provider: ModelProviderProtocol,
+    model_name: str,
+    system_prompt: str | None,
+    messages: list[Message],
+    governance: GovernanceProvider,
+    agent_id: str,
+) -> str:
+    """Validate skill output against JSON Schema; re-prompt on failure.
+
+    Tries to parse the result as JSON and validate against the schema.
+    On failure, sends field-specific errors back to the model for
+    targeted correction (up to ``_MAX_OUTPUT_RETRIES`` attempts).
+    """
+    for attempt in range(_MAX_OUTPUT_RETRIES + 1):
+        try:
+            parsed = json.loads(result_text)
+        except (json.JSONDecodeError, TypeError):
+            if attempt == _MAX_OUTPUT_RETRIES:
+                return result_text
+            correction = (
+                "Your response must be valid JSON matching the output schema. "
+                "Please return a valid JSON object."
+            )
+            result_text = await _retry_with_correction(
+                correction, model_provider, model_name, system_prompt, messages
+            )
+            continue
+
+        errors = validate_all_skill_output(parsed, outputs_schema)
+        if not errors:
+            await governance.record_event(
+                AuditEvent(
+                    event_type="output.validated",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={"attempt": attempt + 1, "valid": True},
+                )
+            )
+            return result_text
+
+        if attempt == _MAX_OUTPUT_RETRIES:
+            await governance.record_event(
+                AuditEvent(
+                    event_type="output.validation_failed",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={
+                        "attempts": attempt + 1,
+                        "errors": [{"field": e.field, "message": e.message} for e in errors],
+                    },
+                )
+            )
+            return result_text
+
+        correction = format_correction_prompt(errors)
+        result_text = await _retry_with_correction(
+            correction, model_provider, model_name, system_prompt, messages
+        )
+
+    return result_text
+
+
+async def _retry_with_correction(
+    correction: str,
+    model_provider: ModelProviderProtocol,
+    model_name: str,
+    system_prompt: str | None,
+    messages: list[Message],
+) -> str:
+    """Re-prompt the model with a correction message."""
+    retry_messages = [*messages, Message(role="user", content=correction)]
+    response = await model_provider.complete(
+        CompletionRequest(
+            model=model_name,
+            messages=tuple(retry_messages),
+            system=system_prompt,
+        )
+    )
+    return _extract_text(response)
