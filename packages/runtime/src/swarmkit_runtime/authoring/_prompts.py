@@ -248,11 +248,11 @@ own generated code.
 Example MCP server entry in workspace.yaml:
 ```yaml
 mcp_servers:
-  sterling-api:
+  weather-api:
     command: python
-    args: [".swarmkit/mcp-servers/sterling-api/server.py"]
+    args: [".swarmkit/mcp-servers/weather-api/server.py"]
     env:
-      STERLING_API_KEY: "${{STERLING_API_KEY}}"
+      WEATHER_API_KEY: "${{WEATHER_API_KEY}}"
 ```
 
 Example skill referencing the server:
@@ -260,14 +260,14 @@ Example skill referencing the server:
 apiVersion: swarmkit/v1
 kind: Skill
 metadata:
-  id: sterling-order-query
-  name: Sterling Order Query
-  description: Query orders from the Sterling OMS API.
+  id: weather-forecast
+  name: Weather Forecast
+  description: Get weather forecast for a given location.
 category: capability
 implementation:
   type: mcp_tool
-  server: sterling-api
-  tool: get_order
+  server: weather-api
+  tool: get_forecast
 provenance:
   authored_by: authored_by_swarm
   version: 1.0.0
