@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,6 +25,7 @@ from swarmkit_runtime.model_providers import (
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
+from swarmkit_runtime.review._hitl import prompt_human_review
 from swarmkit_runtime.skills._output_validator import (
     format_correction_prompt,
     validate_all_skill_output,
@@ -518,6 +520,19 @@ async def _validate_and_correct(
                     },
                 )
             )
+
+            if sys.stdin.isatty():
+                decision = prompt_human_review(
+                    agent_id=agent_id,
+                    skill_id="output-validation",
+                    output=parsed,
+                    verdict=None,
+                    reason=f"Validation failed after {attempt + 1} attempts: "
+                    + "; ".join(f"{e.field}: {e.message}" for e in errors),
+                )
+                if decision == "approved":
+                    return result_text
+
             return result_text
 
         correction = format_correction_prompt(errors)
