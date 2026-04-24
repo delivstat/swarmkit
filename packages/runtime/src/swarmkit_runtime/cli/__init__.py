@@ -483,6 +483,23 @@ def author_archetype(
     )
 
 
+@author_app.command("mcp-server")
+def author_mcp_server(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace directory.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Author a new MCP server through conversation."""
+    provider, model = _resolve_authoring_provider()
+    run_authoring_session(
+        mode="mcp-server",
+        model_provider=provider,
+        model_name=model,
+        workspace_path=workspace_path.resolve(),
+    )
+
+
 def _resolve_authoring_provider() -> tuple[ModelProviderProtocol, str]:
     """Resolve which model provider + model name to use for authoring.
 

@@ -202,6 +202,7 @@ def _print_header(mode: AuthoringMode) -> None:
         "topology": "SwarmKit topology authoring",
         "skill": "SwarmKit skill authoring",
         "archetype": "SwarmKit archetype authoring",
+        "mcp-server": "SwarmKit MCP server authoring",
     }
     print(f"\n{titles[mode]} — let's build your swarm.\n")
 

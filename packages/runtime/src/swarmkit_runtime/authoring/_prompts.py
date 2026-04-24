@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-AuthoringMode = Literal["init", "topology", "skill", "archetype"]
+AuthoringMode = Literal["init", "topology", "skill", "archetype", "mcp-server"]
 
 _CORE_INSTRUCTIONS = """\
 You are the SwarmKit authoring assistant. You help users create SwarmKit \
@@ -224,11 +224,66 @@ provenance:
 ```
 """
 
+_MCP_SERVER_PROMPT = """\
+{core}
+
+You are helping the user create a new MCP server — a tool server that \
+agents can call via the Model Context Protocol. You generate:
+
+1. A Python MCP server implementation (using the `mcp` SDK)
+2. A skill YAML that references the server
+3. A workspace config entry under `mcp_servers:`
+
+Ask about:
+- What tool/API the server should wrap
+- What operations it needs (list what tool functions to expose)
+- Authentication requirements (API key, OAuth, none)
+- Whether it's local (stdio) or remote (HTTP/SSE)
+
+IMPORTANT: Generated MCP server code goes to the pending-review \
+directory. The user must review and approve before the server can be \
+deployed. This is a security requirement — agents cannot deploy their \
+own generated code.
+
+Example MCP server entry in workspace.yaml:
+```yaml
+mcp_servers:
+  weather-api:
+    command: python
+    args: [".swarmkit/mcp-servers/weather-api/server.py"]
+    env:
+      WEATHER_API_KEY: "${{WEATHER_API_KEY}}"
+```
+
+Example skill referencing the server:
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: weather-forecast
+  name: Weather Forecast
+  description: Get weather forecast for a given location.
+category: capability
+implementation:
+  type: mcp_tool
+  server: weather-api
+  tool: get_forecast
+provenance:
+  authored_by: authored_by_swarm
+  version: 1.0.0
+```
+
+Generate a minimal, working MCP server. Use the `mcp` Python SDK \
+(`from mcp.server import Server`). Each tool should have clear input \
+schemas and return structured results.
+"""
+
 _PROMPTS: dict[AuthoringMode, str] = {
     "init": _INIT_PROMPT,
     "topology": _TOPOLOGY_PROMPT,
     "skill": _SKILL_PROMPT,
     "archetype": _ARCHETYPE_PROMPT,
+    "mcp-server": _MCP_SERVER_PROMPT,
 }
 
 
