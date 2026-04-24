@@ -26,9 +26,7 @@ async def execute_skill(
 ) -> str:
     """Execute a skill and return the result as a string.
 
-    Dispatches by implementation type. Returns the model's response
-    text for ``llm_prompt`` skills. Returns an error message for
-    unsupported types (mcp_tool, composed — not yet wired).
+    Dispatches by implementation type.
     """
     impl = skill.raw.implementation
     impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
@@ -41,11 +39,16 @@ async def execute_skill(
             model_name=model_name,
         )
 
+    if impl_type == "composed":
+        return await _execute_composed(
+            skill,
+            input_text=input_text,
+            model_provider=model_provider,
+            model_name=model_name,
+        )
+
     if impl_type == "mcp_tool":
         return f"[skill:{skill.id}] MCP tool execution not yet available (M5)."
-
-    if impl_type == "composed":
-        return f"[skill:{skill.id}] Composed skill execution not yet available."
 
     return f"[skill:{skill.id}] Unknown implementation type: {impl_type}"
 
@@ -77,3 +80,26 @@ async def _execute_llm_prompt(
 
     parts = [b.text for b in response.content if b.type == "text" and b.text]
     return "\n".join(parts) or "(no response)"
+
+
+async def _execute_composed(
+    skill: ResolvedSkill,
+    *,
+    input_text: str,
+    model_provider: ModelProviderProtocol,
+    model_name: str,
+) -> str:
+    """Execute a composed skill via panel aggregation."""
+    from ._panel import execute_panel  # noqa: PLC0415
+
+    constituent_skills = list(skill.resolved_composes)
+    if not constituent_skills:
+        return f"[skill:{skill.id}] No constituent skills resolved."
+
+    return await execute_panel(
+        skill,
+        constituent_skills,
+        input_text=input_text,
+        model_provider=model_provider,
+        model_name=model_name,
+    )
