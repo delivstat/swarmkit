@@ -15,11 +15,19 @@ export interface SwarmKitSkill {
     constraints?:   Constraints;
     iam?:           Iam;
     implementation: Implementation;
-    inputs?:        { [key: string]: FieldSpec };
-    kind:           Kind;
-    metadata:       Metadata;
-    outputs?:       { [key: string]: FieldSpec };
-    provenance:     Provenance;
+    /**
+     * JSON Schema (draft 2020-12) defining the skill's input shape.
+     */
+    inputs?:  { [key: string]: any };
+    kind:     Kind;
+    metadata: Metadata;
+    /**
+     * JSON Schema defining the skill's output shape. Passed to providers for structured
+     * generation (Tier 0) and used for deterministic validation (Tier 1). See
+     * design/details/structured-output-governance.md.
+     */
+    outputs?:   { [key: string]: any };
+    provenance: Provenance;
 }
 
 export type APIVersion = "swarmkit/v1";
@@ -53,7 +61,7 @@ export interface Implementation {
     arguments?: { [key: string]: any };
     server?:    string;
     tool?:      string;
-    type:       ImplementationType;
+    type:       Type;
     model?:     { [key: string]: any };
     prompt?:    string;
     composes?:  string[];
@@ -62,34 +70,7 @@ export interface Implementation {
 
 export type Strategy = "parallel-consensus" | "sequential" | "custom";
 
-export type ImplementationType = "mcp_tool" | "llm_prompt" | "composed";
-
-/**
- * Required when type=array.
- */
-export interface FieldSpec {
-    description?: string;
-    /**
-     * Required when type=array.
-     */
-    items?: FieldSpec;
-    /**
-     * Optional when type=object.
-     */
-    properties?: { [key: string]: FieldSpec };
-    /**
-     * [min, max] — only for number/integer.
-     */
-    range?:    number[];
-    required?: boolean;
-    type:      InputType;
-    /**
-     * Required when type=enum.
-     */
-    values?: any[];
-}
-
-export type InputType = "string" | "number" | "integer" | "boolean" | "enum" | "object" | "array";
+export type Type = "mcp_tool" | "llm_prompt" | "composed";
 
 export type Kind = "Skill";
 

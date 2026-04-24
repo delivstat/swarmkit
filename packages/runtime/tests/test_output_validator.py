@@ -9,95 +9,94 @@ import pytest
 from swarmkit_runtime.skills._output_validator import (
     FieldError,
     format_correction_prompt,
+    validate_all_skill_output,
     validate_business_rules,
     validate_skill_output,
 )
 
-DECISION_SPEC = {
-    "verdict": {"type": "enum", "values": ["pass", "fail"]},
-    "confidence": {"type": "number", "range": [0, 1]},
-    "reasoning": {"type": "string"},
+DECISION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "verdict": {"type": "string", "enum": ["pass", "fail"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "reasoning": {"type": "string"},
+    },
+    "required": ["verdict", "confidence", "reasoning"],
 }
 
 
-# ---- Tier 1: schema validation ------------------------------------------
+# ---- Tier 1: JSON Schema validation -------------------------------------
 
 
 def test_valid_output_passes() -> None:
     output = {"verdict": "pass", "confidence": 0.85, "reasoning": "Looks good."}
-    errors = validate_skill_output(output, DECISION_SPEC)
+    errors = validate_skill_output(output, DECISION_SCHEMA)
     assert errors == []
 
 
 def test_missing_field_detected() -> None:
     output = {"verdict": "pass", "confidence": 0.85}
-    errors = validate_skill_output(output, DECISION_SPEC)
-    assert len(errors) == 1
-    assert errors[0].field == "reasoning"
-    assert "missing" in errors[0].message
+    errors = validate_skill_output(output, DECISION_SCHEMA)
+    assert len(errors) >= 1
+    assert any("reasoning" in e.message for e in errors)
 
 
 def test_enum_wrong_value_detected() -> None:
     output = {"verdict": "maybe", "confidence": 0.5, "reasoning": "Unsure."}
-    errors = validate_skill_output(output, DECISION_SPEC)
-    assert len(errors) == 1
-    assert errors[0].field == "verdict"
-    assert "pass" in errors[0].message
-    assert "maybe" in errors[0].message
+    errors = validate_skill_output(output, DECISION_SCHEMA)
+    assert len(errors) >= 1
+    assert any("maybe" in e.message or "enum" in e.message.lower() for e in errors)
 
 
 def test_number_out_of_range_detected() -> None:
     output = {"verdict": "pass", "confidence": 1.5, "reasoning": "Great."}
-    errors = validate_skill_output(output, DECISION_SPEC)
-    assert len(errors) == 1
-    assert errors[0].field == "confidence"
-    assert "1.5" in errors[0].message
-    assert "0" in errors[0].message and "1" in errors[0].message
+    errors = validate_skill_output(output, DECISION_SCHEMA)
+    assert len(errors) >= 1
+    assert any(e.field == "confidence" for e in errors)
 
 
 def test_wrong_type_detected() -> None:
     output = {"verdict": "pass", "confidence": "high", "reasoning": "Good."}
-    errors = validate_skill_output(output, DECISION_SPEC)
-    assert len(errors) == 1
-    assert errors[0].field == "confidence"
-    assert "number" in errors[0].message
+    errors = validate_skill_output(output, DECISION_SCHEMA)
+    assert len(errors) >= 1
+    assert any(e.field == "confidence" for e in errors)
 
 
 def test_string_type_wrong_detected() -> None:
     output = {"verdict": "pass", "confidence": 0.5, "reasoning": 42}
-    errors = validate_skill_output(output, DECISION_SPEC)
-    assert len(errors) == 1
-    assert errors[0].field == "reasoning"
-    assert "string" in errors[0].message
+    errors = validate_skill_output(output, DECISION_SCHEMA)
+    assert len(errors) >= 1
+    assert any(e.field == "reasoning" for e in errors)
 
 
-def test_multiple_errors_detected() -> None:
+def test_validate_all_collects_multiple_errors() -> None:
     output = {"verdict": "maybe", "confidence": 1.5, "reasoning": 42}
-    errors = validate_skill_output(output, DECISION_SPEC)
-    assert len(errors) == 3
+    errors = validate_all_skill_output(output, DECISION_SCHEMA)
+    assert len(errors) >= 3
     fields = {e.field for e in errors}
-    assert fields == {"verdict", "confidence", "reasoning"}
+    assert "verdict" in fields
+    assert "confidence" in fields
+    assert "reasoning" in fields
 
 
 def test_array_type_validated() -> None:
-    spec = {"items": {"type": "array"}}
-    errors = validate_skill_output({"items": "not-an-array"}, spec)
-    assert len(errors) == 1
-    assert errors[0].field == "items"
+    schema = {
+        "type": "object",
+        "properties": {"items": {"type": "array"}},
+        "required": ["items"],
+    }
+    errors = validate_skill_output({"items": "not-an-array"}, schema)
+    assert len(errors) >= 1
 
 
-def test_object_type_validated() -> None:
-    spec = {"data": {"type": "object"}}
-    errors = validate_skill_output({"data": "not-an-object"}, spec)
-    assert len(errors) == 1
-    assert errors[0].field == "data"
-
-
-def test_string_min_length() -> None:
-    spec = {"reasoning": {"type": "string", "min_length": 20}}
-    errors = validate_skill_output({"reasoning": "too short"}, spec)
-    assert len(errors) == 1
-    assert "20 characters" in errors[0].message
+def test_min_length_validated() -> None:
+    schema = {
+        "type": "object",
+        "properties": {"reasoning": {"type": "string", "minLength": 20}},
+        "required": ["reasoning"],
+    }
+    errors = validate_skill_output({"reasoning": "too short"}, schema)
+    assert len(errors) >= 1
 
 
 # ---- Tier 2: business rules ---------------------------------------------
@@ -111,8 +110,7 @@ def test_conditional_rule_passes_when_condition_not_met() -> None:
             "message": "Failed verdict should have low confidence",
         }
     ]
-    output = {"verdict": "pass", "confidence": 0.9}
-    errors = validate_business_rules(output, rules)
+    errors = validate_business_rules({"verdict": "pass", "confidence": 0.9}, rules)
     assert errors == []
 
 
@@ -124,8 +122,7 @@ def test_conditional_rule_passes_when_constraint_met() -> None:
             "message": "Failed verdict should have low confidence",
         }
     ]
-    output = {"verdict": "fail", "confidence": 0.3}
-    errors = validate_business_rules(output, rules)
+    errors = validate_business_rules({"verdict": "fail", "confidence": 0.3}, rules)
     assert errors == []
 
 
@@ -137,8 +134,7 @@ def test_conditional_rule_fails_when_constraint_violated() -> None:
             "message": "Failed verdict should have confidence <= 0.5",
         }
     ]
-    output = {"verdict": "fail", "confidence": 0.8}
-    errors = validate_business_rules(output, rules)
+    errors = validate_business_rules({"verdict": "fail", "confidence": 0.8}, rules)
     assert len(errors) == 1
     assert errors[0].field == "confidence"
     assert "0.5" in errors[0].message
@@ -148,8 +144,7 @@ def test_field_rule_min_length() -> None:
     rules = [
         {"field": "reasoning", "min_length": 20, "message": "Reasoning too short"},
     ]
-    output = {"reasoning": "ok"}
-    errors = validate_business_rules(output, rules)
+    errors = validate_business_rules({"reasoning": "ok"}, rules)
     assert len(errors) == 1
     assert errors[0].field == "reasoning"
 
@@ -175,7 +170,7 @@ def test_field_rule_pattern() -> None:
 def test_correction_prompt_lists_all_errors() -> None:
     errors = [
         FieldError("confidence", "must be between 0 and 1, got 1.5"),
-        FieldError("reasoning", "must be at least 20 characters, got 2"),
+        FieldError("reasoning", "must be at least 20 characters"),
     ]
     prompt = format_correction_prompt(errors)
     assert "confidence" in prompt

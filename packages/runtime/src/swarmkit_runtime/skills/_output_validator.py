@@ -2,6 +2,10 @@
 
 Tiers 0-2 of the output governance model. See
 ``design/details/structured-output-governance.md``.
+
+Outputs are now standard JSON Schema — validation uses ``jsonschema``
+directly. Field-specific errors are extracted from validation failures
+for targeted auto-correction re-prompts.
 """
 
 from __future__ import annotations
@@ -9,6 +13,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any
+
+import jsonschema
 
 
 @dataclass(frozen=True)
@@ -21,21 +27,36 @@ class FieldError:
 
 def validate_skill_output(
     output: dict[str, Any],
-    outputs_spec: dict[str, Any],
+    outputs_schema: dict[str, Any],
 ) -> list[FieldError]:
-    """Validate a skill's output against its declared ``outputs`` schema.
+    """Validate a skill's output against its JSON Schema ``outputs`` block.
 
     Returns an empty list if valid. Each error is field-specific so the
     auto-correction re-prompt can target exactly what needs fixing.
     """
     errors: list[FieldError] = []
-    for field_name, field_spec in outputs_spec.items():
-        if field_name not in output:
-            errors.append(FieldError(field_name, "missing required field"))
-            continue
-        value = output[field_name]
-        field_type = field_spec.get("type", "string")
-        errors.extend(_validate_field(field_name, value, field_type, field_spec))
+    try:
+        jsonschema.validate(instance=output, schema=outputs_schema)
+    except jsonschema.ValidationError as exc:
+        field = _extract_field_path(exc)
+        errors.append(FieldError(field, exc.message))
+        for sub in exc.context or []:
+            sub_field = _extract_field_path(sub)
+            errors.append(FieldError(sub_field, sub.message))
+    return errors
+
+
+def validate_all_skill_output(
+    output: dict[str, Any],
+    outputs_schema: dict[str, Any],
+) -> list[FieldError]:
+    """Like ``validate_skill_output`` but collects ALL errors, not just the first."""
+    validator_cls = jsonschema.Draft202012Validator
+    validator = validator_cls(outputs_schema)
+    errors: list[FieldError] = []
+    for error in sorted(validator.iter_errors(output), key=lambda e: list(e.path)):
+        field = _extract_field_path(error)
+        errors.append(FieldError(field, error.message))
     return errors
 
 
@@ -61,63 +82,28 @@ def format_correction_prompt(errors: list[FieldError]) -> str:
     return "\n".join(lines)
 
 
-# ---- field-level validation (Tier 1) ------------------------------------
+# ---- helpers -------------------------------------------------------------
 
 
-def _validate_field(
-    field_name: str,
-    value: Any,
-    field_type: str,
-    spec: dict[str, Any],
-) -> list[FieldError]:
-    validators = {
-        "enum": _validate_enum,
-        "number": _validate_number,
-        "string": _validate_string,
-        "array": _validate_array,
-        "object": _validate_object,
-    }
-    validator = validators.get(field_type)
-    if validator is not None:
-        return validator(field_name, value, spec)
-    return []
-
-
-def _validate_enum(name: str, value: Any, spec: dict[str, Any]) -> list[FieldError]:
-    allowed = spec.get("values", [])
-    if value not in allowed:
-        return [FieldError(name, f"must be one of {allowed}, got '{value}'")]
-    return []
-
-
-def _validate_number(name: str, value: Any, spec: dict[str, Any]) -> list[FieldError]:
-    if not isinstance(value, (int, float)):
-        return [FieldError(name, f"must be a number, got {type(value).__name__}")]
-    range_ = spec.get("range")
-    if range_ and len(range_) == 2 and not (range_[0] <= value <= range_[1]):
-        return [FieldError(name, f"must be between {range_[0]} and {range_[1]}, got {value}")]
-    return []
-
-
-def _validate_string(name: str, value: Any, spec: dict[str, Any]) -> list[FieldError]:
-    if not isinstance(value, str):
-        return [FieldError(name, f"must be a string, got {type(value).__name__}")]
-    min_len = spec.get("min_length")
-    if min_len and len(value) < min_len:
-        return [FieldError(name, f"must be at least {min_len} characters, got {len(value)}")]
-    return []
-
-
-def _validate_array(name: str, value: Any, _spec: dict[str, Any]) -> list[FieldError]:
-    if not isinstance(value, list):
-        return [FieldError(name, f"must be an array, got {type(value).__name__}")]
-    return []
-
-
-def _validate_object(name: str, value: Any, _spec: dict[str, Any]) -> list[FieldError]:
-    if not isinstance(value, dict):
-        return [FieldError(name, f"must be an object, got {type(value).__name__}")]
-    return []
+def _extract_field_path(error: jsonschema.ValidationError) -> str:
+    """Extract the field name from a jsonschema error's path."""
+    if error.path:
+        return ".".join(str(p) for p in error.path)
+    if error.schema_path and len(error.schema_path) > 1:
+        for segment in reversed(list(error.schema_path)):
+            if isinstance(segment, str) and segment not in (
+                "type",
+                "properties",
+                "required",
+                "enum",
+                "minimum",
+                "maximum",
+                "minLength",
+                "items",
+                "additionalProperties",
+            ):
+                return segment
+    return "(root)"
 
 
 # ---- business rules (Tier 2) -------------------------------------------

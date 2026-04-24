@@ -170,8 +170,14 @@ class SwarmKitSkill(BaseModel):
     category: Category = Field(
         ..., description="Runtime semantics differ by category (design §6.2)."
     )
-    inputs: dict[str, FieldModel] | None = None
-    outputs: dict[str, FieldModel] | None = None
+    inputs: dict[str, Any] | None = Field(
+        None,
+        description="JSON Schema (draft 2020-12) defining the skill's input shape.",
+    )
+    outputs: dict[str, Any] | None = Field(
+        None,
+        description="JSON Schema defining the skill's output shape. Passed to providers for structured generation (Tier 0) and used for deterministic validation (Tier 1). See design/details/structured-output-governance.md.",
+    )
     implementation: Implementation1 | Implementation2 | Implementation3
     iam: Iam | None = None
     constraints: Constraints | None = None
@@ -201,5 +207,4 @@ class FieldModel(BaseModel):
     )
 
 
-SwarmKitSkill.model_rebuild()
 FieldModel.model_rebuild()

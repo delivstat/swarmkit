@@ -9,15 +9,19 @@ metadata:
     GovernanceProvider. Append-only; no update or delete path exists.
 category: persistence
 inputs:
-  event_type:
-    type: string
-    required: true
-  payload:
-    type: object
-    required: true
+  type: object
+  properties:
+    event_type:
+      type: string
+    payload:
+      type: object
+  required: [event_type, payload]
 outputs:
-  recorded:
-    type: boolean
+  type: object
+  properties:
+    recorded:
+      type: boolean
+  required: [recorded]
 implementation:
   type: mcp_tool
   server: agt_sre

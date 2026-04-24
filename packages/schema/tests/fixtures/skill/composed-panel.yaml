@@ -9,25 +9,29 @@ metadata:
     majority consensus. Escalates to HITL on disagreement.
 category: decision
 outputs:
-  verdict:
-    type: enum
-    values: [pass, fail, needs-review]
-  confidence:
-    type: number
-    range: [0, 1]
-  reasoning:
-    type: string
-    description: |
-      Combined rationale from the panel — cites each judge's verdict and
-      explains the consensus (or disagreement) in 2-3 sentences.
-  panel_votes:
-    type: array
-    items:
-      type: object
-      properties:
-        judge: { type: string }
-        verdict: { type: string }
-        confidence: { type: number, range: [0, 1] }
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-review]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+      description: |
+        Combined rationale from the panel — cites each judge's verdict and
+        explains the consensus (or disagreement) in 2-3 sentences.
+    panel_votes:
+      type: array
+      items:
+        type: object
+        properties:
+          judge: { type: string }
+          verdict: { type: string }
+          confidence: { type: number, minimum: 0, maximum: 1 }
+  required: [verdict, confidence, reasoning, panel_votes]
 implementation:
   type: composed
   composes:

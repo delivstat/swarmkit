@@ -9,18 +9,22 @@ metadata:
     Uses A2A mutual authentication (design §18.2).
 category: coordination
 inputs:
-  task_payload:
-    type: object
-    required: true
-  originating_leader:
-    type: string
-    required: true
+  type: object
+  properties:
+    task_payload:
+      type: object
+    originating_leader:
+      type: string
+  required: [task_payload, originating_leader]
 outputs:
-  handoff_id:
-    type: string
-  status:
-    type: enum
-    values: [accepted, rejected, queued]
+  type: object
+  properties:
+    handoff_id:
+      type: string
+    status:
+      type: string
+      enum: [accepted, rejected, queued]
+  required: [handoff_id, status]
 implementation:
   type: mcp_tool
   server: a2a

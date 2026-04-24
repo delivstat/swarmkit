@@ -10,22 +10,27 @@ metadata:
     Returns a verdict and a calibrated confidence score.
 category: decision
 inputs:
-  output:
-    type: string
-    required: true
-  expected:
-    type: string
-    required: false
+  type: object
+  properties:
+    output:
+      type: string
+    expected:
+      type: string
+  required: [output]
 outputs:
-  verdict:
-    type: enum
-    values: [pass, fail]
-  confidence:
-    type: number
-    range: [0, 1]
-  reasoning:
-    type: string
-    description: Two to three sentences explaining why this verdict was reached.
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+      description: Two to three sentences explaining why this verdict was reached.
+  required: [verdict, confidence, reasoning]
 implementation:
   type: llm_prompt
   model:

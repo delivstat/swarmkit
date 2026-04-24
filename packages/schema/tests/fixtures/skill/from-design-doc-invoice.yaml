@@ -8,19 +8,24 @@ metadata:
   description: Validates invoice structure and content via Rynko Flow gate.
 category: decision
 inputs:
-  invoice:
-    type: object
-    required: true
+  type: object
+  properties:
+    invoice:
+      type: object
+  required: [invoice]
 outputs:
-  verdict:
-    type: enum
-    values: [pass, fail]
-  run_id:
-    type: string
-    description: Attestation Run ID returned on a passing verdict.
-  reasoning:
-    type: string
-    description: Two to three sentence summary of why this invoice passed or failed.
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail]
+    run_id:
+      type: string
+      description: Attestation Run ID returned on a passing verdict.
+    reasoning:
+      type: string
+      description: Two to three sentence summary of why this invoice passed or failed.
+  required: [verdict, run_id, reasoning]
 implementation:
   type: mcp_tool
   server: rynko_flow
