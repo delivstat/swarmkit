@@ -16,6 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from swarmkit_runtime.governance import AuditEvent, GovernanceProvider
+from swarmkit_runtime.langgraph_compiler._skill_executor import execute_skill
 from swarmkit_runtime.model_providers import (
     CompletionRequest,
     CompletionResponse,
@@ -199,7 +200,25 @@ def _build_agent_node(
                 ],
             }
 
-        # No delegation — agent produced a final text response.
+        # Check for skill tool calls (llm_prompt skills)
+        skill_result = await _handle_skill_tool_calls(response, agent, model_provider, model_name)
+        if skill_result is not None:
+            await governance.record_event(
+                AuditEvent(
+                    event_type="skill.executed",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={"result_length": len(skill_result)},
+                )
+            )
+            return {
+                "current_agent": agent.id,
+                "agent_results": {agent_id: skill_result},
+                "messages": [AIMessage(content=skill_result, name=agent_id)],
+                "output": skill_result,
+            }
+
+        # No delegation or skill calls — agent produced a final text response.
         # If skills have output schemas, validate + auto-correct.
         result_text = _extract_text(response)
         outputs_schema = _get_outputs_schema(agent)
@@ -390,13 +409,19 @@ def _build_prompt_messages(
 
 
 def _build_tools(agent: ResolvedAgent) -> list[ToolSpec]:
-    """Map an agent's children to delegation ToolSpec objects.
+    """Map an agent's executable skills + children to ToolSpec objects.
 
-    Skill tools are excluded until skill execution is wired (M5 — MCP
-    integration). Including tools that can't be executed causes models
-    to make unserviceable tool calls and return empty responses.
+    Only ``llm_prompt`` skills are included — they can be executed by
+    the skill executor. ``mcp_tool`` skills are excluded until M5.
     """
     tools: list[ToolSpec] = []
+
+    for skill in agent.skills:
+        impl = skill.raw.implementation
+        impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
+        if impl_type == "llm_prompt":
+            desc = getattr(skill, "description", "") or skill.id
+            tools.append(ToolSpec(name=skill.id, description=desc))
 
     for child in agent.children:
         tools.append(
@@ -414,6 +439,39 @@ def _build_tools(agent: ResolvedAgent) -> list[ToolSpec]:
         )
 
     return tools
+
+
+# ---- skill execution ----------------------------------------------------
+
+
+async def _handle_skill_tool_calls(
+    response: CompletionResponse,
+    agent: ResolvedAgent,
+    model_provider: ModelProviderProtocol,
+    model_name: str,
+) -> str | None:
+    """If the response contains a skill tool call, execute it and return the result."""
+    skill_map = {s.id: s for s in agent.skills}
+    for block in response.content:
+        if block.type != "tool_use" or not block.tool_name:
+            continue
+        if block.tool_name.startswith("delegate_to_"):
+            continue
+        skill = skill_map.get(block.tool_name)
+        if skill is None:
+            continue
+        input_text = ""
+        if isinstance(block.tool_input, dict):
+            input_text = json.dumps(block.tool_input)
+        elif isinstance(block.tool_input, str):
+            input_text = block.tool_input
+        return await execute_skill(
+            skill,
+            input_text=input_text,
+            model_provider=model_provider,
+            model_name=os.environ.get("SWARMKIT_MODEL") or model_name,
+        )
+    return None
 
 
 # ---- response parsing ---------------------------------------------------
