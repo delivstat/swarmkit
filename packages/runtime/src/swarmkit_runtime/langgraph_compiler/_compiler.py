@@ -484,6 +484,7 @@ async def _handle_skill_tool_calls(
     agent: ResolvedAgent,
     model_provider: ModelProviderProtocol,
     model_name: str,
+    mcp_manager: Any = None,
 ) -> str | None:
     """If the response contains a skill tool call, execute it and return the result."""
     skill_map = {s.id: s for s in agent.skills}
@@ -505,6 +506,7 @@ async def _handle_skill_tool_calls(
             input_text=input_text,
             model_provider=model_provider,
             model_name=os.environ.get("SWARMKIT_MODEL") or model_name,
+            mcp_manager=mcp_manager,
         )
     return None
 
