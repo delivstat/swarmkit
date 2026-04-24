@@ -21,6 +21,7 @@ from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
 from swarmkit_runtime.gaps import SkillGapLog
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
+from swarmkit_runtime.mcp import MCPClientManager, parse_mcp_servers
 from swarmkit_runtime.model_providers import (
     AnthropicModelProvider,
     GoogleModelProvider,
@@ -591,10 +592,18 @@ def run(
     _register_available_providers(registry)
     governance = MockGovernanceProvider()
 
+    mcp_manager: MCPClientManager | None = None
+    raw_mcp = getattr(workspace.raw, "mcp_servers", None)
+    if raw_mcp and isinstance(raw_mcp, dict):
+        mcp_configs = parse_mcp_servers({"mcp_servers": raw_mcp})
+        if mcp_configs:
+            mcp_manager = MCPClientManager(mcp_configs)
+
     graph = compile_topology(
         topology,
         provider_registry=registry,
         governance=governance,
+        mcp_manager=mcp_manager,
     )
 
     user_input = input_text or ""
