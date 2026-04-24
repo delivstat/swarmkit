@@ -18,6 +18,7 @@ import typer
 
 from swarmkit_runtime.authoring import run_authoring_session
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
+from swarmkit_runtime.gaps import SkillGapLog
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
 from swarmkit_runtime.model_providers import (
@@ -33,6 +34,7 @@ from swarmkit_runtime.model_providers import (
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
+from swarmkit_runtime.review import FileReviewQueue
 
 from ._knowledge import build_pack, find_repo_root
 from ._render import render_errors, render_success, should_colour
@@ -291,6 +293,115 @@ def knowledge_pack(
         output.write_text(pack, encoding="utf-8")
         return
     typer.echo(pack, nl=False)
+
+
+# ---- review + gaps -------------------------------------------------------
+
+review_app = typer.Typer(help="Human-in-the-loop review queue.")
+app.add_typer(review_app, name="review")
+
+
+@review_app.command("list")
+def review_list(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """List pending review items."""
+
+    queue = FileReviewQueue(workspace_path.resolve())
+    pending = queue.list_pending()
+    if not pending:
+        typer.echo("No pending reviews.")
+        return
+    for item in pending:
+        typer.echo(f"  {item.id[:8]}  {item.agent_id:<16} {item.skill_id:<24} {item.reason}")
+
+
+@review_app.command("show")
+def review_show(
+    item_id: str,
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Show full details of a review item."""
+
+    queue = FileReviewQueue(workspace_path.resolve())
+    for item in queue.list_all():
+        if item.id.startswith(item_id):
+            typer.echo(f"ID:       {item.id}")
+            typer.echo(f"Agent:    {item.agent_id}")
+            typer.echo(f"Skill:    {item.skill_id}")
+            typer.echo(f"Status:   {item.status}")
+            typer.echo(f"Reason:   {item.reason}")
+            typer.echo(f"Output:   {json.dumps(item.output, indent=2)}")
+            typer.echo(f"Verdict:  {json.dumps(item.verdict, indent=2)}")
+            return
+    _stderr(f"Review item '{item_id}' not found.")
+    raise typer.Exit(1)
+
+
+@review_app.command("approve")
+def review_approve(
+    item_id: str,
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Approve a pending review item."""
+
+    queue = FileReviewQueue(workspace_path.resolve())
+    for item in queue.list_all():
+        if item.id.startswith(item_id):
+            queue.resolve(item.id, "approved")
+            typer.echo(f"✓ Approved {item.id[:8]}")
+            return
+    _stderr(f"Review item '{item_id}' not found.")
+    raise typer.Exit(1)
+
+
+@review_app.command("reject")
+def review_reject(
+    item_id: str,
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Reject a pending review item."""
+
+    queue = FileReviewQueue(workspace_path.resolve())
+    for item in queue.list_all():
+        if item.id.startswith(item_id):
+            queue.resolve(item.id, "rejected")
+            typer.echo(f"✗ Rejected {item.id[:8]}")
+            return
+    _stderr(f"Review item '{item_id}' not found.")
+    raise typer.Exit(1)
+
+
+@app.command()
+def gaps(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """List recorded skill gaps."""
+
+    log = SkillGapLog(workspace_path.resolve())
+    gap_list = log.list_gaps()
+    if not gap_list:
+        typer.echo("No skill gaps recorded.")
+        return
+    for gap in gap_list:
+        typer.echo(
+            f"  {gap.skill_id:<24} {gap.pattern:<40} ({gap.occurrences}x) → {gap.suggested_action}"
+        )
 
 
 # ---- stubs for later milestones ----------------------------------------
