@@ -231,6 +231,79 @@ Pluggable storage (database, external system) is a follow-up — the
 interface is a simple `ReviewQueue` protocol with `submit`, `list`,
 `resolve` methods.
 
+## Human-in-the-loop — how the human is notified and closes the loop
+
+Three layers, shipped at different milestones:
+
+### Layer 1: inline HITL in `swarmkit run` (M4, task #48)
+
+For one-shot execution, the human is at the terminal. When a review
+is needed, the CLI **pauses and asks inline**:
+
+```
+⏸ Review required: code-quality-review returned low confidence (0.3)
+  Output: {"verdict": "pass", "confidence": 0.3, "reasoning": "..."}
+
+  [a]pprove  [r]eject  [s]how details
+> a
+✓ Approved. Continuing execution.
+```
+
+No async notification needed — the operator is watching. The
+execution resumes immediately on approval. On rejection, the
+rejection reason is fed back to the agent as feedback for retry.
+
+This is the primary HITL experience for `swarmkit run`.
+
+### Layer 2: `swarmkit review` CLI (M4, task #49)
+
+For reviewing items after execution or for batch review:
+
+```bash
+swarmkit review list
+#   ID        Agent      Skill              Reason
+#   a1b2c3    worker-1   code-quality       confidence 0.3
+#   d4e5f6    worker-2   security-scan      retries exhausted
+
+swarmkit review show a1b2c3     # full output + verdict + reasoning
+swarmkit review approve a1b2c3  # resolved
+swarmkit review reject a1b2c3   # resolved with feedback
+```
+
+Works for any review items — from `swarmkit run`, `swarmkit serve`,
+or items submitted programmatically.
+
+### Layer 3: notification plugins for `swarmkit serve` (M9, task #50)
+
+For long-running swarms, the human isn't at the terminal. Configured
+in `workspace.yaml`:
+
+```yaml
+notifications:
+  - type: slack
+    channel: "#swarm-reviews"
+    on: [review.pending]
+  - type: email
+    to: admin@company.com
+    on: [review.pending, gap.detected]
+  - type: webhook
+    url: https://internal.company.com/swarm-events
+    on: [review.pending]
+```
+
+The notification plugin shape is a `Protocol` with a `notify(event)`
+method. Built-in plugins: Slack, email, webhook. Custom plugins via
+entry points.
+
+The human gets notified, reviews in the v1.1 UI or via `swarmkit
+review` CLI, and the review queue's `resolve()` method closes the
+loop regardless of how the human was notified.
+
+### Layer 4: UI review dashboard (v1.1)
+
+Web interface for reviewing + resolving items. Out of scope for v1.0
+— CLI + notifications cover the launch.
+
 ## Skill gap log
 
 When decisions fail repeatedly or confidence stays low, the runtime
@@ -257,14 +330,20 @@ them. The authoring AI reads them when suggesting new skills.
 
 ### PR 1 (this PR): design note
 
-### PR 2: review queue + skill gap log primitives
+### PR 2: review queue + skill gap log primitives (done — PR #41)
 
-- `ReviewQueue` protocol + file-backed implementation
-- `SkillGapLog` protocol + JSONL implementation
-- CLI: `swarmkit review list/approve/reject`, `swarmkit gaps list`
-- Tests: submit, list, resolve review items; record + query skill gaps
+- `ReviewQueue` protocol + file-backed implementation ✓
+- `SkillGapLog` protocol + JSONL implementation ✓
+- Tests: submit, list, resolve review items; record + query skill gaps ✓
 
-### PR 3: decision skill runtime wiring
+### PR 3: inline HITL + review CLI (task #48, #49)
+
+- Inline HITL in compiler: pause `swarmkit run` when review needed,
+  prompt human in terminal, resume on approve/reject.
+- `swarmkit review list/show/approve/reject` CLI commands.
+- `swarmkit gaps list` CLI command.
+
+### PR 4: decision skill runtime wiring
 
 - Wire `llm_prompt` implementation type in the compiler (currently
   only `mcp_tool` and `composed` exist)
