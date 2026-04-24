@@ -40,7 +40,7 @@ dependencies = [
     "agent-sre>=3.2.0,<4.0",
 
     # MCP (design §18)
-    # "mcp>=1.0",
+    "mcp>=1.0",
 
     # LLM SDKs — one per ModelProvider built-in (design/details/model-provider-abstraction.md).
     # Only model_providers/ imports these; everything else goes through ModelProvider ABC.
