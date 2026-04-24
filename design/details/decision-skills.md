@@ -299,6 +299,46 @@ The human gets notified, reviews in the v1.1 UI or via `swarmkit
 review` CLI, and the review queue's `resolve()` method closes the
 loop regardless of how the human was notified.
 
+### Process death and recovery
+
+**`swarmkit run` (one-shot):** process dies mid-execution or while
+waiting for HITL → session is lost. Same as closing any terminal
+command. No recovery needed — the user re-runs.
+
+**`swarmkit serve` (persistent — M9):** process death must be
+recoverable. Three mechanisms:
+
+1. **Review items persist to disk.** `FileReviewQueue` writes JSON
+   files immediately. If the process dies after submitting a review
+   item, the item survives and can be resolved after restart.
+
+2. **Execution state is checkpointed.** LangGraph's `SqliteSaver`
+   checkpoints every graph step to `.swarmkit/state/<topology>.db`.
+   On restart, execution resumes from the last checkpoint.
+
+3. **HITL is non-blocking in serve mode.** Unlike `swarmkit run`
+   (which blocks the terminal), `swarmkit serve` uses
+   **checkpoint-based HITL**: submit the review item → checkpoint
+   graph state as `"paused:review:<item-id>"` → release the
+   execution slot. When the review is resolved (via CLI, webhook, or
+   UI), the runtime loads the checkpoint and resumes execution with
+   the review decision. The process can die and restart at any point
+   in this flow.
+
+```
+Execution → HITL gate → submit review (persisted)
+                       → checkpoint state as "paused:review:abc123"
+                       → process can safely die here
+
+Process restarts (or never died)
+  → scan reviews/ for resolved items
+  → find matching checkpoint
+  → resume execution with the decision
+```
+
+This is M9 scope — the `SqliteSaver` checkpointer and non-blocking
+HITL are wired alongside `swarmkit serve`.
+
 ### Layer 4: UI review dashboard (v1.1)
 
 Web interface for reviewing + resolving items. Out of scope for v1.0
