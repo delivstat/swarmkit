@@ -44,6 +44,7 @@ def compile_topology(
     model_provider: ModelProviderProtocol | None = None,
     provider_registry: ProviderRegistry | None = None,
     governance: GovernanceProvider,
+    mcp_manager: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -55,13 +56,14 @@ def compile_topology(
     Pass ``provider_registry`` for per-agent model resolution (each agent
     resolves to its own provider based on ``model.provider``). Pass
     ``model_provider`` as a shortcut when all agents share one provider.
+    Pass ``mcp_manager`` for MCP tool execution.
     """
     graph: StateGraph[Any] = StateGraph(SwarmState)
     agents = _collect_agents(topology.root)
 
     for agent in agents.values():
         agent_provider = _resolve_agent_provider(agent, provider_registry, model_provider)
-        node_fn = _build_agent_node(agent, agent_provider, governance, agents)
+        node_fn = _build_agent_node(agent, agent_provider, governance, agents, mcp_manager)
         graph.add_node(agent.id, node_fn)
 
     graph.add_edge(START, topology.root.id)
@@ -115,6 +117,7 @@ def _build_agent_node(
     model_provider: ModelProviderProtocol,
     governance: GovernanceProvider,
     all_agents: dict[str, ResolvedAgent],
+    mcp_manager: Any = None,
 ) -> Any:
     """Build an async node function for one agent."""
 
@@ -236,7 +239,9 @@ def _build_agent_node(
             }
 
         # Check for skill tool calls (llm_prompt skills)
-        skill_result = await _handle_skill_tool_calls(response, agent, model_provider, model_name)
+        skill_result = await _handle_skill_tool_calls(
+            response, agent, model_provider, model_name, mcp_manager
+        )
         if skill_result is not None:
             await governance.record_event(
                 AuditEvent(
@@ -446,15 +451,16 @@ def _build_prompt_messages(
 def _build_tools(agent: ResolvedAgent) -> list[ToolSpec]:
     """Map an agent's executable skills + children to ToolSpec objects.
 
-    Only ``llm_prompt`` skills are included — they can be executed by
-    the skill executor. ``mcp_tool`` skills are excluded until M5.
+    ``llm_prompt`` and ``mcp_tool`` skills are included. ``composed``
+    skills are excluded (panel aggregation is invoked differently).
     """
     tools: list[ToolSpec] = []
 
+    _executable_types = {"llm_prompt", "mcp_tool"}
     for skill in agent.skills:
         impl = skill.raw.implementation
         impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
-        if impl_type == "llm_prompt":
+        if impl_type in _executable_types:
             desc = getattr(skill, "description", "") or skill.id
             tools.append(ToolSpec(name=skill.id, description=desc))
 
