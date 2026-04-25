@@ -499,6 +499,26 @@ def run(
         typer.echo(result.output)
 
 
+# ---- knowledge-server ----------------------------------------------------
+
+
+@app.command(name="knowledge-server")
+def knowledge_server(
+    repo: Annotated[
+        Path | None,
+        typer.Option(
+            "--repo",
+            help="Override the repo root (default: auto-detected).",
+            show_default=False,
+        ),
+    ] = None,
+) -> None:
+    """Launch the SwarmKit Knowledge MCP Server (stdio)."""
+    from swarmkit_runtime.knowledge._server import run_server  # noqa: PLC0415
+
+    run_server(repo_root=repo.resolve() if repo else None)
+
+
 # ---- stubs for later milestones ------------------------------------------
 
 
