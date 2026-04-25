@@ -123,7 +123,16 @@ def _write_files(base_dir: str, files: dict[str, str]) -> str:
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(content, encoding="utf-8")
         written.append(rel_path)
-    return f"Wrote {len(written)} files: {', '.join(written)}"
+
+    validation = _validate_workspace(str(base))
+    if "valid" in validation and "0 errors" in validation:
+        return f"Wrote {len(written)} files: {', '.join(written)}. {validation}"
+
+    return (
+        f"Wrote {len(written)} files but validation FAILED.\n"
+        f"{validation}\n"
+        f"Fix the errors above and call write_files again with corrected content."
+    )
 
 
 def _read_workspace(workspace_path: str) -> str:
