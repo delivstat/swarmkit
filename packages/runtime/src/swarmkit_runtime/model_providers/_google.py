@@ -143,6 +143,11 @@ def _to_google_config(
         kwargs["system_instruction"] = request.system
     if request.tools:
         kwargs["tools"] = _to_google_tools(request)
+        kwargs["tool_config"] = gtypes.ToolConfig(
+            function_calling_config=gtypes.FunctionCallingConfig(
+                mode=gtypes.FunctionCallingConfigMode.AUTO,
+            ),
+        )
     return gtypes.GenerateContentConfig(**kwargs)
 
 

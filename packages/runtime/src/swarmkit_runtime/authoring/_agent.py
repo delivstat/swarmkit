@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -75,23 +74,8 @@ def run_authoring_session(
 
         agent_text = _extract_text(response)
         if agent_text:
-            # If the model wrote YAML in its text instead of calling write_files,
-            # extract the files and offer to write them.
-            extracted = _extract_yaml_files(agent_text)
-            if extracted and workspace_path:
-                _print_agent(agent_text)
-                _print_agent(f"I detected {len(extracted)} YAML files in the response.")
-                _print_agent(_format_file_plan(extracted))
-                if _read_confirm():
-                    result = execute_tool(
-                        "write_files",
-                        {"base_dir": str(workspace_path), "files": extracted},
-                    )
-                    _print_status(result)
-                conversation.append(Message(role="assistant", content=agent_text))
-            else:
-                conversation.append(Message(role="assistant", content=agent_text))
-                _print_agent(agent_text)
+            conversation.append(Message(role="assistant", content=agent_text))
+            _print_agent(agent_text)
 
 
 async def _agent_turn(
@@ -222,149 +206,6 @@ def _handle_tool_call(tc: ContentBlock) -> str:
     if tool_name == "validate_workspace":
         _print_status(f"  validation: {result}")
     return result
-
-
-# ---- YAML extraction from text ------------------------------------------
-
-
-def _extract_yaml_files(text: str) -> dict[str, str] | None:
-    """Extract YAML file contents from model text output.
-
-    Detects patterns like:
-      **`path/to/file.yaml`**
-      ```yaml
-      content...
-      ```
-    or:
-      # path/to/file.yaml
-      ```yaml
-      content...
-      ```
-
-    Returns a dict of {relative_path: yaml_content} if files found.
-    """
-
-    files: dict[str, str] = {}
-
-    # Pattern: **`filename.yaml`** followed by ```yaml block
-    # or: # filename.yaml comment inside ```yaml block
-    # First try: extract from write_files({...}) Python code block
-    python_files = _extract_from_write_files_call(text)
-    if python_files:
-        return python_files
-
-    blocks = re.split(r"```ya?ml\s*\n", text)
-    if len(blocks) < 2:
-        return None
-
-    for i in range(1, len(blocks)):
-        yaml_content = blocks[i].split("```")[0].strip()
-        if not yaml_content or "apiVersion:" not in yaml_content:
-            continue
-
-        # First try: look for a # path/file.yaml comment INSIDE the yaml block
-        # (models often put the filename as a comment on the first line)
-        first_line = yaml_content.split("\n")[0]
-        inner_match = re.match(r"^#\s*(\S+\.ya?ml)\s*$", first_line)
-        if inner_match:
-            path = _normalize_path(inner_match.group(1))
-            content_without_comment = "\n".join(yaml_content.split("\n")[1:]).strip()
-            files[path] = content_without_comment + "\n"
-            continue
-
-        # Fallback: look in preceding text or infer from content
-        preceding = blocks[i - 1]
-        fallback_path = _find_filename(preceding, yaml_content)
-        if fallback_path:
-            files[fallback_path] = yaml_content + "\n"
-
-    return files if files else None
-
-
-def _extract_from_write_files_call(text: str) -> dict[str, str] | None:
-    """Extract files from a write_files({...}) Python code block.
-
-    Some models write the tool call as Python code instead of using the
-    structured tool API. This parses the dict literal from the code.
-    """
-    # Match ```python block containing write_files(
-    python_match = re.search(r"```python\s*\n(.*?)```", text, re.DOTALL)
-    if not python_match:
-        return None
-
-    code = python_match.group(1)
-    if "write_files" not in code:
-        return None
-
-    # Extract the triple-quoted strings as file contents
-    files: dict[str, str] = {}
-    # Pattern: "path/to/file.yaml": """content"""
-    pattern = r'"([^"]+\.ya?ml)"\s*:\s*"""(.*?)"""'
-    for match in re.finditer(pattern, code, re.DOTALL):
-        path = _normalize_path(match.group(1))
-        content = match.group(2).strip() + "\n"
-        if "apiVersion:" in content:
-            files[path] = content
-
-    return files if files else None
-
-
-def _normalize_path(path: str) -> str:
-    """Strip workspace-name prefix from paths like 'my-swarm/skills/x.yaml'."""
-    known_subdirs = {"topologies", "archetypes", "skills", "triggers", "schedules"}
-    parts = path.split("/")
-    if len(parts) <= 1:
-        return path
-    # If first part is a known subdir, path is already relative
-    if parts[0] in known_subdirs:
-        return path
-    # If second part is a known subdir or first part looks like a workspace name,
-    # strip the first segment
-    if parts[1] in known_subdirs or parts[0].endswith(("-swarm", "-workspace", "-review")):
-        return "/".join(parts[1:])
-    # workspace.yaml at root of workspace-named dir
-    if parts[-1] == "workspace.yaml":
-        return "workspace.yaml"
-    return path
-
-
-def _find_filename(preceding_text: str, yaml_content: str) -> str | None:
-    """Extract a .yaml filename from text preceding a code block."""
-    # Match **`path/file.yaml`** or `path/file.yaml`
-    matches = re.findall(r"`([^`]*\.ya?ml)`", preceding_text)
-    if matches:
-        path = matches[-1]
-        parts = path.split("/")
-        if len(parts) > 1 and parts[0].endswith("-swarm"):
-            path = "/".join(parts[1:])
-        return str(path)
-
-    # Match # path/file.yaml comment
-    matches = re.findall(r"#\s*(\S+\.ya?ml)", preceding_text)
-    if matches:
-        return str(matches[-1])
-
-    # Infer from YAML content
-    return _infer_filename_from_content(yaml_content)
-
-
-def _infer_filename_from_content(yaml_content: str) -> str | None:
-    """Guess filename from YAML kind + id/name fields."""
-    kind_map = {
-        "Workspace": ("", "workspace"),
-        "Topology": ("topologies", "name"),
-        "Archetype": ("archetypes", "id"),
-        "Skill": ("skills", "id"),
-    }
-    for kind, (subdir, field) in kind_map.items():
-        if f"kind: {kind}" not in yaml_content:
-            continue
-        if kind == "Workspace":
-            return "workspace.yaml"
-        match = re.search(rf"{field}:\s*(\S+)", yaml_content)
-        name = match.group(1) if match else kind.lower()
-        return f"{subdir}/{name}.yaml"
-    return None
 
 
 # ---- UI helpers ---------------------------------------------------------
