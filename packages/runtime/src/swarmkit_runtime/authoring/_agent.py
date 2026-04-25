@@ -248,6 +248,11 @@ def _extract_yaml_files(text: str) -> dict[str, str] | None:
 
     # Pattern: **`filename.yaml`** followed by ```yaml block
     # or: # filename.yaml comment inside ```yaml block
+    # First try: extract from write_files({...}) Python code block
+    python_files = _extract_from_write_files_call(text)
+    if python_files:
+        return python_files
+
     blocks = re.split(r"```ya?ml\s*\n", text)
     if len(blocks) < 2:
         return None
@@ -272,6 +277,34 @@ def _extract_yaml_files(text: str) -> dict[str, str] | None:
         fallback_path = _find_filename(preceding, yaml_content)
         if fallback_path:
             files[fallback_path] = yaml_content + "\n"
+
+    return files if files else None
+
+
+def _extract_from_write_files_call(text: str) -> dict[str, str] | None:
+    """Extract files from a write_files({...}) Python code block.
+
+    Some models write the tool call as Python code instead of using the
+    structured tool API. This parses the dict literal from the code.
+    """
+    # Match ```python block containing write_files(
+    python_match = re.search(r"```python\s*\n(.*?)```", text, re.DOTALL)
+    if not python_match:
+        return None
+
+    code = python_match.group(1)
+    if "write_files" not in code:
+        return None
+
+    # Extract the triple-quoted strings as file contents
+    files: dict[str, str] = {}
+    # Pattern: "path/to/file.yaml": """content"""
+    pattern = r'"([^"]+\.ya?ml)"\s*:\s*"""(.*?)"""'
+    for match in re.finditer(pattern, code, re.DOTALL):
+        path = _normalize_path(match.group(1))
+        content = match.group(2).strip() + "\n"
+        if "apiVersion:" in content:
+            files[path] = content
 
     return files if files else None
 
