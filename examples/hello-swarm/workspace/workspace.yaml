@@ -4,3 +4,9 @@ metadata:
   id: hello-swarm
   name: Hello Swarm
   description: Minimal two-agent workspace — the SwarmKit on-ramp example.
+mcp_servers:
+  # Backs the say-hello skill. The command runs with cwd=workspace root,
+  # so `hello_world_server.py` resolves to the file beside this manifest.
+  - id: hello-world
+    transport: stdio
+    command: ["uv", "run", "python", "hello_world_server.py"]

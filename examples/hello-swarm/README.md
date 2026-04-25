@@ -31,23 +31,43 @@ The first exits `0` and prints the resolved agent tree. The second exits
 `1` and prints an `agent.unknown-archetype` error with a file pointer and
 a `try:` line.
 
-**Today "run" means validate + resolve + inspect** — the execution engine
-lands in Milestone 2+ (see `design/IMPLEMENTATION-PLAN.md`). Edit any
-file under `workspace/` and re-run the command to see the error it
-produces.
+Once `validate` is happy, run the topology end-to-end. Pick a provider
+via env vars (or rely on the agent's declared provider):
+
+```bash
+SWARMKIT_PROVIDER=google SWARMKIT_MODEL=gemini-2.5-flash \
+  uv run swarmkit run examples/hello-swarm/workspace hello \
+  --input "Greet the engineering team"
+```
+
+The runtime launches `hello_world_server.py` as a stdio MCP subprocess,
+the supervisor delegates to the greeter worker, and the greeter calls
+the `say-hello` skill. The skill resolves to the `hello-world.greet`
+MCP tool — the literal greeting the server returns is the topology's
+output. Other env-var combinations work too: `SWARMKIT_PROVIDER=anthropic`
+with a `claude-*` model, or `SWARMKIT_PROVIDER=openrouter` against an
+OpenRouter-hosted model.
+
+`just demo-run` runs the same command without the env-var preamble — set
+your preferred provider env once and the demo just works.
 
 ## The pieces
 
 ```
 workspace/
-├── workspace.yaml              # id + metadata for the workspace
+├── workspace.yaml              # id + mcp_servers (declares hello-world)
+├── hello_world_server.py       # FastMCP stdio server, one tool: greet
 ├── topologies/hello.yaml       # root supervisor + one worker child
 ├── archetypes/greeter.yaml     # worker defaults: model, prompt, skills
-└── skills/say-hello.yaml       # capability skill (MCP tool reference)
+└── skills/say-hello.yaml       # capability skill → hello-world.greet
 ```
 
-**`workspace.yaml`** — just identity. The resolver finds everything else
-by walking the directory structure.
+**`workspace.yaml`** — identity plus the workspace's MCP server registry.
+Skills reference servers by id; the runtime launches stdio servers as
+subprocesses with `cwd` set to this directory, so the path
+`hello_world_server.py` resolves naturally. The resolver still finds
+topologies / archetypes / skills by walking the directory structure
+(`.yaml` only — the `.py` server file is ignored by discovery).
 
 **`topologies/hello.yaml`** — the graph. Two agents: a root supervisor
 with model/prompt declared inline, and a child worker that inherits
@@ -59,14 +79,16 @@ can override individual fields — see
 `packages/runtime/tests/fixtures/workspaces/resolved-tree/topologies/review.yaml`
 for inheritance + override patterns.
 
-**`skills/say-hello.yaml`** — a capability skill pointing at an MCP tool.
-Skills are the only extension primitive; category (`capability`,
-`decision`, `coordination`, `persistence`) tells the runtime how they're
-invoked.
+**`skills/say-hello.yaml`** — a capability skill pointing at the
+`hello-world` MCP server's `greet` tool. Skills are the only extension
+primitive; category (`capability`, `decision`, `coordination`,
+`persistence`) tells the runtime how they're invoked.
 
-Execution isn't wired up yet — that's Milestone 2+. For now, `swarmkit
-validate` proves the artefacts load, resolve, and type-check as a
-coherent whole.
+**`hello_world_server.py`** — the smallest reasonable MCP server, using
+`mcp.server.fastmcp.FastMCP`. One tool, `greet(audience)`, that returns
+a static greeting. Real servers expose dozens of tools and back them by
+APIs, databases, or filesystems — this file just proves the wire works
+without distraction.
 
 ## The broken variant
 
