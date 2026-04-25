@@ -1,7 +1,0 @@
-apiVersion: swarmkit/v1
-kind: Skill
-metadata:
-  name: code-diff-read
-  version: 0.1.0
-category: capability
-description: Reads the code diff.

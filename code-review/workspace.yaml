@@ -1,6 +1,0 @@
-apiVersion: swarmkit/v1
-kind: Workspace
-metadata:
-  id: code-review
-  name: Code Review
-  description: A code review workspace for Python code.
