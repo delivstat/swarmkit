@@ -62,6 +62,9 @@ def run_authoring_session(
 
         conversation.append(Message(role="user", content=user_input))
 
+        # Detect if user is confirming/approving → force tool calling
+        force_tools = _is_confirmation(user_input)
+
         response = asyncio.run(
             _agent_turn(
                 model_provider=model_provider,
@@ -69,6 +72,7 @@ def run_authoring_session(
                 system_prompt=system_prompt,
                 tools=tools,
                 conversation=conversation,
+                force_tool_call=force_tools,
             )
         )
 
@@ -85,15 +89,20 @@ async def _agent_turn(
     system_prompt: str,
     tools: list[Any],
     conversation: list[Message],
+    force_tool_call: bool = False,
 ) -> CompletionResponse:
     """Run one agent turn, handling tool calls in a loop."""
     messages = list(conversation)
     use_tools: tuple[Any, ...] | None = tuple(tools) if tools else None
 
     response: CompletionResponse | None = None
-    for _ in range(_MAX_TOOL_ROUNDS):
+    for round_num in range(_MAX_TOOL_ROUNDS):
+        # Force tool calling on first round if user confirmed
+        extra = {}
+        if force_tool_call and round_num == 0 and use_tools:
+            extra["tool_choice"] = "required"
         response = await _safe_complete(
-            model_provider, model_name, system_prompt, messages, use_tools
+            model_provider, model_name, system_prompt, messages, use_tools, extra
         )
         if use_tools is not None and not response.content:
             use_tools = None
@@ -131,6 +140,7 @@ async def _safe_complete(
     system_prompt: str,
     messages: list[Message],
     tools: tuple[Any, ...] | None,
+    extra: dict[str, Any] | None = None,
 ) -> Any:
     """Call the model, falling back to no-tools on tool-related errors."""
     try:
@@ -140,6 +150,7 @@ async def _safe_complete(
                 messages=tuple(messages),
                 system=system_prompt,
                 tools=tools,
+                extra=extra,
             )
         )
     except Exception:
@@ -206,6 +217,29 @@ def _handle_tool_call(tc: ContentBlock) -> str:
     if tool_name == "validate_workspace":
         _print_status(f"  validation: {result}")
     return result
+
+
+def _is_confirmation(text: str) -> bool:
+    """Detect if the user's message is confirming/approving generation."""
+    lower = text.strip().lower()
+    confirmations = [
+        "yes",
+        "y",
+        "confirmed",
+        "go ahead",
+        "proceed",
+        "generate",
+        "write",
+        "create",
+        "looks good",
+        "approved",
+        "confirm",
+        "do it",
+        "ok",
+        "sure",
+        "please",
+    ]
+    return any(c in lower for c in confirmations)
 
 
 # ---- UI helpers ---------------------------------------------------------
