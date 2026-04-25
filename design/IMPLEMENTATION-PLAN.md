@@ -24,7 +24,7 @@ status: active
 |---|-----------|-----------|
 | 0 ✅ | Schemas nailed down (done 2026-04-21) | `just demo-schema` loads every fixture in both Python and TS with full drift protection. |
 | 1 ✅ | Topology loading & resolution | `swarmkit validate path/to/topology.yaml` prints a resolved tree; archetype and skill refs resolved. |
-| 2 | `GovernanceProvider` abstraction + AGT Tier 1 | Policy decisions roundtrip through `AGTGovernanceProvider` for a real scope check; mock provider used in unit tests. |
+| 2 🟡 | `GovernanceProvider` abstraction + AGT Tier 1 | Policy decisions roundtrip through `AGTGovernanceProvider` for a real scope check; mock provider used in unit tests. |
 | 2.5 ✅ | `ModelProvider` abstraction | Topology with two agents on different providers (e.g. Anthropic leader + Ollama worker) loads, `just demo-model-providers` prints green per installed provider. |
 | 3 ✅ | LangGraph compiler — capability + coordination | `swarmkit run hello-topology.yaml` executes a two-agent swarm and prints the final state. |
 | 3.5 ✅ | Conversational authoring (v1) | `swarmkit init` in an empty dir produces a working workspace through conversation. |
@@ -97,18 +97,19 @@ Run in parallel with the milestones above:
 
 **Design reference:** §8.5, §8.6 Tier 1, §16.2, §16.3.
 
-**Status: 🟡 PARTIAL.** The `GovernanceProvider` interface, `MockGovernanceProvider`, and basic middleware pipeline shipped as prerequisites for M3/M4. AGT integration (real policy engine) is the remaining work.
+**Status: 🟡 NEARLY COMPLETE.** `AGTGovernanceProvider` is fully implemented (194 lines) wrapping real AGT v3.x — `AsyncPolicyEvaluator` for scope/policy checks, `FlightRecorder` for append-only hash-chained audit, `AgentIdentity` for DIDs. 10 integration tests pass against real AGT. Remaining gap: `swarmkit run` hardcodes `MockGovernanceProvider()` instead of selecting based on `workspace.yaml`'s `governance:` block.
 
 **Features:**
 
-- [x] `design/governance-provider-interface.md` — interface defined in `governance/` module; method signatures (`evaluate_action`, `record_event`, `get_trust_score`) stabilised through M3–M4 usage.
-- [ ] `feat(governance): AGTGovernanceProvider policy evaluation` — wraps agent-os-kernel for scope checks.
-- [ ] `feat(governance): AGTGovernanceProvider audit` — wraps Agent SRE for append-only event recording.
+- [x] `design/governance-provider-interface.md` — interface defined in `governance/` module; method signatures (`evaluate_action`, `record_event`, `get_trust_score`, `verify_identity`) stabilised through M3–M4 usage.
+- [x] `feat(governance): AGTGovernanceProvider policy evaluation` — wraps `agent-os-kernel.AsyncPolicyEvaluator` for Tier 1 deterministic scope + policy checks. Tested against real AGT with YAML policy rules.
+- [x] `feat(governance): AGTGovernanceProvider audit` — wraps `agent-control-plane.FlightRecorder` for append-only, hash-chained audit. Tamper-evident `entry_hash` verified in tests.
 - [x] `feat(governance): MockGovernanceProvider` — deterministic, assertable, used in all unit tests and the `swarmkit run` CLI path.
 - [x] `feat(runtime): middleware pipeline for skill invocation` — every skill call routes through `evaluate_action` before execution (wired in M4, PR #43).
-- [ ] `test(governance): separation-of-powers invariants` — executive cannot modify audit, cannot bypass policy. Blocked on AGT integration.
+- [x] `test(governance): separation-of-powers integration tests` — 10 tests against real AGT: scope deny, policy deny, unknown agent deny, audit recording (both allowed + blocked), identity verification, trust score, full M2 exit demo.
+- [ ] `feat(cli): wire governance provider selection in swarmkit run` — CLI currently hardcodes `MockGovernanceProvider()`; should read `workspace.yaml` `governance:` block and instantiate `AGTGovernanceProvider.from_config()` when `provider: agt`.
 
-**Exit demo:** a unit-test swarm where a worker tries to invoke a skill it lacks the scope for; policy denies; audit records the attempt; test asserts both.
+**Exit demo (partially verified):** `test_agt_exit_demo_deny_and_audit` — worker requests `deploy:prod` scope it doesn't have; AGT policy denies; FlightRecorder audit records the denial with tamper-evident hash chain. Full end-to-end through `swarmkit run` with AGT governance awaits CLI wiring.
 
 ## Milestone 2.5 — Model provider abstraction
 
@@ -207,7 +208,7 @@ Run in parallel with the milestones above:
 - [x] `feat(cli): swarmkit author mcp-server` — conversational MCP server authoring. Landed alongside M5 MCP work.
 - [x] `design/details/knowledge-curator.md` — Knowledge Curator topology design. PR #46. KB architecture: dedicated curator topology, workers read-only, integration via Qdrant/Kreuzberg/Notion MCP servers.
 - [x] `design/details/skill-registry.md` — community skill import + discovery design. Covers Agent Skills (SKILL.md) + MCP ecosystems.
-- [ ] `feat(mcp): MCP calls gated through GovernanceProvider` — every `call_tool` goes through `evaluate_action` before execution (§18.1). Blocked on M2 AGT integration for real enforcement; MockGovernanceProvider pass-through is wired.
+- [ ] `feat(mcp): MCP calls gated through GovernanceProvider` — every `call_tool` goes through `evaluate_action` before execution (§18.1). AGT integration is done; this just needs the skill executor to call `governance.evaluate_action` before `mcp_manager.call_tool`, and the CLI to wire `AGTGovernanceProvider` when `workspace.governance.provider == "agt"` (same CLI wiring gap as M2).
 - [ ] `feat(mcp): sandboxed server supervisor` — Docker-based, matches §8.8 sandboxing requirement. `sandboxed: true` is accepted by the schema but ignored at runtime.
 - [ ] `feat(skills): github-repo-read reference capability skill` — wraps a public MCP server (e.g. `@modelcontextprotocol/server-github`).
 - [ ] `feat(skills): slack-notify reference capability skill` — wraps Slack MCP (or local mock).
