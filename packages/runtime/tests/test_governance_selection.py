@@ -1,15 +1,15 @@
 """Tests for CLI governance provider selection (M2 wiring).
 
-Verifies that ``_build_governance`` reads the workspace's ``governance:``
-block and instantiates the correct provider. Does not hit real AGT —
-the AGT integration tests in ``test_agt_governance.py`` cover that.
+Verifies that ``build_governance`` (from ``_workspace_runtime``) reads
+the workspace's ``governance:`` block and instantiates the correct
+provider. Does not hit real AGT — test_agt_governance.py covers that.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from swarmkit_runtime.cli import _build_governance
+from swarmkit_runtime._workspace_runtime import build_governance
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.resolver import resolve_workspace
 
@@ -21,7 +21,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "workspaces"
 def test_absent_governance_block_returns_mock() -> None:
     """hello-swarm workspace has no governance block → MockGovernanceProvider."""
     workspace = resolve_workspace(EXAMPLE_WS)
-    gov = _build_governance(workspace, EXAMPLE_WS)
+    gov = build_governance(workspace, EXAMPLE_WS)
     assert isinstance(gov, MockGovernanceProvider)
 
 
@@ -47,7 +47,7 @@ def test_agt_governance_returns_agt_provider(tmp_path: Path) -> None:
     policies_dir.mkdir()
 
     workspace = resolve_workspace(ws_root)
-    gov = _build_governance(workspace, ws_root)
+    gov = build_governance(workspace, ws_root)
     assert isinstance(gov, AGTGovernanceProvider)
 
 
@@ -66,7 +66,7 @@ def test_mock_governance_explicit_returns_mock(tmp_path: Path) -> None:
     )
 
     workspace = resolve_workspace(ws_root)
-    gov = _build_governance(workspace, ws_root)
+    gov = build_governance(workspace, ws_root)
     assert isinstance(gov, MockGovernanceProvider)
 
 
@@ -85,5 +85,5 @@ def test_custom_governance_falls_back_to_mock(tmp_path: Path) -> None:
     )
 
     workspace = resolve_workspace(ws_root)
-    gov = _build_governance(workspace, ws_root)
+    gov = build_governance(workspace, ws_root)
     assert isinstance(gov, MockGovernanceProvider)
