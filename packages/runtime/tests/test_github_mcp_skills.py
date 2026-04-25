@@ -79,6 +79,6 @@ def test_github_mcp_topology_compiles() -> None:
     topology = workspace.topologies["github-read"]
     registry = ProviderRegistry()
     registry.register(MockModelProvider())
-    governance = MockGovernanceProvider()
+    governance = MockGovernanceProvider(allow_all=True)
     graph = compile_topology(topology, provider_registry=registry, governance=governance)
     assert graph is not None

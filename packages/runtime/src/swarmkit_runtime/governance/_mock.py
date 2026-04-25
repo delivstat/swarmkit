@@ -30,9 +30,11 @@ class MockGovernanceProvider(GovernanceProvider):
         self,
         *,
         allowed_scopes: frozenset[str] = frozenset(),
+        allow_all: bool = False,
         trust_scores: dict[str, float] | None = None,
     ) -> None:
         self._allowed_scopes = allowed_scopes
+        self._allow_all = allow_all
         self._trust_scores = trust_scores or {}
         self._events: list[AuditEvent] = []
 
@@ -46,6 +48,14 @@ class MockGovernanceProvider(GovernanceProvider):
         scopes_required: frozenset[str],
         context: dict[str, object] | None = None,
     ) -> PolicyDecision:
+        if self._allow_all:
+            return PolicyDecision(
+                allowed=True,
+                reason=f"mock: agent '{agent_id}' allowed (no enforcement)",
+                tier=1,
+                scopes_granted=scopes_required,
+                scopes_denied=frozenset(),
+            )
         granted = scopes_required & self._allowed_scopes
         denied = scopes_required - self._allowed_scopes
         if denied:
