@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler._skill_executor import execute_skill
 from swarmkit_runtime.model_providers import (
     MockModelProvider,
@@ -81,3 +82,33 @@ async def test_mcp_tool_without_manager_names_server_and_remediation() -> None:
     assert "validate_code_review" in result
     assert "workspace.yaml" in result
     assert "mcp_servers" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_denied_by_governance() -> None:
+    """When governance denies an MCP tool call, the result says DENIED
+    without reaching the MCP server.
+    """
+    skill = _get_skill("code-quality-review")
+    # Inject iam scopes so governance has something to deny
+    original_iam = getattr(skill.raw, "iam", None)
+    try:
+        skill.raw.__dict__["iam"] = {"required_scopes": ["mcp:rynko-flow"]}
+        mock_model = MockModelProvider()
+        gov = MockGovernanceProvider(allowed_scopes=frozenset())
+        result = await execute_skill(
+            skill,
+            input_text="anything",
+            model_provider=mock_model,
+            model_name="mock",
+            mcp_manager=None,
+            governance=gov,
+            agent_id="test-agent",
+        )
+        assert "DENIED" in result
+        assert "test-agent" in result
+    finally:
+        if original_iam is None:
+            skill.raw.__dict__.pop("iam", None)
+        else:
+            skill.raw.__dict__["iam"] = original_iam
