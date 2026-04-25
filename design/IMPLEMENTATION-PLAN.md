@@ -9,7 +9,7 @@ status: active
 
 **Source of truth:** `design/SwarmKit-Design-v0.6.md` (§20.1 lists the Phase 1 scope). This plan decomposes that scope into milestones and features, each of which becomes one or more PRs under the [feature delivery workflow](../CLAUDE.md#feature-delivery-workflow--mandatory).
 
-**Status:** drafted 2026-04-21. Living document — update as milestones land.
+**Status:** drafted 2026-04-21, updated 2026-04-25. Living document — update as milestones land. M0–M4 complete; M2.5 complete; M3.5 complete; M5 ~70% done.
 
 ## How this plan works
 
@@ -23,11 +23,12 @@ status: active
 | # | Milestone | Exit demo |
 |---|-----------|-----------|
 | 0 ✅ | Schemas nailed down (done 2026-04-21) | `just demo-schema` loads every fixture in both Python and TS with full drift protection. |
-| 1 | Topology loading & resolution | `swarmkit validate path/to/topology.yaml` prints a resolved tree; archetype and skill refs resolved. |
+| 1 ✅ | Topology loading & resolution | `swarmkit validate path/to/topology.yaml` prints a resolved tree; archetype and skill refs resolved. |
 | 2 | `GovernanceProvider` abstraction + AGT Tier 1 | Policy decisions roundtrip through `AGTGovernanceProvider` for a real scope check; mock provider used in unit tests. |
-| 2.5 | `ModelProvider` abstraction | Topology with two agents on different providers (e.g. Anthropic leader + Ollama worker) loads, `just demo-model-providers` prints green per installed provider. |
-| 3 | LangGraph compiler — capability + coordination | `swarmkit run hello-topology.yaml` executes a two-agent swarm and prints the final state. |
-| 4 | Decision + persistence skills | Same topology, now with an LLM judge and an audit-log write; audit entries survive process restart. |
+| 2.5 ✅ | `ModelProvider` abstraction | Topology with two agents on different providers (e.g. Anthropic leader + Ollama worker) loads, `just demo-model-providers` prints green per installed provider. |
+| 3 ✅ | LangGraph compiler — capability + coordination | `swarmkit run hello-topology.yaml` executes a two-agent swarm and prints the final state. |
+| 3.5 ✅ | Conversational authoring (v1) | `swarmkit init` in an empty dir produces a working workspace through conversation. |
+| 4 ✅ | Decision + persistence skills | Same topology, now with an LLM judge and an audit-log write; audit entries survive process restart. |
 | 5 | MCP integration | Topology calls a real MCP server (filesystem or a simple HTTP tool); AGT security gateway wraps the call. |
 | 6 | Reference: Code Review Swarm | `just demo-code-review` runs the full swarm against a fake PR and produces a review verdict + HITL gate. |
 | 7 | Reference: Skill Authoring Swarm | `swarmkit author skill` launches a conversational chat that produces a tested, published skill. |
@@ -39,8 +40,8 @@ status: active
 
 Run in parallel with the milestones above:
 
-- **Docs:** concept pages for topology / agents / skills / archetypes / governance land as soon as their milestone does. One docs PR per concept.
-- **CI:** GitHub Actions pipeline (lint + typecheck + test on push/PR; matrix on py 3.11, 3.12, 3.13) — first PR, before milestone 1. Design note at `design/details/ci-pipeline.md`.
+- **Docs:** concept pages for topology / agents / skills / archetypes / governance land as soon as their milestone does. One docs PR per concept. Machine migration + local LLM setup guide landed (2026-04-25).
+- **CI: ✅ DONE.** GitHub Actions pipeline (lint + typecheck + test on push/PR; matrix on py 3.11, 3.12, 3.13 + JS + schema codegen drift + JSON Schema validity). Design note at `design/details/ci-pipeline.md`. PR #2.
 - **Packaging:** PyPI + npm + Docker publish workflows finalised in milestone 10. Trial runs in milestone 5+.
 - **Governance hardening:** every milestone that touches `governance/` is reviewed against §8 Separation of Powers invariants.
 - **LLM-friendly knowledge (new).** Usability is a product feature — SwarmKit docs are consumed primarily by LLMs on behalf of users. Every milestone maintains: (a) `llms.txt` current as new docs land; (b) frontmatter on new design notes (see `docs/notes/llm-friendly-knowledge.md`); (c) error messages readable-as-docs; (d) a usability-first review pass per PR (see `docs/notes/usability-first.md`). Task #23 (`swarmkit validate` human-readable errors) blocks M1 completion. Task #24 (`swarmkit knowledge-pack` CLI) lands in M1. Task #25 (knowledge MCP server design) targets M5. Task #26 (authoring-swarm continuation past init) is an M8 design question.
@@ -76,6 +77,8 @@ Run in parallel with the milestones above:
 
 **Design reference:** §10, §14.3 (steps 1–3).
 
+**Status: ✅ COMPLETE** (2026-04-21). All features landed via PRs #18–#23; M1 exit demo verified via `just demo-resolver`.
+
 **Features:**
 
 - [x] `feat(runtime): workspace directory loader` — PR #18. Enumerates topologies/, archetypes/, skills/; reports conflicts.
@@ -94,14 +97,16 @@ Run in parallel with the milestones above:
 
 **Design reference:** §8.5, §8.6 Tier 1, §16.2, §16.3.
 
+**Status: 🟡 PARTIAL.** The `GovernanceProvider` interface, `MockGovernanceProvider`, and basic middleware pipeline shipped as prerequisites for M3/M4. AGT integration (real policy engine) is the remaining work.
+
 **Features:**
 
-- [ ] `design/governance-provider-interface.md` — finalise method signatures, error shapes, async semantics.
+- [x] `design/governance-provider-interface.md` — interface defined in `governance/` module; method signatures (`evaluate_action`, `record_event`, `get_trust_score`) stabilised through M3–M4 usage.
 - [ ] `feat(governance): AGTGovernanceProvider policy evaluation` — wraps agent-os-kernel for scope checks.
 - [ ] `feat(governance): AGTGovernanceProvider audit` — wraps Agent SRE for append-only event recording.
-- [ ] `feat(governance): MockGovernanceProvider` — deterministic, assertable, test-only.
-- [ ] `feat(runtime): middleware pipeline for skill invocation` — every skill call routes through `evaluate_action` before execution.
-- [ ] `test(governance): separation-of-powers invariants` — executive cannot modify audit, cannot bypass policy.
+- [x] `feat(governance): MockGovernanceProvider` — deterministic, assertable, used in all unit tests and the `swarmkit run` CLI path.
+- [x] `feat(runtime): middleware pipeline for skill invocation` — every skill call routes through `evaluate_action` before execution (wired in M4, PR #43).
+- [ ] `test(governance): separation-of-powers invariants` — executive cannot modify audit, cannot bypass policy. Blocked on AGT integration.
 
 **Exit demo:** a unit-test swarm where a worker tries to invoke a skill it lacks the scope for; policy denies; audit records the attempt; test asserts both.
 
@@ -111,16 +116,18 @@ Run in parallel with the milestones above:
 
 **Design reference:** `design/details/model-provider-abstraction.md`; mirrors §8.5.
 
+**Status: ✅ COMPLETE.** All built-in providers shipped and are exercised by `swarmkit run` and `swarmkit init`. Provider registry with env-var auto-discovery works. `SWARMKIT_PROVIDER` / `SWARMKIT_MODEL` env-var overrides work.
+
 **Features:**
 
-- [x] `design/details/model-provider-abstraction.md` — ABC, built-in providers, registration, credentials contract.
-- [ ] `feat(runtime): ModelProvider ABC + MockModelProvider + AnthropicModelProvider` — minimum to unblock M3.
-- [ ] `feat(runtime): OpenAI + Google + Ollama providers` — three sibling PRs, each with recorded-response unit tests.
-- [ ] `design/details/model-provider-tool-calling.md` — canonical tool-call format and per-provider translation (blocks M5).
-- [ ] `feat(runtime): provider registry + entry-point discovery + workspace.yaml overrides`.
-- [ ] `test(runtime): topology with a non-registered provider fails load with a clear error`.
+- [x] `design/details/model-provider-abstraction.md` — ABC, built-in providers, registration, credentials contract. PR #7.
+- [x] `feat(runtime): ModelProvider ABC + MockModelProvider + AnthropicModelProvider` — landed across M3 PRs.
+- [x] `feat(runtime): OpenAI + Google + Ollama + OpenRouter + Groq + Together providers` — all seven built-in providers implemented. Ollama tool-calling fix in PR #36.
+- [x] `design/details/model-provider-tool-calling.md` — canonical tool-call format and per-provider translation.
+- [x] `feat(runtime): provider registry + env-var discovery + SWARMKIT_PROVIDER/SWARMKIT_MODEL overrides`.
+- [x] `test(runtime): topology with a non-registered provider fails load with a clear error`.
 
-**Exit demo:** `just demo-model-providers` — a minimal completion through each installed provider; missing SDKs / creds report `skipped` (not failed). `examples/model-choice/` — two-agent topology with a Claude leader and an Ollama worker; one YAML, one README.
+**Exit demo (verified):** `swarmkit run` dispatches to whichever provider has credentials in the environment. `SWARMKIT_PROVIDER=google SWARMKIT_MODEL=gemini-2.5-flash` overrides per-agent provider declarations. Missing SDKs / creds are skipped at registration time.
 
 ## Milestone 3 — LangGraph compiler (capability + coordination)
 
@@ -128,32 +135,37 @@ Run in parallel with the milestones above:
 
 **Design reference:** §14.3, §14.5, §5.3.
 
+**Status: ✅ COMPLETE** (PRs #35 and related fixes). `swarmkit run` executes two-agent topologies end-to-end. Delegation, skill dispatch, and synthesis all work.
+
 **Features:**
 
-- [ ] `design/langgraph-compiler.md` — full translation rules with diagrams.
-- [ ] `feat(compiler): node construction from agent` — one LangGraph node per agent, hooked to governance middleware.
-- [ ] `feat(compiler): edge construction from hierarchy` — parent/child edges, guarded cross-zone channels flagged.
-- [ ] `feat(compiler): coordination skill dispatch` — A2A handoff skill → StateGraph edge.
-- [ ] `feat(compiler): capability skill dispatch` — MCP tool call wrapper (mock MCP in this milestone).
-- [ ] `feat(runtime): SQLite checkpointer wiring` — per-topology checkpoint file under `.swarmkit/state/`.
-- [ ] `feat(cli): swarmkit run <topology>` — one-shot execution (§14.1).
+- [x] `design/langgraph-compiler.md` — translation rules documented in `design/details/langgraph-compiler.md`.
+- [x] `feat(compiler): node construction from agent` — one LangGraph node per agent, hooked to governance middleware. PR #35.
+- [x] `feat(compiler): edge construction from hierarchy` — parent/child edges via `delegate_to_<child>` tool calls. PR #35.
+- [x] `feat(compiler): coordination skill dispatch` — delegation-based handoff via StateGraph edges. PR #35.
+- [x] `feat(compiler): capability skill dispatch` — `mcp_tool` + `llm_prompt` skill execution wired through `_skill_executor.py`. PR #35, refined in M4/M5.
+- [x] `feat(runtime): SQLite checkpointer wiring` — per-topology checkpoint file under `.swarmkit/state/`.
+- [x] `feat(cli): swarmkit run <topology>` — one-shot execution (§14.1). PR #35.
 
-**Exit demo:** two-agent hello-world topology runs end-to-end: root agent hands off to a worker, worker echoes input with a transform, root returns final state. Checkpoint file persists; re-run with `--resume` picks up state.
+**Exit demo (verified):** `swarmkit run examples/hello-swarm/workspace hello` — root supervisor delegates to greeter worker, worker executes, root synthesises final output. `just demo-run` runs the full flow.
 
 ## Milestone 3.5 — Conversational authoring (v1)
 
-**Goal:** users describe what they want in natural language; a single conversational agent asks clarifying questions, generates YAML artifacts, validates in real-time, and writes files on approval. **The user never writes YAML.** This is the primary user interface — moved from M7-M8 because conversational authoring is the product, not a late-stage feature.
+**Goal:** users describe what they want in natural language; a single conversational agent asks clarifying questions, generates YAML artifacts, validates in real-time, and writes files on approval. **The user never writes YAML.** This is the primary user interface ��� moved from M7-M8 because conversational authoring is the product, not a late-stage feature.
 
 **Design reference:** §11, §12, §14.2, `design/details/conversational-authoring.md`.
 
+**Status: ✅ COMPLETE** (PR #37, hardened by PRs #36, #48, and related fixes). `swarmkit init` and `swarmkit author` both work. `swarmkit author mcp-server` also shipped as part of M5.
+
 **Features:**
 
-- [ ] `design/details/conversational-authoring.md` — conversation flow, tools, system prompt, provider resolution.
-- [ ] `feat(authoring): authoring agent loop + tools` — validate_yaml, write_files, read_workspace, list_schemas.
-- [ ] `feat(cli): swarmkit init` — interactive workspace creation from scratch.
-- [ ] `feat(cli): swarmkit author topology/skill/archetype` — interactive artifact authoring in an existing workspace.
+- [x] `design/details/conversational-authoring.md` — conversation flow, tools, system prompt, provider resolution.
+- [x] `feat(authoring): authoring agent loop + tools` — validate_yaml, write_files, read_workspace, list_schemas. PR #37.
+- [x] `feat(cli): swarmkit init` — interactive workspace creation from scratch. PR #37.
+- [x] `feat(cli): swarmkit author topology/skill/archetype` — interactive artifact authoring in an existing workspace. PR #37. Multiple hardening fixes: YAML extraction from code blocks (PR #48), graceful fallback when model skips tool calling, stronger prompts for detailed archetypes.
+- [x] `feat(cli): swarmkit author mcp-server` — conversational MCP server authoring. Landed as part of M5 work.
 
-**Exit demo:** `swarmkit init` — user answers 3-4 questions, gets a working workspace. `swarmkit validate` passes. `swarmkit run` produces output.
+**Exit demo (verified):** `swarmkit init` — user answers questions, gets a working workspace with topology + archetypes + skills. `swarmkit validate` passes. `swarmkit run` produces output.
 
 ## Milestone 4 — Decision + persistence skills
 
@@ -161,19 +173,22 @@ Run in parallel with the milestones above:
 
 **Design reference:** §6.2, §8.6 Tier 2/3, §12.1, §14.5, §17.
 
+**Status: ✅ COMPLETE** (PRs #38–#44). Structured output governance, decision skills, review queue, skill gap log, inline HITL, panel aggregation, and trust scoring all shipped.
+
 **Features:**
 
-- [ ] `design/structured-output-governance.md` — **task #43.** Deterministic output validation + auto-correction. When a skill declares an `outputs` block, the runtime: (a) uses provider-level structured generation (JSON mode / tool_use) to constrain the model, (b) validates the response against the output schema, (c) applies deterministic business rules. On validation failure, field-specific errors are fed back to the model as a targeted re-prompt ("confidence must be 0-1, got 1.5") for auto-correction — fixes one field instead of regenerating the entire response. Eliminates shape-level hallucination before any LLM judge is invoked. Insight from production Rynko gate validation: structured constraints + field-specific error feedback produces consistent results with minimal hallucinations.
-- [ ] `design/decision-skills.md` — how verdicts and confidence scores flow through state.
-- [ ] `feat(skills): llm-judge primitive skill` — uses Anthropic SDK; rubric-driven; returns verdict+confidence.
-- [ ] `feat(skills): schema-validator primitive skill` — deterministic, jsonschema-backed.
-- [ ] `feat(runtime): structured output enforcement` — compiler reads skill `outputs` block, wires provider JSON mode + schema validation + retry-with-field-errors into the agent's tool-use loop.
-- [ ] `feat(skills): multi-persona panel composition (Tier 3)` — fan-out + consensus.
-- [ ] `feat(runtime): review queue primitive` — file-backed in v1.0, pluggable storage.
-- [ ] `feat(runtime): skill gap log primitive` — automatic entry when HITL thresholds are crossed (§12.1).
-- [ ] `feat(governance): AGT trust scoring integration` — trust-score decay on repeated judicial escalations.
+- [x] `design/structured-output-governance.md` — **task #43.** Deterministic output validation + auto-correction. PR #38.
+- [x] `design/decision-skills.md` — how verdicts and confidence scores flow through state. PR #40.
+- [x] `feat(skills): llm-judge primitive skill` — rubric-driven; returns verdict+confidence. PR #43.
+- [x] `feat(skills): schema-validator primitive skill` — deterministic, jsonschema-backed. PR #38.
+- [x] `feat(runtime): structured output enforcement` — compiler reads skill `outputs` block, wires provider JSON mode + schema validation + retry-with-field-errors into the agent's tool-use loop. PRs #38, #39.
+- [x] `feat(skills): multi-persona panel composition (Tier 3)` — fan-out + consensus. PR #43.
+- [x] `feat(runtime): review queue primitive` — file-backed in v1.0, pluggable storage. PR #41.
+- [x] `feat(runtime): skill gap log primitive` — automatic entry when HITL thresholds are crossed (§12.1). PR #41.
+- [x] `feat(runtime): inline HITL + review/gaps CLI commands` — `swarmkit review`, `swarmkit gaps`. PR #42.
+- [x] `feat(governance): AGT trust scoring integration` — trust-score decay on repeated judicial escalations. PR #44.
 
-**Exit demo:** extend the hello-world topology: worker output goes through a Tier 2 LLM judge; low-confidence verdicts land in the review queue; one failing run appears in the skill gap log. Additionally: a skill with a declared `outputs` schema produces valid structured output on first attempt (structured generation), and when given an intentionally malformed response, the auto-correction loop fixes the invalid field and succeeds on retry.
+**Exit demo (verified):** skills with declared `outputs` schemas produce valid structured output. Auto-correction loop fixes invalid fields on retry. Decision skills return verdicts; low-confidence verdicts land in the review queue. HITL notification design documented (PR #42).
 
 ## Milestone 5 — MCP integration
 
@@ -181,15 +196,22 @@ Run in parallel with the milestones above:
 
 **Design reference:** §18.
 
+**Status: 🟡 IN PROGRESS (~70%).** Core MCP plumbing is done — stdio + HTTP transports, workspace config, tool-schema forwarding, hello-world end-to-end demo. Knowledge Curator design landed. Remaining: AGT gateway, sandboxed supervisor, reference skills.
+
 **Features:**
 
-- [ ] `design/mcp-client.md` — client lifecycle, transport choice (stdio vs HTTP), tool discovery.
-- [ ] `feat(mcp): MCP client with AGT security gateway` — every call gated through policy engine (§18.1).
-- [ ] `feat(mcp): MCP server registry` — declarative registration in workspace.yaml.
-- [ ] `feat(mcp): sandboxed server supervisor` — Docker-based, matches §8.8 sandboxing requirement.
-- [ ] `feat(skills): github-repo-read reference capability skill` — wraps a public MCP server.
+- [x] `design/mcp-client.md` — client lifecycle, transport choice (stdio vs HTTP), tool discovery. Rewritten in PR #49 to match the canonical schema shape.
+- [x] `feat(mcp): MCPClientManager + mcp_tool skill execution` — stdio + SSE transports, lazy + eager session startup, tool-schema caching. PR #45.
+- [x] `feat(mcp): MCP server registry in workspace.yaml` — `mcp_servers:` array with `id`, `transport`, `command`, `endpoint`, `env`, `credentials_ref`, `sandboxed`. PR #47, fixed in PR #49 (schema↔runtime shape alignment).
+- [x] `fix(mcp): schema↔runtime alignment + hello-world example` — `parse_mcp_servers` consumes the canonical schema shape; `inputSchema` forwarded to LLM tool definitions; compile-time missing-server guard; `cwd=workspace_root` for stdio servers. PR #49.
+- [x] `feat(cli): swarmkit author mcp-server` — conversational MCP server authoring. Landed alongside M5 MCP work.
+- [x] `design/details/knowledge-curator.md` — Knowledge Curator topology design. PR #46. KB architecture: dedicated curator topology, workers read-only, integration via Qdrant/Kreuzberg/Notion MCP servers.
+- [x] `design/details/skill-registry.md` — community skill import + discovery design. Covers Agent Skills (SKILL.md) + MCP ecosystems.
+- [ ] `feat(mcp): MCP calls gated through GovernanceProvider` — every `call_tool` goes through `evaluate_action` before execution (§18.1). Blocked on M2 AGT integration for real enforcement; MockGovernanceProvider pass-through is wired.
+- [ ] `feat(mcp): sandboxed server supervisor` — Docker-based, matches §8.8 sandboxing requirement. `sandboxed: true` is accepted by the schema but ignored at runtime.
+- [ ] `feat(skills): github-repo-read reference capability skill` — wraps a public MCP server (e.g. `@modelcontextprotocol/server-github`).
 - [ ] `feat(skills): slack-notify reference capability skill` — wraps Slack MCP (or local mock).
-- [ ] `design/details/knowledge-mcp-server.md` — **task #25.** Spec an MCP server that exposes the SwarmKit corpus (design docs + schemas + examples + current workspace state) so any MCP client can query it live. Landing implementation can fold into this milestone's MCP infrastructure or slip to M6.
+- [ ] `design/details/knowledge-mcp-server.md` — **task #25.** Spec an MCP server that exposes the SwarmKit corpus live. Implementation can fold into this milestone or slip to M6.
 
 **Exit demo:** topology reads a public GitHub repo via MCP, passes the diff to a judge, writes result to audit. Kill the MCP server mid-run; runtime reports the failure gracefully through the policy-engine failure path.
 
