@@ -118,9 +118,7 @@ def test_resolve_env_returns_none_for_empty() -> None:
 
 
 def test_manager_server_ids_sorted() -> None:
-    configs = parse_mcp_servers(
-        [_stdio("zeta", ["x"]), _stdio("alpha", ["y"])]
-    )
+    configs = parse_mcp_servers([_stdio("zeta", ["x"]), _stdio("alpha", ["y"])])
     manager = MCPClientManager(configs)
     assert manager.server_ids == ["alpha", "zeta"]
 

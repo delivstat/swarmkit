@@ -144,8 +144,7 @@ class MCPClientManager:
         session = await self.get_session(server_id)
         result = await session.list_tools()
         self._tool_schemas[server_id] = {
-            t.name: dict(t.inputSchema) if t.inputSchema else {}
-            for t in result.tools
+            t.name: dict(t.inputSchema) if t.inputSchema else {} for t in result.tools
         }
 
     def get_tool_input_schema(self, server_id: str, tool_name: str) -> dict[str, Any]:

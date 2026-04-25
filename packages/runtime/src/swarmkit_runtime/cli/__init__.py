@@ -593,9 +593,7 @@ def run(
     governance = MockGovernanceProvider()
 
     mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None))
-    mcp_manager = (
-        MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
-    )
+    mcp_manager = MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
 
     missing_servers = _missing_mcp_servers(workspace, mcp_configs)
     if missing_servers:
