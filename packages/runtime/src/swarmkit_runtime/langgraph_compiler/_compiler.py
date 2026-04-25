@@ -192,7 +192,7 @@ def _build_agent_node(
             )
 
         messages = _build_prompt_messages(agent, state)
-        tools = _build_tools(agent)
+        tools = _build_tools(agent, mcp_manager=mcp_manager)
 
         # Remove delegation tools if children already returned results —
         # the agent should synthesise, not re-delegate.
@@ -448,11 +448,15 @@ def _build_prompt_messages(
     return messages
 
 
-def _build_tools(agent: ResolvedAgent) -> list[ToolSpec]:
+def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec]:
     """Map an agent's executable skills + children to ToolSpec objects.
 
     ``llm_prompt`` and ``mcp_tool`` skills are included. ``composed``
     skills are excluded (panel aggregation is invoked differently).
+
+    For ``mcp_tool`` skills the ``inputSchema`` published by the MCP
+    server is forwarded as the tool's ``input_schema`` so the LLM sees
+    the correct parameter names rather than inventing its own.
     """
     tools: list[ToolSpec] = []
 
@@ -462,7 +466,16 @@ def _build_tools(agent: ResolvedAgent) -> list[ToolSpec]:
         impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
         if impl_type in _executable_types:
             desc = getattr(skill, "description", "") or skill.id
-            tools.append(ToolSpec(name=skill.id, description=desc))
+            input_schema: dict[str, Any] = {}
+            if impl_type == "mcp_tool" and mcp_manager is not None:
+                server_id = (
+                    impl.get("server") if isinstance(impl, dict) else getattr(impl, "server", "")
+                )
+                tool_name = (
+                    impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
+                )
+                input_schema = mcp_manager.get_tool_input_schema(server_id, tool_name)
+            tools.append(ToolSpec(name=skill.id, description=desc, input_schema=input_schema))
 
     for child in agent.children:
         tools.append(

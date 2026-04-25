@@ -54,6 +54,7 @@ class MCPClientManager:
         self._configs = servers or {}
         self._workspace_root = workspace_root
         self._sessions: dict[str, ClientSession] = {}
+        self._tool_schemas: dict[str, dict[str, dict[str, Any]]] = {}
         self._stack = AsyncExitStack()
 
     async def start_all(self) -> None:
@@ -67,6 +68,7 @@ class MCPClientManager:
         """
         for server_id in list(self._configs.keys()):
             await self.get_session(server_id)
+            await self._cache_tool_schemas(server_id)
 
     async def get_session(self, server_id: str) -> ClientSession:
         """Get or start a session for the given server."""
@@ -134,6 +136,26 @@ class MCPClientManager:
         session = await self.get_session(server_id)
         result = await session.list_tools()
         return [{"name": t.name, "description": t.description or ""} for t in result.tools]
+
+    async def _cache_tool_schemas(self, server_id: str) -> None:
+        """Fetch and cache every tool's ``inputSchema`` for a server."""
+        if server_id in self._tool_schemas:
+            return
+        session = await self.get_session(server_id)
+        result = await session.list_tools()
+        self._tool_schemas[server_id] = {
+            t.name: dict(t.inputSchema) if t.inputSchema else {}
+            for t in result.tools
+        }
+
+    def get_tool_input_schema(self, server_id: str, tool_name: str) -> dict[str, Any]:
+        """Return the cached ``inputSchema`` for a tool, or an empty schema.
+
+        This is intentionally sync — tool schemas are pre-fetched during
+        ``start_all``, so the hot path is a dict lookup.
+        """
+        server_tools = self._tool_schemas.get(server_id, {})
+        return dict(server_tools.get(tool_name, {}))
 
     async def close_all(self) -> None:
         """Close all sessions and stop all servers."""
