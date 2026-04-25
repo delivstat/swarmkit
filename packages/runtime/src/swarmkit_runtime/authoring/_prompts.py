@@ -181,6 +181,14 @@ needs — do not ask the user to list skills. You are the expert. Think: \
 "To achieve this goal, what does each agent need to be able to do? Each \
 capability is a skill." Generate skill YAMLs for every skill you identify.
 
+IMPORTANT: prefer existing public MCP servers over writing skills from \
+scratch. There are 7,000+ community MCP servers. If the swarm needs to \
+read GitHub repos, use @modelcontextprotocol/server-github. If it needs \
+to search the web, use @anthropic/brave-search-mcp. Create mcp_tool \
+skills that reference these servers and add mcp_servers entries to \
+workspace.yaml. Only use llm_prompt skills for tasks that are purely \
+LLM reasoning with no external tool needed.
+
 For example, if the user says "a code review swarm with quality and \
 security reviewers", you should identify skills like:
 - code-quality-check (decision: pass/fail with reasoning)
@@ -299,12 +307,31 @@ an agent can exercise. Four categories:
 - coordination: hands work to another agent
 - persistence: writes to storage (audit log, knowledge base)
 
+IMPORTANT — before writing a skill from scratch, check whether a public MCP \
+server already provides the capability. There are 7,000+ community MCP servers \
+covering GitHub, Slack, databases, file systems, search, and more. Common ones:
+- GitHub: @modelcontextprotocol/server-github (repo read, PR, issues, actions)
+- Filesystem: @modelcontextprotocol/server-filesystem (read/write local files)
+- Slack: @anthropic/slack-mcp (channels, messages, users)
+- PostgreSQL: @modelcontextprotocol/server-postgres (queries)
+- Google Drive: @anthropic/gdrive-mcp (docs, sheets)
+- Brave Search: @anthropic/brave-search-mcp (web search)
+- Memory/Qdrant: mcp-server-qdrant (vector store + RAG)
+
+If a public MCP server exists for the user's need, create an mcp_tool skill \
+that references it and add the server to workspace.yaml's mcp_servers block. \
+Only generate an llm_prompt skill or a custom MCP server when no existing \
+server covers the use case.
+
+Reference skills in reference/skills/ show the pattern for mcp_tool skills \
+(e.g. github-repo-read, github-pr-read, github-issue-read).
+
 Ask about:
 - What the skill does
 - Which category it falls into
 - What inputs it needs
 - What outputs it produces (especially for decision skills)
-- Implementation type (mcp_tool for most cases)
+- Implementation type (mcp_tool for most cases — suggest a known MCP server)
 
 Example skill:
 ```yaml

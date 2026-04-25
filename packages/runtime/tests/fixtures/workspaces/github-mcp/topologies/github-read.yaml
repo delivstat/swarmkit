@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: github-read
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: anthropic
+      name: claude-sonnet-4-6
+      temperature: 0.1
+    prompt:
+      system: >
+        You are the supervisor. Delegate repository read requests to
+        the github-reader worker.
+    children:
+      - id: reader
+        role: worker
+        archetype: github-reader

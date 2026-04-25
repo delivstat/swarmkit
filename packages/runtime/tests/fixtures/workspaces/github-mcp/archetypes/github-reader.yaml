@@ -1,0 +1,26 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: github-reader
+  name: GitHub Reader
+  description: Worker that reads repository files, pull requests, and issues via the GitHub MCP server.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: >
+      You are a GitHub reader agent. Use your skills to fetch repository
+      contents, pull request details, and issue information when asked.
+      Return the raw content — do not summarise unless asked.
+  skills:
+    - github-repo-read
+    - github-pr-read
+    - github-issue-read
+  iam:
+    base_scope: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
