@@ -19,6 +19,7 @@ import typer
 from swarmkit_runtime.authoring import run_authoring_session
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
 from swarmkit_runtime.gaps import SkillGapLog
+from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
 from swarmkit_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
@@ -590,7 +591,7 @@ def run(
 
     registry = ProviderRegistry()
     _register_available_providers(registry)
-    governance = MockGovernanceProvider()
+    governance = _build_governance(workspace, ws_root)
 
     mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None))
     mcp_manager = MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
@@ -694,6 +695,42 @@ def _register_available_providers(registry: ProviderRegistry) -> None:
         registry.register(TogetherModelProvider())
 
     registry.register(OllamaModelProvider())
+
+
+def _build_governance(workspace: ResolvedWorkspace, ws_root: Path) -> GovernanceProvider:
+    """Select the GovernanceProvider based on workspace.yaml's governance block.
+
+    - ``provider: agt`` → ``AGTGovernanceProvider.from_config()``, reading
+      ``config.policies_dir`` relative to the workspace root.
+    - ``provider: mock`` or absent → ``MockGovernanceProvider()``.
+    - ``provider: custom`` → falls back to Mock with a warning (custom
+      plugin path not yet implemented).
+    """
+    gov = getattr(workspace.raw, "governance", None)
+    if gov is None:
+        return MockGovernanceProvider()
+
+    provider_value = gov.provider.value if hasattr(gov.provider, "value") else str(gov.provider)
+
+    if provider_value == "agt":
+        from swarmkit_runtime.governance.agt_provider import AGTGovernanceProvider  # noqa: PLC0415
+
+        config = gov.config or {}
+        policies_dir = ws_root / config.get("policies_dir", "policies")
+        audit_db = ws_root / ".swarmkit" / "audit.db"
+        audit_db.parent.mkdir(parents=True, exist_ok=True)
+        return AGTGovernanceProvider.from_config(
+            policy_dir=policies_dir,
+            audit_db=audit_db,
+        )
+
+    if provider_value == "custom":
+        _stderr(
+            "warning: governance.provider=custom is not yet supported; "
+            "falling back to mock. See design §8.5 for the plugin path."
+        )
+
+    return MockGovernanceProvider()
 
 
 @app.command()

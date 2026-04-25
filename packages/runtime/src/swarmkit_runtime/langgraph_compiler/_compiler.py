@@ -240,7 +240,7 @@ def _build_agent_node(
 
         # Check for skill tool calls (llm_prompt skills)
         skill_result = await _handle_skill_tool_calls(
-            response, agent, model_provider, model_name, mcp_manager
+            response, agent, model_provider, model_name, mcp_manager, governance
         )
         if skill_result is not None:
             await governance.record_event(
@@ -504,6 +504,7 @@ async def _handle_skill_tool_calls(
     model_provider: ModelProviderProtocol,
     model_name: str,
     mcp_manager: Any = None,
+    governance: GovernanceProvider | None = None,
 ) -> str | None:
     """If the response contains a skill tool call, execute it and return the result."""
     skill_map = {s.id: s for s in agent.skills}
@@ -526,6 +527,8 @@ async def _handle_skill_tool_calls(
             model_provider=model_provider,
             model_name=os.environ.get("SWARMKIT_MODEL") or model_name,
             mcp_manager=mcp_manager,
+            governance=governance,
+            agent_id=agent.id,
         )
     return None
 

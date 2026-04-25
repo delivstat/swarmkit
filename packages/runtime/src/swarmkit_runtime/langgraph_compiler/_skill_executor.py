@@ -7,7 +7,9 @@ See ``design/details/decision-skills.md`` and ``design/details/mcp-client.md``.
 from __future__ import annotations
 
 import json
+from typing import Any
 
+from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.mcp._client import MCPClientManager
 from swarmkit_runtime.model_providers import (
     CompletionRequest,
@@ -24,6 +26,8 @@ async def execute_skill(
     model_provider: ModelProviderProtocol,
     model_name: str,
     mcp_manager: MCPClientManager | None = None,
+    governance: GovernanceProvider | None = None,
+    agent_id: str = "",
 ) -> str:
     """Execute a skill and return the result as a string.
 
@@ -41,7 +45,13 @@ async def execute_skill(
         )
 
     if impl_type == "mcp_tool":
-        return await _execute_mcp_tool(skill, input_text=input_text, mcp_manager=mcp_manager)
+        return await _execute_mcp_tool(
+            skill,
+            input_text=input_text,
+            mcp_manager=mcp_manager,
+            governance=governance,
+            agent_id=agent_id,
+        )
 
     if impl_type == "composed":
         return await _execute_composed(
@@ -89,11 +99,32 @@ async def _execute_mcp_tool(
     *,
     input_text: str,
     mcp_manager: MCPClientManager | None,
+    governance: GovernanceProvider | None = None,
+    agent_id: str = "",
 ) -> str:
-    """Execute an ``mcp_tool`` skill by calling the MCP server."""
+    """Execute an ``mcp_tool`` skill by calling the MCP server.
+
+    If a ``GovernanceProvider`` is supplied, ``evaluate_action`` is called
+    before the MCP tool invocation. The action string follows the
+    ``mcp:call:<server>:<tool>`` convention from the design note
+    (``design/details/mcp-client.md``).
+    """
     impl = skill.raw.implementation
-    server_id = impl.get("server") if isinstance(impl, dict) else getattr(impl, "server", "")
-    tool_name = impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
+    server_id: str = _impl_str(impl, "server")
+    tool_name: str = _impl_str(impl, "tool")
+
+    if governance is not None:
+        iam = getattr(skill.raw, "iam", None)
+        scopes: frozenset[str] = frozenset()
+        if iam and isinstance(iam, dict):
+            scopes = frozenset(iam.get("required_scopes", []))
+        decision = await governance.evaluate_action(
+            agent_id=agent_id,
+            action=f"mcp:call:{server_id}:{tool_name}",
+            scopes_required=scopes,
+        )
+        if not decision.allowed:
+            return f"[skill:{skill.id}] DENIED: {decision.reason}"
 
     if mcp_manager is None:
         return (
@@ -104,7 +135,7 @@ async def _execute_mcp_tool(
 
     try:
         is_json = input_text.strip().startswith("{")
-        arguments = json.loads(input_text) if is_json else {"input": input_text}
+        arguments: dict[str, Any] = json.loads(input_text) if is_json else {"input": input_text}
     except (json.JSONDecodeError, TypeError):
         arguments = {"input": input_text}
 
@@ -147,3 +178,8 @@ async def _execute_composed(
         model_provider=model_provider,
         model_name=model_name,
     )
+
+
+def _impl_str(impl: Any, key: str) -> str:
+    val = impl.get(key) if isinstance(impl, dict) else getattr(impl, key, "")
+    return str(val) if val else ""
