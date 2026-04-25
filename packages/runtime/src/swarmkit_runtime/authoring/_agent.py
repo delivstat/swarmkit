@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -74,8 +75,23 @@ def run_authoring_session(
 
         agent_text = _extract_text(response)
         if agent_text:
-            conversation.append(Message(role="assistant", content=agent_text))
-            _print_agent(agent_text)
+            # If the model wrote YAML in its text instead of calling write_files,
+            # extract the files and offer to write them.
+            extracted = _extract_yaml_files(agent_text)
+            if extracted and workspace_path:
+                _print_agent(agent_text)
+                _print_agent(f"I detected {len(extracted)} YAML files in the response.")
+                _print_agent(_format_file_plan(extracted))
+                if _read_confirm():
+                    result = execute_tool(
+                        "write_files",
+                        {"base_dir": str(workspace_path), "files": extracted},
+                    )
+                    _print_status(result)
+                conversation.append(Message(role="assistant", content=agent_text))
+            else:
+                conversation.append(Message(role="assistant", content=agent_text))
+                _print_agent(agent_text)
 
 
 async def _agent_turn(
@@ -206,6 +222,87 @@ def _handle_tool_call(tc: ContentBlock) -> str:
     if tool_name == "validate_workspace":
         _print_status(f"  validation: {result}")
     return result
+
+
+# ---- YAML extraction from text ------------------------------------------
+
+
+def _extract_yaml_files(text: str) -> dict[str, str] | None:
+    """Extract YAML file contents from model text output.
+
+    Detects patterns like:
+      **`path/to/file.yaml`**
+      ```yaml
+      content...
+      ```
+    or:
+      # path/to/file.yaml
+      ```yaml
+      content...
+      ```
+
+    Returns a dict of {relative_path: yaml_content} if files found.
+    """
+
+    files: dict[str, str] = {}
+
+    # Pattern: **`filename.yaml`** followed by ```yaml block
+    # or: # filename.yaml comment inside ```yaml block
+    blocks = re.split(r"```ya?ml\s*\n", text)
+    if len(blocks) < 2:
+        return None
+
+    for i in range(1, len(blocks)):
+        yaml_content = blocks[i].split("```")[0].strip()
+        if not yaml_content or "apiVersion:" not in yaml_content:
+            continue
+
+        # Look for filename in the text before this code block
+        preceding = blocks[i - 1]
+        path = _find_filename(preceding, yaml_content)
+        if path:
+            files[path] = yaml_content + "\n"
+
+    return files if files else None
+
+
+def _find_filename(preceding_text: str, yaml_content: str) -> str | None:
+    """Extract a .yaml filename from text preceding a code block."""
+    # Match **`path/file.yaml`** or `path/file.yaml`
+    matches = re.findall(r"`([^`]*\.ya?ml)`", preceding_text)
+    if matches:
+        path = matches[-1]
+        parts = path.split("/")
+        if len(parts) > 1 and parts[0].endswith("-swarm"):
+            path = "/".join(parts[1:])
+        return str(path)
+
+    # Match # path/file.yaml comment
+    matches = re.findall(r"#\s*(\S+\.ya?ml)", preceding_text)
+    if matches:
+        return str(matches[-1])
+
+    # Infer from YAML content
+    return _infer_filename_from_content(yaml_content)
+
+
+def _infer_filename_from_content(yaml_content: str) -> str | None:
+    """Guess filename from YAML kind + id/name fields."""
+    kind_map = {
+        "Workspace": ("", "workspace"),
+        "Topology": ("topologies", "name"),
+        "Archetype": ("archetypes", "id"),
+        "Skill": ("skills", "id"),
+    }
+    for kind, (subdir, field) in kind_map.items():
+        if f"kind: {kind}" not in yaml_content:
+            continue
+        if kind == "Workspace":
+            return "workspace.yaml"
+        match = re.search(rf"{field}:\s*(\S+)", yaml_content)
+        name = match.group(1) if match else kind.lower()
+        return f"{subdir}/{name}.yaml"
+    return None
 
 
 # ---- UI helpers ---------------------------------------------------------
