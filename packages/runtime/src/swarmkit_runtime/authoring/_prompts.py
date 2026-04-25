@@ -103,7 +103,7 @@ agents:
 ```
 Agent roles MUST be one of: root, leader, worker. NOT "supervisor".
 
-WORKSPACE YAML:
+WORKSPACE YAML — includes governance, credentials, MCP servers, and storage:
 ```yaml
 apiVersion: swarmkit/v1
 kind: Workspace
@@ -111,7 +111,33 @@ metadata:
   id: workspace-id
   name: Workspace Name
   description: "Description of the workspace."
+governance:                        # OPTIONAL — controls policy enforcement
+  provider: agt                    # agt (real enforcement) | mock (permissive, dev only)
+  config:
+    policies_dir: ./policies       # directory with YAML policy rules
+credentials:                       # OPTIONAL — secret references (never literal values)
+  my-api-key:
+    source: env
+    config:
+      env: MY_API_KEY
+mcp_servers:                       # OPTIONAL — MCP tool servers
+  - id: my-server
+    transport: stdio               # stdio (local subprocess) | http (remote endpoint)
+    command: ["python", "server.py"]
+    env:
+      API_KEY: "${MY_API_KEY}"     # ${VAR} expands from process env at startup
+storage:                           # OPTIONAL — persistence config
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
+  audit:
+    backend: agt                   # agt | sqlite | postgres
 ```
+
+When governance.provider is "agt", the runtime enforces policy rules from the
+policies directory — agents can only act within their declared IAM scopes.
+When "mock" or absent, all actions are permitted (suitable for development).
+For production workspaces, recommend governance: { provider: agt }.
 
 Archetype quality:
 - Descriptions must be detailed — explain the agent's expertise and approach.
@@ -128,7 +154,7 @@ _INIT_PROMPT = """\
 
 You are helping the user create a new SwarmKit workspace from scratch. This \
 includes:
-- workspace.yaml (workspace identity and metadata)
+- workspace.yaml (workspace identity, governance, credentials, MCP servers, storage)
 - At least one topology (the agent graph)
 - Archetypes for reusable agent configurations (with detailed descriptions \
 and complete skill assignments)
@@ -138,6 +164,17 @@ Start by asking what the swarm should do and what outcome the user wants. \
 Then ask about:
 - How many agents and what roles (supervisor, specialists, workers)
 - Which models to use (default to anthropic/claude-sonnet-4-6 if not specified)
+- Whether this is a production or development workspace (determines governance)
+- Any external services the agents need to call (APIs, databases, MCP servers)
+
+Based on the answers, configure the workspace.yaml appropriately:
+- **Production workspaces**: set governance with provider=agt and \
+config.policies_dir=./policies. Create a basic policies/ directory with a default policy.
+- **Development workspaces**: set `governance: { provider: mock }` or omit it.
+- **If the swarm calls external APIs**: add `credentials:` entries (source: env) and \
+`mcp_servers:` entries. Never put literal secrets in YAML — always use env var references.
+- **Always include** `storage: { checkpoints: { backend: sqlite, path: ./.swarmkit/state } }` \
+so runs can be resumed.
 
 After understanding the goal, YOU should propose the skills each agent \
 needs — do not ask the user to list skills. You are the expert. Think: \
@@ -158,12 +195,45 @@ The workspace directory structure:
 ```
 <workspace-name>/
 ├── workspace.yaml
+├── policies/              # governance policy rules (when provider=agt)
 ├── topologies/<name>.yaml
 ├── archetypes/<name>.yaml
 └── skills/<name>.yaml
 ```
 
-Example workspace.yaml:
+Example workspace.yaml (production, with governance):
+```yaml
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: code-review-swarm
+  name: Code Review Swarm
+  description: Reviews pull requests for quality and security.
+governance:
+  provider: agt
+  config:
+    policies_dir: ./policies
+credentials:
+  github-pat:
+    source: env
+    config:
+      env: GITHUB_TOKEN
+mcp_servers:
+  - id: github
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+    credentials_ref: github-pat
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
+  audit:
+    backend: sqlite
+```
+
+Example workspace.yaml (development, minimal):
 ```yaml
 apiVersion: swarmkit/v1
 kind: Workspace
@@ -171,6 +241,12 @@ metadata:
   id: hello-swarm
   name: Hello Swarm
   description: A minimal two-agent workspace.
+governance:
+  provider: mock
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
 ```
 
 Example topology:
@@ -319,12 +395,12 @@ directory. The user must review and approve before the server can be \
 deployed. This is a security requirement — agents cannot deploy their \
 own generated code.
 
-Example MCP server entry in workspace.yaml:
+Example MCP server entry in workspace.yaml (array of typed entries):
 ```yaml
 mcp_servers:
-  weather-api:
-    command: python
-    args: [".swarmkit/mcp-servers/weather-api/server.py"]
+  - id: weather-api
+    transport: stdio
+    command: ["python", ".swarmkit/mcp-servers/weather-api/server.py"]
     env:
       WEATHER_API_KEY: "${{WEATHER_API_KEY}}"
 ```
