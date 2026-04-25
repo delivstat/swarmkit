@@ -146,6 +146,11 @@
           "type": "string",
           "description": "Required when transport=http."
         },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Environment variables passed to a stdio server. Values support ${VAR} expansion from the runtime process environment. Use `credentials_ref` for secrets; `env` is for configuration."
+        },
         "credentials_ref": { "type": "string" },
         "sandboxed": {
           "type": "boolean",

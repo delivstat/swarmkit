@@ -145,6 +145,10 @@ class McpServer(BaseModel):
         None, description="Required when transport=stdio."
     )
     endpoint: str | None = Field(None, description="Required when transport=http.")
+    env: dict[str, str] | None = Field(
+        None,
+        description="Environment variables passed to a stdio server. Values support ${VAR} expansion from the runtime process environment. Use `credentials_ref` for secrets; `env` is for configuration.",
+    )
     credentials_ref: str | None = None
     sandboxed: bool | None = Field(
         None, description="True forces Docker-or-equivalent isolation (design §8.8)."

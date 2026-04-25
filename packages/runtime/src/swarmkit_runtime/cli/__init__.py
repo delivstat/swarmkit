@@ -12,7 +12,7 @@ import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -21,7 +21,7 @@ from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
 from swarmkit_runtime.gaps import SkillGapLog
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
-from swarmkit_runtime.mcp import MCPClientManager, parse_mcp_servers
+from swarmkit_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
 from swarmkit_runtime.model_providers import (
     AnthropicModelProvider,
     GoogleModelProvider,
@@ -592,12 +592,19 @@ def run(
     _register_available_providers(registry)
     governance = MockGovernanceProvider()
 
-    mcp_manager: MCPClientManager | None = None
-    raw_mcp = getattr(workspace.raw, "mcp_servers", None)
-    if raw_mcp and isinstance(raw_mcp, dict):
-        mcp_configs = parse_mcp_servers({"mcp_servers": raw_mcp})
-        if mcp_configs:
-            mcp_manager = MCPClientManager(mcp_configs)
+    mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None))
+    mcp_manager = MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
+
+    missing_servers = _missing_mcp_servers(workspace, mcp_configs)
+    if missing_servers:
+        for skill_id, server_id in missing_servers:
+            _stderr(
+                f"error: skill '{skill_id}' targets MCP server '{server_id}' "
+                f"but the workspace declares no such server. "
+                f"Add it under `mcp_servers:` in workspace.yaml, "
+                f"or change the skill's `implementation.server` to a configured server."
+            )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR)
 
     graph = compile_topology(
         topology,
@@ -614,9 +621,11 @@ def run(
 
     _MAX_GRAPH_STEPS = 10
 
-    try:
-        result = asyncio.run(
-            graph.ainvoke(
+    async def _invoke() -> dict[str, Any]:
+        if mcp_manager is not None:
+            await mcp_manager.start_all()
+        try:
+            return await graph.ainvoke(
                 {
                     "input": user_input,
                     "messages": [],
@@ -626,7 +635,16 @@ def run(
                 },
                 config={"recursion_limit": _MAX_GRAPH_STEPS},
             )
-        )
+        finally:
+            # Close MCP sessions inside the same task that opened them, so
+            # the SDK's anyio task groups unwind cleanly. Skipping this
+            # leaves the cleanup to interpreter shutdown, which the SDK
+            # logs as a noisy "cancel scope in a different task" trace.
+            if mcp_manager is not None:
+                await mcp_manager.close_all()
+
+    try:
+        result = asyncio.run(_invoke())
     except Exception as exc:
         _stderr(f"error: execution failed: {exc}")
         raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
@@ -634,6 +652,28 @@ def run(
     output = result.get("output", "")
     if output:
         typer.echo(output)
+
+
+def _missing_mcp_servers(
+    workspace: ResolvedWorkspace,
+    mcp_configs: dict[str, MCPServerConfig],
+) -> list[tuple[str, str]]:
+    """Return ``(skill_id, server_id)`` pairs whose mcp_tool target is unconfigured.
+
+    Catches the "skill points at hello-world but workspace declares no
+    such server" mistake at compile time, so the user sees a single clear
+    error instead of a cryptic runtime message buried in the topology output.
+    """
+    missing: list[tuple[str, str]] = []
+    for skill_id, skill in workspace.skills.items():
+        impl = skill.raw.implementation
+        impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
+        if impl_type != "mcp_tool":
+            continue
+        server_id = impl.get("server") if isinstance(impl, dict) else getattr(impl, "server", "")
+        if server_id and server_id not in mcp_configs:
+            missing.append((skill_id, server_id))
+    return missing
 
 
 def _register_available_providers(registry: ProviderRegistry) -> None:

@@ -91,12 +91,16 @@ async def _execute_mcp_tool(
     mcp_manager: MCPClientManager | None,
 ) -> str:
     """Execute an ``mcp_tool`` skill by calling the MCP server."""
-    if mcp_manager is None:
-        return f"[skill:{skill.id}] No MCP manager configured."
-
     impl = skill.raw.implementation
     server_id = impl.get("server") if isinstance(impl, dict) else getattr(impl, "server", "")
     tool_name = impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
+
+    if mcp_manager is None:
+        return (
+            f"[skill:{skill.id}] cannot call MCP tool '{tool_name}' on server "
+            f"'{server_id}': workspace declares no mcp_servers. "
+            f"Add an entry under `mcp_servers:` in workspace.yaml."
+        )
 
     try:
         is_json = input_text.strip().startswith("{")

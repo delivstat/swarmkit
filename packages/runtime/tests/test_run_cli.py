@@ -23,6 +23,8 @@ def _force_mock_provider(monkeypatch: pytest.MonkeyPatch) -> None:
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace"
 BROKEN_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace-broken"
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "workspaces"
+RESOLVED_TREE_WS = FIXTURES / "resolved-tree"
 
 
 def test_run_valid_workspace_exits_zero() -> None:
@@ -56,3 +58,18 @@ def test_run_missing_topology_exits_two() -> None:
 def test_run_nonexistent_workspace_exits_one() -> None:
     result = runner.invoke(app, ["run", "/nowhere/nothing", "hello", "--no-color"])
     assert result.exit_code != 0
+
+
+def test_run_rejects_skill_referencing_unconfigured_mcp_server() -> None:
+    """The resolved-tree fixture has mcp_tool skills but no mcp_servers
+    block. The CLI must catch this at compile time and tell the user
+    which skill and which server, instead of letting the topology run
+    and produce a cryptic per-call error.
+    """
+    result = runner.invoke(
+        app, ["run", str(RESOLVED_TREE_WS), "review", "--input", "x", "--no-color"]
+    )
+    assert result.exit_code == 1
+    combined = (result.stdout or "") + (result.stderr or "")
+    assert "mcp_servers" in combined
+    assert "rynko-flow" in combined or "github-repo" in combined

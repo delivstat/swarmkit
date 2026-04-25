@@ -17,7 +17,6 @@ archetypes + skills) with the smallest possible artefact set.
 
 ## Non-goals
 
-- Executing the swarm. Runtime execution lands in M2+; M1 only resolves.
 - Demonstrating every schema field. The reference topologies under
   `reference/` (authored post-M1) are the canonical exhaustive examples.
 - Covering every `ResolutionError` code. The fixtures under
@@ -30,16 +29,29 @@ archetypes + skills) with the smallest possible artefact set.
 examples/hello-swarm/
 ├── README.md
 ├── workspace/                 # valid — used by `swarmkit validate --tree`
-│   ├── workspace.yaml
+│   ├── workspace.yaml         # declares the hello-world MCP server
+│   ├── hello_world_server.py  # tiny FastMCP server, stdio, one tool
 │   ├── topologies/hello.yaml
 │   ├── archetypes/greeter.yaml
-│   └── skills/say-hello.yaml
+│   └── skills/say-hello.yaml  # capability skill targeting hello-world
 └── workspace-broken/          # same tree with one deliberate typo
     ├── workspace.yaml
     ├── topologies/hello.yaml  # references archetype 'greter' (typo)
     ├── archetypes/greeter.yaml
     └── skills/say-hello.yaml
 ```
+
+The `say-hello` skill has `implementation.type: mcp_tool` and points at
+`server: hello-world`. The server is a single Python file using
+``mcp.server.fastmcp.FastMCP`` that exposes one tool, ``greet(audience)``.
+The runtime launches it as a stdio subprocess via the workspace's
+``mcp_servers`` block, with cwd set to the workspace root so the relative
+script path resolves predictably.
+
+Putting the server inside the workspace folder is intentional: it stays
+out of the artefact discovery glob (``.yaml``/``.yml`` only) and reads
+naturally to a first-time user as "everything this swarm needs lives
+here".
 
 **Why two workspaces in one example.** The plan's exit demo has two
 halves: "prints a resolved tree" and "understand a deliberate validation
@@ -55,7 +67,9 @@ already demonstrated by the supervisor/worker split.
 
 ## Demo
 
-`just demo-resolver` runs:
+Two demos cover the two halves of the on-ramp.
+
+`just demo-resolver` runs the validation UX:
 
 1. `swarmkit validate examples/hello-swarm/workspace --tree` — exit 0,
    prints the resolved agent tree (archetype defaults expanded, skills
@@ -65,8 +79,16 @@ already demonstrated by the supervisor/worker split.
    is enough for the reader to connect `'greter'` to the actual archetype
    id `'greeter'`.
 
-The just target is marked so the second command's non-zero exit is
-expected and doesn't fail the target.
+The second command's non-zero exit is expected and the just recipe
+silences it.
+
+`just demo-run` runs the topology end-to-end with whichever model
+provider is available in the environment (``SWARMKIT_PROVIDER`` /
+``SWARMKIT_MODEL`` override, otherwise the agent-declared provider).
+The runtime launches ``hello_world_server.py`` as a stdio subprocess,
+the supervisor delegates to the greeter, the greeter calls the
+``hello-world.greet`` MCP tool, and the literal greeting flows back
+through the topology to stdout.
 
 ## Test plan
 

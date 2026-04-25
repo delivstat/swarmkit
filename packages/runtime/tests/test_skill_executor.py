@@ -59,3 +59,25 @@ async def test_unknown_impl_type_returns_error() -> None:
         assert "Unknown" in result or "unknown_type" in result
     finally:
         skill.raw.__dict__["implementation"] = original
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_without_manager_names_server_and_remediation() -> None:
+    """When mcp_manager=None, the diagnostic must name the server and the
+    file the user has to edit. Surfacing the impl bits up front matters
+    because non-CLI compile sites (notebooks, scripts) hit this path
+    instead of the CLI's compile-time guard.
+    """
+    skill = _get_skill("code-quality-review")  # mcp_tool, server: rynko-flow
+    mock = MockModelProvider()
+    result = await execute_skill(
+        skill,
+        input_text="anything",
+        model_provider=mock,
+        model_name="mock",
+        mcp_manager=None,
+    )
+    assert "rynko-flow" in result
+    assert "validate_code_review" in result
+    assert "workspace.yaml" in result
+    assert "mcp_servers" in result

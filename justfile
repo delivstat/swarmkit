@@ -138,9 +138,13 @@ demo-knowledge-pack:
     @echo "── pack head (broken workspace overlay) ──"
     @uv run swarmkit knowledge-pack examples/hello-swarm/workspace-broken | head -60
 
-# M3 exit demo — run the hello-swarm topology end-to-end with mock providers.
+# M3 exit demo — run the hello-swarm topology end-to-end. Uses whichever
+# model provider env vars are set (SWARMKIT_PROVIDER + SWARMKIT_MODEL,
+# or falls back to the agent's declared provider). The supervisor
+# delegates to the greeter, and the greeter calls the hello-world MCP
+# tool that's launched as a stdio subprocess by the runtime.
 demo-run:
-    @echo "── swarmkit run (hello-swarm, mock providers) ──"
+    @echo "── swarmkit run (hello-swarm) ──"
     @uv run swarmkit run examples/hello-swarm/workspace hello --input "Greet the engineering team" --no-color
 
 # Quickstart runtime CLI

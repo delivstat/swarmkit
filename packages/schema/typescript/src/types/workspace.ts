@@ -83,7 +83,13 @@ export interface MCPServerElement {
      * Required when transport=http.
      */
     endpoint?: string;
-    id:        string;
+    /**
+     * Environment variables passed to a stdio server. Values support ${VAR} expansion from the
+     * runtime process environment. Use `credentials_ref` for secrets; `env` is for
+     * configuration.
+     */
+    env?: { [key: string]: string };
+    id:   string;
     /**
      * True forces Docker-or-equivalent isolation (design §8.8).
      */

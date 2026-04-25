@@ -41,37 +41,67 @@ Result flows back through the skill executor → agent node
 
 ## Workspace configuration
 
+The workspace schema (`packages/schema/schemas/workspace.schema.json`)
+is the source of truth. `mcp_servers` is an array of typed entries:
+
 ```yaml
 # workspace.yaml
 mcp_servers:
-  filesystem:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
-  qdrant:
-    command: uvx
-    args: ["mcp-server-qdrant"]
+  - id: filesystem
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+  - id: qdrant
+    transport: stdio
+    command: ["uvx", "mcp-server-qdrant"]
     env:
       QDRANT_URL: "http://localhost:6333"
       COLLECTION_NAME: "knowledge"
-  github:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-github"]
+  - id: github
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+    credentials_ref: github_pat
+  - id: rynko-flow
+    transport: http
+    endpoint: https://mcp.rynko.dev
 ```
 
 Each server entry has:
-- `command` + `args` — the stdio command to launch the server
-- `env` — environment variables (supports `${VAR}` expansion from
-  process environment)
+- `id` — referenced from `skill.implementation.server`
+- `transport` — `stdio` (local subprocess) or `http` (remote endpoint)
+- `command` — required when `transport=stdio`. The first element is the
+  executable, the rest are arguments
+- `endpoint` — required when `transport=http`. The HTTP URL of the
+  remote MCP service
+- `env` — environment variables for stdio servers. Values support
+  `${VAR}` expansion from the runtime process environment. Use `env`
+  for non-secret configuration; use `credentials_ref` for secrets
+- `credentials_ref` — names a `credentials:` entry the workspace
+  resolves through the SecretsProvider before injecting into the server
+- `sandboxed` — when `true`, forces Docker-or-equivalent isolation
+  (design §8.8). Sandbox lifecycle is M5+ — `false` is the only
+  supported value today
+
+Stdio servers are launched with `cwd` set to the workspace root, so
+script paths in `command` resolve relative to the workspace.yaml
+location rather than the user's invocation directory. This is what
+lets the on-ramp example reference `hello_world_server.py` directly.
 
 ## MCPClientManager
 
-Manages MCP server connections. One `ClientSession` per server,
-lazily initialized on first use, reused across agent calls.
+Manages MCP server connections. One `ClientSession` per server, reused
+across agent calls.
 
 ```python
 class MCPClientManager:
+    def __init__(
+        self,
+        servers: dict[str, MCPServerConfig] | None = None,
+        *,
+        workspace_root: Path | None = None,
+    ) -> None: ...
+    async def start_all(self) -> None
     async def get_session(self, server_id: str) -> ClientSession
     async def list_tools(self, server_id: str) -> list[ToolInfo]
     async def call_tool(
@@ -83,8 +113,18 @@ class MCPClientManager:
     async def close_all(self) -> None
 ```
 
-Sessions are started via `stdio_client(StdioServerParameters(...))`.
-The manager holds the context managers and cleans up on shutdown.
+Sessions are started via `stdio_client(StdioServerParameters(...))` for
+stdio entries and `sse_client(...)` for `http` entries (the SDK still
+implements MCP-over-HTTP framing as SSE — that is an SDK-internal detail
+and not surfaced as a separate transport at the workspace level).
+
+`start_all` is the entry-point the CLI uses before invoking the topology
+graph: the MCP SDK's anyio task groups must be entered and exited from
+the same asyncio task, and lazy-start broke under LangGraph because the
+first `call_tool` happened in a child task while `close_all` ran in the
+wrapper task. Pre-opening from the wrapper keeps both halves co-tasked.
+`get_session` remains available for callers that don't need the
+constraint (single-shot tests, scripts).
 
 ## Governance gating
 
@@ -121,12 +161,18 @@ function, similar to `model_provider` and `governance`.
 
 ## Error handling
 
-- **Server not found:** skill references `server: github` but
-  workspace has no `mcp_servers.github` → clear error at topology
-  load time (resolver can check this).
+- **Server not found at compile time:** the CLI's `_missing_mcp_servers`
+  check walks `workspace.skills` and rejects any `mcp_tool` skill whose
+  `server` is not in `mcp_servers`. The user sees a single targeted
+  message naming the skill and the missing server before any subprocess
+  is launched.
+- **Manager not configured:** if a non-CLI caller compiles the topology
+  with `mcp_manager=None` while a skill targets `mcp_tool`, the executor
+  returns a string naming the missing server and the file to fix
+  (`workspace.yaml`).
 - **Server won't start:** stdio process fails → `MCPClientManager`
-  returns error, skill executor returns error message, execution
-  continues (other agents unaffected).
+  raises, the skill executor catches and returns an error message,
+  execution continues (other agents unaffected).
 - **Tool call fails:** MCP returns error → logged via
   `GovernanceProvider.record_event`, error propagated to agent.
 - **Server dies mid-run:** connection drops → manager detects, logs,
