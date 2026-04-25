@@ -257,13 +257,42 @@ def _extract_yaml_files(text: str) -> dict[str, str] | None:
         if not yaml_content or "apiVersion:" not in yaml_content:
             continue
 
-        # Look for filename in the text before this code block
+        # First try: look for a # path/file.yaml comment INSIDE the yaml block
+        # (models often put the filename as a comment on the first line)
+        first_line = yaml_content.split("\n")[0]
+        inner_match = re.match(r"^#\s*(\S+\.ya?ml)\s*$", first_line)
+        if inner_match:
+            path = _normalize_path(inner_match.group(1))
+            content_without_comment = "\n".join(yaml_content.split("\n")[1:]).strip()
+            files[path] = content_without_comment + "\n"
+            continue
+
+        # Fallback: look in preceding text or infer from content
         preceding = blocks[i - 1]
-        path = _find_filename(preceding, yaml_content)
-        if path:
-            files[path] = yaml_content + "\n"
+        fallback_path = _find_filename(preceding, yaml_content)
+        if fallback_path:
+            files[fallback_path] = yaml_content + "\n"
 
     return files if files else None
+
+
+def _normalize_path(path: str) -> str:
+    """Strip workspace-name prefix from paths like 'my-swarm/skills/x.yaml'."""
+    known_subdirs = {"topologies", "archetypes", "skills", "triggers", "schedules"}
+    parts = path.split("/")
+    if len(parts) <= 1:
+        return path
+    # If first part is a known subdir, path is already relative
+    if parts[0] in known_subdirs:
+        return path
+    # If second part is a known subdir or first part looks like a workspace name,
+    # strip the first segment
+    if parts[1] in known_subdirs or parts[0].endswith(("-swarm", "-workspace", "-review")):
+        return "/".join(parts[1:])
+    # workspace.yaml at root of workspace-named dir
+    if parts[-1] == "workspace.yaml":
+        return "workspace.yaml"
+    return path
 
 
 def _find_filename(preceding_text: str, yaml_content: str) -> str | None:
