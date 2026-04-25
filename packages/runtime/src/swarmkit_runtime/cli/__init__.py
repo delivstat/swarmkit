@@ -708,7 +708,7 @@ def _build_governance(workspace: ResolvedWorkspace, ws_root: Path) -> Governance
     """
     gov = getattr(workspace.raw, "governance", None)
     if gov is None:
-        return MockGovernanceProvider()
+        return MockGovernanceProvider(allow_all=True)
 
     provider_value = gov.provider.value if hasattr(gov.provider, "value") else str(gov.provider)
 
@@ -730,7 +730,7 @@ def _build_governance(workspace: ResolvedWorkspace, ws_root: Path) -> Governance
             "falling back to mock. See design §8.5 for the plugin path."
         )
 
-    return MockGovernanceProvider()
+    return MockGovernanceProvider(allow_all=True)
 
 
 @app.command()
