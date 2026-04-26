@@ -563,6 +563,13 @@ def run(
         bool,
         typer.Option("--verbose", "-v", help="Print per-agent execution summary after output."),
     ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Show resolved agents and skills without executing.",
+        ),
+    ] = False,
     color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
 ) -> None:
     """One-shot execution of a topology (design §14.1)."""
@@ -588,6 +595,10 @@ def run(
             )
         raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
 
+    if dry_run:
+        _print_dry_run(runtime, topology_name)
+        return
+
     user_input = input_text or ""
     if not user_input and not sys.stdin.isatty():
         user_input = sys.stdin.read().strip()
@@ -610,6 +621,47 @@ def run(
 
     if verbose and result.events:
         _print_run_summary(result)
+
+
+# ---- dry run -------------------------------------------------------------
+
+
+def _print_dry_run(runtime: WorkspaceRuntime, topology_name: str) -> None:
+    """Show the resolved topology without executing — no LLM or MCP calls."""
+    ws = runtime.workspace
+    if topology_name not in ws.topologies:
+        available = sorted(ws.topologies.keys())
+        _stderr(f"Topology '{topology_name}' not found. Available: {available}")
+        raise typer.Exit(_EXIT_USAGE)
+
+    topology = ws.topologies[topology_name]
+    typer.echo(f"── dry run: {topology_name} ──\n")
+    typer.echo("Agents:")
+    _print_agent_tree(topology.root, indent=2)
+
+    mcp_ids = runtime.mcp_manager.server_ids if runtime.mcp_manager else []
+    if mcp_ids:
+        typer.echo(f"\nMCP servers: {', '.join(mcp_ids)}")
+
+    gov_type = type(runtime.governance).__name__
+    typer.echo(f"Governance: {gov_type}")
+    typer.echo("\nNo LLM or MCP calls made. Use without --dry-run to execute.")
+
+
+def _print_agent_tree(agent: object, indent: int = 0) -> None:
+    prefix = " " * indent
+    agent_id = getattr(agent, "id", "?")
+    role = getattr(agent, "role", "?")
+    model = getattr(agent, "model", None) or {}
+    provider = model.get("provider", "?") if isinstance(model, dict) else "?"
+    model_name = model.get("name", "?") if isinstance(model, dict) else "?"
+    skills = [s.id for s in getattr(agent, "skills", ())]
+
+    typer.echo(f"{prefix}{agent_id} ({role}) — {provider}/{model_name}")
+    if skills:
+        typer.echo(f"{prefix}  skills: {', '.join(skills)}")
+    for child in getattr(agent, "children", ()):
+        _print_agent_tree(child, indent + 4)
 
 
 # ---- run observability helpers -------------------------------------------
@@ -682,10 +734,15 @@ def logs(
         str | None,
         typer.Option("--topology", "-t", help="Filter by topology name."),
     ] = None,
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format: text (default) or markdown."),
+    ] = "text",
 ) -> None:
     """Show events from recent topology runs.
 
     Reads from .swarmkit/logs/*.jsonl saved by swarmkit run.
+    Use --format markdown for a compliance-ready audit report.
     """
     log_dir = workspace_path.resolve() / ".swarmkit" / "logs"
     if not log_dir.is_dir():
@@ -702,12 +759,67 @@ def logs(
         return
 
     for log_file in reversed(log_files):
-        typer.echo(f"\n── {log_file.name} ──")
-        for line in log_file.read_text(encoding="utf-8").strip().split("\n"):
-            if not line:
-                continue
-            evt = json.loads(line)
-            typer.echo(_format_log_event(evt))
+        events = [
+            json.loads(line)
+            for line in log_file.read_text(encoding="utf-8").strip().split("\n")
+            if line
+        ]
+        if format == "markdown":
+            typer.echo(_format_log_markdown(log_file.name, events))
+        else:
+            typer.echo(f"\n── {log_file.name} ──")
+            for evt in events:
+                typer.echo(_format_log_event(evt))
+
+
+def _format_log_markdown(filename: str, events: list[dict[str, object]]) -> str:
+    """Format a run log as a compliance-ready markdown audit report."""
+    completed = [e for e in events if e.get("event_type") == "agent.completed"]
+    denied = [e for e in events if "denied" in str(e.get("event_type", "")).lower()]
+    fails = [e for e in events if "failed" in str(e.get("event_type", "")).lower()]
+    skills = [e for e in events if e.get("event_type") == "skill.executed"]
+
+    lines = [
+        f"# Run Report: {filename}",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Value |",
+        "|---|---|",
+        f"| Agents completed | {len(completed)} |",
+        f"| Skills called | {len(skills)} |",
+        f"| Policy denials | {len(denied)} |",
+        f"| Validation failures | {len(fails)} |",
+        f"| Total events | {len(events)} |",
+        "",
+    ]
+
+    if completed:
+        lines.extend(["## Agent Performance", "", "| Agent | Role | Duration |", "|---|---|---|"])
+        for e in completed:
+            lines.append(
+                f"| {e.get('agent_id', '')} | {e.get('role', '')} | {e.get('duration_ms', '?')}ms |"
+            )
+        lines.append("")
+
+    if denied:
+        lines.extend(["## Policy Denials", ""])
+        for e in denied:
+            lines.append(f"- **{e.get('agent_id', '')}**: {e.get('reason', '')}")
+        lines.append("")
+
+    if fails:
+        lines.extend(["## Validation Failures", ""])
+        for e in fails:
+            lines.append(f"- **{e.get('agent_id', '')}**: {e.get('error', '')}")
+        lines.append("")
+
+    lines.extend(["## Event Timeline", "", "| Timestamp | Agent | Event |", "|---|---|---|"])
+    for e in events:
+        ts = str(e.get("timestamp", ""))[:19]
+        lines.append(f"| {ts} | {e.get('agent_id', '')} | {e.get('event_type', '')} |")
+
+    return "\n".join(lines)
 
 
 def _format_log_event(evt: dict[str, object]) -> str:
