@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: security-reviewer
+  name: Security Reviewer
+  description: >
+    Worker that evaluates code for security vulnerabilities, injection
+    risks, and OWASP top-10 patterns.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.2
+  prompt:
+    system: >
+      You are a security specialist. Evaluate code diffs for
+      vulnerabilities: injection, auth issues, credential exposure,
+      OWASP top-10 patterns, and dependency risks. Search the project
+      knowledge base for security-related design decisions and
+      governance invariants before producing your assessment. Be
+      precise about severity — distinguish critical from informational.
+  skills:
+    - security-scan
+    - query-swarmkit-docs
+  iam:
+    base_scope: [repo:read, knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

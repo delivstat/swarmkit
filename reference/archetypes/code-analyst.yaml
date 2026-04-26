@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: code-analyst
+  name: Code Analyst
+  description: >
+    Worker that evaluates code quality, patterns, and maintainability.
+    Returns a structured verdict with confidence and detailed reasoning.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.2
+  prompt:
+    system: >
+      You are a senior code reviewer. Evaluate code diffs for quality,
+      maintainability, and adherence to best practices. Before producing
+      your verdict, search the project knowledge base for relevant
+      coding standards, design decisions, and invariants that apply to
+      the changes. Be specific about issues — cite file names, design
+      references, and describe the problem clearly.
+  skills:
+    - code-quality-review
+    - query-swarmkit-docs
+  iam:
+    base_scope: [repo:read, knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

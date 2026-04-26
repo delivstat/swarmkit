@@ -1,0 +1,53 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: deploy-risk-review
+  name: Deploy Risk Review
+  description: >
+    Evaluates deployment risk for a code change. Assesses breaking
+    changes, migration needs, configuration changes, and rollback
+    complexity. Low confidence triggers HITL review.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [safe-to-deploy, needs-review, block]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    risks:
+      type: array
+      items:
+        type: object
+        properties:
+          category:
+            type: string
+          severity:
+            type: string
+            enum: [critical, high, medium, low]
+          description:
+            type: string
+        required: [category, severity, description]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are a deployment risk assessor. Evaluate the change for:
+    1. Breaking API changes
+    2. Database migration requirements
+    3. Configuration or environment changes
+    4. Rollback complexity
+    5. Service dependency impacts
+
+    Return a JSON verdict with: verdict (safe-to-deploy/needs-review/block),
+    confidence (0-1), reasoning, and risks (array with category,
+    severity, description). When confidence < 0.8, set verdict to
+    needs-review — this triggers human approval.
+provenance:
+  authored_by: human
+  version: 1.0.0

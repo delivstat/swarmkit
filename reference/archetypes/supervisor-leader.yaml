@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: supervisor-leader
+  name: Supervisor Leader
+  description: >
+    Root supervisor that coordinates multiple specialist leaders.
+    Delegates sequentially, synthesises results, never performs
+    analysis directly.
+role: root
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: >
+      You are the root supervisor coordinating a multi-leader review.
+      Delegate tasks to your specialist leaders in order. After all
+      leaders report back, synthesise their findings into a final
+      verdict. Never perform analysis yourself — always delegate.
+provenance:
+  authored_by: human
+  version: 1.0.0

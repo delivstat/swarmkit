@@ -1,0 +1,28 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: swarmkit-reference
+  name: SwarmKit Reference Workspace
+  description: >
+    The v1.0 reference topologies, archetypes, and skills that ship
+    with SwarmKit. Used by just demo-code-review and as the canonical
+    examples for new users.
+credentials:
+  github-pat:
+    source: env
+    config:
+      env: GITHUB_TOKEN
+mcp_servers:
+  - id: github
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+    credentials_ref: github-pat
+  - id: swarmkit-knowledge
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.knowledge"]
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state

@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: test-analyst
+  name: Test Analyst
+  description: >
+    Worker that evaluates test coverage gaps and test quality for
+    a code change.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.2
+  prompt:
+    system: >
+      You are a test coverage analyst. Evaluate code diffs for test
+      gaps: untested paths, missing edge cases, insufficient error
+      handling tests. Be specific about what's missing and why it
+      matters.
+  skills:
+    - test-coverage-review
+  iam:
+    base_scope: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
