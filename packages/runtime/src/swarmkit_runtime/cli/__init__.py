@@ -803,18 +803,36 @@ def why(
     from swarmkit_runtime.model_providers import CompletionRequest, Message  # noqa: PLC0415
 
     prompt = (
-        "You are analyzing a SwarmKit topology execution log. "
-        "Explain what happened in this run in plain English: which agents ran, "
-        "what they did, how long they took, any denials or failures, and what "
-        "the overall outcome was. Be concise.\n\n"
+        f"Analyze this SwarmKit topology execution log and explain "
+        f"what happened.\n\n"
         f"Run log ({log_file.name}):\n{events_text}"
+    )
+    system = (
+        "You are a SwarmKit run analyst. Given a JSONL execution log, "
+        "provide a useful analysis covering:\n"
+        "1. FLOW: Which agents ran and in what order (root delegates to "
+        "leaders, leaders delegate to workers)\n"
+        "2. TIMING: Which agents took the longest and why that matters "
+        "(is the root bottlenecked synthesising? is a worker slow on "
+        "an MCP call?)\n"
+        "3. SKILLS: What skills were called, what they produced "
+        "(result_length gives a sense of output size)\n"
+        "4. ISSUES: Any policy denials, trust failures, or output "
+        "validation failures — explain what went wrong and what to fix\n"
+        "5. INSIGHT: One actionable observation — e.g., 'the root took "
+        "3x longer than the workers, suggesting the synthesis prompt "
+        "could be optimised' or 'no workers beyond engineering ran, "
+        "the topology may not be delegating to QA/ops'\n\n"
+        "Be specific with numbers (cite duration_ms, result_length). "
+        "Be concise — aim for 5-8 sentences, not a wall of text. "
+        "Don't just describe the log literally — interpret it."
     )
     result = asyncio.run(
         provider.complete(
             CompletionRequest(
                 model=model,
                 messages=(Message(role="user", content=prompt),),
-                system="You are a SwarmKit run analyst.",
+                system=system,
             )
         )
     )
@@ -877,9 +895,18 @@ def ask(
                 model=model,
                 messages=(Message(role="user", content=prompt),),
                 system=(
-                    "You are a SwarmKit workspace assistant. Answer questions "
-                    "about the workspace configuration, recent runs, agent "
-                    "performance, and issues. Be concise and specific."
+                    "You are a SwarmKit workspace assistant. You have access "
+                    "to the workspace configuration (topologies, skills, "
+                    "archetypes) and recent run logs (JSONL events with "
+                    "agent timing, skill calls, denials, failures).\n\n"
+                    "When answering:\n"
+                    "- Cite specific data: agent names, duration_ms, skill IDs\n"
+                    "- If asked about performance, compare agent timings\n"
+                    "- If asked about failures, explain what went wrong and "
+                    "what the user can do about it\n"
+                    "- If asked about configuration, reference the actual "
+                    "topology/skill/archetype names from the workspace\n"
+                    "- Be concise — 3-5 sentences unless the question needs more"
                 ),
             )
         )
