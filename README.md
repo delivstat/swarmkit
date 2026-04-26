@@ -4,7 +4,7 @@
 
 SwarmKit treats swarm topology — who exists, who reports to whom, what skills they can exercise — as declarative data rather than imperative code. This separation lets non-developers compose agent teams conversationally while developers retain full programmatic control. Swarms are not static: every swarm can observe its own capability gaps and grow new skills through a conversational, human-approved authoring flow.
 
-**Status:** pre-v1.0. Milestones 0–6 complete, M7 in progress. The framework runs multi-agent topologies end-to-end with real LLM providers, MCP tool servers, governance enforcement, and knowledge-grounded review. See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap; [`design/SwarmKit-Design-v0.6.md`](./design/SwarmKit-Design-v0.6.md) is the authoritative architecture.
+**Status:** pre-v1.0. Milestones 0–9 complete (eject deferred). The framework runs multi-agent topologies end-to-end via CLI or HTTP server, with real LLM providers, MCP tool servers, governance enforcement, knowledge-grounded review, and conversational workspace editing. See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap; [`design/SwarmKit-Design-v0.6.md`](./design/SwarmKit-Design-v0.6.md) is the authoritative architecture.
 
 ## What works today
 
@@ -14,7 +14,10 @@ swarmkit init my-swarm/
 
 # Author skills, topologies, archetypes conversationally
 swarmkit author skill my-swarm/
-swarmkit author topology my-swarm/
+swarmkit author skill my-swarm/ --thorough   # multi-agent authoring swarm
+
+# Edit an existing workspace conversationally
+swarmkit edit my-swarm/ --input "Add a dependency vulnerability scan skill"
 
 # Validate a workspace — human-readable errors with file pointers
 swarmkit validate my-swarm/ --tree
@@ -25,6 +28,11 @@ SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct \
 
 # Review the Code Review Swarm against a real GitHub PR
 swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit"
+
+# Start the HTTP server (persistent mode)
+swarmkit serve my-swarm/ --port 8000
+curl -X POST http://localhost:8000/run/my-topology \
+  -d '{"input": "Do the thing"}'
 
 # Bundle the full SwarmKit corpus for any LLM
 swarmkit knowledge-pack -o pack.md
@@ -46,9 +54,9 @@ swarmkit knowledge-server
 | 4 | Decision skills, structured output, review queue, HITL | ✅ |
 | 5 | MCP integration (stdio + HTTP, sandboxed servers, Knowledge MCP Server) | ✅ |
 | 6 | Code Review Swarm (3-leader reference topology) | ✅ |
-| 7 | Skill Authoring Swarm + `swarmkit edit` | In progress |
+| 7 | Skill Authoring Swarm + `swarmkit edit` + `--thorough` | ✅ |
 | 8 | Workspace Authoring Swarm | Superseded by M3.5 + M7 |
-| 9 | Eject + HTTP server + scheduled mode | Planned |
+| 9 | HTTP server (`swarmkit serve`) — eject deferred | ✅ |
 | 10 | Catalogue polish + launch | Planned |
 
 ## Key features
@@ -171,7 +179,7 @@ Prerequisites: Python 3.11+, Node 20+, `pnpm`, `uv`, `just`.
 ```bash
 git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
 just install          # uv sync + pnpm install
-just test             # 450+ tests across Python + TypeScript
+just test             # 500+ tests across Python + TypeScript
 just lint             # ruff + biome
 just typecheck        # mypy + tsc
 ```
