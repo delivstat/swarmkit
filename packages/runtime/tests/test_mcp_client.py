@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from swarmkit_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
 from swarmkit_runtime.mcp._client import _build_sandboxed_command, _resolve_env
 from swarmkit_schema.models.workspace import McpServer, Transport
@@ -166,7 +167,7 @@ def test_build_sandboxed_command_wraps_in_docker() -> None:
 
 
 def test_build_sandboxed_command_passes_env_via_docker_e(
-    monkeypatch,  # type: ignore[no-untyped-def]
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("TEST_KEY", "test_val")
     config = MCPServerConfig(
