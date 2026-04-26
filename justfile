@@ -61,9 +61,6 @@ build-js:
 
 # ---- Runtime helpers ----
 
-# Regenerate the markdown extraction of the design docx
-design-extract:
-    uv run python scripts/extract_design.py
 
 # Internal: run the cross-language schema demo for one artifact type.
 _demo-schema artifact:
