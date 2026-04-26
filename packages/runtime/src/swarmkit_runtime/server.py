@@ -128,7 +128,7 @@ class RunResponse(BaseModel):
 
 
 def _get_runtime(request: Request) -> WorkspaceRuntime:
-    runtime = getattr(request.app.state, "runtime", None)
+    runtime: WorkspaceRuntime | None = getattr(request.app.state, "runtime", None)
     if runtime is None:
         raise HTTPException(status_code=503, detail="Workspace not loaded yet")
     return runtime
