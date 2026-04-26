@@ -128,3 +128,15 @@ Examples:
 - Read the relevant section of `design/SwarmKit-Design-v0.6.md`.
 - If the design is silent or contradictory, it's an open question — flag it in `design/` rather than deciding unilaterally.
 - The three pillars of the product story (topology-as-data, skills-as-extension, growth-through-authoring) are tie-breakers for architectural calls.
+
+## Release checklist
+
+When cutting a release:
+
+1. **Bump versions** in `packages/runtime/pyproject.toml` and `packages/schema/python/pyproject.toml`.
+2. **Commit** the version bump.
+3. **Build** both packages: `uv build --all-packages` — verify both succeed.
+4. **Tag**: `git tag -a v1.x.y -m "SwarmKit v1.x.y — summary"`.
+5. **Push**: `git push origin v1.x.y` — triggers PyPI publish + Docker build via GitHub Actions.
+
+PyPI does not allow re-uploading the same version. If the tag is pushed before the version bump, the publish fails and requires deleting the tag, bumping, and re-tagging. Always bump first.
