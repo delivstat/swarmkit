@@ -725,6 +725,169 @@ def _format_log_event(evt: dict[str, object]) -> str:
     return f"  {agent:<24} {detail}"
 
 
+# ---- status --------------------------------------------------------------
+
+
+@app.command()
+def status(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+    last: Annotated[
+        int,
+        typer.Option("--last", "-n", help="Show last N runs."),
+    ] = 5,
+) -> None:
+    """Show recent run status at a glance."""
+    log_dir = workspace_path.resolve() / ".swarmkit" / "logs"
+    if not log_dir.is_dir():
+        typer.echo("No runs recorded yet.")
+        return
+
+    log_files = sorted(log_dir.glob("*.jsonl"), reverse=True)[:last]
+    if not log_files:
+        typer.echo("No runs recorded yet.")
+        return
+
+    typer.echo(f"{'topology':<20} {'agents':<8} {'duration':<10} {'issues':<8} {'when'}")
+    typer.echo("-" * 65)
+    for lf in log_files:
+        events = [json.loads(line) for line in lf.read_text().strip().split("\n") if line]
+        topo = lf.stem.rsplit("-", 1)[0]
+        completed = [e for e in events if e.get("event_type") == "agent.completed"]
+        denied = [e for e in events if "denied" in str(e.get("event_type", "")).lower()]
+        fails = [e for e in events if "failed" in str(e.get("event_type", "")).lower()]
+        total_ms = sum(int(e.get("duration_ms", 0)) for e in completed)
+        issues = len(denied) + len(fails)
+        ts = lf.stem.rsplit("-", 1)[-1] if "-" in lf.stem else "?"
+        typer.echo(f"{topo:<20} {len(completed):<8} {total_ms:>6}ms   {issues:<8} {ts}")
+
+
+# ---- why -----------------------------------------------------------------
+
+
+@app.command()
+def why(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run log filename or prefix (from swarmkit logs)."),
+    ],
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Explain what happened in a run using an LLM.
+
+    Reads the run's JSONL events, sends them to the configured model
+    provider, and returns a plain-English explanation.
+    """
+    log_dir = workspace_path.resolve() / ".swarmkit" / "logs"
+    if not log_dir.is_dir():
+        _stderr("No run logs found.")
+        raise typer.Exit(_EXIT_USAGE)
+
+    matches = [
+        f for f in log_dir.glob("*.jsonl") if f.name.startswith(run_id) or f.stem.startswith(run_id)
+    ]
+    if not matches:
+        _stderr(f"No run log matching '{run_id}'. Use `swarmkit logs` to see available runs.")
+        raise typer.Exit(_EXIT_USAGE)
+
+    log_file = sorted(matches, reverse=True)[0]
+    events_text = log_file.read_text(encoding="utf-8").strip()
+
+    provider, model = resolve_authoring_provider()
+
+    from swarmkit_runtime.model_providers import CompletionRequest, Message  # noqa: PLC0415
+
+    prompt = (
+        "You are analyzing a SwarmKit topology execution log. "
+        "Explain what happened in this run in plain English: which agents ran, "
+        "what they did, how long they took, any denials or failures, and what "
+        "the overall outcome was. Be concise.\n\n"
+        f"Run log ({log_file.name}):\n{events_text}"
+    )
+    result = asyncio.run(
+        provider.complete(
+            CompletionRequest(
+                model=model,
+                messages=(Message(role="user", content=prompt),),
+                system="You are a SwarmKit run analyst.",
+            )
+        )
+    )
+    parts = [b.text for b in result.content if b.type == "text" and b.text]
+    typer.echo("\n".join(parts) or "(no analysis)")
+
+
+# ---- ask -----------------------------------------------------------------
+
+
+@app.command()
+def ask(
+    question: Annotated[
+        str,
+        typer.Argument(help="Question about the workspace or recent runs."),
+    ],
+    workspace_path: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", help="Workspace root."),
+    ] = Path("."),
+) -> None:
+    """Ask a question about the workspace or recent runs.
+
+    Single-shot LLM query over the workspace state + recent audit events.
+    The conversational counterpart to swarmkit logs.
+    """
+    ws_root = workspace_path.resolve()
+
+    context_parts = ["# Workspace state"]
+    try:
+        workspace = resolve_workspace(ws_root)
+        context_parts.append(f"Workspace: {workspace.raw.metadata.id}")
+        context_parts.append(f"Topologies: {sorted(workspace.topologies.keys())}")
+        context_parts.append(f"Skills: {sorted(workspace.skills.keys())}")
+        context_parts.append(f"Archetypes: {sorted(workspace.archetypes.keys())}")
+    except Exception:
+        context_parts.append("(workspace could not be resolved)")
+
+    log_dir = ws_root / ".swarmkit" / "logs"
+    if log_dir.is_dir():
+        recent = sorted(log_dir.glob("*.jsonl"), reverse=True)[:3]
+        if recent:
+            context_parts.append("\n# Recent run logs")
+            for lf in recent:
+                context_parts.append(f"\n## {lf.name}")
+                context_parts.append(lf.read_text(encoding="utf-8").strip())
+
+    provider, model = resolve_authoring_provider()
+
+    from swarmkit_runtime.model_providers import CompletionRequest, Message  # noqa: PLC0415
+
+    prompt = (
+        f"Context about this SwarmKit workspace:\n\n"
+        f"{chr(10).join(context_parts)}\n\n"
+        f"Question: {question}"
+    )
+    result = asyncio.run(
+        provider.complete(
+            CompletionRequest(
+                model=model,
+                messages=(Message(role="user", content=prompt),),
+                system=(
+                    "You are a SwarmKit workspace assistant. Answer questions "
+                    "about the workspace configuration, recent runs, agent "
+                    "performance, and issues. Be concise and specific."
+                ),
+            )
+        )
+    )
+    parts = [b.text for b in result.content if b.type == "text" and b.text]
+    typer.echo("\n".join(parts) or "(no response)")
+
+
 # ---- knowledge-server ----------------------------------------------------
 
 
