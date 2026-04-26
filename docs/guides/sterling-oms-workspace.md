@@ -973,6 +973,223 @@ swarmkit edit . --input "The sterling architect isn't referencing \
   our DOM rules. Make sure it searches project config before answering."
 ```
 
+## Step 8 (optional) — Add an AI validation gate
+
+Once you start acting on the agent's recommendations (not just
+reading them), add an independent validator that catches problems
+schema validation misses: performance risks, integration breaks,
+version incompatibilities, and reference-design misapplication.
+
+### Why schema validation isn't enough
+
+| Problem | Schema catches it? | AI judge catches it? |
+|---|---|---|
+| Invalid XML element name | Yes | Not needed |
+| Missing required attribute | Yes | Not needed |
+| DOM rule references non-existent node | No | Yes |
+| Agent config with too-short polling interval | No | Yes |
+| Extension overrides a sealed API | No | Yes |
+| Sourcing rule ordering creates infinite loop | No | Yes |
+| Config change breaks an existing integration | No | Yes |
+| Reference design doesn't fit current Sterling version | No | Yes |
+
+### Sterling Configuration Validator archetype
+
+Create `archetypes/sterling-config-validator.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: sterling-config-validator
+  name: Sterling Configuration Validator
+  description: >
+    Independent validator that checks Sterling OMS recommendations
+    for operational safety. Catches issues that schema validation
+    misses.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: |
+      You are an independent Sterling OMS configuration validator.
+      Your job is to catch problems that schema validation misses.
+      You are the last gate before a recommendation reaches the user.
+
+      For every recommendation or configuration change, check:
+
+      1. OPERATIONAL SAFETY
+         - Will this cause agent processing bottlenecks?
+         - Does the polling interval make sense for transaction volume?
+         - Are there database locking implications?
+         - Will this affect peak-hour performance?
+         - Does the thread pool / JVM memory configuration support this?
+
+      2. INTEGRATION INTEGRITY
+         - Does this change break inbound/outbound API contracts?
+         - Are downstream systems affected (ERP, WMS, TMS, e-commerce)?
+         - Do EDI mappings (850/855/856/810) still hold?
+         - Are there message queue depth implications?
+
+      3. EXTENSION SAFETY
+         - Does this override a sealed or deprecated Sterling API?
+         - Is the user exit in the correct pipeline position?
+         - Are there thread-safety concerns in the custom code?
+         - Does the extension handle all transaction types (sales,
+           transfer, return)?
+
+      4. VERSION COMPATIBILITY
+         - Is this feature available in the project's Sterling version?
+         - Are there known defects (APARs) or required fix packs?
+         - Will this survive a Sterling version upgrade?
+
+      5. REFERENCE DESIGN APPLICABILITY
+         - If the recommendation cites a reference design, verify
+           it fits the current project's:
+           - Sterling version
+           - Database platform (Oracle/DB2/PostgreSQL)
+           - Deployment model (on-prem/cloud/hybrid)
+           - Transaction volume profile
+
+      CRITICAL: You ONLY have access to project-knowledge (the
+      current project). You do NOT have reference design access.
+      This prevents you from validating against the wrong baseline.
+
+      OUTPUT FORMAT:
+      For each recommendation, return:
+      - Verdict: SAFE / NEEDS-REVIEW / UNSAFE
+      - Concerns: specific issues found (with Sterling references)
+      - Conditions: what must be true for this to be safe
+        (e.g., "safe if daily order volume < 50K")
+  skills:
+    - search-project
+    - read-context
+  iam:
+    base_scope: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+### Validation decision skill
+
+Create `skills/sterling-config-validation.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: sterling-config-validation
+  name: Sterling Configuration Validation
+  description: >
+    Validates a proposed Sterling OMS configuration change for
+    operational safety, integration integrity, extension safety,
+    and version compatibility.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [safe, needs-review, unsafe]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    concerns:
+      type: array
+      items:
+        type: object
+        properties:
+          area:
+            type: string
+            enum: [operational, integration, extension, version, reference-fit]
+          severity:
+            type: string
+            enum: [critical, high, medium, low]
+          description:
+            type: string
+          condition:
+            type: string
+        required: [area, severity, description]
+    reasoning:
+      type: string
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Validate the proposed Sterling OMS configuration change.
+    Search the current project's knowledge base for the existing
+    configuration before assessing the change. Check operational
+    safety, integration integrity, extension safety, and version
+    compatibility. Return a structured verdict.
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+### Wire the validator into the topology
+
+Update `topologies/solution-review.yaml` to add the validation
+gate. The architect proposes, the validator checks, and only
+validated recommendations reach the user:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: solution-review
+  version: 0.2.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: anthropic
+      name: claude-sonnet-4-6
+    prompt:
+      system: >
+        You are the solution review coordinator. When given a
+        Sterling OMS question or design proposal:
+        1. Delegate to sterling-architect for the technical solution
+        2. Delegate to retail-expert for business validation
+        3. Delegate to config-validator to check operational safety
+        4. Synthesise: include the architect's recommendation, the
+           retail expert's business assessment, AND the validator's
+           safety verdict. If the validator says UNSAFE or
+           NEEDS-REVIEW, flag it prominently.
+    children:
+      - id: sterling-architect
+        role: worker
+        archetype: sterling-oms-architect
+      - id: retail-expert
+        role: worker
+        archetype: retail-domain-expert
+      - id: config-validator
+        role: worker
+        archetype: sterling-config-validator
+```
+
+### Key design choice: validator has no reference access
+
+The validator gets `search-project` only — no
+`search-reference-designs`. This is intentional:
+
+- The architect proposes solutions (drawing from both current
+  project + reference designs)
+- The validator checks proposals against the current project's
+  reality only
+- If the architect recommended something from a reference design
+  that doesn't fit, the validator catches it because it sees the
+  current configuration doesn't match
+
+This creates a natural check-and-balance: the architect is
+creative (broad knowledge), the validator is conservative
+(narrow, grounded knowledge).
+
 ## What knowledge makes the biggest difference
 
 In order of impact:
