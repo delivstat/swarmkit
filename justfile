@@ -147,6 +147,11 @@ demo-run:
     @echo "── swarmkit run (hello-swarm) ──"
     @uv run swarmkit run examples/hello-swarm/workspace hello --input "Greet the engineering team" --no-color
 
+# Build the Docker sandbox image for sandboxed MCP servers (design §8.8).
+# Swarm-authored servers run inside this container with --network=none.
+build-sandbox-image:
+    docker build -t swarmkit-mcp-sandbox docker/mcp-sandbox/
+
 # Quickstart runtime CLI
 run *args:
     uv run swarmkit {{args}}

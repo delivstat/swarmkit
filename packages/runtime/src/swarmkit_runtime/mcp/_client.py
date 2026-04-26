@@ -42,6 +42,7 @@ class MCPServerConfig:
     endpoint: str = ""
     env: dict[str, str] | None = None
     sandboxed: bool = False
+    sandbox_image: str = ""
 
 
 class MCPClientManager:
@@ -170,7 +171,7 @@ class MCPClientManager:
         return sorted(self._configs.keys())
 
 
-_SANDBOX_IMAGE = "python:3.11-slim"
+_SANDBOX_IMAGE = os.environ.get("SWARMKIT_SANDBOX_IMAGE", "swarmkit-mcp-sandbox")
 
 
 def _build_sandboxed_command(
@@ -210,7 +211,8 @@ def _build_sandboxed_command(
         for key, value in resolved_env.items():
             docker_args.extend(["-e", f"{key}={value}"])
 
-    docker_args.append(_SANDBOX_IMAGE)
+    image = config.sandbox_image or _SANDBOX_IMAGE
+    docker_args.append(image)
     docker_args.extend(config.command)
 
     return "docker", docker_args, None
@@ -252,5 +254,6 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
             endpoint=server.endpoint or "",
             env=dict(server.env) if server.env else None,
             sandboxed=bool(server.sandboxed) if server.sandboxed is not None else False,
+            sandbox_image=server.sandbox_image or "",
         )
     return configs

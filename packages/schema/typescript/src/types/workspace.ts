@@ -91,6 +91,11 @@ export interface MCPServerElement {
     env?: { [key: string]: string };
     id:   string;
     /**
+     * Docker image for sandboxed servers. Defaults to swarmkit-mcp-sandbox (Python + mcp SDK).
+     * Use node:22-slim for Node.js servers.
+     */
+    sandbox_image?: string;
+    /**
      * True forces Docker-or-equivalent isolation (design §8.8).
      */
     sandboxed?: boolean;

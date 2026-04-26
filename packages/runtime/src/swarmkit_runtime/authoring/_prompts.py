@@ -422,6 +422,14 @@ directory. The user must review and approve before the server can be \
 deployed. This is a security requirement — agents cannot deploy their \
 own generated code.
 
+SECURITY: All generated MCP servers MUST have `sandboxed: true` in \
+their workspace config. This runs them inside a Docker container with \
+no network access. For Python servers use the default sandbox image \
+(swarmkit-mcp-sandbox). For Node.js servers set \
+`sandbox_image: node:22-slim`. The user must build the sandbox image \
+first: `just build-sandbox-image` (or `docker build -t \
+swarmkit-mcp-sandbox docker/mcp-sandbox/`).
+
 Example MCP server entry in workspace.yaml (array of typed entries):
 ```yaml
 mcp_servers:
@@ -430,6 +438,12 @@ mcp_servers:
     command: ["python", ".swarmkit/mcp-servers/weather-api/server.py"]
     env:
       WEATHER_API_KEY: "${{WEATHER_API_KEY}}"
+    sandboxed: true
+  - id: github-tools
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    sandboxed: true
+    sandbox_image: node:22-slim
 ```
 
 Example skill referencing the server:
