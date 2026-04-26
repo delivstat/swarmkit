@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/topology.schema.json",
+  "title": "SwarmKit Topology",
+  "description": "A complete swarm definition. See design §10 and design/details/topology-schema-v1.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "agents"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "swarmkit/v1",
+      "description": "Schema version. Breaking changes bump this major."
+    },
+    "kind": { "const": "Topology" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "agents": { "$ref": "#/$defs/agents" },
+    "artifacts": { "$ref": "#/$defs/artifacts" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Lowercase kebab. Must start with a letter."
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "version": { "$ref": "#/$defs/semver" },
+        "description": { "type": "string" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": ["one-shot", "persistent", "scheduled"],
+          "description": "Execution mode (design §14.1)."
+        },
+        "max_concurrent_tasks": { "type": "integer", "minimum": 1 },
+        "task_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "checkpointing": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "storage": { "enum": ["sqlite", "postgres"] }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root"],
+      "properties": {
+        "root": {
+          "allOf": [
+            { "$ref": "#/$defs/agent" },
+            { "properties": { "role": { "const": "root" } } }
+          ]
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "role": { "enum": ["root", "leader", "worker"] },
+        "archetype": { "$ref": "#/$defs/identifier" },
+        "model": { "$ref": "#/$defs/model" },
+        "prompt": { "$ref": "#/$defs/prompt" },
+        "skills": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" },
+          "description": "Skill IDs (design §6.1). Replaces the archetype's skill list when present."
+        },
+        "skills_additional": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" },
+          "description": "Skills merged onto the archetype defaults (design §6.6)."
+        },
+        "iam": { "$ref": "#/$defs/iam" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/child_agent" },
+          "description": "Nested agents. Tree structure, one parent per agent (design §5.2)."
+        }
+      }
+    },
+    "child_agent": {
+      "allOf": [
+        { "$ref": "#/$defs/agent" },
+        { "properties": { "role": { "enum": ["leader", "worker"] } } }
+      ]
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Typically anthropic | openai | google | azure | local | custom."
+        },
+        "name": { "type": "string" },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "max_tokens": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "prompt": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "system": { "type": "string" },
+        "persona": { "type": "string" }
+      }
+    },
+    "iam": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_scope": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "elevated_scopes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "knowledge_bases": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "review_queues": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "enum": ["minimal", "standard", "detailed"] },
+            "storage": { "enum": ["sqlite", "postgres"] },
+            "retention_days": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "skill_gap_logging": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "See design §12.1.",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "surface_threshold": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    }
+  }
+}
