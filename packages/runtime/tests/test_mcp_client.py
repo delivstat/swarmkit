@@ -7,8 +7,11 @@ subprocess startup. End-to-end execution is exercised through
 
 from __future__ import annotations
 
-from swarmkit_runtime.mcp import MCPClientManager, parse_mcp_servers
-from swarmkit_runtime.mcp._client import _resolve_env
+from pathlib import Path
+
+import pytest
+from swarmkit_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
+from swarmkit_runtime.mcp._client import _build_sandboxed_command, _resolve_env
 from swarmkit_schema.models.workspace import McpServer, Transport
 
 
@@ -126,3 +129,65 @@ def test_manager_server_ids_sorted() -> None:
 def test_manager_empty_when_no_configs() -> None:
     manager = MCPClientManager()
     assert manager.server_ids == []
+
+
+# ---- sandboxed server support -------------------------------------------
+
+
+def test_parse_sandboxed_flag_preserved() -> None:
+    configs = parse_mcp_servers(
+        [_stdio("sandboxed-server", ["python", "server.py"], sandboxed=True)]
+    )
+    assert configs["sandboxed-server"].sandboxed is True
+
+
+def test_parse_sandboxed_default_false() -> None:
+    configs = parse_mcp_servers([_stdio("normal", ["python", "server.py"])])
+    assert configs["normal"].sandboxed is False
+
+
+def test_build_sandboxed_command_wraps_in_docker() -> None:
+    config = MCPServerConfig(
+        server_id="test",
+        command=["python", "server.py"],
+        sandboxed=True,
+    )
+    cmd, args, env = _build_sandboxed_command(config, workspace_root=Path("/tmp/test-workspace"))
+    assert cmd == "docker"
+    assert "run" in args
+    assert "-i" in args
+    assert "--rm" in args
+    assert "--network=none" in args
+    assert "-v" in args
+    vol_idx = args.index("-v")
+    assert "/tmp/test-workspace:/workspace:ro" in args[vol_idx + 1]
+    assert "python" in args
+    assert "server.py" in args
+    assert env is None
+
+
+def test_build_sandboxed_command_passes_env_via_docker_e(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TEST_KEY", "test_val")
+    config = MCPServerConfig(
+        server_id="test",
+        command=["python", "server.py"],
+        env={"API_KEY": "${TEST_KEY}"},
+        sandboxed=True,
+    )
+    _, args, _ = _build_sandboxed_command(config)
+    assert "-e" in args
+    e_idx = args.index("-e")
+    assert args[e_idx + 1] == "API_KEY=test_val"
+
+
+def test_build_sandboxed_command_no_workspace() -> None:
+    config = MCPServerConfig(
+        server_id="test",
+        command=["python", "server.py"],
+        sandboxed=True,
+    )
+    _, args, _ = _build_sandboxed_command(config, workspace_root=None)
+    assert "-v" not in args
+    assert "-w" not in args

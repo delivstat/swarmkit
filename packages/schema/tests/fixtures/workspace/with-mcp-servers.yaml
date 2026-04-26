@@ -31,6 +31,7 @@ mcp_servers:
       ACME_REGION: us-east-1
       ACME_LOG_LEVEL: "${LOG_LEVEL}"   # ${VAR} resolves from process env at startup
     sandboxed: true       # scaffolded by the Skill Authoring Swarm — Docker-isolated
+    sandbox_image: swarmkit-mcp-sandbox  # custom image with deps pre-installed
   - id: weather
     transport: http
     endpoint: https://mcp.example.com/weather

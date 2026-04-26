@@ -14,6 +14,7 @@ See ``design/details/mcp-client.md``.
 from __future__ import annotations
 
 import os
+import shutil
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +41,8 @@ class MCPServerConfig:
     command: list[str] = field(default_factory=list)
     endpoint: str = ""
     env: dict[str, str] | None = None
+    sandboxed: bool = False
+    sandbox_image: str = ""
 
 
 class MCPClientManager:
@@ -97,14 +100,16 @@ class MCPClientManager:
                 f"MCP server '{config.server_id}' has transport=stdio but no command. "
                 f"Add a `command: [...]` list to its workspace.yaml entry."
             )
-        env = _resolve_env(config.env)
-        cwd = str(self._workspace_root) if self._workspace_root else None
-        params = StdioServerParameters(
-            command=config.command[0],
-            args=list(config.command[1:]),
-            env=env,
-            cwd=cwd,
-        )
+
+        if config.sandboxed:
+            cmd, args, env = _build_sandboxed_command(config, workspace_root=self._workspace_root)
+        else:
+            cmd = config.command[0]
+            args = list(config.command[1:])
+            env = _resolve_env(config.env)
+
+        cwd = str(self._workspace_root) if self._workspace_root and not config.sandboxed else None
+        params = StdioServerParameters(command=cmd, args=args, env=env, cwd=cwd)
         transport = await self._stack.enter_async_context(stdio_client(params))
         session = await self._stack.enter_async_context(ClientSession(*transport))
         await session.initialize()
@@ -166,6 +171,53 @@ class MCPClientManager:
         return sorted(self._configs.keys())
 
 
+_SANDBOX_IMAGE = os.environ.get("SWARMKIT_SANDBOX_IMAGE", "swarmkit-mcp-sandbox")
+
+
+def _build_sandboxed_command(
+    config: MCPServerConfig,
+    *,
+    workspace_root: Path | None = None,
+) -> tuple[str, list[str], dict[str, str] | None]:
+    """Wrap an MCP server command in ``docker run`` for process isolation.
+
+    The container runs with ``--network=none`` (no outbound access),
+    ``--rm`` (auto-cleanup), and the workspace mounted read-only at
+    ``/workspace``. Environment variables from the config are passed
+    via ``-e`` flags after ``${VAR}`` expansion.
+
+    Returns ``(command, args, env)`` suitable for ``StdioServerParameters``.
+    The env is ``None`` because variables are injected into the container
+    via ``-e``, not the host process.
+    """
+    if not shutil.which("docker"):
+        raise RuntimeError(
+            f"MCP server '{config.server_id}' has sandboxed=true but "
+            f"'docker' is not on PATH. Install Docker or set sandboxed=false."
+        )
+
+    docker_args = [
+        "run",
+        "-i",
+        "--rm",
+        "--network=none",
+    ]
+
+    if workspace_root is not None:
+        docker_args.extend(["-v", f"{workspace_root}:/workspace:ro", "-w", "/workspace"])
+
+    resolved_env = _resolve_env(config.env)
+    if resolved_env:
+        for key, value in resolved_env.items():
+            docker_args.extend(["-e", f"{key}={value}"])
+
+    image = config.sandbox_image or _SANDBOX_IMAGE
+    docker_args.append(image)
+    docker_args.extend(config.command)
+
+    return "docker", docker_args, None
+
+
 def _resolve_env(env: dict[str, str] | None) -> dict[str, str] | None:
     """Resolve ``${VAR}`` references in env values from the process environment."""
     if not env:
@@ -201,5 +253,7 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
             command=list(server.command or []),
             endpoint=server.endpoint or "",
             env=dict(server.env) if server.env else None,
+            sandboxed=bool(server.sandboxed) if server.sandboxed is not None else False,
+            sandbox_image=server.sandbox_image or "",
         )
     return configs

@@ -155,6 +155,10 @@
         "sandboxed": {
           "type": "boolean",
           "description": "True forces Docker-or-equivalent isolation (design §8.8)."
+        },
+        "sandbox_image": {
+          "type": "string",
+          "description": "Docker image for sandboxed servers. Defaults to swarmkit-mcp-sandbox (Python + mcp SDK). Use node:22-slim for Node.js servers."
         }
       },
       "allOf": [

@@ -153,6 +153,10 @@ class McpServer(BaseModel):
     sandboxed: bool | None = Field(
         None, description="True forces Docker-or-equivalent isolation (design §8.8)."
     )
+    sandbox_image: str | None = Field(
+        None,
+        description="Docker image for sandboxed servers. Defaults to swarmkit-mcp-sandbox (Python + mcp SDK). Use node:22-slim for Node.js servers.",
+    )
 
 
 class Backend(Enum):
