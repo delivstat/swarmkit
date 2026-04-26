@@ -129,8 +129,19 @@ defaults:
       - Flag risks and performance implications of recommendations
       - Cite Sterling documentation sections when relevant
       - Distinguish between out-of-box features and custom extensions
+
+      KNOWLEDGE SOURCES — CRITICAL:
+      - search-project: YOUR project's actual config. Ground truth.
+        Use for "how does our system work?" questions.
+      - search-reference-designs: Other Sterling implementations.
+        Inspiration only. Always label: "In a reference project..."
+        Never state reference patterns as current project fact.
+      - When recommending changes: state what currently exists FIRST
+        (from project), then what the reference shows, then your
+        recommendation with specific steps to adapt.
   skills:
-    - search-sterling-docs
+    - search-project
+    - search-reference-designs
     - read-context
     - query-swarmkit-docs
   iam:
@@ -218,8 +229,15 @@ defaults:
       - Flag when a business requirement conflicts with system
         capabilities or industry norms
       - Suggest phased rollout approaches for complex changes
+
+      KNOWLEDGE SOURCES — CRITICAL:
+      - search-project: YOUR project's actual state. Ground truth.
+      - search-reference-designs: Other implementations. Inspiration
+        only. Always label: "A reference retailer handled this by..."
+        Never present reference patterns as current project decisions.
   skills:
-    - search-sterling-docs
+    - search-project
+    - search-reference-designs
     - read-context
   iam:
     base_scope: [knowledge:read]
@@ -469,6 +487,224 @@ gnosis-mcp --db ~/sterling-knowledge/gnosis.db \
 
 Use mcp-local-rag for the best retrieval quality. Use gnosis-mcp
 if you want to stay Python-only.
+
+### Adding reference designs from other projects
+
+Reference designs from past Sterling implementations are valuable
+for discovering patterns, solutions, and scenarios you might not
+have considered. But they create a hallucination risk: the agent
+might cite a reference project's configuration as if it exists in
+your current project.
+
+The fix: **separate knowledge sources with explicit labeling**.
+
+#### Step 3.7 — Prepare the reference designs directory
+
+Create a separate directory for reference materials — completely
+isolated from your current project files:
+
+```bash
+mkdir -p ~/sterling-references
+
+# Copy sanitized designs from other projects
+cp -r /path/to/project-alpha/docs ~/sterling-references/project-alpha/
+cp -r /path/to/project-beta/docs ~/sterling-references/project-beta/
+cp -r /path/to/industry-templates ~/sterling-references/templates/
+```
+
+What to include:
+- Solution design documents (sanitized — no client names or secrets)
+- DOM rule configurations that solved specific business problems
+- Extension patterns (user exit implementations, custom APIs)
+- Integration architecture diagrams and specs
+- Performance tuning configurations
+- Test scenarios and edge case documentation
+
+```
+~/sterling-references/
+├── project-alpha/          # Grocery retailer — BOPIS + SFS
+│   ├── dom-rules/
+│   ├── integration-design/
+│   └── performance-tuning/
+├── project-beta/           # Fashion retailer — marketplace + returns
+│   ├── dom-rules/
+│   ├── returns-flow/
+│   └── extension-patterns/
+└── templates/              # Industry standard patterns
+    ├── omnichannel-dom-template.xml
+    └── ship-from-store-config.xml
+```
+
+#### Step 3.8 — Add a separate MCP server for references
+
+Add a second mcp-local-rag instance to your workspace.yaml with
+its own `BASE_DIR`. This creates a completely separate vector
+index — the two servers never mix results:
+
+```yaml
+mcp_servers:
+  # YOUR project — ground truth
+  - id: project-knowledge
+    transport: stdio
+    command: ["npx", "-y", "mcp-local-rag"]
+    env:
+      BASE_DIR: "${PROJECT_KNOWLEDGE_DIR}"
+
+  # Reference designs — inspiration, NOT ground truth
+  - id: reference-designs
+    transport: stdio
+    command: ["npx", "-y", "mcp-local-rag"]
+    env:
+      BASE_DIR: "${REFERENCE_DESIGNS_DIR}"
+```
+
+Set both env vars:
+
+```bash
+export PROJECT_KNOWLEDGE_DIR=~/sterling-knowledge
+export REFERENCE_DESIGNS_DIR=~/sterling-references
+```
+
+Ingest the reference docs the same way as Step 3.4:
+
+```bash
+STERLING_KNOWLEDGE_DIR=~/sterling-references \
+  uv run python scripts/ingest-docs.py
+```
+
+#### Step 3.9 — Create separate skills for each source
+
+This is critical — separate skills let you control which agents
+can access which knowledge source:
+
+Create `skills/search-project.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-project
+  name: Search Current Project
+  description: >
+    Searches the CURRENT project's Sterling configuration, extensions,
+    and documentation. This is ground truth — results from this skill
+    reflect what actually exists in the project.
+category: capability
+implementation:
+  type: mcp_tool
+  server: project-knowledge
+  tool: query_documents
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Create `skills/search-reference-designs.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-reference-designs
+  name: Search Reference Designs
+  description: >
+    Searches reference designs from OTHER Sterling implementations.
+    Results are patterns and inspiration — NOT the current project's
+    configuration. Always label citations from this source as
+    reference material, never as current project fact.
+category: capability
+implementation:
+  type: mcp_tool
+  server: reference-designs
+  tool: query_documents
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+#### Step 3.10 — Update archetype prompts to prevent hallucination
+
+This is the most important part. Add this block to both the
+Sterling OMS Architect and Retail Domain Expert system prompts:
+
+```
+KNOWLEDGE SOURCES — CRITICAL DISTINCTION:
+
+You have access to two separate knowledge bases. You MUST
+distinguish between them in every response:
+
+1. search-project (project-knowledge server):
+   YOUR project's actual configuration, extensions, and docs.
+   This is GROUND TRUTH. When answering "how does our system
+   work?" or "what is our current configuration?", ONLY cite
+   this source.
+
+2. search-reference-designs (reference-designs server):
+   Designs from OTHER Sterling implementations. This is
+   INSPIRATION, not fact. When citing a reference design:
+   - ALWAYS prefix with "In a reference implementation..." or
+     "A pattern from another project..."
+   - NEVER state a reference pattern as if it exists in the
+     current project
+   - NEVER say "our system does X" based on reference data
+
+RULES:
+1. Questions about current state → search project-knowledge ONLY
+2. Questions about solutions → search BOTH, but label clearly:
+   "Our current configuration does X (from project-knowledge).
+    A reference project handled this by Y (from reference-designs).
+    To adapt this, we would need to change Z."
+3. If a reference design contradicts current configuration, flag
+   it: "Note: the reference approach differs from our current
+   setup which does X instead."
+4. When recommending changes, always state what currently exists
+   FIRST (from project-knowledge), then what the reference shows,
+   then your recommendation.
+```
+
+Update the archetype skills lists:
+
+```yaml
+# Sterling OMS Architect — gets both sources
+skills:
+  - search-project           # ground truth
+  - search-reference-designs  # inspiration
+  - read-context
+  - query-swarmkit-docs
+
+# Config Validator — gets ONLY current project (no references)
+skills:
+  - search-project
+  - read-context
+```
+
+Agents that should never hallucinate reference patterns as current
+project state (config validators, deployment reviewers) get only
+`search-project`. Agents that benefit from broader context
+(solution architects, retail experts) get both.
+
+#### Example: how the agent should respond
+
+**Bad** (conflates sources):
+> "Our DOM rules use cost-based sourcing with zone prioritization
+> configured in the YFS_SOURCING_RULE table."
+> (This was from a reference project, not the current one.)
+
+**Good** (labeled sources):
+> "Our current DOM configuration uses priority-based sourcing with
+> 3 rules (from project config: dom-rules/sourcing-sequence.xml).
+>
+> A reference implementation for a similar retailer used cost-based
+> sourcing with zone prioritization, which reduced shipping costs
+> by ~15% (from reference: project-alpha/dom-rules/).
+>
+> To adapt this, we would need to add a cost-calculation condition
+> to our existing sourcing sequence and configure zone-to-node
+> mappings."
 
 ## Step 4 — Create skills
 
