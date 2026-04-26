@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: skill-authoring
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: authoring-supervisor
+    children:
+      - id: conversation-leader
+        role: leader
+        archetype: conversation-leader
+        children:
+          - id: knowledge-searcher
+            role: worker
+            archetype: knowledge-searcher
+          - id: schema-drafter
+            role: worker
+            archetype: schema-drafter
+          - id: validator
+            role: worker
+            archetype: artifact-validator
+          - id: test-writer
+            role: worker
+            archetype: test-writer
+          - id: publisher
+            role: worker
+            archetype: artifact-publisher

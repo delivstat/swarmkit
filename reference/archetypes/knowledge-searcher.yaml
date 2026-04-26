@@ -1,0 +1,33 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: knowledge-searcher
+  name: Knowledge Searcher
+  description: >
+    Searches existing skills, MCP servers, and design decisions before
+    any new artifact is drafted. Prevents reinventing existing
+    capabilities and grounds drafts in project decisions.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: >
+      You are the knowledge searcher. Before any artifact is created,
+      search for existing capabilities that might already cover the
+      need. Check: reference skills, public MCP servers, design
+      decisions, and workspace state. Report what exists and whether
+      it can be reused, extended, or needs to be built from scratch.
+      For edit requests, read the current workspace state to understand
+      what's already configured.
+  skills:
+    - query-swarmkit-docs
+    - list-reference-skills
+    - validate-workspace
+  iam:
+    base_scope: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -322,6 +322,112 @@ def get_error_reference(code: str) -> dict[str, str]:
     }
 
 
+# ---- workspace write tools (authoring swarm) ----------------------------
+
+_YAML_SUBDIRS = {"topologies", "skills", "archetypes", "triggers", "schedules"}
+_TEST_SUBDIRS = {"tests"}
+_ALLOWED_SUBDIRS = _YAML_SUBDIRS | _TEST_SUBDIRS
+
+
+def _safe_workspace_path(workspace: str, file_path: str) -> Path | None:
+    """Resolve a workspace-relative path and validate it's safe to write."""
+    ws = Path(workspace).resolve()
+    target = (ws / file_path).resolve()
+    if not str(target).startswith(str(ws)):
+        return None
+    parts = Path(file_path).parts
+    if not parts or parts[0] not in _ALLOWED_SUBDIRS:
+        if file_path == "workspace.yaml":
+            return target
+        return None
+    allowed_ext = {".py"} if parts[0] in _TEST_SUBDIRS else {".yaml", ".yml"}
+    if target.suffix not in allowed_ext:
+        return None
+    return target
+
+
+@server.tool()
+def write_workspace_file(workspace: str, file_path: str, content: str) -> dict[str, str]:
+    """Write a YAML artifact to a workspace directory.
+
+    file_path must be workspace-relative and under an allowed subdirectory
+    (topologies/, skills/, archetypes/, triggers/, schedules/) or be
+    workspace.yaml itself. Only .yaml/.yml extensions are permitted.
+    """
+    target = _safe_workspace_path(workspace, file_path)
+    if target is None:
+        return {
+            "error": (
+                f"Refused to write '{file_path}'. Must be under "
+                f"{sorted(_ALLOWED_SUBDIRS)} or be workspace.yaml, "
+                f"with a .yaml/.yml extension."
+            )
+        }
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return {"written": str(target), "size": str(len(content))}
+
+
+@server.tool()
+def read_workspace_file(workspace: str, file_path: str) -> dict[str, str]:
+    """Read a YAML file from a workspace directory (for edit mode)."""
+    ws = Path(workspace).resolve()
+    target = (ws / file_path).resolve()
+    if not str(target).startswith(str(ws)):
+        return {"error": f"Path traversal rejected: {file_path}"}
+    if not target.is_file():
+        return {"error": f"File not found: {file_path}"}
+    return {"path": file_path, "content": target.read_text(encoding="utf-8")}
+
+
+# ---- test execution tool (authoring swarm quality gate) ------------------
+
+
+@server.tool()
+def run_pytest(
+    workspace: str,
+    test_file: str,
+    timeout_seconds: int = 30,
+) -> dict[str, Any]:
+    """Run a pytest file against a workspace and return pass/fail + output.
+
+    Restricted to files ending in ``_test.py`` or ``test_*.py`` under the
+    workspace directory. Runs in a subprocess with a timeout.
+    """
+    import subprocess  # noqa: PLC0415
+
+    ws = Path(workspace).resolve()
+    target = (ws / test_file).resolve()
+
+    if not str(target).startswith(str(ws)):
+        return {"error": f"Path traversal rejected: {test_file}"}
+    if not target.is_file():
+        return {"error": f"Test file not found: {test_file}"}
+    if not (target.name.startswith("test_") or target.name.endswith("_test.py")):
+        return {"error": f"Not a test file (must be test_*.py or *_test.py): {target.name}"}
+
+    try:
+        result = subprocess.run(
+            ["uv", "run", "pytest", str(target), "-x", "--tb=short", "-q"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            cwd=str(ws),
+            check=False,
+        )
+        return {
+            "passed": str(result.returncode == 0),
+            "exit_code": str(result.returncode),
+            "stdout": result.stdout[-2000:] if result.stdout else "",
+            "stderr": result.stderr[-1000:] if result.stderr else "",
+        }
+    except subprocess.TimeoutExpired:
+        return {"passed": "false", "error": f"Test timed out after {timeout_seconds}s"}
+    except FileNotFoundError:
+        return {"passed": "false", "error": "pytest not available (uv run pytest failed)"}
+
+
 def run_server(repo_root: Path | None = None) -> None:
     """Entry point for the CLI launcher."""
     if repo_root is not None:

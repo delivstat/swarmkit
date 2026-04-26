@@ -17,8 +17,11 @@ from swarmkit_runtime.knowledge._server import (
     list_design_notes,
     list_reference_skills,
     list_schemas,
+    read_workspace_file,
+    run_pytest,
     search_docs,
     validate_workspace,
+    write_workspace_file,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -154,3 +157,116 @@ def test_get_error_reference_known_code() -> None:
 def test_get_error_reference_unknown_code() -> None:
     result = get_error_reference("nonexistent.error.code")
     assert "not found" in result["description"]
+
+
+# ---- write_workspace_file / read_workspace_file -------------------------
+
+
+def test_write_workspace_file_creates_skill(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    content = "apiVersion: swarmkit/v1\nkind: Skill\nmetadata:\n  id: test\n"
+    result = write_workspace_file(str(ws), "skills/test.yaml", content)
+    assert "written" in result
+    assert (ws / "skills" / "test.yaml").read_text() == content
+
+
+def test_write_workspace_file_rejects_path_traversal(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "../../etc/passwd", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_rejects_disallowed_subdir(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "src/main.py", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_rejects_non_yaml(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "skills/test.py", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_allows_workspace_yaml(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "workspace.yaml", "apiVersion: swarmkit/v1\n")
+    assert "written" in result
+
+
+def test_read_workspace_file_returns_content(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "workspace.yaml").write_text("test content")
+    result = read_workspace_file(str(ws), "workspace.yaml")
+    assert result["content"] == "test content"
+
+
+def test_read_workspace_file_rejects_traversal(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = read_workspace_file(str(ws), "../../etc/passwd")
+    assert "error" in result
+
+
+def test_write_allows_py_in_tests_subdir(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "tests/test_foo.py", "assert True")
+    assert "written" in result
+    assert (ws / "tests" / "test_foo.py").read_text() == "assert True"
+
+
+def test_write_rejects_py_in_skills_subdir(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "skills/hack.py", "import os")
+    assert "error" in result
+
+
+# ---- run_pytest ----------------------------------------------------------
+
+
+def test_run_pytest_passes_on_valid_test(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    test_file = ws / "test_ok.py"
+    test_file.write_text("def test_passes():\n    assert 1 + 1 == 2\n")
+    result = run_pytest(str(ws), "test_ok.py")
+    assert result["passed"] == "True"
+
+
+def test_run_pytest_fails_on_broken_test(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    test_file = ws / "test_fail.py"
+    test_file.write_text("def test_fails():\n    assert False\n")
+    result = run_pytest(str(ws), "test_fail.py")
+    assert result["passed"] == "False"
+
+
+def test_run_pytest_rejects_non_test_file(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "server.py").write_text("print('hi')")
+    result = run_pytest(str(ws), "server.py")
+    assert "error" in result
+
+
+def test_run_pytest_rejects_path_traversal(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = run_pytest(str(ws), "../../etc/passwd")
+    assert "error" in result
+
+
+def test_run_pytest_rejects_missing_file(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = run_pytest(str(ws), "test_nope.py")
+    assert "error" in result

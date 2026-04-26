@@ -21,6 +21,7 @@ from swarmkit_runtime._workspace_runtime import (
     resolve_authoring_provider,
 )
 from swarmkit_runtime.authoring import run_authoring_session
+from swarmkit_runtime.authoring._prompts import AuthoringMode
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
 from swarmkit_runtime.gaps import SkillGapLog
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
@@ -373,20 +374,53 @@ author_app = typer.Typer(help="Conversational authoring for topologies, skills, 
 app.add_typer(author_app, name="author")
 
 
+def _run_authoring(
+    mode: AuthoringMode,
+    workspace_path: Path,
+    thorough: bool,
+    input_text: str = "",
+) -> None:
+    """Route authoring to single-agent (quick) or swarm (thorough)."""
+    if thorough:
+        try:
+            runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+            prompt = f"Create a new {mode}. {input_text}".strip()
+            result = asyncio.run(runtime.run("skill-authoring", prompt))
+            if result.output:
+                typer.echo(result.output)
+        except KeyError:
+            _stderr(
+                "error: --thorough requires the skill-authoring topology in the workspace. "
+                "Add it from reference/topologies/skill-authoring.yaml."
+            )
+            raise typer.Exit(_EXIT_USAGE) from None
+        except Exception as exc:
+            _stderr(f"error: authoring failed: {exc}")
+            raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    else:
+        provider, model = resolve_authoring_provider()
+        run_authoring_session(
+            mode=mode,
+            model_provider=provider,
+            model_name=model,
+            workspace_path=workspace_path.resolve(),
+        )
+
+
 @author_app.command("topology")
 def author_topology(
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace directory.", show_default=False)
     ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
 ) -> None:
     """Author a new topology through conversation."""
-    provider, model = resolve_authoring_provider()
-    run_authoring_session(
-        mode="topology",
-        model_provider=provider,
-        model_name=model,
-        workspace_path=workspace_path.resolve(),
-    )
+    _run_authoring("topology", workspace_path, thorough)
 
 
 @author_app.command("skill")
@@ -394,15 +428,15 @@ def author_skill(
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace directory.", show_default=False)
     ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
 ) -> None:
     """Author a new skill through conversation."""
-    provider, model = resolve_authoring_provider()
-    run_authoring_session(
-        mode="skill",
-        model_provider=provider,
-        model_name=model,
-        workspace_path=workspace_path.resolve(),
-    )
+    _run_authoring("skill", workspace_path, thorough)
 
 
 @author_app.command("archetype")
@@ -410,15 +444,15 @@ def author_archetype(
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace directory.", show_default=False)
     ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
 ) -> None:
     """Author a new archetype through conversation."""
-    provider, model = resolve_authoring_provider()
-    run_authoring_session(
-        mode="archetype",
-        model_provider=provider,
-        model_name=model,
-        workspace_path=workspace_path.resolve(),
-    )
+    _run_authoring("archetype", workspace_path, thorough)
 
 
 @author_app.command("mcp-server")
@@ -426,15 +460,83 @@ def author_mcp_server(
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace directory.", show_default=False)
     ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
 ) -> None:
     """Author a new MCP server through conversation."""
-    provider, model = resolve_authoring_provider()
-    run_authoring_session(
-        mode="mcp-server",
-        model_provider=provider,
-        model_name=model,
-        workspace_path=workspace_path.resolve(),
-    )
+    _run_authoring("mcp-server", workspace_path, thorough)
+
+
+# ---- edit (M7 — Skill Authoring Swarm in edit mode) ----------------------
+
+
+@app.command()
+def edit(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace to edit.", show_default=False),
+    ] = Path("."),
+    input_text: Annotated[
+        str | None,
+        typer.Option(
+            "--input",
+            "-i",
+            help="Describe the change (or omit for interactive conversation).",
+        ),
+    ] = None,
+    color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
+) -> None:
+    """Edit an existing workspace through conversation (M7 Skill Authoring Swarm).
+
+    Reads the current workspace state, understands the requested change,
+    drafts modifications, validates, and writes. The user never edits
+    YAML directly.
+    """
+    use_colour = should_colour(sys.stdout.isatty(), color)
+
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except ResolutionErrors as exc:
+        _emit_errors(
+            list(exc.errors),
+            json_mode=False,
+            workspace_root=workspace_path.resolve(),
+            color=use_colour,
+        )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    except MissingMCPServerError as exc:
+        for skill_id, server_id in exc.missing:
+            _stderr(
+                f"error: skill '{skill_id}' targets MCP server '{server_id}' "
+                f"but the workspace declares no such server."
+            )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    user_input = input_text or ""
+    if not user_input and not sys.stdin.isatty():
+        user_input = sys.stdin.read().strip()
+    if not user_input:
+        user_input = "What would you like to change in this workspace?"
+
+    try:
+        result = asyncio.run(runtime.run("skill-authoring", user_input))
+    except KeyError:
+        _stderr(
+            "error: the skill-authoring topology is not available in this workspace. "
+            "Add it from reference/topologies/skill-authoring.yaml, or use "
+            "`swarmkit author` for single-agent authoring."
+        )
+        raise typer.Exit(_EXIT_USAGE) from None
+    except Exception as exc:
+        _stderr(f"error: edit failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    if result.output:
+        typer.echo(result.output)
 
 
 # ---- run -----------------------------------------------------------------
