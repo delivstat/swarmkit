@@ -4,7 +4,7 @@
 
 SwarmKit treats swarm topology — who exists, who reports to whom, what skills they can exercise — as declarative data rather than imperative code. This separation lets non-developers compose agent teams conversationally while developers retain full programmatic control. Swarms are not static: every swarm can observe its own capability gaps and grow new skills through a conversational, human-approved authoring flow.
 
-**Status:** pre-v1.0. Milestones 0–9 complete (eject deferred). The framework runs multi-agent topologies end-to-end via CLI or HTTP server, with real LLM providers, MCP tool servers, governance enforcement, knowledge-grounded review, and conversational workspace editing. See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap; [`design/SwarmKit-Design-v0.6.md`](./design/SwarmKit-Design-v0.6.md) is the authoritative architecture.
+**Status:** v1.0 shipped. The framework runs multi-agent topologies end-to-end via CLI or HTTP server, with real LLM providers, MCP tool servers, governance enforcement, knowledge-grounded review, and conversational workspace editing. See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap; [`design/SwarmKit-Design-v0.6.md`](./design/SwarmKit-Design-v0.6.md) is the authoritative architecture.
 
 ## What works today
 
