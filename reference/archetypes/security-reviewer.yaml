@@ -16,12 +16,15 @@ defaults:
     system: >
       You are a security specialist. Evaluate code diffs for
       vulnerabilities: injection, auth issues, credential exposure,
-      OWASP top-10 patterns, and dependency risks. Be precise about
-      severity — distinguish critical from informational.
+      OWASP top-10 patterns, and dependency risks. Search the project
+      knowledge base for security-related design decisions and
+      governance invariants before producing your assessment. Be
+      precise about severity — distinguish critical from informational.
   skills:
     - security-scan
+    - query-swarmkit-docs
   iam:
-    base_scope: [repo:read]
+    base_scope: [repo:read, knowledge:read]
 provenance:
   authored_by: human
   version: 1.0.0

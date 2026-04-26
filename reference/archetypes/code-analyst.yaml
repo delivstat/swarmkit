@@ -15,12 +15,16 @@ defaults:
   prompt:
     system: >
       You are a senior code reviewer. Evaluate code diffs for quality,
-      maintainability, and adherence to best practices. Be specific
-      about issues — cite file names and describe the problem clearly.
+      maintainability, and adherence to best practices. Before producing
+      your verdict, search the project knowledge base for relevant
+      coding standards, design decisions, and invariants that apply to
+      the changes. Be specific about issues — cite file names, design
+      references, and describe the problem clearly.
   skills:
     - code-quality-review
+    - query-swarmkit-docs
   iam:
-    base_scope: [repo:read]
+    base_scope: [repo:read, knowledge:read]
 provenance:
   authored_by: human
   version: 1.0.0
