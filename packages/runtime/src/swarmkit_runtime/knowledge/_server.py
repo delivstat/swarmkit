@@ -324,8 +324,9 @@ def get_error_reference(code: str) -> dict[str, str]:
 
 # ---- workspace write tools (authoring swarm) ----------------------------
 
-_ALLOWED_SUBDIRS = {"topologies", "skills", "archetypes", "triggers", "schedules"}
-_ALLOWED_EXTENSIONS = {".yaml", ".yml"}
+_YAML_SUBDIRS = {"topologies", "skills", "archetypes", "triggers", "schedules"}
+_TEST_SUBDIRS = {"tests"}
+_ALLOWED_SUBDIRS = _YAML_SUBDIRS | _TEST_SUBDIRS
 
 
 def _safe_workspace_path(workspace: str, file_path: str) -> Path | None:
@@ -339,7 +340,8 @@ def _safe_workspace_path(workspace: str, file_path: str) -> Path | None:
         if file_path == "workspace.yaml":
             return target
         return None
-    if target.suffix not in _ALLOWED_EXTENSIONS:
+    allowed_ext = {".py"} if parts[0] in _TEST_SUBDIRS else {".yaml", ".yml"}
+    if target.suffix not in allowed_ext:
         return None
     return target
 
@@ -377,6 +379,53 @@ def read_workspace_file(workspace: str, file_path: str) -> dict[str, str]:
     if not target.is_file():
         return {"error": f"File not found: {file_path}"}
     return {"path": file_path, "content": target.read_text(encoding="utf-8")}
+
+
+# ---- test execution tool (authoring swarm quality gate) ------------------
+
+
+@server.tool()
+def run_pytest(
+    workspace: str,
+    test_file: str,
+    timeout_seconds: int = 30,
+) -> dict[str, Any]:
+    """Run a pytest file against a workspace and return pass/fail + output.
+
+    Restricted to files ending in ``_test.py`` or ``test_*.py`` under the
+    workspace directory. Runs in a subprocess with a timeout.
+    """
+    import subprocess  # noqa: PLC0415
+
+    ws = Path(workspace).resolve()
+    target = (ws / test_file).resolve()
+
+    if not str(target).startswith(str(ws)):
+        return {"error": f"Path traversal rejected: {test_file}"}
+    if not target.is_file():
+        return {"error": f"Test file not found: {test_file}"}
+    if not (target.name.startswith("test_") or target.name.endswith("_test.py")):
+        return {"error": f"Not a test file (must be test_*.py or *_test.py): {target.name}"}
+
+    try:
+        result = subprocess.run(
+            ["uv", "run", "pytest", str(target), "-x", "--tb=short", "-q"],
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            cwd=str(ws),
+            check=False,
+        )
+        return {
+            "passed": str(result.returncode == 0),
+            "exit_code": str(result.returncode),
+            "stdout": result.stdout[-2000:] if result.stdout else "",
+            "stderr": result.stderr[-1000:] if result.stderr else "",
+        }
+    except subprocess.TimeoutExpired:
+        return {"passed": "false", "error": f"Test timed out after {timeout_seconds}s"}
+    except FileNotFoundError:
+        return {"passed": "false", "error": "pytest not available (uv run pytest failed)"}
 
 
 def run_server(repo_root: Path | None = None) -> None:
