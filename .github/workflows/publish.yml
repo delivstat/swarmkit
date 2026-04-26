@@ -1,0 +1,29 @@
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish-pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Build packages
+        run: uv build --all-packages
+
+      - name: Publish swarmkit-schema
+        run: uv publish dist/swarmkit_schema-*.tar.gz dist/swarmkit_schema-*.whl
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Publish swarmkit-runtime
+        run: uv publish dist/swarmkit_runtime-*.tar.gz dist/swarmkit_runtime-*.whl
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}

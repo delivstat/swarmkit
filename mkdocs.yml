@@ -1,0 +1,57 @@
+docs_dir: docs/site
+site_dir: _site
+site_name: SwarmKit
+site_description: An open-source framework for composing, running, and growing multi-agent AI swarms.
+site_url: https://delivstat.github.io/swarmkit/
+repo_url: https://github.com/delivstat/swarmkit
+repo_name: delivstat/swarmkit
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+  features:
+    - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting started:
+    - Installation: getting-started/install.md
+    - Hello Swarm: getting-started/hello-swarm.md
+  - Architecture:
+    - Design overview: architecture/design-overview.md
+    - Implementation plan: architecture/implementation-plan.md
+  - Design notes:
+    - MCP client: design-notes/mcp-client.md
+    - Knowledge MCP Server: design-notes/knowledge-mcp-server.md
+    - User Knowledge Server: design-notes/user-knowledge-server.md
+    - Code Review Swarm: design-notes/topology-code-review.md
+    - Skill Authoring Swarm: design-notes/topology-skill-authoring.md
+    - Governance provider: design-notes/governance-provider-interface.md
+    - Model provider: design-notes/model-provider-abstraction.md
+    - Conversational authoring: design-notes/conversational-authoring.md
+    - Structured output: design-notes/structured-output-governance.md
+  - Reference:
+    - CLI commands: reference/cli.md
+    - Skills catalogue: reference/skills.md
+    - Archetypes catalogue: reference/archetypes.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - toc:
+      permalink: true

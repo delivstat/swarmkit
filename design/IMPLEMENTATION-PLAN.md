@@ -9,7 +9,7 @@ status: active
 
 **Source of truth:** `design/SwarmKit-Design-v0.6.md` (§20.1 lists the Phase 1 scope). This plan decomposes that scope into milestones and features, each of which becomes one or more PRs under the [feature delivery workflow](../CLAUDE.md#feature-delivery-workflow--mandatory).
 
-**Status:** drafted 2026-04-21, updated 2026-04-25. Living document — update as milestones land. M0–M4 complete; M2.5 complete; M3.5 complete; M5 ~70% done.
+**Status:** drafted 2026-04-21, updated 2026-04-26. **All milestones complete.** v1.0.0 shipped 2026-04-26. Eject (originally M9) deferred to post-v1.0.
 
 ## How this plan works
 
