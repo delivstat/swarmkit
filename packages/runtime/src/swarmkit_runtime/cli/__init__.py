@@ -17,6 +17,7 @@ import typer
 
 from swarmkit_runtime._workspace_runtime import (
     MissingMCPServerError,
+    RunResult,
     WorkspaceRuntime,
     resolve_authoring_provider,
 )
@@ -547,7 +548,8 @@ def run(
     workspace_path: Annotated[
         Path,
         typer.Argument(
-            help="Workspace root directory (containing workspace.yaml).", show_default=False
+            help="Workspace root directory (containing workspace.yaml).",
+            show_default=False,
         ),
     ],
     topology_name: Annotated[str, typer.Argument(help="Name of the topology to run.")],
@@ -557,6 +559,10 @@ def run(
             "--input", "-i", help="User input to send to the swarm. Reads from stdin if omitted."
         ),
     ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Print per-agent execution summary after output."),
+    ] = False,
     color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
 ) -> None:
     """One-shot execution of a topology (design §14.1)."""
@@ -599,6 +605,124 @@ def run(
 
     if result.output:
         typer.echo(result.output)
+
+    _save_run_log(workspace_path.resolve(), topology_name, result)
+
+    if verbose and result.events:
+        _print_run_summary(result)
+
+
+# ---- run observability helpers -------------------------------------------
+
+
+def _print_run_summary(result: RunResult) -> None:
+    """Print a per-agent execution summary from run events."""
+    typer.echo("\n── run summary ──")
+    completed = [e for e in result.events if e.event_type == "agent.completed"]
+    denied = [e for e in result.events if e.event_type in ("policy.denied", "trust.denied")]
+    skills = [e for e in result.events if e.event_type == "skill.executed"]
+    validation_fails = [e for e in result.events if e.event_type == "output.validation_failed"]
+
+    for evt in completed:
+        duration = evt.payload.get("duration_ms", "?")
+        role = evt.payload.get("role", "")
+        typer.echo(f"  {evt.agent_id:<24} {role:<8} {duration:>6}ms")
+
+    if skills:
+        typer.echo(f"\n  skills called: {len(skills)}")
+    if denied:
+        typer.echo(f"  policy denials: {len(denied)}")
+        for d in denied:
+            typer.echo(f"    {d.agent_id}: {d.payload.get('reason', '')}")
+    if validation_fails:
+        typer.echo(f"  output validation failures: {len(validation_fails)}")
+        for v in validation_fails:
+            typer.echo(f"    {v.agent_id}: {v.payload.get('error', '')}")
+
+    typer.echo(f"  total events: {len(result.events)}")
+
+
+def _save_run_log(ws_root: Path, topology: str, result: RunResult) -> None:
+    """Save run events to .swarmkit/logs/ as JSONL for later analysis."""
+    if not result.events:
+        return
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    log_dir = ws_root / ".swarmkit" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S")
+    log_file = log_dir / f"{topology}-{ts}.jsonl"
+    lines = []
+    for evt in result.events:
+        entry = {
+            "event_type": evt.event_type,
+            "agent_id": evt.agent_id,
+            "timestamp": evt.timestamp,
+            "skill_id": evt.skill_id,
+            **evt.payload,
+        }
+        lines.append(json.dumps(entry))
+    log_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# ---- logs ----------------------------------------------------------------
+
+
+@app.command()
+def logs(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+    last: Annotated[
+        int,
+        typer.Option("--last", "-n", help="Show last N runs."),
+    ] = 1,
+    topology: Annotated[
+        str | None,
+        typer.Option("--topology", "-t", help="Filter by topology name."),
+    ] = None,
+) -> None:
+    """Show events from recent topology runs.
+
+    Reads from .swarmkit/logs/*.jsonl saved by swarmkit run.
+    """
+    log_dir = workspace_path.resolve() / ".swarmkit" / "logs"
+    if not log_dir.is_dir():
+        typer.echo("No run logs found. Run a topology with `swarmkit run` first.")
+        return
+
+    log_files = sorted(log_dir.glob("*.jsonl"), reverse=True)
+    if topology:
+        log_files = [f for f in log_files if f.name.startswith(f"{topology}-")]
+    log_files = log_files[:last]
+
+    if not log_files:
+        typer.echo("No matching run logs found.")
+        return
+
+    for log_file in reversed(log_files):
+        typer.echo(f"\n── {log_file.name} ──")
+        for line in log_file.read_text(encoding="utf-8").strip().split("\n"):
+            if not line:
+                continue
+            evt = json.loads(line)
+            typer.echo(_format_log_event(evt))
+
+
+def _format_log_event(evt: dict[str, object]) -> str:
+    agent = str(evt.get("agent_id", ""))
+    etype = str(evt.get("event_type", ""))
+    detail = {
+        "agent.started": f"started  ({evt.get('role', '')})",
+        "agent.completed": f"done     {evt.get('duration_ms', '?')}ms",
+        "skill.executed": f"skill    {evt.get('skill_id', '')}",
+        "policy.denied": f"DENIED   {evt.get('reason', '')}",
+        "trust.denied": f"DENIED   {evt.get('reason', '')}",
+        "output.validation_failed": f"FAIL     {evt.get('error', '')}",
+        "output.validated": "valid",
+    }.get(etype, etype)
+    return f"  {agent:<24} {detail}"
 
 
 # ---- knowledge-server ----------------------------------------------------

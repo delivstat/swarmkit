@@ -123,6 +123,15 @@ def _build_agent_node(
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:
         agent_id = agent.id
+        _start = datetime.now(tz=UTC)
+        await governance.record_event(
+            AuditEvent(
+                event_type="agent.started",
+                agent_id=agent_id,
+                timestamp=_start,
+                payload={"role": agent.role},
+            )
+        )
         iam = agent.iam or {}
         scopes_required = frozenset(iam.get("base_scope", []))
 
@@ -282,12 +291,18 @@ def _build_agent_node(
             ]
             result_text = "\n\n".join(child_texts)
 
+        _end = datetime.now(tz=UTC)
+        _duration_ms = int((_end - _start).total_seconds() * 1000)
         await governance.record_event(
             AuditEvent(
                 event_type="agent.completed",
                 agent_id=agent_id,
-                timestamp=datetime.now(tz=UTC),
-                payload={"result_length": len(result_text)},
+                timestamp=_end,
+                payload={
+                    "result_length": len(result_text),
+                    "duration_ms": _duration_ms,
+                    "role": agent.role,
+                },
                 topology_id=agent_id,
             )
         )
