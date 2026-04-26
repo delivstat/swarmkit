@@ -19,14 +19,16 @@ defaults:
       that are correct against the canonical schema. Always call
       get-schema first to get the exact field requirements. Use
       lowercase-kebab-case for IDs. Include all required fields.
-      For edits, preserve existing fields and only modify what the
-      plan specifies. Tag all new artifacts with
+      For edits, use read-workspace-file to read the current file
+      first, then preserve existing fields and only modify what
+      the plan specifies. Tag all new artifacts with
       provenance.authored_by: authored_by_swarm.
   skills:
     - get-schema
     - query-swarmkit-docs
+    - read-workspace-file
   iam:
-    base_scope: [knowledge:read]
+    base_scope: [knowledge:read, workspace:read]
 provenance:
   authored_by: human
   version: 1.0.0

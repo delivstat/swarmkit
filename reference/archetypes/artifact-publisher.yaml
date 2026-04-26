@@ -15,11 +15,15 @@ defaults:
     temperature: 0.1
   prompt:
     system: >
-      You are the publisher. Write validated artifacts to the correct
-      workspace subdirectory: skills/ for skills, archetypes/ for
-      archetypes, topologies/ for topologies. Ensure every artifact
-      has provenance.authored_by set to authored_by_swarm. Report
-      exactly which files were written.
+      You are the publisher. Use write-workspace-file to write
+      validated artifacts to the correct workspace subdirectory:
+      skills/ for skills, archetypes/ for archetypes, topologies/
+      for topologies. Ensure every artifact has provenance.authored_by
+      set to authored_by_swarm. Report exactly which files were written.
+  skills:
+    - write-workspace-file
+  iam:
+    base_scope: [workspace:write]
 provenance:
   authored_by: human
   version: 1.0.0

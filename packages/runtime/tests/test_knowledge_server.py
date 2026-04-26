@@ -17,8 +17,10 @@ from swarmkit_runtime.knowledge._server import (
     list_design_notes,
     list_reference_skills,
     list_schemas,
+    read_workspace_file,
     search_docs,
     validate_workspace,
+    write_workspace_file,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -154,3 +156,58 @@ def test_get_error_reference_known_code() -> None:
 def test_get_error_reference_unknown_code() -> None:
     result = get_error_reference("nonexistent.error.code")
     assert "not found" in result["description"]
+
+
+# ---- write_workspace_file / read_workspace_file -------------------------
+
+
+def test_write_workspace_file_creates_skill(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    content = "apiVersion: swarmkit/v1\nkind: Skill\nmetadata:\n  id: test\n"
+    result = write_workspace_file(str(ws), "skills/test.yaml", content)
+    assert "written" in result
+    assert (ws / "skills" / "test.yaml").read_text() == content
+
+
+def test_write_workspace_file_rejects_path_traversal(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "../../etc/passwd", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_rejects_disallowed_subdir(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "src/main.py", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_rejects_non_yaml(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "skills/test.py", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_allows_workspace_yaml(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "workspace.yaml", "apiVersion: swarmkit/v1\n")
+    assert "written" in result
+
+
+def test_read_workspace_file_returns_content(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "workspace.yaml").write_text("test content")
+    result = read_workspace_file(str(ws), "workspace.yaml")
+    assert result["content"] == "test content"
+
+
+def test_read_workspace_file_rejects_traversal(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = read_workspace_file(str(ws), "../../etc/passwd")
+    assert "error" in result

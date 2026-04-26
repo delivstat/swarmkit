@@ -322,6 +322,63 @@ def get_error_reference(code: str) -> dict[str, str]:
     }
 
 
+# ---- workspace write tools (authoring swarm) ----------------------------
+
+_ALLOWED_SUBDIRS = {"topologies", "skills", "archetypes", "triggers", "schedules"}
+_ALLOWED_EXTENSIONS = {".yaml", ".yml"}
+
+
+def _safe_workspace_path(workspace: str, file_path: str) -> Path | None:
+    """Resolve a workspace-relative path and validate it's safe to write."""
+    ws = Path(workspace).resolve()
+    target = (ws / file_path).resolve()
+    if not str(target).startswith(str(ws)):
+        return None
+    parts = Path(file_path).parts
+    if not parts or parts[0] not in _ALLOWED_SUBDIRS:
+        if file_path == "workspace.yaml":
+            return target
+        return None
+    if target.suffix not in _ALLOWED_EXTENSIONS:
+        return None
+    return target
+
+
+@server.tool()
+def write_workspace_file(workspace: str, file_path: str, content: str) -> dict[str, str]:
+    """Write a YAML artifact to a workspace directory.
+
+    file_path must be workspace-relative and under an allowed subdirectory
+    (topologies/, skills/, archetypes/, triggers/, schedules/) or be
+    workspace.yaml itself. Only .yaml/.yml extensions are permitted.
+    """
+    target = _safe_workspace_path(workspace, file_path)
+    if target is None:
+        return {
+            "error": (
+                f"Refused to write '{file_path}'. Must be under "
+                f"{sorted(_ALLOWED_SUBDIRS)} or be workspace.yaml, "
+                f"with a .yaml/.yml extension."
+            )
+        }
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return {"written": str(target), "size": str(len(content))}
+
+
+@server.tool()
+def read_workspace_file(workspace: str, file_path: str) -> dict[str, str]:
+    """Read a YAML file from a workspace directory (for edit mode)."""
+    ws = Path(workspace).resolve()
+    target = (ws / file_path).resolve()
+    if not str(target).startswith(str(ws)):
+        return {"error": f"Path traversal rejected: {file_path}"}
+    if not target.is_file():
+        return {"error": f"File not found: {file_path}"}
+    return {"path": file_path, "content": target.read_text(encoding="utf-8")}
+
+
 def run_server(repo_root: Path | None = None) -> None:
     """Entry point for the CLI launcher."""
     if repo_root is not None:
