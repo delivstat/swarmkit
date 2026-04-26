@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: audit-log-write
+  name: Audit Log Write
+  description: >
+    Records a structured event to the governance audit log. Used by
+    agents to log decisions, actions, and outcomes for observability
+    and compliance. Append-only — no update or delete.
+category: persistence
+implementation:
+  type: llm_prompt
+  prompt: >
+    Format the provided information as a structured audit event with:
+    event_type, agent_id, description, and any relevant metadata.
+    Return as JSON.
+provenance:
+  authored_by: human
+  version: 1.0.0

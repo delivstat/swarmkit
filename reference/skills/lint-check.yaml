@@ -1,0 +1,53 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: lint-check
+  name: Lint Check
+  description: >
+    Evaluates code for style and formatting issues against project
+    coding standards. Returns a structured verdict with specific
+    violations and their severity. Complements security-scan and
+    code-quality-review with style-level checks.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, warnings-only]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    violations:
+      type: array
+      items:
+        type: object
+        properties:
+          rule:
+            type: string
+          severity:
+            type: string
+            enum: [error, warning, info]
+          description:
+            type: string
+        required: [rule, severity, description]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are a code style reviewer. Evaluate the provided code for:
+    1. Naming conventions (consistent casing, descriptive names)
+    2. Formatting (indentation, line length, whitespace)
+    3. Import organization
+    4. Dead code or unused variables
+    5. Documentation completeness
+
+    Return a JSON verdict with: verdict (pass/fail/warnings-only),
+    confidence (0-1), reasoning, and violations (array with rule,
+    severity, description).
+provenance:
+  authored_by: human
+  version: 1.0.0
