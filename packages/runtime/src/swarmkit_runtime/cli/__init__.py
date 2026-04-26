@@ -21,6 +21,7 @@ from swarmkit_runtime._workspace_runtime import (
     resolve_authoring_provider,
 )
 from swarmkit_runtime.authoring import run_authoring_session
+from swarmkit_runtime.authoring._prompts import AuthoringMode
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
 from swarmkit_runtime.gaps import SkillGapLog
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
@@ -374,7 +375,7 @@ app.add_typer(author_app, name="author")
 
 
 def _run_authoring(
-    mode: str,
+    mode: AuthoringMode,
     workspace_path: Path,
     thorough: bool,
     input_text: str = "",
