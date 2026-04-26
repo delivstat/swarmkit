@@ -39,11 +39,23 @@ from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 
 
 @dataclass(frozen=True)
+class RunEvent:
+    """A single event from a topology execution."""
+
+    event_type: str
+    agent_id: str
+    timestamp: str
+    payload: dict[str, object] = field(default_factory=dict)
+    skill_id: str | None = None
+
+
+@dataclass(frozen=True)
 class RunResult:
     """Output of a topology execution."""
 
     output: str
     agent_results: dict[str, str] = field(default_factory=dict)
+    events: list[RunEvent] = field(default_factory=list)
 
 
 class MissingMCPServerError(Exception):
@@ -167,11 +179,14 @@ class WorkspaceRuntime:
             if self._mcp_manager is not None:
                 await self._mcp_manager.close_all()
 
+        events = _extract_events(self._governance)
+
         return RunResult(
             output=result.get("output", ""),
             agent_results={
                 k: str(v) for k, v in result.get("agent_results", {}).items() if isinstance(v, str)
             },
+            events=events,
         )
 
     async def close(self) -> None:
@@ -198,6 +213,52 @@ class WorkspaceRuntime:
     @property
     def provider_registry(self) -> ProviderRegistry:
         return self._provider_registry
+
+
+# ---- event extraction ----------------------------------------------------
+
+
+def _extract_events(governance: GovernanceProvider) -> list[RunEvent]:
+    """Pull audit events from the governance provider after a run.
+
+    Works with MockGovernanceProvider (has .events property) and
+    AGTGovernanceProvider (has .get_log() on the FlightRecorder).
+    Returns empty list for providers that don't expose events.
+    """
+    raw_events = getattr(governance, "events", None)
+    if raw_events is None:
+        recorder = getattr(governance, "_recorder", None)
+        if recorder is not None and hasattr(recorder, "get_log"):
+            raw_events = recorder.get_log()
+    if not raw_events:
+        return []
+
+    result: list[RunEvent] = []
+    for evt in raw_events:
+        if hasattr(evt, "event_type"):
+            result.append(
+                RunEvent(
+                    event_type=evt.event_type,
+                    agent_id=evt.agent_id,
+                    timestamp=str(evt.timestamp),
+                    payload=dict(evt.payload) if evt.payload else {},
+                    skill_id=evt.skill_id,
+                )
+            )
+        elif isinstance(evt, dict):
+            result.append(
+                RunEvent(
+                    event_type=evt.get("event_type", "unknown"),
+                    agent_id=evt.get("agent_id", ""),
+                    timestamp=str(evt.get("timestamp", "")),
+                    payload={
+                        k: v
+                        for k, v in evt.items()
+                        if k not in {"event_type", "agent_id", "timestamp"}
+                    },
+                )
+            )
+    return result
 
 
 # ---- helpers (public — used by CLI and tests) ----------------------------

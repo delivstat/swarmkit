@@ -135,6 +135,48 @@ class Constraints(BaseModel):
     on_failure: OnFailure | None = None
 
 
+class LogInputs(Enum):
+    """
+    How much of the skill's input to log. Default varies by category: decision=full, capability=summary.
+    """
+
+    full = "full"
+    summary = "summary"
+    none = "none"
+
+
+class LogOutputs(Enum):
+    """
+    How much of the skill's output to log.
+    """
+
+    full = "full"
+    summary = "summary"
+    none = "none"
+
+
+class Audit(BaseModel):
+    """
+    Controls what gets logged when this skill executes. Per-skill privacy/compliance control.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    log_inputs: LogInputs | None = Field(
+        None,
+        description="How much of the skill's input to log. Default varies by category: decision=full, capability=summary.",
+    )
+    log_outputs: LogOutputs | None = Field(
+        None, description="How much of the skill's output to log."
+    )
+    redact: list[str] | None = Field(
+        None,
+        description="JSON paths to redact from logged inputs/outputs (e.g. '$.password', '$.api_key').",
+    )
+
+
 class AuthoredBy(Enum):
     human = "human"
     authored_by_swarm = "authored_by_swarm"
@@ -181,6 +223,7 @@ class SwarmKitSkill(BaseModel):
     implementation: Implementation1 | Implementation2 | Implementation3
     iam: Iam | None = None
     constraints: Constraints | None = None
+    audit: Audit | None = None
     provenance: Provenance
 
 

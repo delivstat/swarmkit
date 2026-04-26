@@ -12,8 +12,9 @@ governance-built-in.
 
 ### Runtime
 
-- **CLI:** `validate`, `run`, `init`, `author`, `edit`, `serve`,
-  `knowledge-pack`, `knowledge-server`, `review`, `gaps`
+- **CLI:** `validate`, `run` (with `--verbose`), `init`, `author`
+  (with `--thorough`), `edit`, `serve`, `status`, `logs`, `why`,
+  `ask`, `knowledge-pack`, `knowledge-server`, `review`, `gaps`
 - **HTTP server:** `swarmkit serve` — FastAPI wrapping WorkspaceRuntime
 - **LangGraph compiler:** topology YAML → executable StateGraph with
   arbitrary-depth agent trees, delegation, skill dispatch
@@ -34,6 +35,11 @@ governance-built-in.
 - **Review queue + skill gap log:** HITL primitives with CLI commands
 - **Conversational authoring:** single-agent (quick) and multi-agent
   swarm (thorough) paths, MCP-first guidance
+- **Observability:** structured run events (agent timing, skill calls,
+  policy denials, validation failures) saved as JSONL. CLI: `status`
+  (run history), `logs` (detailed events), `why` (LLM-powered
+  explanation), `ask` (conversational observer). Per-skill `audit:`
+  block for privacy/compliance control (log_inputs/outputs/redact)
 
 ### Schema
 

@@ -8,6 +8,7 @@
  */
 export interface SwarmKitSkill {
     apiVersion: APIVersion;
+    audit?:     Audit;
     /**
      * Runtime semantics differ by category (design §6.2).
      */
@@ -31,6 +32,33 @@ export interface SwarmKitSkill {
 }
 
 export type APIVersion = "swarmkit/v1";
+
+/**
+ * Controls what gets logged when this skill executes. Per-skill privacy/compliance control.
+ */
+export interface Audit {
+    /**
+     * How much of the skill's input to log. Default varies by category: decision=full,
+     * capability=summary.
+     */
+    log_inputs?: LogPuts;
+    /**
+     * How much of the skill's output to log.
+     */
+    log_outputs?: LogPuts;
+    /**
+     * JSON paths to redact from logged inputs/outputs (e.g. '$.password', '$.api_key').
+     */
+    redact?: string[];
+}
+
+/**
+ * How much of the skill's input to log. Default varies by category: decision=full,
+ * capability=summary.
+ *
+ * How much of the skill's output to log.
+ */
+export type LogPuts = "full" | "summary" | "none";
 
 /**
  * Runtime semantics differ by category (design §6.2).
