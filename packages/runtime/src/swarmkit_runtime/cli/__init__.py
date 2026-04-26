@@ -625,9 +625,31 @@ def knowledge_server(
 
 
 @app.command()
-def serve(path: str, port: int = 8000) -> None:
-    """Persistent / scheduled mode (design §14.1)."""
-    _not_implemented("serve", milestone="M9 (HTTP server + scheduled mode)")
+def serve(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root directory.", show_default=False),
+    ] = Path("."),
+    port: Annotated[
+        int,
+        typer.Option("--port", "-p", help="Port to listen on."),
+    ] = 8000,
+    host: Annotated[
+        str,
+        typer.Option("--host", help="Host to bind to."),
+    ] = "0.0.0.0",
+) -> None:
+    """Start the SwarmKit HTTP server (design §14.1).
+
+    Loads the workspace and exposes topology execution via REST API.
+    Endpoints: GET /health, GET /topologies, GET /skills, POST /run/{topology}.
+    """
+    import uvicorn  # noqa: PLC0415
+
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    app_instance = create_app(workspace_path.resolve())
+    uvicorn.run(app_instance, host=host, port=port)
 
 
 @app.command()
