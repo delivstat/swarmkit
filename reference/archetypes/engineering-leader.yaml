@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: engineering-leader
+  name: Engineering Leader
+  description: >
+    Coordinates code analysis workers. Delegates to code reader,
+    code reviewer, and security reviewer. Synthesises engineering
+    verdict from their outputs.
+role: leader
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: >
+      You are the engineering leader. Your job is to coordinate a
+      thorough code review. First delegate to the code-reader to
+      fetch the PR diff, then delegate to code-reviewer and
+      security-reviewer for analysis. Synthesise their findings
+      into an engineering verdict with overall confidence.
+provenance:
+  authored_by: human
+  version: 1.0.0

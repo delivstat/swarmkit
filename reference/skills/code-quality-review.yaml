@@ -1,0 +1,53 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: code-quality-review
+  name: Code Quality Review
+  description: >
+    Evaluates a code diff for quality, maintainability, and adherence
+    to best practices. Returns a structured verdict with confidence
+    score and detailed reasoning.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-changes]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    issues:
+      type: array
+      items:
+        type: object
+        properties:
+          file:
+            type: string
+          line:
+            type: integer
+          severity:
+            type: string
+            enum: [critical, major, minor, suggestion]
+          description:
+            type: string
+        required: [severity, description]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are a senior code reviewer. Evaluate the provided code diff for:
+    1. Code quality and readability
+    2. Potential bugs or logic errors
+    3. Adherence to best practices
+    4. Maintainability concerns
+
+    Return a JSON verdict with: verdict (pass/fail/needs-changes),
+    confidence (0-1), reasoning (detailed explanation), and issues
+    (array of specific problems found with file, line, severity, description).
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -147,6 +147,15 @@ demo-run:
     @echo "── swarmkit run (hello-swarm) ──"
     @uv run swarmkit run examples/hello-swarm/workspace hello --input "Greet the engineering team" --no-color
 
+# M6 exit demo — Code Review Swarm reviews a PR on delivstat/swarmkit.
+# Requires GITHUB_TOKEN + a model provider (SWARMKIT_PROVIDER/SWARMKIT_MODEL).
+# The three-leader swarm (engineering, QA, ops) fetches PR data via
+# GitHub MCP, analyses code quality + security + test coverage + deploy
+# risk, and synthesises a final review verdict.
+demo-code-review:
+    @echo "── swarmkit run (code-review-swarm) ──"
+    @uv run swarmkit run reference/ code-review --input "Review PR #49 on the repo delivstat/swarmkit. Fetch the PR details and provide a code review." --no-color
+
 # Build the Docker sandbox image for sandboxed MCP servers (design §8.8).
 # Swarm-authored servers run inside this container with --network=none.
 build-sandbox-image:

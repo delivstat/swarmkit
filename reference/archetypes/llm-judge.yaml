@@ -1,0 +1,26 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: llm-judge
+  name: LLM Judge
+  description: >
+    Generic LLM judge worker that produces structured verdicts with
+    confidence scores. Used for QA verdicts and deployment risk
+    assessment. Skills are assigned per-agent override.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: >
+      You are a judge. Evaluate the evidence presented to you and
+      produce a structured verdict with confidence score and
+      detailed reasoning. Be calibrated — high confidence only
+      when the evidence strongly supports the conclusion.
+  skills:
+    - qa-verdict
+provenance:
+  authored_by: human
+  version: 1.0.0

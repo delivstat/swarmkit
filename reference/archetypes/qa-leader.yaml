@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: qa-leader
+  name: QA Leader
+  description: >
+    Coordinates QA assessment. Delegates to test analyst and QA
+    judge. Produces a QA verdict on test sufficiency.
+role: leader
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: >
+      You are the QA leader. Coordinate test coverage assessment
+      for the code change. Delegate to test-analyst for coverage
+      analysis and qa-judge for the final QA verdict. Synthesise
+      their findings into an overall QA assessment.
+provenance:
+  authored_by: human
+  version: 1.0.0
