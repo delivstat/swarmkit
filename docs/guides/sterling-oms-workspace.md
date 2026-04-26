@@ -250,9 +250,388 @@ provenance:
 
 This is the most impactful step. Without it, the agents rely only
 on the LLM's general training data. With it, they can search your
-actual project files.
+actual project configuration and documentation.
 
-### Setting up mcp-local-rag (recommended for large doc sets)
+### Understanding Sterling's knowledge landscape
+
+Sterling OMS configuration is UI-driven — you configure pipelines,
+agents, DOM rules, and document types through Application Manager
+and Channel Configurator, not by editing XML files. The config is
+stored in database tables (`YFS_PIPELINE`, `YFS_AGENT`,
+`YFS_SOURCING_RULE`, etc.), not in the filesystem.
+
+This means the knowledge base strategy has three layers:
+
+| Layer | What it provides | Priority |
+|---|---|---|
+| **Sterling API MCP server** | Live config queries — the agent calls `getFlowList`, `getOrganizationList`, etc. and gets real, current configuration | **Highest** — this is the ground truth |
+| **Product docs + API Javadocs** | What the APIs/tables/columns mean, how Application Manager works, Sterling concepts | **High** — the context layer |
+| **Project design docs** | Why decisions were made, integration specs, business requirements | **High** — the project context |
+| **Raw config XML exports** | Table dumps from `YFS_*` tables | **Low without context** — the agent sees column values but doesn't know what they mean unless combined with the ERD/Javadocs |
+
+**Start with:** Product docs + Javadocs in mcp-local-rag (today).
+Then add the Sterling API MCP server (this week) for live config access.
+
+### Step 3a — Sterling API MCP server (live config access)
+
+This is the highest-value knowledge source. The agent calls
+Sterling's Service APIs against your local instance and gets back
+real, structured configuration — the same data Application Manager
+shows, but programmatically accessible.
+
+#### Prerequisites
+
+- Sterling OMS local instance running (with HTTP/REST API enabled)
+- API endpoint URL (e.g. `http://localhost:9080/smcfs/restapi/`)
+- API credentials (user with read access to config APIs)
+
+#### Create the MCP server
+
+Create `sterling_api_server.py` in your workspace:
+
+```python
+"""Sterling OMS API MCP server — live config access for agents.
+
+Wraps Sterling Service APIs so agents can query the actual
+configuration from Application Manager / Channel Configurator.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import httpx
+from mcp.server.fastmcp import FastMCP
+
+server = FastMCP("sterling-api")
+
+_BASE_URL = os.environ.get(
+    "STERLING_API_URL", "http://localhost:9080/smcfs/restapi/"
+)
+_USER = os.environ.get("STERLING_API_USER", "admin")
+_PASSWORD = os.environ.get("STERLING_API_PASSWORD", "password")
+
+
+async def _call_api(
+    api_name: str, input_xml: str = "<Input/>"
+) -> str:
+    """Call a Sterling Service API and return the response XML."""
+    url = f"{_BASE_URL}{api_name}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            url,
+            content=input_xml,
+            headers={
+                "Content-Type": "application/xml",
+                "Accept": "application/xml",
+            },
+            auth=(_USER, _PASSWORD),
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        return resp.text
+
+
+# ---- Configuration query tools ------------------------------------------
+
+
+@server.tool()
+async def get_organization_list() -> str:
+    """List all organizations configured in Sterling OMS."""
+    return await _call_api(
+        "getOrganizationList",
+        '<Organization OrganizationCode=""/>',
+    )
+
+
+@server.tool()
+async def get_flow_list(
+    flow_name: str = "",
+    document_type: str = "",
+) -> str:
+    """List pipelines/flows (what Application Manager shows under
+    Process Modeling > Pipelines). Filter by name or document type.
+    """
+    attrs = []
+    if flow_name:
+        attrs.append(f'FlowName="{flow_name}"')
+    if document_type:
+        attrs.append(f'DocumentType="{document_type}"')
+    attr_str = " ".join(attrs)
+    return await _call_api(
+        "getFlowList",
+        f"<Flow {attr_str}/>",
+    )
+
+
+@server.tool()
+async def get_document_type_list(
+    document_type: str = "",
+) -> str:
+    """List document types (Order, Return, Transfer, etc.)."""
+    attr = f'DocumentType="{document_type}"' if document_type else ""
+    return await _call_api(
+        "getDocumentTypeList",
+        f"<DocumentType {attr}/>",
+    )
+
+
+@server.tool()
+async def get_agent_list(
+    agent_criteria_id: str = "",
+) -> str:
+    """List configured agents and their scheduling/triggering
+    (what Application Manager shows under System Administration).
+    """
+    attr = (
+        f'AgentCriteriaId="{agent_criteria_id}"'
+        if agent_criteria_id
+        else ""
+    )
+    return await _call_api(
+        "getAgentList",
+        f"<Agent {attr}/>",
+    )
+
+
+@server.tool()
+async def get_sourcing_rule_list(
+    organization_code: str = "DEFAULT",
+) -> str:
+    """List DOM sourcing rules configured for an organization
+    (what Channel Configurator shows under Sourcing & Scheduling).
+    """
+    return await _call_api(
+        "getSourcingRuleList",
+        f'<SourcingRule OrganizationCode="{organization_code}"/>',
+    )
+
+
+@server.tool()
+async def get_service_definition_list(
+    service_name: str = "",
+) -> str:
+    """List service definitions (API configurations)."""
+    attr = f'ServiceName="{service_name}"' if service_name else ""
+    return await _call_api(
+        "getServiceDefinitionList",
+        f"<Service {attr}/>",
+    )
+
+
+@server.tool()
+async def get_hold_type_list(
+    organization_code: str = "DEFAULT",
+) -> str:
+    """List order hold types and their resolution rules."""
+    return await _call_api(
+        "getHoldTypeList",
+        f'<HoldType OrganizationCode="{organization_code}"/>',
+    )
+
+
+@server.tool()
+async def get_status_list(
+    document_type: str = "0001",
+    process_type_key: str = "",
+) -> str:
+    """List order statuses for a document type (the status pipeline
+    visible in Application Manager).
+    """
+    attrs = f'DocumentType="{document_type}"'
+    if process_type_key:
+        attrs += f' ProcessTypeKey="{process_type_key}"'
+    return await _call_api(
+        "getCommonCodeList",
+        f'<CommonCode CodeType="STATUS" {attrs}/>',
+    )
+
+
+@server.tool()
+async def get_item_details(
+    item_id: str,
+    organization_code: str = "DEFAULT",
+) -> str:
+    """Get item/product details including inventory configuration."""
+    return await _call_api(
+        "getItemDetails",
+        f'<Item ItemID="{item_id}" '
+        f'OrganizationCode="{organization_code}"/>',
+    )
+
+
+@server.tool()
+async def call_sterling_api(
+    api_name: str,
+    input_xml: str,
+) -> str:
+    """Call any Sterling Service API by name with custom input XML.
+    Use this for APIs not covered by the specific tools above.
+    """
+    return await _call_api(api_name, input_xml)
+
+
+if __name__ == "__main__":
+    server.run()
+```
+
+#### Wire it into workspace.yaml
+
+```yaml
+mcp_servers:
+  - id: sterling-api
+    transport: stdio
+    command: ["uv", "run", "python", "sterling_api_server.py"]
+    env:
+      STERLING_API_URL: "${STERLING_API_URL}"
+      STERLING_API_USER: "${STERLING_API_USER}"
+      STERLING_API_PASSWORD: "${STERLING_API_PASSWORD}"
+```
+
+Set the env vars:
+
+```bash
+export STERLING_API_URL=http://localhost:9080/smcfs/restapi/
+export STERLING_API_USER=admin
+export STERLING_API_PASSWORD=your_password
+```
+
+#### Test the API server
+
+```bash
+uv run python -c "
+import asyncio
+from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp import ClientSession
+import os
+
+async def main():
+    params = StdioServerParameters(
+        command='uv', args=['run', 'python', 'sterling_api_server.py'],
+        env={**os.environ},
+    )
+    async with stdio_client(params) as transport:
+        async with ClientSession(*transport) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            print(f'Tools: {[t.name for t in tools.tools]}')
+            # Test: list organizations
+            result = await session.call_tool('get_organization_list', {})
+            for block in result.content:
+                print(getattr(block, 'text', '')[:500])
+asyncio.run(main())
+"
+```
+
+#### Create skills for the API server
+
+Create `skills/query-sterling-config.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: query-sterling-config
+  name: Query Sterling Configuration
+  description: >
+    Queries live Sterling OMS configuration via Service APIs.
+    Returns the same data Application Manager shows — pipelines,
+    agents, DOM rules, document types, hold types, statuses.
+    This is ground truth for "how is our system configured?"
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-api
+  tool: get_flow_list
+iam:
+  required_scopes: [sterling:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Create `skills/query-sterling-sourcing.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: query-sterling-sourcing
+  name: Query Sterling Sourcing Rules
+  description: >
+    Queries DOM sourcing rules from the live Sterling instance.
+    Returns the sourcing configuration visible in Channel
+    Configurator's Sourcing & Scheduling section.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-api
+  tool: get_sourcing_rule_list
+iam:
+  required_scopes: [sterling:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Create `skills/call-any-sterling-api.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: call-any-sterling-api
+  name: Call Any Sterling API
+  description: >
+    Calls any Sterling Service API by name with custom input XML.
+    Use when the specific query tools don't cover the API needed.
+    The agent must know the API name and input XML format.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-api
+  tool: call_sterling_api
+iam:
+  required_scopes: [sterling:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+#### Update archetype skills
+
+Add the API skills to the Sterling architect:
+
+```yaml
+skills:
+  - search-project            # docs + Javadocs
+  - search-reference-designs  # other implementations
+  - read-context
+  - query-sterling-config     # live pipeline/agent config
+  - query-sterling-sourcing   # live DOM rules
+  - call-any-sterling-api     # fallback for any API
+  - query-swarmkit-docs
+```
+
+The config validator should also get API access (to validate
+recommendations against live config):
+
+```yaml
+# sterling-config-validator skills
+skills:
+  - search-project
+  - read-context
+  - query-sterling-config
+  - query-sterling-sourcing
+```
+
+### Step 3b — Product docs + Javadocs in mcp-local-rag
+
+Use mcp-local-rag for product documentation + API Javadocs +
+project design documents. The Sterling API MCP server (Step 3a)
+handles live configuration; this handles the context layer that
+tells the agent what the APIs and tables *mean*.
 
 [mcp-local-rag](https://github.com/shinpr/mcp-local-rag) provides
 semantic search with keyword boosting over local files. Zero install
@@ -268,26 +647,40 @@ tree. The server indexes everything under `BASE_DIR`:
 ```bash
 mkdir -p ~/sterling-knowledge
 
-# Copy or symlink your docs
+# Sterling product documentation (IBM Knowledge Center)
 ln -s /path/to/sterling-infocenter ~/sterling-knowledge/product-docs
-ln -s /path/to/project/config ~/sterling-knowledge/project-config
-ln -s /path/to/project/extensions/src ~/sterling-knowledge/extensions
+
+# API Javadocs (from your Sterling installation)
+# Typically at <INSTALL>/repository/eardata/documentation/
+ln -s /path/to/sterling/javadocs ~/sterling-knowledge/api-javadocs
+
+# Database ERD / data model docs (from Sterling install)
+# Typically at <INSTALL>/repository/datatypes/
+ln -s /path/to/sterling/erd ~/sterling-knowledge/data-model
+
+# Your project's design documents
 ln -s /path/to/project/docs ~/sterling-knowledge/project-docs
+
+# Extension source code (Java)
+ln -s /path/to/project/extensions/src ~/sterling-knowledge/extensions
 ```
 
 The directory structure should look like:
 
 ```
 ~/sterling-knowledge/
-├── product-docs/          # IBM Sterling InfoCenter HTML/PDF
-│   ├── order-management/
-│   ├── dom-configuration/
-│   ├── api-reference/
+├── product-docs/          # IBM Sterling Knowledge Center HTML/PDF
+│   ├── order-management/  # How Application Manager works
+│   ├── dom-configuration/ # Channel Configurator docs
+│   ├── api-javadocs/      # Service API documentation
 │   └── ...
-├── project-config/        # Your Sterling XML configs
-│   ├── agents/
-│   ├── pipelines/
-│   ├── dom-rules/
+├── api-javadocs/          # Sterling Service API Javadocs
+│   ├── com/yantra/yfs/    # Core API classes
+│   ├── com/yantra/ycp/    # Platform API classes
+│   └── ...
+├── data-model/            # Database ERD + table descriptions
+│   ├── YFS_ORDER_HEADER.html
+│   ├── YFS_PIPELINE.html
 │   └── ...
 ├── extensions/            # Java extension source code
 │   └── com/yourco/sterling/
@@ -296,6 +689,14 @@ The directory structure should look like:
     ├── integration-specs/
     └── ...
 ```
+
+**Why this works:** the API Javadocs + data model docs tell the
+agent what `YFS_SOURCING_RULE.SOURCING_CLASSIFICATION` means,
+what input XML `getFlowList` expects, and how Application Manager
+maps to the underlying tables. The Sterling API MCP server
+(Step 3a) gives the agent live access to the actual config values.
+Together, the agent understands both *what* is configured and
+*what it means*.
 
 #### Step 3.2 — Verify mcp-local-rag works
 
@@ -1194,23 +1595,34 @@ creative (broad knowledge), the validator is conservative
 
 In order of impact:
 
-1. **Your project's Sterling configuration XMLs** — the agent
-   knowing your actual DOM rules, agent configs, and pipeline
-   definitions is the single biggest quality improvement.
+1. **Sterling API MCP server** (Step 3a) — live access to the
+   actual configuration via `getFlowList`, `getSourcingRuleList`,
+   etc. The agent queries Application Manager's data directly.
+   This is the single biggest quality improvement.
 
-2. **Your project's design documents** — architecture decisions,
-   integration specs, custom extension documentation.
+2. **API Javadocs + data model ERD** — tells the agent what the
+   APIs return and what the database columns mean. Without this,
+   the API responses are data without context. With it, the agent
+   understands that `SOURCING_CLASSIFICATION="SFS"` means
+   ship-from-store sourcing.
 
-3. **Sterling product documentation** — the InfoCenter pages
-   for your specific Sterling version. The LLM has general
-   Sterling knowledge but may not know version-specific APIs.
+3. **Your project's design documents** — architecture decisions,
+   integration specs, custom extension documentation. The WHY
+   behind the configuration choices.
 
-4. **Extension source code** — your Java user exits and custom
+4. **Sterling product documentation** — the Knowledge Center pages
+   for your specific Sterling version. References Application
+   Manager and Channel Configurator UI, which is how your team
+   thinks about configuration.
+
+5. **Extension source code** — your Java user exits and custom
    APIs. The agent can reference actual implementation when
    answering questions about custom behavior.
 
-5. **Industry/company standards** — your organization's coding
-   standards, naming conventions, deployment procedures.
+6. **Reference designs from other projects** (Step 3.7–3.10) —
+   patterns and solutions from past implementations. Valuable
+   for "how have others solved this?" questions, with the
+   hallucination prevention guardrails.
 
 ## Expanding the swarm
 
