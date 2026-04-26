@@ -3,24 +3,13 @@ title: SwarmKit launch post
 description: Announcement post for v1.0 launch. Adapt per platform.
 ---
 
-# SwarmKit v1.0 — compose multi-agent AI swarms from YAML, not code
+# Introducing SwarmKit — multi-agent AI swarms from YAML, not code
 
-We just shipped SwarmKit — an open-source framework for composing,
-running, and growing multi-agent AI swarms. The core idea: swarm
-topology (who exists, who reports to whom, what skills they have)
-is declarative YAML, not imperative Python.
+The reason I built SwarmKit was because every multi-agent system I worked on ended up with the same problem — the coordination logic was harder to build and maintain than the agents themselves. You'd have an LLM that could review code or analyse documents perfectly well, but wiring three of them together with proper delegation, governance, and observability took weeks of custom plumbing every single time.
 
-## The problem
+Most frameworks in this space are code-first. You define agents as Python classes, wire them together imperatively, and hope the coordination holds up when you add a fourth agent or swap a model. There's no way to look at the system and understand its shape without reading the code. And when something goes wrong mid-run, you're adding print statements to figure out which agent did what.
 
-Building multi-agent systems today means writing a lot of plumbing
-code — agent loops, tool dispatch, model routing, state management,
-coordination protocols. Every team reinvents this. And when the
-system breaks, there's no observability into what each agent did
-or why.
-
-## What SwarmKit does differently
-
-**1. Topology as data.** Your swarm is a YAML file:
+SwarmKit takes a different approach. The topology — who exists, who reports to whom, what skills they can exercise — is a YAML file. The runtime interprets it. You can look at a topology and understand the swarm's structure in seconds without reading any Python. Here's what the Code Review Swarm looks like:
 
 ```yaml
 agents:
@@ -28,203 +17,139 @@ agents:
     role: root
     archetype: supervisor-leader
     children:
-      - id: code-reviewer
-        role: worker
-        archetype: code-analyst
-      - id: security-reviewer
-        role: worker
-        archetype: security-reviewer
+      - id: engineering-leader
+        role: leader
+        archetype: engineering-leader
+        children:
+          - id: code-reviewer
+            role: worker
+            archetype: code-analyst
+          - id: security-reviewer
+            role: worker
+            archetype: security-reviewer
+      - id: qa-leader
+        role: leader
+        archetype: qa-leader
+      - id: ops-leader
+        role: leader
+        archetype: ops-leader
 ```
 
-No Python classes to write. The runtime interprets the topology
-and compiles it to a LangGraph execution graph.
+Three leaders (Engineering, QA, Operations), each with specialist workers underneath. The root supervisor delegates sequentially — engineering reviews first, then QA assesses test coverage based on the engineering findings, then operations evaluates deployment risk. If the ops leader's confidence is low, the result lands in a human review queue. All of this is expressed in the YAML above plus the archetype definitions — no orchestration code to write.
 
-**2. Skills as the only extension primitive.** Every capability an
-agent exercises is a skill — backed by an LLM prompt or an MCP
-tool server. Four categories: capability, decision, coordination,
-persistence.
+## How skills work
 
-**3. Conversational authoring.** Users create workspaces through
-conversation (`swarmkit init`), never writing YAML directly. A
-multi-agent authoring swarm handles schema drafting, validation,
-test execution, and file publication.
+Every capability an agent exercises is a skill. There are four categories — capability (does something), decision (evaluates something), coordination (hands work to another agent), and persistence (writes to storage). A skill can be backed by an LLM prompt or by an MCP tool server:
 
-**4. Governance built in.** AGT-backed policy enforcement, identity
-verification, hash-chained audit. Every MCP tool call goes through
-`evaluate_action` before execution.
+```yaml
+# LLM-driven decision skill
+implementation:
+  type: llm_prompt
+  prompt: "Evaluate code quality..."
 
-**5. MCP integration.** Any MCP server becomes a skill. 7,000+
-community servers available. Docker sandbox isolation for generated
-servers.
+# MCP-backed capability skill
+implementation:
+  type: mcp_tool
+  server: github
+  tool: get_file_contents
+```
 
-**6. Observability.** Every run records per-agent timing, skill
-calls, policy denials. `swarmkit why` asks an LLM to explain what
-happened. `swarmkit ask` is a conversational observer.
+The Code Review Swarm uses GitHub MCP to fetch PR data, then LLM decision skills to evaluate quality, security, test coverage, and deployment risk. Each skill produces a structured verdict with a confidence score. The runtime handles the plumbing — tool schema forwarding, governance checks, structured output validation, auto-correction on failure.
+
+I didn't want to build another tool registry or plugin system. Skills are the only extension primitive — if you want an agent to do something new, you write a skill YAML, not a Python class. And since there are 7,000+ public MCP servers already available (GitHub, Slack, databases, search engines, file systems), most capabilities are just a few lines of YAML pointing at an existing server.
+
+## Conversational authoring
+
+One thing I felt strongly about was that users shouldn't need to write YAML to use SwarmKit. The topology-as-data approach is great for the runtime, but asking someone to author valid YAML with the right schema is still a friction point. So I built conversational authoring — `swarmkit init` creates a workspace through conversation, `swarmkit author` creates individual artifacts, and `swarmkit edit` modifies an existing workspace based on what you describe.
+
+The authoring is itself a multi-agent swarm (the Skill Authoring Swarm) — a conversation leader understands your intent, a knowledge searcher checks what already exists, a schema drafter generates the YAML, a validator checks it against the schemas and design invariants, a test writer generates smoke tests, and a publisher writes the files. Each agent has one job. An AI judge validates every output before it reaches your workspace.
+
+## Governance
+
+I've worked on enough enterprise systems to know that governance can't be bolted on after the fact. In SwarmKit, every MCP tool call goes through `evaluate_action` before execution. Agents have IAM scopes — a worker with `repo:read` can't call a tool that requires `deploy:prod`. Policy rules are YAML files in a `policies/` directory. The audit log is append-only with hash-chained entries for tamper evidence.
+
+For development you set `governance: { provider: mock }` and everything is permitted. For production you switch to `governance: { provider: agt }` and the AGT policy engine enforces scope checks, identity verification, and trust scoring. Same topology, same skills, different governance posture.
+
+## Observability
+
+Every run records structured events — agent start/complete with timing, skill calls, policy denials, validation failures. These save to `.swarmkit/logs/` as JSONL automatically. The CLI gives you several ways to inspect runs:
+
+```bash
+swarmkit run . my-topology --input "..." --verbose
+# Shows per-agent timing after output
+
+swarmkit status .
+# Recent runs at a glance
+
+swarmkit logs .
+# Detailed events from past runs
+
+swarmkit why hello-20260426T134042 .
+# LLM explains what happened in plain English
+
+swarmkit ask "which agent took the longest?" -w .
+# Conversational observer
+```
+
+I wanted the "what happened?" question to be answerable in seconds, not hours of log-diving.
 
 ## What ships in v1.0
 
-- **CLI:** `validate`, `run`, `init`, `author`, `edit`, `serve`,
-  `status`, `logs`, `why`, `ask`, `knowledge-pack`, `knowledge-server`
-- **HTTP server** — FastAPI wrapping the same runtime the CLI uses
-- **7 model providers** — Anthropic, Google, OpenAI, OpenRouter,
-  Groq, Together, Ollama (auto-detected from env vars)
-- **2 reference topologies:**
-  - Code Review Swarm (3 leaders, 10 agents, reviews real GitHub PRs)
-  - Skill Authoring Swarm (6 agents, creates/edits workspaces)
-- **Knowledge MCP Server** — 11 tools for live docs search
-- **20 reference skills, 16 archetypes**
-- **Docker image + PyPI packages**
-- **500+ tests** across Python + TypeScript
+The framework runs end-to-end today — CLI, HTTP server (`swarmkit serve`), 7 model providers (Anthropic, Google, OpenAI, OpenRouter, Groq, Together, Ollama), MCP integration with Docker sandbox isolation, a Knowledge MCP Server with 11 tools for live documentation search, two reference topologies (Code Review Swarm and Skill Authoring Swarm), 20 reference skills across all four categories, 16 reusable archetypes, and 500+ tests.
 
-## 5-minute demo
+On the cost side, running the Code Review Swarm with Qwen3 models via OpenRouter costs about $0.01-0.02 per run. Twenty runs a day works out to roughly $5/month. You can use any provider — the topology YAML sets per-agent models, so leaders can use a large reasoning model while workers use a cheap one for tool calling.
+
+## What's next
+
+The web UI is the main v1.1 item — a visual topology editor and runtime dashboard over the HTTP server. Interactive chat mode for `swarmkit edit` is another priority, along with trigger support (cron, webhooks, file watches) for scheduled execution.
+
+I'm also working on a Sterling OMS workspace as a real-world test case — a solution architect agent backed by a knowledge base of project configuration and product documentation. If that works well it'll become a guide for domain-specific agent workspaces.
+
+## Try it
 
 ```bash
 pip install swarmkit-runtime
 swarmkit init my-swarm/
-# Answer a few questions → working workspace
-swarmkit run my-swarm/ my-topology --input "Do the thing" --verbose
 ```
 
-Or run the Code Review Swarm against a real PR:
+The code is at [github.com/delivstat/swarmkit](https://github.com/delivstat/swarmkit). MIT license. The full architecture is documented in `design/SwarmKit-Design-v0.6.md` in the repo — it's detailed and opinionated, and I'd appreciate feedback on it.
 
-```bash
-export OPENROUTER_API_KEY=sk-or-...
-export GITHUB_TOKEN=ghp_...
-swarmkit run reference/ code-review \
-  --input "Review PR #49 on delivstat/swarmkit"
-```
-
-## Why we built it
-
-We needed multi-agent systems for production use cases (code
-review, solution architecture, knowledge management) and found
-that:
-
-1. Existing frameworks are code-first — non-developers can't
-   compose agent teams
-2. No framework treats governance as structural (not bolted on)
-3. MCP integration is tool-level, not topology-level
-4. Observability is always an afterthought
-
-SwarmKit is our answer: topology-as-data lets anyone compose,
-governance is built into the execution model, MCP servers are
-first-class skills, and every run is observable.
-
-## Links
-
-- **GitHub:** https://github.com/delivstat/swarmkit
-- **PyPI:** `pip install swarmkit-runtime`
-- **Docker:** `docker pull ghcr.io/delivstat/swarmkit`
-- **Docs:** https://delivstat.github.io/swarmkit/
-- **Design doc:** The full v0.6 architecture is in the repo at
-  `design/SwarmKit-Design-v0.6.md`
-
-## What's next
-
-- Web UI (v1.1) — visual topology editor over the HTTP server
-- Trigger support — cron/webhook/file_watch execution
-- Interactive chat mode for `swarmkit edit`
-- More reference topologies (Skill Authoring, Knowledge Curator)
-
-Feedback, issues, and contributions welcome at
-https://github.com/delivstat/swarmkit/issues
+If you build something with SwarmKit, I'd love to hear about it. Issues and discussions are open on GitHub.
 
 ---
 
-## Platform-specific versions
+## Where to publish
 
-### Twitter/X (thread)
+| Platform | Priority | Angle |
+|---|---|---|
+| **Hacker News** (Show HN) | 1 | Technical architecture, link to GitHub |
+| **Twitter/X** | 1 | Thread — 5-6 tweets pulling key points from above |
+| **Reddit r/LocalLLaMA** | 2 | Ollama support, Qwen/DeepSeek pricing, run locally |
+| **Reddit r/MachineLearning** | 2 | [P] tag, architecture decisions |
+| **LinkedIn** | 2 | Professional angle, enterprise governance story |
+| **Dev.to** | 3 | Full blog post (this content as-is works) |
+| **Reddit r/artificial** | 3 | General AI audience |
+| **Reddit r/LangChain** | 3 | LangGraph-based, comparison angle |
+| **GitHub Discussions** | 3 | Announcement thread on the repo |
 
-**Tweet 1:**
-SwarmKit v1.0 is live — an open-source framework for multi-agent
-AI swarms where topology is YAML, not code.
+### Twitter thread version
 
-Your swarm = a file. The runtime handles compilation, governance,
-MCP integration, and observability.
+**1/** I built SwarmKit — an open-source framework where multi-agent AI swarms are YAML files, not Python code. Your topology declares agents, hierarchy, skills, and governance. The runtime handles compilation, tool dispatch, and observability. v1.0 just shipped.
 
-pip install swarmkit-runtime
 github.com/delivstat/swarmkit
 
-🧵
+**2/** The core idea: if you can describe who reports to whom and what each agent can do, you shouldn't need to write orchestration code. A 10-agent Code Review Swarm with 3 leaders, MCP integration, and governance is ~30 lines of YAML.
 
-**Tweet 2:**
-What makes it different:
-• Topology as data (YAML, not Python classes)
-• Skills = only extension primitive (LLM prompts or MCP tools)
-• Conversational authoring (swarmkit init, never write YAML)
-• AGT governance built in (policy enforcement on every action)
-• 7 model providers auto-detected from env
+**3/** Every agent capability is a skill backed by either an LLM prompt or an MCP server. 7,000+ community MCP servers work as skills out of the box. GitHub, Slack, databases, search — just point a skill at the server.
 
-**Tweet 3:**
-Ships with a Code Review Swarm — 3 leaders (Engineering, QA, Ops),
-10 agents, reviews real GitHub PRs via MCP. Knowledge-grounded:
-agents search the design docs before producing verdicts.
+**4/** Observability is built in, not bolted on. Every run records per-agent timing, skill calls, and policy denials. `swarmkit why` asks an LLM to explain what happened. `swarmkit ask` answers questions about your workspace.
 
-swarmkit run reference/ code-review --input "Review PR #49"
+**5/** Runs cost ~$0.01-0.02 with Qwen3 via OpenRouter. 7 providers supported including Ollama (free, local). Per-agent model selection — big model for leaders, small one for workers.
 
-**Tweet 4:**
-Full observability:
-• swarmkit run --verbose (per-agent timing)
-• swarmkit logs (event history)
-• swarmkit why (LLM explains what happened)
-• swarmkit ask "which agent is slowest?"
+**6/** MIT license. 500+ tests. pip install swarmkit-runtime.
 
-Every run saves structured events as JSONL.
+### Hacker News version
 
-**Tweet 5:**
-Cost-optimized: Qwen3 235B for leaders ($0.46/M), Qwen3 30B for
-workers ($0.08/M). A full topology run costs ~$0.01-0.02. 20
-runs/day = ~$5/month.
+**Title:** Show HN: SwarmKit – Multi-agent AI swarms from YAML, not code
 
-7 providers: Anthropic, Google, OpenAI, OpenRouter, Groq, Together,
-Ollama (local, free).
-
-**Tweet 6:**
-Open source. MIT license. 500+ tests. Design doc included.
-
-GitHub: github.com/delivstat/swarmkit
-PyPI: pip install swarmkit-runtime
-Docker: ghcr.io/delivstat/swarmkit
-
-Feedback welcome. What would you build with it?
-
----
-
-### LinkedIn
-
-**Title:** Introducing SwarmKit — multi-agent AI swarms from YAML, not code
-
-[Use the main post content above, formatted for LinkedIn's longer
-form. Add a personal angle about why you built it and what problem
-it solves for your team.]
-
----
-
-### Hacker News
-
-**Title:** Show HN: SwarmKit – Compose multi-agent AI swarms from YAML (open source)
-
-**Body:** [Use the main post content, stripped to essentials. HN
-prefers technical substance over marketing. Lead with the
-architecture decision (topology-as-data) and the GitHub link.]
-
----
-
-### Reddit (r/MachineLearning, r/LocalLLaMA, r/artificial)
-
-**Title:** [P] SwarmKit v1.0 — open-source framework for
-multi-agent AI swarms (topology-as-data, MCP integration, 7
-providers including Ollama)
-
-**Body:** [Use the main post. r/LocalLLaMA will care about Ollama
-support and the Qwen/DeepSeek pricing. r/MachineLearning will care
-about the architecture.]
-
----
-
-### Dev.to / Hashnode
-
-**Title:** Building Multi-Agent AI Swarms Without Writing Code — Introducing SwarmKit
-
-[Full blog post format. Include code samples, architecture
-diagrams (from the topology tree output), and the 5-minute demo.]
+**Body:** Use the first 3 paragraphs of the main post above (the problem statement + topology-as-data approach), then link to GitHub. HN prefers you let the README speak for itself.
