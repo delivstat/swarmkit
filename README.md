@@ -26,6 +26,9 @@ swarmkit validate my-swarm/ --tree
 SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct \
   swarmkit run my-swarm/ my-topology --input "Do the thing"
 
+# Dry run — see what would execute without hitting any LLM or MCP
+swarmkit run reference/ code-review --dry-run
+
 # Review the Code Review Swarm against a real GitHub PR
 swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit"
 
@@ -161,6 +164,8 @@ Every run records structured events (agent start/complete with timing, skill cal
 | `swarmkit run --verbose` | Per-agent summary after output (timing, skills, denials) |
 | `swarmkit status` | Recent runs at a glance |
 | `swarmkit logs` | Detailed events from past runs |
+| `swarmkit logs --format markdown` | Compliance-ready audit report |
+| `swarmkit run --dry-run` | Show resolved agents + skills without executing |
 | `swarmkit why <run-id>` | LLM-powered explanation of what happened |
 | `swarmkit ask "question"` | Conversational workspace observer |
 | `swarmkit review list` | Pending HITL review items |

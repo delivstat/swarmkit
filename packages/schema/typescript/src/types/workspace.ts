@@ -105,6 +105,11 @@ export interface MCPServerElement {
 export type Transport = "stdio" | "http";
 
 export interface Metadata {
+    /**
+     * Arbitrary key-value metadata the runtime ignores. For enterprise use: cost_center, team,
+     * environment, compliance tags, etc.
+     */
+    annotations?: { [key: string]: string };
     description?: string;
     id:           string;
     name:         string;

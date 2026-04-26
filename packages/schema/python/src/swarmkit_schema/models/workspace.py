@@ -21,6 +21,10 @@ class Metadata(BaseModel):
     id: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
     name: str = Field(..., min_length=1)
     description: str | None = None
+    annotations: dict[str, str] | None = Field(
+        None,
+        description="Arbitrary key-value metadata the runtime ignores. For enterprise use: cost_center, team, environment, compliance tags, etc.",
+    )
 
 
 class OrgOrTeam(BaseModel):

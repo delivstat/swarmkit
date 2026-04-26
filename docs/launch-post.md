@@ -93,9 +93,31 @@ swarmkit ask "which agent took the longest?" -w .
 
 I wanted the "what happened?" question to be answerable in seconds, not hours of log-diving.
 
+## Enterprise trust features
+
+Three features that enterprise teams care about but most AI frameworks skip:
+
+**Dry run.** `swarmkit run --dry-run` shows the resolved agent tree, skill bindings, and MCP server connections without hitting any LLM or MCP server. A skeptical DevOps lead can see exactly what would happen before permitting execution. No tokens consumed, no side effects.
+
+**Audit export.** `swarmkit logs --format markdown` produces a compliance-ready report with agent performance tables, policy denials, validation failures, and a full event timeline. Paste it into your compliance ticket.
+
+**Custom metadata.** Workspaces support `metadata.annotations` — a key-value map the runtime ignores but your enterprise systems can use (cost_center, team, environment, compliance tags). The framework stays strict on structural fields while allowing enterprise-specific extension.
+
 ## What ships in v1.0
 
 The framework runs end-to-end today — CLI, HTTP server (`swarmkit serve`), 7 model providers (Anthropic, Google, OpenAI, OpenRouter, Groq, Together, Ollama), MCP integration with Docker sandbox isolation, a Knowledge MCP Server with 11 tools for live documentation search, two reference topologies (Code Review Swarm and Skill Authoring Swarm), 20 reference skills across all four categories, 16 reusable archetypes, and 500+ tests.
+
+If it helps to think in org-chart terms, here's how the agent hierarchy maps to a corporate structure:
+
+| Role | Framework component | The corporate reality |
+|---|---|---|
+| Individual contributor | MCP skill / worker agent | "Just give me the PR data, I don't ask questions." |
+| Quality assurance | artifact-validator | "This doesn't meet the spec. Back to the drawing board." |
+| Middle management | engineering-leader | "I'm summarizing what the worker did for the executive." |
+| The executive | root agent | Takes 3x longer to "synthesise" than anyone actually doing the work. |
+| Internal audit | swarmkit why | "We noticed a 3.2x latency overhead in the executive suite." |
+
+The hierarchy isn't an accident — it's the safety rail. Because the validator is separate from the drafter, an LLM hallucination in code generation gets caught by a peer before it touches your filesystem. It's a distributed check-and-balance system.
 
 On the cost side, running the Code Review Swarm with Qwen3 models via OpenRouter costs about $0.01-0.02 per run. Twenty runs a day works out to roughly $5/month. You can use any provider — the topology YAML sets per-agent models, so leaders can use a large reasoning model while workers use a cheap one for tool calling.
 
