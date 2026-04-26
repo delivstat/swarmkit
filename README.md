@@ -29,6 +29,21 @@ SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct \
 # Review the Code Review Swarm against a real GitHub PR
 swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit"
 
+# Run with observability (per-agent timing, skills, denials)
+swarmkit run my-swarm/ my-topology --input "Do the thing" --verbose
+
+# View recent run history
+swarmkit status my-swarm/
+
+# Read detailed events from past runs
+swarmkit logs my-swarm/ --last 3
+
+# Ask an LLM to explain what happened in a run
+swarmkit why hello-20260426T134042 my-swarm/
+
+# Ask questions about the workspace or recent runs
+swarmkit ask "Which agents are taking the longest?" -w my-swarm/
+
 # Start the HTTP server (persistent mode)
 swarmkit serve my-swarm/ --port 8000
 curl -X POST http://localhost:8000/run/my-topology \
@@ -136,6 +151,29 @@ The Knowledge MCP Server exposes SwarmKit's own docs, schemas, and reference ski
 ### Conversational authoring
 
 `swarmkit init` creates a workspace through conversation. `swarmkit author` creates individual artifacts. `swarmkit edit` modifies existing swarms conversationally — describe what's wrong, the authoring swarm reads the workspace, drafts changes, validates, and writes.
+
+### Observability
+
+Every run records structured events (agent start/complete with timing, skill calls, policy denials, validation failures) to `.swarmkit/logs/` as JSONL. CLI commands for analysis:
+
+| Command | What it does |
+|---|---|
+| `swarmkit run --verbose` | Per-agent summary after output (timing, skills, denials) |
+| `swarmkit status` | Recent runs at a glance |
+| `swarmkit logs` | Detailed events from past runs |
+| `swarmkit why <run-id>` | LLM-powered explanation of what happened |
+| `swarmkit ask "question"` | Conversational workspace observer |
+| `swarmkit review list` | Pending HITL review items |
+| `swarmkit gaps` | Recorded skill gaps |
+
+Per-skill audit control via the `audit:` block in skill YAML:
+
+```yaml
+audit:
+  log_inputs: summary    # full | summary | none
+  log_outputs: full
+  redact: ["$.api_key", "$.password"]
+```
 
 ## Reference workspace
 
