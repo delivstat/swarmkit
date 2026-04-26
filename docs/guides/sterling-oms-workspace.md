@@ -1,0 +1,615 @@
+---
+title: Building a Sterling OMS Agent Workspace — step-by-step guide
+description: How to create a SwarmKit workspace with IBM Sterling OMS and retail domain archetypes, backed by a project-specific knowledge base.
+---
+
+# Building a Sterling OMS Agent Workspace
+
+This guide walks through creating a SwarmKit workspace for an IBM
+Sterling OMS project — from archetypes and skills to a knowledge
+base that grounds the agents in your actual project configuration.
+
+## Prerequisites
+
+- SwarmKit installed (`pip install swarmkit-runtime` or source checkout)
+- A model provider configured (e.g. `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`)
+- Your Sterling OMS project files accessible on disk:
+  - Product documentation (IBM InfoCenter HTML/PDF or your team's docs)
+  - Project configuration XMLs (from `/smcfs/` or your config repo)
+  - Extension code (Java source)
+  - Integration specs (API contracts, EDI mappings)
+
+## Step 1 — Create the workspace
+
+```bash
+mkdir sterling-oms-swarm && cd sterling-oms-swarm
+swarmkit init .
+```
+
+When the authoring agent asks what the swarm should do, describe:
+
+> "I need an agent swarm for an IBM Sterling OMS implementation
+> project. The swarm should have a Sterling OMS Solution Architect
+> who understands order management configuration, DOM rules, agents,
+> pipelines, and the extension framework. It should also have a
+> Retail Industry Expert who understands omnichannel fulfillment,
+> inventory management, and retail business processes. The agents
+> need access to our project's Sterling configuration files and
+> documentation."
+
+The authoring agent will generate workspace.yaml, a topology, and
+initial archetypes. Review what it generates — you'll likely want
+to refine the prompts using the detailed versions below.
+
+## Step 2 — Refine the archetypes
+
+The authoring agent's initial archetypes will be generic. Replace
+or edit them with these detailed versions.
+
+### Sterling OMS Solution Architect
+
+Create `archetypes/sterling-oms-architect.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: sterling-oms-architect
+  name: Sterling OMS Solution Architect
+  description: >
+    IBM Sterling OMS expert with deep knowledge of order management
+    configuration, fulfillment orchestration, DOM rules, agent/pipeline
+    configuration, the extension framework, and integration patterns.
+    Grounds all recommendations in the project's actual configuration.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.2
+  prompt:
+    system: |
+      You are a senior IBM Sterling OMS Solution Architect with 10+
+      years of hands-on implementation experience. Your expertise covers:
+
+      ORDER MANAGEMENT:
+      - Order capture, modification, scheduling, and release
+      - Order line types (product, service, delivery, provided service)
+      - Order statuses and status pipeline configuration
+      - Hold types, hold processing, and approval workflows
+      - Order purge strategies and archival
+
+      DISTRIBUTED ORDER MANAGEMENT (DOM):
+      - Sourcing rules and rule sequences
+      - Availability checking (ATP, future inventory, safety stock)
+      - Cost-based and priority-based sourcing optimization
+      - Promising rules and delivery date calculations
+      - Node capacity constraints and zone-based sourcing
+
+      FULFILLMENT:
+      - Shipment creation, consolidation, and release
+      - Wave management and pick/pack/ship processes
+      - Ship-from-store, BOPIS, and curbside pickup flows
+      - Drop-ship and marketplace fulfillment
+      - Returns processing (RMA, in-store returns, exchanges)
+
+      CONFIGURATION:
+      - Agent and integration server configuration
+      - Pipeline and transaction processing
+      - Condition builder and custom conditions
+      - Event management and alert configuration
+      - Document types and process type definitions
+      - Organization and participant modeling
+
+      EXTENSION FRAMEWORK:
+      - User Exit (YFSxxxUE) implementation patterns
+      - Custom API development and override APIs
+      - Extended database columns and custom tables
+      - SIF (Sterling Integration Framework) message flows
+      - Business rule extensibility
+
+      DATABASE:
+      - Core schema knowledge (YFS_ORDER_HEADER, YFS_ORDER_LINE,
+        YFS_SHIPMENT, YFS_INVENTORY_ITEM, YFS_ITEM, etc.)
+      - Query optimization for Sterling tables
+      - Transaction volume considerations
+
+      INTEGRATION:
+      - Inbound/outbound API patterns (XML over HTTP, JMS, file)
+      - Sterling B2B integration
+      - ERP integration patterns (SAP, Oracle)
+      - E-commerce platform integration
+      - WMS/TMS integration patterns
+
+      APPROACH:
+      - Always search the project knowledge base before answering
+      - Reference specific Sterling APIs, tables, or config elements
+      - When suggesting configuration changes, specify the exact XML
+        elements and attribute values
+      - Flag risks and performance implications of recommendations
+      - Cite Sterling documentation sections when relevant
+      - Distinguish between out-of-box features and custom extensions
+  skills:
+    - search-sterling-docs
+    - search-project-config
+    - query-swarmkit-docs
+  iam:
+    base_scope: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+### Retail Industry Expert
+
+Create `archetypes/retail-domain-expert.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: retail-domain-expert
+  name: Retail Industry Expert
+  description: >
+    Retail domain expert specializing in omnichannel order management,
+    inventory strategies, fulfillment optimization, and industry
+    best practices. Bridges business requirements to technical
+    implementation.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.3
+  prompt:
+    system: |
+      You are a retail industry domain expert with 15+ years of
+      experience in omnichannel retail operations. Your expertise:
+
+      OMNICHANNEL FULFILLMENT:
+      - Buy Online Pick Up In Store (BOPIS / Click & Collect)
+      - Ship From Store (SFS) and store-as-warehouse models
+      - Drop-ship and marketplace fulfillment
+      - Same-day and next-day delivery strategies
+      - Curbside pickup operations
+      - Mixed-cart fulfillment (split shipments vs. consolidation)
+
+      INVENTORY MANAGEMENT:
+      - Available to Promise (ATP) and allocation strategies
+      - Safety stock and buffer inventory policies
+      - Inventory segmentation (selling channels, fulfillment types)
+      - Demand sensing and inventory positioning
+      - Inventory accuracy and cycle counting
+      - Endless aisle and virtual inventory concepts
+
+      ORDER PROMISING AND SOURCING:
+      - Delivery date promising (committed vs. estimated)
+      - Cost-to-serve optimization (shipping cost, labor, distance)
+      - Node priority and capacity-based sourcing
+      - Zone-based fulfillment strategies
+      - Backorder management and customer communication
+      - Order modification and cancellation policies
+
+      RETURNS AND REVERSE LOGISTICS:
+      - Omnichannel returns (buy online return in store, BORIS)
+      - Return merchandise authorization (RMA) workflows
+      - Exchange processing and instant credit
+      - Return disposition and restocking
+      - Fraud prevention in returns
+
+      RETAIL OPERATIONS:
+      - Store operations and order management at the store level
+      - Customer service and call center operations
+      - Retail KPIs: fill rate, OTIF, order cycle time, cost per order
+      - Seasonal demand planning and peak operations
+      - Labor optimization for fulfillment operations
+
+      INDUSTRY STANDARDS:
+      - GS1 standards (GTIN, SSCC, GLN)
+      - EDI transaction sets (850, 855, 856, 810, 860)
+      - Retail compliance and vendor requirements
+      - PCI-DSS considerations for order management
+
+      APPROACH:
+      - Frame technical questions in business terms
+      - Quantify impact when possible (cost savings, time reduction)
+      - Reference industry benchmarks and best practices
+      - Consider the customer experience impact of every decision
+      - Flag when a business requirement conflicts with system
+        capabilities or industry norms
+      - Suggest phased rollout approaches for complex changes
+  skills:
+    - search-sterling-docs
+    - search-project-config
+  iam:
+    base_scope: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+## Step 3 — Set up the knowledge base
+
+This is the most impactful step. Without it, the agents rely only
+on the LLM's general training data. With it, they can search your
+actual project files.
+
+### Option A — Quick start (keyword search, no dependencies)
+
+Use `swarmkit author knowledge-server` to generate a knowledge
+server from your project files:
+
+```bash
+swarmkit author knowledge-server .
+```
+
+When asked about knowledge sources, provide:
+
+> "I have the following knowledge sources:
+> 1. Sterling OMS product documentation at /path/to/sterling-docs/
+>    (HTML files from the IBM InfoCenter)
+> 2. Project configuration XMLs at /path/to/project/config/
+>    (our Sterling OMS configuration files)
+> 3. Extension Java code at /path/to/project/extensions/src/
+> 4. Integration specs at /path/to/project/docs/integration/
+> 5. Our project design documents at /path/to/project/docs/design/"
+
+The authoring agent generates a `knowledge_server.py` that indexes
+these sources and exposes `search` / `get_file` / `list_sources`
+MCP tools.
+
+### Option B — Manual setup
+
+Create `knowledge_server.py` in your workspace:
+
+```python
+"""Sterling OMS project knowledge server."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from mcp.server.fastmcp import FastMCP
+
+server = FastMCP("sterling-knowledge")
+
+SOURCES = [
+    {
+        "path": os.environ.get(
+            "STERLING_DOCS", "/path/to/sterling-docs"
+        ),
+        "patterns": ["**/*.html", "**/*.md", "**/*.txt"],
+        "label": "Sterling OMS documentation",
+    },
+    {
+        "path": os.environ.get(
+            "PROJECT_CONFIG", "/path/to/project/config"
+        ),
+        "patterns": ["**/*.xml", "**/*.properties"],
+        "label": "Project configuration",
+    },
+    {
+        "path": os.environ.get(
+            "PROJECT_EXTENSIONS", "/path/to/project/extensions"
+        ),
+        "patterns": ["**/*.java"],
+        "label": "Extension code",
+    },
+    {
+        "path": os.environ.get(
+            "PROJECT_DOCS", "/path/to/project/docs"
+        ),
+        "patterns": ["**/*.md", "**/*.txt", "**/*.pdf"],
+        "label": "Project documentation",
+    },
+]
+
+# ... (index + search implementation generated by the authoring
+#      agent or adapted from the SwarmKit knowledge server pattern)
+```
+
+Wire it in `workspace.yaml`:
+
+```yaml
+mcp_servers:
+  - id: sterling-knowledge
+    transport: stdio
+    command: ["python", "knowledge_server.py"]
+    env:
+      STERLING_DOCS: "/path/to/sterling-docs"
+      PROJECT_CONFIG: "/path/to/project/config"
+      PROJECT_EXTENSIONS: "/path/to/project/extensions"
+      PROJECT_DOCS: "/path/to/project/docs"
+```
+
+### Option C — Advanced (vector search for large doc sets)
+
+If your Sterling documentation set is large (hundreds of MB of
+InfoCenter HTML), use a community RAG MCP server for better
+retrieval:
+
+- **gnosis-mcp** — markdown to SQLite FTS5 or pgvector
+- **knowledge-rag** — hybrid BM25 + semantic search
+- **mcp-local-rag** — local embeddings with LanceDB
+
+These give better search quality over large corpora than keyword
+search. See `design/details/user-knowledge-server.md` for the
+full comparison.
+
+## Step 4 — Create skills
+
+### Sterling documentation search
+
+Create `skills/search-sterling-docs.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-sterling-docs
+  name: Search Sterling Documentation
+  description: >
+    Searches Sterling OMS product documentation and project-specific
+    docs for configuration guidance, API references, and best practices.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-knowledge
+  tool: search
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+### Project configuration lookup
+
+Create `skills/search-project-config.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-project-config
+  name: Search Project Configuration
+  description: >
+    Searches the project's Sterling OMS configuration files —
+    agent configs, pipeline definitions, DOM rules, process types,
+    and extension configurations.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-knowledge
+  tool: search
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+### Configuration review (decision skill)
+
+Create `skills/config-review.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: config-review
+  name: Sterling Configuration Review
+  description: >
+    Reviews a proposed Sterling OMS configuration change for
+    correctness, performance impact, and alignment with best
+    practices. Returns a structured verdict.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [approve, needs-changes, reject]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    risks:
+      type: array
+      items:
+        type: object
+        properties:
+          area:
+            type: string
+          severity:
+            type: string
+            enum: [critical, high, medium, low]
+          description:
+            type: string
+        required: [area, severity, description]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Review the proposed Sterling OMS configuration change for:
+    1. Correctness (valid XML, correct element names and attributes)
+    2. Performance impact (will this cause agent bottlenecks, DB load?)
+    3. Best practices (is this the recommended Sterling approach?)
+    4. Integration impact (does this affect inbound/outbound flows?)
+    5. Upgrade safety (will this survive a Sterling version upgrade?)
+
+    Search the knowledge base for relevant documentation before
+    producing your verdict.
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+### Business requirements validation
+
+Create `skills/business-validation.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: business-validation
+  name: Business Requirements Validation
+  description: >
+    Validates a proposed technical change against retail business
+    requirements, customer experience impact, and operational
+    feasibility.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [aligned, needs-adjustment, misaligned]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    customer_impact:
+      type: string
+    operational_impact:
+      type: string
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Evaluate the proposed change from a retail business perspective:
+    1. Does it meet the stated business requirement?
+    2. What is the customer experience impact?
+    3. What is the operational impact (store ops, call center)?
+    4. Are there industry best practices that apply?
+    5. What are the edge cases or seasonal considerations?
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+## Step 5 — Build a topology
+
+### Sterling Solution Review topology
+
+Create `topologies/solution-review.yaml`:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: solution-review
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: anthropic
+      name: claude-sonnet-4-6
+    prompt:
+      system: >
+        You are the solution review coordinator. When given a
+        Sterling OMS question, configuration change, or design
+        proposal, delegate to the appropriate specialist:
+        - sterling-architect for technical Sterling questions
+        - retail-expert for business/domain questions
+        Synthesise their responses into a final recommendation.
+    children:
+      - id: sterling-architect
+        role: worker
+        archetype: sterling-oms-architect
+      - id: retail-expert
+        role: worker
+        archetype: retail-domain-expert
+```
+
+## Step 6 — Validate and run
+
+```bash
+# Validate everything resolves
+swarmkit validate . --tree
+
+# Ask a Sterling question
+SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct \
+  swarmkit run . solution-review \
+  --input "We need to implement ship-from-store for 200 retail locations. \
+           What DOM rules do we need, and what agent configuration changes \
+           are required?" \
+  --verbose
+```
+
+## Step 7 — Iterate based on results
+
+After running the swarm, check the results:
+
+```bash
+# View what each agent did
+swarmkit logs . --last 1
+
+# Ask the LLM to explain the run
+swarmkit why solution-review .
+
+# Ask follow-up questions
+swarmkit ask "Which agent took the longest and why?" -w .
+```
+
+If the responses are too generic (not referencing your project):
+- **Check the knowledge base** — are the files being indexed?
+  Test with `swarmkit knowledge-server` and call `list_sources`.
+- **Refine the prompts** — add more project-specific context to
+  the archetype system prompts (your org's naming conventions,
+  specific Sterling version, known constraints).
+- **Add more knowledge sources** — the more project-specific
+  context the agents have, the better the output.
+
+If you need help refining, use `swarmkit edit`:
+
+```bash
+swarmkit edit . --input "The sterling architect isn't referencing \
+  our DOM rules. Make sure it searches project config before answering."
+```
+
+## What knowledge makes the biggest difference
+
+In order of impact:
+
+1. **Your project's Sterling configuration XMLs** — the agent
+   knowing your actual DOM rules, agent configs, and pipeline
+   definitions is the single biggest quality improvement.
+
+2. **Your project's design documents** — architecture decisions,
+   integration specs, custom extension documentation.
+
+3. **Sterling product documentation** — the InfoCenter pages
+   for your specific Sterling version. The LLM has general
+   Sterling knowledge but may not know version-specific APIs.
+
+4. **Extension source code** — your Java user exits and custom
+   APIs. The agent can reference actual implementation when
+   answering questions about custom behavior.
+
+5. **Industry/company standards** — your organization's coding
+   standards, naming conventions, deployment procedures.
+
+## Expanding the swarm
+
+Once the basic two-agent topology works, consider adding:
+
+- **Sterling DBA** archetype — for database schema questions,
+  query optimization, and data migration
+- **Integration Specialist** archetype — for EDI, API, and
+  message flow questions
+- **Test Analyst** archetype — for test scenario generation
+  based on configuration changes
+- **Code Review Swarm** — use the reference code-review
+  topology against your Sterling extension code
+
+Each new archetype follows the same pattern: YAML + detailed
+prompt + knowledge-backed skills.
