@@ -437,6 +437,74 @@ def author_mcp_server(
     )
 
 
+# ---- edit (M7 — Skill Authoring Swarm in edit mode) ----------------------
+
+
+@app.command()
+def edit(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace to edit.", show_default=False),
+    ] = Path("."),
+    input_text: Annotated[
+        str | None,
+        typer.Option(
+            "--input",
+            "-i",
+            help="Describe the change (or omit for interactive conversation).",
+        ),
+    ] = None,
+    color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
+) -> None:
+    """Edit an existing workspace through conversation (M7 Skill Authoring Swarm).
+
+    Reads the current workspace state, understands the requested change,
+    drafts modifications, validates, and writes. The user never edits
+    YAML directly.
+    """
+    use_colour = should_colour(sys.stdout.isatty(), color)
+
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except ResolutionErrors as exc:
+        _emit_errors(
+            list(exc.errors),
+            json_mode=False,
+            workspace_root=workspace_path.resolve(),
+            color=use_colour,
+        )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    except MissingMCPServerError as exc:
+        for skill_id, server_id in exc.missing:
+            _stderr(
+                f"error: skill '{skill_id}' targets MCP server '{server_id}' "
+                f"but the workspace declares no such server."
+            )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    user_input = input_text or ""
+    if not user_input and not sys.stdin.isatty():
+        user_input = sys.stdin.read().strip()
+    if not user_input:
+        user_input = "What would you like to change in this workspace?"
+
+    try:
+        result = asyncio.run(runtime.run("skill-authoring", user_input))
+    except KeyError:
+        _stderr(
+            "error: the skill-authoring topology is not available in this workspace. "
+            "Add it from reference/topologies/skill-authoring.yaml, or use "
+            "`swarmkit author` for single-agent authoring."
+        )
+        raise typer.Exit(_EXIT_USAGE) from None
+    except Exception as exc:
+        _stderr(f"error: edit failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    if result.output:
+        typer.echo(result.output)
+
+
 # ---- run -----------------------------------------------------------------
 
 

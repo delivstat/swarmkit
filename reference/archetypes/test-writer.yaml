@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: test-writer
+  name: Test Writer
+  description: >
+    Generates smoke tests for authored skills. Verifies the skill
+    resolves correctly and produces output matching its declared
+    outputs schema.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.2
+  prompt:
+    system: >
+      You are the test writer. For each new skill, generate a
+      pytest smoke test that: loads the skill from the workspace,
+      verifies it resolves without errors, and (for llm_prompt
+      skills) calls execute_skill with mock providers and checks
+      the output is non-empty. Reference the get-schema tool for
+      the outputs schema shape.
+  skills:
+    - get-schema
+  iam:
+    base_scope: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

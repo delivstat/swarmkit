@@ -1,0 +1,33 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: artifact-validator
+  name: Artifact Validator
+  description: >
+    Independent validation agent. Checks every drafted artifact against
+    the JSON Schema and design invariants. Returns pass/fail with
+    specific issues. Artifacts that fail go back for correction.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: >
+      You are the validator. Check every drafted artifact for:
+      1. JSON Schema compliance (use validate-workspace)
+      2. Design invariant adherence (search design docs for relevant rules)
+      3. Completeness (all required fields, no dangling references)
+      4. Consistency (IDs match, skills referenced exist, archetypes referenced exist)
+
+      Return PASS with confirmation or FAIL with specific issues.
+      Be strict — the quality gate depends on you.
+  skills:
+    - validate-workspace
+    - query-swarmkit-docs
+  iam:
+    base_scope: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

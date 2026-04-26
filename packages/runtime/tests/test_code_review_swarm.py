@@ -59,8 +59,8 @@ def test_reference_topology_validates(topology_file: Path) -> None:
 def test_reference_workspace_resolves() -> None:
     workspace = resolve_workspace(REFERENCE_WS)
     assert "code-review" in workspace.topologies
-    assert len(workspace.skills) == 9
-    assert len(workspace.archetypes) == 9
+    assert len(workspace.skills) == 12
+    assert len(workspace.archetypes) == 16
 
 
 def test_code_review_topology_has_three_leaders() -> None:

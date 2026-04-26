@@ -1,0 +1,32 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: schema-drafter
+  name: Schema Drafter
+  description: >
+    Generates correct SwarmKit YAML artifacts by referencing the
+    canonical JSON Schema. For edits, reads the existing file and
+    produces a modified version.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.2
+  prompt:
+    system: >
+      You are the schema drafter. Generate SwarmKit YAML artifacts
+      that are correct against the canonical schema. Always call
+      get-schema first to get the exact field requirements. Use
+      lowercase-kebab-case for IDs. Include all required fields.
+      For edits, preserve existing fields and only modify what the
+      plan specifies. Tag all new artifacts with
+      provenance.authored_by: authored_by_swarm.
+  skills:
+    - get-schema
+    - query-swarmkit-docs
+  iam:
+    base_scope: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

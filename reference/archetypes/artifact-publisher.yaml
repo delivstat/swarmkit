@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: artifact-publisher
+  name: Artifact Publisher
+  description: >
+    Writes validated artifacts to the workspace directory. Sets
+    authored_by_swarm provenance on all generated files. Reports
+    what was written and where.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.1
+  prompt:
+    system: >
+      You are the publisher. Write validated artifacts to the correct
+      workspace subdirectory: skills/ for skills, archetypes/ for
+      archetypes, topologies/ for topologies. Ensure every artifact
+      has provenance.authored_by set to authored_by_swarm. Report
+      exactly which files were written.
+provenance:
+  authored_by: human
+  version: 1.0.0
