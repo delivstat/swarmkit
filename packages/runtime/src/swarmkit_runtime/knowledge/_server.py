@@ -192,7 +192,8 @@ def get_schema(
     if not schema_path.is_file():
         valid = list_schemas()
         return {"error": f"Unknown artifact type '{artifact_type}'. Valid: {valid}"}
-    return json.loads(schema_path.read_text(encoding="utf-8"))
+    result: dict[str, Any] = json.loads(schema_path.read_text(encoding="utf-8"))
+    return result
 
 
 @server.tool()
