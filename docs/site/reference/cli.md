@@ -7,6 +7,7 @@
 | `swarmkit validate <workspace>` | Validate and resolve a workspace |
 | `swarmkit run <workspace> <topology>` | Execute a topology one-shot |
 | `swarmkit run ... --verbose` | Run with per-agent execution summary |
+| `swarmkit run ... --dry-run` | Show resolved agents + skills without executing (no LLM/MCP calls) |
 | `swarmkit serve <workspace>` | Start the HTTP server |
 | `swarmkit init [path]` | Create a workspace through conversation |
 | `swarmkit edit <workspace>` | Edit a workspace through conversation |
@@ -27,7 +28,7 @@ Add `--thorough` to use the multi-agent authoring swarm instead of the single ag
 | Command | Description |
 |---|---|
 | `swarmkit status <workspace>` | Recent runs at a glance (topology, agents, duration, issues) |
-| `swarmkit logs <workspace>` | Detailed events from past runs (`--last N`, `--topology filter`) |
+| `swarmkit logs <workspace>` | Detailed events from past runs (`--last N`, `--topology filter`, `--format markdown`) |
 | `swarmkit why <run-id> <workspace>` | LLM-powered explanation of what happened in a run |
 | `swarmkit ask "question" -w <workspace>` | Conversational observer over workspace state + recent runs |
 
