@@ -66,7 +66,7 @@ def create_app(workspace_path: Path) -> FastAPI:
     async def list_skills(request: Request) -> list[dict[str, str]]:
         rt = _get_runtime(request)
         return [
-            {"id": sid, "category": str(getattr(s.raw, "category", ""))}
+            {"id": sid, "category": getattr(getattr(s.raw, "category", ""), "value", "")}
             for sid, s in sorted(rt.workspace.skills.items())
         ]
 
