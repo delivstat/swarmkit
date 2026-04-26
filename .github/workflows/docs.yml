@@ -8,6 +8,8 @@ on:
       - "design/details/**"
       - "README.md"
       - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
