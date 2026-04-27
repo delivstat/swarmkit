@@ -108,6 +108,47 @@ def create_app(workspace_path: Path) -> FastAPI:
             "archetypes": sorted(ws.archetypes.keys()),
         }
 
+    # ---- conversation endpoints ------------------------------------------
+
+    @app.post("/conversations")
+    async def create_conversation(
+        body: CreateConversationRequest, request: Request
+    ) -> dict[str, str]:
+        from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+        rt = _get_runtime(request)
+        manager = ConversationManager(rt, workspace_path)
+        conv = manager.create(body.topology)
+        return {"id": conv.id, "topology": conv.topology_name}
+
+    @app.get("/conversations")
+    async def list_conversations_endpoint(request: Request) -> list[dict[str, str]]:
+        from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+        rt = _get_runtime(request)
+        manager = ConversationManager(rt, workspace_path)
+        return manager.list_conversations()
+
+    @app.post("/conversations/{conversation_id}/messages")
+    async def send_message(
+        conversation_id: str, body: SendMessageRequest, request: Request
+    ) -> dict[str, Any]:
+        from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+        rt = _get_runtime(request)
+        manager = ConversationManager(rt, workspace_path)
+        conv = manager.resume(conversation_id)
+        if conv is None:
+            raise HTTPException(
+                status_code=404, detail=f"Conversation '{conversation_id}' not found"
+            )
+        result = await manager.send(conv, body.message)
+        return {
+            "output": result.output,
+            "turns": len(conv.turns),
+            "conversation_id": conv.id,
+        }
+
     return app
 
 
@@ -117,6 +158,14 @@ def create_app(workspace_path: Path) -> FastAPI:
 class RunRequest(BaseModel):
     input: str
     max_steps: int = 10
+
+
+class CreateConversationRequest(BaseModel):
+    topology: str
+
+
+class SendMessageRequest(BaseModel):
+    message: str
 
 
 class RunResponse(BaseModel):

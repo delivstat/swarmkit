@@ -32,6 +32,16 @@ swarmkit run reference/ code-review --dry-run
 # Review the Code Review Swarm against a real GitHub PR
 swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit"
 
+# Multi-turn conversation with a topology (context persists across turns)
+swarmkit chat my-swarm/ my-topology
+> Design ship-from-store for 200 locations
+[swarm responds]
+> Change the sourcing to cost-based
+[swarm responds with context from the previous turn]
+
+# List and resume previous conversations
+swarmkit conversations my-swarm/ --pick
+
 # Run with observability (per-agent timing, skills, denials)
 swarmkit run my-swarm/ my-topology --input "Do the thing" --verbose
 
