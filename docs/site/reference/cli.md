@@ -9,6 +9,10 @@
 | `swarmkit run ... --verbose` | Run with per-agent execution summary |
 | `swarmkit run ... --dry-run` | Show resolved agents + skills without executing (no LLM/MCP calls) |
 | `swarmkit serve <workspace>` | Start the HTTP server |
+| `swarmkit chat <workspace> <topology>` | Multi-turn conversation (context persists across turns) |
+| `swarmkit chat ... --resume <id>` | Resume a previous conversation |
+| `swarmkit conversations <workspace>` | List saved conversations with last message preview |
+| `swarmkit conversations ... --pick` | Pick a conversation to resume interactively |
 | `swarmkit init [path]` | Create a workspace through conversation |
 | `swarmkit edit <workspace>` | Edit a workspace through conversation |
 
@@ -63,3 +67,6 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`.
 | `/archetypes` | GET | List archetypes |
 | `/run/{topology}` | POST | Execute a topology (`{"input": "...", "max_steps": 10}`) |
 | `/validate` | GET | Resolved workspace state |
+| `/conversations` | POST | Create a conversation (`{"topology": "..."}`) |
+| `/conversations` | GET | List saved conversations |
+| `/conversations/{id}/messages` | POST | Send a message (`{"message": "..."}`) |

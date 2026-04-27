@@ -11,7 +11,7 @@ import json
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -621,6 +621,143 @@ def run(
 
     if verbose and result.events:
         _print_run_summary(result)
+
+
+# ---- chat (multi-turn conversation) --------------------------------------
+
+
+@app.command()
+def chat(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ],
+    topology_name: Annotated[str, typer.Argument(help="Topology to converse with.")],
+    resume_id: Annotated[
+        str | None,
+        typer.Option("--resume", "-r", help="Resume a previous conversation by ID."),
+    ] = None,
+) -> None:
+    """Interactive multi-turn conversation with a topology.
+
+    Each turn runs the topology with accumulated conversation history.
+    The swarm sees the full context of what was discussed before.
+    Conversations are saved to .swarmkit/conversations/ and can be
+    resumed with --resume <id>.
+    """
+    from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except (ResolutionErrors, MissingMCPServerError) as exc:
+        _stderr(f"error: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    manager = ConversationManager(runtime, workspace_path.resolve())
+
+    if resume_id:
+        conv = manager.resume(resume_id)
+        if conv is None:
+            _stderr(f"Conversation '{resume_id}' not found.")
+            raise typer.Exit(_EXIT_USAGE)
+        _show_and_continue_conversation(conv, manager)
+    else:
+        conv = manager.create(topology_name)
+        typer.echo(f"New conversation {conv.id} with topology '{topology_name}'")
+        typer.echo("Type your message. Ctrl+C to exit.\n")
+        _conversation_loop(conv, manager)
+
+
+@app.command(name="conversations")
+def list_conversations(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+    last: Annotated[int, typer.Option("--last", "-n")] = 10,
+    pick: Annotated[
+        bool,
+        typer.Option("--pick", "-p", help="Select a conversation to resume."),
+    ] = False,
+) -> None:
+    """List saved conversations. Use --pick to resume one interactively."""
+    from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except Exception:
+        _stderr("Could not load workspace.")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from None
+
+    manager = ConversationManager(runtime, workspace_path.resolve())
+    convos = manager.list_conversations(last=last)
+
+    if not convos:
+        typer.echo("No conversations yet. Start one with: swarmkit chat <workspace> <topology>")
+        return
+
+    typer.echo("\nRecent conversations:\n")
+    for i, c in enumerate(convos, 1):
+        last_msg = c.get("last_message", "")
+        typer.echo(f"  {i}. [{c['id']}] {c['topology']} ({c['turns']} turns)")
+        if last_msg:
+            typer.echo(f'     "{last_msg}"')
+        typer.echo(f"     {c['updated']}")
+        typer.echo()
+
+    if not pick:
+        typer.echo("Resume with: swarmkit chat <workspace> <topology> --resume <id>")
+        typer.echo("Or use: swarmkit conversations <workspace> --pick")
+        return
+
+    try:
+        choice = input(f"Pick a conversation (1-{len(convos)}): ").strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    try:
+        idx = int(choice) - 1
+        if not 0 <= idx < len(convos):
+            raise ValueError
+    except ValueError:
+        _stderr(f"Invalid choice: {choice}")
+        raise typer.Exit(_EXIT_USAGE) from None
+
+    selected = convos[idx]
+    conv = manager.resume(selected["id"])
+    if conv is None:
+        _stderr("Could not load conversation.")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from None
+
+    _show_and_continue_conversation(conv, manager)
+
+
+def _show_and_continue_conversation(conv: Any, manager: Any) -> None:
+    """Print conversation history and start the interactive loop."""
+    typer.echo(f"\nResumed: {conv.id} ({len(conv.turns)} turns)\n")
+    for turn in conv.turns:
+        prefix = "You" if turn.role == "human" else "Swarm"
+        typer.echo(f"  {prefix}: {turn.content[:100]}{'...' if len(turn.content) > 100 else ''}")
+    typer.echo()
+    _conversation_loop(conv, manager)
+
+
+def _conversation_loop(conv: Any, manager: Any) -> None:
+    """Interactive REPL for a conversation."""
+    while True:
+        try:
+            user_input = input("> ").strip()
+        except (KeyboardInterrupt, EOFError):
+            typer.echo(f"\n\nConversation saved: {conv.id}")
+            break
+        if not user_input:
+            continue
+        try:
+            result = asyncio.run(manager.send(conv, user_input))
+        except Exception as exc:
+            _stderr(f"error: {exc}")
+            continue
+        typer.echo(f"\n{result.output}\n")
 
 
 # ---- dry run -------------------------------------------------------------

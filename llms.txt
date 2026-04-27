@@ -14,7 +14,7 @@
 
 ## CLI commands
 
-`validate`, `run` (with `--verbose`, `--dry-run`), `init`, `author` (with `--thorough`), `edit`, `serve`, `status`, `logs` (with `--format markdown`), `why`, `ask`, `knowledge-pack`, `knowledge-server`, `review list/show/approve/reject`, `gaps`.
+`validate`, `run` (with `--verbose`, `--dry-run`), `chat` (multi-turn with `--resume`), `conversations` (with `--pick`), `init`, `author` (with `--thorough`), `edit`, `serve`, `status`, `logs` (with `--format markdown`), `why`, `ask`, `knowledge-pack`, `knowledge-server`, `review list/show/approve/reject`, `gaps`.
 
 ## Schemas
 
