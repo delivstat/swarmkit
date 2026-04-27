@@ -742,16 +742,24 @@ def _show_and_continue_conversation(conv: Any, manager: Any) -> None:
     _conversation_loop(conv, manager)
 
 
+_EXIT_COMMANDS = {"exit", "quit", "bye", "/exit", "/quit"}
+
+
 def _conversation_loop(conv: Any, manager: Any) -> None:
     """Interactive REPL for a conversation."""
     while True:
         try:
             user_input = input("> ").strip()
         except (KeyboardInterrupt, EOFError):
-            typer.echo(f"\n\nConversation saved: {conv.id}")
-            break
+            user_input = "exit"
+
         if not user_input:
             continue
+        if user_input.lower() in _EXIT_COMMANDS:
+            typer.echo(f"\nConversation saved: {conv.id}")
+            typer.echo(f"Resume with: swarmkit chat ... --resume {conv.id}")
+            break
+
         try:
             result = asyncio.run(manager.send(conv, user_input))
         except Exception as exc:
