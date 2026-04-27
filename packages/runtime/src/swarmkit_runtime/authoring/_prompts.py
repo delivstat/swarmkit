@@ -480,7 +480,7 @@ _PROMPTS: dict[AuthoringMode, str] = {
 
 def get_system_prompt(mode: AuthoringMode, workspace_context: str = "") -> str:
     """Build the system prompt for the given authoring mode."""
-    prompt = _PROMPTS[mode].format(core=_CORE_INSTRUCTIONS)
+    prompt = _PROMPTS[mode].replace("{core}", _CORE_INSTRUCTIONS)
     if workspace_context:
         prompt += f"\n\nExisting workspace state:\n{workspace_context}"
     return prompt
