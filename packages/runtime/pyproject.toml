@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.0.2"
+version = "1.0.3"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
