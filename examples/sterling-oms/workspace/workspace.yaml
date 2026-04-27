@@ -1,0 +1,59 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: sterling-oms
+  name: Sterling OMS Project Workspace
+  description: >
+    Multi-swarm workspace for an IBM Sterling OMS implementation.
+    Four topologies: solution review, Q&A, code review, coding assistant.
+    Backed by live Sterling API access, product documentation RAG,
+    and reference design search.
+governance:
+  provider: mock
+credentials:
+  github-pat:
+    source: env
+    config:
+      env: GITHUB_TOKEN
+  sterling-creds:
+    source: env
+    config:
+      env: STERLING_API_PASSWORD
+mcp_servers:
+  # Live Sterling API access — queries Application Manager config
+  - id: sterling-api
+    transport: stdio
+    command: ["uv", "run", "python", "sterling_api_server.py"]
+    env:
+      STERLING_API_URL: "${STERLING_API_URL}"
+      STERLING_API_USER: "${STERLING_API_USER}"
+      STERLING_API_PASSWORD: "${STERLING_API_PASSWORD}"
+  # Product docs + Javadocs + ERD (vector RAG)
+  - id: sterling-docs
+    transport: stdio
+    command: ["npx", "-y", "mcp-local-rag"]
+    env:
+      BASE_DIR: "${STERLING_DOCS_DIR}"
+  # Reference designs from other projects (separate index)
+  - id: reference-designs
+    transport: stdio
+    command: ["npx", "-y", "mcp-local-rag"]
+    env:
+      BASE_DIR: "${REFERENCE_DESIGNS_DIR}"
+  # GitHub for code access
+  - id: github
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+    credentials_ref: github-pat
+  # SwarmKit knowledge server (framework docs)
+  - id: swarmkit-knowledge
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.knowledge"]
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
+  audit:
+    backend: sqlite

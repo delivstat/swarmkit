@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: read-context
+  name: Read Context Around Search Result
+  description: Expand context around a search hit — read neighboring chunks from the same file.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-docs
+  tool: read_chunk_neighbors
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

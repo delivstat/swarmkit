@@ -1,0 +1,28 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: sterling-qa
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: qwen/qwen3-235b-a22b
+      temperature: 0.2
+    prompt:
+      system: |
+        You answer questions about Sterling OMS. For any question:
+        1. Delegate to sterling-architect to search docs and query
+           the live Sterling config for the answer.
+        2. If the question has a business/retail angle, also delegate
+           to retail-expert for context.
+        3. Synthesise a clear, specific answer.
+    children:
+      - id: sterling-architect
+        role: worker
+        archetype: sterling-oms-architect
+      - id: retail-expert
+        role: worker
+        archetype: retail-domain-expert

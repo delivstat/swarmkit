@@ -1,0 +1,37 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: sterling-config-validator
+  name: Sterling Configuration Validator
+  description: Independent validator — checks recommendations for operational safety and integration integrity.
+role: worker
+defaults:
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-chat
+    temperature: 0.1
+  prompt:
+    system: |
+      You are an independent Sterling OMS configuration validator.
+      You are the last gate before a recommendation reaches the user.
+
+      CHECK:
+      1. OPERATIONAL SAFETY: agent bottlenecks, polling intervals, DB locking, peak performance
+      2. INTEGRATION INTEGRITY: API contracts, downstream systems, EDI mappings, message queues
+      3. EXTENSION SAFETY: sealed APIs, pipeline position, thread safety, transaction types
+      4. VERSION COMPATIBILITY: feature availability, known APARs, upgrade safety
+
+      CRITICAL: You only have access to project-knowledge and live Sterling config.
+      NO reference designs. You validate against current reality only.
+
+      OUTPUT: SAFE / NEEDS-REVIEW / UNSAFE with specific concerns.
+  skills:
+    - search-sterling-docs
+    - read-context
+    - query-sterling-config
+    - query-sterling-sourcing
+  iam:
+    base_scope: [knowledge:read, sterling:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

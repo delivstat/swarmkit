@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: code-review
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: qwen/qwen3-235b-a22b
+      temperature: 0.1
+    prompt:
+      system: |
+        You coordinate code reviews for Sterling OMS extensions.
+        1. Delegate to code-reviewer for quality + Sterling patterns review
+        2. Delegate to sterling-architect for architectural fit check
+        3. Synthesise: list issues by severity, confirm Sterling best
+           practices are followed, flag any upgrade-safety concerns.
+    children:
+      - id: code-reviewer
+        role: worker
+        archetype: sterling-code-reviewer
+      - id: sterling-architect
+        role: worker
+        archetype: sterling-oms-architect

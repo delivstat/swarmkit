@@ -1,0 +1,32 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: solution-review
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: qwen/qwen3-235b-a22b
+      temperature: 0.1
+    prompt:
+      system: |
+        You coordinate solution reviews for the Sterling OMS project.
+        For any design question or configuration proposal:
+        1. Delegate to sterling-architect for the technical solution
+        2. Delegate to retail-expert for business validation
+        3. Delegate to config-validator to check operational safety
+        4. Synthesise: include all three perspectives. If the validator
+           says UNSAFE or NEEDS-REVIEW, flag it prominently.
+    children:
+      - id: sterling-architect
+        role: worker
+        archetype: sterling-oms-architect
+      - id: retail-expert
+        role: worker
+        archetype: retail-domain-expert
+      - id: config-validator
+        role: worker
+        archetype: sterling-config-validator

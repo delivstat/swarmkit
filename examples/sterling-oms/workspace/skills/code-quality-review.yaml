@@ -1,0 +1,40 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: code-quality-review
+  name: Code Quality Review
+  description: Review Sterling extension code for quality, patterns, thread safety, and Sterling best practices.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-changes]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    issues:
+      type: array
+      items:
+        type: object
+        properties:
+          severity:
+            type: string
+            enum: [critical, major, minor, suggestion]
+          description:
+            type: string
+        required: [severity, description]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Review Sterling OMS extension code (Java) for quality, thread safety,
+    correct user exit implementation, proper API usage, error handling,
+    and adherence to Sterling extension best practices.
+provenance:
+  authored_by: human
+  version: 1.0.0

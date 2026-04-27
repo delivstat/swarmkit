@@ -1,0 +1,28 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: coding-assistant
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: qwen/qwen3-235b-a22b
+      temperature: 0.2
+    prompt:
+      system: |
+        You help write Sterling OMS extension code.
+        1. Delegate to sterling-developer to write the code
+        2. Delegate to sterling-architect to verify the approach
+           is architecturally sound and follows project patterns
+        3. Synthesise: present the code with architectural notes
+           and any caveats about threading, transactions, or upgrade safety.
+    children:
+      - id: sterling-developer
+        role: worker
+        archetype: sterling-developer
+      - id: sterling-architect
+        role: worker
+        archetype: sterling-oms-architect

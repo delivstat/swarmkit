@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: github-pr-read
+  name: GitHub Pull Request Read
+  description: Read pull request details from GitHub for code review.
+category: capability
+implementation:
+  type: mcp_tool
+  server: github
+  tool: get_pull_request
+iam:
+  required_scopes: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

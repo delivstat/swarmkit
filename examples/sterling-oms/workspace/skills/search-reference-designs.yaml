@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-reference-designs
+  name: Search Reference Designs
+  description: Search patterns from other Sterling implementations. Inspiration only — always label as reference material.
+category: capability
+implementation:
+  type: mcp_tool
+  server: reference-designs
+  tool: query_documents
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
