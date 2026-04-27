@@ -7,7 +7,6 @@ configuration from Application Manager / Channel Configurator.
 from __future__ import annotations
 
 import os
-from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -83,17 +82,13 @@ async def get_service_definition_list(service_name: str = "") -> str:
 @server.tool()
 async def get_hold_type_list(organization_code: str = "DEFAULT") -> str:
     """List order hold types and their resolution rules."""
-    return await _call_api(
-        "getHoldTypeList", f'<HoldType OrganizationCode="{organization_code}"/>'
-    )
+    return await _call_api("getHoldTypeList", f'<HoldType OrganizationCode="{organization_code}"/>')
 
 
 @server.tool()
 async def get_inventory_node_list(organization_code: str = "DEFAULT") -> str:
     """List inventory/fulfillment nodes (stores, DCs, drop-ship vendors)."""
-    return await _call_api(
-        "getShipNodeList", f'<ShipNode OrganizationCode="{organization_code}"/>'
-    )
+    return await _call_api("getShipNodeList", f'<ShipNode OrganizationCode="{organization_code}"/>')
 
 
 @server.tool()
