@@ -28,7 +28,7 @@ Promote the v0.6 topology sketch (§10) into a full JSON Schema v1 spec, tight e
 ### Top-level structure
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: code-review-swarm
@@ -196,7 +196,7 @@ Unchanged from the v0.6 sketch — `knowledge_bases`, `review_queues`, `audit`, 
 
 - **`children` vs flat `parent`.** Chose `children` per §5.2 ("tree") and because the UI composer's Structure View (§15.2) is org-chart shaped. Flag to revisit if authoring experience suffers.
 - **`additionalProperties: false` vs `true` at the top level.** Top-level is `false` (strict). Provider-specific blocks (`model`, `prompt`) are `true` to allow extension without schema bumps. Document the extensibility boundary.
-- **Versioning migrations.** §10 says `apiVersion: swarmkit/v1` is the contract. When the schema evolves within v1, do we add minor-version fields? Yes — additive changes only; breaking changes get `v2`. Covered by CLAUDE.md "schema versioning."
+- **Versioning migrations.** §10 says `apiVersion: swael/v1` is the contract. When the schema evolves within v1, do we add minor-version fields? Yes — additive changes only; breaking changes get `v2`. Covered by CLAUDE.md "schema versioning."
 - **Top-level `description`.** Sketched in v0.6. Keeping it optional. Long form belongs in docs, not in the artifact.
 
 ## Follow-ups (separate PRs)

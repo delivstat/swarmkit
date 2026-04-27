@@ -1,5 +1,5 @@
 # targets must have at least one entry.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: broken

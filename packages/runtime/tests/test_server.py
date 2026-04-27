@@ -24,7 +24,7 @@ def _force_mock(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture()
 def hello_client() -> TestClient:  # type: ignore[misc]
-    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+    from swael_runtime.server import create_app  # noqa: PLC0415
 
     app = create_app(EXAMPLE_WS)
     with TestClient(app) as client:
@@ -33,7 +33,7 @@ def hello_client() -> TestClient:  # type: ignore[misc]
 
 @pytest.fixture()
 def reference_client() -> TestClient:  # type: ignore[misc]
-    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+    from swael_runtime.server import create_app  # noqa: PLC0415
 
     app = create_app(REFERENCE_WS)
     with TestClient(app) as client:

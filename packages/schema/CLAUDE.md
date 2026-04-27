@@ -2,7 +2,7 @@
 
 ## Package identity
 
-Language-agnostic JSON Schemas for SwarmKit's five core artifact types, plus Python and TypeScript validators. Published as `swarmkit-schema` (PyPI) and `@swarmkit/schema` (npm). Versioned independently of the runtime and UI so the schema can evolve without forcing a runtime release.
+Language-agnostic JSON Schemas for Swael's five core artifact types, plus Python and TypeScript validators. Published as `swael-schema` (PyPI) and `@swael/schema` (npm). Versioned independently of the runtime and UI so the schema can evolve without forcing a runtime release.
 
 ## The dual-surface rule
 
@@ -12,7 +12,7 @@ Language-agnostic JSON Schemas for SwarmKit's five core artifact types, plus Pyt
 
 ## Schema versioning
 
-From design §9.1: "Versioned independently." The `apiVersion: swarmkit/v1` field in every artifact is the contract. Breaking changes require a new major (`v2`) and a migration path documented in `design/`.
+From design §9.1: "Versioned independently." The `apiVersion: swael/v1` field in every artifact is the contract. Breaking changes require a new major (`v2`) and a migration path documented in `design/`.
 
 ## Non-negotiable invariants
 
@@ -25,5 +25,5 @@ From design §9.1: "Versioned independently." The `apiVersion: swarmkit/v1` fiel
 
 ```bash
 uv run pytest packages/schema/python/tests          # Python tests
-pnpm --filter @swarmkit/schema test                  # TS tests
+pnpm --filter @swael/schema test                  # TS tests
 ```

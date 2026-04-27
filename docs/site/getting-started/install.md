@@ -3,7 +3,7 @@
 ## From source (current)
 
 ```bash
-git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
+git clone git@github.com:delivstat/swael.git && cd swael
 uv sync --all-packages    # Python deps
 pnpm install              # TypeScript deps (optional, for schema validation)
 ```
@@ -11,19 +11,19 @@ pnpm install              # TypeScript deps (optional, for schema validation)
 ## From PyPI (coming soon)
 
 ```bash
-pip install swarmkit
+pip install swael
 ```
 
 ## Verify
 
 ```bash
-swarmkit --help
-swarmkit validate examples/hello-swarm/workspace --tree
+swael --help
+swael validate examples/hello-swarm/workspace --tree
 ```
 
 ## Model providers
 
-SwarmKit auto-detects providers from environment variables:
+Swael auto-detects providers from environment variables:
 
 | Provider | Env var |
 |---|---|
@@ -35,4 +35,4 @@ SwarmKit auto-detects providers from environment variables:
 | Together | `TOGETHER_API_KEY` |
 | Ollama | (always available) |
 
-Override per-run: `SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct swarmkit run ...`
+Override per-run: `SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct swael run ...`

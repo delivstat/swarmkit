@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 from jsonschema import Draft202012Validator, ValidationError
-from swarmkit_schema import SchemaName, get_schema, validate
+from swael_schema import SchemaName, get_schema, validate
 
 ALL: tuple[SchemaName, ...] = ("topology", "skill", "archetype", "workspace", "trigger")
 

@@ -1,5 +1,5 @@
 # Exercises the vendor-published provenance variant (design §6.4).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: rynko-invoice-validator

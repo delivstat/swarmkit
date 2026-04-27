@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/skill.schema.json",
-  "title": "SwarmKit Skill",
+  "$id": "https://schemas.swael.dev/v1/skill.schema.json",
+  "title": "Swael Skill",
   "description": "A discrete capability an agent can exercise. See design §6 and design/details/skill-schema-v1.md.",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata", "category", "implementation", "provenance"],
   "additionalProperties": false,
   "properties": {
-    "apiVersion": { "const": "swarmkit/v1" },
+    "apiVersion": { "const": "swael/v1" },
     "kind": { "const": "Skill" },
     "metadata": { "$ref": "#/$defs/metadata" },
     "category": {

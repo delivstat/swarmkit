@@ -8,8 +8,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "swarmkit-runtime",
-    "swarmkit-schema",
+    "swael-runtime",
+    "swael-schema",
     "swarmkit-workspace",
 ]
 
@@ -2705,8 +2705,8 @@ wheels = [
 ]
 
 [[package]]
-name = "swarmkit-runtime"
-version = "1.0.1"
+name = "swael-runtime"
+version = "1.0.2"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -2725,7 +2725,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
     { name = "sqlalchemy" },
-    { name = "swarmkit-schema" },
+    { name = "swael-schema" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -2763,7 +2763,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "sqlalchemy", specifier = ">=2.0" },
-    { name = "swarmkit-schema", editable = "packages/schema/python" },
+    { name = "swael-schema", editable = "packages/schema/python" },
     { name = "typer", specifier = ">=0.12" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
@@ -2771,8 +2771,8 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [[package]]
-name = "swarmkit-schema"
-version = "1.0.1"
+name = "swael-schema"
+version = "1.0.2"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },

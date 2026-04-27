@@ -1,11 +1,11 @@
-# swarmkit-runtime
+# swael-runtime
 
-Python runtime for SwarmKit. Interprets topology files, compiles them into LangGraph `StateGraph`s, enforces governance via the `GovernanceProvider` abstraction (AGT-backed in v1.0), and exposes the `swarmkit` CLI plus a persistent HTTP server.
+Python runtime for Swael. Interprets topology files, compiles them into LangGraph `StateGraph`s, enforces governance via the `GovernanceProvider` abstraction (AGT-backed in v1.0), and exposes the `swael` CLI plus a persistent HTTP server.
 
 ## Layout
 
 ```
-src/swarmkit_runtime/
+src/swael_runtime/
 ├── cli/                 # Typer-based CLI: init, author, run, serve, eject
 ├── topology/            # Topology loader, validator, resolver (archetype + skill refs)
 ├── skills/              # Skill registry, category-specific semantics, composition
@@ -19,7 +19,7 @@ src/swarmkit_runtime/
 ## Design references
 
 - §7 Architectural Principles — `topology as data`, `eject, never lock-in`
-- §8 Separation of Powers — `governance/` module is the SwarmKit side; AGT is the implementation
+- §8 Separation of Powers — `governance/` module is the Swael side; AGT is the implementation
 - §9 System Architecture — this package is component #1 of 3
 - §14 Runtime Architecture — three execution modes (one-shot, persistent, scheduled)
 
@@ -27,18 +27,18 @@ src/swarmkit_runtime/
 
 | Command | What it does |
 | --- | --- |
-| `swarmkit init` | Launch Workspace Authoring Swarm in terminal chat mode |
-| `swarmkit author topology [name]` | Launch Topology Authoring variant |
-| `swarmkit author skill [name]` | Launch Skill Authoring Swarm |
-| `swarmkit author archetype [name]` | Launch Archetype Authoring variant |
-| `swarmkit run topology.yaml` | One-shot execution |
-| `swarmkit serve workspace/` | Persistent / scheduled mode |
-| `swarmkit eject topology.yaml` | Export LangGraph code |
+| `swael init` | Launch Workspace Authoring Swarm in terminal chat mode |
+| `swael author topology [name]` | Launch Topology Authoring variant |
+| `swael author skill [name]` | Launch Skill Authoring Swarm |
+| `swael author archetype [name]` | Launch Archetype Authoring variant |
+| `swael run topology.yaml` | One-shot execution |
+| `swael serve workspace/` | Persistent / scheduled mode |
+| `swael eject topology.yaml` | Export LangGraph code |
 
 ## Development
 
 ```bash
-uv sync --package swarmkit-runtime
+uv sync --package swael-runtime
 uv run pytest packages/runtime/tests
-uv run swarmkit --help
+uv run swael --help
 ```

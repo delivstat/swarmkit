@@ -1,7 +1,7 @@
 # Adapted from the design doc §10.2 — the code-review-worker definition embedded
 # in a minimal containing topology. Exercises the full agent-field surface:
 # model, prompt, skills, skills_additional, iam (base + elevated).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: code-review-excerpt

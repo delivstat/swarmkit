@@ -1,4 +1,4 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: security-reviewer
@@ -22,7 +22,7 @@ defaults:
       precise about severity — distinguish critical from informational.
   skills:
     - security-scan
-    - query-swarmkit-docs
+    - query-swael-docs
   iam:
     base_scope: [repo:read, knowledge:read]
 provenance:

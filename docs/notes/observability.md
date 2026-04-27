@@ -7,7 +7,7 @@ status: active
 
 # Observability discipline
 
-SwarmKit's user-facing promise for a running swarm is that every decision is inspectable — via `swarmkit logs`, `swarmkit events`, `swarmkit review`, `swarmkit why`, and `swarmkit ask`. That promise only holds if every runtime path emits structured audit events. This note is the per-PR reminder.
+Swael's user-facing promise for a running swarm is that every decision is inspectable — via `swael logs`, `swael events`, `swael review`, `swael why`, and `swael ask`. That promise only holds if every runtime path emits structured audit events. This note is the per-PR reminder.
 
 ## The rule
 
@@ -21,7 +21,7 @@ For any PR touching the runtime (skill dispatch, agent execution, governance wir
 - [ ] **Event fields are complete.** `run_id`, `agent_id`, `skill_id` or workspace-event-kind, `timestamp`, `duration_ms`, `policy_decision`, cost/token info if a model was called, `verdict` + `reasoning` for decision skills.
 - [ ] **Redaction is honoured.** If the skill declares `audit.log_inputs: summary` or `redact: [...]`, the emitted event reflects that — not the raw data.
 - [ ] **Error paths emit too.** A skill that fails still emits one event with `error: { type, message, ... }`. "Silent failure" is never acceptable.
-- [ ] **Tests assert the events.** `MockGovernanceProvider.captured_events` is the assertion target — check that the PR's new code emitted what the user's `swarmkit logs` run would show.
+- [ ] **Tests assert the events.** `MockGovernanceProvider.captured_events` is the assertion target — check that the PR's new code emitted what the user's `swael logs` run would show.
 
 For any PR touching a skill schema or adding a new skill under `reference/` or `examples/`:
 
@@ -39,13 +39,13 @@ For any PR touching a skill schema or adding a new skill under `reference/` or `
 
 Three concrete user paths depend on it:
 
-1. **`swarmkit logs <run-id>`** — scripted pipelines grep the JSON. If fields are inconsistent the scripts break.
-2. **`swarmkit ask "..."`** — the observer sends events as LLM context. Missing events → wrong answers. Raw PII in events → privacy breach.
+1. **`swael logs <run-id>`** — scripted pipelines grep the JSON. If fields are inconsistent the scripts break.
+2. **`swael ask "..."`** — the observer sends events as LLM context. Missing events → wrong answers. Raw PII in events → privacy breach.
 3. **Post-hoc audit / compliance** — "what did the swarm do on run X" must be answerable six months later. If events were skipped, the answer doesn't exist.
 
 ## See also
 
 - `design/details/human-interaction-model.md` — the authoritative event schema and CLI surface
-- `design/SwarmKit-Design-v0.6.md` §16.4 (audit logging), §8.3 (media pillar, append-only)
+- `design/Swael-Design-v0.6.md` §16.4 (audit logging), §8.3 (media pillar, append-only)
 - `docs/notes/usability-first.md` — the broader per-PR checklist this note extends
-- Tasks #33–#37 — implementation PRs for audit schema, CLI primitives, `swarmkit ask`, notifications
+- Tasks #33–#37 — implementation PRs for audit schema, CLI primitives, `swael ask`, notifications

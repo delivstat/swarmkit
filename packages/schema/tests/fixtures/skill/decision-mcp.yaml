@@ -1,7 +1,7 @@
 # Adapted from design doc §6.3 — the canonical skill anatomy example.
 # Decision category requires `reasoning: string` (plain-language summary);
 # per-criterion structured detail lives in a separately-named `criteria` field.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: code-quality-review

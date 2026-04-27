@@ -9,7 +9,7 @@ genuinely stubbed right now.
 from __future__ import annotations
 
 import pytest
-from swarmkit_runtime.cli import app
+from swael_runtime.cli import app
 from typer.testing import CliRunner
 
 runner = CliRunner()

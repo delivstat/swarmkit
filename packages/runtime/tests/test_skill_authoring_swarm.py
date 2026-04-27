@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 import yaml
-from swarmkit_runtime.governance._mock import MockGovernanceProvider
-from swarmkit_runtime.langgraph_compiler import compile_topology
-from swarmkit_runtime.model_providers import MockModelProvider, ProviderRegistry
-from swarmkit_runtime.resolver import resolve_workspace
-from swarmkit_schema import validate
+from swael_runtime.governance._mock import MockGovernanceProvider
+from swael_runtime.langgraph_compiler import compile_topology
+from swael_runtime.model_providers import MockModelProvider, ProviderRegistry
+from swael_runtime.resolver import resolve_workspace
+from swael_schema import validate
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REFERENCE_WS = REPO_ROOT / "reference"
@@ -95,7 +95,7 @@ def test_knowledge_searcher_has_knowledge_skills() -> None:
     leader = next(c for c in topology.root.children if c.id == "conversation-leader")
     searcher = next(c for c in leader.children if c.id == "knowledge-searcher")
     skill_ids = {s.id for s in searcher.skills}
-    assert "query-swarmkit-docs" in skill_ids
+    assert "query-swael-docs" in skill_ids
     assert "list-reference-skills" in skill_ids
     assert "validate-workspace" in skill_ids
 
@@ -107,7 +107,7 @@ def test_validator_has_validation_skills() -> None:
     validator = next(c for c in leader.children if c.id == "validator")
     skill_ids = {s.id for s in validator.skills}
     assert "validate-workspace" in skill_ids
-    assert "query-swarmkit-docs" in skill_ids
+    assert "query-swael-docs" in skill_ids
 
 
 # ---- topology compilation -----------------------------------------------

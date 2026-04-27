@@ -1,5 +1,5 @@
 ---
-description: Validate a SwarmKit YAML artifact against the canonical JSON Schemas.
+description: Validate a Swael YAML artifact against the canonical JSON Schemas.
 argument-hint: <path to yaml file>
 ---
 

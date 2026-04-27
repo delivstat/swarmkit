@@ -1,6 +1,6 @@
 # Skills catalogue
 
-20 reference skills ship with SwarmKit.
+20 reference skills ship with Swael.
 
 ## Capability skills
 
@@ -9,13 +9,13 @@
 | github-repo-read | github | get_file_contents |
 | github-pr-read | github | get_pull_request |
 | github-issue-read | github | get_issue |
-| query-swarmkit-docs | swarmkit-knowledge | search_docs |
-| list-reference-skills | swarmkit-knowledge | list_reference_skills |
-| get-schema | swarmkit-knowledge | get_schema |
-| validate-workspace | swarmkit-knowledge | validate_workspace |
-| read-workspace-file | swarmkit-knowledge | read_workspace_file |
-| write-workspace-file | swarmkit-knowledge | write_workspace_file |
-| run-tests | swarmkit-knowledge | run_pytest |
+| query-swael-docs | swael-knowledge | search_docs |
+| list-reference-skills | swael-knowledge | list_reference_skills |
+| get-schema | swael-knowledge | get_schema |
+| validate-workspace | swael-knowledge | validate_workspace |
+| read-workspace-file | swael-knowledge | read_workspace_file |
+| write-workspace-file | swael-knowledge | write_workspace_file |
+| run-tests | swael-knowledge | run_pytest |
 | search-codebase | (template) | — |
 | summarize-review | (llm_prompt) | — |
 

@@ -3,7 +3,7 @@
 # Pre-installs the mcp SDK so swarm-authored servers work inside the
 # Docker sandbox without network access (--network=none).
 #
-# Build:  docker build -t swarmkit-mcp-sandbox docker/mcp-sandbox/
+# Build:  docker build -t swael-mcp-sandbox docker/mcp-sandbox/
 # Or:     just build-sandbox-image
 
 FROM python:3.11-slim

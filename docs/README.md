@@ -1,6 +1,6 @@
 # docs/
 
-User-facing documentation for SwarmKit. The documentation site will be generated from this tree (tooling TBD — MkDocs, Docusaurus, or Nextra are candidates).
+User-facing documentation for Swael. The documentation site will be generated from this tree (tooling TBD — MkDocs, Docusaurus, or Nextra are candidates).
 
 ## Layout
 

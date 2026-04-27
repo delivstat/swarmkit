@@ -1,4 +1,4 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: artifact-validator
@@ -25,7 +25,7 @@ defaults:
       Be strict — the quality gate depends on you.
   skills:
     - validate-workspace
-    - query-swarmkit-docs
+    - query-swael-docs
   iam:
     base_scope: [knowledge:read]
 provenance:

@@ -5,7 +5,7 @@ See ``design/details/decision-skills.md`` §Multi-persona panels.
 
 from __future__ import annotations
 
-from swarmkit_runtime.langgraph_compiler._panel import (
+from swael_runtime.langgraph_compiler._panel import (
     _aggregate_first_fail,
     _aggregate_majority,
 )

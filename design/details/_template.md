@@ -8,7 +8,7 @@ status: active
 # <feature name>
 
 **Scope:** <package / area>
-**Design reference:** §X.Y of `design/SwarmKit-Design-v0.6.md`
+**Design reference:** §X.Y of `design/Swael-Design-v0.6.md`
 **Status:** draft | in-review | approved | implemented
 
 ## Goal

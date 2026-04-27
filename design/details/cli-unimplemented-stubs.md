@@ -2,13 +2,13 @@
 
 ## Problem
 
-Every subcommand listed in `swarmkit --help` that isn't wired yet raises a
+Every subcommand listed in `swael --help` that isn't wired yet raises a
 bare `NotImplementedError`. Typer lets the traceback through to stderr, so
-a reader who tries `swarmkit init` today sees:
+a reader who tries `swael init` today sees:
 
 ```
 ╭───────────────────── Traceback (most recent call last) ──────────────────────╮
-│ /.../swarmkit_runtime/cli/__init__.py:207 in init                            │
+│ /.../swael_runtime/cli/__init__.py:207 in init                            │
 │ ...                                                                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
@@ -22,8 +22,8 @@ the roadmap.
 Replace the traceback with a one-line, honest message:
 
 ```
-$ swarmkit init
-swarmkit init: not yet implemented — planned for M8 (Workspace Authoring Swarm).
+$ swael init
+swael init: not yet implemented — planned for M8 (Workspace Authoring Swarm).
 See design/IMPLEMENTATION-PLAN.md for the roadmap.
 $ echo $?
 2
@@ -48,7 +48,7 @@ A single helper in `cli/__init__.py`:
 ```python
 def _not_implemented(command: str, *, milestone: str) -> None:
     typer.echo(
-        f"swarmkit {command}: not yet implemented — planned for {milestone}. "
+        f"swael {command}: not yet implemented — planned for {milestone}. "
         "See design/IMPLEMENTATION-PLAN.md for the roadmap.",
         err=True,
     )

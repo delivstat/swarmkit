@@ -1,4 +1,4 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: code-analyst
@@ -22,7 +22,7 @@ defaults:
       references, and describe the problem clearly.
   skills:
     - code-quality-review
-    - query-swarmkit-docs
+    - query-swael-docs
   iam:
     base_scope: [repo:read, knowledge:read]
 provenance:

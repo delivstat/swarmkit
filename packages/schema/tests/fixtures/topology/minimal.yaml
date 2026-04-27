@@ -1,5 +1,5 @@
 # The smallest valid topology: a single root agent with an archetype reference.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: minimal

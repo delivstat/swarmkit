@@ -1,4 +1,4 @@
-# SwarmKit task runner. Run `just` with no args to list commands.
+# Swael task runner. Run `just` with no args to list commands.
 
 set shell := ["bash", "-uc"]
 set dotenv-load := true
@@ -64,11 +64,11 @@ build-js:
 
 # Internal: run the cross-language schema demo for one artifact type.
 _demo-schema artifact:
-    @echo "── Python (swarmkit-schema) ──"
+    @echo "── Python (swael-schema) ──"
     @uv run python scripts/demo_schema.py {{artifact}}
     @echo ""
-    @echo "── TypeScript (@swarmkit/schema) ──"
-    @pnpm --silent --filter @swarmkit/schema exec node scripts/demo-schema.mjs {{artifact}}
+    @echo "── TypeScript (@swael/schema) ──"
+    @pnpm --silent --filter @swael/schema exec node scripts/demo-schema.mjs {{artifact}}
 
 # Per-artifact demos (valid + invalid fixtures in both Python and TS).
 demo-topology-schema:   (_demo-schema "topology")
@@ -91,26 +91,26 @@ schema-codegen-py:
     uv run python scripts/codegen_pydantic.py
 
 schema-codegen-ts:
-    @pnpm --silent --filter @swarmkit/schema exec node scripts/codegen-types.mjs
+    @pnpm --silent --filter @swael/schema exec node scripts/codegen-types.mjs
 
 # Drift check — regenerate and fail if the working tree is dirty. Used in CI.
 schema-codegen-check: schema-codegen-py-check schema-codegen-ts-check
 
 schema-codegen-py-check:
     uv run python scripts/codegen_pydantic.py
-    @git diff --quiet --exit-code -- packages/schema/python/src/swarmkit_schema/models || (echo "pydantic codegen drift detected — run 'just schema-codegen-py' and commit the result" && git --no-pager diff --stat -- packages/schema/python/src/swarmkit_schema/models && exit 1)
+    @git diff --quiet --exit-code -- packages/schema/python/src/swael_schema/models || (echo "pydantic codegen drift detected — run 'just schema-codegen-py' and commit the result" && git --no-pager diff --stat -- packages/schema/python/src/swael_schema/models && exit 1)
 
 schema-codegen-ts-check:
-    @pnpm --silent --filter @swarmkit/schema exec node scripts/codegen-types.mjs
+    @pnpm --silent --filter @swael/schema exec node scripts/codegen-types.mjs
     @git diff --quiet --exit-code -- packages/schema/typescript/src/types || (echo "ts codegen drift detected — run 'just schema-codegen-ts' and commit the result" && git --no-pager diff --stat -- packages/schema/typescript/src/types && exit 1)
 
 # Show a typed object loaded through the generated pydantic models.
 demo-codegen:
     @uv run python scripts/demo_codegen.py
     @echo ""
-    @pnpm --silent --filter @swarmkit/schema exec node scripts/demo-codegen.mjs
+    @pnpm --silent --filter @swael/schema exec node scripts/demo-codegen.mjs
 
-# Run `swarmkit validate` against representative valid + invalid workspaces
+# Run `swael validate` against representative valid + invalid workspaces
 # and show the output a real user would see. First-time UX sanity check for
 # task #31 (the CLI) and task #23 (human-readable errors).
 demo-validate:
@@ -120,20 +120,20 @@ demo-validate:
 # variant is expected to exit 1; the leading `-` keeps just from failing.
 demo-resolver:
     @echo "── examples/hello-swarm/workspace (valid) ───────────────────"
-    @uv run swarmkit validate examples/hello-swarm/workspace --tree --no-color
+    @uv run swael validate examples/hello-swarm/workspace --tree --no-color
     @echo ""
     @echo "── examples/hello-swarm/workspace-broken (deliberate typo) ──"
-    -@uv run swarmkit validate examples/hello-swarm/workspace-broken --no-color
+    -@uv run swael validate examples/hello-swarm/workspace-broken --no-color
 
 # Show the size and the first 60 lines of the knowledge pack against the
 # hello-swarm example. Confirms task #24 end-to-end without dumping the
 # full ~350 KB pack to the terminal.
 demo-knowledge-pack:
     @echo "── pack size (valid workspace overlay) ──"
-    @uv run swarmkit knowledge-pack examples/hello-swarm/workspace | wc -c
+    @uv run swael knowledge-pack examples/hello-swarm/workspace | wc -c
     @echo ""
     @echo "── pack head (broken workspace overlay) ──"
-    @uv run swarmkit knowledge-pack examples/hello-swarm/workspace-broken | head -60
+    @uv run swael knowledge-pack examples/hello-swarm/workspace-broken | head -60
 
 # M3 exit demo — run the hello-swarm topology end-to-end. Uses whichever
 # model provider env vars are set (SWARMKIT_PROVIDER + SWARMKIT_MODEL,
@@ -141,26 +141,26 @@ demo-knowledge-pack:
 # delegates to the greeter, and the greeter calls the hello-world MCP
 # tool that's launched as a stdio subprocess by the runtime.
 demo-run:
-    @echo "── swarmkit run (hello-swarm) ──"
-    @uv run swarmkit run examples/hello-swarm/workspace hello --input "Greet the engineering team" --no-color
+    @echo "── swael run (hello-swarm) ──"
+    @uv run swael run examples/hello-swarm/workspace hello --input "Greet the engineering team" --no-color
 
-# M6 exit demo — Code Review Swarm reviews a PR on delivstat/swarmkit.
+# M6 exit demo — Code Review Swarm reviews a PR on delivstat/swael.
 # Requires GITHUB_TOKEN + a model provider (SWARMKIT_PROVIDER/SWARMKIT_MODEL).
 # The three-leader swarm (engineering, QA, ops) fetches PR data via
 # GitHub MCP, analyses code quality + security + test coverage + deploy
 # risk, and synthesises a final review verdict.
 demo-code-review:
-    @echo "── swarmkit run (code-review-swarm) ──"
-    @uv run swarmkit run reference/ code-review --input "Review PR #49 on the repo delivstat/swarmkit. Fetch the PR details and provide a code review." --no-color
+    @echo "── swael run (code-review-swarm) ──"
+    @uv run swael run reference/ code-review --input "Review PR #49 on the repo delivstat/swael. Fetch the PR details and provide a code review." --no-color
 
 # Build the Docker sandbox image for sandboxed MCP servers (design §8.8).
 # Swarm-authored servers run inside this container with --network=none.
 build-sandbox-image:
-    docker build -t swarmkit-mcp-sandbox docker/mcp-sandbox/
+    docker build -t swael-mcp-sandbox docker/mcp-sandbox/
 
 # Quickstart runtime CLI
 run *args:
-    uv run swarmkit {{args}}
+    uv run swael {{args}}
 
 # ---- Cleanup ----
 

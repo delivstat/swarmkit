@@ -13,7 +13,7 @@ status: implemented
 
 ## Goal
 
-Define the `workspace.yaml` top-level artifact — the deployment-level configuration file that ties everything under a SwarmKit workspace together: governance provider, identity provider, model provider registrations, MCP server registry, storage backends, and workspace identity. Every topology, every skill, every archetype in a workspace inherits from this file.
+Define the `workspace.yaml` top-level artifact — the deployment-level configuration file that ties everything under a Swael workspace together: governance provider, identity provider, model provider registrations, MCP server registry, storage backends, and workspace identity. Every topology, every skill, every archetype in a workspace inherits from this file.
 
 ## Non-goals
 
@@ -27,7 +27,7 @@ Define the `workspace.yaml` top-level artifact — the deployment-level configur
 ### Top-level structure
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: acme-engineering
@@ -76,7 +76,7 @@ credentials:
     env: ANTHROPIC_API_KEY
   google_api_key:
     source: vault
-    vault: { path: secret/data/swarmkit/google, field: api_key }
+    vault: { path: secret/data/swael/google, field: api_key }
 
 # MCP server registry (design §18). Skills reference servers by ID.
 mcp_servers:
@@ -92,14 +92,14 @@ mcp_servers:
     sandboxed: false
   - id: acme_internal
     transport: stdio
-    command: ["python", "-m", "acme_swarmkit.internal_mcp"]
+    command: ["python", "-m", "acme_swael.internal_mcp"]
     sandboxed: true                 # scaffolded / untrusted — Docker-run per §8.8
 
 # Storage backends for checkpoints, audit log, knowledge bases.
 storage:
   checkpoints:
     backend: sqlite                 # sqlite | postgres
-    path: ./.swarmkit/state
+    path: ./.swael/state
   audit:
     backend: agt                    # agt | sqlite | postgres
     retention_days: 365
@@ -156,29 +156,29 @@ credentials:
     source: hashicorp-vault
     config:
       address: https://vault.acme.internal
-      path: secret/data/swarmkit/openai
+      path: secret/data/swael/openai
       field: api_key
 
   github_pat:
     source: aws-secrets-manager
-    config: { secret_id: swarmkit/github, region: us-east-1 }
+    config: { secret_id: swael/github, region: us-east-1 }
 
   google_api_key:
     source: gcp-secret-manager
-    config: { project: acme-123, secret: swarmkit-google-key, version: latest }
+    config: { project: acme-123, secret: swael-google-key, version: latest }
 
   azure_api_key:
     source: azure-key-vault
-    config: { vault_url: https://acme.vault.azure.net, secret_name: swarmkit-azure-key }
+    config: { vault_url: https://acme.vault.azure.net, secret_name: swael-azure-key }
 
   bootstrap_cert:
     source: file
-    config: { path: /etc/swarmkit/bootstrap.pem }
+    config: { path: /etc/swael/bootstrap.pem }
 
   internal_token:
     source: plugin
     provider_id: acme-internal-secrets   # names a SecretsProvider registered via entry points
-    config: { service: swarmkit, key: internal-token }
+    config: { service: swael, key: internal-token }
 ```
 
 **v1.0 built-in sources** (`source` enum):
@@ -197,7 +197,7 @@ credentials:
 
 **Runtime validation of `config`.** The schema does not validate per-source config shape — that would require one `oneOf` branch per source and make the schema brittle. Instead each SecretsProvider validates its own `config` at load time; the table above is the informal contract.
 
-**SecretsProvider abstraction (follow-up).** The runtime implementation lives behind a `SecretsProvider` ABC paralleling `ModelProvider` (see `design/details/model-provider-abstraction.md`). Built-in providers auto-register; third-party providers discover via Python entry points (`swarmkit.secrets_providers`). A full `design/details/secrets-provider-abstraction.md` lands alongside the M2 governance work — not blocking this PR, but tracked.
+**SecretsProvider abstraction (follow-up).** The runtime implementation lives behind a `SecretsProvider` ABC paralleling `ModelProvider` (see `design/details/model-provider-abstraction.md`). Built-in providers auto-register; third-party providers discover via Python entry points (`swael.secrets_providers`). A full `design/details/secrets-provider-abstraction.md` lands alongside the M2 governance work — not blocking this PR, but tracked.
 
 ### `mcp_servers` block
 

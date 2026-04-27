@@ -1,6 +1,6 @@
 # Exercises custom ModelProvider registration (design/details/model-provider-abstraction.md).
 # Built-in providers auto-register; this block is for org-internal providers.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: acme-with-internal-llm

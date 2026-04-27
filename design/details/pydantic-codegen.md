@@ -7,7 +7,7 @@ status: implemented
 
 # Pydantic model codegen
 
-**Scope:** `packages/schema/python/src/swarmkit_schema/models/`
+**Scope:** `packages/schema/python/src/swael_schema/models/`
 **Design reference:** `docs/notes/schema-change-discipline.md` (the layering it described is now real).
 **Status:** in review
 
@@ -17,7 +17,7 @@ Generate typed pydantic v2 models from the five canonical JSON Schemas so runtim
 
 ## Non-goals
 
-- **Replacing `validate()` as the authoritative validator.** `swarmkit_schema.validate(kind, data)` remains the single entry point that fully enforces the schema spec, including `allOf` / `if-then` rules that pydantic codegen does not translate. Runtime code calls `validate()` at artifact load time; once validated, data is loaded into pydantic models for typed access.
+- **Replacing `validate()` as the authoritative validator.** `swael_schema.validate(kind, data)` remains the single entry point that fully enforces the schema spec, including `allOf` / `if-then` rules that pydantic codegen does not translate. Runtime code calls `validate()` at artifact load time; once validated, data is loaded into pydantic models for typed access.
 - **Hand-tuning the generated output.** If the generator's choice is awkward, we adjust the codegen invocation or the schema — never the output files.
 - **TypeScript codegen.** Task #15, separate PR.
 
@@ -44,10 +44,10 @@ We considered three paths to close it: (1) rewriting every `allOf`/`if-then` rul
 
 Reasoning:
 
-- The primary path users take to produce any SwarmKit artifact is a conversation with an authoring swarm (`swarmkit init` / `swarmkit author …`) — see `design/SwarmKit-Design-v0.6.md` §11–12. The Skill Authoring Swarm's Review Leader (§12.3) validates drafts against the schema before presenting them, so the conditional rules are caught at authoring time.
-- The secondary path — hand-written YAML — hits `swarmkit validate` which uses jsonschema and catches every rule.
+- The primary path users take to produce any Swael artifact is a conversation with an authoring swarm (`swael init` / `swael author …`) — see `design/Swael-Design-v0.6.md` §11–12. The Skill Authoring Swarm's Review Leader (§12.3) validates drafts against the schema before presenting them, so the conditional rules are caught at authoring time.
+- The secondary path — hand-written YAML — hits `swael validate` which uses jsonschema and catches every rule.
 - The runtime load path calls `validate()` before pydantic model construction, so the gap is not reachable through any documented path.
-- The only place the gap could bite is new runtime code that instantiates `SwarmKitX.model_validate(…)` on raw data without running `validate()` first — a reviewable, narrow contribution point.
+- The only place the gap could bite is new runtime code that instantiates `SwaelX.model_validate(…)` on raw data without running `validate()` first — a reviewable, narrow contribution point.
 
 Given that, paying the cost of (1) schema verbosity or (2) hand-written Python would optimise a path that nobody walks. The effort is better spent on **making validation tooling excellent** — human-readable error messages, rule citations, Authoring-Swarm Review Leader prompts that point at the offending YAML path. Tracked as task #23.
 
@@ -56,30 +56,30 @@ If the usage model ever changes (e.g. a codegen consumer that takes raw YAML and
 ## Generated surface
 
 ```
-packages/schema/python/src/swarmkit_schema/models/
+packages/schema/python/src/swael_schema/models/
 ├── __init__.py           # re-exports the 5 root models
-├── topology.py           # SwarmKitTopology + nested types
-├── skill.py              # SwarmKitSkill + nested types
-├── archetype.py          # SwarmKitArchetype + nested types
-├── workspace.py          # SwarmKitWorkspace + nested types
-└── trigger.py            # SwarmKitTrigger + nested types
+├── topology.py           # SwaelTopology + nested types
+├── skill.py              # SwaelSkill + nested types
+├── archetype.py          # SwaelArchetype + nested types
+├── workspace.py          # SwaelWorkspace + nested types
+└── trigger.py            # SwaelTrigger + nested types
 ```
 
 Public API (what runtime code uses):
 
 ```python
-from swarmkit_schema.models import (
-    SwarmKitTopology,
-    SwarmKitSkill,
-    SwarmKitArchetype,
-    SwarmKitWorkspace,
-    SwarmKitTrigger,
+from swael_schema.models import (
+    SwaelTopology,
+    SwaelSkill,
+    SwaelArchetype,
+    SwaelWorkspace,
+    SwaelTrigger,
 )
-from swarmkit_schema import validate
+from swael_schema import validate
 
 data = yaml.safe_load(open("topology.yaml"))
 validate("topology", data)                     # authoritative
-topology = SwarmKitTopology.model_validate(data)  # typed access
+topology = SwaelTopology.model_validate(data)  # typed access
 # topology.agents.root.id is typed and IDE-navigable
 ```
 
@@ -90,14 +90,14 @@ topology = SwarmKitTopology.model_validate(data)  # typed access
 Codegen invocation is a single script: `scripts/codegen_pydantic.py`, wrapped by `just schema-codegen`. Notable flags:
 
 - `--output-model-type pydantic_v2.BaseModel` — pydantic v2, not v1 or dataclasses.
-- `--use-title-as-name` — top-level class of each schema takes its `title` (so root classes are `SwarmKitTopology` etc., not auto-generated names).
+- `--use-title-as-name` — top-level class of each schema takes its `title` (so root classes are `SwaelTopology` etc., not auto-generated names).
 - `--use-standard-collections --use-union-operator` — modern typing syntax (`list[T]`, `str | None`).
 - `--collapse-root-models` — simplifies nested `$ref` chains.
 - `--enum-field-as-literal one` — string-valued single-enum fields become `Literal["value"]` rather than synthetic enum classes for `apiVersion`, `kind`, etc.
 - `--allow-population-by-field-name` — allows code to construct models using Python attribute names (`class_`) while still accepting the original YAML field name (`class`) on input.
 - `--disable-timestamp` — deterministic output for git diffs.
 
-Each generated file starts with `# ruff: noqa` and `# mypy: ignore-errors` — we do not lint or typecheck generated output. The generator's choices are not meaningful signals about SwarmKit code quality.
+Each generated file starts with `# ruff: noqa` and `# mypy: ignore-errors` — we do not lint or typecheck generated output. The generator's choices are not meaningful signals about Swael code quality.
 
 ## Drift protection
 
@@ -108,7 +108,7 @@ Two justfile targets:
 
 ## Test plan
 
-- **Import test:** every root model imports from `swarmkit_schema.models`.
+- **Import test:** every root model imports from `swael_schema.models`.
 - **Valid-fixture test:** every fixture under `tests/fixtures/<kind>/` loads into its pydantic model. Round-trip via `model_dump(mode="json", exclude_none=True)` through yaml preserves the data.
 - **Invalid-fixture split test:** pydantic catches structural errors (missing required fields the generator did see), but NOT `allOf`/`if-then` rules. Tests assert the known-limitation cases explicitly so regressions in either direction are caught.
 - **Drift test:** `just schema-codegen-check` runs in CI; tests pass only if the checked-in generated files match what the generator would produce today.
@@ -119,6 +119,6 @@ Two justfile targets:
 
 ## Open questions / follow-ups
 
-- **Human-readable `swarmkit validate` errors (Task #23).** The real investment the if-then gap redirects us toward: rule citations, YAML path highlighting, remediation hints. Lands around M1 when the CLI validator is wired up.
+- **Human-readable `swael validate` errors (Task #23).** The real investment the if-then gap redirects us toward: rule citations, YAML path highlighting, remediation hints. Lands around M1 when the CLI validator is wired up.
 - **Deeper nested-type ergonomics.** Some generated intermediate classes (`Model`, `Prompt`, `Iam`, etc.) have plain names that collide across modules if imported together. Not a problem at the public API (only root models are exported) but could be tightened with `--class-name-template`.
 - **Runtime cost.** Codegen runs only in dev (not at runtime). Pydantic model instantiation is O(n) over object tree; the full round-trip for a typical topology is <1 ms.

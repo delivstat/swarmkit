@@ -1,6 +1,6 @@
 # The canonical leader archetype from design §13.1 catalogue. Basic delegation
 # — no built-in specialisation beyond coordination and handoffs.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: supervisor-leader

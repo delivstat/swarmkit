@@ -1,23 +1,23 @@
 ---
 title: LLM-friendly knowledge
-description: Conventions for keeping SwarmKit documentation and schemas queryable by LLMs. Docs are consumed primarily by LLMs on behalf of humans — design for that consumption model first.
+description: Conventions for keeping Swael documentation and schemas queryable by LLMs. Docs are consumed primarily by LLMs on behalf of humans — design for that consumption model first.
 tags: [discipline, documentation, llm]
 status: active
 ---
 
 # LLM-friendly knowledge
 
-Users, reviewers, and contributors consume SwarmKit's documentation **primarily through LLMs** — Claude.ai, ChatGPT, Cursor, Claude Code, local Ollama, whatever. Nobody reads a full design doc cover-to-cover anymore; they ask an LLM for a specific answer. That's the realistic model, not a concession.
+Users, reviewers, and contributors consume Swael's documentation **primarily through LLMs** — Claude.ai, ChatGPT, Cursor, Claude Code, local Ollama, whatever. Nobody reads a full design doc cover-to-cover anymore; they ask an LLM for a specific answer. That's the realistic model, not a concession.
 
 This note is the operational consequence: every docs decision optimises for LLM retrieval first, human linear reading second.
 
 ## The delivery chain
 
-An LLM answering a user's SwarmKit question has access to the corpus through one of:
+An LLM answering a user's Swael question has access to the corpus through one of:
 
 1. **Public crawl.** LLMs trained with web access see the repo via `llms.txt` and GitHub. Low-effort, high-reach — but only works once the corpus is public and the training window is recent enough.
-2. **User-initiated paste.** `swarmkit knowledge-pack` (task #24) bundles the corpus into a paste-ready blob. Works with any LLM, no infrastructure.
-3. **MCP server.** Task #25 will expose the corpus as an MCP server so Claude Code, the future SwarmKit UI, or any MCP client can query it live.
+2. **User-initiated paste.** `swael knowledge-pack` (task #24) bundles the corpus into a paste-ready blob. Works with any LLM, no infrastructure.
+3. **MCP server.** Task #25 will expose the corpus as an MCP server so Claude Code, the future Swael UI, or any MCP client can query it live.
 
 All three paths work only if the corpus itself is LLM-friendly. That's what this note covers.
 
@@ -25,7 +25,7 @@ All three paths work only if the corpus itself is LLM-friendly. That's what this
 
 ### Markdown, not binary
 
-The design doc lives in markdown (`design/SwarmKit-Design-v0.6.md`). The original `.docx` is archived under `design/archive/` for historical reference only. Never add new authoritative content in a binary format; never require an extraction step to read SwarmKit docs.
+The design doc lives in markdown (`design/Swael-Design-v0.6.md`). The original `.docx` is archived under `design/archive/` for historical reference only. Never add new authoritative content in a binary format; never require an extraction step to read Swael docs.
 
 ### Frontmatter on design docs
 
@@ -59,7 +59,7 @@ When the runtime prints an error, an LLM will quote it verbatim to a user. Write
 - Why it happened (which rule, which artifact, which field).
 - What to try (specific, not "check the docs").
 
-See task #23 — the first concrete landing of this rule is `swarmkit validate` human-readable errors.
+See task #23 — the first concrete landing of this rule is `swael validate` human-readable errors.
 
 ### `llms.txt` is the index
 
@@ -67,7 +67,7 @@ The repo's `llms.txt` (at the root, per llmstxt.org) points LLMs at the high-lev
 
 ### Stable schema URLs
 
-JSON Schemas declare `$id` URLs (e.g. `https://schemas.swarmkit.dev/v1/topology.schema.json`). Tools that try to dereference a schema follow those URLs. Until the domain exists and serves the canonical files, any tool doing remote `$ref` resolution will fail — noted as a known limitation of the current state; fixing it is on the Milestone 10 track (may get promoted earlier if it blocks a user).
+JSON Schemas declare `$id` URLs (e.g. `https://schemas.swael.dev/v1/topology.schema.json`). Tools that try to dereference a schema follow those URLs. Until the domain exists and serves the canonical files, any tool doing remote `$ref` resolution will fail — noted as a known limitation of the current state; fixing it is on the Milestone 10 track (may get promoted earlier if it blocks a user).
 
 ## Anti-patterns
 
@@ -83,7 +83,7 @@ This note covers *documentation* artifacts. It does not cover runtime artifacts 
 
 ## See also
 
-- `design/SwarmKit-Design-v0.6.md` §3.4 The first-run promise
+- `design/Swael-Design-v0.6.md` §3.4 The first-run promise
 - `docs/notes/usability-first.md` — the per-PR friction-reduction checklist
 - `docs/notes/schema-change-discipline.md` — schemas are LLM-friendly by default; this is how we keep them that way
 - Tasks #23, #24, #25 — the concrete landings of this note

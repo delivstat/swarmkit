@@ -20,7 +20,7 @@ LangGraph `StateGraph` that:
 5. Records every step through `GovernanceProvider.record_event`.
 6. Checkpoints state to SQLite for resume-after-crash.
 
-The compiler is in `packages/runtime/src/swarmkit_runtime/compiler/`.
+The compiler is in `packages/runtime/src/swael_runtime/compiler/`.
 
 **Design reference:** §14.3, §14.5, §5.3, §8.
 
@@ -31,7 +31,7 @@ The compiler is in `packages/runtime/src/swarmkit_runtime/compiler/`.
 - **Decision skills (LLM judges).** Tier 2/3 evaluation lands in M4.
 - **Streaming to the user.** M3 returns the final state. Streaming UX
   lands with the CLI observability primitives (M4 tasks #35/#36).
-- **Eject.** `swarmkit eject` (M9) needs the compiler to produce
+- **Eject.** `swael eject` (M9) needs the compiler to produce
   readable code. For M3, the compiler produces a runnable graph object
   in memory, not source code.
 
@@ -365,18 +365,18 @@ execution:
 ```python
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-checkpointer = SqliteSaver.from_conn_string(".swarmkit/state/hello.db")
+checkpointer = SqliteSaver.from_conn_string(".swael/state/hello.db")
 graph = compiled_graph.compile(checkpointer=checkpointer)
 ```
 
-`swarmkit run --resume` loads the last checkpoint and continues from
+`swael run --resume` loads the last checkpoint and continues from
 where execution stopped. Useful for long-running swarms that crash
 mid-execution.
 
-## `swarmkit run` CLI
+## `swael run` CLI
 
 ```
-swarmkit run <workspace> <topology> [--input "..."] [--resume] [--no-color]
+swael run <workspace> <topology> [--input "..."] [--resume] [--no-color]
 ```
 
 - Resolves the workspace (reuses M1 `resolve_workspace`)
@@ -468,17 +468,17 @@ commitment so the compiler's loop design leaves room for it.
    before executing and `record_event` after. Tests assert deny → audit
    flow through a compiled graph.
 4. **PR 4:** coordination skill handler + agentic tool-use loop.
-5. **PR 5:** `swarmkit run` CLI + SQLite checkpointing + exit demo.
+5. **PR 5:** `swael run` CLI + SQLite checkpointing + exit demo.
 
 ## Exit demo
 
 Two-agent hello-swarm topology:
-1. `swarmkit run examples/hello-swarm/workspace hello --input "Greet the engineering team"`
+1. `swael run examples/hello-swarm/workspace hello --input "Greet the engineering team"`
 2. Root delegates to greeter worker.
 3. Worker produces a greeting.
 4. Root returns the final greeting to the user.
-5. Checkpoint file created at `.swarmkit/state/hello.db`.
-6. `swarmkit run ... --resume` picks up from checkpoint.
+5. Checkpoint file created at `.swael/state/hello.db`.
+6. `swael run ... --resume` picks up from checkpoint.
 
 ## Test plan
 
@@ -496,5 +496,5 @@ Two-agent hello-swarm topology:
   leader.
 - **Checkpoint test:** run to completion, verify `.db` file exists.
   Corrupt mid-run, resume from checkpoint, verify completion.
-- **CLI integration:** `swarmkit run` on the hello-swarm example exits
+- **CLI integration:** `swael run` on the hello-swarm example exits
   0, prints a greeting, creates a checkpoint file.

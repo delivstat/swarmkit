@@ -1,4 +1,4 @@
-# SwarmKit
+# Swael
 
 > An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
 
@@ -6,11 +6,11 @@
 
 ## Start here
 
-- [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, what works today, milestone progress.
-- [CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/CLAUDE.md): repo-wide invariants, feature-delivery workflow, release checklist.
-- [SwarmKit Design v0.6](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md): the authoritative architecture. §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §14 (Runtime), §18 (MCP Integration).
-- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): all milestones complete.
-- [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): v1.0 release notes.
+- [README](https://github.com/delivstat/swael/blob/main/README.md): project overview, what works today, milestone progress.
+- [CLAUDE.md](https://github.com/delivstat/swael/blob/main/CLAUDE.md): repo-wide invariants, feature-delivery workflow, release checklist.
+- [Swael Design v0.6](https://github.com/delivstat/swael/blob/main/design/Swael-Design-v0.6.md): the authoritative architecture. §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §14 (Runtime), §18 (MCP Integration).
+- [Implementation plan](https://github.com/delivstat/swael/blob/main/design/IMPLEMENTATION-PLAN.md): all milestones complete.
+- [CHANGELOG](https://github.com/delivstat/swael/blob/main/CHANGELOG.md): v1.0 release notes.
 
 ## CLI commands
 
@@ -20,56 +20,56 @@
 
 Five canonical artifact schemas (JSON Schema 2020-12):
 
-- [topology.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/topology.schema.json)
-- [skill.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/skill.schema.json)
-- [archetype.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/archetype.schema.json)
-- [workspace.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/workspace.schema.json)
-- [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json)
+- [topology.schema.json](https://github.com/delivstat/swael/blob/main/packages/schema/schemas/topology.schema.json)
+- [skill.schema.json](https://github.com/delivstat/swael/blob/main/packages/schema/schemas/skill.schema.json)
+- [archetype.schema.json](https://github.com/delivstat/swael/blob/main/packages/schema/schemas/archetype.schema.json)
+- [workspace.schema.json](https://github.com/delivstat/swael/blob/main/packages/schema/schemas/workspace.schema.json)
+- [trigger.schema.json](https://github.com/delivstat/swael/blob/main/packages/schema/schemas/trigger.schema.json)
 
 ## Reference workspace
 
 Production-quality topologies, archetypes, and skills under `reference/`:
 
-- [Code Review Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/code-review.yaml): 3 leaders (Engineering, QA, Ops), 10 agents.
-- [Skill Authoring Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/skill-authoring.yaml): 6 specialist agents.
-- [20 reference skills](https://github.com/delivstat/swarmkit/tree/main/reference/skills): GitHub MCP, decision, knowledge, coordination, persistence.
-- [16 archetypes](https://github.com/delivstat/swarmkit/tree/main/reference/archetypes): leaders, code review workers, authoring agents.
+- [Code Review Swarm topology](https://github.com/delivstat/swael/blob/main/reference/topologies/code-review.yaml): 3 leaders (Engineering, QA, Ops), 10 agents.
+- [Skill Authoring Swarm topology](https://github.com/delivstat/swael/blob/main/reference/topologies/skill-authoring.yaml): 6 specialist agents.
+- [20 reference skills](https://github.com/delivstat/swael/tree/main/reference/skills): GitHub MCP, decision, knowledge, coordination, persistence.
+- [16 archetypes](https://github.com/delivstat/swael/tree/main/reference/archetypes): leaders, code review workers, authoring agents.
 
 ## Design notes
 
 Per-feature design notes under `design/details/`:
 
-- [MCP client](https://github.com/delivstat/swarmkit/blob/main/design/details/mcp-client.md): stdio + HTTP transports, workspace config, governance gating, inputSchema forwarding.
-- [Knowledge MCP Server](https://github.com/delivstat/swarmkit/blob/main/design/details/knowledge-mcp-server.md): 11 tools for live docs search.
-- [User Knowledge Server](https://github.com/delivstat/swarmkit/blob/main/design/details/user-knowledge-server.md): bootstrap-time knowledge wiring for user codebases.
-- [Code Review Swarm](https://github.com/delivstat/swarmkit/blob/main/design/details/topology-code-review.md): agent tree, skill map, HITL gates.
-- [Skill Authoring Swarm](https://github.com/delivstat/swarmkit/blob/main/design/details/topology-skill-authoring.md): multi-agent authoring + edit mode.
-- [Governance provider](https://github.com/delivstat/swarmkit/blob/main/design/details/governance-provider-interface.md): AGT integration, policy evaluation, audit.
-- [Model provider](https://github.com/delivstat/swarmkit/blob/main/design/details/model-provider-abstraction.md): 7 built-in providers, per-agent model selection.
-- [Conversational authoring](https://github.com/delivstat/swarmkit/blob/main/design/details/conversational-authoring.md): swarmkit init/author/edit.
-- [Structured output](https://github.com/delivstat/swarmkit/blob/main/design/details/structured-output-governance.md): schema-constrained generation + auto-correction.
-- [LangGraph compiler](https://github.com/delivstat/swarmkit/blob/main/design/details/langgraph-compiler.md): topology → StateGraph translation.
+- [MCP client](https://github.com/delivstat/swael/blob/main/design/details/mcp-client.md): stdio + HTTP transports, workspace config, governance gating, inputSchema forwarding.
+- [Knowledge MCP Server](https://github.com/delivstat/swael/blob/main/design/details/knowledge-mcp-server.md): 11 tools for live docs search.
+- [User Knowledge Server](https://github.com/delivstat/swael/blob/main/design/details/user-knowledge-server.md): bootstrap-time knowledge wiring for user codebases.
+- [Code Review Swarm](https://github.com/delivstat/swael/blob/main/design/details/topology-code-review.md): agent tree, skill map, HITL gates.
+- [Skill Authoring Swarm](https://github.com/delivstat/swael/blob/main/design/details/topology-skill-authoring.md): multi-agent authoring + edit mode.
+- [Governance provider](https://github.com/delivstat/swael/blob/main/design/details/governance-provider-interface.md): AGT integration, policy evaluation, audit.
+- [Model provider](https://github.com/delivstat/swael/blob/main/design/details/model-provider-abstraction.md): 7 built-in providers, per-agent model selection.
+- [Conversational authoring](https://github.com/delivstat/swael/blob/main/design/details/conversational-authoring.md): swael init/author/edit.
+- [Structured output](https://github.com/delivstat/swael/blob/main/design/details/structured-output-governance.md): schema-constrained generation + auto-correction.
+- [LangGraph compiler](https://github.com/delivstat/swael/blob/main/design/details/langgraph-compiler.md): topology → StateGraph translation.
 
 ## Guides
 
-- [Sterling OMS workspace](https://github.com/delivstat/swarmkit/blob/main/docs/guides/sterling-oms-workspace.md): building domain-specific agent workspaces with knowledge bases.
-- [Model selection](https://github.com/delivstat/swarmkit/blob/main/docs/guides/model-selection.md): pricing comparison, per-agent config, env vars.
+- [Sterling OMS workspace](https://github.com/delivstat/swael/blob/main/docs/guides/sterling-oms-workspace.md): building domain-specific agent workspaces with knowledge bases.
+- [Model selection](https://github.com/delivstat/swael/blob/main/docs/guides/model-selection.md): pricing comparison, per-agent config, env vars.
 
 ## Fixtures (valid artifact examples)
 
-- [Topology fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/topology)
-- [Skill fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/skill)
-- [Archetype fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/archetype)
-- [Workspace fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/workspace)
-- [Trigger fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/trigger)
+- [Topology fixtures](https://github.com/delivstat/swael/tree/main/packages/schema/tests/fixtures/topology)
+- [Skill fixtures](https://github.com/delivstat/swael/tree/main/packages/schema/tests/fixtures/skill)
+- [Archetype fixtures](https://github.com/delivstat/swael/tree/main/packages/schema/tests/fixtures/archetype)
+- [Workspace fixtures](https://github.com/delivstat/swael/tree/main/packages/schema/tests/fixtures/workspace)
+- [Trigger fixtures](https://github.com/delivstat/swael/tree/main/packages/schema/tests/fixtures/trigger)
 
 ## Cross-cutting notes
 
-- [Schema change discipline](https://github.com/delivstat/swarmkit/blob/main/docs/notes/schema-change-discipline.md)
-- [Usability-first](https://github.com/delivstat/swarmkit/blob/main/docs/notes/usability-first.md)
-- [LLM-friendly knowledge](https://github.com/delivstat/swarmkit/blob/main/docs/notes/llm-friendly-knowledge.md)
+- [Schema change discipline](https://github.com/delivstat/swael/blob/main/docs/notes/schema-change-discipline.md)
+- [Usability-first](https://github.com/delivstat/swael/blob/main/docs/notes/usability-first.md)
+- [LLM-friendly knowledge](https://github.com/delivstat/swael/blob/main/docs/notes/llm-friendly-knowledge.md)
 
 ## Package docs
 
-- [packages/runtime CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/packages/runtime/CLAUDE.md): Python runtime invariants.
-- [packages/schema CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/packages/schema/CLAUDE.md): schema package invariants.
+- [packages/runtime CLAUDE.md](https://github.com/delivstat/swael/blob/main/packages/runtime/CLAUDE.md): Python runtime invariants.
+- [packages/schema CLAUDE.md](https://github.com/delivstat/swael/blob/main/packages/schema/CLAUDE.md): schema package invariants.

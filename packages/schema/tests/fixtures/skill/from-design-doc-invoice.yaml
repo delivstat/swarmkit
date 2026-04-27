@@ -1,6 +1,6 @@
 # Adapted from the design doc §18.3 invoice-validation example, re-shaped
 # under the v1 envelope (apiVersion/kind/metadata).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: invoice-validation-gate

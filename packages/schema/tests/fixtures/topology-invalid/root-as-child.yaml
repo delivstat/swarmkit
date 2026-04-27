@@ -1,5 +1,5 @@
 # role: root is only allowed at agents.root, not as a child.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: broken

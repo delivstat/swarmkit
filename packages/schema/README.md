@@ -1,4 +1,4 @@
-# swarmkit-schema
+# swael-schema
 
 Canonical JSON Schema definitions plus language-neutral validators.
 
@@ -8,8 +8,8 @@ The schemas under [`schemas/`](./schemas/) are the **source of truth**. The Pyth
 
 ```
 schemas/       # Canonical JSON Schema (*.schema.json) — source of truth
-python/        # swarmkit-schema (PyPI) — validators + pydantic model codegen target
-typescript/    # @swarmkit/schema (npm)   — validators + ts-json-schema-generator target
+python/        # swael-schema (PyPI) — validators + pydantic model codegen target
+typescript/    # @swael/schema (npm)   — validators + ts-json-schema-generator target
 ```
 
 ## Design references
@@ -29,11 +29,11 @@ typescript/    # @swarmkit/schema (npm)   — validators + ts-json-schema-genera
 | `workspace.schema.json` | Workspace config, IAM, shared resources | §9.3 |
 | `trigger.schema.json` | Schedules, webhooks, file watches | §5.4 |
 
-Each schema versions independently (`apiVersion: swarmkit/v1`).
+Each schema versions independently (`apiVersion: swael/v1`).
 
 ## Development
 
 ```bash
-uv sync --package swarmkit-schema          # Python
-pnpm --filter @swarmkit/schema install     # TypeScript
+uv sync --package swael-schema          # Python
+pnpm --filter @swael/schema install     # TypeScript
 ```

@@ -1,10 +1,10 @@
 # category must be one of capability | decision | coordination | persistence.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: broken
   name: Broken
-  description: Category "evaluation" is not a recognised SwarmKit category.
+  description: Category "evaluation" is not a recognised Swael category.
 category: evaluation
 implementation:
   type: mcp_tool

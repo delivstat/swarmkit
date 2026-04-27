@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/workspace.schema.json",
-  "title": "SwarmKit Workspace",
+  "$id": "https://schemas.swael.dev/v1/workspace.schema.json",
+  "title": "Swael Workspace",
   "description": "Deployment-level config: identity, governance, model providers, MCP registry, storage. See design §9.3 and design/details/workspace-schema-v1.md.",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata"],
   "additionalProperties": false,
   "properties": {
-    "apiVersion": { "const": "swarmkit/v1" },
+    "apiVersion": { "const": "swael/v1" },
     "kind": { "const": "Workspace" },
     "metadata": { "$ref": "#/$defs/metadata" },
     "organisation": { "$ref": "#/$defs/org_or_team" },
@@ -163,7 +163,7 @@
         },
         "sandbox_image": {
           "type": "string",
-          "description": "Docker image for sandboxed servers. Defaults to swarmkit-mcp-sandbox (Python + mcp SDK). Use node:22-slim for Node.js servers."
+          "description": "Docker image for sandboxed servers. Defaults to swael-mcp-sandbox (Python + mcp SDK). Use node:22-slim for Node.js servers."
         }
       },
       "allOf": [

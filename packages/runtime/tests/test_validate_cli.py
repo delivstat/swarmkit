@@ -6,15 +6,15 @@ import json
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.cli import app
-from swarmkit_runtime.cli._render import (
+from swael_runtime.cli import app
+from swael_runtime.cli._render import (
     render_error,
     render_errors,
     render_success,
     should_colour,
 )
-from swarmkit_runtime.errors import ResolutionError
-from swarmkit_runtime.resolver import resolve_workspace
+from swael_runtime.errors import ResolutionError
+from swael_runtime.resolver import resolve_workspace
 from typer.testing import CliRunner
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"

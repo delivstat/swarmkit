@@ -1,6 +1,6 @@
 ---
-title: Knowledge MCP Server — live SwarmKit corpus for any MCP client
-description: A stdio MCP server exposing SwarmKit documentation, schemas, examples, and workspace state as searchable tools. The live counterpart to swarmkit knowledge-pack.
+title: Knowledge MCP Server — live Swael corpus for any MCP client
+description: A stdio MCP server exposing Swael documentation, schemas, examples, and workspace state as searchable tools. The live counterpart to swael knowledge-pack.
 tags: [knowledge, mcp, llm-friendly, m5]
 status: proposed
 ---
@@ -9,19 +9,19 @@ status: proposed
 
 ## Goal
 
-Any MCP client — Claude Code, Cursor, the authoring agent, `swarmkit
-ask`, a custom IDE plugin — can query SwarmKit's own documentation
+Any MCP client — Claude Code, Cursor, the authoring agent, `swael
+ask`, a custom IDE plugin — can query Swael's own documentation
 live. Instead of pasting a 350 KB knowledge pack into a system prompt,
 the client calls targeted tools: search the design docs, look up a
 schema, inspect a workspace's resolved state.
 
-This is the live counterpart to `swarmkit knowledge-pack`. The pack is
+This is the live counterpart to `swael knowledge-pack`. The pack is
 a one-shot dump for paste-into-any-LLM. This server is a persistent,
 queryable interface over the same corpus.
 
 ## Non-goals
 
-- **Domain-specific knowledge.** This server exposes SwarmKit's own
+- **Domain-specific knowledge.** This server exposes Swael's own
   docs and schemas, not the user's codebase or business data. That's
   the Knowledge Curator topology (`design/details/knowledge-curator.md`).
 - **Vector embeddings in v1.** The corpus is ~350 KB — keyword search
@@ -33,7 +33,7 @@ queryable interface over the same corpus.
 ## Architecture
 
 ```
-SwarmKit repo / installed package
+Swael repo / installed package
     ├── design/details/*.md         (design notes)
     ├── docs/notes/*.md             (discipline notes)
     ├── packages/schema/schemas/    (JSON Schemas)
@@ -51,7 +51,7 @@ Knowledge MCP Server (stdio)
     ├── validate_workspace(path)    → resolved state or errors
     └── list_reference_skills()     → reference skill catalogue
         ↓
-Any MCP client (Claude Code, Cursor, authoring agent, swarmkit ask)
+Any MCP client (Claude Code, Cursor, authoring agent, swael ask)
 ```
 
 ## Tool surface
@@ -95,7 +95,7 @@ list_design_notes(tag?: string) → DesignNoteEntry[]
 
 Lists all design notes under `design/details/` with their frontmatter
 (title, description, tags, status). Optional tag filter. This is the
-table of contents the authoring agent or `swarmkit ask` uses to decide
+table of contents the authoring agent or `swael ask` uses to decide
 which note to read in full.
 
 ### `list_schemas`
@@ -144,7 +144,7 @@ a reference skill already cover this?"
 ### Single-file FastMCP server
 
 ```
-packages/runtime/src/swarmkit_runtime/knowledge/_server.py
+packages/runtime/src/swael_runtime/knowledge/_server.py
 ```
 
 Uses `mcp.server.fastmcp.FastMCP`, same pattern as
@@ -156,8 +156,8 @@ acceptable — under 100 ms for any tool.
 ### CLI launcher
 
 ```bash
-swarmkit knowledge-server                  # stdio mode (for MCP clients)
-swarmkit knowledge-server --repo /path     # override repo root
+swael knowledge-server                  # stdio mode (for MCP clients)
+swael knowledge-server --repo /path     # override repo root
 ```
 
 A Typer subcommand in `cli/__init__.py` that launches the server.
@@ -166,7 +166,7 @@ to the nearest `.git`).
 
 ### Corpus discovery
 
-Reuses the same file-discovery logic as `swarmkit knowledge-pack`:
+Reuses the same file-discovery logic as `swael knowledge-pack`:
 
 | Category | Source |
 |---|---|
@@ -201,24 +201,24 @@ agents can query it during execution:
 
 ```yaml
 mcp_servers:
-  - id: swarmkit-knowledge
+  - id: swael-knowledge
     transport: stdio
-    command: ["uv", "run", "swarmkit", "knowledge-server"]
+    command: ["uv", "run", "swael", "knowledge-server"]
 ```
 
 Skills that use it:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
-  id: query-swarmkit-docs
-  name: Query SwarmKit Documentation
-  description: Searches SwarmKit design docs, schemas, and examples.
+  id: query-swael-docs
+  name: Query Swael Documentation
+  description: Searches Swael design docs, schemas, and examples.
 category: capability
 implementation:
   type: mcp_tool
-  server: swarmkit-knowledge
+  server: swael-knowledge
   tool: search_docs
 provenance:
   authored_by: human
@@ -229,9 +229,9 @@ provenance:
 
 | Consumer | How it uses the server |
 |---|---|
-| **Authoring agent** (`swarmkit init/author`) | Queries `get_schema` for exact YAML shape; `list_reference_skills` before generating new skills; `search_docs` when the user asks about a design concept. |
-| **Claude Code / Cursor** | User adds the server to their MCP config. "How does SwarmKit governance work?" → `search_docs("governance")` → returns §8 sections. |
-| **`swarmkit ask`** (task #36) | Uses `search_docs` + `get_design_note` as the retrieval layer instead of bundling the full pack inline. Cheaper, more targeted. |
+| **Authoring agent** (`swael init/author`) | Queries `get_schema` for exact YAML shape; `list_reference_skills` before generating new skills; `search_docs` when the user asks about a design concept. |
+| **Claude Code / Cursor** | User adds the server to their MCP config. "How does Swael governance work?" → `search_docs("governance")` → returns §8 sections. |
+| **`swael ask`** (task #36) | Uses `search_docs` + `get_design_note` as the retrieval layer instead of bundling the full pack inline. Cheaper, more targeted. |
 | **CI / scripts** | `validate_workspace` as a programmatic check without parsing CLI output. |
 
 ## Relation to existing tools
@@ -239,7 +239,7 @@ provenance:
 | Tool | Purpose | Live? |
 |---|---|---|
 | `llms.txt` | Static index at repo root | No — snapshot |
-| `swarmkit knowledge-pack` | One-shot dump of full corpus | No — snapshot |
+| `swael knowledge-pack` | One-shot dump of full corpus | No — snapshot |
 | **Knowledge MCP Server** | Live query over corpus | **Yes** |
 | Knowledge Curator topology | Domain-specific RAG (codebase, business data) | Yes — scheduled |
 
@@ -256,7 +256,7 @@ that isn't in the repo.
   JSON Schema. `list_design_notes()` returns entries with frontmatter.
 - **Integration test:** launch the server via `stdio_client`, call
   each tool, verify structured responses.
-- **Live pipeline test:** add `swarmkit-knowledge` to the hello-swarm
+- **Live pipeline test:** add `swael-knowledge` to the hello-swarm
   workspace's `mcp_servers`, run a topology that queries it, verify
   the agent gets real design content back.
 
@@ -268,8 +268,8 @@ Design review before implementation.
 
 ### PR 2: Core server + CLI launcher
 
-- `packages/runtime/src/swarmkit_runtime/knowledge/_server.py`
-- `swarmkit knowledge-server` CLI subcommand
+- `packages/runtime/src/swael_runtime/knowledge/_server.py`
+- `swael knowledge-server` CLI subcommand
 - Tools: `search_docs`, `get_schema`, `list_schemas`,
   `get_design_note`, `list_design_notes`
 - Unit tests + stdio integration test
@@ -278,12 +278,12 @@ Design review before implementation.
 
 - Tools: `validate_workspace`, `get_error_reference`,
   `list_reference_skills`
-- Reference skill: `query-swarmkit-docs`
+- Reference skill: `query-swael-docs`
 - Live pipeline test
 
 ### PR 4 (optional): Authoring agent integration
 
-- Update authoring prompts to declare `swarmkit-knowledge` in the
-  workspace's MCP servers during `swarmkit init`
+- Update authoring prompts to declare `swael-knowledge` in the
+  workspace's MCP servers during `swael init`
 - Authoring agent uses `get_schema` instead of inline schema examples
   in the system prompt (smaller prompt, always current)

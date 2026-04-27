@@ -5,12 +5,12 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from swarmkit_runtime.archetypes import (
+from swael_runtime.archetypes import (
     ResolvedArchetype,
     build_archetype_registry,
 )
-from swarmkit_runtime.skills import ResolvedSkill, build_skill_registry
-from swarmkit_runtime.workspace import discover
+from swael_runtime.skills import ResolvedSkill, build_skill_registry
+from swael_runtime.workspace import discover
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 VALID = FIXTURES / "workspaces"

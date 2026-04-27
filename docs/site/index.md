@@ -1,62 +1,62 @@
-# SwarmKit
+# Swael
 
 > An open-source framework for composing, running, and growing multi-agent AI swarms.
 
-SwarmKit treats swarm topology — who exists, who reports to whom, what skills they can exercise — as declarative data rather than imperative code. This separation lets non-developers compose agent teams conversationally while developers retain full programmatic control. Swarms are not static: every swarm can observe its own capability gaps and grow new skills through a conversational, human-approved authoring flow.
+Swael treats swarm topology — who exists, who reports to whom, what skills they can exercise — as declarative data rather than imperative code. This separation lets non-developers compose agent teams conversationally while developers retain full programmatic control. Swarms are not static: every swarm can observe its own capability gaps and grow new skills through a conversational, human-approved authoring flow.
 
-**Status:** v1.0 shipped. The framework runs multi-agent topologies end-to-end via CLI or HTTP server, with real LLM providers, MCP tool servers, governance enforcement, knowledge-grounded review, and conversational workspace editing. See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap; [`design/SwarmKit-Design-v0.6.md`](./design/SwarmKit-Design-v0.6.md) is the authoritative architecture.
+**Status:** v1.0 shipped. The framework runs multi-agent topologies end-to-end via CLI or HTTP server, with real LLM providers, MCP tool servers, governance enforcement, knowledge-grounded review, and conversational workspace editing. See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap; [`design/Swael-Design-v0.6.md`](./design/Swael-Design-v0.6.md) is the authoritative architecture.
 
 ## What works today
 
 ```bash
 # Create a workspace through conversation (never write YAML)
-swarmkit init my-swarm/
+swael init my-swarm/
 
 # Author skills, topologies, archetypes conversationally
-swarmkit author skill my-swarm/
-swarmkit author skill my-swarm/ --thorough   # multi-agent authoring swarm
+swael author skill my-swarm/
+swael author skill my-swarm/ --thorough   # multi-agent authoring swarm
 
 # Edit an existing workspace conversationally
-swarmkit edit my-swarm/ --input "Add a dependency vulnerability scan skill"
+swael edit my-swarm/ --input "Add a dependency vulnerability scan skill"
 
 # Validate a workspace — human-readable errors with file pointers
-swarmkit validate my-swarm/ --tree
+swael validate my-swarm/ --tree
 
 # Run a topology end-to-end
 SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct \
-  swarmkit run my-swarm/ my-topology --input "Do the thing"
+  swael run my-swarm/ my-topology --input "Do the thing"
 
 # Dry run — see what would execute without hitting any LLM or MCP
-swarmkit run reference/ code-review --dry-run
+swael run reference/ code-review --dry-run
 
 # Review the Code Review Swarm against a real GitHub PR
-swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit"
+swael run reference/ code-review --input "Review PR #49 on delivstat/swael"
 
 # Run with observability (per-agent timing, skills, denials)
-swarmkit run my-swarm/ my-topology --input "Do the thing" --verbose
+swael run my-swarm/ my-topology --input "Do the thing" --verbose
 
 # View recent run history
-swarmkit status my-swarm/
+swael status my-swarm/
 
 # Read detailed events from past runs
-swarmkit logs my-swarm/ --last 3
+swael logs my-swarm/ --last 3
 
 # Ask an LLM to explain what happened in a run
-swarmkit why hello-20260426T134042 my-swarm/
+swael why hello-20260426T134042 my-swarm/
 
 # Ask questions about the workspace or recent runs
-swarmkit ask "Which agents are taking the longest?" -w my-swarm/
+swael ask "Which agents are taking the longest?" -w my-swarm/
 
 # Start the HTTP server (persistent mode)
-swarmkit serve my-swarm/ --port 8000
+swael serve my-swarm/ --port 8000
 curl -X POST http://localhost:8000/run/my-topology \
   -d '{"input": "Do the thing"}'
 
-# Bundle the full SwarmKit corpus for any LLM
-swarmkit knowledge-pack -o pack.md
+# Bundle the full Swael corpus for any LLM
+swael knowledge-pack -o pack.md
 
 # Launch the Knowledge MCP Server (live docs search for any MCP client)
-swarmkit knowledge-server
+swael knowledge-server
 ```
 
 ## Milestone progress
@@ -68,13 +68,13 @@ swarmkit knowledge-server
 | 2 | GovernanceProvider + AGT integration | ✅ |
 | 2.5 | ModelProvider abstraction (7 built-in providers) | ✅ |
 | 3 | LangGraph compiler (capability + coordination) | ✅ |
-| 3.5 | Conversational authoring (`swarmkit init/author`) | ✅ |
+| 3.5 | Conversational authoring (`swael init/author`) | ✅ |
 | 4 | Decision skills, structured output, review queue, HITL | ✅ |
 | 5 | MCP integration (stdio + HTTP, sandboxed servers, Knowledge MCP Server) | ✅ |
 | 6 | Code Review Swarm (3-leader reference topology) | ✅ |
-| 7 | Skill Authoring Swarm + `swarmkit edit` + `--thorough` | ✅ |
+| 7 | Skill Authoring Swarm + `swael edit` + `--thorough` | ✅ |
 | 8 | Workspace Authoring Swarm | Superseded by M3.5 + M7 |
-| 9 | HTTP server (`swarmkit serve`) — eject deferred | ✅ |
+| 9 | HTTP server (`swael serve`) — eject deferred | ✅ |
 | 10 | Catalogue polish + launch | Planned |
 
 ## Key features
@@ -84,7 +84,7 @@ swarmkit knowledge-server
 Swarms are YAML files the runtime interprets — not Python code. A topology declares agents, their hierarchy, model preferences, skills, and IAM scopes:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: code-review
@@ -131,9 +131,9 @@ mcp_servers:
     command: ["npx", "-y", "@modelcontextprotocol/server-github"]
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
-  - id: swarmkit-knowledge
+  - id: swael-knowledge
     transport: stdio
-    command: ["uv", "run", "python", "-m", "swarmkit_runtime.knowledge"]
+    command: ["uv", "run", "python", "-m", "swael_runtime.knowledge"]
 ```
 
 ### Governance built in
@@ -149,27 +149,27 @@ governance:
 
 ### Knowledge-grounded agents
 
-The Knowledge MCP Server exposes SwarmKit's own docs, schemas, and reference skills as live-searchable MCP tools. Code reviewers search the design doc before producing verdicts. The authoring swarm checks existing skills before generating new ones.
+The Knowledge MCP Server exposes Swael's own docs, schemas, and reference skills as live-searchable MCP tools. Code reviewers search the design doc before producing verdicts. The authoring swarm checks existing skills before generating new ones.
 
 ### Conversational authoring
 
-`swarmkit init` creates a workspace through conversation. `swarmkit author` creates individual artifacts. `swarmkit edit` modifies existing swarms conversationally — describe what's wrong, the authoring swarm reads the workspace, drafts changes, validates, and writes.
+`swael init` creates a workspace through conversation. `swael author` creates individual artifacts. `swael edit` modifies existing swarms conversationally — describe what's wrong, the authoring swarm reads the workspace, drafts changes, validates, and writes.
 
 ### Observability
 
-Every run records structured events (agent start/complete with timing, skill calls, policy denials, validation failures) to `.swarmkit/logs/` as JSONL. CLI commands for analysis:
+Every run records structured events (agent start/complete with timing, skill calls, policy denials, validation failures) to `.swael/logs/` as JSONL. CLI commands for analysis:
 
 | Command | What it does |
 |---|---|
-| `swarmkit run --verbose` | Per-agent summary after output (timing, skills, denials) |
-| `swarmkit status` | Recent runs at a glance |
-| `swarmkit logs` | Detailed events from past runs |
-| `swarmkit logs --format markdown` | Compliance-ready audit report |
-| `swarmkit run --dry-run` | Show resolved agents + skills without executing |
-| `swarmkit why <run-id>` | LLM-powered explanation of what happened |
-| `swarmkit ask "question"` | Conversational workspace observer |
-| `swarmkit review list` | Pending HITL review items |
-| `swarmkit gaps` | Recorded skill gaps |
+| `swael run --verbose` | Per-agent summary after output (timing, skills, denials) |
+| `swael status` | Recent runs at a glance |
+| `swael logs` | Detailed events from past runs |
+| `swael logs --format markdown` | Compliance-ready audit report |
+| `swael run --dry-run` | Show resolved agents + skills without executing |
+| `swael why <run-id>` | LLM-powered explanation of what happened |
+| `swael ask "question"` | Conversational workspace observer |
+| `swael review list` | Pending HITL review items |
+| `swael gaps` | Recorded skill gaps |
 
 Per-skill audit control via the `audit:` block in skill YAML:
 
@@ -186,7 +186,7 @@ The `reference/` directory ships two production-quality topologies:
 
 **Code Review Swarm** — three leaders (Engineering, QA, Operations) coordinate a PR review. Engineering fetches the PR via GitHub MCP, analyses code quality and security. QA assesses test coverage. Operations evaluates deployment risk with HITL approval for low-confidence verdicts.
 
-**Skill Authoring Swarm** — six specialist agents (conversation leader, knowledge searcher, schema drafter, validator, test writer, publisher) create and edit SwarmKit artifacts through conversation, grounded by the Knowledge MCP Server.
+**Skill Authoring Swarm** — six specialist agents (conversation leader, knowledge searcher, schema drafter, validator, test writer, publisher) create and edit Swael artifacts through conversation, grounded by the Knowledge MCP Server.
 
 ```
 reference/
@@ -201,7 +201,7 @@ reference/
 ## Monorepo layout
 
 ```
-swarmkit/
+swael/
 ├── design/              # Authoritative architecture (v0.6) + per-feature design notes
 ├── packages/
 │   ├── runtime/         # Python: CLI, LangGraph compiler, governance, MCP, knowledge server
@@ -220,7 +220,7 @@ swarmkit/
 Prerequisites: Python 3.11+, Node 20+, `pnpm`, `uv`, `just`.
 
 ```bash
-git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
+git clone git@github.com:delivstat/swael.git && cd swael
 just install          # uv sync + pnpm install
 just test             # 500+ tests across Python + TypeScript
 just lint             # ruff + biome
@@ -238,20 +238,20 @@ just demo-code-review     # Code Review Swarm against a real PR
 
 ### Try it as an LLM can
 
-SwarmKit docs are designed for LLM consumption. The repo ships [`llms.txt`](./llms.txt) at the root (per [llmstxt.org](https://llmstxt.org)). Or bundle everything:
+Swael docs are designed for LLM consumption. The repo ships [`llms.txt`](./llms.txt) at the root (per [llmstxt.org](https://llmstxt.org)). Or bundle everything:
 
 ```bash
-swarmkit knowledge-pack -o pack.md    # paste into any LLM
-swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
+swael knowledge-pack -o pack.md    # paste into any LLM
+swael knowledge-server             # live MCP server for Claude Code / Cursor
 ```
 
 ## Packages
 
 | Package | Language | Status |
 |---|---|---|
-| [`swarmkit-runtime`](./packages/runtime) | Python 3.11+ | Active — CLI, compiler, governance, MCP, knowledge server |
-| [`swarmkit-schema`](./packages/schema) | Python + TypeScript | Stable — 5 schemas, validators, codegen, drift protection |
-| [`swarmkit-ui`](./packages/ui) | TypeScript / Next.js | Scaffolded — v1.1 (web UI extends the CLI, doesn't replace it) |
+| [`swael-runtime`](./packages/runtime) | Python 3.11+ | Active — CLI, compiler, governance, MCP, knowledge server |
+| [`swael-schema`](./packages/schema) | Python + TypeScript | Stable — 5 schemas, validators, codegen, drift protection |
+| [`swael-ui`](./packages/ui) | TypeScript / Next.js | Scaffolded — v1.1 (web UI extends the CLI, doesn't replace it) |
 
 ## Model providers
 
@@ -267,11 +267,11 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 | Together | `TOGETHER_API_KEY` | `meta-llama/llama-3.3-70b` |
 | Ollama | (always available) | `llama3.3` |
 
-Override per-run: `SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=... swarmkit run ...`
+Override per-run: `SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=... swael run ...`
 
 ## Design principles
 
-From [design doc §7](./design/SwarmKit-Design-v0.6.md):
+From [design doc §7](./design/Swael-Design-v0.6.md):
 
 - **Topology as data, not code.** Swarms are YAML/JSON, interpreted at runtime.
 - **Skills as the only extension primitive.** Capability, decision, coordination, persistence — one surface.
@@ -279,7 +279,7 @@ From [design doc §7](./design/SwarmKit-Design-v0.6.md):
 - **Trust boundaries as first-class concept.** Communication patterns categorised by trust zone.
 - **Governance built in, not bolted on.** Separation of Powers model on Microsoft AGT.
 - **Growth through human-approved authoring.** Swarms surface gaps; humans decide.
-- **Eject, never lock in.** `swarmkit eject` exports standalone LangGraph code.
+- **Eject, never lock in.** `swael eject` exports standalone LangGraph code.
 
 ## License
 

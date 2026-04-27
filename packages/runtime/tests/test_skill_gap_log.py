@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from swarmkit_runtime.gaps import SkillGapLog, create_skill_gap
+from swael_runtime.gaps import SkillGapLog, create_skill_gap
 
 
 def test_record_and_list(tmp_path: Path) -> None:

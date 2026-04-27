@@ -8,18 +8,18 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.governance._mock import MockGovernanceProvider
-from swarmkit_runtime.langgraph_compiler import compile_topology
-from swarmkit_runtime.langgraph_compiler._compiler import _validate_and_correct
-from swarmkit_runtime.model_providers import (
+from swael_runtime.governance._mock import MockGovernanceProvider
+from swael_runtime.langgraph_compiler import compile_topology
+from swael_runtime.langgraph_compiler._compiler import _validate_and_correct
+from swael_runtime.model_providers import (
     CompletionRequest,
     CompletionResponse,
     ContentBlock,
     MockModelProvider,
     Usage,
 )
-from swarmkit_runtime.model_providers import Message as ProviderMessage
-from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology, resolve_workspace
+from swael_runtime.model_providers import Message as ProviderMessage
+from swael_runtime.resolver import ResolvedAgent, ResolvedTopology, resolve_workspace
 
 # Use a real resolved topology from the hello-swarm example.
 REPO_ROOT = Path(__file__).resolve().parents[3]

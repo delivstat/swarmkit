@@ -1,6 +1,6 @@
 # Webhook fired by GitHub when a pull request is opened / synchronised.
 # HMAC auth reuses the workspace credentials entry named github_webhook_secret.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: github-pr-webhook

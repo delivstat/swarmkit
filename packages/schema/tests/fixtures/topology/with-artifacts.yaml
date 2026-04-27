@@ -1,5 +1,5 @@
 # Exercises every artifact block.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: with-artifacts

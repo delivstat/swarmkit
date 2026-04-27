@@ -1,6 +1,6 @@
 # Smallest valid skill — a capability wrapping an MCP tool, no inputs/outputs
 # declared (runtime discovers them from the MCP server).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: github-repo-read

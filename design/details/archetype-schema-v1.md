@@ -19,14 +19,14 @@ Promote the v0.6 archetype sketch (§6.6, §13) into a full JSON Schema v1 spec.
 
 - Runtime archetype merge semantics (how topology overrides combine with archetype defaults) — covered in M1 (topology resolver).
 - The archetype **catalogue** — the ~15 v1.0 archetypes from §13.1 — lands as individual reference artifacts in M6/M7, not as part of this schema PR.
-- Versioning migrations — additive changes within `swarmkit/v1`; breaking changes bump to `v2`.
+- Versioning migrations — additive changes within `swael/v1`; breaking changes bump to `v2`.
 
 ## API shape
 
 ### Top-level structure
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: code-review-worker

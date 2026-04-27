@@ -10,9 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
-from swarmkit_runtime.mcp._client import _build_sandboxed_command, _resolve_env
-from swarmkit_schema.models.workspace import McpServer, Transport
+from swael_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
+from swael_runtime.mcp._client import _build_sandboxed_command, _resolve_env
+from swael_schema.models.workspace import McpServer, Transport
 
 
 def _stdio(server_id: str, command: list[str], **extra: object) -> McpServer:

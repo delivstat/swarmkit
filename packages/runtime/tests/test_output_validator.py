@@ -6,7 +6,7 @@ See ``design/details/structured-output-governance.md``.
 from __future__ import annotations
 
 import pytest
-from swarmkit_runtime.skills._output_validator import (
+from swael_runtime.skills._output_validator import (
     FieldError,
     format_correction_prompt,
     validate_all_skill_output,

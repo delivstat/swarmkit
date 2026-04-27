@@ -18,7 +18,7 @@ from typing import Literal
 
 import yaml
 from jsonschema import ValidationError
-from swarmkit_schema import SchemaName, validate
+from swael_schema import SchemaName, validate
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = REPO_ROOT / "packages" / "schema" / "tests" / "fixtures"

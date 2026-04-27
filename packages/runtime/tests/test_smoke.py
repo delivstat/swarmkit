@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import pytest
-import swarmkit_runtime
-from swarmkit_runtime.cli import app
-from swarmkit_runtime.governance import GovernanceProvider
+import swael_runtime
+from swael_runtime.cli import app
+from swael_runtime.governance import GovernanceProvider
 
 
 def test_package_imports() -> None:
-    assert swarmkit_runtime.__version__
+    assert swael_runtime.__version__
 
 
 def test_cli_app_constructible() -> None:

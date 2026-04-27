@@ -1,5 +1,5 @@
 # Persistence skill — append to the audit log (design §5.4, §16.4).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: audit-log-write

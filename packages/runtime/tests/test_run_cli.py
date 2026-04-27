@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.cli import app
+from swael_runtime.cli import app
 from typer.testing import CliRunner
 
 runner = CliRunner()

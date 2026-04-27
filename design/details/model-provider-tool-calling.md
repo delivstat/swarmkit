@@ -9,9 +9,9 @@ status: approved
 
 ## Goal
 
-Every LLM provider has its own tool-calling protocol. SwarmKit skills
+Every LLM provider has its own tool-calling protocol. Swael skills
 surface as tools to agents — the runtime must translate between the
-canonical SwarmKit tool format and each provider's wire format. This
+canonical Swael tool format and each provider's wire format. This
 note defines:
 
 1. The **canonical tool-call shape** (already sketched in
@@ -26,7 +26,7 @@ provider which returns canned tool-call responses.
 
 ## Non-goals
 
-- **Designing the skill → tool mapping.** How a SwarmKit skill definition
+- **Designing the skill → tool mapping.** How a Swael skill definition
   becomes a `ToolSpec` is the compiler's job (M3). This note only covers
   the provider-level translation.
 - **Multi-turn tool-use orchestration.** The agentic loop (call model →
@@ -66,7 +66,7 @@ executes the tool and sends back `ContentBlock(type="tool_result", ...)`.
 
 ### Anthropic
 
-Closest to canonical — SwarmKit's format is modelled after Anthropic's.
+Closest to canonical — Swael's format is modelled after Anthropic's.
 
 | Canonical | Anthropic wire |
 |---|---|

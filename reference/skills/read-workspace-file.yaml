@@ -1,4 +1,4 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: read-workspace-file
@@ -10,7 +10,7 @@ metadata:
 category: capability
 implementation:
   type: mcp_tool
-  server: swarmkit-knowledge
+  server: swael-knowledge
   tool: read_workspace_file
 iam:
   required_scopes: [workspace:read]

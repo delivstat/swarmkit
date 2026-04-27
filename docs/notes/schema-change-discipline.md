@@ -9,7 +9,7 @@ packages/schema/
 ├── schemas/*.schema.json         ← SOURCE OF TRUTH (one per artifact type)
 ├── tests/fixtures/*/             ← SHARED by both languages' tests
 ├── python/
-│   └── src/swarmkit_schema/
+│   └── src/swael_schema/
 │       └── models/*.py           ← CODEGEN from schemas (M0 Task #14; not yet landed)
 └── typescript/
     └── src/types/*.ts            ← CODEGEN from schemas (M0 Task #15; not yet landed)
@@ -19,9 +19,9 @@ packages/schema/
 |---|---|---|
 | `schemas/*.schema.json` | **Yes — the one source of truth.** | Both validators, both test suites, the runtime, the UI. |
 | `tests/fixtures/*/` | Yes. | Both Python and TS tests read the same files. |
-| `python/src/swarmkit_schema/models/` | **No — generated.** Regenerate with `just schema-codegen-py`. | Runtime code as typed pydantic models. |
+| `python/src/swael_schema/models/` | **No — generated.** Regenerate with `just schema-codegen-py`. | Runtime code as typed pydantic models. |
 | `typescript/src/types/` | **No — generated.** Regenerate with `just schema-codegen-ts`. | UI / TS consumers as TypeScript interfaces. |
-| `python/src/swarmkit_schema/__init__.py` | Yes. | Thin wrapper; loads + validates against the JSON Schemas. Does not redefine shape. |
+| `python/src/swael_schema/__init__.py` | Yes. | Thin wrapper; loads + validates against the JSON Schemas. Does not redefine shape. |
 | `typescript/src/index.ts` | Yes. | Thin wrapper; same rule. |
 
 ## The rule
@@ -44,11 +44,11 @@ Every time you change anything under `packages/schema/schemas/`:
 
 ### Shape vs full validation
 
-Generated pydantic models and TS types both cover shape (required fields, types, enums, patterns) but do not translate `allOf` / `if-then` conditional rules. Full validation happens through `swarmkit_schema.validate()` in Python and `@swarmkit/schema.validate()` in TypeScript — both use JSON Schema directly. Runtime code calls `validate()` first, then narrows to the typed interface. See `design/details/pydantic-codegen.md` and `design/details/ts-codegen.md` for the enumerated list of rules and the explicit decision to leave this gap open in favour of validation-UX investment (task #23).
+Generated pydantic models and TS types both cover shape (required fields, types, enums, patterns) but do not translate `allOf` / `if-then` conditional rules. Full validation happens through `swael_schema.validate()` in Python and `@swael/schema.validate()` in TypeScript — both use JSON Schema directly. Runtime code calls `validate()` first, then narrows to the typed interface. See `design/details/pydantic-codegen.md` and `design/details/ts-codegen.md` for the enumerated list of rules and the explicit decision to leave this gap open in favour of validation-UX investment (task #23).
 
 ## Why this matters
 
-Two languages validating against one schema is the contract we make with the community: a topology file is valid regardless of which language's tooling reads it. Drift between Python and TS would break that contract silently — a file that passes `swarmkit validate` in Python might fail in the UI's live validation.
+Two languages validating against one schema is the contract we make with the community: a topology file is valid regardless of which language's tooling reads it. Drift between Python and TS would break that contract silently — a file that passes `swael validate` in Python might fail in the UI's live validation.
 
 Similarly, generated models must never drift from the schema. A hand-edited pydantic model that adds a field not in the JSON Schema would let runtime code pass through artifacts that the validator would reject — the framework's type safety would be a lie.
 

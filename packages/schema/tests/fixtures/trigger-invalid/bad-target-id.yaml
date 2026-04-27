@@ -1,5 +1,5 @@
 # Target IDs must match the lowercase-kebab identifier pattern.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: broken

@@ -1,5 +1,5 @@
 # Exercises every top-level block. Used as the round-trip reference.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: acme-engineering
@@ -45,7 +45,7 @@ mcp_servers:
 storage:
   checkpoints:
     backend: sqlite
-    path: ./.swarmkit/state
+    path: ./.swael/state
   audit:
     backend: agt
     retention_days: 365

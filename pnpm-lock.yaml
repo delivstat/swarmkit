@@ -45,7 +45,7 @@ importers:
 
   packages/ui:
     dependencies:
-      '@swarmkit/schema':
+      '@swael/schema':
         specifier: workspace:*
         version: link:../schema/typescript
       next:

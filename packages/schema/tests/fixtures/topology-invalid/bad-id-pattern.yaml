@@ -1,5 +1,5 @@
 # id must match ^[a-z][a-z0-9-]*$ — "Root" is uppercase, "1root" starts with digit.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: broken

@@ -1,4 +1,4 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: knowledge-searcher
@@ -23,7 +23,7 @@ defaults:
       For edit requests, read the current workspace state to understand
       what's already configured.
   skills:
-    - query-swarmkit-docs
+    - query-swael-docs
     - list-reference-skills
     - validate-workspace
   iam:

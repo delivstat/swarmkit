@@ -1,5 +1,5 @@
 # policy_language must be yaml | rego | cedar.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: broken

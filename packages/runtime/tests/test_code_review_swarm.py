@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 import yaml
-from swarmkit_runtime.governance._mock import MockGovernanceProvider
-from swarmkit_runtime.langgraph_compiler import compile_topology
-from swarmkit_runtime.model_providers import MockModelProvider, ProviderRegistry
-from swarmkit_runtime.resolver import resolve_workspace
-from swarmkit_schema import validate
+from swael_runtime.governance._mock import MockGovernanceProvider
+from swael_runtime.langgraph_compiler import compile_topology
+from swael_runtime.model_providers import MockModelProvider, ProviderRegistry
+from swael_runtime.resolver import resolve_workspace
+from swael_schema import validate
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REFERENCE_WS = REPO_ROOT / "reference"

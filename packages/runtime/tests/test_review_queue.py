@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from swarmkit_runtime.review import FileReviewQueue, create_review_item
+from swael_runtime.review import FileReviewQueue, create_review_item
 
 
 def test_submit_and_list_pending(tmp_path: Path) -> None:

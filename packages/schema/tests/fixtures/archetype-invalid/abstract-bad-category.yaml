@@ -1,6 +1,6 @@
 # Abstract skill placeholder's `category` must match the skill category enum
 # (capability | decision | coordination | persistence).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: broken

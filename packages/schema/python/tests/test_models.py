@@ -18,8 +18,8 @@ import yaml
 from jsonschema import ValidationError as JsonSchemaValidationError
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
-from swarmkit_schema import SchemaName, validate
-from swarmkit_schema.models import (
+from swael_schema import SchemaName, validate
+from swael_schema.models import (
     SwarmKitArchetype,
     SwarmKitSkill,
     SwarmKitTopology,

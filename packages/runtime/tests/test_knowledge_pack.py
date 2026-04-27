@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-import swarmkit_runtime.cli as cli_module
-from swarmkit_runtime.cli import app
-from swarmkit_runtime.cli._knowledge import build_pack, find_repo_root
+import swael_runtime.cli as cli_module
+from swael_runtime.cli import app
+from swael_runtime.cli._knowledge import build_pack, find_repo_root
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -44,7 +44,7 @@ def _fake_repo(tmp_path: Path) -> Path:
     (schemas_dir / "topology.schema.json").write_text('{"$id": "topology"}\n')
     fixtures_dir = tmp_path / "packages" / "schema" / "tests" / "fixtures" / "topology"
     fixtures_dir.mkdir(parents=True)
-    (fixtures_dir / "valid.yaml").write_text("apiVersion: swarmkit/v1\nkind: Topology\n")
+    (fixtures_dir / "valid.yaml").write_text("apiVersion: swael/v1\nkind: Topology\n")
     pkg_claude = tmp_path / "packages" / "runtime"
     pkg_claude.mkdir(parents=True)
     (pkg_claude / "CLAUDE.md").write_text("# runtime invariants\n")

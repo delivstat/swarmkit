@@ -1,5 +1,5 @@
 ---
-title: Conversational authoring — swarmkit init / swarmkit author (M3.5)
+title: Conversational authoring — swael init / swael author (M3.5)
 description: Interactive single-agent authoring that generates workspace artifacts through conversation. Users never write YAML.
 tags: [cli, authoring, m3.5]
 status: proposed
@@ -13,7 +13,7 @@ Users describe what they want in natural language. The authoring agent
 asks clarifying questions, generates YAML artifacts, validates them in
 real-time, and writes files on approval. **The user never writes YAML.**
 
-This is the primary user interface for SwarmKit. Moving it from M7-M8
+This is the primary user interface for Swael. Moving it from M7-M8
 to M3.5 reflects that: conversational authoring is the product, not a
 late-stage feature.
 
@@ -22,9 +22,9 @@ late-stage feature.
 - **Not a multi-agent authoring swarm.** The design doc (§12) describes
   a Review Leader + Schema Expert + Test Runner swarm for skill
   authoring. That's M7-M8. This is a **single conversational agent**
-  with the SwarmKit knowledge corpus as context. Simpler, shippable now.
+  with the Swael knowledge corpus as context. Simpler, shippable now.
 - **Not MCP-dependent.** The authoring agent generates YAML and calls
-  `swarmkit validate`. No external tool servers needed.
+  `swael validate`. No external tool servers needed.
 - **Not a one-shot generator.** The agent asks questions, proposes,
   iterates. It's a conversation, not a prompt → output pipe.
 
@@ -32,23 +32,23 @@ late-stage feature.
 
 ```bash
 # Create a new workspace from scratch
-swarmkit init
+swael init
 
 # Author a specific artifact type in an existing workspace
-swarmkit author topology [name]
-swarmkit author skill [name]
-swarmkit author archetype [name]
+swael author topology [name]
+swael author skill [name]
+swael author archetype [name]
 ```
 
 All four run the same authoring agent with different initial context.
 
 ## Conversation flow
 
-### `swarmkit init` (new workspace)
+### `swael init` (new workspace)
 
 ```
-$ swarmkit init
-SwarmKit workspace authoring — let's build your swarm.
+$ swael init
+Swael workspace authoring — let's build your swarm.
 
 What will this swarm do?
 > Review pull requests for our Python codebase
@@ -79,13 +79,13 @@ Create these files? [Y/n]
 > y
 
 ✓ Workspace created at ./code-review/
-  Run: swarmkit validate ./code-review/
+  Run: swael validate ./code-review/
 ```
 
-### `swarmkit author skill` (add to existing workspace)
+### `swael author skill` (add to existing workspace)
 
 ```
-$ swarmkit author skill
+$ swael author skill
 What should this skill do?
 > Check if a Python function has type hints on all parameters
 
@@ -132,20 +132,20 @@ while not done:
 |---|---|
 | `validate_yaml` | Runs `resolve_workspace` on the generated YAML, returns errors or "valid" |
 | `write_files` | Writes generated YAML to disk (requires user confirmation) |
-| `read_workspace` | Reads existing workspace files (for `swarmkit author` in an existing workspace) |
+| `read_workspace` | Reads existing workspace files (for `swael author` in an existing workspace) |
 | `list_schemas` | Returns the JSON Schema for the artifact type being authored |
 
 ### System prompt
 
 The authoring agent's system prompt includes:
 
-1. SwarmKit's core concepts (topology, agents, skills, archetypes)
+1. Swael's core concepts (topology, agents, skills, archetypes)
 2. The JSON Schema for each artifact type (so it generates valid YAML)
 3. The hello-swarm example as a reference
 4. Instructions to ask clarifying questions, not assume
 5. Instructions to validate after generating, fix errors conversationally
 
-The knowledge pack (`swarmkit knowledge-pack`) provides the corpus.
+The knowledge pack (`swael knowledge-pack`) provides the corpus.
 The system prompt is a focused subset — just what the agent needs for
 authoring.
 
@@ -166,7 +166,7 @@ the agent calls `write_files`. The tool implementation:
 1. Shows the user exactly what files will be written
 2. Waits for explicit confirmation (`[Y/n]`)
 3. Writes files
-4. Runs `swarmkit validate` on the result
+4. Runs `swael validate` on the result
 5. Reports success or errors
 
 No files are written without the user saying yes. This is the human
@@ -174,7 +174,7 @@ approval gate from design §8.7 applied to authoring.
 
 ## Implementation
 
-### New module: `packages/runtime/src/swarmkit_runtime/authoring/`
+### New module: `packages/runtime/src/swael_runtime/authoring/`
 
 ```
 authoring/
@@ -207,14 +207,14 @@ reads from stdin, prints to stdout, interactive.
 
 ## Demo
 
-`just demo-authoring` runs a scripted `swarmkit init` session using
+`just demo-authoring` runs a scripted `swael init` session using
 mock model responses, showing the full flow: questions → answers →
 YAML generation → validation → file write.
 
 ## Exit demo
 
-A user runs `swarmkit init`, answers 3-4 questions, and gets a working
-workspace. `swarmkit validate` on the result passes. `swarmkit run`
+A user runs `swael init`, answers 3-4 questions, and gets a working
+workspace. `swael validate` on the result passes. `swael run`
 on the result produces output (with mock or real providers).
 
 ## Relationship to M7-M8
@@ -225,6 +225,6 @@ M7 (Skill Authoring Swarm) and M8 (Workspace Authoring Swarm) add:
 - Publication workflow (pending-review → human approval → active)
 
 M3.5 is the single-agent foundation. M7-M8 upgrade it to a governed
-multi-agent flow. The CLI entry points (`swarmkit init`,
-`swarmkit author`) stay the same — the implementation behind them
+multi-agent flow. The CLI entry points (`swael init`,
+`swael author`) stay the same — the implementation behind them
 becomes more sophisticated.

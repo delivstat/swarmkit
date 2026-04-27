@@ -15,7 +15,7 @@ dev = [
     "types-jsonschema",
     # Pydantic model codegen from the canonical JSON Schemas. See
     # docs/notes/schema-change-discipline.md — generated models live under
-    # packages/schema/python/src/swarmkit_schema/models/ and must be
+    # packages/schema/python/src/swael_schema/models/ and must be
     # regenerated whenever a schema changes (`just schema-codegen`).
     "datamodel-code-generator>=0.26",
 ]
@@ -27,8 +27,8 @@ members = [
 ]
 
 [tool.uv.sources]
-swarmkit-runtime = { workspace = true }
-swarmkit-schema = { workspace = true }
+swael-runtime = { workspace = true }
+swael-schema = { workspace = true }
 
 [tool.ruff]
 line-length = 100
@@ -39,7 +39,7 @@ extend-exclude = [
     "dist",
     # Generated pydantic models — codegen'd from JSON Schemas. See
     # design/details/pydantic-codegen.md.
-    "packages/schema/python/src/swarmkit_schema/models",
+    "packages/schema/python/src/swael_schema/models",
 ]
 
 [tool.ruff.lint]

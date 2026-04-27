@@ -1,6 +1,6 @@
 # A skill entry must be either a string (concrete skill ID) or an object
 # with `abstract: {...}`. An arbitrary object is invalid.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: broken

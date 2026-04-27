@@ -1,7 +1,7 @@
 # Exercises the authored_by_swarm provenance variant (design §13).
 # Archetypes produced by the Archetype Authoring Swarm (M8) require human
 # review before being used to instantiate production agents.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: summary-writer-worker

@@ -10,7 +10,7 @@ status: proposed
 ## Goal
 
 The canonical reference topology — the one users see first when they ask
-"what does a real SwarmKit swarm look like?" Three leaders coordinate
+"what does a real Swael swarm look like?" Three leaders coordinate
 a PR review from code analysis through QA to deployment approval. Every
 pattern from the design doc is exercised: hierarchical delegation,
 A2A leader coordination, LLM judges, HITL gates, MCP tool calls, and
@@ -124,9 +124,9 @@ result lands in the review queue (`FileReviewQueue`). The topology
 output includes the review-queue item ID so the user can:
 
 ```bash
-swarmkit review list <workspace>
-swarmkit review show <item-id> <workspace>
-swarmkit review approve <item-id> <workspace>
+swael review list <workspace>
+swael review show <item-id> <workspace>
+swael review approve <item-id> <workspace>
 ```
 
 ## Leader coordination model
@@ -199,7 +199,7 @@ reference/
 - **Golden-path test:** with mock provider, the topology produces a
   structured review output through all three leaders.
 - **Live pipeline test:** with a real provider + GitHub MCP server,
-  review a real PR on delivstat/swarmkit and verify the output includes
+  review a real PR on delivstat/swael and verify the output includes
   engineering, QA, and ops verdicts.
 
 ## Implementation plan

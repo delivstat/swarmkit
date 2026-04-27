@@ -1,5 +1,5 @@
 # Mixes stdio + http + sandboxed MCP servers (design §8.8, §18).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: mcp-heavy-workspace
@@ -26,12 +26,12 @@ mcp_servers:
     sandboxed: false
   - id: acme-internal-scaffolded
     transport: stdio
-    command: ["python", "-m", "acme_swarmkit.scaffolded_server"]
+    command: ["python", "-m", "acme_swael.scaffolded_server"]
     env:
       ACME_REGION: us-east-1
       ACME_LOG_LEVEL: "${LOG_LEVEL}"   # ${VAR} resolves from process env at startup
     sandboxed: true       # scaffolded by the Skill Authoring Swarm — Docker-isolated
-    sandbox_image: swarmkit-mcp-sandbox  # custom image with deps pre-installed
+    sandbox_image: swael-mcp-sandbox  # custom image with deps pre-installed
   - id: weather
     transport: http
     endpoint: https://mcp.example.com/weather

@@ -1,5 +1,5 @@
 # Adapted verbatim from design §6.6 — the canonical archetype example.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: code-review-worker

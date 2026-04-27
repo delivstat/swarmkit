@@ -1,5 +1,5 @@
 [project]
-name = "swarmkit-schema"
+name = "swael-schema"
 version = "1.0.2"
 description = "SwarmKit JSON Schemas + Python validator."
 readme = {text = "SwarmKit canonical JSON Schemas + Python validator. See https://github.com/delivstat/swarmkit", content-type = "text/markdown"}
@@ -29,4 +29,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/swarmkit_schema"]
+packages = ["src/swael_schema"]

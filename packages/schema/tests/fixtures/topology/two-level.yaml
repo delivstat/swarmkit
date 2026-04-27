@@ -1,5 +1,5 @@
 # Root with one leader with one worker. Smallest multi-agent case.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: two-level

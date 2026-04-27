@@ -1,6 +1,6 @@
 # Temporarily disabled trigger — loads but does not fire. Useful for
 # pausing a trigger without deleting it (audit-friendly).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: paused-weekend-run

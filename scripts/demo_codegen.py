@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from swarmkit_schema.models import (
+from swael_schema.models import (
     SwarmKitArchetype,
     SwarmKitSkill,
     SwarmKitTopology,

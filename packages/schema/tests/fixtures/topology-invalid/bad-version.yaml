@@ -1,5 +1,5 @@
 # metadata.version must be semver (\d+\.\d+\.\d+).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: broken

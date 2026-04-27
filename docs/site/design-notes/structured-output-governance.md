@@ -210,7 +210,7 @@ delegation) is extended:
 ### PR 1 (this PR): design note + output validator
 
 - This design note
-- `packages/runtime/src/swarmkit_runtime/skills/_output_validator.py`
+- `packages/runtime/src/swael_runtime/skills/_output_validator.py`
   — `validate_skill_output()` function + `FieldError` dataclass
 - Unit tests: valid output passes, type errors caught, range errors
   caught, enum errors caught, missing field caught

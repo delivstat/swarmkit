@@ -1,6 +1,6 @@
 # Two levels of subdirectory under skills/ — rejected by the discover()
 # one-level-only rule. Flat-or-one-level-group only.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: too-deep

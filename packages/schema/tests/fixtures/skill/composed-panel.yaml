@@ -1,5 +1,5 @@
 # Composition — a multi-persona panel (design §6.5, §8.6 Tier 3).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: multi-persona-panel

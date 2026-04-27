@@ -7,7 +7,7 @@ status: approved
 
 # Model provider abstraction
 
-**Scope:** `packages/runtime/src/swarmkit_runtime/model_providers/`
+**Scope:** `packages/runtime/src/swael_runtime/model_providers/`
 **Design reference:** §10.2 (agent `model` block), §13 (archetype defaults), §14.3 (LangGraph compiler dispatches to models), mirrors §8.5 (`GovernanceProvider`).
 **Status:** proposed — blocks **M3**.
 
@@ -29,13 +29,13 @@ This is the parallel of `GovernanceProvider` (§8.5): narrow interface, several 
 Three concrete forces push in the same direction:
 
 1. **User choice.** From the user's message on PR #5 review: agents should be configurable per-leader / per-worker / per-archetype. An engineering team running Opus on leaders and local Ollama on workers should not need a fork of the framework.
-2. **Vendor neutrality.** SwarmKit is positioned as the "Terraform for swarms." Committing the runtime to any one SDK fails that positioning. Anthropic is our own primary LLM, but the framework makes no assumption beyond "an LLM the user picked."
+2. **Vendor neutrality.** Swael is positioned as the "Terraform for swarms." Committing the runtime to any one SDK fails that positioning. Anthropic is our own primary LLM, but the framework makes no assumption beyond "an LLM the user picked."
 3. **Local inference.** Ollama and similar local runtimes matter for privacy-sensitive and cost-sensitive users. First-class support for local is a differentiator vs. frameworks that assume hosted APIs.
 
 ## API shape
 
 ```python
-# packages/runtime/src/swarmkit_runtime/model_providers/__init__.py
+# packages/runtime/src/swael_runtime/model_providers/__init__.py
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Sequence
@@ -64,7 +64,7 @@ class CompletionRequest:
     system: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
-    tools: Sequence[ToolSpec] | None = None     # canonical SwarmKit tool spec; adapter translates
+    tools: Sequence[ToolSpec] | None = None     # canonical Swael tool spec; adapter translates
     extra: dict[str, Any] | None = None         # provider-specific passthrough
 
 @dataclass(frozen=True)
@@ -80,7 +80,7 @@ class ModelProvider(ABC):
 
     Implementations must be importable without their backing SDK being
     installed if `supports(...)` can return False for every model. That lets
-    users install SwarmKit + only the SDKs they use.
+    users install Swael + only the SDKs they use.
     """
 
     provider_id: ClassVar[str]          # "anthropic", "openai", "google", "ollama", custom slugs
@@ -104,7 +104,7 @@ class ModelProvider(ABC):
 
 ## Built-in providers (v1.0)
 
-Ship in `packages/runtime/src/swarmkit_runtime/model_providers/builtin/`:
+Ship in `packages/runtime/src/swael_runtime/model_providers/builtin/`:
 
 | provider_id | SDK | Notes |
 |---|---|---|
@@ -114,10 +114,10 @@ Ship in `packages/runtime/src/swarmkit_runtime/model_providers/builtin/`:
 | `ollama` | `httpx` only (no SDK) | Local inference. Defaults to `http://localhost:11434`; `extra.base_url` overrides. |
 | `mock` | none | Deterministic responses keyed by request hash; test-only. Always importable. |
 
-Each SDK is a soft dependency: the provider module declares `provider_id` and attempts its import lazily. A user topology that names `provider: anthropic` fails at load time with a clean "anthropic SDK not installed; `pip install swarmkit-runtime[anthropic]`" message.
+Each SDK is a soft dependency: the provider module declares `provider_id` and attempts its import lazily. A user topology that names `provider: anthropic` fails at load time with a clean "anthropic SDK not installed; `pip install swael-runtime[anthropic]`" message.
 
 Ranking rationale (why these five):
-- **Anthropic** — SwarmKit's primary LLM partner; authoring swarms target Claude.
+- **Anthropic** — Swael's primary LLM partner; authoring swarms target Claude.
 - **OpenAI** — largest market share; users must have an easy path.
 - **Google** — rapidly closing the gap, notably cost-competitive for long context.
 - **Ollama** — the open-weights story. Covers most local setups including llama.cpp-compatible runtimes via its OpenAI-compatible endpoint.
@@ -127,12 +127,12 @@ Ranking rationale (why these five):
 
 Two layers:
 
-1. **Built-ins** — auto-registered when `swarmkit_runtime.model_providers` is imported. No user config needed.
-2. **Custom providers** — discovered via Python entry points group `swarmkit.model_providers`. A third-party package declares:
+1. **Built-ins** — auto-registered when `swael_runtime.model_providers` is imported. No user config needed.
+2. **Custom providers** — discovered via Python entry points group `swael.model_providers`. A third-party package declares:
 
    ```toml
-   [project.entry-points."swarmkit.model_providers"]
-   acme-cloud = "acme_swarmkit_plugin:AcmeModelProvider"
+   [project.entry-points."swael.model_providers"]
+   acme-cloud = "acme_swael_plugin:AcmeModelProvider"
    ```
 
    At runtime, `pkg_resources` / `importlib.metadata` enumerates entries in the group and registers each class.
@@ -169,11 +169,11 @@ Credentials are **never** in topology YAML. Topologies are shareable artifacts; 
 - **Topology loader** — after archetype merge, validates that every distinct `provider` referenced in the topology is registered. Fails fast with a list of missing providers.
 - **LangGraph compiler (M3)** — agent node functions receive a `ModelProvider` instance (resolved from the registry) and call `.complete(...)` / `.stream(...)`. No SDK imports outside provider modules.
 - **Authoring swarms (M7, M8)** — use the same abstraction. A user who only has Ollama installed can still author skills locally.
-- **`swarmkit eject` (M9)** — emits code that imports the same provider module. Ejected code depends on `swarmkit-runtime` at minimum; for full independence users can copy the provider they use. Document this trade.
+- **`swael eject` (M9)** — emits code that imports the same provider module. Ejected code depends on `swael-runtime` at minimum; for full independence users can copy the provider they use. Document this trade.
 
 ## Non-negotiable invariant (lands with this PR)
 
-**All LLM calls in the runtime go through `ModelProvider`.** Only files under `packages/runtime/src/swarmkit_runtime/model_providers/` may import Anthropic / OpenAI / Google / Ollama SDKs. Every other module receives a provider instance or a request object. Same rule as §8.5 for AGT imports. Enforced by review; a future lint rule could enforce mechanically.
+**All LLM calls in the runtime go through `ModelProvider`.** Only files under `packages/runtime/src/swael_runtime/model_providers/` may import Anthropic / OpenAI / Google / Ollama SDKs. Every other module receives a provider instance or a request object. Same rule as §8.5 for AGT imports. Enforced by review; a future lint rule could enforce mechanically.
 
 ## Test plan
 
@@ -181,7 +181,7 @@ Credentials are **never** in topology YAML. Topologies are shareable artifacts; 
 - **Unit — registry:** built-ins register on import; conflicting IDs raise; entry-point discovery is mocked via `importlib.metadata.entry_points`.
 - **Unit — per-provider adapters:** each built-in adapter is tested with **recorded** responses (a tiny cassette format under `tests/fixtures/model-responses/`). No network in unit tests.
 - **Integration — live APIs:** gated on `ANTHROPIC_API_KEY` etc. env vars with `pytest.mark.integration`. Skipped locally unless the key is present; run nightly in a separate CI workflow (not the PR pipeline).
-- **Negative:** topology referencing a non-registered provider fails `swarmkit validate` with a clear error pointing at the offending agent.
+- **Negative:** topology referencing a non-registered provider fails `swael validate` with a clear error pointing at the offending agent.
 
 ## Demo plan
 

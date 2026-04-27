@@ -1,6 +1,6 @@
 # Basic weekday-morning cron. Conventionally lives under workspace/schedules/
 # (just directory convention — kind is still Trigger).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: daily-code-review

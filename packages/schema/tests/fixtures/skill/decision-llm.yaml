@@ -1,6 +1,6 @@
 # Decision skill implemented as a single LLM call (the Tier 2 judge shape
 # from design §8.6 / §17.2).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: llm-judge-correctness

@@ -13,11 +13,11 @@ from pathlib import Path
 import pytest
 import yaml
 from agentmesh import AgentIdentity
-from swarmkit_runtime.governance import (
+from swael_runtime.governance import (
     AgentCredential,
     AuditEvent,
 )
-from swarmkit_runtime.governance.agt_provider import AGTGovernanceProvider
+from swael_runtime.governance.agt_provider import AGTGovernanceProvider
 
 
 @pytest.fixture()

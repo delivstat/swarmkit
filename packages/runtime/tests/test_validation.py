@@ -18,17 +18,17 @@ from typing import Any
 
 import pytest
 import yaml as pyyaml
-from swarmkit_runtime.errors import (
+from swael_runtime.errors import (
     ResolutionError,
     ResolutionErrors,
     yaml_pointer,
 )
-from swarmkit_runtime.resolver import (
+from swael_runtime.resolver import (
     errors_or_raise,
     resolution_error_from_discovery,
     validate_discovered,
 )
-from swarmkit_runtime.workspace import (
+from swael_runtime.workspace import (
     ArtifactKindMismatchError,
     DeepNestingError,
     DiscoveredArtifact,
@@ -112,7 +112,7 @@ def test_validate_discovered_flags_required_field() -> None:
     artifact = _artifact(
         "topology",
         {
-            "apiVersion": "swarmkit/v1",
+            "apiVersion": "swael/v1",
             "kind": "Topology",
             "metadata": {"name": "broken", "version": "0.1.0"},
             "agents": {},
@@ -129,7 +129,7 @@ def test_validate_discovered_flags_enum_mismatch() -> None:
     artifact = _artifact(
         "topology",
         {
-            "apiVersion": "swarmkit/v1",
+            "apiVersion": "swael/v1",
             "kind": "Topology",
             "metadata": {"name": "broken", "version": "0.1.0"},
             "agents": {
@@ -148,7 +148,7 @@ def test_validate_discovered_flags_pattern_mismatch() -> None:
     artifact = _artifact(
         "skill",
         {
-            "apiVersion": "swarmkit/v1",
+            "apiVersion": "swael/v1",
             "kind": "Skill",
             "metadata": {
                 "id": "Bad_ID",  # uppercase + underscore — violates the id pattern
@@ -172,7 +172,7 @@ def test_validate_discovered_aggregates_across_artifacts() -> None:
     broken_topology = _artifact(
         "topology",
         {
-            "apiVersion": "swarmkit/v1",
+            "apiVersion": "swael/v1",
             "kind": "Topology",
             "metadata": {"name": "x", "version": "0.1.0"},
             # agents.root missing entirely
@@ -182,7 +182,7 @@ def test_validate_discovered_aggregates_across_artifacts() -> None:
     broken_skill = _artifact(
         "skill",
         {
-            "apiVersion": "swarmkit/v1",
+            "apiVersion": "swael/v1",
             "kind": "Skill",
             "metadata": {
                 "id": "bad-id",
@@ -197,7 +197,7 @@ def test_validate_discovered_aggregates_across_artifacts() -> None:
     broken_archetype = _artifact(
         "archetype",
         {
-            "apiVersion": "swarmkit/v1",
+            "apiVersion": "swael/v1",
             "kind": "Archetype",
             "metadata": {"id": "x", "name": "x", "description": "a" * 12},
             # role missing entirely

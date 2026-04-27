@@ -1,6 +1,6 @@
 ---
 title: MCP client integration
-description: How SwarmKit connects to MCP servers for capability skill execution. Client lifecycle, governance gating, server registry.
+description: How Swael connects to MCP servers for capability skill execution. Client lifecycle, governance gating, server registry.
 tags: [mcp, skills, capability, m5]
 status: proposed
 ---
@@ -16,7 +16,7 @@ declared in the workspace config and managed by the runtime.
 
 ## Non-goals
 
-- **Building MCP servers.** SwarmKit is a client. Community MCP servers
+- **Building MCP servers.** Swael is a client. Community MCP servers
   (7,260+ available) provide the tools.
 - **Sandboxed server lifecycle.** Docker-based MCP server supervision
   (§8.8) is a follow-up. For M5, servers are started externally.

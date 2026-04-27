@@ -1,4 +1,4 @@
-<!-- Every SwarmKit PR follows this template. See CLAUDE.md "Feature delivery workflow." -->
+<!-- Every Swael PR follows this template. See CLAUDE.md "Feature delivery workflow." -->
 
 ## Summary
 
@@ -6,7 +6,7 @@
 
 ## Design reference
 
-<!-- Link the design note: design/details/<slug>.md — or the section of design/SwarmKit-Design-v0.6.md this implements (e.g. §14.3). -->
+<!-- Link the design note: design/details/<slug>.md — or the section of design/Swael-Design-v0.6.md this implements (e.g. §14.3). -->
 
 ## Tests
 

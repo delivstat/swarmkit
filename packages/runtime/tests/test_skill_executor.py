@@ -8,13 +8,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.governance._mock import MockGovernanceProvider
-from swarmkit_runtime.langgraph_compiler._skill_executor import execute_skill
-from swarmkit_runtime.model_providers import (
+from swael_runtime.governance._mock import MockGovernanceProvider
+from swael_runtime.langgraph_compiler._skill_executor import execute_skill
+from swael_runtime.model_providers import (
     MockModelProvider,
 )
-from swarmkit_runtime.resolver import resolve_workspace
-from swarmkit_runtime.skills import ResolvedSkill
+from swael_runtime.resolver import resolve_workspace
+from swael_runtime.skills import ResolvedSkill
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 SCOPED_WS = FIXTURES / "workspaces" / "resolved-tree"

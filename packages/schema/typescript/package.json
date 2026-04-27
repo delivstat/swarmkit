@@ -1,7 +1,7 @@
 {
-  "name": "@swarmkit/schema",
+  "name": "@swael/schema",
   "version": "0.0.1",
-  "description": "SwarmKit JSON Schemas + TypeScript validator.",
+  "description": "Swael JSON Schemas + TypeScript validator.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,5 @@
 # implementation requires a `type` discriminator.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: broken

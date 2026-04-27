@@ -1,5 +1,5 @@
 # kind must be "Topology".
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: NotATopology
 metadata:
   name: broken

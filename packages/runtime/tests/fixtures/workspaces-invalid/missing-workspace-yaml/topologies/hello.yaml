@@ -1,6 +1,6 @@
 # This workspace has topologies/ but no workspace.yaml at the root.
 # Discovery must fail with MissingWorkspaceFileError.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: hello

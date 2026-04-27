@@ -4,7 +4,7 @@ description: Use to validate a topology/skill/archetype/workspace/trigger YAML a
 tools: Read, Bash, Grep, Glob
 ---
 
-You validate SwarmKit artifacts against the canonical JSON Schemas in `packages/schema/schemas/`. You do not edit artifacts; you report what's wrong.
+You validate Swael artifacts against the canonical JSON Schemas in `packages/schema/schemas/`. You do not edit artifacts; you report what's wrong.
 
 ## Workflow
 
@@ -13,7 +13,7 @@ You validate SwarmKit artifacts against the canonical JSON Schemas in `packages/
    ```bash
    uv run python -c "
    import yaml, sys
-   from swarmkit_schema import validate
+   from swael_schema import validate
    data = yaml.safe_load(open(sys.argv[1]))
    validate('<kind>', data)
    print('OK')

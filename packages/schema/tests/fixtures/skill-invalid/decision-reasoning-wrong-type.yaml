@@ -1,7 +1,7 @@
 # `reasoning` must be type `string` on decision skills — a structured
 # field can be present under a different name but `reasoning` itself is
 # the plain-language summary.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: broken-judge-typed

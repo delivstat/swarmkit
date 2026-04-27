@@ -1,8 +1,8 @@
 {
-  "name": "swarmkit-workspace",
+  "name": "swael-workspace",
   "version": "0.0.0",
   "private": true,
-  "description": "SwarmKit monorepo root — not published. See packages/ for distributable projects.",
+  "description": "Swael monorepo root — not published. See packages/ for distributable projects.",
   "license": "MIT",
   "packageManager": "pnpm@9.12.0",
   "scripts": {

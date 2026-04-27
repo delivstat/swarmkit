@@ -33,7 +33,7 @@ This keeps one shape, one registry, one discriminator enum. If a future v2 needs
 ### Top-level structure
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: daily-code-review
@@ -59,7 +59,7 @@ Required. Exactly one of:
 | `cron` | Schedule tick at a given cadence | `{ expression: <5- or 6-field cron>, timezone?: <IANA zone> }` |
 | `webhook` | HTTP POST to an exposed endpoint | `{ path, auth?: {...}, credentials_ref?: <workspace credential name> }` |
 | `file_watch` | Filesystem change event | `{ root, pattern, events: [created, modified, deleted, moved] }` |
-| `manual` | `swarmkit trigger fire <id>` or the UI "Run now" button | no config required |
+| `manual` | `swael trigger fire <id>` or the UI "Run now" button | no config required |
 | `plugin` | Third-party `TriggerProvider` registered via entry points | `provider_id` required + arbitrary `config` |
 
 Matches the uniform `{ source/type, config }` pattern already established for credentials and model-providers — future trigger backends go through `type: plugin` with a `provider_id`, graduating to built-in only when wide enough demand exists.
@@ -88,10 +88,10 @@ provider_id: acme-kafka-trigger
 config:
   bootstrap_servers: [kafka.acme.internal:9092]
   topic: agent-tasks
-  group_id: swarmkit-consumer
+  group_id: swael-consumer
 ```
 
-Registered via Python entry points group `swarmkit.trigger_providers` — mirror of ModelProvider / SecretsProvider. Schema enforces `provider_id` presence when `type: plugin`.
+Registered via Python entry points group `swael.trigger_providers` — mirror of ModelProvider / SecretsProvider. Schema enforces `provider_id` presence when `type: plugin`.
 
 ## What's not in the schema
 

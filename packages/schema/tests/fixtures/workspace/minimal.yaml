@@ -1,6 +1,6 @@
 # Smallest valid workspace — metadata only; runtime applies defaults for
 # governance (agt), identity (builtin), storage (sqlite).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: hello-workspace

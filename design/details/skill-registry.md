@@ -9,7 +9,7 @@ status: proposed
 
 ## Goal
 
-SwarmKit users should find and install pre-built skills from the
+Swael users should find and install pre-built skills from the
 community instead of writing everything from scratch. The ecosystem
 has converged on two standards — both should be importable.
 
@@ -50,8 +50,8 @@ Progressive disclosure: ~100 tokens metadata at startup,
 <5000 tokens body on activation, reference files on demand.
 ```
 
-**Conversion to SwarmKit:** near-trivial — YAML frontmatter with
-kebab-case IDs maps to SwarmKit's skill schema. The markdown body
+**Conversion to Swael:** near-trivial — YAML frontmatter with
+kebab-case IDs maps to Swael's skill schema. The markdown body
 becomes the skill's instruction content.
 
 ### MCP servers
@@ -62,19 +62,19 @@ becomes the skill's instruction content.
   - github.com/modelcontextprotocol/servers (84K stars) — official
     reference servers (filesystem, git, fetch, memory)
   - Covers: databases, cloud platforms, APIs, search, communication
-- **SwarmKit support:** already designed (§18). MCP tools are the
+- **Swael support:** already designed (§18). MCP tools are the
   implementation backend for capability skills.
 
 ### Other pools
 
-| Source | Count | Format | SwarmKit path |
+| Source | Count | Format | Swael path |
 |---|---|---|---|
 | LangChain tools | 600+ | Python classes | Runtime bridge (we compile to LangGraph) |
 | Composio | 1,000+ | OpenAPI specs | Via Composio's MCP server |
 | CrewAI tools | 60+ | Python classes | Wrap as skill implementation |
 | OpenAI GPT Actions | 34 | OpenAPI specs | Parse spec → skill YAML |
 
-## SwarmKit skill registry architecture
+## Swael skill registry architecture
 
 ### Three-layer model
 
@@ -82,14 +82,14 @@ becomes the skill's instruction content.
 Community sources (remote)
   ├── Agent Skills repos (SKILL.md)
   ├── MCP server catalogs
-  └── SwarmKit-native repos
+  └── Swael-native repos
 
-         ↓ swarmkit skill import / install
+         ↓ swael skill import / install
 
-Local registry (bundled with swarmkit-runtime)
+Local registry (bundled with swael-runtime)
   └── reference/skills/        ← 20+ pre-imported skills
 
-         ↓ swarmkit skill install <name>
+         ↓ swael skill install <name>
 
 Workspace skills/
   └── skills/<name>.yaml       ← workspace-local, validated
@@ -99,25 +99,25 @@ Workspace skills/
 
 ```bash
 # Install from the local registry into the workspace
-swarmkit skill install code-quality-review
+swael skill install code-quality-review
 
 # Import from a remote Agent Skills repo
-swarmkit skill import github.com/anthropics/skills/create-docx
+swael skill import github.com/anthropics/skills/create-docx
 
 # Import an MCP server as a skill source
-swarmkit skill import-mcp github.com/modelcontextprotocol/servers/filesystem
+swael skill import-mcp github.com/modelcontextprotocol/servers/filesystem
 
 # Search available skills (local registry + remote catalogs)
-swarmkit skill search "security"
+swael skill search "security"
 
 # List installed skills in the workspace
-swarmkit skill list
+swael skill list
 
 # List all available skills in the registry
-swarmkit skill list --available
+swael skill list --available
 ```
 
-### SKILL.md → SwarmKit YAML converter
+### SKILL.md → Swael YAML converter
 
 ```
 Input: SKILL.md
@@ -130,8 +130,8 @@ Input: SKILL.md
   ---
   # Instructions...
 
-Output: SwarmKit skill YAML
-  apiVersion: swarmkit/v1
+Output: Swael skill YAML
+  apiVersion: swael/v1
   kind: Skill
   metadata:
     id: code-quality-review
@@ -154,7 +154,7 @@ The converter:
 3. Infers `category` from content (or defaults to `capability`)
 4. Preserves markdown body as `implementation.content`
 5. Adds `provenance.source` tracking the origin repo
-6. Validates against SwarmKit's skill schema
+6. Validates against Swael's skill schema
 
 ### Authoring AI integration
 
@@ -211,9 +211,9 @@ Drawn from existing community repos:
 ## Implementation plan
 
 1. **Task #44:** Design note (this document) ✓
-2. **Task #45:** SKILL.md → SwarmKit YAML converter
+2. **Task #45:** SKILL.md → Swael YAML converter
 3. **Task #46:** Seed 20+ skills from community repos
-4. **Task #47:** `swarmkit skill install/search/list` CLI
+4. **Task #47:** `swael skill install/search/list` CLI
 5. **Follow-up:** Wire authoring AI to search registry before generating
 
 ## Non-goals (for now)
@@ -224,4 +224,4 @@ Drawn from existing community repos:
   by source (Anthropic, Google, MCP official). No rating system needed
   for v1.0.
 - **Automatic skill updates.** Version pinning via `provenance.version`;
-  updates are manual (`swarmkit skill update <name>`).
+  updates are manual (`swael skill update <name>`).

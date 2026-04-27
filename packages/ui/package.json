@@ -1,7 +1,7 @@
 {
-  "name": "@swarmkit/ui",
+  "name": "@swael/ui",
   "version": "0.0.1",
-  "description": "SwarmKit UI — topology composer, skill authoring interface, runtime dashboard.",
+  "description": "Swael UI — topology composer, skill authoring interface, runtime dashboard.",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "test": "node scripts/noop.mjs test"
   },
   "dependencies": {
-    "@swarmkit/schema": "workspace:*",
+    "@swael/schema": "workspace:*",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

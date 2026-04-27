@@ -1,12 +1,12 @@
 # Changelog
 
-All notable changes to SwarmKit are documented here.
+All notable changes to Swael are documented here.
 
 ## [1.0.0] — 2026-04-26
 
 ### The first release
 
-SwarmKit v1.0 ships a complete framework for composing, running, and
+Swael v1.0 ships a complete framework for composing, running, and
 growing multi-agent AI swarms. Topology-as-data, skills-as-extension,
 governance-built-in.
 
@@ -15,7 +15,7 @@ governance-built-in.
 - **CLI:** `validate`, `run` (with `--verbose`), `init`, `author`
   (with `--thorough`), `edit`, `serve`, `status`, `logs`, `why`,
   `ask`, `knowledge-pack`, `knowledge-server`, `review`, `gaps`
-- **HTTP server:** `swarmkit serve` — FastAPI wrapping WorkspaceRuntime
+- **HTTP server:** `swael serve` — FastAPI wrapping WorkspaceRuntime
 - **LangGraph compiler:** topology YAML → executable StateGraph with
   arbitrary-depth agent trees, delegation, skill dispatch
 - **7 model providers:** Anthropic, Google, OpenAI, OpenRouter, Groq,

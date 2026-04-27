@@ -1,5 +1,5 @@
 # Root with a leader that has a sub-leader. Tests recursion beyond three levels.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: nested

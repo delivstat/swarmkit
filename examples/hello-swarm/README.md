@@ -1,10 +1,10 @@
 # hello-swarm
 
-SwarmKit's on-ramp example — the smallest workspace that still exercises
+Swael's on-ramp example — the smallest workspace that still exercises
 every piece of the mental model: a topology that references an archetype
 that references a skill.
 
-Milestone 1 closes with this example. `swarmkit validate` against
+Milestone 1 closes with this example. `swael validate` against
 `workspace/` resolves cleanly; against `workspace-broken/` it prints the
 kind of error a first-time user will actually hit.
 
@@ -15,7 +15,7 @@ Prerequisites: Python 3.11+, [`uv`](https://astral.sh/uv), and optionally
 this example is pure Python.
 
 ```bash
-git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
+git clone git@github.com:delivstat/swael.git && cd swael
 uv sync --all-packages            # installs runtime + schema
 just demo-resolver                # runs both workspaces below
 ```
@@ -23,8 +23,8 @@ just demo-resolver                # runs both workspaces below
 Without `just`, run the CLI directly:
 
 ```bash
-uv run swarmkit validate examples/hello-swarm/workspace --tree
-uv run swarmkit validate examples/hello-swarm/workspace-broken
+uv run swael validate examples/hello-swarm/workspace --tree
+uv run swael validate examples/hello-swarm/workspace-broken
 ```
 
 The first exits `0` and prints the resolved agent tree. The second exits
@@ -36,7 +36,7 @@ via env vars (or rely on the agent's declared provider):
 
 ```bash
 SWARMKIT_PROVIDER=google SWARMKIT_MODEL=gemini-2.5-flash \
-  uv run swarmkit run examples/hello-swarm/workspace hello \
+  uv run swael run examples/hello-swarm/workspace hello \
   --input "Greet the engineering team"
 ```
 

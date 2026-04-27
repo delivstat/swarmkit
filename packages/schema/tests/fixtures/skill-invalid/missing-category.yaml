@@ -1,5 +1,5 @@
 # category is required.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: broken

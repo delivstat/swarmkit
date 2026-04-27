@@ -27,7 +27,7 @@ Promote the v0.6 skill sketch (§6.3) into a full JSON Schema v1 spec. Enforces 
 ### Top-level structure
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: code-quality-review

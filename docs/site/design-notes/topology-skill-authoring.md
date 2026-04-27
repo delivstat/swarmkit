@@ -1,6 +1,6 @@
 ---
 title: Skill Authoring Swarm — multi-agent topology for creating and editing swarm artifacts
-description: A multi-agent swarm that creates new skills/topologies/archetypes and edits existing ones through conversation. Demonstrates SwarmKit dogfooding — the framework builds itself.
+description: A multi-agent swarm that creates new skills/topologies/archetypes and edits existing ones through conversation. Demonstrates Swael dogfooding — the framework builds itself.
 tags: [topology, reference, authoring, m7]
 status: proposed
 ---
@@ -9,7 +9,7 @@ status: proposed
 
 ## Goal
 
-Replace the single-agent authoring flow (`swarmkit author`) with a
+Replace the single-agent authoring flow (`swael author`) with a
 multi-agent swarm that produces higher-quality artifacts through
 specialization. Each agent has one job — conversation, schema drafting,
 existing-skill search, design-grounded validation, test generation,
@@ -21,7 +21,7 @@ create new ones. Users can conversationally modify a running swarm
 based on their experience — "my code review swarm misses dependency
 vulnerabilities, add a skill for that."
 
-This is SwarmKit dogfooding — the framework uses its own multi-agent
+This is Swael dogfooding — the framework uses its own multi-agent
 solution to build itself.
 
 ## Why multi-agent instead of improving the single agent
@@ -130,10 +130,10 @@ and the swarm figures out what files to change.
 
 | Agent | Skills | MCP server |
 |---|---|---|
-| knowledge-searcher | query-swarmkit-docs, list-reference-skills, get-schema | swarmkit-knowledge |
-| schema-drafter | get-schema, read-workspace-file | swarmkit-knowledge |
-| validator | validate-workspace, query-swarmkit-docs | swarmkit-knowledge |
-| test-writer | get-schema | swarmkit-knowledge |
+| knowledge-searcher | query-swael-docs, list-reference-skills, get-schema | swael-knowledge |
+| schema-drafter | get-schema, read-workspace-file | swael-knowledge |
+| validator | validate-workspace, query-swael-docs | swael-knowledge |
+| test-writer | get-schema | swael-knowledge |
 | publisher | write-files | (filesystem, via tool) |
 | conversation-leader | (none — delegates only) | — |
 
@@ -175,9 +175,9 @@ the **quality path** — more tokens, more thorough, better for
 complex artifacts and edits.
 
 Both are accessible via CLI:
-- `swarmkit author skill` → quick path (single agent, existing M3.5)
-- `swarmkit author skill --thorough` → quality path (this swarm)
-- `swarmkit edit <workspace>` → edit mode (this swarm, always)
+- `swael author skill` → quick path (single agent, existing M3.5)
+- `swael author skill --thorough` → quality path (this swarm)
+- `swael edit <workspace>` → edit mode (this swarm, always)
 
 ## Dogfooding value
 
@@ -188,7 +188,7 @@ This topology exercises:
 - Provenance tracking
 - The full authoring → validation → publication pipeline
 
-If SwarmKit can't build itself effectively, it can't build anything
+If Swael can't build itself effectively, it can't build anything
 else effectively. Gaps found here directly improve the framework.
 
 ## Implementation plan
@@ -204,12 +204,12 @@ read-workspace-file. Archetypes: authoring-supervisor,
 conversation-leader, knowledge-searcher, schema-drafter, validator,
 test-writer, publisher.
 
-### PR 3: Authoring swarm topology + `swarmkit edit` CLI
+### PR 3: Authoring swarm topology + `swael edit` CLI
 
-The topology YAML + the `swarmkit edit` CLI command that launches
+The topology YAML + the `swael edit` CLI command that launches
 edit mode against an existing workspace.
 
 ### PR 4: Integration + live tests
 
 End-to-end: create a new skill via the authoring swarm, then edit
-an existing archetype to reference it. Verify via `swarmkit validate`.
+an existing archetype to reference it. Verify via `swael validate`.

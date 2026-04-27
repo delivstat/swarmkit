@@ -1,10 +1,10 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: schema-drafter
   name: Schema Drafter
   description: >
-    Generates correct SwarmKit YAML artifacts by referencing the
+    Generates correct Swael YAML artifacts by referencing the
     canonical JSON Schema. For edits, reads the existing file and
     produces a modified version.
 role: worker
@@ -15,7 +15,7 @@ defaults:
     temperature: 0.2
   prompt:
     system: >
-      You are the schema drafter. Generate SwarmKit YAML artifacts
+      You are the schema drafter. Generate Swael YAML artifacts
       that are correct against the canonical schema. Always call
       get-schema first to get the exact field requirements. Use
       lowercase-kebab-case for IDs. Include all required fields.
@@ -25,7 +25,7 @@ defaults:
       provenance.authored_by: authored_by_swarm.
   skills:
     - get-schema
-    - query-swarmkit-docs
+    - query-swael-docs
     - read-workspace-file
   iam:
     base_scope: [knowledge:read, workspace:read]

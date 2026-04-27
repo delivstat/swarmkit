@@ -1,5 +1,5 @@
 # Coordination skill — a peer handoff between leaders (design §5.3, §18.2).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: peer-handoff-qa

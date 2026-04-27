@@ -1,6 +1,6 @@
 # reference/
 
-The v1.0 reference artifacts — topologies, archetypes, and skills that ship with SwarmKit itself. These are normal YAML files that live in a user's workspace alongside their own artifacts. The ones here are the canonical examples curated by the project.
+The v1.0 reference artifacts — topologies, archetypes, and skills that ship with Swael itself. These are normal YAML files that live in a user's workspace alongside their own artifacts. The ones here are the canonical examples curated by the project.
 
 ## v1.0 scope (design §11, §13)
 
@@ -8,7 +8,7 @@ The v1.0 reference artifacts — topologies, archetypes, and skills that ship wi
 
 1. **Code Review Swarm** — multi-leader coordination (Engineering, QA, Operations). Demonstrates A2A handoffs, validation gates, LLM judges, guarded cross-leader channels, mandatory HITL on deploy.
 2. **Skill Authoring Swarm** — conversational skill authoring. Conversation Leader + specification workers + Review Leader + Test Execution Leader + Publication Worker.
-3. **Workspace Authoring Swarm** — bootstraps a new workspace end-to-end from conversation. The on-ramp topology for `swarmkit init`.
+3. **Workspace Authoring Swarm** — bootstraps a new workspace end-to-end from conversation. The on-ramp topology for `swael init`.
 
 ### ~15 archetypes
 

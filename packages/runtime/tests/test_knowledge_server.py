@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.knowledge._server import (
+from swael_runtime.knowledge._server import (
     _set_repo_root,
     get_design_note,
     get_error_reference,
@@ -62,7 +62,7 @@ def test_search_max_results_respected() -> None:
 def test_get_schema_returns_valid_json_schema() -> None:
     schema = get_schema("skill")
     assert "$schema" in schema
-    assert schema["title"] == "SwarmKit Skill"
+    assert schema["title"] == "Swael Skill"
 
 
 def test_get_schema_unknown_type_returns_error() -> None:
@@ -165,7 +165,7 @@ def test_get_error_reference_unknown_code() -> None:
 def test_write_workspace_file_creates_skill(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
-    content = "apiVersion: swarmkit/v1\nkind: Skill\nmetadata:\n  id: test\n"
+    content = "apiVersion: swael/v1\nkind: Skill\nmetadata:\n  id: test\n"
     result = write_workspace_file(str(ws), "skills/test.yaml", content)
     assert "written" in result
     assert (ws / "skills" / "test.yaml").read_text() == content
@@ -195,7 +195,7 @@ def test_write_workspace_file_rejects_non_yaml(tmp_path: Path) -> None:
 def test_write_workspace_file_allows_workspace_yaml(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
-    result = write_workspace_file(str(ws), "workspace.yaml", "apiVersion: swarmkit/v1\n")
+    result = write_workspace_file(str(ws), "workspace.yaml", "apiVersion: swael/v1\n")
     assert "written" in result
 
 

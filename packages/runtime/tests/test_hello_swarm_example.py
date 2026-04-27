@@ -11,8 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.errors import ResolutionErrors
-from swarmkit_runtime.resolver import resolve_workspace
+from swael_runtime.errors import ResolutionErrors
+from swael_runtime.resolver import resolve_workspace
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE = REPO_ROOT / "examples" / "hello-swarm"

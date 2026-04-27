@@ -1,7 +1,7 @@
 """Generate pydantic v2 models from the canonical JSON Schemas.
 
 Writes one module per schema into
-`packages/schema/python/src/swarmkit_schema/models/` plus an `__init__.py`
+`packages/schema/python/src/swael_schema/models/` plus an `__init__.py`
 that re-exports the root model of each artifact type.
 
 The canonical JSON Schemas are the source of truth (see
@@ -22,7 +22,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMAS_DIR = REPO_ROOT / "packages" / "schema" / "schemas"
-OUTPUT_DIR = REPO_ROOT / "packages" / "schema" / "python" / "src" / "swarmkit_schema" / "models"
+OUTPUT_DIR = REPO_ROOT / "packages" / "schema" / "python" / "src" / "swael_schema" / "models"
 
 # Map <artifact-name> -> <root class name exported from the generated module>.
 # Must match `title` in each .schema.json (datamodel-code-generator defaults

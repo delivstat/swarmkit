@@ -1,5 +1,5 @@
 # model_provider registration requires both class and provider_id.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: broken

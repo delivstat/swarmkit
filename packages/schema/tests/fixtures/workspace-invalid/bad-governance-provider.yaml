@@ -1,5 +1,5 @@
 # governance.provider must be agt | mock | custom.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: broken

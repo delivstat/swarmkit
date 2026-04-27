@@ -1,6 +1,6 @@
-# SwarmKit — Machine Migration & Local LLM Setup Guide
+# Swael — Machine Migration & Local LLM Setup Guide
 
-Complete setup instructions for migrating the SwarmKit development environment to a new machine with local LLM inference via Ollama.
+Complete setup instructions for migrating the Swael development environment to a new machine with local LLM inference via Ollama.
 
 ## Prerequisites
 
@@ -8,13 +8,13 @@ Complete setup instructions for migrating the SwarmKit development environment t
 
 - **Minimum:** Any machine with internet access (for Ollama cloud models)
 - **For local inference:** 24-48GB+ VRAM (for Qwen 3 32B/72B)
-- **Disk:** 20GB free for SwarmKit + dependencies
+- **Disk:** 20GB free for Swael + dependencies
 
 ### Software needed
 
 | Tool | Purpose |
 |---|---|
-| Python 3.11+ | SwarmKit runtime |
+| Python 3.11+ | Swael runtime |
 | uv | Python package manager |
 | Node.js 22+ | MCP servers, Claude Code, pnpm |
 | pnpm | TypeScript package manager |
@@ -114,18 +114,18 @@ ollama run kimi-k2.6:cloud "Say hello"
 ollama run qwen3:32b "Say hello"
 ```
 
-## Step 6: Clone SwarmKit
+## Step 6: Clone Swael
 
 ```bash
 cd ~/development  # or your preferred directory
-git clone git@github.com:delivstat/swarmkit.git
-cd swarmkit
+git clone git@github.com:delivstat/swael.git
+cd swael
 
 # Checkout the current working branch
 git checkout fix/authoring-validate-before-write
 ```
 
-## Step 7: Install SwarmKit dependencies
+## Step 7: Install Swael dependencies
 
 ```bash
 # Python packages (runtime + schema + dev tools)
@@ -139,7 +139,7 @@ pnpm install
 
 ```bash
 # 1. Validate the hello-swarm example
-uv run swarmkit validate examples/hello-swarm/workspace --tree
+uv run swael validate examples/hello-swarm/workspace --tree
 
 # Expected output:
 # ✓ workspace: hello-swarm
@@ -157,14 +157,14 @@ uv run pytest packages/runtime/tests -q
 
 # 3. Run the hello-swarm with your model
 SWARMKIT_PROVIDER=ollama SWARMKIT_MODEL=kimi-k2.6:cloud \
-  uv run swarmkit run examples/hello-swarm/workspace hello \
+  uv run swael run examples/hello-swarm/workspace hello \
   --input "Greet the engineering team"
 
 # Expected: a greeting from the model
 
 # 4. Test the authoring flow
 SWARMKIT_PROVIDER=ollama SWARMKIT_MODEL=kimi-k2.6:cloud \
-  uv run swarmkit init ./test-workspace
+  uv run swael init ./test-workspace
 
 # Expected: interactive conversation asking what the swarm should do
 # Type 'exit' to end the session
@@ -180,13 +180,13 @@ context across machines.
 
 ```bash
 # Package the memory files
-tar czf ~/swarmkit-memory.tar.gz \
-  ~/.claude/projects/-root-development-swarmkit/
+tar czf ~/swael-memory.tar.gz \
+  ~/.claude/projects/-root-development-swael/
 
 # Transfer to new machine (pick one)
-scp ~/swarmkit-memory.tar.gz new-machine:~/
+scp ~/swael-memory.tar.gz new-machine:~/
 # or
-rsync -avz ~/swarmkit-memory.tar.gz new-machine:~/
+rsync -avz ~/swael-memory.tar.gz new-machine:~/
 # or copy via USB drive / cloud storage
 ```
 
@@ -198,11 +198,11 @@ mkdir -p ~/.claude/projects/
 
 # Extract the memory
 # Note: adjust --strip-components based on your source path depth
-tar xzf ~/swarmkit-memory.tar.gz -C ~/.claude/projects/ \
+tar xzf ~/swael-memory.tar.gz -C ~/.claude/projects/ \
   --strip-components=3
 
 # Verify
-ls ~/.claude/projects/-root-development-swarmkit/memory/
+ls ~/.claude/projects/-root-development-swael/memory/
 # Should show: MEMORY.md and various .md memory files
 ```
 
@@ -220,8 +220,8 @@ ls ~/.claude/projects/-root-development-swarmkit/memory/
 ```bash
 npm install -g @anthropic-ai/claude-code
 
-# Start Claude Code in the SwarmKit directory
-cd ~/development/swarmkit
+# Start Claude Code in the Swael directory
+cd ~/development/swael
 claude
 ```
 
@@ -231,37 +231,37 @@ Claude Code will automatically load:
 
 ---
 
-## Quick reference: running SwarmKit with your model
+## Quick reference: running Swael with your model
 
 ```bash
 # Authoring — create a workspace
 SWARMKIT_PROVIDER=ollama SWARMKIT_MODEL=kimi-k2.6:cloud \
-  uv run swarmkit init ./my-workspace
+  uv run swael init ./my-workspace
 
 # Authoring — add a skill to existing workspace
 SWARMKIT_PROVIDER=ollama SWARMKIT_MODEL=kimi-k2.6:cloud \
-  uv run swarmkit author skill ./my-workspace
+  uv run swael author skill ./my-workspace
 
 # Authoring — add an MCP server
 SWARMKIT_PROVIDER=ollama SWARMKIT_MODEL=kimi-k2.6:cloud \
-  uv run swarmkit author mcp-server ./my-workspace
+  uv run swael author mcp-server ./my-workspace
 
 # Validate a workspace
-uv run swarmkit validate ./my-workspace --tree
+uv run swael validate ./my-workspace --tree
 
 # Run a topology
 SWARMKIT_PROVIDER=ollama SWARMKIT_MODEL=kimi-k2.6:cloud \
-  uv run swarmkit run ./my-workspace <topology-name> \
+  uv run swael run ./my-workspace <topology-name> \
   --input "your task here"
 
 # Bundle knowledge pack
-uv run swarmkit knowledge-pack ./my-workspace -o pack.md
+uv run swael knowledge-pack ./my-workspace -o pack.md
 
 # List review items
-uv run swarmkit review list ./my-workspace
+uv run swael review list ./my-workspace
 
 # List skill gaps
-uv run swarmkit gaps ./my-workspace
+uv run swael gaps ./my-workspace
 ```
 
 ## Environment variables reference
@@ -306,7 +306,7 @@ ollama pull kimi-k2.6:cloud
 ```bash
 # Check Python version
 python3 --version
-# SwarmKit requires 3.11+
+# Swael requires 3.11+
 # If using pyenv:
 pyenv install 3.11
 pyenv local 3.11
@@ -324,6 +324,6 @@ uv run pytest packages/runtime/tests -q
 
 ```bash
 # Verify memory files are in the right place
-ls ~/.claude/projects/-root-development-swarmkit/memory/MEMORY.md
+ls ~/.claude/projects/-root-development-swael/memory/MEMORY.md
 # If missing, re-extract from the tar backup
 ```

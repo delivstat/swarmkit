@@ -1,4 +1,4 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: authoring-supervisor
@@ -17,7 +17,7 @@ defaults:
   prompt:
     system: >
       You are the authoring supervisor. Coordinate the creation or
-      modification of SwarmKit artifacts through your specialist
+      modification of Swael artifacts through your specialist
       agents. For new artifacts: delegate to conversation-leader to
       understand intent, then knowledge-searcher to check what exists,
       then schema-drafter to generate YAML, then validator to check

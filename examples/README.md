@@ -1,6 +1,6 @@
 # examples/
 
-Runnable demos for SwarmKit features. Every feature's PR either adds or links to an example here.
+Runnable demos for Swael features. Every feature's PR either adds or links to an example here.
 
 ## Rules
 

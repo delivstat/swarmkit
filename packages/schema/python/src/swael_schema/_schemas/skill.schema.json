@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swael.dev/v1/skill.schema.json",
+  "title": "Swael Skill",
+  "description": "A discrete capability an agent can exercise. See design §6 and design/details/skill-schema-v1.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "category", "implementation", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "swael/v1" },
+    "kind": { "const": "Skill" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "category": {
+      "enum": ["capability", "decision", "coordination", "persistence"],
+      "description": "Runtime semantics differ by category (design §6.2)."
+    },
+    "inputs": {
+      "type": "object",
+      "description": "JSON Schema (draft 2020-12) defining the skill's input shape.",
+      "additionalProperties": true
+    },
+    "outputs": {
+      "type": "object",
+      "description": "JSON Schema defining the skill's output shape. Passed to providers for structured generation (Tier 0) and used for deterministic validation (Tier 1). See design/details/structured-output-governance.md.",
+      "additionalProperties": true
+    },
+    "implementation": { "$ref": "#/$defs/implementation" },
+    "iam": { "$ref": "#/$defs/iam" },
+    "constraints": { "$ref": "#/$defs/constraints" },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "allOf": [
+    {
+      "$comment": "Decision skills must emit a human-readable reasoning string so audits and reviews have a rationale alongside the verdict. See design/details/skill-schema-v1.md §'Decision-category output contract'.",
+      "if": {
+        "properties": { "category": { "const": "decision" } },
+        "required": ["category"]
+      },
+      "then": {
+        "required": ["outputs"],
+        "properties": {
+          "outputs": {
+            "required": ["properties"],
+            "properties": {
+              "properties": {
+                "required": ["reasoning"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "iam_scope": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*:[a-z*][a-z0-9_*-]*$",
+      "description": "namespace:action — e.g. repo:read, github:write, skills:activate, mcp_servers:*"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 10 }
+      }
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/field" }
+    },
+    "field": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": ["string", "number", "integer", "boolean", "enum", "object", "array"]
+        },
+        "required": { "type": "boolean" },
+        "description": { "type": "string" },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Required when type=enum."
+        },
+        "range": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[min, max] — only for number/integer."
+        },
+        "items": {
+          "$ref": "#/$defs/field",
+          "description": "Required when type=array."
+        },
+        "properties": {
+          "$ref": "#/$defs/fields",
+          "description": "Optional when type=object."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "enum" } }, "required": ["type"] },
+          "then": { "required": ["values"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "array" } }, "required": ["type"] },
+          "then": { "required": ["items"] }
+        }
+      ]
+    },
+    "implementation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "server", "tool"],
+          "properties": {
+            "type": { "const": "mcp_tool" },
+            "server": { "type": "string", "minLength": 1 },
+            "tool": { "type": "string", "minLength": 1 },
+            "arguments": { "type": "object" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "prompt"],
+          "properties": {
+            "type": { "const": "llm_prompt" },
+            "model": { "type": "object", "additionalProperties": true },
+            "prompt": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "composes"],
+          "properties": {
+            "type": { "const": "composed" },
+            "composes": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/identifier" }
+            },
+            "strategy": {
+              "enum": ["parallel-consensus", "sequential", "custom"]
+            }
+          }
+        }
+      ]
+    },
+    "iam": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required_scopes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/iam_scope" }
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_latency_ms": { "type": "integer", "minimum": 1 },
+        "timeout_seconds": { "type": "integer", "minimum": 1 },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "attempts": { "type": "integer", "minimum": 0 },
+            "backoff": { "enum": ["exponential", "linear", "none"] }
+          }
+        },
+        "on_failure": { "enum": ["escalate_to_human", "fail", "retry", "fallback"] }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authored_by", "version"],
+      "properties": {
+        "authored_by": {
+          "enum": [
+            "human",
+            "authored_by_swarm",
+            "derived_from_template",
+            "imported_from_registry",
+            "vendor_published"
+          ]
+        },
+        "authored_date": { "type": "string", "format": "date" },
+        "version": { "$ref": "#/$defs/semver" },
+        "registry": { "type": "string" },
+        "vendor": { "type": "string" }
+      }
+    }
+  }
+}

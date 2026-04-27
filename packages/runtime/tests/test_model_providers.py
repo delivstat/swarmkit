@@ -7,7 +7,7 @@ See ``design/details/model-provider-abstraction.md``.
 from __future__ import annotations
 
 import pytest
-from swarmkit_runtime.model_providers import (
+from swael_runtime.model_providers import (
     AnthropicModelProvider,
     CompletionRequest,
     CompletionResponse,

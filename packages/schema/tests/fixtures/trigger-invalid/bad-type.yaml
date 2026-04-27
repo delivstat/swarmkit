@@ -1,5 +1,5 @@
 # type must be one of cron | webhook | file_watch | manual | plugin.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: broken

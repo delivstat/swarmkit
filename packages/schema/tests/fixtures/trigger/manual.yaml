@@ -1,6 +1,6 @@
-# Smallest valid trigger — fired by `swarmkit trigger fire <id>` or the
+# Smallest valid trigger — fired by `swael trigger fire <id>` or the
 # "Run now" UI button. No config required.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: run-now

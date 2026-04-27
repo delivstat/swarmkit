@@ -1,6 +1,6 @@
 # Archetypes catalogue
 
-16 reference archetypes ship with SwarmKit.
+16 reference archetypes ship with Swael.
 
 ## Leaders
 
@@ -18,8 +18,8 @@
 | Archetype | Skills |
 |---|---|
 | github-reader | github-repo-read, github-pr-read |
-| code-analyst | code-quality-review, query-swarmkit-docs |
-| security-reviewer | security-scan, query-swarmkit-docs |
+| code-analyst | code-quality-review, query-swael-docs |
+| security-reviewer | security-scan, query-swael-docs |
 | test-analyst | test-coverage-review |
 | llm-judge | qa-verdict (or deploy-risk-review via override) |
 
@@ -27,8 +27,8 @@
 
 | Archetype | Skills |
 |---|---|
-| knowledge-searcher | query-swarmkit-docs, list-reference-skills, validate-workspace |
-| schema-drafter | get-schema, query-swarmkit-docs, read-workspace-file |
-| artifact-validator | validate-workspace, query-swarmkit-docs |
+| knowledge-searcher | query-swael-docs, list-reference-skills, validate-workspace |
+| schema-drafter | get-schema, query-swael-docs, read-workspace-file |
+| artifact-validator | validate-workspace, query-swael-docs |
 | test-writer | get-schema, write-workspace-file, run-tests |
 | artifact-publisher | write-workspace-file |

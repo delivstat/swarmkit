@@ -1,5 +1,5 @@
 # transport=http requires an `endpoint` string.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
   id: broken

@@ -1,7 +1,7 @@
 # Plugin trigger — provider_id names a TriggerProvider registered via the
-# `swarmkit.trigger_providers` entry-points group. Runtime validates the
+# `swael.trigger_providers` entry-points group. Runtime validates the
 # config shape; schema only enforces provider_id presence.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: kafka-agent-tasks
@@ -13,4 +13,4 @@ targets:
 config:
   bootstrap_servers: [kafka.acme.internal:9092]
   topic: agent-tasks
-  group_id: swarmkit-consumer
+  group_id: swael-consumer

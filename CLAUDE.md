@@ -2,7 +2,7 @@
 
 Primary project reference for Claude Code instances working in this repo. Read this first; it's a map, not a tutorial.
 
-## What SwarmKit is
+## What Swael is
 
 An open-source framework for composing, running, and **growing** multi-agent AI swarms. Three distinctive claims, in order of importance:
 
@@ -10,7 +10,7 @@ An open-source framework for composing, running, and **growing** multi-agent AI 
 2. **Skills are the only extension primitive.** Capability / decision / coordination / persistence — one mental model.
 3. **Swarms grow through human-approved authoring.** Gap detection → surface → author → test → publish, gated at every step.
 
-The authoritative architecture lives in `design/SwarmKit-Design-v0.6.md` — markdown, canonical, LLM-queryable. Read that when answering "what did the design say about X?" (The original `.docx` is archived under `design/archive/` as historical reference only; it is not authoritative and is not updated.)
+The authoritative architecture lives in `design/Swael-Design-v0.6.md` — markdown, canonical, LLM-queryable. Read that when answering "what did the design say about X?" (The original `.docx` is archived under `design/archive/` as historical reference only; it is not authoritative and is not updated.)
 
 **Status:** pre-v1.0. Design is at v0.6 and approved-in-principle. Phase 1 implementation (13–16 weeks per §20.1) has not started. This repo is currently scaffolding only.
 
@@ -19,7 +19,7 @@ The authoritative architecture lives in `design/SwarmKit-Design-v0.6.md` — mar
 Polyglot monorepo. Python runtime + TS UI + dual-language schema.
 
 ```
-swarmkit/
+swael/
 ├── design/              # Architecture docs (v0.6 current) — source of truth for decisions
 ├── packages/
 │   ├── runtime/         # Python: topology interpreter, LangGraph compiler, AGT wiring, CLI
@@ -79,10 +79,10 @@ The design doc is detailed and opinionated. Before making a non-trivial change, 
 
 These hold across the whole repo. Individual package `CLAUDE.md`s add more.
 
-1. **Topology-as-data, always.** No generating Python as the output of a "topology compiler" — we interpret. `swarmkit eject` is the one path that produces code, and it's a user-facing export, not a runtime mechanism.
+1. **Topology-as-data, always.** No generating Python as the output of a "topology compiler" — we interpret. `swael eject` is the one path that produces code, and it's a user-facing export, not a runtime mechanism.
 2. **Skills are the only extension primitive.** When tempted to add a parallel extension mechanism, ask how it could be a skill category or a composed skill instead.
-3. **All governance goes through the `GovernanceProvider` interface** (design §8.5). Only `packages/runtime/src/swarmkit_runtime/governance/` imports AGT directly.
-4. **All LLM calls go through the `ModelProvider` interface** (`design/details/model-provider-abstraction.md`). Only `packages/runtime/src/swarmkit_runtime/model_providers/` imports `anthropic` / `openai` / `google-genai` / Ollama's HTTP client. Same shape as the governance rule; same reasoning — no vendor lock-in at framework level.
+3. **All governance goes through the `GovernanceProvider` interface** (design §8.5). Only `packages/runtime/src/swael_runtime/governance/` imports AGT directly.
+4. **All LLM calls go through the `ModelProvider` interface** (`design/details/model-provider-abstraction.md`). Only `packages/runtime/src/swael_runtime/model_providers/` imports `anthropic` / `openai` / `google-genai` / Ollama's HTTP client. Same shape as the governance rule; same reasoning — no vendor lock-in at framework level.
 5. **Audit log is append-only from executive perspective.** No update/delete path exposed to agents, ever (design §8.3, §8.7).
 6. **Human approval gates are structural, not prompt-suggested.** Scopes reserved for human identity (`skills:activate`, `mcp_servers:deploy`, `topologies:modify`, `iam:modify`) are enforced by the policy engine — no agent can be granted them regardless of prompt (design §8.7).
 7. **Eject must stay intact.** Any runtime feature needs an ejection story — if it can't be expressed in generated LangGraph code, reconsider.
@@ -92,7 +92,7 @@ These hold across the whole repo. Individual package `CLAUDE.md`s add more.
 
 - **Python:** 3.11+, strict typing, `pydantic` for schema-shaped data, async-first for I/O, no bare `raise Exception`.
 - **TypeScript:** ES2022 target, strict mode with `noUncheckedIndexedAccess`, no default exports for library code, `biome` for formatting.
-- **YAML:** 2-space indent, lowercase-kebab IDs (pattern `^[a-z][a-z0-9-]*$`), `apiVersion: swarmkit/v1` at top of every artifact.
+- **YAML:** 2-space indent, lowercase-kebab IDs (pattern `^[a-z][a-z0-9-]*$`), `apiVersion: swael/v1` at top of every artifact.
 - **Markdown:** sentence case in headings, fenced code blocks with language tags, link to design sections by number not title.
 
 ## Feature delivery workflow — MANDATORY
@@ -125,7 +125,7 @@ Examples:
 
 ## When in doubt
 
-- Read the relevant section of `design/SwarmKit-Design-v0.6.md`.
+- Read the relevant section of `design/Swael-Design-v0.6.md`.
 - If the design is silent or contradictory, it's an open question — flag it in `design/` rather than deciding unilaterally.
 - The three pillars of the product story (topology-as-data, skills-as-extension, growth-through-authoring) are tie-breakers for architectural calls.
 
@@ -136,7 +136,7 @@ When cutting a release:
 1. **Bump versions** in `packages/runtime/pyproject.toml` and `packages/schema/python/pyproject.toml`.
 2. **Commit** the version bump.
 3. **Build** both packages: `uv build --all-packages` — verify both succeed.
-4. **Tag**: `git tag -a v1.x.y -m "SwarmKit v1.x.y — summary"`.
+4. **Tag**: `git tag -a v1.x.y -m "Swael v1.x.y — summary"`.
 5. **Push**: `git push origin v1.x.y` — triggers PyPI publish + Docker build via GitHub Actions.
 
 PyPI does not allow re-uploading the same version. If the tag is pushed before the version bump, the publish fails and requires deleting the tag, bumping, and re-tagging. Always bump first.

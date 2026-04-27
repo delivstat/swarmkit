@@ -1,5 +1,5 @@
 # Scopes must match ^[a-z][a-z0-9_-]*:[a-z*][a-z0-9_*-]*$ — uppercase rejected.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: broken

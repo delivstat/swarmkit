@@ -2,9 +2,9 @@
 
 ## Package identity
 
-`swarmkit-runtime` — the Python component of the three-package system. Loads topology files, compiles them into LangGraph graphs, enforces governance through the `GovernanceProvider` abstraction, and exposes the `swarmkit` CLI + FastAPI server.
+`swael-runtime` — the Python component of the three-package system. Loads topology files, compiles them into LangGraph graphs, enforces governance through the `GovernanceProvider` abstraction, and exposes the `swael` CLI + FastAPI server.
 
-The design doc is the authoritative source for architectural decisions — see `design/SwarmKit-Design-v0.6.md`. §9, §14, §16, §18 are the most relevant sections to this package.
+The design doc is the authoritative source for architectural decisions — see `design/Swael-Design-v0.6.md`. §9, §14, §16, §18 are the most relevant sections to this package.
 
 ## Module map
 
@@ -49,7 +49,7 @@ These come from the design's architectural principles and separation-of-powers m
 uv run pytest packages/runtime/tests             # tests
 uv run ruff check packages/runtime               # lint
 uv run mypy packages/runtime                     # typecheck
-uv run swarmkit --help                           # CLI entry
+uv run swael --help                           # CLI entry
 ```
 
 Or via the root justfile: `just test-py`, `just lint-py`, `just typecheck-py`.

@@ -18,12 +18,12 @@ jobs:
       - name: Build packages
         run: uv build --all-packages
 
-      - name: Publish swarmkit-schema
-        run: uv publish dist/swarmkit_schema-*.tar.gz dist/swarmkit_schema-*.whl
+      - name: Publish swael-schema
+        run: uv publish dist/swael_schema-*.tar.gz dist/swael_schema-*.whl
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
-      - name: Publish swarmkit-runtime
-        run: uv publish dist/swarmkit_runtime-*.tar.gz dist/swarmkit_runtime-*.whl
+      - name: Publish swael-runtime
+        run: uv publish dist/swael_runtime-*.tar.gz dist/swael_runtime-*.whl
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}

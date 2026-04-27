@@ -8,13 +8,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from swarmkit_runtime.governance import (
+from swael_runtime.governance import (
     AgentCredential,
     AuditEvent,
     GovernanceProvider,
     PolicyDecision,
 )
-from swarmkit_runtime.governance._mock import MockGovernanceProvider
+from swael_runtime.governance._mock import MockGovernanceProvider
 
 # ---- MockGovernanceProvider: evaluate_action ----------------------------
 

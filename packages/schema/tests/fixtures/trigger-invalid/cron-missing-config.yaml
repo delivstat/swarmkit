@@ -1,5 +1,5 @@
 # type=cron requires a config block (expression is then runtime-validated).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: broken

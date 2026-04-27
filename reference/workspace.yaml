@@ -1,11 +1,11 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Workspace
 metadata:
-  id: swarmkit-reference
-  name: SwarmKit Reference Workspace
+  id: swael-reference
+  name: Swael Reference Workspace
   description: >
     The v1.0 reference topologies, archetypes, and skills that ship
-    with SwarmKit. Used by just demo-code-review and as the canonical
+    with Swael. Used by just demo-code-review and as the canonical
     examples for new users.
 credentials:
   github-pat:
@@ -19,10 +19,10 @@ mcp_servers:
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
     credentials_ref: github-pat
-  - id: swarmkit-knowledge
+  - id: swael-knowledge
     transport: stdio
-    command: ["uv", "run", "python", "-m", "swarmkit_runtime.knowledge"]
+    command: ["uv", "run", "python", "-m", "swael_runtime.knowledge"]
 storage:
   checkpoints:
     backend: sqlite
-    path: ./.swarmkit/state
+    path: ./.swael/state

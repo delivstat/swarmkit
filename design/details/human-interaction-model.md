@@ -13,7 +13,7 @@ status: in-review
 
 ## Goal
 
-Specify the end-to-end experience of a human working with a running SwarmKit swarm: how they start it, monitor it, talk to it mid-run, and interact when the swarm pauses for approval. Close the gap that v0.6 leaves between authoring (well-specified, §14.2) and operation (under-specified).
+Specify the end-to-end experience of a human working with a running Swael swarm: how they start it, monitor it, talk to it mid-run, and interact when the swarm pauses for approval. Close the gap that v0.6 leaves between authoring (well-specified, §14.2) and operation (under-specified).
 
 ## Non-goals
 
@@ -33,7 +33,7 @@ Each layer has a distinct purpose and a distinct consumer.
 
 **Who knows about storage.** Skills do not. They emit events via `GovernanceProvider.record_event(event)` — one path, one contract. The governance provider delegates to a **pluggable `AuditProvider`** configured at the workspace level (see the "Storage pluggability" section below). Swapping backends — from the default SQLite to Postgres to AGT Agent SRE to a custom plugin — never touches skill code.
 
-SwarmKit pins the event schema so skill authors don't invent their own log shapes. Every skill invocation emits one event:
+Swael pins the event schema so skill authors don't invent their own log shapes. Every skill invocation emits one event:
 
 | Field | Type | Purpose |
 |---|---|---|
@@ -109,7 +109,7 @@ class AuditProvider(ABC):
         filters: Mapping[str, Any] | None = None,
         limit: int | None = None,
     ) -> AsyncIterator[AuditEvent]:
-        """Read-only query used by CLI primitives, `swarmkit ask`, and
+        """Read-only query used by CLI primitives, `swael ask`, and
         notification consumers."""
 
     @abstractmethod
@@ -127,7 +127,7 @@ class AuditProvider(ABC):
 | `agt` | AGT Agent SRE | compliance-heavy deployments |
 | `plugin` | entry-point-discovered | S3, OpenSearch, Datadog, Splunk, custom |
 
-**`sqlite` is default.** Zero-config path — a user running `swarmkit serve` gets a working audit log at `.swarmkit/audit.sqlite` without touching workspace.yaml.
+**`sqlite` is default.** Zero-config path — a user running `swael serve` gets a working audit log at `.swael/audit.sqlite` without touching workspace.yaml.
 
 **Workspace config** — extends the existing `storage.audit` block to the uniform `{ provider, provider_id?, config }` shape (matches `SecretsProvider`):
 
@@ -136,7 +136,7 @@ storage:
   audit:
     provider: sqlite                        # built-in
     config:
-      path: ./.swarmkit/audit.sqlite
+      path: ./.swael/audit.sqlite
       retention_days: 365
 
 # — or —
@@ -145,7 +145,7 @@ storage:
     provider: postgres
     config:
       url_ref: audit_db_url                 # credentials_ref — never literal
-      schema: swarmkit_audit
+      schema: swael_audit
       retention_days: 365
       pool_size: 10
 
@@ -156,7 +156,7 @@ storage:
     provider_id: acme-opensearch
     config:
       endpoint: https://search.acme.internal
-      index: swarmkit-audit
+      index: swael-audit
 ```
 
 **Skill-side invariant.** Skills call `governance.record_event(event)`. They never import an audit module. They never instantiate an `AuditProvider`. They never know whether events land in SQLite, Postgres, AGT's Agent SRE, or a plugin. This keeps the Separation of Powers clean (§8) and makes storage swaps safe.
@@ -171,23 +171,23 @@ Read the audit log + review queue directly. Fast, shell-pipeable, no token cost.
 
 | Command | Purpose |
 |---|---|
-| `swarmkit status` | Snapshot: running topologies, pending HITL items, last N runs with status |
-| `swarmkit logs <run-id> [--follow]` | Tail structured events for one run (JSON by default, `--pretty` for humans) |
-| `swarmkit events [--follow] [--filter ...]` | Cross-run event stream (filters: `--agent`, `--skill`, `--category`, `--since`, `--until`) |
-| `swarmkit review` | Interactive TUI: list pending HITL items, approve / reject / edit each |
-| `swarmkit stop <run-id>` | Graceful shutdown — sends a stop signal the runtime checkpoints against |
-| `swarmkit why <run-id>` | Decision chain — every decision-skill verdict in the run, in order, with reasoning |
+| `swael status` | Snapshot: running topologies, pending HITL items, last N runs with status |
+| `swael logs <run-id> [--follow]` | Tail structured events for one run (JSON by default, `--pretty` for humans) |
+| `swael events [--follow] [--filter ...]` | Cross-run event stream (filters: `--agent`, `--skill`, `--category`, `--since`, `--until`) |
+| `swael review` | Interactive TUI: list pending HITL items, approve / reject / edit each |
+| `swael stop <run-id>` | Graceful shutdown — sends a stop signal the runtime checkpoints against |
+| `swael why <run-id>` | Decision chain — every decision-skill verdict in the run, in order, with reasoning |
 
 **Output contract:** every command emits line-oriented JSON by default (one event per line, shell-friendly). `--pretty` (or detected TTY without `--json`) switches to a human-formatted variant. This matches `kubectl`, `gh`, `heroku` conventions.
 
 **No LLM, no network (beyond the audit store), no token cost.** A user on a box with no internet or no LLM credentials can still monitor.
 
-### Layer 3 — `swarmkit ask "..."` (conversational observer)
+### Layer 3 — `swael ask "..."` (conversational observer)
 
 One command, natural-language questions, LLM-backed. For "why did X happen" rather than "is X running."
 
 ```
-$ swarmkit ask "why did the review swarm take 20 minutes?"
+$ swael ask "why did the review swarm take 20 minutes?"
 The run took 19m42s. 17m of that was a single invocation of
 `code-quality-review` against `rynko-flow` MCP — the call timed out
 once and retried with exponential backoff (run_id r-..., events 34-41).
@@ -205,7 +205,7 @@ Recommend raising max_latency_ms on that skill or adding a retry budget.
 
 Grows into a proper swarm (with tool-calls for deeper queries, cross-run correlation, etc.) only if the single-shot pattern proves insufficient.
 
-**Cost / token awareness.** `swarmkit ask` is not free — prints the token count + estimated cost at the bottom of each answer. The user sees what they're spending.
+**Cost / token awareness.** `swael ask` is not free — prints the token count + estimated cost at the bottom of each answer. The user sees what they're spending.
 
 **Works with any provider.** Uses `ModelProvider` — so `OLLAMA_HOST=...` with a local model works as well as a cloud model.
 
@@ -213,7 +213,7 @@ Grows into a proper swarm (with tool-calls for deeper queries, cross-run correla
 
 Logging every skill's inputs and outputs verbatim creates two problems:
 
-1. **Noise.** A 100-step run with full I/O generates megabytes. `swarmkit ask` chokes on too much context. Humans skimming `swarmkit logs` drown.
+1. **Noise.** A 100-step run with full I/O generates megabytes. `swael ask` chokes on too much context. Humans skimming `swael logs` drown.
 2. **Privacy / compliance.** Skills that handle customer data (invoices, code diffs, credentials, PII) would log that data into the audit store. For EU-AI-Act, HIPAA, SOC2 — potential breach.
 
 ### Per-skill `audit:` block
@@ -261,7 +261,7 @@ notifications:
   - source: slack
     config:
       webhook_ref: slack_webhook_secret  # credentials_ref
-      channel: "#swarmkit-reviews"
+      channel: "#swael-reviews"
   - source: email
     config:
       smtp_host: smtp.acme.internal
@@ -280,26 +280,26 @@ Notifications fire on three events: `hitl_requested`, `run_ended { status: error
 
 Unchanged from §14.1 — three modes:
 
-- **One-shot:** `swarmkit run <topology> [--input ...]` — CLI execution. Streams events to stdout.
-- **Persistent:** `swarmkit serve <workspace>` — long-running process, exposes HTTP endpoints registered by triggers, accepts manual triggers via `swarmkit trigger fire <trigger-id>`.
-- **Scheduled:** `swarmkit serve` (same as persistent — cron/webhook/file_watch triggers run automatically).
+- **One-shot:** `swael run <topology> [--input ...]` — CLI execution. Streams events to stdout.
+- **Persistent:** `swael serve <workspace>` — long-running process, exposes HTTP endpoints registered by triggers, accepts manual triggers via `swael trigger fire <trigger-id>`.
+- **Scheduled:** `swael serve` (same as persistent — cron/webhook/file_watch triggers run automatically).
 
-`swarmkit serve` runs in foreground by default (logs to stdout). `swarmkit serve --daemon` writes to `.swarmkit/logs/` and detaches. CLI observability commands (`status`, `logs`, `events`) work across both.
+`swael serve` runs in foreground by default (logs to stdout). `swael serve --daemon` writes to `.swael/logs/` and detaches. CLI observability commands (`status`, `logs`, `events`) work across both.
 
 ## Worked example
 
 A user runs the Code Review Swarm. Mid-run an LLM judge flags a PR as low-confidence, triggering HITL. From the user's seat:
 
 ```
-$ swarmkit run code-review-swarm.yaml --input @pr-diff.json
+$ swael run code-review-swarm.yaml --input @pr-diff.json
 run_id: r-2026-04-21-14-02-a3b1
 [14:02:11] engineering-leader → code-reviewer: assigning
 [14:02:18] code-reviewer: running skill 'code-quality-review'
 [14:02:35] code-reviewer: verdict=needs-review confidence=0.62 → review queue
-[14:02:35] hitl requested: see `swarmkit review r-2026-04-21-14-02-a3b1`
+[14:02:35] hitl requested: see `swael review r-2026-04-21-14-02-a3b1`
 
 # in another terminal
-$ swarmkit review r-2026-04-21-14-02-a3b1
+$ swael review r-2026-04-21-14-02-a3b1
 pending review — code-reviewer verdict on PR #1234
   reasoning: "Imports suggest a circular dependency but the linter
   didn't flag. Unclear without repo context."
@@ -308,7 +308,7 @@ pending review — code-reviewer verdict on PR #1234
 approved — run resumed
 
 # user also curious about what's been expensive
-$ swarmkit ask --run r-2026-04-21-14-02-a3b1 "what's costing the most?"
+$ swael ask --run r-2026-04-21-14-02-a3b1 "what's costing the most?"
 Of 14 skill invocations, `code-quality-review` cost the most at
 $0.12 / 8,400 tokens, run against claude-sonnet-4-6. Next biggest:
 `security-specific-review` at $0.07. Total run cost so far: $0.24.
@@ -321,13 +321,13 @@ Every line of that comes from the structured audit log. The `ask` path uses the 
 
 ```python
 # In the runtime
-from swarmkit_runtime.observability import (
+from swael_runtime.observability import (
     AuditEvent,         # the pinned schema, frozen dataclass
     emit_event,         # writes via GovernanceProvider.record_event
 )
 
 # In the CLI
-from swarmkit_runtime.cli.observability import (
+from swael_runtime.cli.observability import (
     status_command,
     logs_command,
     events_command,
@@ -343,7 +343,7 @@ from swarmkit_runtime.cli.observability import (
 - Unit: every field in `AuditEvent` is populated by the emit path; redaction strips the listed JSON pointers.
 - Integration: a `MockGovernanceProvider` captures events; run a test topology and assert the emitted events match the expected trace.
 - CLI: fixture workspaces with pre-populated audit logs; run each command, assert JSON / pretty output matches snapshots.
-- `swarmkit ask`: uses `MockModelProvider` with a scripted response; asserts the event context is assembled correctly and token budgeting is reported.
+- `swael ask`: uses `MockModelProvider` with a scripted response; asserts the event context is assembled correctly and token budgeting is reported.
 
 ## Follow-ups (separate PRs, tracked as tasks)
 
@@ -352,7 +352,7 @@ from swarmkit_runtime.cli.observability import (
 - **Task #39** — workspace schema update: `storage.audit.backend` enum → uniform `{ provider, provider_id?, config }` shape. Full schema-change-discipline flow. Matches `SecretsProvider` pattern.
 - **Task #40** — `design/details/audit-provider.md` — detailed per-backend config shapes, retention semantics, query-filter vocabulary, plugin entry-point contract. Blocks task #38 implementation.
 - **Task #35** — CLI primitives implementation (M4).
-- **Task #36** — `swarmkit ask` implementation (M4 or M5 once ModelProvider tool-calling is ready).
+- **Task #36** — `swael ask` implementation (M4 or M5 once ModelProvider tool-calling is ready).
 - **Task #37** — notification plugin shape + v1.0 built-ins (M4).
 - Discipline note: `docs/notes/observability.md` (ships with this PR) — per-PR reminder that new runtime paths emit events, new skills declare their audit block.
 
@@ -360,5 +360,5 @@ from swarmkit_runtime.cli.observability import (
 
 - **Retention.** How long are audit events kept? Per-tier (minimal / standard / detailed) retention? Not decided; default `retention_days: 365` on workspace.yaml, user-overridable.
 - **Event schema evolution.** When the schema adds a field in v1.1, old events in storage don't have it. Readers tolerate missing fields (non-breaking) — additive only within v1.
-- **`swarmkit ask` privacy.** Does `ask` send redacted events or full events to the LLM? **Redacted only.** Otherwise redaction at the log layer is defeated by the observer. Document this explicitly.
-- **Cost budget enforcement.** Does `swarmkit serve` have a token / dollar budget it enforces? Out of scope for this note; §8.6 governance-layer concern.
+- **`swael ask` privacy.** Does `ask` send redacted events or full events to the LLM? **Redacted only.** Otherwise redaction at the log layer is defeated by the observer. Document this explicitly.
+- **Cost budget enforcement.** Does `swael serve` have a token / dollar budget it enforces? Out of scope for this note; §8.6 governance-layer concern.

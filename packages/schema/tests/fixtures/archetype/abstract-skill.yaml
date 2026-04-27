@@ -2,7 +2,7 @@
 # The archetype declares "this agent needs a decision skill with capability
 # content_review" without naming a concrete skill; the topology resolver
 # (M1) binds it to a concrete skill at load time.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: content-analyst-worker

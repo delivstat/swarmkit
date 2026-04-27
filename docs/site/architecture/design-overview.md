@@ -1,6 +1,6 @@
 # Design overview
 
-The authoritative architecture is [`design/SwarmKit-Design-v0.6.md`](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md).
+The authoritative architecture is [`design/Swael-Design-v0.6.md`](https://github.com/delivstat/swael/blob/main/design/Swael-Design-v0.6.md).
 
 Key sections:
 

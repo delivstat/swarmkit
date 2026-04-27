@@ -1,5 +1,5 @@
 [project]
-name = "swarmkit-runtime"
+name = "swael-runtime"
 version = "1.0.2"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
@@ -58,7 +58,7 @@ dependencies = [
     # "psycopg[binary]>=3.2",  # optional Postgres backend
 
     # Schema package (workspace sibling)
-    "swarmkit-schema",
+    "swael-schema",
 ]
 
 [project.optional-dependencies]
@@ -72,11 +72,11 @@ dev = [
 ]
 
 [project.scripts]
-swarmkit = "swarmkit_runtime.cli:app"
+swael = "swael_runtime.cli:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/swarmkit_runtime"]
+packages = ["src/swael_runtime"]

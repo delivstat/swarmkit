@@ -1,4 +1,4 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: validate-workspace
@@ -11,7 +11,7 @@ metadata:
 category: capability
 implementation:
   type: mcp_tool
-  server: swarmkit-knowledge
+  server: swael-knowledge
   tool: validate_workspace
 iam:
   required_scopes: [knowledge:read]

@@ -1,5 +1,5 @@
 # id must match ^[a-z][a-z0-9-]*$ — uppercase rejected.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: CodeReviewWorker

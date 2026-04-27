@@ -1,7 +1,7 @@
 # Decision skills must emit a `reasoning: string` output so audits and
 # reviews have a rationale. This skill declares only verdict + confidence
 # and must therefore fail validation.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: broken-judge

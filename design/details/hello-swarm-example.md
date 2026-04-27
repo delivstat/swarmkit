@@ -4,7 +4,7 @@
 
 Close Milestone 1 by shipping the runnable artefact the plan calls for:
 
-> **Exit demo:** `swarmkit validate examples/hello-swarm/workspace/` prints a
+> **Exit demo:** `swael validate examples/hello-swarm/workspace/` prints a
 > resolved tree with all archetype/skill refs expanded. A first-time user
 > can understand a deliberate validation failure from the error message
 > alone — no design-doc lookup required.
@@ -28,7 +28,7 @@ archetypes + skills) with the smallest possible artefact set.
 ```
 examples/hello-swarm/
 ├── README.md
-├── workspace/                 # valid — used by `swarmkit validate --tree`
+├── workspace/                 # valid — used by `swael validate --tree`
 │   ├── workspace.yaml         # declares the hello-world MCP server
 │   ├── hello_world_server.py  # tiny FastMCP server, stdio, one tool
 │   ├── topologies/hello.yaml
@@ -71,10 +71,10 @@ Two demos cover the two halves of the on-ramp.
 
 `just demo-resolver` runs the validation UX:
 
-1. `swarmkit validate examples/hello-swarm/workspace --tree` — exit 0,
+1. `swael validate examples/hello-swarm/workspace --tree` — exit 0,
    prints the resolved agent tree (archetype defaults expanded, skills
    listed by id).
-2. `swarmkit validate examples/hello-swarm/workspace-broken` — exit 1,
+2. `swael validate examples/hello-swarm/workspace-broken` — exit 1,
    prints an `agent.unknown-archetype` error block. The `try:` suggestion
    is enough for the reader to connect `'greter'` to the actual archetype
    id `'greeter'`.

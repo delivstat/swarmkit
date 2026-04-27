@@ -1,5 +1,5 @@
 # Cron with an explicit IANA timezone.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: nightly-cleanup

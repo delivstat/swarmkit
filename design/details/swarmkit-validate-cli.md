@@ -1,35 +1,35 @@
 ---
-title: `swarmkit validate` CLI + human-readable error rendering
+title: `swael validate` CLI + human-readable error rendering
 description: First real CLI command. Resolves a workspace, prints a resolved tree on success, prints structured + human-friendly errors on failure. Closes tasks #31 (CLI) and #23 (error rendering) — the usability-first landing promised in docs/notes/llm-friendly-knowledge.md.
 tags: [cli, m1, usability, validate]
 status: in-review
 ---
 
-# `swarmkit validate` CLI + error rendering
+# `swael validate` CLI + error rendering
 
-**Scope:** `packages/runtime/src/swarmkit_runtime/cli/` (CLI + renderer).
+**Scope:** `packages/runtime/src/swael_runtime/cli/` (CLI + renderer).
 **Design reference:** `design/details/topology-loader.md` (the resolver this CLI drives), `docs/notes/usability-first.md`, `docs/notes/llm-friendly-knowledge.md` ("errors are docs").
 **Status:** in review — bundles tasks #23 and #31.
 
 ## Goal
 
-A first-time user runs `swarmkit validate <path>` on their workspace and gets:
+A first-time user runs `swael validate <path>` on their workspace and gets:
 
-- On success, a concise tree showing what SwarmKit understood: topologies, agents (with merged model / archetype / skills), registry sizes.
+- On success, a concise tree showing what Swael understood: topologies, agents (with merged model / archetype / skills), registry sizes.
 - On failure, **actionable** errors — not raw jsonschema traces. Each error states what went wrong, where in the YAML, which rule was violated, and a suggested remediation. The user fixes and re-runs without consulting the design doc.
 
 This is the first CLI landing that a real user actually sees. It sets the DX bar for every subsequent CLI command (`run`, `serve`, `author`, `ask`). Every decision here is a template for later.
 
 ## Non-goals
 
-- **Running topologies.** `swarmkit run` is M3. Validation is static.
-- **Fix-mode.** `swarmkit validate --fix` that rewrites YAML is tempting but out of scope — automatic fixes silently change user intent.
-- **Schema editing helpers.** "Add audit block to this skill" is a future `swarmkit author` improvement.
+- **Running topologies.** `swael run` is M3. Validation is static.
+- **Fix-mode.** `swael validate --fix` that rewrites YAML is tempting but out of scope — automatic fixes silently change user intent.
+- **Schema editing helpers.** "Add audit block to this skill" is a future `swael author` improvement.
 
 ## User-facing shape
 
 ```
-swarmkit validate [PATH] [OPTIONS]
+swael validate [PATH] [OPTIONS]
 
 Arguments:
   PATH                         Workspace root (default: current directory).
@@ -117,7 +117,7 @@ Multiple errors: one block each, separated by a blank line. Final summary:
 
 ```
 3 errors across 2 files. See design/details/topology-loader.md for the
-error code reference, or run `swarmkit ask "explain <error-code>"`.
+error code reference, or run `swael ask "explain <error-code>"`.
 ```
 
 ### Design choices made explicit
@@ -146,13 +146,13 @@ Piping patterns the JSON enables:
 
 ```bash
 # Count errors
-swarmkit validate --json | jq '[.[] | select(.event=="validate.error")] | length'
+swael validate --json | jq '[.[] | select(.event=="validate.error")] | length'
 
 # Filter to one code
-swarmkit validate --json | jq 'select(.code=="archetype.unknown-skill")'
+swael validate --json | jq 'select(.code=="archetype.unknown-skill")'
 
 # Per-file counts
-swarmkit validate --json | jq -s 'map(select(.event=="validate.error")) | group_by(.artifact_path) | map({path:.[0].artifact_path, count:length})'
+swael validate --json | jq -s 'map(select(.event=="validate.error")) | group_by(.artifact_path) | map({path:.[0].artifact_path, count:length})'
 ```
 
 ## Render precedence
@@ -187,7 +187,7 @@ Skill / archetype registries are implicit from agent references; we don't dump t
 ## Implementation sketch
 
 ```
-packages/runtime/src/swarmkit_runtime/cli/
+packages/runtime/src/swael_runtime/cli/
 ├── __init__.py           # Typer app, validate() command wired
 ├── _render.py            # render_error, render_success, render_tree
 └── _output.py            # json vs. text dispatch; color detection
@@ -221,12 +221,12 @@ The `validate` Typer command is ~30 lines: parse args, build `Output`, call `res
 
 ## Demo plan
 
-- `just demo-validate` (lands with this PR): runs `swarmkit validate` against every valid + invalid fixture workspace, prints outputs. First fixture prints the success tree; invalid fixtures print human-readable error blocks. The demo itself is the exit criterion for task #31.
+- `just demo-validate` (lands with this PR): runs `swael validate` against every valid + invalid fixture workspace, prints outputs. First fixture prints the success tree; invalid fixtures print human-readable error blocks. The demo itself is the exit criterion for task #31.
 - PR body includes a terminal transcript of running against a deliberately-broken workspace.
 
 ## Accessibility / usability
 
-- **Every error has a suggestion.** If a new error code emerges without one, flag it in review; default fallback suggestion must point at `swarmkit ask "explain <code>"` (once M4 ships) rather than "check the docs."
+- **Every error has a suggestion.** If a new error code emerges without one, flag it in review; default fallback suggestion must point at `swael ask "explain <code>"` (once M4 ships) rather than "check the docs."
 - **Colour is optional.** `NO_COLOR` env var respected. `--no-color` flag respected. Output must be readable in plain ASCII.
 - **Internationalisation.** v1.0 is English-only. Don't bake strings into `ResolutionError.message`; keep them in `_render.py` so a future v1.x can swap based on locale. (For now this means messages live twice; acceptable.)
 
@@ -234,6 +234,6 @@ Actually, **push-back on myself here**: building i18n infrastructure now is over
 
 ## Follow-ups (separate PRs, tracked as tasks)
 
-- When M4 lands `swarmkit ask`, update the summary footer to suggest `swarmkit ask "explain <code>"` instead of pointing at the docs file.
-- When M2 lands the governance layer, add `swarmkit validate --strict` that runs a stricter set of checks (e.g. scope coverage for every skill an agent invokes).
+- When M4 lands `swael ask`, update the summary footer to suggest `swael ask "explain <code>"` instead of pointing at the docs file.
+- When M2 lands the governance layer, add `swael validate --strict` that runs a stricter set of checks (e.g. scope coverage for every skill an agent invokes).
 - Example workspace (`examples/hello-swarm/`) under task #32 — separate PR.

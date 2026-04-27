@@ -135,13 +135,13 @@ jobs:
         run: uv run python scripts/codegen_pydantic.py
 
       - name: Regenerate TypeScript types
-        run: pnpm --filter @swarmkit/schema exec node scripts/codegen-types.mjs
+        run: pnpm --filter @swael/schema exec node scripts/codegen-types.mjs
 
       - name: Fail if codegen produced uncommitted diffs (pydantic)
         run: |
-          if ! git diff --quiet --exit-code -- packages/schema/python/src/swarmkit_schema/models; then
+          if ! git diff --quiet --exit-code -- packages/schema/python/src/swael_schema/models; then
             echo "::error::pydantic codegen drift — run 'just schema-codegen-py' and commit"
-            git --no-pager diff -- packages/schema/python/src/swarmkit_schema/models
+            git --no-pager diff -- packages/schema/python/src/swael_schema/models
             exit 1
           fi
 

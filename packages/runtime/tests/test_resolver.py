@@ -6,7 +6,7 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.resolver import (
+from swael_runtime.resolver import (
     ResolutionErrors,
     ResolvedAgent,
     ResolvedTopology,

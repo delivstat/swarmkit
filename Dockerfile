@@ -1,7 +1,7 @@
-# SwarmKit runtime — production Docker image.
+# Swael runtime — production Docker image.
 #
-# Build:  docker build -t swarmkit .
-# Run:    docker run -p 8000:8000 -v /path/to/workspace:/workspace swarmkit serve /workspace
+# Build:  docker build -t swael .
+# Run:    docker run -p 8000:8000 -v /path/to/workspace:/workspace swael serve /workspace
 #
 # Multi-stage: build with uv, run with slim Python.
 
@@ -30,5 +30,5 @@ WORKDIR /app
 
 EXPOSE 8000
 
-ENTRYPOINT ["swarmkit"]
+ENTRYPOINT ["swael"]
 CMD ["serve", "/workspace", "--host", "0.0.0.0", "--port", "8000"]

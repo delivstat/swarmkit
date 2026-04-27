@@ -17,7 +17,7 @@ Do not add UI features that compete with or bypass the authoring swarms. The UI 
 ## Non-negotiable invariants
 
 1. **The UI is a thin layer over topology files and the runtime HTTP API.** It must not maintain its own state format — round-trips through YAML/JSON.
-2. **Validation goes through `@swarmkit/schema`.** Do not inline schema knowledge.
+2. **Validation goes through `@swael/schema`.** Do not inline schema knowledge.
 3. **Skill authoring in the UI is the same Skill Authoring Swarm** invoked via the runtime HTTP API. The UI does not have a separate "lite" authoring flow.
 4. **Audit log and review queue are read-only in the UI.** No UI affordance bypasses the append-only media pillar (design §8.3).
 
@@ -34,7 +34,7 @@ Do not add UI features that compete with or bypass the authoring swarms. The UI 
 ## Commands
 
 ```bash
-pnpm --filter @swarmkit/ui dev
-pnpm --filter @swarmkit/ui build
-pnpm --filter @swarmkit/ui typecheck
+pnpm --filter @swael/ui dev
+pnpm --filter @swael/ui build
+pnpm --filter @swael/ui typecheck
 ```

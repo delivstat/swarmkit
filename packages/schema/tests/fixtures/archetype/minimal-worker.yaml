@@ -1,6 +1,6 @@
 # Smallest valid archetype — empty defaults, non-idiomatic but schema-valid.
 # Useful as a "typed tag" (see design note open question).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: minimal-worker

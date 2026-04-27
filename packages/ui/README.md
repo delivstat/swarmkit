@@ -1,6 +1,6 @@
-# swarmkit-ui
+# swael-ui
 
-Next.js web application providing the three SwarmKit UI surfaces (design §15).
+Next.js web application providing the three Swael UI surfaces (design §15).
 
 **Scope:** The UI is deferred to v1.1 per the current design decision (§15.3 open question, recommended to confirm in §21). v1.0 ships the authoring swarms via terminal chat mode. This package is scaffolded so work can start whenever the design decision is confirmed; there is no app code yet.
 
@@ -15,7 +15,7 @@ Next.js web application providing the three SwarmKit UI surfaces (design §15).
 ## Development
 
 ```bash
-pnpm --filter @swarmkit/ui dev        # dev server at :3000
-pnpm --filter @swarmkit/ui build
-pnpm --filter @swarmkit/ui test
+pnpm --filter @swael/ui dev        # dev server at :3000
+pnpm --filter @swael/ui build
+pnpm --filter @swael/ui test
 ```

@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from swarmkit_runtime._workspace_runtime import build_governance
-from swarmkit_runtime.governance._mock import MockGovernanceProvider
-from swarmkit_runtime.resolver import resolve_workspace
+from swael_runtime._workspace_runtime import build_governance
+from swael_runtime.governance._mock import MockGovernanceProvider
+from swael_runtime.resolver import resolve_workspace
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace"
@@ -27,13 +27,13 @@ def test_absent_governance_block_returns_mock() -> None:
 
 def test_agt_governance_returns_agt_provider(tmp_path: Path) -> None:
     """A workspace declaring ``governance.provider: agt`` gets AGTGovernanceProvider."""
-    from swarmkit_runtime.governance.agt_provider import AGTGovernanceProvider  # noqa: PLC0415
+    from swael_runtime.governance.agt_provider import AGTGovernanceProvider  # noqa: PLC0415
 
     # Create a minimal workspace with governance: agt
     ws_root = tmp_path / "ws"
     ws_root.mkdir()
     (ws_root / "workspace.yaml").write_text(
-        "apiVersion: swarmkit/v1\n"
+        "apiVersion: swael/v1\n"
         "kind: Workspace\n"
         "metadata:\n"
         "  id: test-agt\n"
@@ -56,7 +56,7 @@ def test_mock_governance_explicit_returns_mock(tmp_path: Path) -> None:
     ws_root = tmp_path / "ws"
     ws_root.mkdir()
     (ws_root / "workspace.yaml").write_text(
-        "apiVersion: swarmkit/v1\n"
+        "apiVersion: swael/v1\n"
         "kind: Workspace\n"
         "metadata:\n"
         "  id: test-mock\n"
@@ -75,7 +75,7 @@ def test_custom_governance_falls_back_to_mock(tmp_path: Path) -> None:
     ws_root = tmp_path / "ws"
     ws_root.mkdir()
     (ws_root / "workspace.yaml").write_text(
-        "apiVersion: swarmkit/v1\n"
+        "apiVersion: swael/v1\n"
         "kind: Workspace\n"
         "metadata:\n"
         "  id: test-custom\n"

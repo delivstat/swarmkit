@@ -6,7 +6,7 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.workspace import (
+from swael_runtime.workspace import (
     ArtifactKindMismatchError,
     DeepNestingError,
     DiscoveredArtifact,
@@ -108,7 +108,7 @@ def test_deep_nesting_raises() -> None:
 
 def _write_workspace(ws: Path, name: str) -> None:
     (ws / "workspace.yaml").write_text(
-        f"apiVersion: swarmkit/v1\nkind: Workspace\n"
+        f"apiVersion: swael/v1\nkind: Workspace\n"
         f"metadata:\n  id: {name}\n  name: {name.replace('-', ' ').title()}\n",
         encoding="utf-8",
     )
@@ -116,7 +116,7 @@ def _write_workspace(ws: Path, name: str) -> None:
 
 def _write_skill(path: Path, skill_id: str) -> None:
     path.write_text(
-        "apiVersion: swarmkit/v1\n"
+        "apiVersion: swael/v1\n"
         "kind: Skill\n"
         "metadata:\n"
         f"  id: {skill_id}\n"
@@ -161,7 +161,7 @@ def test_ignores_swarmkit_state_directory(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
     _write_workspace(ws, "state-ignored")
-    swarmkit_state = ws / ".swarmkit" / "state"
+    swarmkit_state = ws / ".swael" / "state"
     swarmkit_state.mkdir(parents=True)
     (swarmkit_state / "stale.yaml").write_text("anything: goes\n")
     artifacts = discover(ws)
@@ -173,7 +173,7 @@ def test_accepts_yml_as_well_as_yaml(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
     (ws / "workspace.yml").write_text(
-        "apiVersion: swarmkit/v1\n"
+        "apiVersion: swael/v1\n"
         "kind: Workspace\n"
         "metadata:\n"
         "  id: yml-suffix\n"

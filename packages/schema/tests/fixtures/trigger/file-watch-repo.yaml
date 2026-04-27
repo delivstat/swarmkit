@@ -1,6 +1,6 @@
 # Fires the Document Processing Swarm whenever a markdown file under docs/
 # is created or modified.
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: docs-rebuild

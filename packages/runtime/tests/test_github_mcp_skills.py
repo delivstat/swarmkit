@@ -10,11 +10,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.governance._mock import MockGovernanceProvider
-from swarmkit_runtime.langgraph_compiler import compile_topology
-from swarmkit_runtime.model_providers import MockModelProvider, ProviderRegistry
-from swarmkit_runtime.resolver import resolve_workspace
-from swarmkit_schema import validate
+from swael_runtime.governance._mock import MockGovernanceProvider
+from swael_runtime.langgraph_compiler import compile_topology
+from swael_runtime.model_providers import MockModelProvider, ProviderRegistry
+from swael_runtime.resolver import resolve_workspace
+from swael_schema import validate
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "workspaces"
 GITHUB_WS = FIXTURES / "github-mcp"

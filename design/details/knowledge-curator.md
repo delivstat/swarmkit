@@ -55,13 +55,13 @@ Worker topologies (code review, solution advisor, etc.)
     └── query-knowledge-base skill (read-only)
 ```
 
-SwarmKit doesn't build a knowledge base — it **orchestrates existing
+Swael doesn't build a knowledge base — it **orchestrates existing
 ones** through MCP. The topology is the value, not the storage.
 
 ## Curator topology
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: knowledge-curator
@@ -94,7 +94,7 @@ Scans source repositories, documentation, and APIs for content.
 Indexes into the vector store via MCP.
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: kb-ingester
@@ -123,7 +123,7 @@ Periodically checks existing KB entries against their sources.
 Marks entries as stale if the source has changed.
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: kb-validator
@@ -258,7 +258,7 @@ All configured in `workspace.yaml` under `mcp_servers`.
 The curator runs on a schedule, not on-demand:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Trigger
 metadata:
   id: kb-refresh
@@ -277,7 +277,7 @@ KB through a read-only query skill:
 
 ```yaml
 # skills/query-knowledge-base.yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: query-knowledge-base

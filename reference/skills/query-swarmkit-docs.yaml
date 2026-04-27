@@ -1,17 +1,17 @@
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
-  id: query-swarmkit-docs
-  name: Query SwarmKit Documentation
+  id: query-swael-docs
+  name: Query Swael Documentation
   description: >
-    Searches SwarmKit design docs, schemas, coding standards, and
+    Searches Swael design docs, schemas, coding standards, and
     discipline notes via the Knowledge MCP Server. Agents use this
     to ground their reviews in actual project decisions rather than
     general LLM knowledge.
 category: capability
 implementation:
   type: mcp_tool
-  server: swarmkit-knowledge
+  server: swael-knowledge
   tool: search_docs
 iam:
   required_scopes: [knowledge:read]

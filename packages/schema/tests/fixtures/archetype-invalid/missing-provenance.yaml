@@ -1,5 +1,5 @@
 # provenance is required on every archetype (design §13).
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: broken

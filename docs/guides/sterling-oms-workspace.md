@@ -1,17 +1,17 @@
 ---
 title: Building a Sterling OMS Agent Workspace — step-by-step guide
-description: How to create a SwarmKit workspace with IBM Sterling OMS and retail domain archetypes, backed by a project-specific knowledge base.
+description: How to create a Swael workspace with IBM Sterling OMS and retail domain archetypes, backed by a project-specific knowledge base.
 ---
 
 # Building a Sterling OMS Agent Workspace
 
-This guide walks through creating a SwarmKit workspace for an IBM
+This guide walks through creating a Swael workspace for an IBM
 Sterling OMS project — from archetypes and skills to a knowledge
 base that grounds the agents in your actual project configuration.
 
 ## Prerequisites
 
-- SwarmKit installed (`pip install swarmkit-runtime` or source checkout)
+- Swael installed (`pip install swael-runtime` or source checkout)
 - A model provider configured (e.g. `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`)
 - Your Sterling OMS project files accessible on disk:
   - Product documentation (IBM InfoCenter HTML/PDF or your team's docs)
@@ -23,7 +23,7 @@ base that grounds the agents in your actual project configuration.
 
 ```bash
 mkdir sterling-oms-swarm && cd sterling-oms-swarm
-swarmkit init .
+swael init .
 ```
 
 When the authoring agent asks what the swarm should do, describe:
@@ -51,7 +51,7 @@ or edit them with these detailed versions.
 Create `archetypes/sterling-oms-architect.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: sterling-oms-architect
@@ -143,7 +143,7 @@ defaults:
     - search-project
     - search-reference-designs
     - read-context
-    - query-swarmkit-docs
+    - query-swael-docs
   iam:
     base_scope: [knowledge:read]
 provenance:
@@ -156,7 +156,7 @@ provenance:
 Create `archetypes/retail-domain-expert.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: retail-domain-expert
@@ -529,7 +529,7 @@ asyncio.run(main())
 Create `skills/query-sterling-config.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: query-sterling-config
@@ -554,7 +554,7 @@ provenance:
 Create `skills/query-sterling-sourcing.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: query-sterling-sourcing
@@ -578,7 +578,7 @@ provenance:
 Create `skills/call-any-sterling-api.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: call-any-sterling-api
@@ -611,7 +611,7 @@ skills:
   - query-sterling-config     # live pipeline/agent config
   - query-sterling-sourcing   # live DOM rules
   - call-any-sterling-api     # fallback for any API
-  - query-swarmkit-docs
+  - query-swael-docs
 ```
 
 The config validator should also get API access (to validate
@@ -981,7 +981,7 @@ can access which knowledge source:
 Create `skills/search-project.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: search-project
@@ -1005,7 +1005,7 @@ provenance:
 Create `skills/search-reference-designs.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: search-reference-designs
@@ -1075,7 +1075,7 @@ skills:
   - search-project           # ground truth
   - search-reference-designs  # inspiration
   - read-context
-  - query-swarmkit-docs
+  - query-swael-docs
 
 # Config Validator — gets ONLY current project (no references)
 skills:
@@ -1114,7 +1114,7 @@ project state (config validators, deployment reviewers) get only
 Create `skills/search-sterling-docs.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: search-sterling-docs
@@ -1141,7 +1141,7 @@ provenance:
 Create `skills/read-context.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: read-context
@@ -1168,7 +1168,7 @@ provenance:
 Create `skills/ingest-doc.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: ingest-doc
@@ -1193,7 +1193,7 @@ provenance:
 Create `skills/config-review.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: config-review
@@ -1251,7 +1251,7 @@ provenance:
 Create `skills/business-validation.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: business-validation
@@ -1299,7 +1299,7 @@ provenance:
 Create `topologies/solution-review.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: solution-review
@@ -1332,11 +1332,11 @@ agents:
 
 ```bash
 # Validate everything resolves
-swarmkit validate . --tree
+swael validate . --tree
 
 # Ask a Sterling question
 SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct \
-  swarmkit run . solution-review \
+  swael run . solution-review \
   --input "We need to implement ship-from-store for 200 retail locations. \
            What DOM rules do we need, and what agent configuration changes \
            are required?" \
@@ -1349,28 +1349,28 @@ After running the swarm, check the results:
 
 ```bash
 # View what each agent did
-swarmkit logs . --last 1
+swael logs . --last 1
 
 # Ask the LLM to explain the run
-swarmkit why solution-review .
+swael why solution-review .
 
 # Ask follow-up questions
-swarmkit ask "Which agent took the longest and why?" -w .
+swael ask "Which agent took the longest and why?" -w .
 ```
 
 If the responses are too generic (not referencing your project):
 - **Check the knowledge base** — are the files being indexed?
-  Test with `swarmkit knowledge-server` and call `list_sources`.
+  Test with `swael knowledge-server` and call `list_sources`.
 - **Refine the prompts** — add more project-specific context to
   the archetype system prompts (your org's naming conventions,
   specific Sterling version, known constraints).
 - **Add more knowledge sources** — the more project-specific
   context the agents have, the better the output.
 
-If you need help refining, use `swarmkit edit`:
+If you need help refining, use `swael edit`:
 
 ```bash
-swarmkit edit . --input "The sterling architect isn't referencing \
+swael edit . --input "The sterling architect isn't referencing \
   our DOM rules. Make sure it searches project config before answering."
 ```
 
@@ -1399,7 +1399,7 @@ version incompatibilities, and reference-design misapplication.
 Create `archetypes/sterling-config-validator.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Archetype
 metadata:
   id: sterling-config-validator
@@ -1480,7 +1480,7 @@ provenance:
 Create `skills/sterling-config-validation.yaml`:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: sterling-config-validation
@@ -1539,7 +1539,7 @@ gate. The architect proposes, the validator checks, and only
 validated recommendations reach the user:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Topology
 metadata:
   name: solution-review

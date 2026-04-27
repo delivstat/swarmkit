@@ -5,7 +5,7 @@ description: How to pick models for leaders vs workers, configure per-agent mode
 
 # Model selection guide
 
-SwarmKit supports 7 model providers out of the box. This guide
+Swael supports 7 model providers out of the box. This guide
 covers how to choose models for different agent roles, configure
 them, and optimize for cost.
 
@@ -24,7 +24,7 @@ export TOGETHER_API_KEY=...
 # Ollama — always available, no key needed
 ```
 
-SwarmKit auto-detects which providers are available from the
+Swael auto-detects which providers are available from the
 environment.
 
 ## Environment variables
@@ -44,7 +44,7 @@ use the topology YAML (see below).
 ```bash
 export SWARMKIT_PROVIDER=openrouter
 export SWARMKIT_MODEL=qwen/qwen3-235b-a22b
-swarmkit run . my-topology --input "..."
+swael run . my-topology --input "..."
 ```
 
 ### Authoring with a different model
@@ -53,7 +53,7 @@ swarmkit run . my-topology --input "..."
 # Topology runs use the YAML-defined models
 # Authoring (init/author/edit) uses Kimi K2
 export SWARMKIT_AUTHOR_MODEL=openrouter/moonshotai/kimi-k2
-swarmkit init my-workspace/
+swael init my-workspace/
 ```
 
 ## Per-agent model selection (topology YAML)
@@ -115,7 +115,7 @@ An agent can override its archetype's model:
 
 ## Model priority resolution
 
-SwarmKit resolves the model for each agent in this order:
+Swael resolves the model for each agent in this order:
 
 1. `SWARMKIT_PROVIDER` / `SWARMKIT_MODEL` env vars (if set — overrides everything)
 2. Agent's own `model:` block in the topology YAML
@@ -258,10 +258,10 @@ export SWARMKIT_AUTHOR_MODEL=openrouter/qwen/qwen3-235b-a22b
 
 ## Rate limits and concurrency
 
-SwarmKit runs agents sequentially within a topology (root → leader
+Swael runs agents sequentially within a topology (root → leader
 → workers → next leader), so you're making 1 API call at a time
 per run. Concurrency matters only when running multiple topologies
-simultaneously via `swarmkit serve`.
+simultaneously via `swael serve`.
 
 | Provider | Published limits | Notes |
 |---|---|---|
@@ -283,14 +283,14 @@ For quick experiments without editing YAML:
 ```bash
 # Try a run with a different model
 SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=deepseek/deepseek-r1-0528 \
-  swarmkit run . solution-review --input "..." --verbose
+  swael run . solution-review --input "..." --verbose
 
 # Compare with another model
 SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=moonshotai/kimi-k2 \
-  swarmkit run . solution-review --input "..." --verbose
+  swael run . solution-review --input "..." --verbose
 
 # Check the logs to compare timing and output quality
-swarmkit logs . --last 2
+swael logs . --last 2
 ```
 
 The `--verbose` flag shows per-agent timing so you can compare

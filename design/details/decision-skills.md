@@ -38,7 +38,7 @@ A decision skill is a regular skill with `category: decision` and a
 structured `outputs` block:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: code-quality-review
@@ -144,7 +144,7 @@ For high-stakes decisions, multiple judges evaluate in parallel with
 different perspectives:
 
 ```yaml
-apiVersion: swarmkit/v1
+apiVersion: swael/v1
 kind: Skill
 metadata:
   id: security-review-panel
@@ -223,9 +223,9 @@ class ReviewItem:
     status: Literal["pending", "approved", "rejected"]
 ```
 
-v1.0 implementation: file-backed JSON under `.swarmkit/reviews/`.
-Each item is a JSON file. `swarmkit review list` shows pending items.
-`swarmkit review approve/reject <id>` resolves them.
+v1.0 implementation: file-backed JSON under `.swael/reviews/`.
+Each item is a JSON file. `swael review list` shows pending items.
+`swael review approve/reject <id>` resolves them.
 
 Pluggable storage (database, external system) is a follow-up — the
 interface is a simple `ReviewQueue` protocol with `submit`, `list`,
@@ -235,7 +235,7 @@ interface is a simple `ReviewQueue` protocol with `submit`, `list`,
 
 Three layers, shipped at different milestones:
 
-### Layer 1: inline HITL in `swarmkit run` (M4, task #48)
+### Layer 1: inline HITL in `swael run` (M4, task #48)
 
 For one-shot execution, the human is at the terminal. When a review
 is needed, the CLI **pauses and asks inline**:
@@ -253,27 +253,27 @@ No async notification needed — the operator is watching. The
 execution resumes immediately on approval. On rejection, the
 rejection reason is fed back to the agent as feedback for retry.
 
-This is the primary HITL experience for `swarmkit run`.
+This is the primary HITL experience for `swael run`.
 
-### Layer 2: `swarmkit review` CLI (M4, task #49)
+### Layer 2: `swael review` CLI (M4, task #49)
 
 For reviewing items after execution or for batch review:
 
 ```bash
-swarmkit review list
+swael review list
 #   ID        Agent      Skill              Reason
 #   a1b2c3    worker-1   code-quality       confidence 0.3
 #   d4e5f6    worker-2   security-scan      retries exhausted
 
-swarmkit review show a1b2c3     # full output + verdict + reasoning
-swarmkit review approve a1b2c3  # resolved
-swarmkit review reject a1b2c3   # resolved with feedback
+swael review show a1b2c3     # full output + verdict + reasoning
+swael review approve a1b2c3  # resolved
+swael review reject a1b2c3   # resolved with feedback
 ```
 
-Works for any review items — from `swarmkit run`, `swarmkit serve`,
+Works for any review items — from `swael run`, `swael serve`,
 or items submitted programmatically.
 
-### Layer 3: notification plugins for `swarmkit serve` (M9, task #50)
+### Layer 3: notification plugins for `swael serve` (M9, task #50)
 
 For long-running swarms, the human isn't at the terminal. Configured
 in `workspace.yaml`:
@@ -295,17 +295,17 @@ The notification plugin shape is a `Protocol` with a `notify(event)`
 method. Built-in plugins: Slack, email, webhook. Custom plugins via
 entry points.
 
-The human gets notified, reviews in the v1.1 UI or via `swarmkit
+The human gets notified, reviews in the v1.1 UI or via `swael
 review` CLI, and the review queue's `resolve()` method closes the
 loop regardless of how the human was notified.
 
 ### Process death and recovery
 
-**`swarmkit run` (one-shot):** process dies mid-execution or while
+**`swael run` (one-shot):** process dies mid-execution or while
 waiting for HITL → session is lost. Same as closing any terminal
 command. No recovery needed — the user re-runs.
 
-**`swarmkit serve` (persistent — M9):** process death must be
+**`swael serve` (persistent — M9):** process death must be
 recoverable. Three mechanisms:
 
 1. **Review items persist to disk.** `FileReviewQueue` writes JSON
@@ -313,11 +313,11 @@ recoverable. Three mechanisms:
    item, the item survives and can be resolved after restart.
 
 2. **Execution state is checkpointed.** LangGraph's `SqliteSaver`
-   checkpoints every graph step to `.swarmkit/state/<topology>.db`.
+   checkpoints every graph step to `.swael/state/<topology>.db`.
    On restart, execution resumes from the last checkpoint.
 
-3. **HITL is non-blocking in serve mode.** Unlike `swarmkit run`
-   (which blocks the terminal), `swarmkit serve` uses
+3. **HITL is non-blocking in serve mode.** Unlike `swael run`
+   (which blocks the terminal), `swael serve` uses
    **checkpoint-based HITL**: submit the review item → checkpoint
    graph state as `"paused:review:<item-id>"` → release the
    execution slot. When the review is resolved (via CLI, webhook, or
@@ -337,7 +337,7 @@ Process restarts (or never died)
 ```
 
 This is M9 scope — the `SqliteSaver` checkpointer and non-blocking
-HITL are wired alongside `swarmkit serve`.
+HITL are wired alongside `swael serve`.
 
 ### Layer 4: UI review dashboard (v1.1)
 
@@ -363,7 +363,7 @@ class SkillGap:
 Skill gaps are the input to the swarm growth cycle (design §12) —
 they surface areas where the swarm needs new or improved skills.
 
-v1.0: appended to `.swarmkit/gaps.jsonl`. `swarmkit gaps list` shows
+v1.0: appended to `.swael/gaps.jsonl`. `swael gaps list` shows
 them. The authoring AI reads them when suggesting new skills.
 
 ## Implementation plan
@@ -378,10 +378,10 @@ them. The authoring AI reads them when suggesting new skills.
 
 ### PR 3: inline HITL + review CLI (task #48, #49)
 
-- Inline HITL in compiler: pause `swarmkit run` when review needed,
+- Inline HITL in compiler: pause `swael run` when review needed,
   prompt human in terminal, resume on approve/reject.
-- `swarmkit review list/show/approve/reject` CLI commands.
-- `swarmkit gaps list` CLI command.
+- `swael review list/show/approve/reject` CLI commands.
+- `swael gaps list` CLI command.
 
 ### PR 4: decision skill runtime wiring
 

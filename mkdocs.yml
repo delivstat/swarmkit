@@ -1,10 +1,10 @@
 docs_dir: docs/site
 site_dir: _site
-site_name: SwarmKit
+site_name: Swael
 site_description: An open-source framework for composing, running, and growing multi-agent AI swarms.
-site_url: https://delivstat.github.io/swarmkit/
-repo_url: https://github.com/delivstat/swarmkit
-repo_name: delivstat/swarmkit
+site_url: https://delivstat.github.io/swael/
+repo_url: https://github.com/delivstat/swael
+repo_name: delivstat/swael
 
 theme:
   name: material

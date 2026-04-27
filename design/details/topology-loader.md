@@ -7,8 +7,8 @@ status: draft
 
 # Topology loader and resolver
 
-**Scope:** `packages/runtime/src/swarmkit_runtime/`
-**Design reference:** `design/SwarmKit-Design-v0.6.md` §10 (topology schema), §14.3 steps 1–3 (load/validate/resolve phase of the runtime pipeline), §9.3 (workspace structure).
+**Scope:** `packages/runtime/src/swael_runtime/`
+**Design reference:** `design/Swael-Design-v0.6.md` §10 (topology schema), §14.3 steps 1–3 (load/validate/resolve phase of the runtime pipeline), §9.3 (workspace structure).
 **Status:** draft — M1 core design. Implementation PRs follow this note.
 
 ## Goal
@@ -18,7 +18,7 @@ Given a workspace directory on disk (`workspace.yaml`, `topologies/*.yaml`, `arc
 Four phases, in order:
 
 1. **Discovery** — walk the workspace directory, find every artifact file, parse YAML.
-2. **Validation** — run `swarmkit_schema.validate()` (jsonschema) on each artifact.
+2. **Validation** — run `swael_schema.validate()` (jsonschema) on each artifact.
 3. **Resolution** — merge archetype defaults into agent definitions; link skill references; expand abstract-skill placeholders.
 4. **Model construction** — produce frozen `ResolvedTopology` pydantic models.
 
@@ -46,7 +46,7 @@ The workspace directory structure (§9.3):
 ├── schedules/*.yaml                  # zero or more (convention-only; also kind: Trigger)
 ├── knowledge_bases/                  # opaque to the resolver
 ├── review_queues/                    # opaque to the resolver
-└── .swarmkit/                        # opaque to the resolver (runtime state)
+└── .swael/                        # opaque to the resolver (runtime state)
 ```
 
 Discovery reads from the four directories the resolver cares about (`topologies/`, `archetypes/`, `skills/`, and `triggers/` + `schedules/` merged). File extension: `.yaml` and `.yml`. Recurses one level (subdirectories allowed for grouping but not required). Ignores hidden files.
@@ -55,7 +55,7 @@ A single discovery pass produces a flat list of `(path, kind, raw_dict)` tuples 
 
 ### Phase 2 — Validation
 
-For each discovered artifact, run `swarmkit_schema.validate(kind, raw_dict)`. This is the authoritative layer — `allOf`/`if-then` rules and everything else the JSON Schema specifies are caught here (see `design/details/pydantic-codegen.md` for why the pydantic layer doesn't cover these).
+For each discovered artifact, run `swael_schema.validate(kind, raw_dict)`. This is the authoritative layer — `allOf`/`if-then` rules and everything else the JSON Schema specifies are caught here (see `design/details/pydantic-codegen.md` for why the pydantic layer doesn't cover these).
 
 Validation errors don't short-circuit. We collect every error across every artifact and fail with the aggregate list. A workspace with three broken skills and one broken topology produces one error report listing all four, not four separate runs.
 
@@ -67,13 +67,13 @@ The interesting phase. Three sub-steps, in order:
 
 #### 3a. Skill resolution
 
-For every skill file, construct the pydantic `SwarmKitSkill` model. Build a registry `{skill_id: ResolvedSkill}`. Skill IDs must be globally unique within the workspace; duplicates fail.
+For every skill file, construct the pydantic `SwaelSkill` model. Build a registry `{skill_id: ResolvedSkill}`. Skill IDs must be globally unique within the workspace; duplicates fail.
 
 For skills with `implementation.type: composed`, verify every ID in `composes` exists in the registry. Composed skills are not inlined at this stage — they remain as references. Cycle detection runs here: a composed skill that (directly or transitively) references itself fails resolution with the cycle path listed.
 
 #### 3b. Archetype resolution
 
-For every archetype file, construct `SwarmKitArchetype`. Build a registry `{archetype_id: ResolvedArchetype}`. Abstract-skill placeholders in archetype defaults are **kept abstract** at this stage — they're resolved per-agent when the topology merges archetype defaults.
+For every archetype file, construct `SwaelArchetype`. Build a registry `{archetype_id: ResolvedArchetype}`. Abstract-skill placeholders in archetype defaults are **kept abstract** at this stage — they're resolved per-agent when the topology merges archetype defaults.
 
 For concrete skill references in archetype defaults, verify they exist in the skill registry.
 
@@ -110,7 +110,7 @@ Agents' `id` must be globally unique within the topology (not just within their 
 ```python
 @dataclass(frozen=True)
 class ResolvedWorkspace:
-    raw: SwarmKitWorkspace                         # original pydantic model
+    raw: SwaelWorkspace                         # original pydantic model
     topologies: Mapping[str, ResolvedTopology]     # keyed by topology id
     skills_registry: Mapping[str, ResolvedSkill]   # all skills in the workspace
     archetypes_registry: Mapping[str, ResolvedArchetype]
@@ -138,7 +138,7 @@ class ResolvedAgent:
 @dataclass(frozen=True)
 class ResolvedSkill:
     id: str
-    raw: SwarmKitSkill             # full pydantic model
+    raw: SwaelSkill             # full pydantic model
     resolves_to: "ResolvedSkill" | None  # set for composed skills after resolution
     source_path: Path
 ```
@@ -199,12 +199,12 @@ This means a workspace with a broken `governance` block still resolves — the r
 
 ### Deterministic output
 
-Given the same workspace on disk, resolution produces byte-identical `ResolvedWorkspace` output. Ordering of registries is sorted-by-id. Ordering of children follows YAML document order. Needed for reproducibility, for `swarmkit eject` (M9) to emit stable code, and for diff-friendly logging.
+Given the same workspace on disk, resolution produces byte-identical `ResolvedWorkspace` output. Ordering of registries is sorted-by-id. Ordering of children follows YAML document order. Needed for reproducibility, for `swael eject` (M9) to emit stable code, and for diff-friendly logging.
 
 ## API shape
 
 ```python
-from swarmkit_runtime.resolver import resolve_workspace, ResolutionErrors
+from swael_runtime.resolver import resolve_workspace, ResolutionErrors
 
 try:
     workspace = resolve_workspace(Path("./my-workspace"))
@@ -219,11 +219,11 @@ for skill in topology.root.skills:
     ...
 ```
 
-`resolve_workspace` is the single entry point. Both the CLI (`swarmkit validate`) and the runtime (`swarmkit run`, `swarmkit serve`) go through it.
+`resolve_workspace` is the single entry point. Both the CLI (`swael validate`) and the runtime (`swael run`, `swael serve`) go through it.
 
 ## Module layout
 
-New and extended modules under `packages/runtime/src/swarmkit_runtime/`:
+New and extended modules under `packages/runtime/src/swael_runtime/`:
 
 | Module | Responsibility |
 |---|---|
@@ -263,7 +263,7 @@ Following the usability-first checklist (`docs/notes/usability-first.md`) and th
 
 `just demo-resolver` — loads every valid fixture workspace, prints the resolved agent tree for each topology. For invalid fixtures, prints the `ResolutionErrors` list. One command, exercises every code path.
 
-The **M1 exit demo** (per the implementation plan) is `swarmkit validate examples/hello-swarm/workspace/` on a real example workspace that doesn't yet exist in the repo. That example workspace is its own task — `feat(examples): hello-swarm workspace` — landing as part of M1's last PR.
+The **M1 exit demo** (per the implementation plan) is `swael validate examples/hello-swarm/workspace/` on a real example workspace that doesn't yet exist in the repo. That example workspace is its own task — `feat(examples): hello-swarm workspace` — landing as part of M1's last PR.
 
 ## PR breakdown
 
@@ -276,9 +276,9 @@ Rather than one mega-PR, M1 lands as a sequence:
 | M1.3 | `resolver/` — phase-2 validation + aggregate error collection + `ResolutionError` / `ResolutionErrors` types | M1.2 |
 | M1.4 | `skills/` + `archetypes/` resolvers — registries, composed-skill cycle detection, archetype-merge precedence | M1.3 |
 | M1.5 | `topology/` resolver — agent-tree walk, archetype merge application, abstract-skill placeholder matching, `ResolvedTopology` / `ResolvedAgent` construction | M1.4 |
-| M1.6 | `swarmkit validate <path>` CLI + Typer wiring + exit-code behaviour | M1.5 |
+| M1.6 | `swael validate <path>` CLI + Typer wiring + exit-code behaviour | M1.5 |
 | M1.7 | Task #23 — human-readable error rendering | M1.6, separate design note |
-| M1.8 | Task #24 — `swarmkit knowledge-pack` CLI | M1.5 or later, separate design note |
+| M1.8 | Task #24 — `swael knowledge-pack` CLI | M1.5 or later, separate design note |
 | M1.9 | `hello-swarm` example workspace under `examples/` + `just demo-resolver` | M1.5 |
 
 Each implementation PR is small and independently reviewable. The design note (this file) is the shared context all of them reference.
