@@ -23,15 +23,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import re
-import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
-
 
 BASE_URL = "https://www.ibm.com/docs/en/order-management-sw/10.0"
 DELAY_SECONDS = 2
@@ -63,7 +60,9 @@ async def main(output_dir: Path) -> None:
                 soup = BeautifulSoup(content, "html.parser")
 
                 # Extract main content
-                main = soup.find("main") or soup.find("article") or soup.find("div", class_="content")
+                main = (
+                    soup.find("main") or soup.find("article") or soup.find("div", class_="content")
+                )
                 if not main:
                     main = soup.body
 
