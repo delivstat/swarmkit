@@ -35,21 +35,27 @@ export STERLING_API_URL=http://localhost:9080/smcfs/restapi/
 export STERLING_API_USER=admin
 export STERLING_API_PASSWORD=your_password
 
-# Knowledge base directories
-export STERLING_DOCS_DIR=~/sterling-knowledge
-export REFERENCE_DESIGNS_DIR=~/sterling-references
+# Knowledge base directories (three separate indexes)
+export STERLING_PRODUCT_DOCS_DIR=~/sterling-knowledge      # base product docs
+export STERLING_PROJECT_DOCS_DIR=~/sterling-project-docs    # your project files
+export REFERENCE_DESIGNS_DIR=~/sterling-references           # other projects
 
 # GitHub (for code review topology)
 export GITHUB_TOKEN=ghp_...
 ```
 
-### 2. Prepare the documentation directory
+### 2. Prepare the product documentation directory
+
+This is the stable, base product knowledge — ingested once, never
+changes unless you upgrade Sterling versions. Typically 17,000+
+files.
 
 ```bash
 mkdir -p ~/sterling-knowledge
 
-# Sterling product docs (IBM Knowledge Center)
-ln -s /path/to/sterling-infocenter ~/sterling-knowledge/product-docs
+# If you have a large markdown file, split it first:
+python scripts/split-markdown.py /path/to/sterling-docs.md \
+  --output ~/sterling-knowledge/product-docs/
 
 # API Javadocs (from Sterling installation)
 # Usually at <INSTALL>/repository/eardata/documentation/
@@ -58,49 +64,94 @@ ln -s /path/to/sterling/javadocs ~/sterling-knowledge/api-javadocs
 # Database ERD (from Sterling installation)
 # Usually at <INSTALL>/repository/datatypes/
 ln -s /path/to/sterling/erd ~/sterling-knowledge/data-model
-
-# Your project's design docs
-ln -s /path/to/project/docs ~/sterling-knowledge/project-docs
-
-# Extension source code
-ln -s /path/to/project/extensions/src ~/sterling-knowledge/extensions
 ```
 
-### 3. Prepare reference designs (optional)
+### 3. Prepare the project documentation directory
+
+This is your project-specific knowledge — changes as the project
+evolves. Re-ingest when files change.
+
+```bash
+mkdir -p ~/sterling-project-docs
+
+# Design documents (Word, PDF, markdown)
+ln -s /path/to/project/docs ~/sterling-project-docs/design-docs
+
+# Extension source code (Java)
+ln -s /path/to/project/extensions/src ~/sterling-project-docs/extensions
+
+# XSL transforms
+ln -s /path/to/project/transforms ~/sterling-project-docs/transforms
+
+# XML templates
+ln -s /path/to/project/templates ~/sterling-project-docs/templates
+
+# Integration specs (Excel → convert to markdown first)
+pip install openpyxl
+python scripts/convert-excel.py /path/to/integration-specs/
+mv /path/to/integration-specs/*.md ~/sterling-project-docs/integrations/
+```
+
+Supported file types: `.md`, `.txt`, `.html`, `.pdf`, `.docx`,
+`.java`, `.xml`, `.xsl`, `.properties`. Excel files must be
+converted first (see `scripts/convert-excel.py`). JAR files are
+not supported — add their Javadoc/README instead.
+
+### 4. Prepare reference designs (optional)
+
+Designs from other Sterling implementations — separate index so
+agents always label citations as reference material, never as
+current project fact. The config-validator has no access to this
+source.
 
 ```bash
 mkdir -p ~/sterling-references
 
-# Sanitized designs from other Sterling projects
+# Sanitized designs from other projects (no client names/secrets)
 cp -r /path/to/project-alpha/docs ~/sterling-references/project-alpha/
 cp -r /path/to/project-beta/docs ~/sterling-references/project-beta/
+cp -r /path/to/industry-templates ~/sterling-references/templates/
 ```
 
-### 4. Ingest documentation into the vector store
+### 5. Ingest documentation into vector stores
 
-First run downloads the embedding model (~90MB). Subsequent runs
-are instant (loads existing index).
+First run downloads the embedding model (~90MB, 1-2 min).
+Each directory gets its own vector index (LanceDB).
 
 ```bash
 cd examples/sterling-oms/workspace
 
-# Ingest product docs + project docs
-export STERLING_DOCS_DIR=~/sterling-knowledge
-uv run python scripts/ingest-docs.py
+# Ingest product docs (run once — 17K files takes hours, run overnight)
+STERLING_DOCS_DIR=~/sterling-knowledge \
+  nohup uv run python scripts/ingest-docs.py > ingest-product.log 2>&1 &
 
-# Ingest reference designs (separate index)
-STERLING_DOCS_DIR=~/sterling-references uv run python scripts/ingest-docs.py
+# Ingest project docs (re-run when project files change)
+STERLING_DOCS_DIR=~/sterling-project-docs \
+  uv run python scripts/ingest-docs.py
+
+# Ingest reference designs (run once)
+STERLING_DOCS_DIR=~/sterling-references \
+  uv run python scripts/ingest-docs.py
 ```
 
-### 5. Validate the workspace
+**To reset and start fresh:** delete the `lancedb/` directory
+inside each `BASE_DIR` and re-run ingestion:
+
+```bash
+rm -rf ~/sterling-knowledge/lancedb/
+rm -rf ~/sterling-project-docs/lancedb/
+rm -rf ~/sterling-references/lancedb/
+```
+
+### 6. Validate the workspace
 
 ```bash
 swarmkit validate examples/sterling-oms/workspace --tree
 ```
 
-You should see 4 topologies, 11 skills, 5 archetypes.
+You should see 5 topologies, 19 skills, 12 archetypes.
 
-### 6. Test the Sterling API connection
+### 7. Test the Sterling API connection
 
 ```bash
 swarmkit run examples/sterling-oms/workspace sterling-qa \
@@ -148,6 +199,29 @@ swarmkit run examples/sterling-oms/workspace coding-assistant \
   --verbose
 ```
 
+### Multi-turn conversation (interactive mode)
+
+For design sessions, Q&A, or iterative discussions — context
+persists across turns:
+
+```bash
+# Start a conversation with the Sterling Q&A topology
+swarmkit chat examples/sterling-oms/workspace sterling-qa
+> What DOM rules are configured?
+[architect queries live config and responds]
+> Change the sourcing to cost-based for SFS nodes
+[architect responds with context from the previous turn]
+> What are the risks of this change?
+[architect knows the full conversation history]
+exit
+
+# Resume a previous conversation
+swarmkit conversations examples/sterling-oms/workspace --pick
+
+# Or resume directly by ID
+swarmkit chat examples/sterling-oms/workspace sterling-qa --resume a3f2b1c9
+```
+
 ### Observability
 
 ```bash
@@ -192,30 +266,56 @@ SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=moonshotai/kimi-k2 \
 
 ## Knowledge base architecture
 
+Four MCP servers, each with a distinct role:
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Sterling API MCP Server (live)                          │
 │ • get_flow_list, get_sourcing_rule_list, get_agent_list │
-│ • Queries Application Manager config directly          │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────┼───────────────────────────────┐
-│ mcp-local-rag (sterling-docs)                           │
-│ • Product docs (IBM Knowledge Center)                   │
-│ • API Javadocs (what the APIs mean)                    │
-│ • Database ERD (what the tables/columns mean)          │
-│ • Project design docs                                   │
-│ • Extension source code                                 │
-│ Vector search: hybrid semantic + keyword               │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────┼───────────────────────────────┐
-│ mcp-local-rag (reference-designs) — SEPARATE INDEX      │
+│ • Queries Application Manager config directly           │
+│ • Ground truth for "how is our system configured?"      │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ mcp-local-rag: sterling-product-docs                    │
+│ • 17K+ product docs (IBM Knowledge Center)              │
+│ • API Javadocs (what the APIs return + mean)            │
+│ • Database ERD (what the tables/columns mean)           │
+│ • INGEST ONCE — stable base product knowledge           │
+│ • Vector search: hybrid semantic + keyword              │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ mcp-local-rag: sterling-project-docs                    │
+│ • Design docs (Word/PDF/markdown)                       │
+│ • Extension source code (Java)                          │
+│ • XSL transforms                                        │
+│ • Integration specs (Excel → markdown)                  │
+│ • RE-INGEST when project files change                   │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ mcp-local-rag: reference-designs — SEPARATE INDEX       │
 │ • Sanitized designs from other Sterling projects        │
-│ • Agents always label: "In a reference project..."     │
-│ • Validator has NO access (prevents hallucination)     │
+│ • Agents always label: "In a reference project..."      │
+│ • Config validator has NO access (prevents hallucination)│
 └─────────────────────────────────────────────────────────┘
 ```
+
+### Which archetype has access to what
+
+| Archetype | Product docs | Project docs | Reference designs | Live API |
+|---|---|---|---|---|
+| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ |
+| retail-domain-expert | ✅ | ✅ | ✅ | — |
+| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | ✅ |
+| sterling-code-reviewer | ✅ | ✅ | — | — |
+| sterling-developer | ✅ | ✅ | — | ✅ |
+
+The config-validator has no reference design access — it validates
+against current project reality only. If the architect recommends
+something from a reference design that doesn't fit, the validator
+catches it because it only sees the current configuration.
 
 ## Customization
 
@@ -243,13 +343,14 @@ swarmkit edit examples/sterling-oms/workspace \
 
 ```
 workspace/
-├── workspace.yaml              # MCP servers + governance + storage
-├── sterling_api_server.py      # Live Sterling API MCP server
+├── workspace.yaml              # 4 MCP servers + governance + storage
+├── sterling_api_server.py      # Live Sterling API MCP server (10 tools)
 ├── topologies/
 │   ├── solution-review.yaml    # Design discussions (3 agents)
 │   ├── sterling-qa.yaml        # Q&A (2 agents)
 │   ├── code-review.yaml        # Code review (2 agents)
-│   └── coding-assistant.yaml   # Write code (2 agents)
+│   ├── coding-assistant.yaml   # Write code (2 agents)
+│   └── skill-authoring.yaml    # Multi-agent authoring (6 agents)
 ├── archetypes/
 │   ├── sterling-oms-architect.yaml
 │   ├── retail-domain-expert.yaml
