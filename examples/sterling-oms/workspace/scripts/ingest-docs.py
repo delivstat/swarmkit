@@ -4,6 +4,11 @@ Run once to build the vector index. Re-run when docs change.
 No SwarmKit or MCP SDK dependency — uses subprocess to talk
 to mcp-local-rag directly via its CLI.
 
+mcp-local-rag natively supports: .md, .txt, .pdf, .docx
+For other file types (.html, .java, .xml, .xsl, .properties),
+this script converts them to .txt in a staging directory before
+ingestion.
+
 Prerequisites:
     Node.js 18+ with npx
 
@@ -16,23 +21,60 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-EXTENSIONS = {
-    ".html",
-    ".htm",
-    ".md",
-    ".txt",
-    ".xml",
-    ".properties",
-    ".java",
-    ".pdf",
-    ".docx",
-    ".xsl",
-}
+# Files mcp-local-rag handles natively
+NATIVE_EXTENSIONS = {".md", ".txt", ".pdf", ".docx"}
+
+# Files we convert to .txt before ingestion
+CONVERT_EXTENSIONS = {".html", ".htm", ".java", ".xml", ".xsl", ".properties"}
+
+ALL_EXTENSIONS = NATIVE_EXTENSIONS | CONVERT_EXTENSIONS
 MAX_FILE_SIZE = 10_000_000  # 10MB
+
+
+def _strip_html(text: str) -> str:
+    """Simple HTML tag removal without external dependencies."""
+    text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL)
+    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _convert_file(src: Path, staging_dir: Path, root: Path) -> Path | None:
+    """Convert a non-native file to .txt in the staging directory."""
+    try:
+        content = src.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return None
+
+    suffix = src.suffix.lower()
+
+    if suffix in {".html", ".htm"}:
+        content = _strip_html(content)
+        header = f"# {src.stem}\n\nSource: {src.relative_to(root)}\n\n"
+        content = header + content
+    elif suffix == ".java":
+        header = f"// Source: {src.relative_to(root)}\n\n"
+        content = header + content
+    elif suffix in {".xml", ".xsl"}:
+        header = f"<!-- Source: {src.relative_to(root)} -->\n\n"
+        content = header + content
+    else:
+        header = f"# {src.stem}\n\nSource: {src.relative_to(root)}\n\n"
+        content = header + content
+
+    # Preserve directory structure in staging
+    rel = src.relative_to(root)
+    out = staging_dir / rel.with_suffix(".txt")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(content, encoding="utf-8")
+    return out
 
 
 def main() -> None:
@@ -47,58 +89,65 @@ def main() -> None:
         print("Set STERLING_DOCS_DIR to your knowledge directory.")
         sys.exit(1)
 
-    files = [
+    all_files = [
         f
         for f in root.rglob("*")
         if f.is_file()
-        and f.suffix.lower() in EXTENSIONS
+        and f.suffix.lower() in ALL_EXTENSIONS
         and f.stat().st_size < MAX_FILE_SIZE
         and "lancedb" not in str(f)
         and "node_modules" not in str(f)
+        and ".ingest-staging" not in str(f)
     ]
 
-    print(f"Found {len(files)} files to ingest in {base_dir}")
+    native_files = [f for f in all_files if f.suffix.lower() in NATIVE_EXTENSIONS]
+    convert_files = [f for f in all_files if f.suffix.lower() in CONVERT_EXTENSIONS]
 
-    if not files:
+    print(f"Found {len(all_files)} files in {base_dir}")
+    print(f"  Native ({', '.join(sorted(NATIVE_EXTENSIONS))}): {len(native_files)}")
+    print(f"  Convert to .txt ({', '.join(sorted(CONVERT_EXTENSIONS))}): {len(convert_files)}")
+
+    if not all_files:
         print("No files found. Check your STERLING_DOCS_DIR path.")
         sys.exit(1)
 
-    # Use npx to run mcp-local-rag's ingest via its CLI
-    # mcp-local-rag doesn't have a CLI ingest mode, so we use
-    # a small Node.js script that calls the MCP server's ingest_file tool
+    # Convert non-native files to .txt in a staging directory
+    staging_dir = root / ".ingest-staging"
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+
+    converted: list[Path] = []
+    if convert_files:
+        print(f"\nConverting {len(convert_files)} files to .txt...")
+        for f in convert_files:
+            out = _convert_file(f, staging_dir, root)
+            if out:
+                converted.append(out)
+        print(f"  Converted {len(converted)} files to {staging_dir}")
+
+    # Build the final ingest list: native files + converted files
+    ingest_files = native_files + converted
+    print(f"\nTotal files to ingest: {len(ingest_files)}")
+
+    # Create the Node.js helper script
     ingest_script = _create_ingest_helper(root)
 
-    try:
-        result = subprocess.run(
-            ["npx", "-y", "mcp-local-rag", "--help"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-        if result.returncode != 0:
-            print("mcp-local-rag not available. Install Node.js 18+ and npx.")
-            sys.exit(1)
-    except FileNotFoundError:
-        print("npx not found. Install Node.js 18+.")
-        sys.exit(1)
-
-    # Write file list for the helper script
+    # Write file list
     file_list = root / ".ingest-files.json"
     file_list.write_text(
-        json.dumps([str(f) for f in files]),
+        json.dumps([str(f) for f in ingest_files]),
         encoding="utf-8",
     )
 
-    print(f"Ingesting {len(files)} files...")
-    print("This may take a while for large doc sets (17K files ≈ 10-24 hours).")
+    print("Ingesting...")
+    print("This may take a while for large doc sets (17K files = 10-24 hours).")
     print("The vector index persists — you only need to do this once.\n")
 
     try:
         result = subprocess.run(
             ["node", str(ingest_script)],
             env={**os.environ, "BASE_DIR": str(root)},
-            timeout=86400,  # 24 hours
+            timeout=86400,
             check=False,
         )
         if result.returncode != 0:
@@ -107,10 +156,12 @@ def main() -> None:
     finally:
         file_list.unlink(missing_ok=True)
         ingest_script.unlink(missing_ok=True)
+        # Clean up staging directory
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
 
     print("\nIngestion complete.")
     print(f"Vector index stored at: {root}/lancedb/")
-    print("The index loads instantly on subsequent mcp-local-rag starts.")
 
 
 def _create_ingest_helper(root: Path) -> Path:
@@ -121,7 +172,6 @@ def _create_ingest_helper(root: Path) -> Path:
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { readFileSync } from "fs";
-import { spawn } from "child_process";
 
 const baseDir = process.env.BASE_DIR;
 const files = JSON.parse(readFileSync(`${baseDir}/.ingest-files.json`, "utf-8"));
