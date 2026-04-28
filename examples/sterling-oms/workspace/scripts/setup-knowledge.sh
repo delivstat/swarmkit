@@ -26,12 +26,16 @@ mkdir -p "$PRODUCT_DOCS/api-javadocs"
 mkdir -p "$PRODUCT_DOCS/data-model"
 
 # Project docs (changes over time, re-ingest as needed)
+# Only documentation files — code lives in the repo, read directly by developer agent
 mkdir -p "$PROJECT_DOCS/design-docs"
-mkdir -p "$PROJECT_DOCS/extensions"
-mkdir -p "$PROJECT_DOCS/transforms"
-mkdir -p "$PROJECT_DOCS/templates"
 mkdir -p "$PROJECT_DOCS/integrations"
 mkdir -p "$PROJECT_DOCS/3rd-party-docs"
+
+# Project code (NOT indexed — developer agent reads these via GitHub/filesystem)
+CODE_DIR="$BASE/project-code"
+mkdir -p "$CODE_DIR/extensions"
+mkdir -p "$CODE_DIR/transforms"
+mkdir -p "$CODE_DIR/templates"
 
 # Reference designs (separate index, ingest once)
 mkdir -p "$REFERENCES/templates"
@@ -45,11 +49,13 @@ echo "  └── data-model/          ← Database ERD from Sterling install"
 echo ""
 echo "  $PROJECT_DOCS/"
 echo "  ├── design-docs/         ← Your project's Word/PDF/markdown docs"
-echo "  ├── extensions/          ← Java extension source code"
-echo "  ├── transforms/          ← XSL transform files"
-echo "  ├── templates/           ← XML API/config templates"
 echo "  ├── integrations/        ← Integration specs (Excel → markdown)"
 echo "  └── 3rd-party-docs/      ← README/Javadoc for key libraries"
+echo ""
+echo "  $CODE_DIR/               (NOT indexed — developer agent reads directly)"
+echo "  ├── extensions/          ← Java extension source code"
+echo "  ├── transforms/          ← XSL transform files"
+echo "  └── templates/           ← XML API/config templates"
 echo ""
 echo "  $REFERENCES/"
 echo "  └── templates/           ← Reusable Sterling patterns"
@@ -77,6 +83,9 @@ STERLING_API_PASSWORD=
 STERLING_PRODUCT_DOCS_DIR=$PRODUCT_DOCS
 STERLING_PROJECT_DOCS_DIR=$PROJECT_DOCS
 REFERENCE_DESIGNS_DIR=$REFERENCES
+
+# Project code (developer agent reads directly, NOT indexed in RAG)
+STERLING_PROJECT_CODE_DIR=$CODE_DIR
 
 # GitHub (for code review topology)
 GITHUB_TOKEN=

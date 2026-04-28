@@ -12,12 +12,14 @@ API access and vector-search RAG over product documentation.
 | `sterling-qa` | Quick Sterling questions — searches docs + queries live config |
 | `code-review` | Review extension code — Sterling patterns + quality + architecture |
 | `coding-assistant` | Write extension code — developer + architect guidance |
+| `sterling-assistant` | General-purpose — routes to architect or developer, cross-consults |
 
 ## Prerequisites
 
 - Python 3.11+ with `uv`
-- Node.js 18+ with `npx` (for mcp-local-rag)
+- Node.js 18+ with `npx` (for GitHub MCP server)
 - SwarmKit installed (`pip install swarmkit-runtime` or source checkout)
+- `rag-mcp` installed (`pip install rag-mcp`)
 - An OpenRouter API key (`OPENROUTER_API_KEY`)
 - A local Sterling OMS instance (for live API access)
 - Sterling product documentation (for RAG)
@@ -35,10 +37,13 @@ export STERLING_API_URL=http://localhost:9080/smcfs/restapi/
 export STERLING_API_USER=admin
 export STERLING_API_PASSWORD=your_password
 
-# Knowledge base directories (three separate indexes)
+# Knowledge base directories (three separate indexes — documentation only)
 export STERLING_PRODUCT_DOCS_DIR=~/sterling-knowledge      # base product docs
-export STERLING_PROJECT_DOCS_DIR=~/sterling-project-docs    # your project files
+export STERLING_PROJECT_DOCS_DIR=~/sterling-project-docs    # your project docs
 export REFERENCE_DESIGNS_DIR=~/sterling-references           # other projects
+
+# Project code (developer agent reads directly — NOT indexed in RAG)
+export STERLING_PROJECT_CODE_DIR=~/sterling-project-code
 
 # GitHub (for code review topology)
 export GITHUB_TOKEN=ghp_...
@@ -68,8 +73,13 @@ ln -s /path/to/sterling/erd ~/sterling-knowledge/data-model
 
 ### 3. Prepare the project documentation directory
 
-This is your project-specific knowledge — changes as the project
-evolves. Re-ingest when files change.
+This is your project-specific **documentation** — changes as the
+project evolves. Re-ingest when files change.
+
+Code files (Java extensions, XSL transforms, XML templates) are
+**not** indexed here. The developer agent reads those directly
+from the filesystem/GitHub — it needs the full file structure,
+not vector-search fragments.
 
 ```bash
 mkdir -p ~/sterling-project-docs
@@ -77,25 +87,19 @@ mkdir -p ~/sterling-project-docs
 # Design documents (Word, PDF, markdown)
 ln -s /path/to/project/docs ~/sterling-project-docs/design-docs
 
-# Extension source code (Java)
-ln -s /path/to/project/extensions/src ~/sterling-project-docs/extensions
-
-# XSL transforms
-ln -s /path/to/project/transforms ~/sterling-project-docs/transforms
-
-# XML templates
-ln -s /path/to/project/templates ~/sterling-project-docs/templates
-
 # Integration specs (Excel → convert to markdown first)
 pip install openpyxl
 python scripts/convert-excel.py /path/to/integration-specs/
 mv /path/to/integration-specs/*.md ~/sterling-project-docs/integrations/
+
+# 3rd-party library docs
+cp /path/to/library-readme.md ~/sterling-project-docs/3rd-party-docs/
 ```
 
-Supported file types: `.md`, `.txt`, `.html`, `.pdf`, `.docx`,
-`.java`, `.xml`, `.xsl`, `.properties`. Excel files must be
-converted first (see `scripts/convert-excel.py`). JAR files are
-not supported — add their Javadoc/README instead.
+Supported file types for RAG: `.md`, `.html`, `.pdf`, `.docx`.
+Excel files must be converted first (see `scripts/convert-excel.py`).
+Code files (`.java`, `.xml`, `.xsl`) belong in your repo — the
+developer agent reads them via GitHub MCP server.
 
 ### 4. Prepare reference designs (optional)
 
@@ -115,33 +119,30 @@ cp -r /path/to/industry-templates ~/sterling-references/templates/
 
 ### 5. Ingest documentation into vector stores
 
-First run downloads the embedding model (~90MB, 1-2 min).
-Each directory gets its own vector index (LanceDB).
+First run downloads the embedding model (~500MB). Each directory
+gets its own ChromaDB collection (stored in `~/.local/share/chroma/`).
 
 ```bash
+pip install rag-mcp  # one-time
+
 cd examples/sterling-oms/workspace
 
 # Ingest product docs (run once — 17K files takes hours, run overnight)
-STERLING_DOCS_DIR=~/sterling-knowledge \
-  nohup uv run python scripts/ingest-docs.py > ingest-product.log 2>&1 &
+STERLING_DOCS_DIR=~/sterling-knowledge/product-docs \
+  nohup python scripts/ingest-docs.py > ingest-product.log 2>&1 &
 
 # Ingest project docs (re-run when project files change)
 STERLING_DOCS_DIR=~/sterling-project-docs \
-  uv run python scripts/ingest-docs.py
+  python scripts/ingest-docs.py
 
 # Ingest reference designs (run once)
 STERLING_DOCS_DIR=~/sterling-references \
-  uv run python scripts/ingest-docs.py
+  python scripts/ingest-docs.py
 ```
 
-**To reset and start fresh:** delete the `lancedb/` directory
-inside each `BASE_DIR` and re-run ingestion:
-
-```bash
-rm -rf ~/sterling-knowledge/lancedb/
-rm -rf ~/sterling-project-docs/lancedb/
-rm -rf ~/sterling-references/lancedb/
-```
+Only documentation files are indexed (`.md`, `.html`, `.pdf`, `.docx`).
+Code files (`.java`, `.xml`, `.xsl`) are **not** indexed — the
+developer agent reads those directly from the repo.
 
 ### 6. Validate the workspace
 
@@ -197,6 +198,26 @@ swarmkit run examples/sterling-oms/workspace coding-assistant \
            validates the shipping address against our address \
            validation service before order creation" \
   --verbose
+```
+
+### General-purpose assistant (routes + cross-consults)
+
+```bash
+# Design question — architect answers, consults developer for current state
+swarmkit chat examples/sterling-oms/workspace sterling-assistant
+> How should we implement ship-from-store inventory checks?
+[root → developer: "what does current inventory integration look like?"]
+[root → architect: designs solution with awareness of current code]
+
+# Code question — developer answers, consults architect for design intent
+> Show me how the CreateOrder user exit works
+[root → developer: reads code, explains implementation]
+
+# Mixed question — both agents consulted
+> The address validation UE is throwing NPE in production, how do we fix it?
+[root → developer: reads code to identify the bug]
+[root → architect: checks design for correct pattern]
+[root: synthesises fix + architectural recommendation]
 ```
 
 ### Multi-turn conversation (interactive mode)
@@ -266,7 +287,7 @@ SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=moonshotai/kimi-k2 \
 
 ## Knowledge base architecture
 
-Four MCP servers, each with a distinct role:
+Five MCP servers, each with a distinct role:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -277,45 +298,52 @@ Four MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ mcp-local-rag: sterling-product-docs                    │
+│ rag-mcp: sterling-product-docs (Python, ChromaDB)       │
 │ • 17K+ product docs (IBM Knowledge Center)              │
 │ • API Javadocs (what the APIs return + mean)            │
 │ • Database ERD (what the tables/columns mean)           │
 │ • INGEST ONCE — stable base product knowledge           │
-│ • Vector search: hybrid semantic + keyword              │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ mcp-local-rag: sterling-project-docs                    │
+│ rag-mcp: sterling-project-docs                          │
 │ • Design docs (Word/PDF/markdown)                       │
-│ • Extension source code (Java)                          │
-│ • XSL transforms                                        │
 │ • Integration specs (Excel → markdown)                  │
-│ • RE-INGEST when project files change                   │
+│ • RE-INGEST when project docs change                    │
+│ • Code is NOT here — developer reads it directly        │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ mcp-local-rag: reference-designs — SEPARATE INDEX       │
+│ rag-mcp: reference-designs — SEPARATE INDEX             │
 │ • Sanitized designs from other Sterling projects        │
 │ • Agents always label: "In a reference project..."      │
 │ • Config validator has NO access (prevents hallucination)│
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│ GitHub MCP Server (code access)                         │
+│ • Developer agent reads .java, .xsl, .xml directly      │
+│ • Full file context, not vector-search fragments         │
+│ • Code review reads PRs + diffs                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Which archetype has access to what
 
-| Archetype | Product docs | Project docs | Reference designs | Live API |
-|---|---|---|---|---|
-| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ |
-| retail-domain-expert | ✅ | ✅ | ✅ | — |
-| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | ✅ |
-| sterling-code-reviewer | ✅ | ✅ | — | — |
-| sterling-developer | ✅ | ✅ | — | ✅ |
+| Archetype | Product docs | Project docs | Reference designs | Live API | Code (GitHub) |
+|---|---|---|---|---|---|
+| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ | — |
+| retail-domain-expert | ✅ | ✅ | ✅ | — | — |
+| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | ✅ | — |
+| sterling-code-reviewer | ✅ | ✅ | — | — | ✅ |
+| sterling-developer | ✅ | ✅ | — | ✅ | ✅ |
 
-The config-validator has no reference design access — it validates
-against current project reality only. If the architect recommends
-something from a reference design that doesn't fit, the validator
-catches it because it only sees the current configuration.
+**Key design decisions:**
+- The config-validator has no reference design access — it validates
+  against current project reality only.
+- Code files (Java, XSL, XML templates) are **not** in the RAG index.
+  The developer and code-reviewer agents read them directly via GitHub,
+  preserving full file structure, imports, and class hierarchy.
 
 ## Customization
 
@@ -357,7 +385,7 @@ workspace/
 │   ├── sterling-config-validator.yaml
 │   ├── sterling-code-reviewer.yaml
 │   └── sterling-developer.yaml
-├── skills/                     # 11 shared skills
+├── skills/                     # 19 shared skills
 │   ├── search-sterling-docs.yaml
 │   ├── search-reference-designs.yaml
 │   ├── read-context.yaml

@@ -1,0 +1,53 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: sterling-assistant
+  description: >
+    General-purpose Sterling assistant. Routes queries to the right
+    specialist and orchestrates cross-consultation between them.
+    Design questions go to the architect, code questions go to the
+    developer, and each can consult the other before responding.
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: qwen/qwen3-235b-a22b
+      temperature: 0.1
+    prompt:
+      system: |
+        You are the Sterling OMS project assistant. You route queries
+        to the right specialist and orchestrate cross-consultation.
+
+        ROUTING:
+        - Design/architecture/configuration questions → sterling-architect
+        - Code/implementation/extension questions → sterling-developer
+        - Questions touching both → query BOTH, then synthesise
+
+        CROSS-CONSULTATION (this is critical):
+        When the architect needs to understand current implementation
+        before designing, delegate to sterling-developer FIRST with:
+        "Describe the current implementation of [X] — classes, methods,
+        flow, and any existing patterns."
+        Then pass that context to the architect.
+
+        When the developer needs design intent before coding, delegate
+        to sterling-architect FIRST with:
+        "What is the design approach for [X] — patterns, constraints,
+        and integration points?"
+        Then pass that context to the developer.
+
+        SYNTHESIS:
+        - Always include which agent provided which information
+        - If architect and developer disagree, flag the tension
+        - For code output: present code + architectural rationale
+        - For design output: present design + implementation feasibility
+    children:
+      - id: sterling-architect
+        role: worker
+        archetype: sterling-oms-architect
+      - id: sterling-developer
+        role: worker
+        archetype: sterling-developer

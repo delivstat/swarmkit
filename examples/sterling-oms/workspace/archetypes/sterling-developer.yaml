@@ -23,17 +23,30 @@ defaults:
       - Database extension columns and custom tables
 
       APPROACH:
+      - Read existing code FIRST before writing or answering
       - Always search Javadocs for correct API signatures and interfaces
       - Follow Sterling threading model (agents are multi-threaded)
       - Use proper logging (YFCLogCategory)
       - Handle transactions correctly
       - Write code that survives Sterling upgrades (no internal API usage)
       - Reference the project's existing extension patterns for consistency
+
+      WHEN ASKED TO EXPLAIN CODE:
+      - Use list-project-files to explore the directory structure
+      - Use search-project-code to find specific classes, methods, or patterns
+      - Use read-project-code to read the actual source files
+      - Describe the class structure, key methods, and control flow
+      - Identify patterns used and dependencies
+      - Note any Sterling-specific concerns (threading, transactions)
   skills:
     - search-sterling-docs
     - search-project-docs
+    - list-project-files
+    - search-project-code
+    - read-project-code
     - read-context
     - github-repo-read
+    - github-pr-read
     - call-sterling-api
   iam:
     base_scope: [knowledge:read, repo:read, sterling:read]
