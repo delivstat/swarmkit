@@ -29,26 +29,31 @@ mcp_servers:
       STERLING_API_USER: "${STERLING_API_USER}"
       STERLING_API_PASSWORD: "${STERLING_API_PASSWORD}"
   # Sterling product docs — 17K files, ingest once, never changes
-  # Product docs, Javadocs, ERD, API reference
+  # Product docs (markdown/HTML), Javadocs, ERD
   - id: sterling-product-docs
     transport: stdio
-    command: ["npx", "-y", "mcp-local-rag"]
+    command: ["uvx", "rag-mcp"]
     env:
-      BASE_DIR: "${STERLING_PRODUCT_DOCS_DIR}"
-  # Project-specific docs — changes as the project evolves
-  # Design docs, source code, XSL transforms, integration specs
+      COLLECTION_NAME: "sterling-product-docs"
+  # Project-specific documentation — design docs, integration specs
+  # Code files (.java, .xsl, .xml) are NOT indexed here —
+  # the developer agent reads those directly from the filesystem
   - id: sterling-project-docs
     transport: stdio
-    command: ["npx", "-y", "mcp-local-rag"]
+    command: ["uvx", "rag-mcp"]
     env:
-      BASE_DIR: "${STERLING_PROJECT_DOCS_DIR}"
+      COLLECTION_NAME: "sterling-project-docs"
   # Reference designs from other projects (separate index)
   - id: reference-designs
     transport: stdio
-    command: ["npx", "-y", "mcp-local-rag"]
+    command: ["uvx", "rag-mcp"]
     env:
-      BASE_DIR: "${REFERENCE_DESIGNS_DIR}"
-  # GitHub for code access
+      COLLECTION_NAME: "reference-designs"
+  # Local project code — developer agent reads .java, .xsl, .xml directly
+  - id: project-code
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_PROJECT_CODE_DIR}"]
+  # GitHub for code access (PRs, remote repos)
   - id: github
     transport: stdio
     command: ["npx", "-y", "@modelcontextprotocol/server-github"]

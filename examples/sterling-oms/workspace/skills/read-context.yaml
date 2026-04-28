@@ -2,15 +2,15 @@ apiVersion: swarmkit/v1
 kind: Skill
 metadata:
   id: read-context
-  name: Read Context Around Search Result
-  description: Expand context around a search hit — read neighboring chunks from the same file.
+  name: Read File from Project
+  description: Read a file directly from the project codebase — extensions, transforms, templates, configs.
 category: capability
 implementation:
   type: mcp_tool
-  server: sterling-product-docs
-  tool: read_chunk_neighbors
+  server: github
+  tool: get_file_contents
 iam:
-  required_scopes: [knowledge:read]
+  required_scopes: [repo:read]
 provenance:
   authored_by: human
-  version: 1.0.0
+  version: 2.0.0

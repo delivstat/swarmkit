@@ -27,6 +27,9 @@ defaults:
   skills:
     - search-sterling-docs
     - search-project-docs
+    - list-project-files
+    - search-project-code
+    - read-project-code
     - read-context
     - github-pr-read
     - github-repo-read
