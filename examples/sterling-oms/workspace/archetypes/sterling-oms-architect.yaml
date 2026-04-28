@@ -35,6 +35,7 @@ defaults:
       - Flag performance and integration impact
   skills:
     - search-sterling-docs
+    - search-project-docs
     - search-reference-designs
     - read-context
     - query-sterling-config

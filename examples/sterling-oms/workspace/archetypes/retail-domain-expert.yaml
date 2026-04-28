@@ -30,6 +30,7 @@ defaults:
       - Flag when business requirements conflict with system capabilities
   skills:
     - search-sterling-docs
+    - search-project-docs
     - search-reference-designs
     - read-context
   iam:

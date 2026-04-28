@@ -31,6 +31,7 @@ defaults:
       - Reference the project's existing extension patterns for consistency
   skills:
     - search-sterling-docs
+    - search-project-docs
     - read-context
     - github-repo-read
     - call-sterling-api

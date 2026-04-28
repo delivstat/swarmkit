@@ -27,6 +27,7 @@ defaults:
       OUTPUT: SAFE / NEEDS-REVIEW / UNSAFE with specific concerns.
   skills:
     - search-sterling-docs
+    - search-project-docs
     - read-context
     - query-sterling-config
     - query-sterling-sourcing

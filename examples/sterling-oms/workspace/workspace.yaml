@@ -28,12 +28,20 @@ mcp_servers:
       STERLING_API_URL: "${STERLING_API_URL}"
       STERLING_API_USER: "${STERLING_API_USER}"
       STERLING_API_PASSWORD: "${STERLING_API_PASSWORD}"
-  # Product docs + Javadocs + ERD (vector RAG)
-  - id: sterling-docs
+  # Sterling product docs — 17K files, ingest once, never changes
+  # Product docs, Javadocs, ERD, API reference
+  - id: sterling-product-docs
     transport: stdio
     command: ["npx", "-y", "mcp-local-rag"]
     env:
-      BASE_DIR: "${STERLING_DOCS_DIR}"
+      BASE_DIR: "${STERLING_PRODUCT_DOCS_DIR}"
+  # Project-specific docs — changes as the project evolves
+  # Design docs, source code, XSL transforms, integration specs
+  - id: sterling-project-docs
+    transport: stdio
+    command: ["npx", "-y", "mcp-local-rag"]
+    env:
+      BASE_DIR: "${STERLING_PROJECT_DOCS_DIR}"
   # Reference designs from other projects (separate index)
   - id: reference-designs
     transport: stdio

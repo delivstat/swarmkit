@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-project-docs
+  name: Search Project Documentation
+  description: Search project-specific docs — design docs, source code, XSL transforms, integration specs. Changes as the project evolves.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-project-docs
+  tool: query_documents
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
