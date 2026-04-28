@@ -139,6 +139,23 @@ def main() -> None:
         encoding="utf-8",
     )
 
+    # Install MCP SDK for the helper script
+    print("Installing MCP SDK (one-time)...")
+    staging_node = root / ".ingest-staging"
+    staging_node.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["npm", "init", "-y"],
+        cwd=str(staging_node),
+        capture_output=True,
+        check=False,
+    )
+    subprocess.run(
+        ["npm", "install", "@modelcontextprotocol/sdk"],
+        cwd=str(staging_node),
+        capture_output=True,
+        check=False,
+    )
+
     print("Ingesting...")
     print("This may take a while for large doc sets (17K files = 10-24 hours).")
     print("The vector index persists — you only need to do this once.\n")
@@ -146,7 +163,11 @@ def main() -> None:
     try:
         result = subprocess.run(
             ["node", str(ingest_script)],
-            env={**os.environ, "BASE_DIR": str(root)},
+            env={
+                **os.environ,
+                "BASE_DIR": str(root),
+                "NODE_PATH": str(staging_node / "node_modules"),
+            },
             timeout=86400,
             check=False,
         )
