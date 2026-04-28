@@ -77,11 +77,14 @@ class MCPClient:
         return json.loads(body)
 
     def initialize(self) -> dict:
-        return self._send("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "ingest-script", "version": "1.0"},
-        })
+        return self._send(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "ingest-script", "version": "1.0"},
+            },
+        )
 
     def initialized(self) -> None:
         assert self._proc.stdin is not None
@@ -156,9 +159,7 @@ def main() -> None:
         fail = 0
         for i, f in enumerate(all_files):
             try:
-                result = client.call_tool(
-                    "index_document", {"file_path": str(f)}
-                )
+                result = client.call_tool("index_document", {"file_path": str(f)})
                 if "error" in result:
                     fail += 1
                 else:
