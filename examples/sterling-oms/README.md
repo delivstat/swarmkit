@@ -41,6 +41,9 @@ export STERLING_PRODUCT_DOCS_DIR=~/sterling-knowledge      # base product docs
 export STERLING_PROJECT_DOCS_DIR=~/sterling-project-docs    # your project docs
 export REFERENCE_DESIGNS_DIR=~/sterling-references           # other projects
 
+# API Javadocs (structured MCP server — input/output XML, user exits, events)
+export STERLING_JAVADOCS_DIR=~/javadocs_v10/api_javadocs
+
 # Project code (developer agent reads directly — NOT indexed in RAG)
 export STERLING_PROJECT_CODE_DIR=~/sterling-project-code
 
@@ -154,6 +157,21 @@ STERLING_DOCS_DIR=~/sterling-references \
 Only documentation files are indexed (`.md`, `.html`, `.pdf`, `.docx`).
 Code files (`.java`, `.xml`, `.xsl`) are **not** indexed — the
 developer agent reads those directly from the repo.
+
+```bash
+# Export API summaries from Javadocs for RAG ingestion
+# (API descriptions + user exits + events — for "which API should I use?" queries)
+STERLING_JAVADOCS_DIR=~/javadocs_v10/api_javadocs \
+  python sterling_javadocs_server.py --export-summaries \
+  ~/sterling-knowledge/product-docs/api-reference/
+
+# Then ingest them with the rest of the product docs
+```
+
+The API Javadocs MCP server (`sterling_javadocs_server.py`) provides
+**precise structured data** for specific API queries (input XML, output
+XML, user exits, events, DTDs, samples). The RAG server provides
+**contextual search** for discovery ("which API modifies an order?").
 
 ### 6. Validate the workspace
 
@@ -332,6 +350,14 @@ Five MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
+│ Sterling API Javadocs MCP Server (structured, 1006 APIs)│
+│ • search_apis, get_api_details, get_api_input_xml       │
+│ • get_api_output_xml, get_api_user_exits, get_api_events│
+│ • Input/output samples (XML + JSON), DTDs               │
+│ • Precise structured data — not fuzzy RAG search        │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
 │ GitHub MCP Server (code access)                         │
 │ • Developer agent reads .java, .xsl, .xml directly      │
 │ • Full file context, not vector-search fragments         │
@@ -341,13 +367,13 @@ Five MCP servers, each with a distinct role:
 
 ### Which archetype has access to what
 
-| Archetype | Product docs | Project docs | Reference designs | Live API | Code (GitHub) |
-|---|---|---|---|---|---|
-| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ | — |
-| retail-domain-expert | ✅ | ✅ | ✅ | — | — |
-| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | ✅ | — |
-| sterling-code-reviewer | ✅ | ✅ | — | — | ✅ |
-| sterling-developer | ✅ | ✅ | — | ✅ | ✅ |
+| Archetype | Product docs | Project docs | Reference designs | API Javadocs | Live API | Code |
+|---|---|---|---|---|---|---|
+| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| retail-domain-expert | ✅ | ✅ | ✅ | — | — | — |
+| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | — | ✅ | — |
+| sterling-code-reviewer | ✅ | ✅ | — | ✅ | — | ✅ |
+| sterling-developer | ✅ | ✅ | — | ✅ | ✅ | ✅ |
 
 **Key design decisions:**
 - The config-validator has no reference design access — it validates
@@ -384,6 +410,7 @@ swarmkit edit examples/sterling-oms/workspace \
 workspace/
 ├── workspace.yaml              # 4 MCP servers + governance + storage
 ├── sterling_api_server.py      # Live Sterling API MCP server (10 tools)
+├── sterling_javadocs_server.py # API Javadocs MCP server (1006 APIs, 10 tools)
 ├── topologies/
 │   ├── solution-review.yaml    # Design discussions (3 agents)
 │   ├── sterling-qa.yaml        # Q&A (2 agents)

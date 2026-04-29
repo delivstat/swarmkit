@@ -49,6 +49,13 @@ mcp_servers:
     command: ["npx", "-y", "mcp-local-rag"]
     env:
       BASE_DIR: "${REFERENCE_DESIGNS_DIR}"
+  # Sterling API Javadocs — structured API documentation (1006 APIs)
+  # Input/output XML, DTDs, user exits, events, samples
+  - id: sterling-api-javadocs
+    transport: stdio
+    command: ["uv", "run", "sterling_javadocs_server.py"]
+    env:
+      STERLING_JAVADOCS_DIR: "${STERLING_JAVADOCS_DIR}"
   # Local project code — developer agent reads .java, .xsl, .xml directly
   - id: project-code
     transport: stdio

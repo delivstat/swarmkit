@@ -27,6 +27,10 @@ defaults:
   skills:
     - search-sterling-docs
     - search-project-docs
+    - search-apis
+    - get-api-details
+    - get-api-input-xml
+    - get-api-user-exits
     - list-project-files
     - search-project-code
     - read-project-code
