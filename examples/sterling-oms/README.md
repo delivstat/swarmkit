@@ -103,19 +103,16 @@ Code files (`.java`, `.xml`, `.xsl`) belong in your repo — the
 developer agent reads them via the filesystem MCP server.
 
 ```bash
-# Convert Sterling entity XMLs to markdown (product or custom)
-# --datatypes resolves DataType names to actual DB types (Key → NCHAR(24))
-python scripts/convert-entity-xml.py /path/to/entity-xmls/ \
+# Put ALL entity XMLs (product + custom + extensions) in one directory
+# and run once — the script merges entities by TableName automatically
+python scripts/convert-entity-xml.py /path/to/all-entity-xmls/ \
   --datatypes /path/to/datatypes.xml \
   --output ~/sterling-knowledge/data-model/
 
-# Run product entities first, then custom — extensions append to existing files
-python scripts/convert-entity-xml.py /path/to/omp_tables.xml \
-  --datatypes /path/to/datatypes.xml \
-  --output ~/sterling-knowledge/data-model/
-python scripts/convert-entity-xml.py /path/to/custom-entities/ \
-  --datatypes /path/to/datatypes.xml \
-  --output ~/sterling-knowledge/data-model/
+# Output:
+#   YFS_ORDER_HEADER.md  — merged base + extension columns, each tagged with source file
+#   _RELATIONSHIPS.md    — cross-reference of all parent/child/FK links
+#   _SEQUENCES.md        — all database sequences
 ```
 
 ### 4. Prepare reference designs (optional)
@@ -417,7 +414,7 @@ workspace/
 ├── scripts/
 │   ├── ingest-docs.py          # Vector store ingestion (rag-mcp, pure Python)
 │   ├── setup-knowledge.sh      # Create knowledge directories + .env file
-│   ├── convert-entity-xml.py   # Sterling entity XMLs → markdown (with datatypes.xml resolution)
+│   ├── convert-entity-xml.py   # Sterling entity XMLs → consolidated markdown (merges by TableName)
 │   ├── convert-excel.py        # Excel integration specs → markdown tables
 │   └── split-markdown.py       # Split large markdown files on ## headings
 └── policies/                   # (empty — for AGT governance when ready)
