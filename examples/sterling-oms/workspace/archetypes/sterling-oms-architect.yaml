@@ -37,6 +37,11 @@ defaults:
     - search-sterling-docs
     - search-project-docs
     - search-reference-designs
+    - search-apis
+    - get-api-details
+    - get-api-input-xml
+    - get-api-output-xml
+    - get-api-events
     - read-context
     - query-sterling-config
     - query-sterling-sourcing
