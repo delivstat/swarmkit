@@ -24,15 +24,8 @@ from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
 from swarmkit_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
 from swarmkit_runtime.model_providers import (
-    AnthropicModelProvider,
-    GoogleModelProvider,
-    GroqModelProvider,
     MockModelProvider,
-    OllamaModelProvider,
-    OpenAIModelProvider,
-    OpenRouterModelProvider,
     ProviderRegistry,
-    TogetherModelProvider,
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
@@ -265,23 +258,36 @@ def _extract_events(governance: GovernanceProvider) -> list[RunEvent]:
 
 
 def register_available_providers(registry: ProviderRegistry) -> None:
-    """Register all model providers whose credentials are in the environment."""
+    """Register all model providers whose credentials are in the environment.
+
+    Providers whose SDK dependencies are missing are silently skipped.
+    """
     registry.register(MockModelProvider())
 
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        registry.register(AnthropicModelProvider())
-    if os.environ.get("GOOGLE_API_KEY"):
-        registry.register(GoogleModelProvider())
-    if os.environ.get("OPENAI_API_KEY"):
-        registry.register(OpenAIModelProvider())
-    if os.environ.get("OPENROUTER_API_KEY"):
-        registry.register(OpenRouterModelProvider())
-    if os.environ.get("GROQ_API_KEY"):
-        registry.register(GroqModelProvider())
-    if os.environ.get("TOGETHER_API_KEY"):
-        registry.register(TogetherModelProvider())
+    _conditional = [
+        ("ANTHROPIC_API_KEY", "AnthropicModelProvider"),
+        ("GOOGLE_API_KEY", "GoogleModelProvider"),
+        ("OPENAI_API_KEY", "OpenAIModelProvider"),
+        ("OPENROUTER_API_KEY", "OpenRouterModelProvider"),
+        ("GROQ_API_KEY", "GroqModelProvider"),
+        ("TOGETHER_API_KEY", "TogetherModelProvider"),
+    ]
+    for env_var, cls_name in _conditional:
+        if os.environ.get(env_var):
+            try:
+                from swarmkit_runtime import model_providers  # noqa: PLC0415
 
-    registry.register(OllamaModelProvider())
+                cls = getattr(model_providers, cls_name)
+                registry.register(cls())
+            except (ImportError, ModuleNotFoundError, AttributeError):
+                pass
+
+    try:
+        from swarmkit_runtime import model_providers  # noqa: PLC0415
+
+        registry.register(model_providers.OllamaModelProvider())
+    except (ImportError, ModuleNotFoundError, AttributeError):
+        pass
 
 
 def build_governance(workspace: ResolvedWorkspace, ws_root: Path) -> GovernanceProvider:
