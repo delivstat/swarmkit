@@ -219,7 +219,7 @@ def _build_sandboxed_command(
     if workspace_root is not None:
         docker_args.extend(["-v", f"{workspace_root}:/workspace:ro", "-w", "/workspace"])
 
-    resolved_env = _resolve_env(config.env)
+    resolved_env = _resolve_env(config.env, inherit=False)
     if resolved_env:
         for key, value in resolved_env.items():
             docker_args.extend(["-e", f"{key}={value}"])
@@ -231,11 +231,17 @@ def _build_sandboxed_command(
     return "docker", docker_args, None
 
 
-def _resolve_env(env: dict[str, str] | None) -> dict[str, str] | None:
-    """Resolve ``${VAR}`` references in env values from the process environment."""
+def _resolve_env(env: dict[str, str] | None, *, inherit: bool = True) -> dict[str, str] | None:
+    """Resolve ``${VAR}`` references in env values from the process environment.
+
+    When ``inherit`` is True (default, for stdio subprocesses), the parent
+    process environment is inherited so that PATH, HOME, NODE_PATH, etc.
+    are available to commands like npx. When False (for Docker sandboxed
+    commands), only the explicitly declared vars are returned.
+    """
     if not env:
         return None
-    resolved: dict[str, str] = {}
+    resolved: dict[str, str] = dict(os.environ) if inherit else {}
     for key, value in env.items():
         if value.startswith("${") and value.endswith("}"):
             var_name = value[2:-1]
