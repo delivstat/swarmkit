@@ -38,8 +38,8 @@ mkdir -p ~/rynko-knowledge
 cp workspace/knowledge/*.md ~/rynko-knowledge/
 
 # Ingest knowledge into RAG
-cd workspace
-STERLING_DOCS_DIR=~/rynko-knowledge python ../sterling-oms/workspace/scripts/ingest-docs.py
+cd examples/rynko-content/workspace
+STERLING_DOCS_DIR=~/rynko-knowledge python scripts/ingest-docs.py
 ```
 
 ## Usage
