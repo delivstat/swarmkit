@@ -84,30 +84,24 @@ class MCPClient:
         if params is not None:
             msg["params"] = params
 
-        raw = json.dumps(msg)
-        header = f"Content-Length: {len(raw)}\r\n\r\n"
+        raw = json.dumps(msg, separators=(",", ":"))
         assert self._proc.stdin is not None
         assert self._proc.stdout is not None
-        self._proc.stdin.write(header.encode() + raw.encode())
+        self._proc.stdin.write((raw + "\n").encode())
         self._proc.stdin.flush()
 
         return self._read_response()
 
     def _read_response(self) -> dict:
         assert self._proc.stdout is not None
-        content_length = 0
         while True:
-            line = self._proc.stdout.readline().decode()
-            if not line or line == "\r\n":
-                break
-            if line.lower().startswith("content-length:"):
-                content_length = int(line.split(":")[1].strip())
-
-        if content_length == 0:
-            return {"error": "no response"}
-
-        body = self._proc.stdout.read(content_length).decode()
-        return json.loads(body)
+            line = self._proc.stdout.readline().decode().strip()
+            if not line:
+                continue
+            try:
+                return json.loads(line)
+            except json.JSONDecodeError:
+                continue
 
     def initialize(self) -> dict:
         return self._send(
@@ -121,9 +115,11 @@ class MCPClient:
 
     def initialized(self) -> None:
         assert self._proc.stdin is not None
-        msg = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"})
-        header = f"Content-Length: {len(msg)}\r\n\r\n"
-        self._proc.stdin.write(header.encode() + msg.encode())
+        msg = json.dumps(
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            separators=(",", ":"),
+        )
+        self._proc.stdin.write((msg + "\n").encode())
         self._proc.stdin.flush()
 
     def call_tool(self, name: str, arguments: dict) -> dict:
