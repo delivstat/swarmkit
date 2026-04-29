@@ -13,6 +13,9 @@ Usage:
     python scripts/convert-entity-xml.py /path/to/entity-xmls/
     python scripts/convert-entity-xml.py /path/to/omp_tables.xml
 
+    # Resolve DataType names to actual DB types using datatypes.xml
+    python scripts/convert-entity-xml.py /path/to/xmls/ --datatypes /path/to/datatypes.xml
+
     # Output goes alongside the source files (or use --output)
     python scripts/convert-entity-xml.py /path/to/xmls/ --output ~/sterling-knowledge/data-model/
 """
@@ -23,6 +26,46 @@ import argparse
 import sys
 from pathlib import Path
 from xml.etree import ElementTree as ET
+
+
+def _load_datatypes(path: Path) -> dict[str, str]:
+    """Load datatypes.xml into a name → 'TYPE(SIZE)' lookup map."""
+    try:
+        tree = ET.parse(path)
+    except ET.ParseError as e:
+        print(f"  WARNING: failed to parse datatypes.xml: {e}")
+        return {}
+    type_map: dict[str, str] = {}
+    for dt in tree.getroot().findall("DataType"):
+        name = dt.get("Name", "")
+        if not name:
+            continue
+        db_type = dt.get("Type", "")
+        size = dt.get("Size", "")
+        decimals = dt.get("DecimalDigits", "")
+        if decimals:
+            type_map[name] = f"{db_type}({size},{decimals})"
+        elif size:
+            type_map[name] = f"{db_type}({size})"
+        else:
+            type_map[name] = db_type
+    return type_map
+
+
+def _resolve_column_type(attr: ET.Element, type_map: dict[str, str]) -> str:
+    """Resolve a column's type: DataType lookup → Type+Size fallback."""
+    dtype_name = attr.get("DataType", "")
+    if dtype_name and type_map and dtype_name in type_map:
+        return f"{dtype_name} → {type_map[dtype_name]}"
+    if dtype_name and type_map:
+        return dtype_name
+    if dtype_name:
+        return dtype_name
+    db_type = attr.get("Type", "")
+    size = attr.get("Size", "")
+    if db_type and size:
+        return f"{db_type}({size})"
+    return db_type or "unknown"
 
 
 def _entity_header(entity: ET.Element, table_name: str) -> list[str]:
@@ -56,7 +99,7 @@ def _entity_header(entity: ET.Element, table_name: str) -> list[str]:
     return lines
 
 
-def _entity_columns(entity: ET.Element) -> list[str]:
+def _entity_columns(entity: ET.Element, type_map: dict[str, str]) -> list[str]:
     attrs = entity.findall(".//Attributes/Attribute")
     if not attrs:
         return []
@@ -68,7 +111,7 @@ def _entity_columns(entity: ET.Element) -> list[str]:
     ]
     for attr in attrs:
         col = attr.get("ColumnName", "")
-        dtype = attr.get("DataType", "")
+        dtype = _resolve_column_type(attr, type_map)
         nullable = attr.get("Nullable", "")
         desc = attr.get("Description", "").replace("|", "\\|")
         default = attr.get("DefaultValue", "").strip()
@@ -161,17 +204,17 @@ def _resolve_table_name(entity: ET.Element) -> str:
     return table_name
 
 
-def _convert_entity(entity: ET.Element, source_file: str) -> str:
+def _convert_entity(entity: ET.Element, source_file: str, type_map: dict[str, str]) -> str:
     table_name = _resolve_table_name(entity)
     lines = _entity_header(entity, table_name)
-    lines += _entity_columns(entity)
+    lines += _entity_columns(entity, type_map)
     lines += _entity_keys_and_indices(entity)
     lines += _entity_relationships(entity)
     lines.append(f"*Source: {source_file}*")
     return "\n".join(lines)
 
 
-def convert_file(xml_path: Path, output_dir: Path) -> list[Path]:
+def convert_file(xml_path: Path, output_dir: Path, type_map: dict[str, str]) -> list[Path]:
     try:
         tree = ET.parse(xml_path)
     except ET.ParseError as e:
@@ -187,7 +230,7 @@ def convert_file(xml_path: Path, output_dir: Path) -> list[Path]:
     created: list[Path] = []
     for entity in entities:
         table_name = _resolve_table_name(entity)
-        md = _convert_entity(entity, xml_path.name)
+        md = _convert_entity(entity, xml_path.name, type_map)
         out_file = output_dir / f"{table_name}.md"
         if out_file.exists():
             existing = out_file.read_text(encoding="utf-8")
@@ -231,12 +274,25 @@ def main() -> None:
         default=None,
         help="Output directory (default: alongside source files)",
     )
+    parser.add_argument(
+        "--datatypes",
+        type=Path,
+        default=None,
+        help="Path to datatypes.xml — resolves DataType names to actual DB types",
+    )
     args = parser.parse_args()
+
+    type_map: dict[str, str] = {}
+    if args.datatypes:
+        type_map = _load_datatypes(args.datatypes)
+        print(f"Loaded {len(type_map)} data type definitions from {args.datatypes}")
 
     if args.path.is_file():
         xml_files = [args.path]
     elif args.path.is_dir():
         xml_files = list(args.path.rglob("*.xml"))
+        if args.datatypes:
+            xml_files = [f for f in xml_files if f != args.datatypes.resolve()]
     else:
         print(f"Not found: {args.path}")
         sys.exit(1)
@@ -250,7 +306,7 @@ def main() -> None:
 
     total = 0
     for xf in xml_files:
-        created = convert_file(xf, output_dir)
+        created = convert_file(xf, output_dir, type_map)
         for f in created:
             print(f"  {f.name}")
         total += len(created)
