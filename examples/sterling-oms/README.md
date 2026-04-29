@@ -64,13 +64,27 @@ mkdir -p ~/sterling-knowledge
 python scripts/split-markdown.py /path/to/sterling-docs.md \
   --output ~/sterling-knowledge/product-docs/
 
-# API Javadocs (from Sterling installation)
-# Usually at <INSTALL>/repository/eardata/documentation/
-ln -s /path/to/sterling/javadocs ~/sterling-knowledge/api-javadocs
+# API Javadocs — symlink for the dedicated MCP server (NOT RAG)
+ln -s /path/to/api_javadocs ~/sterling-knowledge/api-javadocs
 
-# Database ERD (from Sterling installation)
-# Usually at <INSTALL>/repository/datatypes/
-ln -s /path/to/sterling/erd ~/sterling-knowledge/data-model
+# Export API summaries for RAG discovery ("which API should I use?")
+STERLING_JAVADOCS_DIR=~/sterling-knowledge/api-javadocs \
+  uv run sterling_javadocs_server.py --export-summaries \
+  ~/sterling-knowledge/product-docs/api-reference/
+
+# Convert core/baseutils javadocs to markdown for RAG
+python scripts/convert-javadocs.py /path/to/core_javadocs/ \
+  --output ~/sterling-knowledge/product-docs/core-javadocs/
+python scripts/convert-javadocs.py /path/to/baseutils_doc/ \
+  --output ~/sterling-knowledge/product-docs/core-javadocs/
+
+# Convert entity XMLs to markdown for RAG
+python scripts/convert-entity-xml.py /path/to/entity-xmls/ \
+  --datatypes /path/to/datatypes.xml \
+  --output ~/sterling-knowledge/product-docs/data-model/
+
+# Database ERD HTMLs (ingested as-is by mcp-local-rag)
+ln -s /path/to/sterling/erd ~/sterling-knowledge/product-docs/erd
 ```
 
 ### 3. Prepare the project documentation directory
@@ -99,23 +113,8 @@ cp /path/to/library-readme.md ~/sterling-project-docs/3rd-party-docs/
 ```
 
 Supported file types for RAG: `.md`, `.html`, `.pdf`, `.docx`.
-Excel files must be converted first (see `scripts/convert-excel.py`).
-Entity XMLs must be converted first (see `scripts/convert-entity-xml.py`).
 Code files (`.java`, `.xml`, `.xsl`) belong in your repo — the
 developer agent reads them via the filesystem MCP server.
-
-```bash
-# Put ALL entity XMLs (product + custom + extensions) in one directory
-# and run once — the script merges entities by TableName automatically
-python scripts/convert-entity-xml.py /path/to/all-entity-xmls/ \
-  --datatypes /path/to/datatypes.xml \
-  --output ~/sterling-knowledge/data-model/
-
-# Output:
-#   YFS_ORDER_HEADER.md  — merged base + extension columns, each tagged with source file
-#   _RELATIONSHIPS.md    — cross-reference of all parent/child/FK links
-#   _SEQUENCES.md        — all database sequences
-```
 
 ### 4. Prepare reference designs (optional)
 
@@ -157,16 +156,6 @@ STERLING_DOCS_DIR=~/sterling-references \
 Only documentation files are indexed (`.md`, `.html`, `.pdf`, `.docx`).
 Code files (`.java`, `.xml`, `.xsl`) are **not** indexed — the
 developer agent reads those directly from the repo.
-
-```bash
-# Export API summaries from Javadocs for RAG ingestion
-# (API descriptions + user exits + events — for "which API should I use?" queries)
-STERLING_JAVADOCS_DIR=~/javadocs_v10/api_javadocs \
-  python sterling_javadocs_server.py --export-summaries \
-  ~/sterling-knowledge/product-docs/api-reference/
-
-# Then ingest them with the rest of the product docs
-```
 
 The API Javadocs MCP server (`sterling_javadocs_server.py`) provides
 **precise structured data** for specific API queries (input XML, output
@@ -439,6 +428,7 @@ workspace/
 │   ├── ingest-docs.py          # Vector store ingestion (mcp-local-rag, pure Python MCP client)
 │   ├── setup-knowledge.sh      # Create knowledge directories + .env file
 │   ├── convert-entity-xml.py   # Sterling entity XMLs → consolidated markdown (merges by TableName)
+│   ├── convert-javadocs.py    # Core/baseutils Javadoc HTML → markdown for RAG
 │   ├── convert-excel.py        # Excel integration specs → markdown tables
 │   └── split-markdown.py       # Split large markdown files on ## headings
 └── policies/                   # (empty — for AGT governance when ready)
