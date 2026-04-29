@@ -68,10 +68,23 @@ class MCPClientManager:
         breaks under LangGraph, where the first ``call_tool`` happens
         inside a child task and ``close_all`` runs in the wrapper task.
         Pre-opening here keeps both halves on the same task.
+
+        Servers that fail to start (missing deps, bad command, etc.)
+        are skipped with a warning — the run continues without them.
         """
         for server_id in list(self._configs.keys()):
-            await self.get_session(server_id)
-            await self._cache_tool_schemas(server_id)
+            try:
+                await self.get_session(server_id)
+                await self._cache_tool_schemas(server_id)
+            except Exception as exc:
+                import sys  # noqa: PLC0415
+
+                print(
+                    f"WARNING: MCP server '{server_id}' failed to start: {exc}. "
+                    f"Skipping — skills using this server will be unavailable.",
+                    file=sys.stderr,
+                )
+                self._configs.pop(server_id, None)
 
     async def get_session(self, server_id: str) -> ClientSession:
         """Get or start a session for the given server."""
