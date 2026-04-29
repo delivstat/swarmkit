@@ -180,7 +180,8 @@ def convert_file(xml_path: Path, output_dir: Path) -> list[Path]:
 
     root = tree.getroot()
     entities = root.findall(".//Entity")
-    if not entities:
+    sequences = root.findall(".//Sequence")
+    if not entities and not sequences:
         return []
 
     created: list[Path] = []
@@ -197,6 +198,26 @@ def convert_file(xml_path: Path, output_dir: Path) -> list[Path]:
         else:
             out_file.write_text(md, encoding="utf-8")
         created.append(out_file)
+
+    if sequences:
+        seq_lines = ["# Database Sequences", "", f"*Source: {xml_path.name}*", ""]
+        seq_lines += [
+            "| Sequence | Start | Min | Max | Increment | Cache |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for seq in sequences:
+            seq_lines.append(
+                f"| {seq.get('Name', '')} | {seq.get('Startwith', '')} "
+                f"| {seq.get('Minvalue', '')} | {seq.get('Maxvalue', '')} "
+                f"| {seq.get('Increment', '')} | {seq.get('Cachesize', '')} |"
+            )
+        seq_file = output_dir / f"_SEQUENCES_{xml_path.stem}.md"
+        if seq_file.exists():
+            existing = seq_file.read_text(encoding="utf-8")
+            seq_file.write_text(existing + "\n\n---\n\n" + "\n".join(seq_lines), encoding="utf-8")
+        else:
+            seq_file.write_text("\n".join(seq_lines), encoding="utf-8")
+        created.append(seq_file)
 
     return created
 
