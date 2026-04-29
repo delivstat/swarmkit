@@ -98,8 +98,18 @@ cp /path/to/library-readme.md ~/sterling-project-docs/3rd-party-docs/
 
 Supported file types for RAG: `.md`, `.html`, `.pdf`, `.docx`.
 Excel files must be converted first (see `scripts/convert-excel.py`).
+Entity XMLs must be converted first (see `scripts/convert-entity-xml.py`).
 Code files (`.java`, `.xml`, `.xsl`) belong in your repo — the
-developer agent reads them via GitHub MCP server.
+developer agent reads them via the filesystem MCP server.
+
+```bash
+# Convert Sterling entity XMLs to markdown (product or custom)
+python scripts/convert-entity-xml.py /path/to/entity-xmls/ \
+  --output ~/sterling-knowledge/data-model/
+
+# Handles: product entity XMLs (multi-entity), custom entities, views
+# Each entity becomes one markdown file with columns, keys, indices, relationships
+```
 
 ### 4. Prepare reference designs (optional)
 
