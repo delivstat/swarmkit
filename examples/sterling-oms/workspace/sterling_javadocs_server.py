@@ -107,8 +107,14 @@ def _parse_api_page(html_path: Path, module: str, prefix: str) -> ApiInfo | None
     except Exception:
         return None
 
-    desc_match = re.search(r'<div class="block">(.*?)</div>', html, re.DOTALL)
-    description = _strip_tags(desc_match.group(1)) if desc_match else ""
+    detail_section = re.search(
+        r"METHOD DETAIL.*?<div\s+class=\"block\">(.*?)</div>", html, re.DOTALL
+    )
+    if detail_section:
+        description = _strip_tags(detail_section.group(1))
+    else:
+        brief = re.search(r'<div class="block">(.*?)</div>', html, re.DOTALL)
+        description = _strip_tags(brief.group(1)) if brief else ""
 
     sig_match = re.search(
         r"<h4>" + re.escape(api_name) + r"</h4>\s*<pre>(.*?)</pre>",
