@@ -68,7 +68,7 @@ class MCPClient:
             command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=None,
             env=env,
             cwd=cwd,
         )
