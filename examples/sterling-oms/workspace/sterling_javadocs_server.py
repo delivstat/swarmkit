@@ -111,7 +111,20 @@ def _parse_api_page(html_path: Path, module: str, prefix: str) -> ApiInfo | None
         r"METHOD DETAIL.*?<div\s+class=\"block\">(.*?)</div>", html, re.DOTALL
     )
     if detail_section:
-        description = _strip_tags(detail_section.group(1))
+        desc_html = detail_section.group(1)
+        # Truncate at the Related Documents table or User Exits section
+        for cutoff in [
+            r"<!-+\s*TABLE START\s*-+>",
+            r"<table\s[^>]*BORDER",
+            r"<b>\s*Related\s+Documents",
+            r"<b>\s*User Exits",
+            r"<a\s+name=\"xmltable\"",
+        ]:
+            cut = re.search(cutoff, desc_html, re.IGNORECASE)
+            if cut:
+                desc_html = desc_html[: cut.start()]
+                break
+        description = _strip_tags(desc_html)
     else:
         brief = re.search(r'<div class="block">(.*?)</div>', html, re.DOTALL)
         description = _strip_tags(brief.group(1)) if brief else ""
@@ -472,9 +485,9 @@ def get_api_events(api_name: str) -> str:
 def _export_summaries(output_dir: Path) -> None:
     """Export API summaries as markdown for RAG ingestion.
 
-    Generates one file per module with API names, descriptions,
-    user exits, and events — enough for semantic search to answer
-    "which API should I use for X?"
+    Generates one file per module with API names and descriptions.
+    User exits and events are NOT included — those are served by
+    dedicated MCP tools (get_api_user_exits, get_api_events).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -492,12 +505,8 @@ def _export_summaries(output_dir: Path) -> None:
             lines.append(f"**Package:** {info.package}")
             lines.append("")
             lines.append(info.description if info.description else "No description.")
-            lines.append("")
-            if info.user_exits:
-                ue_names = ", ".join(ue["class"] for ue in info.user_exits)
-                lines.append(f"**User Exits:** {ue_names}")
-            if info.events and info.events != "None":
-                lines.append(f"**Events:** {info.events}")
+            if info.output_template_support and info.output_template_support != "Unknown":
+                lines.append(f"\n**Output Template Support:** {info.output_template_support}")
             lines.append("")
 
         out_file = output_dir / f"api-{module}.md"
