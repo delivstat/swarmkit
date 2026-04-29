@@ -32,23 +32,23 @@ mcp_servers:
   # Product docs (markdown/HTML), Javadocs, ERD
   - id: sterling-product-docs
     transport: stdio
-    command: ["uvx", "rag-mcp"]
+    command: ["npx", "-y", "mcp-local-rag"]
     env:
-      COLLECTION_NAME: "sterling-product-docs"
+      BASE_DIR: "${STERLING_PRODUCT_DOCS_DIR}"
   # Project-specific documentation — design docs, integration specs
   # Code files (.java, .xsl, .xml) are NOT indexed here —
   # the developer agent reads those directly from the filesystem
   - id: sterling-project-docs
     transport: stdio
-    command: ["uvx", "rag-mcp"]
+    command: ["npx", "-y", "mcp-local-rag"]
     env:
-      COLLECTION_NAME: "sterling-project-docs"
+      BASE_DIR: "${STERLING_PROJECT_DOCS_DIR}"
   # Reference designs from other projects (separate index)
   - id: reference-designs
     transport: stdio
-    command: ["uvx", "rag-mcp"]
+    command: ["npx", "-y", "mcp-local-rag"]
     env:
-      COLLECTION_NAME: "reference-designs"
+      BASE_DIR: "${REFERENCE_DESIGNS_DIR}"
   # Local project code — developer agent reads .java, .xsl, .xml directly
   - id: project-code
     transport: stdio
