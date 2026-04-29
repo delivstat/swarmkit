@@ -104,11 +104,18 @@ developer agent reads them via the filesystem MCP server.
 
 ```bash
 # Convert Sterling entity XMLs to markdown (product or custom)
+# --datatypes resolves DataType names to actual DB types (Key → NCHAR(24))
 python scripts/convert-entity-xml.py /path/to/entity-xmls/ \
+  --datatypes /path/to/datatypes.xml \
   --output ~/sterling-knowledge/data-model/
 
-# Handles: product entity XMLs (multi-entity), custom entities, views
-# Each entity becomes one markdown file with columns, keys, indices, relationships
+# Run product entities first, then custom — extensions append to existing files
+python scripts/convert-entity-xml.py /path/to/omp_tables.xml \
+  --datatypes /path/to/datatypes.xml \
+  --output ~/sterling-knowledge/data-model/
+python scripts/convert-entity-xml.py /path/to/custom-entities/ \
+  --datatypes /path/to/datatypes.xml \
+  --output ~/sterling-knowledge/data-model/
 ```
 
 ### 4. Prepare reference designs (optional)
@@ -408,6 +415,10 @@ workspace/
 │   ├── github-pr-read.yaml
 │   └── github-repo-read.yaml
 ├── scripts/
-│   └── ingest-docs.py          # Vector store ingestion script
+│   ├── ingest-docs.py          # Vector store ingestion (rag-mcp, pure Python)
+│   ├── setup-knowledge.sh      # Create knowledge directories + .env file
+│   ├── convert-entity-xml.py   # Sterling entity XMLs → markdown (with datatypes.xml resolution)
+│   ├── convert-excel.py        # Excel integration specs → markdown tables
+│   └── split-markdown.py       # Split large markdown files on ## headings
 └── policies/                   # (empty — for AGT governance when ready)
 ```
