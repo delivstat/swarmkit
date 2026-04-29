@@ -1,3 +1,6 @@
+# /// script
+# dependencies = ["httpx>=0.27", "mcp[cli]>=1.0"]
+# ///
 """Sterling OMS API MCP server — live config access for agents.
 
 Wraps Sterling Service APIs so agents can query the actual
