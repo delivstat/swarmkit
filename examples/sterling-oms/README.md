@@ -17,9 +17,8 @@ API access and vector-search RAG over product documentation.
 ## Prerequisites
 
 - Python 3.11+ with `uv`
-- Node.js 18+ with `npx` (for GitHub MCP server)
+- Node.js 18+ with `npx` (for mcp-local-rag, GitHub, filesystem MCP servers)
 - SwarmKit installed (`pip install swarmkit-runtime` or source checkout)
-- `rag-mcp` installed (`pip install rag-mcp`)
 - An OpenRouter API key (`OPENROUTER_API_KEY`)
 - A local Sterling OMS instance (for live API access)
 - Sterling product documentation (for RAG)
@@ -133,12 +132,10 @@ cp -r /path/to/industry-templates ~/sterling-references/templates/
 
 ### 5. Ingest documentation into vector stores
 
-First run downloads the embedding model (~500MB). Each directory
-gets its own ChromaDB collection (stored in `~/.local/share/chroma/`).
+First run downloads the embedding model (~90MB). Each directory
+gets its own LanceDB vector index (stored in `<BASE_DIR>/lancedb/`).
 
 ```bash
-pip install rag-mcp  # one-time
-
 cd examples/sterling-oms/workspace
 
 # Ingest product docs (run once — 17K files takes hours, run overnight)
@@ -312,7 +309,7 @@ Five MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ rag-mcp: sterling-product-docs (Python, ChromaDB)       │
+│ mcp-local-rag: sterling-product-docs (Node.js, LanceDB)       │
 │ • 17K+ product docs (IBM Knowledge Center)              │
 │ • API Javadocs (what the APIs return + mean)            │
 │ • Database ERD (what the tables/columns mean)           │
@@ -320,7 +317,7 @@ Five MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ rag-mcp: sterling-project-docs                          │
+│ mcp-local-rag: sterling-project-docs                          │
 │ • Design docs (Word/PDF/markdown)                       │
 │ • Integration specs (Excel → markdown)                  │
 │ • RE-INGEST when project docs change                    │
@@ -328,7 +325,7 @@ Five MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ rag-mcp: reference-designs — SEPARATE INDEX             │
+│ mcp-local-rag: reference-designs — SEPARATE INDEX             │
 │ • Sanitized designs from other Sterling projects        │
 │ • Agents always label: "In a reference project..."      │
 │ • Config validator has NO access (prevents hallucination)│
@@ -412,7 +409,7 @@ workspace/
 │   ├── github-pr-read.yaml
 │   └── github-repo-read.yaml
 ├── scripts/
-│   ├── ingest-docs.py          # Vector store ingestion (rag-mcp, pure Python)
+│   ├── ingest-docs.py          # Vector store ingestion (mcp-local-rag, pure Python MCP client)
 │   ├── setup-knowledge.sh      # Create knowledge directories + .env file
 │   ├── convert-entity-xml.py   # Sterling entity XMLs → consolidated markdown (merges by TableName)
 │   ├── convert-excel.py        # Excel integration specs → markdown tables

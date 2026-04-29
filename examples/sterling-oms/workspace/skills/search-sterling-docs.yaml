@@ -8,7 +8,7 @@ category: capability
 implementation:
   type: mcp_tool
   server: sterling-product-docs
-  tool: query_document
+  tool: search
 iam:
   required_scopes: [knowledge:read]
 provenance:
