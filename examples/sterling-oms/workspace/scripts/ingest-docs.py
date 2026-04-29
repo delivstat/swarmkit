@@ -63,13 +63,14 @@ def _convert_html(src: Path, staging_dir: Path, root: Path) -> Path | None:
 class MCPClient:
     """Minimal MCP client — speaks JSON-RPC 2.0 over stdin/stdout."""
 
-    def __init__(self, command: list[str], env: dict[str, str]) -> None:
+    def __init__(self, command: list[str], env: dict[str, str], cwd: str | None = None) -> None:
         self._proc = subprocess.Popen(
             command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
+            cwd=cwd,
         )
         self._id = 0
 
@@ -193,7 +194,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
 
     print("\nStarting mcp-local-rag server...")
     env = {**os.environ, "BASE_DIR": str(root)}
-    client = MCPClient(["npx", "-y", "mcp-local-rag"], env=env)
+    client = MCPClient(["npx", "-y", "mcp-local-rag"], env=env, cwd=str(root))
 
     try:
         resp = client.initialize()
