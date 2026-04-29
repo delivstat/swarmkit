@@ -23,7 +23,7 @@ mcp_servers:
   # Live Sterling API access — queries Application Manager config
   - id: sterling-api
     transport: stdio
-    command: ["uv", "run", "python", "sterling_api_server.py"]
+    command: ["uv", "run", "sterling_api_server.py"]
     env:
       STERLING_API_URL: "${STERLING_API_URL}"
       STERLING_API_USER: "${STERLING_API_USER}"
