@@ -103,13 +103,17 @@ def test_parse_accepts_typed_transport_enum() -> None:
 def test_resolve_env_expands_var_reference(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("SWARMKIT_TEST_TOKEN", "secret")
     resolved = _resolve_env({"TOKEN": "${SWARMKIT_TEST_TOKEN}", "MODE": "prod"})
-    assert resolved == {"TOKEN": "secret", "MODE": "prod"}
+    assert resolved is not None
+    assert resolved["TOKEN"] == "secret"
+    assert resolved["MODE"] == "prod"
+    assert "PATH" in resolved  # inherits parent env
 
 
 def test_resolve_env_unknown_var_becomes_empty_string(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.delenv("SWARMKIT_TEST_MISSING", raising=False)
     resolved = _resolve_env({"X": "${SWARMKIT_TEST_MISSING}"})
-    assert resolved == {"X": ""}
+    assert resolved is not None
+    assert resolved["X"] == ""
 
 
 def test_resolve_env_returns_none_for_empty() -> None:
