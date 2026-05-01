@@ -746,26 +746,37 @@ _EXIT_COMMANDS = {"exit", "quit", "bye", "/exit", "/quit"}
 
 
 def _conversation_loop(conv: Any, manager: Any) -> None:
-    """Interactive REPL for a conversation."""
-    while True:
-        try:
-            user_input = input("> ").strip()
-        except (KeyboardInterrupt, EOFError):
-            user_input = "exit"
+    """Interactive REPL for a conversation.
 
-        if not user_input:
-            continue
-        if user_input.lower() in _EXIT_COMMANDS:
-            typer.echo(f"\nConversation saved: {conv.id}")
-            typer.echo(f"Resume with: swarmkit chat ... --resume {conv.id}")
-            break
+    Starts MCP servers once and keeps them alive across turns.
+    """
+    asyncio.run(_async_conversation_loop(conv, manager))
 
-        try:
-            result = asyncio.run(manager.send(conv, user_input))
-        except Exception as exc:
-            _stderr(f"error: {exc}")
-            continue
-        typer.echo(f"\n{result.output}\n")
+
+async def _async_conversation_loop(conv: Any, manager: Any) -> None:
+    await manager.start_session()
+    try:
+        while True:
+            try:
+                user_input = input("> ").strip()
+            except (KeyboardInterrupt, EOFError):
+                user_input = "exit"
+
+            if not user_input:
+                continue
+            if user_input.lower() in _EXIT_COMMANDS:
+                typer.echo(f"\nConversation saved: {conv.id}")
+                typer.echo(f"Resume with: swarmkit chat ... --resume {conv.id}")
+                break
+
+            try:
+                result = await manager.send(conv, user_input)
+            except Exception as exc:
+                _stderr(f"error: {exc}")
+                continue
+            typer.echo(f"\n{result.output}\n")
+    finally:
+        await manager.end_session()
 
 
 # ---- dry run -------------------------------------------------------------
