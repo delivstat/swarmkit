@@ -143,7 +143,15 @@ def _parse_api_page(html_path: Path, module: str, prefix: str) -> ApiInfo | None
     postconditions = _extract_section(html, "Post-conditions")
     output_template = _extract_section(html, "Output Template Support")
 
-    file_prefix = f"{prefix}_{api_name}"
+    # Extract the actual file prefix from the Related Documents links
+    # e.g. href="XSD/HTML/YFS_changeOrder_input.html" → prefix is YFS
+    input_href = re.search(
+        r'href="[^"]*?/(\w+)_' + re.escape(api_name) + r'_input\.html"',
+        html,
+        re.IGNORECASE,
+    )
+    actual_prefix = input_href.group(1) if input_href else prefix
+    file_prefix = f"{actual_prefix}_{api_name}"
 
     info = ApiInfo(
         name=api_name,
