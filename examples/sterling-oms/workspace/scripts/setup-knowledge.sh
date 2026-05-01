@@ -2,8 +2,8 @@
 # Setup knowledge directories for the Sterling OMS workspace.
 #
 # Creates the folder structure for product docs, project docs,
-# and reference designs. Generates a .env file with all required
-# environment variables.
+# reference designs, project code, API javadocs, and notes.
+# Generates a .env file with all required environment variables.
 #
 # Usage:
 #   ./scripts/setup-knowledge.sh                    # uses ~/sterling-knowledge as base
@@ -15,63 +15,66 @@ BASE="${1:-$HOME/sterling-knowledge}"
 
 PRODUCT_DOCS="$BASE/product-docs"
 PROJECT_DOCS="$BASE/project-docs"
+CODE_DIR="$BASE/project-code"
+API_JAVADOCS="$BASE/api-javadocs"
 REFERENCES="$BASE/references"
+NOTES_DIR="$BASE/notes"
 
 echo "Setting up Sterling knowledge directories at: $BASE"
 echo ""
 
-# Product docs (stable, ingest once)
+# Product docs (stable, ingest once into ChromaDB)
 mkdir -p "$PRODUCT_DOCS/product-docs"
 mkdir -p "$PRODUCT_DOCS/api-reference"
 mkdir -p "$PRODUCT_DOCS/data-model"
 mkdir -p "$PRODUCT_DOCS/core-javadocs"
+mkdir -p "$PRODUCT_DOCS/erd"
 
 # API Javadocs (served by dedicated MCP server — NOT ingested into RAG)
-API_JAVADOCS="$BASE/api-javadocs"
 mkdir -p "$API_JAVADOCS"
 
 # Project docs (changes over time, re-ingest as needed)
-# Only documentation files — code lives in the repo, read directly by developer agent
 mkdir -p "$PROJECT_DOCS/design-docs"
 mkdir -p "$PROJECT_DOCS/integrations"
 mkdir -p "$PROJECT_DOCS/3rd-party-docs"
 
-# Project code (NOT indexed — developer agent reads these via GitHub/filesystem)
-CODE_DIR="$BASE/project-code"
+# Project code (NOT indexed — developer agent reads via filesystem MCP)
 mkdir -p "$CODE_DIR/extensions"
 mkdir -p "$CODE_DIR/transforms"
 mkdir -p "$CODE_DIR/templates"
 
-# Notes/output (agents write analysis here — not git tracked)
-NOTES_DIR="$BASE/notes"
-mkdir -p "$NOTES_DIR"
-
-# Reference designs (separate index, ingest once)
+# Reference designs (separate ChromaDB index, ingest once)
 mkdir -p "$REFERENCES/templates"
+
+# Notes/output (agents write analysis here — not git tracked)
+mkdir -p "$NOTES_DIR"
 
 echo "Created directories:"
 echo ""
-echo "  $PRODUCT_DOCS/              (indexed in RAG)"
+echo "  $PRODUCT_DOCS/              (indexed in ChromaDB via ingest-docs.py)"
 echo "  ├── product-docs/        ← Sterling product docs (markdown/HTML)"
-echo "  ├── api-reference/       ← API summaries exported from javadocs server"
+echo "  ├── api-reference/       ← API summaries (exported from javadocs server)"
 echo "  ├── data-model/          ← Entity XMLs → markdown (convert-entity-xml.py)"
-echo "  └── core-javadocs/       ← Core/baseutils javadocs → markdown"
+echo "  ├── core-javadocs/       ← Core/baseutils javadocs → markdown (convert-javadocs.py)"
+echo "  └── erd/                 ← Database ERD HTML files (ingested as-is)"
 echo ""
-echo "  $API_JAVADOCS/             (served by dedicated MCP server — NOT RAG)"
-echo "  └── (symlink or copy api_javadocs directory here)"
+echo "  $API_JAVADOCS/             (dedicated MCP server — NOT indexed in RAG)"
+echo "  └── (symlink your api_javadocs directory here)"
 echo ""
-echo "  $PROJECT_DOCS/"
-echo "  ├── design-docs/         ← Your project's Word/PDF/markdown docs"
+echo "  $PROJECT_DOCS/             (indexed in ChromaDB via ingest-docs.py)"
+echo "  ├── design-docs/         ← Project Word/PDF/markdown docs"
 echo "  ├── integrations/        ← Integration specs (Excel → markdown)"
 echo "  └── 3rd-party-docs/      ← README/Javadoc for key libraries"
 echo ""
-echo "  $CODE_DIR/               (NOT indexed — developer agent reads directly)"
+echo "  $CODE_DIR/                 (NOT indexed — developer agent reads directly)"
 echo "  ├── extensions/          ← Java extension source code"
 echo "  ├── transforms/          ← XSL transform files"
 echo "  └── templates/           ← XML API/config templates"
 echo ""
-echo "  $REFERENCES/"
-echo "  └── templates/           ← Reusable Sterling patterns"
+echo "  $REFERENCES/               (separate ChromaDB index)"
+echo "  └── templates/           ← Reusable Sterling patterns from other projects"
+echo ""
+echo "  $NOTES_DIR/                (agents write analysis, docs here — not git tracked)"
 echo ""
 
 # Generate .env file
@@ -92,22 +95,21 @@ STERLING_API_URL=http://localhost:9080/smcfs/restapi/
 STERLING_API_USER=admin
 STERLING_API_PASSWORD=
 
-# Knowledge base directories
+# Knowledge base directories (indexed in ChromaDB)
 STERLING_PRODUCT_DOCS_DIR=$PRODUCT_DOCS
 STERLING_PROJECT_DOCS_DIR=$PROJECT_DOCS
 REFERENCE_DESIGNS_DIR=$REFERENCES
 
-# Project code (developer agent reads directly, NOT indexed in RAG)
+# Project code (developer agent reads directly — NOT indexed)
 STERLING_PROJECT_CODE_DIR=$CODE_DIR
 
 # API Javadocs (dedicated MCP server — structured API access)
 STERLING_JAVADOCS_DIR=$API_JAVADOCS
 
-# Notes/output directory (agents write analysis, docs here — not git tracked)
-STERLING_NOTES_DIR=$BASE/notes
+# Notes/output directory (agents write here — not git tracked)
+STERLING_NOTES_DIR=$NOTES_DIR
 
-# Code knowledge graph (optional)
-# Build: cd \$STERLING_PROJECT_CODE_DIR && uvx graphifyy
+# Code knowledge graph (optional — build: cd \$STERLING_PROJECT_CODE_DIR && uvx graphifyy)
 STERLING_CODE_GRAPH=$CODE_DIR/graph.json
 
 # GitHub (for code review topology)
@@ -118,31 +120,55 @@ echo "Generated: $ENV_FILE"
 echo ""
 echo "Next steps:"
 echo ""
-echo "  1. Copy/symlink your files into the directories above"
+echo "  1. Copy/symlink your source files:"
+echo "     # Product docs (markdown/HTML from IBM Knowledge Center)"
+echo "     cp -r /path/to/product-docs/* $PRODUCT_DOCS/product-docs/"
 echo ""
-echo "  2. If you have a large markdown file, split it:"
+echo "     # API Javadocs (for the dedicated MCP server)"
+echo "     ln -s /path/to/api_javadocs $API_JAVADOCS/api_javadocs"
+echo ""
+echo "     # Database ERD HTMLs"
+echo "     ln -s /path/to/erd $PRODUCT_DOCS/erd"
+echo ""
+echo "     # Project code"
+echo "     ln -s /path/to/extensions/src $CODE_DIR/extensions"
+echo "     ln -s /path/to/transforms $CODE_DIR/transforms"
+echo "     ln -s /path/to/templates $CODE_DIR/templates"
+echo ""
+echo "  2. Convert and prepare data for ingestion:"
+echo ""
+echo "     # Split large markdown files"
 echo "     python scripts/split-markdown.py /path/to/docs.md --output $PRODUCT_DOCS/product-docs/"
 echo ""
-echo "  3. If you have Excel integration specs, convert them:"
+echo "     # Convert entity XMLs to markdown"
+echo "     python scripts/convert-entity-xml.py /path/to/entity-xmls/ \\"
+echo "       --datatypes /path/to/datatypes.xml --output $PRODUCT_DOCS/data-model/"
+echo ""
+echo "     # Convert core/baseutils javadocs to markdown"
+echo "     python scripts/convert-javadocs.py /path/to/core_javadocs/ --output $PRODUCT_DOCS/core-javadocs/"
+echo "     python scripts/convert-javadocs.py /path/to/baseutils_doc/ --output $PRODUCT_DOCS/core-javadocs/"
+echo ""
+echo "     # Export API summaries for RAG discovery"
+echo "     STERLING_JAVADOCS_DIR=$API_JAVADOCS/api_javadocs \\"
+echo "       uv run sterling_javadocs_server.py --export-summaries $PRODUCT_DOCS/api-reference/"
+echo ""
+echo "     # Convert Excel integration specs to markdown"
 echo "     pip install openpyxl"
 echo "     python scripts/convert-excel.py /path/to/excel-files/"
 echo "     mv /path/to/excel-files/*.md $PROJECT_DOCS/integrations/"
 echo ""
-echo "  4. Edit .env with your API keys and Sterling credentials:"
+echo "  3. Edit .env with your API keys and Sterling credentials:"
 echo "     nano $ENV_FILE"
 echo ""
-echo "  5. Set up API Javadocs (for the dedicated MCP server):"
-echo "     ln -s /path/to/sterling/api_javadocs $API_JAVADOCS"
-echo "     # Export API summaries for RAG discovery:"
-echo "     STERLING_JAVADOCS_DIR=$API_JAVADOCS python sterling_javadocs_server.py \\"
-echo "       --export-summaries $PRODUCT_DOCS/api-reference/"
-echo ""
-echo "  6. Source the env and ingest:"
+echo "  4. Source the env and ingest into ChromaDB (~30 min for 20K files):"
 echo "     source $ENV_FILE"
-echo "     STERLING_DOCS_DIR=$PRODUCT_DOCS python scripts/ingest-docs.py"
-echo "     STERLING_DOCS_DIR=$PROJECT_DOCS python scripts/ingest-docs.py"
-echo "     STERLING_DOCS_DIR=$REFERENCES python scripts/ingest-docs.py"
+echo "     STERLING_DOCS_DIR=$PRODUCT_DOCS uv run scripts/ingest-docs.py"
+echo "     STERLING_DOCS_DIR=$PROJECT_DOCS uv run scripts/ingest-docs.py"
+echo "     STERLING_DOCS_DIR=$REFERENCES uv run scripts/ingest-docs.py"
 echo ""
-echo "  7. Validate and run:"
+echo "  5. Build code knowledge graph (optional):"
+echo "     cd $CODE_DIR && uvx graphifyy"
+echo ""
+echo "  6. Validate and run:"
 echo "     swarmkit validate ."
 echo "     swarmkit chat . sterling-qa"

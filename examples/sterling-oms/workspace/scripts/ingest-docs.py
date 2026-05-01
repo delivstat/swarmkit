@@ -1,138 +1,103 @@
-"""Ingest Sterling documentation into mcp-local-rag vector store.
+# /// script
+# dependencies = ["chromadb>=1.0", "sentence-transformers>=3.0", "onnxruntime>=1.18"]
+# ///
+"""Ingest Sterling documentation into ChromaDB for RAG search.
 
-Run once to build the vector index. Re-run when docs change.
-Pure Python — no MCP SDK dependency. Speaks JSON-RPC (MCP protocol)
-directly over stdin/stdout to the mcp-local-rag process.
+Batch-embeds all documentation files using ONNX-accelerated
+sentence-transformers. Ingests 20K files in 20-40 minutes on CPU
+(vs 2+ days with one-at-a-time MCP ingestion).
 
-Ingests documentation files only: .md, .txt, .pdf, .docx
-HTML files are converted to .txt before ingestion (mcp-local-rag
-does not handle HTML natively).
-Code files (.java, .xml, .xsl) belong on the filesystem — the
-developer agent reads those directly.
+Supported file types: .md, .txt, .pdf, .docx
+HTML files are converted to text with link references preserved.
 
 Prerequisites:
-    Node.js 18+ with npx
+    uv (for PEP 723 inline dependency resolution)
 
 Usage:
     export STERLING_DOCS_DIR=~/sterling-knowledge/product-docs
-    python scripts/ingest-docs.py
+    uv run scripts/ingest-docs.py
+
+    # Reset and re-ingest
+    uv run scripts/ingest-docs.py --reset
 """
 
 from __future__ import annotations
 
-import json
+import argparse
 import os
 import re
-import shutil
-import subprocess
 import sys
+import time
 from pathlib import Path
 
-NATIVE_EXTENSIONS = {".md", ".txt", ".pdf", ".docx"}
+NATIVE_EXTENSIONS = {".md", ".txt"}
 HTML_EXTENSIONS = {".html", ".htm"}
 ALL_EXTENSIONS = NATIVE_EXTENSIONS | HTML_EXTENSIONS
 MAX_FILE_SIZE = 10_000_000  # 10MB
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 50
+EMBED_BATCH_SIZE = 256
 
 
-def _strip_html(text: str) -> str:
-    """Simple HTML tag removal without external dependencies."""
-    text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL)
+def _strip_html_preserve_links(html: str) -> str:
+    """Convert HTML to text, preserving link references."""
+    text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
     text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL)
+    text = re.sub(
+        r'<a\s+[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
+        r"\2 [ref: \1]",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<p\s*/?>", "\n\n", text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n[ \t]+", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
-def _convert_html(src: Path, staging_dir: Path, root: Path) -> Path | None:
-    """Convert an HTML file to .txt in the staging directory."""
+def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+    """Split text into overlapping chunks by words."""
+    words = text.split()
+    if len(words) <= chunk_size:
+        return [text] if text.strip() else []
+    chunks = []
+    start = 0
+    while start < len(words):
+        end = start + chunk_size
+        chunk = " ".join(words[start:end])
+        if chunk.strip():
+            chunks.append(chunk)
+        start = end - overlap
+    return chunks
+
+
+def _read_file(path: Path, root: Path) -> str | None:
+    """Read a file and return its text content."""
     try:
-        content = src.read_text(encoding="utf-8", errors="replace")
+        content = path.read_text(encoding="utf-8", errors="replace")
     except Exception:
         return None
-    content = _strip_html(content)
-    header = f"# {src.stem}\n\nSource: {src.relative_to(root)}\n\n"
-    content = header + content
 
-    rel = src.relative_to(root)
-    out = staging_dir / rel.with_suffix(".txt")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(content, encoding="utf-8")
-    return out
+    if path.suffix.lower() in HTML_EXTENSIONS:
+        content = _strip_html_preserve_links(content)
+        header = f"# {path.stem}\nSource: {path.relative_to(root)}\n\n"
+        content = header + content
+
+    return content if content.strip() else None
 
 
-class MCPClient:
-    """Minimal MCP client — speaks JSON-RPC 2.0 over stdin/stdout."""
+def main() -> None:  # noqa: PLR0915
+    parser = argparse.ArgumentParser(description="Batch ingest docs into ChromaDB")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Delete existing collection and re-ingest from scratch",
+    )
+    args = parser.parse_args()
 
-    def __init__(self, command: list[str], env: dict[str, str], cwd: str | None = None) -> None:
-        self._proc = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=None,
-            env=env,
-            cwd=cwd,
-        )
-        self._id = 0
-
-    def _send(self, method: str, params: dict | None = None) -> dict:
-        self._id += 1
-        msg: dict = {
-            "jsonrpc": "2.0",
-            "id": self._id,
-            "method": method,
-        }
-        if params is not None:
-            msg["params"] = params
-
-        raw = json.dumps(msg, separators=(",", ":"))
-        assert self._proc.stdin is not None
-        assert self._proc.stdout is not None
-        self._proc.stdin.write((raw + "\n").encode())
-        self._proc.stdin.flush()
-
-        return self._read_response()
-
-    def _read_response(self) -> dict:
-        assert self._proc.stdout is not None
-        while True:
-            line = self._proc.stdout.readline().decode().strip()
-            if not line:
-                continue
-            try:
-                return json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-    def initialize(self) -> dict:
-        return self._send(
-            "initialize",
-            {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "ingest-script", "version": "1.0"},
-            },
-        )
-
-    def initialized(self) -> None:
-        assert self._proc.stdin is not None
-        msg = json.dumps(
-            {"jsonrpc": "2.0", "method": "notifications/initialized"},
-            separators=(",", ":"),
-        )
-        self._proc.stdin.write((msg + "\n").encode())
-        self._proc.stdin.flush()
-
-    def call_tool(self, name: str, arguments: dict) -> dict:
-        return self._send("tools/call", {"name": name, "arguments": arguments})
-
-    def close(self) -> None:
-        if self._proc.stdin:
-            self._proc.stdin.close()
-        self._proc.terminate()
-        self._proc.wait(timeout=10)
-
-
-def main() -> None:  # noqa: PLR0912, PLR0915
     base_dir = os.environ.get(
         "STERLING_DOCS_DIR",
         os.path.expanduser("~/sterling-knowledge"),
@@ -144,19 +109,21 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         print("Set STERLING_DOCS_DIR to your knowledge directory.")
         sys.exit(1)
 
+    db_path = str(root / "chromadb")
+    collection_name = root.name
+
+    # Find all files
     all_files = [
         f
         for f in root.rglob("*")
         if f.is_file()
         and f.suffix.lower() in ALL_EXTENSIONS
         and f.stat().st_size < MAX_FILE_SIZE
+        and "chromadb" not in str(f)
         and "lancedb" not in str(f)
         and "node_modules" not in str(f)
         and ".ingest-staging" not in str(f)
     ]
-
-    native_files = [f for f in all_files if f.suffix.lower() in NATIVE_EXTENSIONS]
-    html_files = [f for f in all_files if f.suffix.lower() in HTML_EXTENSIONS]
 
     print(f"Found {len(all_files)} documentation files in {base_dir}")
     by_ext: dict[str, int] = {}
@@ -167,66 +134,96 @@ def main() -> None:  # noqa: PLR0912, PLR0915
         print(f"  {ext}: {by_ext[ext]}")
 
     if not all_files:
-        print("No documentation files found. Check your STERLING_DOCS_DIR path.")
+        print("No documentation files found.")
         print(f"Supported: {', '.join(sorted(ALL_EXTENSIONS))}")
         sys.exit(1)
 
-    # Convert HTML files to .txt (mcp-local-rag doesn't handle HTML)
-    staging_dir = root / ".ingest-staging"
-    if staging_dir.exists():
-        shutil.rmtree(staging_dir)
+    # Read and chunk all files
+    print("\nReading and chunking files...")
+    t0 = time.time()
+    all_chunks: list[str] = []
+    all_ids: list[str] = []
+    all_meta: list[dict[str, str]] = []
+    skipped = 0
 
-    converted: list[Path] = []
-    if html_files:
-        print(f"\nConverting {len(html_files)} HTML files to .txt...")
-        for f in html_files:
-            out = _convert_html(f, staging_dir, root)
-            if out:
-                converted.append(out)
-        print(f"  Converted {len(converted)} files to {staging_dir}")
+    for i, f in enumerate(all_files):
+        content = _read_file(f, root)
+        if not content:
+            skipped += 1
+            continue
+        chunks = _chunk_text(content)
+        for j, chunk in enumerate(chunks):
+            all_chunks.append(chunk)
+            all_ids.append(f"{f.stem}-{j}")
+            all_meta.append({"source": str(f.relative_to(root)), "file": f.name})
 
-    ingest_files = native_files + converted
-    print(f"\nTotal files to ingest: {len(ingest_files)}")
+        if (i + 1) % 1000 == 0:
+            print(f"  Read {i + 1}/{len(all_files)} files ({len(all_chunks)} chunks)")
 
-    print("\nStarting mcp-local-rag server...")
-    env = {**os.environ, "BASE_DIR": str(root)}
-    client = MCPClient(["npx", "-y", "mcp-local-rag"], env=env, cwd=str(root))
+    read_time = time.time() - t0
+    print(f"  {len(all_chunks)} chunks from {len(all_files) - skipped} files ({skipped} skipped)")
+    print(f"  Read time: {read_time:.1f}s")
 
-    try:
-        resp = client.initialize()
-        if "error" in resp:
-            print(f"MCP server initialization failed: {resp}")
-            print("Is Node.js installed? Run: npx -y mcp-local-rag")
-            sys.exit(1)
-        client.initialized()
-        print("MCP server ready.")
+    # Load embedding model (ONNX for CPU speed)
+    print("\nLoading embedding model (ONNX)...")
+    t0 = time.time()
+    from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
-        print("\nIngesting documentation...")
-        print("This may take a while for large doc sets (17K files = 10-24 hours).")
-        print("The vector index persists — you only need to do this once.\n")
+    model = SentenceTransformer("all-MiniLM-L6-v2", backend="onnx")
+    print(f"  Model loaded in {time.time() - t0:.1f}s")
 
-        ok = 0
-        fail = 0
-        for i, f in enumerate(ingest_files):
-            try:
-                result = client.call_tool("ingest_file", {"filePath": str(f)})
-                if "error" in result:
-                    fail += 1
-                else:
-                    ok += 1
-            except Exception:
-                fail += 1
+    # Batch embed
+    print(f"\nEmbedding {len(all_chunks)} chunks (batch_size={EMBED_BATCH_SIZE})...")
+    t0 = time.time()
+    embeddings = model.encode(
+        all_chunks,
+        batch_size=EMBED_BATCH_SIZE,
+        show_progress_bar=True,
+        normalize_embeddings=True,
+    )
+    embed_time = time.time() - t0
+    chunks_per_sec = len(all_chunks) / embed_time if embed_time > 0 else 0
+    print(f"  Embedded in {embed_time:.1f}s ({chunks_per_sec:.0f} chunks/sec)")
 
-            if (i + 1) % 50 == 0:
-                print(f"  [{i + 1}/{len(ingest_files)}] {ok} ok, {fail} failed")
+    # Store in ChromaDB
+    print(f"\nStoring in ChromaDB at {db_path}...")
+    t0 = time.time()
+    import chromadb  # noqa: PLC0415
 
-        print(f"\nDone: {ok} ingested, {fail} failed out of {len(ingest_files)}")
-    finally:
-        client.close()
-        if staging_dir.exists():
-            shutil.rmtree(staging_dir)
+    client = chromadb.PersistentClient(path=db_path)
 
-    print(f"Ingestion complete. Vector index at: {root}/lancedb/")
+    if args.reset:
+        try:
+            client.delete_collection(collection_name)
+            print(f"  Deleted existing collection '{collection_name}'")
+        except Exception:
+            pass
+
+    collection = client.get_or_create_collection(
+        name=collection_name,
+        metadata={"hnsw:space": "cosine"},
+    )
+
+    # Batch insert (ChromaDB has a max batch size)
+    max_batch = 5000
+    for start in range(0, len(all_chunks), max_batch):
+        end = min(start + max_batch, len(all_chunks))
+        collection.add(
+            ids=all_ids[start:end],
+            documents=all_chunks[start:end],
+            embeddings=embeddings[start:end].tolist(),
+            metadatas=all_meta[start:end],
+        )
+        print(f"  Stored {end}/{len(all_chunks)}")
+
+    store_time = time.time() - t0
+    print(f"  Stored in {store_time:.1f}s")
+
+    total_time = read_time + embed_time + store_time
+    print(f"\nIngestion complete in {total_time:.1f}s ({total_time / 60:.1f} min)")
+    print(f"  {len(all_chunks)} chunks from {len(all_files)} files")
+    print(f"  ChromaDB at: {db_path}")
+    print(f"  Collection: {collection_name}")
 
 
 if __name__ == "__main__":

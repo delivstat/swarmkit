@@ -30,25 +30,20 @@ mcp_servers:
       STERLING_API_PASSWORD: "${STERLING_API_PASSWORD}"
   # Sterling product docs — 17K files, ingest once, never changes
   # Product docs (markdown/HTML), Javadocs, ERD
+  # Ingest with: STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py
   - id: sterling-product-docs
     transport: stdio
-    command: ["npx", "-y", "mcp-local-rag"]
-    env:
-      BASE_DIR: "${STERLING_PRODUCT_DOCS_DIR}"
+    command: ["uvx", "chroma-mcp-server", "--client-type", "persistent", "--data-dir", "${STERLING_PRODUCT_DOCS_DIR}/chromadb"]
   # Project-specific documentation — design docs, integration specs
   # Code files (.java, .xsl, .xml) are NOT indexed here —
   # the developer agent reads those directly from the filesystem
   - id: sterling-project-docs
     transport: stdio
-    command: ["npx", "-y", "mcp-local-rag"]
-    env:
-      BASE_DIR: "${STERLING_PROJECT_DOCS_DIR}"
+    command: ["uvx", "chroma-mcp-server", "--client-type", "persistent", "--data-dir", "${STERLING_PROJECT_DOCS_DIR}/chromadb"]
   # Reference designs from other projects (separate index)
   - id: reference-designs
     transport: stdio
-    command: ["npx", "-y", "mcp-local-rag"]
-    env:
-      BASE_DIR: "${REFERENCE_DESIGNS_DIR}"
+    command: ["uvx", "chroma-mcp-server", "--client-type", "persistent", "--data-dir", "${REFERENCE_DESIGNS_DIR}/chromadb"]
   # Sterling API Javadocs — structured API documentation (1006 APIs)
   # Input/output XML, DTDs, user exits, events, samples
   - id: sterling-api-javadocs

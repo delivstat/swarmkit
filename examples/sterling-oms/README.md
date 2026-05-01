@@ -17,7 +17,7 @@ API access and vector-search RAG over product documentation.
 ## Prerequisites
 
 - Python 3.11+ with `uv`
-- Node.js 18+ with `npx` (for mcp-local-rag, GitHub, filesystem MCP servers)
+- Node.js 18+ with `npx` (for GitHub, filesystem MCP servers)
 - SwarmKit installed (`pip install swarmkit-runtime` or source checkout)
 - An OpenRouter API key (`OPENROUTER_API_KEY`)
 - A local Sterling OMS instance (for live API access)
@@ -25,148 +25,157 @@ API access and vector-search RAG over product documentation.
 
 ## Setup — step by step
 
-### 1. Set environment variables
-
-```bash
-# Model provider
-export OPENROUTER_API_KEY=sk-or-...
-
-# Sterling API (your local instance)
-export STERLING_API_URL=http://localhost:9080/smcfs/restapi/
-export STERLING_API_USER=admin
-export STERLING_API_PASSWORD=your_password
-
-# Knowledge base directories (three separate indexes — documentation only)
-export STERLING_PRODUCT_DOCS_DIR=~/sterling-knowledge      # base product docs
-export STERLING_PROJECT_DOCS_DIR=~/sterling-project-docs    # your project docs
-export REFERENCE_DESIGNS_DIR=~/sterling-references           # other projects
-
-# API Javadocs (structured MCP server — input/output XML, user exits, events)
-export STERLING_JAVADOCS_DIR=~/javadocs_v10/api_javadocs
-
-# Project code (developer agent reads directly — NOT indexed in RAG)
-export STERLING_PROJECT_CODE_DIR=~/sterling-project-code
-
-# Notes/output directory (agents write analysis here — not git tracked)
-export STERLING_NOTES_DIR=~/sterling-knowledge/notes
-
-# Code knowledge graph (optional — build with: cd $STERLING_PROJECT_CODE_DIR && uvx graphifyy)
-export STERLING_CODE_GRAPH=~/sterling-project-code/graph.json
-
-# GitHub (for code review topology)
-export GITHUB_TOKEN=ghp_...
-```
-
-### 2. Prepare the product documentation directory
-
-This is the stable, base product knowledge — ingested once, never
-changes unless you upgrade Sterling versions. Typically 17,000+
-files.
-
-```bash
-mkdir -p ~/sterling-knowledge
-
-# If you have a large markdown file, split it first:
-python scripts/split-markdown.py /path/to/sterling-docs.md \
-  --output ~/sterling-knowledge/product-docs/
-
-# API Javadocs — symlink for the dedicated MCP server (NOT RAG)
-ln -s /path/to/api_javadocs ~/sterling-knowledge/api-javadocs
-
-# Export API summaries for RAG discovery ("which API should I use?")
-STERLING_JAVADOCS_DIR=~/sterling-knowledge/api-javadocs \
-  uv run sterling_javadocs_server.py --export-summaries \
-  ~/sterling-knowledge/product-docs/api-reference/
-
-# Convert core/baseutils javadocs to markdown for RAG
-python scripts/convert-javadocs.py /path/to/core_javadocs/ \
-  --output ~/sterling-knowledge/product-docs/core-javadocs/
-python scripts/convert-javadocs.py /path/to/baseutils_doc/ \
-  --output ~/sterling-knowledge/product-docs/core-javadocs/
-
-# Convert entity XMLs to markdown for RAG
-python scripts/convert-entity-xml.py /path/to/entity-xmls/ \
-  --datatypes /path/to/datatypes.xml \
-  --output ~/sterling-knowledge/product-docs/data-model/
-
-# Database ERD HTMLs (ingested as-is by mcp-local-rag)
-ln -s /path/to/sterling/erd ~/sterling-knowledge/product-docs/erd
-```
-
-### 3. Prepare the project documentation directory
-
-This is your project-specific **documentation** — changes as the
-project evolves. Re-ingest when files change.
-
-Code files (Java extensions, XSL transforms, XML templates) are
-**not** indexed here. The developer agent reads those directly
-from the filesystem/GitHub — it needs the full file structure,
-not vector-search fragments.
-
-```bash
-mkdir -p ~/sterling-project-docs
-
-# Design documents (Word, PDF, markdown)
-ln -s /path/to/project/docs ~/sterling-project-docs/design-docs
-
-# Integration specs (Excel → convert to markdown first)
-pip install openpyxl
-python scripts/convert-excel.py /path/to/integration-specs/
-mv /path/to/integration-specs/*.md ~/sterling-project-docs/integrations/
-
-# 3rd-party library docs
-cp /path/to/library-readme.md ~/sterling-project-docs/3rd-party-docs/
-```
-
-Supported file types for RAG: `.md`, `.html`, `.pdf`, `.docx`.
-Code files (`.java`, `.xml`, `.xsl`) belong in your repo — the
-developer agent reads them via the filesystem MCP server.
-
-### 4. Prepare reference designs (optional)
-
-Designs from other Sterling implementations — separate index so
-agents always label citations as reference material, never as
-current project fact. The config-validator has no access to this
-source.
-
-```bash
-mkdir -p ~/sterling-references
-
-# Sanitized designs from other projects (no client names/secrets)
-cp -r /path/to/project-alpha/docs ~/sterling-references/project-alpha/
-cp -r /path/to/project-beta/docs ~/sterling-references/project-beta/
-cp -r /path/to/industry-templates ~/sterling-references/templates/
-```
-
-### 5. Ingest documentation into vector stores
-
-First run downloads the embedding model (~90MB). Each directory
-gets its own LanceDB vector index (stored in `<BASE_DIR>/lancedb/`).
+### 1. Run the setup script
 
 ```bash
 cd examples/sterling-oms/workspace
 
-# Ingest product docs (run once — 17K files takes hours, run overnight)
-STERLING_DOCS_DIR=~/sterling-knowledge/product-docs \
-  nohup python scripts/ingest-docs.py > ingest-product.log 2>&1 &
-
-# Ingest project docs (re-run when project files change)
-STERLING_DOCS_DIR=~/sterling-project-docs \
-  python scripts/ingest-docs.py
-
-# Ingest reference designs (run once)
-STERLING_DOCS_DIR=~/sterling-references \
-  python scripts/ingest-docs.py
+# Creates all directories + generates .env file
+./scripts/setup-knowledge.sh                    # uses ~/sterling-knowledge
+./scripts/setup-knowledge.sh /data/sterling     # or custom base directory
 ```
 
-Only documentation files are indexed (`.md`, `.html`, `.pdf`, `.docx`).
-Code files (`.java`, `.xml`, `.xsl`) are **not** indexed — the
-developer agent reads those directly from the repo.
+This creates the following directory structure:
 
-The API Javadocs MCP server (`sterling_javadocs_server.py`) provides
-**precise structured data** for specific API queries (input XML, output
-XML, user exits, events, DTDs, samples). The RAG server provides
-**contextual search** for discovery ("which API modifies an order?").
+```
+~/sterling-knowledge/
+├── product-docs/              (indexed in ChromaDB)
+│   ├── product-docs/        ← Sterling product docs (markdown/HTML)
+│   ├── api-reference/       ← API summaries (exported from javadocs server)
+│   ├── data-model/          ← Entity XMLs → markdown
+│   ├── core-javadocs/       ← Core/baseutils javadocs → markdown
+│   └── erd/                 ← Database ERD HTML files
+│
+├── api-javadocs/             (dedicated MCP server — NOT indexed in RAG)
+│
+├── project-docs/             (indexed in ChromaDB)
+│   ├── design-docs/         ← Project Word/PDF/markdown docs
+│   ├── integrations/        ← Integration specs (Excel → markdown)
+│   └── 3rd-party-docs/      ← README/Javadoc for key libraries
+│
+├── project-code/             (NOT indexed — developer reads directly)
+│   ├── extensions/          ← Java extension source code
+│   ├── transforms/          ← XSL transform files
+│   └── templates/           ← XML API/config templates
+│
+├── references/               (separate ChromaDB index)
+│   └── templates/           ← Reusable patterns from other projects
+│
+└── notes/                    (agents write analysis here — not git tracked)
+```
+
+### 2. Edit .env with your credentials
+
+```bash
+nano .env   # or: source .env after editing
+```
+
+Key variables:
+```bash
+OPENROUTER_API_KEY=sk-or-...
+STERLING_API_URL=http://localhost:9080/smcfs/restapi/
+STERLING_API_PASSWORD=your_password
+GITHUB_TOKEN=ghp_...
+```
+
+### 3. Copy/symlink your source files
+
+```bash
+source .env
+
+# Product docs (markdown/HTML from IBM Knowledge Center)
+cp -r /path/to/product-docs/* $STERLING_PRODUCT_DOCS_DIR/product-docs/
+
+# API Javadocs (for the dedicated MCP server)
+ln -s /path/to/api_javadocs $STERLING_JAVADOCS_DIR/api_javadocs
+
+# Database ERD HTMLs
+ln -s /path/to/erd $STERLING_PRODUCT_DOCS_DIR/erd
+
+# Project code
+ln -s /path/to/extensions/src $STERLING_PROJECT_CODE_DIR/extensions
+ln -s /path/to/transforms $STERLING_PROJECT_CODE_DIR/transforms
+ln -s /path/to/templates $STERLING_PROJECT_CODE_DIR/templates
+
+# Project design docs
+ln -s /path/to/project/docs $STERLING_PROJECT_DOCS_DIR/design-docs
+```
+
+### 4. Convert and prepare data
+
+```bash
+# Split large markdown files
+python scripts/split-markdown.py /path/to/docs.md \
+  --output $STERLING_PRODUCT_DOCS_DIR/product-docs/
+
+# Convert entity XMLs to markdown
+python scripts/convert-entity-xml.py /path/to/entity-xmls/ \
+  --datatypes /path/to/datatypes.xml \
+  --output $STERLING_PRODUCT_DOCS_DIR/data-model/
+
+# Convert core/baseutils javadocs to markdown
+python scripts/convert-javadocs.py /path/to/core_javadocs/ \
+  --output $STERLING_PRODUCT_DOCS_DIR/core-javadocs/
+python scripts/convert-javadocs.py /path/to/baseutils_doc/ \
+  --output $STERLING_PRODUCT_DOCS_DIR/core-javadocs/
+
+# Export API summaries for RAG discovery
+STERLING_JAVADOCS_DIR=$STERLING_JAVADOCS_DIR/api_javadocs \
+  uv run sterling_javadocs_server.py \
+  --export-summaries $STERLING_PRODUCT_DOCS_DIR/api-reference/
+
+# Convert Excel integration specs to markdown
+pip install openpyxl
+python scripts/convert-excel.py /path/to/excel-files/
+mv /path/to/excel-files/*.md $STERLING_PROJECT_DOCS_DIR/integrations/
+```
+
+### 5. Prepare reference designs (optional)
+
+```bash
+# Sanitized designs from other projects (no client names/secrets)
+cp -r /path/to/project-alpha/docs $REFERENCE_DESIGNS_DIR/project-alpha/
+cp -r /path/to/industry-templates $REFERENCE_DESIGNS_DIR/templates/
+```
+
+### 6. Ingest into ChromaDB
+
+Batch ingestion with ONNX-accelerated embeddings — ~30 minutes
+for 20K files on CPU.
+
+```bash
+# Ingest product docs (run once)
+STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py
+
+# Ingest project docs (re-run when project files change)
+STERLING_DOCS_DIR=$STERLING_PROJECT_DOCS_DIR uv run scripts/ingest-docs.py
+
+# Ingest reference designs (run once)
+STERLING_DOCS_DIR=$REFERENCE_DESIGNS_DIR uv run scripts/ingest-docs.py
+
+# Reset and re-ingest from scratch
+STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py --reset
+```
+
+### 7. Build code knowledge graph (optional)
+
+```bash
+cd $STERLING_PROJECT_CODE_DIR && uvx graphifyy
+```
+
+### 8. Validate and run
+
+```bash
+swarmkit validate .
+swarmkit chat . sterling-qa
+```
+
+**Knowledge architecture:**
+- **ChromaDB** (via `chroma-mcp-server`) — contextual search for discovery ("which API modifies an order?")
+- **API Javadocs MCP server** — precise structured data (input XML, output XML, user exits, events)
+- **Filesystem MCP server** — developer reads raw code files directly
+- **Graphify** (optional) — structural code queries at ~2K tokens per query
+- **Notes MCP server** — agents write analysis to `$STERLING_NOTES_DIR`
 
 ### 6. Validate the workspace
 
@@ -322,7 +331,7 @@ Five MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ mcp-local-rag: sterling-product-docs (Node.js, LanceDB)       │
+│ chroma-mcp-server: sterling-product-docs (ChromaDB, ONNX)       │
 │ • 17K+ product docs (IBM Knowledge Center)              │
 │ • API Javadocs (what the APIs return + mean)            │
 │ • Database ERD (what the tables/columns mean)           │
@@ -330,7 +339,7 @@ Five MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ mcp-local-rag: sterling-project-docs                          │
+│ chroma-mcp-server: sterling-project-docs                          │
 │ • Design docs (Word/PDF/markdown)                       │
 │ • Integration specs (Excel → markdown)                  │
 │ • RE-INGEST when project docs change                    │
@@ -338,7 +347,7 @@ Five MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
-│ mcp-local-rag: reference-designs — SEPARATE INDEX             │
+│ chroma-mcp-server: reference-designs — SEPARATE INDEX             │
 │ • Sanitized designs from other Sterling projects        │
 │ • Agents always label: "In a reference project..."      │
 │ • Config validator has NO access (prevents hallucination)│
@@ -439,7 +448,7 @@ workspace/
 │   ├── github-pr-read.yaml
 │   └── github-repo-read.yaml
 ├── scripts/
-│   ├── ingest-docs.py          # Vector store ingestion (mcp-local-rag, pure Python MCP client)
+│   ├── ingest-docs.py          # Batch ingestion into ChromaDB (ONNX embeddings, ~30 min for 20K files)
 │   ├── setup-knowledge.sh      # Create knowledge directories + .env file
 │   ├── convert-entity-xml.py   # Sterling entity XMLs → consolidated markdown (merges by TableName)
 │   ├── convert-javadocs.py    # Core/baseutils Javadoc HTML → markdown for RAG
