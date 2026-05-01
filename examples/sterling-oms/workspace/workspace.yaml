@@ -33,7 +33,9 @@ mcp_servers:
   # Ingest with: STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py
   - id: sterling-product-docs
     transport: stdio
-    command: ["uvx", "chroma-mcp-server", "--client-type", "persistent", "--data-dir", "${STERLING_PRODUCT_DOCS_DIR}/chromadb"]
+    command: ["uv", "run", "chromadb_server.py"]
+    env:
+      CHROMADB_PATH: "${STERLING_PRODUCT_DOCS_DIR}/chromadb"
   # Full-text search over product docs — fast exact keyword matching
   - id: sterling-product-fts
     transport: stdio
@@ -45,11 +47,15 @@ mcp_servers:
   # the developer agent reads those directly from the filesystem
   - id: sterling-project-docs
     transport: stdio
-    command: ["uvx", "chroma-mcp-server", "--client-type", "persistent", "--data-dir", "${STERLING_PROJECT_DOCS_DIR}/chromadb"]
+    command: ["uv", "run", "chromadb_server.py"]
+    env:
+      CHROMADB_PATH: "${STERLING_PROJECT_DOCS_DIR}/chromadb"
   # Reference designs from other projects (separate index)
   - id: reference-designs
     transport: stdio
-    command: ["uvx", "chroma-mcp-server", "--client-type", "persistent", "--data-dir", "${REFERENCE_DESIGNS_DIR}/chromadb"]
+    command: ["uv", "run", "chromadb_server.py"]
+    env:
+      CHROMADB_PATH: "${REFERENCE_DESIGNS_DIR}/chromadb"
   # Sterling API Javadocs — structured API documentation (1006 APIs)
   # Input/output XML, DTDs, user exits, events, samples
   - id: sterling-api-javadocs
