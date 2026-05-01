@@ -1,5 +1,5 @@
 # /// script
-# dependencies = ["chromadb>=1.0", "sentence-transformers>=3.0", "onnxruntime>=1.18"]
+# dependencies = ["chromadb>=1.0", "sentence-transformers[onnx]>=3.0"]
 # ///
 """Ingest Sterling documentation into ChromaDB for RAG search.
 
