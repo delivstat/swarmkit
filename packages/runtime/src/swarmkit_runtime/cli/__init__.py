@@ -773,6 +773,32 @@ async def _async_conversation_loop(conv: Any, manager: Any) -> None:
                 typer.echo(f"Resume with: swarmkit chat ... --resume {conv.id}")
                 break
 
+            # /model command — switch model dynamically
+            if user_input.startswith("/model"):
+                parts = user_input.split(maxsplit=1)
+                if len(parts) < 2:
+                    current = os.environ.get("SWARMKIT_MODEL", "(topology default)")
+                    provider = os.environ.get("SWARMKIT_PROVIDER", "(topology default)")
+                    typer.echo(f"Current model: {current} (provider: {provider})")
+                    typer.echo("Usage: /model <provider/model> or /model <model>")
+                    typer.echo("Example: /model deepseek/deepseek-chat")
+                    typer.echo("         /model qwen/qwen3-235b-a22b")
+                    typer.echo("         /model reset  (back to topology defaults)")
+                else:
+                    model_spec = parts[1].strip()
+                    if model_spec == "reset":
+                        os.environ.pop("SWARMKIT_MODEL", None)
+                        os.environ.pop("SWARMKIT_PROVIDER", None)
+                        typer.echo("Model reset to topology defaults.")
+                    elif "/" in model_spec:
+                        os.environ["SWARMKIT_PROVIDER"] = "openrouter"
+                        os.environ["SWARMKIT_MODEL"] = model_spec
+                        typer.echo(f"Switched to: {model_spec} (via openrouter)")
+                    else:
+                        os.environ["SWARMKIT_MODEL"] = model_spec
+                        typer.echo(f"Switched model to: {model_spec}")
+                continue
+
             try:
                 result = await manager.send(conv, user_input)
             except Exception as exc:
