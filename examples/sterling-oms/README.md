@@ -47,7 +47,7 @@ export STERLING_JAVADOCS_DIR=~/javadocs_v10/api_javadocs
 # Project code (developer agent reads directly — NOT indexed in RAG)
 export STERLING_PROJECT_CODE_DIR=~/sterling-project-code
 
-# Code knowledge graph (optional — build with: cd $STERLING_PROJECT_CODE_DIR && graphify)
+# Code knowledge graph (optional — build with: cd $STERLING_PROJECT_CODE_DIR && uvx graphifyy)
 export STERLING_CODE_GRAPH=~/sterling-project-code/graph.json
 
 # GitHub (for code review topology)

@@ -99,8 +99,8 @@ STERLING_PROJECT_CODE_DIR=$CODE_DIR
 # API Javadocs (dedicated MCP server — structured API access)
 STERLING_JAVADOCS_DIR=$API_JAVADOCS
 
-# Code knowledge graph (optional — pip install graphifyy)
-# Build: cd \$STERLING_PROJECT_CODE_DIR && graphify
+# Code knowledge graph (optional)
+# Build: cd \$STERLING_PROJECT_CODE_DIR && uvx graphifyy
 STERLING_CODE_GRAPH=$CODE_DIR/graph.json
 
 # GitHub (for code review topology)
