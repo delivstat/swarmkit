@@ -63,6 +63,17 @@ class ConversationManager:
         self._conversations_dir = workspace_root / ".swarmkit" / "conversations"
         self._conversations_dir.mkdir(parents=True, exist_ok=True)
 
+    async def start_session(self) -> None:
+        """Start MCP servers for the conversation session.
+
+        Keeps servers alive across turns instead of restarting per message.
+        """
+        await self._runtime.start_session()
+
+    async def end_session(self) -> None:
+        """Stop MCP servers when the conversation ends."""
+        await self._runtime.end_session()
+
     def create(self, topology_name: str) -> Conversation:
         """Start a new conversation."""
         now = datetime.now(tz=UTC).isoformat()

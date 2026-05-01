@@ -85,6 +85,7 @@ class WorkspaceRuntime:
         self._provider_registry = provider_registry
         self._governance = governance
         self._mcp_manager = mcp_manager
+        self._session_active = False
 
     @classmethod
     def from_workspace_path(cls, path: Path) -> WorkspaceRuntime:
@@ -141,6 +142,22 @@ class WorkspaceRuntime:
             mcp_manager=self._mcp_manager,
         )
 
+    async def start_session(self) -> None:
+        """Start MCP servers and keep them alive for multiple runs.
+
+        Use this for chat/conversation mode where MCP servers should
+        persist across turns. Call end_session() when done.
+        """
+        if self._mcp_manager is not None and not self._session_active:
+            await self._mcp_manager.start_all()
+            self._session_active = True
+
+    async def end_session(self) -> None:
+        """Stop MCP servers started by start_session()."""
+        if self._mcp_manager is not None and self._session_active:
+            await self._mcp_manager.close_all()
+            self._session_active = False
+
     async def run(
         self,
         topology_name: str,
@@ -150,12 +167,14 @@ class WorkspaceRuntime:
     ) -> RunResult:
         """Execute a topology end-to-end and return the result.
 
-        Handles MCP session lifecycle (start_all / close_all) within
-        the same async task so the SDK's anyio task groups unwind cleanly.
+        If a session is active (via start_session), MCP servers are
+        already running and won't be restarted. Otherwise, handles
+        MCP lifecycle per-run (start_all / close_all).
         """
         graph = self.compile(topology_name)
 
-        if self._mcp_manager is not None:
+        owns_mcp = not self._session_active
+        if owns_mcp and self._mcp_manager is not None:
             await self._mcp_manager.start_all()
         try:
             result = await graph.ainvoke(
@@ -169,7 +188,7 @@ class WorkspaceRuntime:
                 config={"recursion_limit": max_steps},
             )
         finally:
-            if self._mcp_manager is not None:
+            if owns_mcp and self._mcp_manager is not None:
                 await self._mcp_manager.close_all()
 
         events = _extract_events(self._governance)
@@ -184,6 +203,7 @@ class WorkspaceRuntime:
 
     async def close(self) -> None:
         """Release all held resources."""
+        await self.end_session()
         if self._mcp_manager is not None:
             await self._mcp_manager.close_all()
 
