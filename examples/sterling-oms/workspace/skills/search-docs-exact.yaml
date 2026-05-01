@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-docs-exact
+  name: Search Docs (Exact)
+  description: Full-text keyword search over product docs. Fast and precise — use for API names, table names, config names. Use search-sterling-docs for discovery queries.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-product-fts
+  tool: search_text
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -140,8 +140,9 @@ cp -r /path/to/industry-templates $REFERENCE_DESIGNS_DIR/templates/
 
 ### 6. Ingest into ChromaDB
 
-Batch ingestion with ONNX-accelerated embeddings — ~30 minutes
-for 20K files on CPU.
+Batch ingestion builds two indexes per directory:
+- **ChromaDB** (`chromadb/`) — semantic vector search (~30 min for 20K files)
+- **SQLite FTS5** (`fts.db`) — fast exact keyword search (~2 seconds)
 
 ```bash
 # Ingest product docs (run once)
@@ -171,7 +172,8 @@ swarmkit chat . sterling-qa
 ```
 
 **Knowledge architecture:**
-- **ChromaDB** (via `chroma-mcp-server`) — contextual search for discovery ("which API modifies an order?")
+- **FTS5** (via `fts_server.py`) — fast exact keyword search ("YFS_ORDER_HEADER", "getOrderList")
+- **ChromaDB** (via `chroma-mcp-server`) — semantic search for discovery ("which API modifies an order?")
 - **API Javadocs MCP server** — precise structured data (input XML, output XML, user exits, events)
 - **Filesystem MCP server** — developer reads raw code files directly
 - **Graphify** (optional) — structural code queries at ~2K tokens per query
@@ -423,6 +425,8 @@ workspace/
 ├── workspace.yaml              # 4 MCP servers + governance + storage
 ├── sterling_api_server.py      # Live Sterling API MCP server (10 tools)
 ├── sterling_javadocs_server.py # API Javadocs MCP server (1006 APIs, 10 tools)
+├── fts_server.py              # Full-text search MCP server (SQLite FTS5)
+├── graphify_server.py         # Code knowledge graph MCP wrapper (Graphify CLI)
 ├── topologies/
 │   ├── solution-review.yaml    # Design discussions (3 agents)
 │   ├── sterling-qa.yaml        # Q&A (2 agents)
@@ -448,7 +452,7 @@ workspace/
 │   ├── github-pr-read.yaml
 │   └── github-repo-read.yaml
 ├── scripts/
-│   ├── ingest-docs.py          # Batch ingestion into ChromaDB (ONNX embeddings, ~30 min for 20K files)
+│   ├── ingest-docs.py          # Batch ingestion into ChromaDB + FTS5 (ONNX embeddings)
 │   ├── setup-knowledge.sh      # Create knowledge directories + .env file
 │   ├── convert-entity-xml.py   # Sterling entity XMLs → consolidated markdown (merges by TableName)
 │   ├── convert-javadocs.py    # Core/baseutils Javadoc HTML → markdown for RAG

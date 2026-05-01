@@ -21,8 +21,10 @@ defaults:
       KNOWLEDGE SOURCES — CRITICAL DISTINCTION:
       - query-sterling-config / query-sterling-sourcing: LIVE configuration from your
         Sterling instance. Ground truth for "how is our system configured?"
-      - search-sterling-docs: Product documentation + Javadocs + ERD. Context for what
-        the config means.
+      - search-docs-exact: FAST keyword search. Use FIRST when you know the exact
+        term (API name, table name, config name). Results in milliseconds.
+      - search-sterling-docs: SEMANTIC search. Use when you don't know the exact
+        term ("how do I modify an order?"). Finds conceptually related content.
       - search-reference-designs: Other implementations. INSPIRATION ONLY.
         Always prefix: "In a reference implementation..." Never state reference
         patterns as current project fact.
@@ -35,6 +37,7 @@ defaults:
       - Flag performance and integration impact
   skills:
     - search-sterling-docs
+    - search-docs-exact
     - search-project-docs
     - search-reference-designs
     - search-apis

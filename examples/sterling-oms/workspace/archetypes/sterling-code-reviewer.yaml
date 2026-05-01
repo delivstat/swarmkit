@@ -26,6 +26,7 @@ defaults:
       Search the Javadocs for correct API signatures before flagging issues.
   skills:
     - search-sterling-docs
+    - search-docs-exact
     - search-project-docs
     - search-apis
     - get-api-details

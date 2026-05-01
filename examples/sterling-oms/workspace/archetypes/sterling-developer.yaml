@@ -44,6 +44,7 @@ defaults:
       - Note any Sterling-specific concerns (threading, transactions)
   skills:
     - search-sterling-docs
+    - search-docs-exact
     - search-project-docs
     - search-apis
     - get-api-details

@@ -289,11 +289,37 @@ def main() -> None:  # noqa: PLR0915
     store_time = time.time() - t0
     print(f"  Stored in {store_time:.1f}s")
 
-    total_time = read_time + embed_time + store_time
+    # Build SQLite FTS5 index (fast exact search — 2-5 seconds)
+    import sqlite3  # noqa: PLC0415
+
+    fts_path = str(root / "fts.db")
+    print(f"\nBuilding FTS5 index at {fts_path}...")
+    t0 = time.time()
+    conn = sqlite3.connect(fts_path)
+    conn.execute("DROP TABLE IF EXISTS docs_fts")
+    conn.execute(
+        "CREATE VIRTUAL TABLE docs_fts USING fts5("
+        "  chunk_id, source, file_name, content,"
+        "  tokenize='porter unicode61'"
+        ")"
+    )
+    conn.executemany(
+        "INSERT INTO docs_fts (chunk_id, source, file_name, content) VALUES (?, ?, ?, ?)",
+        [
+            (all_ids[i], all_meta[i]["source"], all_meta[i]["file"], all_chunks[i])
+            for i in range(len(all_chunks))
+        ],
+    )
+    conn.commit()
+    conn.close()
+    fts_time = time.time() - t0
+    print(f"  FTS5 index built in {fts_time:.1f}s")
+
+    total_time = read_time + embed_time + store_time + fts_time
     print(f"\nIngestion complete in {total_time:.1f}s ({total_time / 60:.1f} min)")
     print(f"  {len(all_chunks)} chunks from {len(all_files)} files")
-    print(f"  ChromaDB at: {db_path}")
-    print(f"  Collection: {collection_name}")
+    print(f"  ChromaDB (semantic search): {db_path}")
+    print(f"  FTS5 (full-text search): {fts_path}")
 
 
 if __name__ == "__main__":

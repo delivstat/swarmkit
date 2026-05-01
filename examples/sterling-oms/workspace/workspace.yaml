@@ -34,6 +34,12 @@ mcp_servers:
   - id: sterling-product-docs
     transport: stdio
     command: ["uvx", "chroma-mcp-server", "--client-type", "persistent", "--data-dir", "${STERLING_PRODUCT_DOCS_DIR}/chromadb"]
+  # Full-text search over product docs — fast exact keyword matching
+  - id: sterling-product-fts
+    transport: stdio
+    command: ["uv", "run", "fts_server.py"]
+    env:
+      FTS_DB_PATH: "${STERLING_PRODUCT_DOCS_DIR}/fts.db"
   # Project-specific documentation — design docs, integration specs
   # Code files (.java, .xsl, .xml) are NOT indexed here —
   # the developer agent reads those directly from the filesystem
