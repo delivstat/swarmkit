@@ -14,7 +14,7 @@ agents:
     role: root
     model:
       provider: openrouter
-      name: anthropic/claude-sonnet-4
+      name: meta-llama/llama-3.3-70b-instruct
       temperature: 0.1
     prompt:
       system: |
