@@ -79,10 +79,6 @@ mcp_servers:
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
     credentials_ref: github-pat
-  # SwarmKit knowledge server (framework docs)
-  - id: swarmkit-knowledge
-    transport: stdio
-    command: ["swarmkit", "knowledge-server"]
 storage:
   checkpoints:
     backend: sqlite
