@@ -1,14 +1,14 @@
 apiVersion: swarmkit/v1
 kind: Skill
 metadata:
-  id: explain-code-path
-  name: Explain Code Path
-  description: Explain the path between two code entities — how class A reaches class B through calls, inheritance, or data flow.
+  id: explain-code-entity
+  name: Explain Code Entity
+  description: Explain a code entity and its neighbors — classes, methods, call chains, dependencies.
 category: capability
 implementation:
   type: mcp_tool
   server: code-graph
-  tool: find_code_path
+  tool: explain_code_entity
 iam:
   required_scopes: [repo:read]
 provenance:

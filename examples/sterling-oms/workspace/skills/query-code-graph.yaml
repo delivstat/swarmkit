@@ -8,7 +8,7 @@ category: capability
 implementation:
   type: mcp_tool
   server: code-graph
-  tool: query
+  tool: query_code_graph
 iam:
   required_scopes: [repo:read]
 provenance:

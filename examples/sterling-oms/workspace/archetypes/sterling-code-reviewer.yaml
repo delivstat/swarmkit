@@ -32,6 +32,7 @@ defaults:
     - get-api-input-xml
     - get-api-user-exits
     - query-code-graph
+    - explain-code-entity
     - explain-code-path
     - list-project-files
     - search-project-code

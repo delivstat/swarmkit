@@ -34,6 +34,7 @@ defaults:
       WHEN ASKED TO EXPLAIN CODE:
       - Use query-code-graph FIRST to understand relationships and call chains
         (much cheaper than reading raw files — ~2K tokens vs ~50K)
+      - Use explain-code-entity to understand a specific class or method
       - Use explain-code-path to trace how components connect
       - Use read-project-code only when you need the exact source
       - Use list-project-files to explore the directory structure
@@ -52,6 +53,7 @@ defaults:
     - get-api-user-exits
     - get-api-events
     - query-code-graph
+    - explain-code-entity
     - explain-code-path
     - list-project-files
     - search-project-code

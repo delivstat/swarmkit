@@ -63,7 +63,9 @@ mcp_servers:
   # Build graph first: cd $STERLING_PROJECT_CODE_DIR && uvx --from graphifyy graphify
   - id: code-graph
     transport: stdio
-    command: ["uvx", "--from", "graphifyy", "graphify", "serve", "--graph", "${STERLING_CODE_GRAPH}"]
+    command: ["uv", "run", "graphify_server.py"]
+    env:
+      STERLING_CODE_GRAPH: "${STERLING_CODE_GRAPH}"
   # GitHub for code access (PRs, remote repos)
   - id: github
     transport: stdio
