@@ -255,6 +255,34 @@ swarmkit chat examples/sterling-oms/workspace sterling-assistant
 [root: synthesises fix + architectural recommendation]
 ```
 
+### Dynamic model switching in chat
+
+Switch the LLM model on the fly during a conversation:
+
+```bash
+swarmkit chat examples/sterling-oms/workspace sterling-assistant
+> which API modifies an order?
+[response with default models]
+
+> /model deepseek/deepseek-chat
+Switched to: deepseek/deepseek-chat (via openrouter)
+
+> same question
+[response with deepseek — compare quality]
+
+> /model google/gemini-2.5-flash
+Switched to: google/gemini-2.5-flash (via openrouter)
+
+> /model
+Current model: google/gemini-2.5-flash (provider: openrouter)
+
+> /model reset
+Model reset to topology defaults.
+```
+
+Any model available on OpenRouter works — just use the
+`provider/model` format from the [OpenRouter models page](https://openrouter.ai/models).
+
 ### Multi-turn conversation (interactive mode)
 
 For design sessions, Q&A, or iterative discussions — context

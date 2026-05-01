@@ -278,7 +278,7 @@ you'll hit the 1,500 RPD limit in a day of active development.
 
 ## Switching models at runtime
 
-For quick experiments without editing YAML:
+### One-shot run with a different model
 
 ```bash
 # Try a run with a different model
@@ -293,5 +293,43 @@ SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=moonshotai/kimi-k2 \
 swarmkit logs . --last 2
 ```
 
-The `--verbose` flag shows per-agent timing so you can compare
-model speed alongside quality.
+### Dynamic switching during chat
+
+In chat mode, use `/model` to switch models on the fly without
+restarting. Great for comparing how different models handle the
+same question:
+
+```bash
+swarmkit chat . sterling-assistant
+> which API modifies an order?
+[response with default model]
+
+> /model deepseek/deepseek-chat
+Switched to: deepseek/deepseek-chat (via openrouter)
+
+> which API modifies an order?
+[compare: deepseek's response]
+
+> /model google/gemini-2.5-flash
+Switched to: google/gemini-2.5-flash (via openrouter)
+
+> /model
+Current model: google/gemini-2.5-flash (provider: openrouter)
+
+> /model reset
+Model reset to topology defaults.
+```
+
+**Commands:**
+
+| Command | Effect |
+|---|---|
+| `/model` | Show current model |
+| `/model deepseek/deepseek-chat` | Switch all agents to this model (via openrouter) |
+| `/model reset` | Back to topology YAML defaults |
+
+Any model on [OpenRouter](https://openrouter.ai/models) works —
+use the `provider/model` format.
+
+The `--verbose` flag shows per-agent timing and tool calls so you
+can compare model speed and tool selection alongside quality.

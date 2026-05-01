@@ -13,6 +13,17 @@
 | `swarmkit chat ... --resume <id>` | Resume a previous conversation |
 | `swarmkit conversations <workspace>` | List saved conversations with last message preview |
 | `swarmkit conversations ... --pick` | Pick a conversation to resume interactively |
+
+### Chat commands
+
+These commands work inside `swarmkit chat`:
+
+| Command | Description |
+|---|---|
+| `/model` | Show current model and provider |
+| `/model <provider/model>` | Switch all agents to a different model (e.g. `/model deepseek/deepseek-chat`) |
+| `/model reset` | Reset to topology YAML defaults |
+| `exit` / `quit` / `bye` | End the conversation |
 | `swarmkit init [path]` | Create a workspace through conversation |
 | `swarmkit edit <workspace>` | Edit a workspace through conversation |
 
