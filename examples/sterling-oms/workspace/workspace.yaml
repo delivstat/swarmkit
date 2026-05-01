@@ -82,7 +82,7 @@ mcp_servers:
   # SwarmKit knowledge server (framework docs)
   - id: swarmkit-knowledge
     transport: stdio
-    command: ["uv", "run", "python", "-m", "swarmkit_runtime.knowledge"]
+    command: ["swarmkit", "knowledge-server"]
 storage:
   checkpoints:
     backend: sqlite
