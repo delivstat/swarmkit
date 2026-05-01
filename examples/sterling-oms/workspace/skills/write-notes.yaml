@@ -3,11 +3,11 @@ kind: Skill
 metadata:
   id: write-notes
   name: Write Notes
-  description: Write analysis, explanations, or documentation to a file in the project code directory. Use for saving research, design notes, or module explanations.
+  description: Write analysis, explanations, or documentation to a file in the notes directory. Use for saving research, design notes, or module explanations.
 category: capability
 implementation:
   type: mcp_tool
-  server: project-code
+  server: notes-dir
   tool: write_file
 iam:
   required_scopes: [repo:write]

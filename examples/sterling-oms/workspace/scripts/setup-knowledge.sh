@@ -42,6 +42,10 @@ mkdir -p "$CODE_DIR/extensions"
 mkdir -p "$CODE_DIR/transforms"
 mkdir -p "$CODE_DIR/templates"
 
+# Notes/output (agents write analysis here — not git tracked)
+NOTES_DIR="$BASE/notes"
+mkdir -p "$NOTES_DIR"
+
 # Reference designs (separate index, ingest once)
 mkdir -p "$REFERENCES/templates"
 
@@ -98,6 +102,9 @@ STERLING_PROJECT_CODE_DIR=$CODE_DIR
 
 # API Javadocs (dedicated MCP server — structured API access)
 STERLING_JAVADOCS_DIR=$API_JAVADOCS
+
+# Notes/output directory (agents write analysis, docs here — not git tracked)
+STERLING_NOTES_DIR=$BASE/notes
 
 # Code knowledge graph (optional)
 # Build: cd \$STERLING_PROJECT_CODE_DIR && uvx graphifyy
