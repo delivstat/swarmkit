@@ -117,8 +117,9 @@ class MCPClientManager:
         if config.sandboxed:
             cmd, args, env = _build_sandboxed_command(config, workspace_root=self._workspace_root)
         else:
-            cmd = config.command[0]
-            args = list(config.command[1:])
+            resolved_cmd = [_expand_var(part) for part in config.command]
+            cmd = resolved_cmd[0]
+            args = resolved_cmd[1:]
             env = _resolve_env(config.env)
 
         cwd = str(self._workspace_root) if self._workspace_root and not config.sandboxed else None
@@ -229,6 +230,13 @@ def _build_sandboxed_command(
     docker_args.extend(config.command)
 
     return "docker", docker_args, None
+
+
+def _expand_var(value: str) -> str:
+    """Expand ``${VAR}`` references in a single string value."""
+    if value.startswith("${") and value.endswith("}"):
+        return os.environ.get(value[2:-1], "")
+    return value
 
 
 def _resolve_env(env: dict[str, str] | None, *, inherit: bool = True) -> dict[str, str] | None:
