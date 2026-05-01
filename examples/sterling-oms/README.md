@@ -47,6 +47,9 @@ export STERLING_JAVADOCS_DIR=~/javadocs_v10/api_javadocs
 # Project code (developer agent reads directly — NOT indexed in RAG)
 export STERLING_PROJECT_CODE_DIR=~/sterling-project-code
 
+# Code knowledge graph (optional — build with: cd $STERLING_PROJECT_CODE_DIR && graphify)
+export STERLING_CODE_GRAPH=~/sterling-project-code/graph.json
+
 # GitHub (for code review topology)
 export GITHUB_TOKEN=ghp_...
 ```
@@ -347,6 +350,14 @@ Five MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
+│ Graphify Code Graph (optional, token-efficient)         │
+│ • query-code-graph: find related classes, call chains   │
+│ • explain-code-path: trace how components connect       │
+│ • ~2K tokens per query vs ~50K for raw file reads       │
+│ • Build once: cd $PROJECT_CODE && graphify              │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
 │ GitHub MCP Server (code access)                         │
 │ • Developer agent reads .java, .xsl, .xml directly      │
 │ • Full file context, not vector-search fragments         │
@@ -356,13 +367,13 @@ Five MCP servers, each with a distinct role:
 
 ### Which archetype has access to what
 
-| Archetype | Product docs | Project docs | Reference designs | API Javadocs | Live API | Code |
-|---|---|---|---|---|---|---|
-| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ | ✅ | — |
-| retail-domain-expert | ✅ | ✅ | ✅ | — | — | — |
-| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | — | ✅ | — |
-| sterling-code-reviewer | ✅ | ✅ | — | ✅ | — | ✅ |
-| sterling-developer | ✅ | ✅ | — | ✅ | ✅ | ✅ |
+| Archetype | Product docs | Project docs | Reference designs | API Javadocs | Live API | Code | Code Graph |
+|---|---|---|---|---|---|---|---|
+| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
+| retail-domain-expert | ✅ | ✅ | ✅ | — | — | — | — |
+| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | — | ✅ | — | — |
+| sterling-code-reviewer | ✅ | ✅ | — | ✅ | — | ✅ | ✅ |
+| sterling-developer | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ |
 
 **Key design decisions:**
 - The config-validator has no reference design access — it validates

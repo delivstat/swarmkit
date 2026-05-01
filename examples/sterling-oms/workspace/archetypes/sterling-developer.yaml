@@ -32,9 +32,12 @@ defaults:
       - Reference the project's existing extension patterns for consistency
 
       WHEN ASKED TO EXPLAIN CODE:
+      - Use query-code-graph FIRST to understand relationships and call chains
+        (much cheaper than reading raw files — ~2K tokens vs ~50K)
+      - Use explain-code-path to trace how components connect
+      - Use read-project-code only when you need the exact source
       - Use list-project-files to explore the directory structure
       - Use search-project-code to find specific classes, methods, or patterns
-      - Use read-project-code to read the actual source files
       - Describe the class structure, key methods, and control flow
       - Identify patterns used and dependencies
       - Note any Sterling-specific concerns (threading, transactions)
@@ -48,6 +51,8 @@ defaults:
     - get-api-samples
     - get-api-user-exits
     - get-api-events
+    - query-code-graph
+    - explain-code-path
     - list-project-files
     - search-project-code
     - read-project-code
