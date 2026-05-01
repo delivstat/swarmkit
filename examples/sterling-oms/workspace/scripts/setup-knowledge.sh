@@ -88,32 +88,32 @@ cat > "$ENV_FILE" << ENVEOF
 # Or set these in your shell profile.
 
 # Model provider
-OPENROUTER_API_KEY=
+export OPENROUTER_API_KEY=
 
 # Sterling API (your local instance)
-STERLING_API_URL=http://localhost:9080/smcfs/restapi/
-STERLING_API_USER=admin
-STERLING_API_PASSWORD=
+export STERLING_API_URL=http://localhost:9080/smcfs/restapi/
+export STERLING_API_USER=admin
+export STERLING_API_PASSWORD=
 
 # Knowledge base directories (indexed in ChromaDB)
-STERLING_PRODUCT_DOCS_DIR=$PRODUCT_DOCS
-STERLING_PROJECT_DOCS_DIR=$PROJECT_DOCS
-REFERENCE_DESIGNS_DIR=$REFERENCES
+export STERLING_PRODUCT_DOCS_DIR=$PRODUCT_DOCS
+export STERLING_PROJECT_DOCS_DIR=$PROJECT_DOCS
+export REFERENCE_DESIGNS_DIR=$REFERENCES
 
 # Project code (developer agent reads directly — NOT indexed)
-STERLING_PROJECT_CODE_DIR=$CODE_DIR
+export STERLING_PROJECT_CODE_DIR=$CODE_DIR
 
 # API Javadocs (dedicated MCP server — structured API access)
-STERLING_JAVADOCS_DIR=$API_JAVADOCS
+export STERLING_JAVADOCS_DIR=$API_JAVADOCS
 
 # Notes/output directory (agents write here — not git tracked)
-STERLING_NOTES_DIR=$NOTES_DIR
+export STERLING_NOTES_DIR=$NOTES_DIR
 
 # Code knowledge graph (optional — build: cd \$STERLING_PROJECT_CODE_DIR && uvx --from graphifyy graphify)
-STERLING_CODE_GRAPH=$CODE_DIR/graph.json
+export STERLING_CODE_GRAPH=$CODE_DIR/graph.json
 
 # GitHub (for code review topology)
-GITHUB_TOKEN=
+export GITHUB_TOKEN=
 ENVEOF
 
 echo "Generated: $ENV_FILE"
