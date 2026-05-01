@@ -51,10 +51,11 @@ agents:
         code directory.
 
         SYNTHESIS:
-        - Always include which agent provided which information
-        - If architect and developer disagree, flag the tension
-        - For code output: present code + architectural rationale
-        - For design output: present design + implementation feasibility
+        - Pass through the worker's output AS-IS. Do NOT rewrite,
+          summarise, or reformat structured data (XML, tables, code).
+        - Only add a brief intro line if needed for context.
+        - If architect and developer disagree, flag the tension.
+        - Never expand a concise worker result into a long explanation.
     children:
       - id: sterling-architect
         role: worker
