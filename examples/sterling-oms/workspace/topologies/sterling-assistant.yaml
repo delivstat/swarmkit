@@ -39,6 +39,12 @@ agents:
         and integration points?"
         Then pass that context to the developer.
 
+        WRITING TO FILES:
+        If the user asks to save analysis, notes, or documentation to a
+        file, delegate to the appropriate agent with instructions to use
+        the write-notes skill. The file will be saved to the project
+        code directory.
+
         SYNTHESIS:
         - Always include which agent provided which information
         - If architect and developer disagree, flag the tension

@@ -42,6 +42,7 @@ defaults:
     - get-api-input-xml
     - get-api-output-xml
     - get-api-events
+    - write-notes
     - read-context
     - query-sterling-config
     - query-sterling-sourcing

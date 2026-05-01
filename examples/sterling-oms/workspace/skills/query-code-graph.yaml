@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: query-code-graph
+  name: Query Code Graph
+  description: Query the project code knowledge graph — find related classes, call chains, and dependencies. Much cheaper than reading raw files.
+category: capability
+implementation:
+  type: mcp_tool
+  server: code-graph
+  tool: query
+iam:
+  required_scopes: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

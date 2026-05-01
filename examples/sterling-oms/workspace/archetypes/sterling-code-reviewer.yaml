@@ -31,9 +31,12 @@ defaults:
     - get-api-details
     - get-api-input-xml
     - get-api-user-exits
+    - query-code-graph
+    - explain-code-path
     - list-project-files
     - search-project-code
     - read-project-code
+    - write-notes
     - read-context
     - github-pr-read
     - github-repo-read

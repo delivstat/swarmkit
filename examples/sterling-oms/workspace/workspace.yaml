@@ -60,6 +60,15 @@ mcp_servers:
   - id: project-code
     transport: stdio
     command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_PROJECT_CODE_DIR}"]
+  # Notes/output directory — agents write analysis, docs, explanations here
+  - id: notes-dir
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_NOTES_DIR}"]
+  # Code knowledge graph — structural queries over project code (optional)
+  # Build graph first: cd $STERLING_PROJECT_CODE_DIR && uvx graphifyy
+  - id: code-graph
+    transport: stdio
+    command: ["uvx", "graphifyy", "serve", "--graph", "${STERLING_CODE_GRAPH}"]
   # GitHub for code access (PRs, remote repos)
   - id: github
     transport: stdio
