@@ -56,6 +56,7 @@ defaults:
     - list-project-files
     - search-project-code
     - read-project-code
+    - write-notes
     - read-context
     - github-repo-read
     - github-pr-read
