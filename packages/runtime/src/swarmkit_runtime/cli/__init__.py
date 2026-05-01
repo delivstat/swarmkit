@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -598,6 +599,9 @@ def run(
     if dry_run:
         _print_dry_run(runtime, topology_name)
         return
+
+    if verbose:
+        os.environ["SWARMKIT_VERBOSE"] = "1"
 
     user_input = input_text or ""
     if not user_input and not sys.stdin.isatty():

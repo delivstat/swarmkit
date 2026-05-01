@@ -112,7 +112,7 @@ def _collect_agents(root: ResolvedAgent) -> dict[str, ResolvedAgent]:
 # ---- node construction --------------------------------------------------
 
 
-def _build_agent_node(
+def _build_agent_node(  # noqa: PLR0915
     agent: ResolvedAgent,
     model_provider: ModelProviderProtocol,
     governance: GovernanceProvider,
@@ -227,7 +227,23 @@ def _build_agent_node(
             temperature=(agent.model or {}).get("temperature"),
         )
 
+        _verbose = os.environ.get("SWARMKIT_VERBOSE", "")
+        if _verbose:
+            import sys  # noqa: PLC0415
+
+            print(f"\n--- [{agent_id}] calling {model_name} ---", file=sys.stderr)
+            print(f"  tools: {[t.name for t in tools]}", file=sys.stderr)
+            print(f"  input: {messages[-1].content[:200]}...", file=sys.stderr)
+
         response = await model_provider.complete(request)
+
+        if _verbose:
+            tool_calls = [
+                b.tool_name for b in response.content if hasattr(b, "tool_name") and b.tool_name
+            ]
+            text_parts = [b.text[:100] for b in response.content if hasattr(b, "text") and b.text]
+            print(f"  tool_calls: {tool_calls}", file=sys.stderr)
+            print(f"  text: {text_parts}", file=sys.stderr)
 
         # Check for delegation tool calls
         delegation = _extract_delegation(response, agent)
@@ -403,7 +419,10 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
 
     if delegation_tools:
         names = ", ".join(f"`{t.name}`" for t in delegation_tools)
-        parts.append(f"To delegate work to a child agent, call one of: {names}")
+        parts.append(
+            f"DELEGATION (MANDATORY for root agents): You MUST delegate by calling "
+            f"one of: {names}. Do NOT answer questions directly — always delegate."
+        )
 
     if skill_tools:
         names = ", ".join(f"`{t.name}`" for t in skill_tools)

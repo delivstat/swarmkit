@@ -14,7 +14,7 @@ agents:
     role: root
     model:
       provider: openrouter
-      name: qwen/qwen3-235b-a22b
+      name: anthropic/claude-sonnet-4
       temperature: 0.1
     prompt:
       system: |
