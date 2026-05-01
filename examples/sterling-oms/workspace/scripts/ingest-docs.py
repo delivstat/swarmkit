@@ -223,7 +223,8 @@ def main() -> None:  # noqa: PLR0915
         chunks = _chunk_text(content)
         for j, chunk in enumerate(chunks):
             all_chunks.append(chunk)
-            all_ids.append(f"{f.stem}-{j}")
+            rel_path = str(f.relative_to(root)).replace("/", "_").replace("\\", "_")
+            all_ids.append(f"{rel_path}-{j}")
             all_meta.append({"source": str(f.relative_to(root)), "file": f.name})
 
         if (i + 1) % 1000 == 0:
