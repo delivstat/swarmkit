@@ -4,6 +4,7 @@
 #   "sentence-transformers[onnx]>=3.0",
 #   "pypdf>=4.0",
 #   "python-docx>=1.0",
+#   "openpyxl>=3.1",
 # ]
 # ///
 """Ingest Sterling documentation into ChromaDB for RAG search.
@@ -39,7 +40,10 @@ NATIVE_EXTENSIONS = {".md", ".txt"}
 HTML_EXTENSIONS = {".html", ".htm"}
 DOCX_EXTENSIONS = {".docx"}
 PDF_EXTENSIONS = {".pdf"}
-ALL_EXTENSIONS = NATIVE_EXTENSIONS | HTML_EXTENSIONS | DOCX_EXTENSIONS | PDF_EXTENSIONS
+EXCEL_EXTENSIONS = {".xlsx", ".xls"}
+ALL_EXTENSIONS = (
+    NATIVE_EXTENSIONS | HTML_EXTENSIONS | DOCX_EXTENSIONS | PDF_EXTENSIONS | EXCEL_EXTENSIONS
+)
 MAX_FILE_SIZE = 10_000_000  # 10MB
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
@@ -97,6 +101,32 @@ def _read_docx(path: Path) -> str:
     return "\n\n".join(para.text for para in doc.paragraphs if para.text.strip())
 
 
+def _read_excel(path: Path) -> str:
+    """Extract text from an Excel file as markdown tables."""
+    import openpyxl  # noqa: PLC0415
+
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    sheets: list[str] = []
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        rows = list(ws.iter_rows(values_only=True))
+        if len(rows) < 2:
+            continue
+        headers = [str(h or f"col_{i}") for i, h in enumerate(rows[0])]
+        lines = [
+            f"## {sheet_name}",
+            "",
+            "| " + " | ".join(headers) + " |",
+            "| " + " | ".join("---" for _ in headers) + " |",
+        ]
+        for row in rows[1:]:
+            values = [str(v or "") for v in row]
+            lines.append("| " + " | ".join(values) + " |")
+        sheets.append("\n".join(lines))
+    wb.close()
+    return "\n\n".join(sheets)
+
+
 def _read_file(path: Path, root: Path) -> str | None:
     """Read a file and return its text content."""
     suffix = path.suffix.lower()
@@ -105,6 +135,8 @@ def _read_file(path: Path, root: Path) -> str | None:
             content = _read_pdf(path)
         elif suffix in DOCX_EXTENSIONS:
             content = _read_docx(path)
+        elif suffix in EXCEL_EXTENSIONS:
+            content = _read_excel(path)
         else:
             content = path.read_text(encoding="utf-8", errors="replace")
     except Exception:
@@ -114,7 +146,8 @@ def _read_file(path: Path, root: Path) -> str | None:
         content = _strip_html_preserve_links(content)
 
     header = f"# {path.stem}\nSource: {path.relative_to(root)}\n\n"
-    if suffix in (HTML_EXTENSIONS | PDF_EXTENSIONS | DOCX_EXTENSIONS):
+    non_native = HTML_EXTENSIONS | PDF_EXTENSIONS | DOCX_EXTENSIONS | EXCEL_EXTENSIONS
+    if suffix in non_native:
         content = header + content
 
     return content if content.strip() else None
