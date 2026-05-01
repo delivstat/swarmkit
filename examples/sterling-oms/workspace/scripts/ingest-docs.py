@@ -1,5 +1,10 @@
 # /// script
-# dependencies = ["chromadb>=1.0", "sentence-transformers[onnx]>=3.0"]
+# dependencies = [
+#   "chromadb>=1.0",
+#   "sentence-transformers[onnx]>=3.0",
+#   "pypdf>=4.0",
+#   "python-docx>=1.0",
+# ]
 # ///
 """Ingest Sterling documentation into ChromaDB for RAG search.
 
@@ -32,7 +37,9 @@ from pathlib import Path
 
 NATIVE_EXTENSIONS = {".md", ".txt"}
 HTML_EXTENSIONS = {".html", ".htm"}
-ALL_EXTENSIONS = NATIVE_EXTENSIONS | HTML_EXTENSIONS
+DOCX_EXTENSIONS = {".docx"}
+PDF_EXTENSIONS = {".pdf"}
+ALL_EXTENSIONS = NATIVE_EXTENSIONS | HTML_EXTENSIONS | DOCX_EXTENSIONS | PDF_EXTENSIONS
 MAX_FILE_SIZE = 10_000_000  # 10MB
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
@@ -74,16 +81,40 @@ def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OV
     return chunks
 
 
+def _read_pdf(path: Path) -> str:
+    """Extract text from a PDF file."""
+    from pypdf import PdfReader  # noqa: PLC0415
+
+    reader = PdfReader(str(path))
+    return "\n\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def _read_docx(path: Path) -> str:
+    """Extract text from a DOCX file."""
+    import docx  # noqa: PLC0415
+
+    doc = docx.Document(str(path))
+    return "\n\n".join(para.text for para in doc.paragraphs if para.text.strip())
+
+
 def _read_file(path: Path, root: Path) -> str | None:
     """Read a file and return its text content."""
+    suffix = path.suffix.lower()
     try:
-        content = path.read_text(encoding="utf-8", errors="replace")
+        if suffix in PDF_EXTENSIONS:
+            content = _read_pdf(path)
+        elif suffix in DOCX_EXTENSIONS:
+            content = _read_docx(path)
+        else:
+            content = path.read_text(encoding="utf-8", errors="replace")
     except Exception:
         return None
 
-    if path.suffix.lower() in HTML_EXTENSIONS:
+    if suffix in HTML_EXTENSIONS:
         content = _strip_html_preserve_links(content)
-        header = f"# {path.stem}\nSource: {path.relative_to(root)}\n\n"
+
+    header = f"# {path.stem}\nSource: {path.relative_to(root)}\n\n"
+    if suffix in (HTML_EXTENSIONS | PDF_EXTENSIONS | DOCX_EXTENSIONS):
         content = header + content
 
     return content if content.strip() else None
