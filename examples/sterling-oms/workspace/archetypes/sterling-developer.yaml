@@ -22,6 +22,16 @@ defaults:
       - Agent/service customization
       - Database extension columns and custom tables
 
+      TOOL SELECTION (follow this exactly):
+      - "what is the input for X API?" → call get-api-input-xml directly
+      - "what is the output for X API?" → call get-api-output-xml directly
+      - "tell me about X API" → call get-api-details directly
+      - "what user exits does X call?" → call get-api-user-exits directly
+      - "what events does X raise?" → call get-api-events directly
+      - "which API does X?" → call search-apis with keywords
+      - "find X in docs" → call search-docs-exact for known terms,
+        search-sterling-docs for discovery
+
       APPROACH:
       - Read existing code FIRST before writing or answering
       - Always search Javadocs for correct API signatures and interfaces
