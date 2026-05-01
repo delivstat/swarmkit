@@ -30,11 +30,16 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import re
 import sys
 import time
+import warnings
 from pathlib import Path
+
+warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+logging.getLogger("pypdf").setLevel(logging.ERROR)
 
 NATIVE_EXTENSIONS = {".md", ".txt"}
 HTML_EXTENSIONS = {".html", ".htm"}
