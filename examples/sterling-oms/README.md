@@ -160,7 +160,7 @@ STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py --res
 ### 7. Build code knowledge graph (optional)
 
 ```bash
-cd $STERLING_PROJECT_CODE_DIR && uvx graphifyy
+cd $STERLING_PROJECT_CODE_DIR && uvx --from graphifyy graphify
 ```
 
 ### 8. Validate and run
