@@ -61,7 +61,9 @@ class Governance(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
-    provider: Provider = Field(..., description="GovernanceProvider implementation (design §8.5).")
+    provider: Provider = Field(
+        ..., description="GovernanceProvider implementation (design §8.5)."
+    )
     policy_language: PolicyLanguage | None = Field(
         None, description="§21 open question — default yaml for v1.0."
     )
@@ -86,7 +88,9 @@ class Identity(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
-    provider: Provider1 = Field(..., description="Human-identity provider (design §16.1).")
+    provider: Provider1 = Field(
+        ..., description="Human-identity provider (design §16.1)."
+    )
     config: dict[str, Any] | None = None
 
 
@@ -95,7 +99,9 @@ class ModelProviderRegistration(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
-    class_: str = Field(..., alias="class", description="Fully-qualified Python class path.")
+    class_: str = Field(
+        ..., alias="class", description="Fully-qualified Python class path."
+    )
     provider_id: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
     config: dict[str, Any] | None = None
 
@@ -139,7 +145,9 @@ class McpServer(BaseModel):
     )
     id: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
     transport: Transport
-    command: list[str] | None = Field(None, description="Required when transport=stdio.")
+    command: list[str] | None = Field(
+        None, description="Required when transport=stdio."
+    )
     endpoint: str | None = Field(None, description="Required when transport=http.")
     env: dict[str, str] | None = Field(
         None,

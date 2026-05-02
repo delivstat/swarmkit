@@ -40,7 +40,12 @@
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
         "name": { "type": "string", "minLength": 1 },
-        "description": { "type": "string" }
+        "description": { "type": "string" },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Arbitrary key-value metadata the runtime ignores. For enterprise use: cost_center, team, environment, compliance tags, etc."
+        }
       }
     },
     "org_or_team": {
@@ -150,6 +155,10 @@
           "type": "object",
           "additionalProperties": { "type": "string" },
           "description": "Environment variables passed to a stdio server. Values support ${VAR} expansion from the runtime process environment. Use `credentials_ref` for secrets; `env` is for configuration."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for stdio servers. Supports ${VAR} expansion. Defaults to workspace root."
         },
         "credentials_ref": { "type": "string" },
         "sandboxed": {

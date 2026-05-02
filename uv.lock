@@ -2706,7 +2706,7 @@ wheels = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.0.15"
+version = "1.0.16"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -2772,7 +2772,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "swarmkit-schema"
-version = "1.0.15"
+version = "1.0.16"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },

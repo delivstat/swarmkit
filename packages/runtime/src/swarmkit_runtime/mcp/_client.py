@@ -123,6 +123,7 @@ class MCPClientManager:
             args = resolved_cmd[1:]
             env = _resolve_env(config.env)
 
+        cwd: str | None
         if config.cwd:
             cwd = _expand_var(config.cwd)
         else:
