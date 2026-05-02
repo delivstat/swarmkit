@@ -562,14 +562,28 @@ def _build_prompt_messages(
             )
         )
     else:
+        # Build conversation context for worker agents so they can see
+        # prior findings and avoid redundant tool calls.
+        conversation: list[Message] = []
+        for msg in state.get("messages", []):
+            if isinstance(msg, HumanMessage):
+                conversation.append(Message(role="user", content=str(msg.content)))
+            elif isinstance(msg, AIMessage) and msg.content:
+                content = str(msg.content)
+                if not content.startswith("__delegated__:"):
+                    conversation.append(Message(role="assistant", content=content))
+
         task = state.get("input", "")
         last_human = None
         for msg in reversed(state.get("messages", [])):
             if isinstance(msg, HumanMessage):
                 last_human = msg.content
                 break
-        content = last_human or task
-        messages.append(Message(role="user", content=str(content)))
+
+        if conversation:
+            messages.extend(conversation)
+        else:
+            messages.append(Message(role="user", content=str(last_human or task)))
 
     return messages
 
