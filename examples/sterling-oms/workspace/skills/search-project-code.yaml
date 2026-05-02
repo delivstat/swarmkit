@@ -3,7 +3,7 @@ kind: Skill
 metadata:
   id: search-project-code
   name: Search Project Code
-  description: Search for text patterns in the local project codebase — find usages, implementations, references across Java/XSL/XML files.
+  description: Search for text patterns in the project codebase. Use path "." to search all files. Example args — {"path": ".", "pattern": "SourcingRule"}
 category: capability
 implementation:
   type: mcp_tool

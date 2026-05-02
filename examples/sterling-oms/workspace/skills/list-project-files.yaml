@@ -3,7 +3,7 @@ kind: Skill
 metadata:
   id: list-project-files
   name: List Project Files
-  description: List files and directories in the local project codebase — discover extensions, transforms, templates.
+  description: List files and directories in the project codebase. Use "." for root or relative paths like "extensions/src".
 category: capability
 implementation:
   type: mcp_tool

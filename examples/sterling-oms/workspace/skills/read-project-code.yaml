@@ -3,7 +3,7 @@ kind: Skill
 metadata:
   id: read-project-code
   name: Read Project Code
-  description: Read source files from the local project codebase — Java extensions, XSL transforms, XML templates, properties files.
+  description: Read a source file from the project codebase. Use relative paths like "extensions/src/com/example/MyClass.java".
 category: capability
 implementation:
   type: mcp_tool
