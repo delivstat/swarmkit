@@ -130,7 +130,18 @@ python scripts/convert-excel.py /path/to/excel-files/
 mv /path/to/excel-files/*.md $STERLING_PROJECT_DOCS_DIR/integrations/
 ```
 
-### 5. Prepare reference designs (optional)
+### 5. Ingest CDT config dump
+
+```bash
+# Parse CDT XML files into structured JSON index
+python scripts/ingest-cdt.py /path/to/CDT-directory/ \
+  --output $STERLING_CDT_INDEX
+
+# Indexes: 1542 services, 101 pipelines, 851 transactions,
+# 985 events, 527 statuses, 27 hold types, 2854 common codes
+```
+
+### 6. Prepare reference designs (optional)
 
 ```bash
 # Sanitized designs from other projects (no client names/secrets)
@@ -138,7 +149,7 @@ cp -r /path/to/project-alpha/docs $REFERENCE_DESIGNS_DIR/project-alpha/
 cp -r /path/to/industry-templates $REFERENCE_DESIGNS_DIR/templates/
 ```
 
-### 6. Ingest into ChromaDB
+### 7. Ingest docs into ChromaDB
 
 Batch ingestion builds two indexes per directory:
 - **ChromaDB** (`chromadb/`) — semantic vector search (~30 min for 20K files)
@@ -158,7 +169,7 @@ STERLING_DOCS_DIR=$REFERENCE_DESIGNS_DIR uv run scripts/ingest-docs.py
 STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py --reset
 ```
 
-### 7. Build code knowledge graph (optional)
+### 8. Build code knowledge graph (optional)
 
 ```bash
 uvx --from graphifyy graphify update $STERLING_PROJECT_CODE_DIR
@@ -166,7 +177,7 @@ uvx --from graphifyy graphify update $STERLING_PROJECT_CODE_DIR
 # (4818 nodes, 16162 edges from 1209 files — takes ~30 seconds)
 ```
 
-### 8. Validate and run
+### 9. Validate and run
 
 ```bash
 swarmkit validate .
@@ -174,10 +185,13 @@ swarmkit chat . sterling-qa
 ```
 
 **Knowledge architecture:**
-- **FTS5** (via `fts_server.py`) — fast exact keyword search ("YFS_ORDER_HEADER", "getOrderList")
-- **ChromaDB** (via `chroma-mcp-server`) — semantic search for discovery ("which API modifies an order?")
-- **API Javadocs MCP server** — precise structured data (input XML, output XML, user exits, events)
-- **Filesystem MCP server** — developer reads raw code files directly
+- **CDT Config server** — services, pipelines, transactions, events, hold types from CDT dump
+- **FTS5** — fast exact keyword search ("YFS_ORDER_HEADER", "getOrderList")
+- **ChromaDB** — semantic search for discovery ("which API modifies an order?")
+- **API Javadocs server** — 1006 APIs with input/output XML, user exits, events
+- **Graphify + grep** — code knowledge graph + content search over project code
+- **Filesystem server** — direct file read/write with `cwd` support
+- **Notes server** — agents write analysis to `$STERLING_NOTES_DIR`
 - **Graphify** (optional) — structural code queries at ~2K tokens per query
 - **Notes MCP server** — agents write analysis to `$STERLING_NOTES_DIR`
 
@@ -337,29 +351,35 @@ curl -X POST http://localhost:8000/run/sterling-qa \
 
 ## Model configuration
 
-Default setup uses OpenRouter with Qwen3 models:
-- Leaders + architects: `qwen/qwen3-235b-a22b` ($0.46/M input)
-- Validator: `deepseek/deepseek-chat` ($0.32/M input)
-- Workers (if added): `qwen/qwen3-30b-a3b` ($0.08/M input)
+Default setup uses OpenRouter:
+- Root (router): `meta-llama/llama-3.3-70b-instruct` ($0.10/M)
+- Workers: `deepseek/deepseek-chat` ($0.32/M)
+- Validator: `deepseek/deepseek-chat` ($0.32/M)
 
-Estimated cost: ~$0.02-0.05 per topology run. ~$5-10/month at 20 runs/day.
+Estimated cost: ~$0.05 per run. ~$30/month at active usage.
 
-Override per-run:
+Override per-run or dynamically in chat:
 ```bash
-SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=moonshotai/kimi-k2 \
-  swarmkit run examples/sterling-oms/workspace solution-review --input "..."
+SWARMKIT_MODEL=deepseek/deepseek-chat \
+  swarmkit run . sterling-assistant --input "..."
+
+# Or in chat mode:
+> /model deepseek/deepseek-chat
+> /model reset
 ```
 
 ## Knowledge base architecture
 
-Five MCP servers, each with a distinct role:
+Nine MCP servers, each with a distinct role:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Sterling API MCP Server (live)                          │
-│ • get_flow_list, get_sourcing_rule_list, get_agent_list │
-│ • Queries Application Manager config directly           │
-│ • Ground truth for "how is our system configured?"      │
+│ Sterling CDT Config Server (from CDT XML dump)          │
+│ • get_service_config, render_service_graph, list_services│
+│ • get_pipeline, render_pipeline_graph, get_transactions │
+│ • get_events, get_user_exits, get_hold_types            │
+│ • get_common_codes, search_configs, get_config_table    │
+│ • No live Sterling instance needed                      │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
@@ -411,7 +431,7 @@ Five MCP servers, each with a distinct role:
 
 ### Which archetype has access to what
 
-| Archetype | Product docs | Project docs | Reference designs | API Javadocs | Live API | Code | Code Graph |
+| Archetype | Product docs | Project docs | Reference designs | API Javadocs | CDT Config | Code | Code Graph |
 |---|---|---|---|---|---|---|---|
 | sterling-oms-architect | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
 | retail-domain-expert | ✅ | ✅ | ✅ | — | — | — | — |
@@ -453,7 +473,7 @@ swarmkit edit examples/sterling-oms/workspace \
 ```
 workspace/
 ├── workspace.yaml              # 4 MCP servers + governance + storage
-├── sterling_api_server.py      # Live Sterling API MCP server (10 tools)
+├── sterling_cdt_server.py      # CDT config MCP server (14 tools, services/pipelines/events)
 ├── sterling_javadocs_server.py # API Javadocs MCP server (1006 APIs, 10 tools)
 ├── fts_server.py              # Full-text search MCP server (SQLite FTS5)
 ├── graphify_server.py         # Code knowledge graph MCP wrapper (Graphify CLI)
@@ -473,7 +493,7 @@ workspace/
 │   ├── search-sterling-docs.yaml
 │   ├── search-reference-designs.yaml
 │   ├── read-context.yaml
-│   ├── query-sterling-config.yaml
+│   ├── get-service-config.yaml
 │   ├── query-sterling-sourcing.yaml
 │   ├── call-sterling-api.yaml
 │   ├── config-review.yaml
