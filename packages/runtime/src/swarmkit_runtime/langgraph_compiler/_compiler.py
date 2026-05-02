@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -20,6 +21,7 @@ from swarmkit_runtime.langgraph_compiler._skill_executor import execute_skill
 from swarmkit_runtime.model_providers import (
     CompletionRequest,
     CompletionResponse,
+    ContentBlock,
     Message,
     MockModelProvider,
     ToolSpec,
@@ -266,23 +268,65 @@ def _build_agent_node(  # noqa: PLR0915
                 }
 
             # Check for skill tool calls
-            skill_result = await _handle_skill_tool_calls(
+            tool_results = await _handle_skill_tool_calls(
                 response, agent, model_provider, model_name, mcp_manager, governance
             )
-            if skill_result is not None:
+            if tool_results is not None:
                 await governance.record_event(
                     AuditEvent(
                         event_type="skill.executed",
                         agent_id=agent_id,
                         timestamp=datetime.now(tz=UTC),
-                        payload={"result_length": len(skill_result)},
+                        payload={"tools_called": len(tool_results)},
                     )
                 )
+
+                # Build tool_result messages and call the model again to
+                # synthesize a coherent answer from the raw tool output.
+                assistant_blocks = list(response.content)
+                tool_result_blocks = [
+                    ContentBlock(
+                        type="tool_result",
+                        tool_use_id=tr.tool_use_id,
+                        tool_result=tr.result,
+                    )
+                    for tr in tool_results
+                ]
+                synthesis_messages = [
+                    *messages,
+                    Message(role="assistant", content=assistant_blocks),
+                    Message(role="user", content=tool_result_blocks),
+                ]
+                synthesis_request = CompletionRequest(
+                    model=model_name,
+                    messages=tuple(synthesis_messages),
+                    system=system_prompt,
+                    tools=tuple(tools) if tools else None,
+                    temperature=(agent.model or {}).get("temperature"),
+                )
+                if _verbose:
+                    print(
+                        f"  [synthesis call with {len(tool_results)} tool results]",
+                        file=sys.stderr,
+                    )
+                synthesis = await model_provider.complete(synthesis_request)
+                synth_text = _extract_text(synthesis)
+
+                # If the synthesis call makes more tool calls, handle
+                # them iteratively (up to remaining retries).
+                synth_tool_results = await _handle_skill_tool_calls(
+                    synthesis, agent, model_provider, model_name,
+                    mcp_manager, governance,
+                )
+                if synth_tool_results:
+                    raw_parts = [tr.result for tr in synth_tool_results]
+                    synth_text = synth_text + "\n\n" + "\n\n".join(raw_parts)
+
                 return {
                     "current_agent": agent.id,
-                    "agent_results": {agent_id: skill_result},
-                    "messages": [AIMessage(content=skill_result, name=agent_id)],
-                    "output": skill_result,
+                    "agent_results": {agent_id: synth_text},
+                    "messages": [AIMessage(content=synth_text, name=agent_id)],
+                    "output": synth_text,
                 }
 
             # Model returned text instead of tool calls.
@@ -576,6 +620,15 @@ def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec
 _MAX_TOOL_CALLS_PER_TURN = int(os.environ.get("SWARMKIT_MAX_TOOLS", "10"))
 
 
+@dataclass
+class ToolCallResult:
+    """A single tool call and its result."""
+
+    tool_use_id: str
+    tool_name: str
+    result: str
+
+
 async def _handle_skill_tool_calls(
     response: CompletionResponse,
     agent: ResolvedAgent,
@@ -583,10 +636,14 @@ async def _handle_skill_tool_calls(
     model_name: str,
     mcp_manager: Any = None,
     governance: GovernanceProvider | None = None,
-) -> str | None:
-    """Execute all skill tool calls in the response (up to max per turn)."""
+) -> list[ToolCallResult] | None:
+    """Execute all skill tool calls in the response (up to max per turn).
+
+    Returns structured results so the caller can build tool_result messages
+    for a synthesis follow-up call.
+    """
     skill_map = {s.id: s for s in agent.skills}
-    results: list[str] = []
+    results: list[ToolCallResult] = []
     _verbose = os.environ.get("SWARMKIT_VERBOSE", "")
 
     for block in response.content:
@@ -620,10 +677,13 @@ async def _handle_skill_tool_calls(
             governance=governance,
             agent_id=agent.id,
         )
-        if result:
-            results.append(result)
+        results.append(ToolCallResult(
+            tool_use_id=block.tool_use_id or f"call_{len(results)}",
+            tool_name=block.tool_name,
+            result=result or "(no result)",
+        ))
 
-    return "\n\n".join(results) if results else None
+    return results if results else None
 
 
 # ---- response parsing ---------------------------------------------------
