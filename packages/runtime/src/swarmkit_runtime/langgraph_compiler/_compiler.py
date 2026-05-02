@@ -532,6 +532,9 @@ def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec
 # ---- skill execution ----------------------------------------------------
 
 
+_MAX_TOOL_CALLS_PER_TURN = int(os.environ.get("SWARMKIT_MAX_TOOLS", "10"))
+
+
 async def _handle_skill_tool_calls(
     response: CompletionResponse,
     agent: ResolvedAgent,
@@ -540,9 +543,19 @@ async def _handle_skill_tool_calls(
     mcp_manager: Any = None,
     governance: GovernanceProvider | None = None,
 ) -> str | None:
-    """If the response contains a skill tool call, execute it and return the result."""
+    """Execute all skill tool calls in the response (up to max per turn)."""
     skill_map = {s.id: s for s in agent.skills}
+    results: list[str] = []
+    _verbose = os.environ.get("SWARMKIT_VERBOSE", "")
+
     for block in response.content:
+        if len(results) >= _MAX_TOOL_CALLS_PER_TURN:
+            if _verbose:
+                print(
+                    f"  [max tool calls reached: {_MAX_TOOL_CALLS_PER_TURN}]",
+                    file=sys.stderr,
+                )
+            break
         if block.type != "tool_use" or not block.tool_name:
             continue
         if block.tool_name.startswith("delegate_to_"):
@@ -555,7 +568,9 @@ async def _handle_skill_tool_calls(
             input_text = json.dumps(block.tool_input)
         elif isinstance(block.tool_input, str):
             input_text = block.tool_input
-        return await execute_skill(
+        if _verbose:
+            print(f"  executing: {block.tool_name}", file=sys.stderr)
+        result = await execute_skill(
             skill,
             input_text=input_text,
             model_provider=model_provider,
@@ -564,7 +579,10 @@ async def _handle_skill_tool_calls(
             governance=governance,
             agent_id=agent.id,
         )
-    return None
+        if result:
+            results.append(result)
+
+    return "\n\n".join(results) if results else None
 
 
 # ---- response parsing ---------------------------------------------------
