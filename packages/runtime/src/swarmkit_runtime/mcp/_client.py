@@ -14,6 +14,7 @@ See ``design/details/mcp-client.md``.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
@@ -239,9 +240,11 @@ def _build_sandboxed_command(
 
 def _expand_var(value: str) -> str:
     """Expand ``${VAR}`` references in a single string value."""
-    if value.startswith("${") and value.endswith("}"):
-        return os.environ.get(value[2:-1], "")
-    return value
+    return re.sub(
+        r"\$\{([^}]+)\}",
+        lambda m: os.environ.get(m.group(1), ""),
+        value,
+    )
 
 
 def _resolve_cwd(
@@ -268,6 +271,9 @@ def _resolve_cwd(
 def _resolve_env(env: dict[str, str] | None, *, inherit: bool = True) -> dict[str, str] | None:
     """Resolve ``${VAR}`` references in env values from the process environment.
 
+    Handles both full-value references (``${VAR}``) and embedded references
+    (``${VAR}/suffix``).  Multiple references in a single value are supported.
+
     When ``inherit`` is True (default, for stdio subprocesses), the parent
     process environment is inherited so that PATH, HOME, NODE_PATH, etc.
     are available to commands like npx. When False (for Docker sandboxed
@@ -277,11 +283,11 @@ def _resolve_env(env: dict[str, str] | None, *, inherit: bool = True) -> dict[st
         return None
     resolved: dict[str, str] = dict(os.environ) if inherit else {}
     for key, value in env.items():
-        if value.startswith("${") and value.endswith("}"):
-            var_name = value[2:-1]
-            resolved[key] = os.environ.get(var_name, "")
-        else:
-            resolved[key] = value
+        resolved[key] = re.sub(
+            r"\$\{([^}]+)\}",
+            lambda m: os.environ.get(m.group(1), ""),
+            value,
+        )
     return resolved
 
 

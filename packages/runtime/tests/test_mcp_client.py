@@ -116,6 +116,21 @@ def test_resolve_env_unknown_var_becomes_empty_string(monkeypatch) -> None:  # t
     assert resolved["X"] == ""
 
 
+def test_resolve_env_expands_embedded_var(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("SWARMKIT_TEST_BASE", "/data/knowledge")
+    resolved = _resolve_env({"DB": "${SWARMKIT_TEST_BASE}/chromadb"})
+    assert resolved is not None
+    assert resolved["DB"] == "/data/knowledge/chromadb"
+
+
+def test_resolve_env_expands_multiple_vars(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("SWARMKIT_TEST_HOST", "localhost")
+    monkeypatch.setenv("SWARMKIT_TEST_PORT", "8080")
+    resolved = _resolve_env({"URL": "${SWARMKIT_TEST_HOST}:${SWARMKIT_TEST_PORT}/api"})
+    assert resolved is not None
+    assert resolved["URL"] == "localhost:8080/api"
+
+
 def test_resolve_env_returns_none_for_empty() -> None:
     assert _resolve_env(None) is None
     assert _resolve_env({}) is None
