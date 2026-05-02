@@ -41,6 +41,7 @@ class MCPServerConfig:
     command: list[str] = field(default_factory=list)
     endpoint: str = ""
     env: dict[str, str] | None = None
+    cwd: str = ""
     sandboxed: bool = False
     sandbox_image: str = ""
 
@@ -122,7 +123,10 @@ class MCPClientManager:
             args = resolved_cmd[1:]
             env = _resolve_env(config.env)
 
-        cwd = _resolve_cwd(resolved_cmd, self._workspace_root, config.sandboxed)
+        if config.cwd:
+            cwd = _expand_var(config.cwd)
+        else:
+            cwd = _resolve_cwd(resolved_cmd, self._workspace_root, config.sandboxed)
         params = StdioServerParameters(command=cmd, args=args, env=env, cwd=cwd)
         transport = await self._stack.enter_async_context(stdio_client(params))
         session = await self._stack.enter_async_context(ClientSession(*transport))
@@ -301,6 +305,7 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
             command=list(server.command or []),
             endpoint=server.endpoint or "",
             env=dict(server.env) if server.env else None,
+            cwd=server.cwd or "",
             sandboxed=bool(server.sandboxed) if server.sandboxed is not None else False,
             sandbox_image=server.sandbox_image or "",
         )
