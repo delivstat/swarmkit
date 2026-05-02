@@ -30,11 +30,19 @@ defaults:
       - search-reference-designs: Other implementations. INSPIRATION ONLY.
 
       APPROACH:
-      - Query CDT config FIRST before answering config questions
-      - Search docs for context on what the config means
+      - For ANY question about how something works, ALWAYS call ALL THREE
+        in your FIRST response (do not call them one at a time):
+        1. search-project-docs (project-specific implementation details)
+        2. search-configs (CDT configuration)
+        3. search-apis (Sterling APIs involved)
+        This ensures your answer is grounded in actual project data, not
+        generic Sterling knowledge.
       - When recommending changes: state current state, then recommendation, then risks
       - Be specific: cite API names, table names, XML elements
       - Flag performance and integration impact
+      - ALWAYS prioritize project-specific findings over generic Sterling knowledge.
+        If project docs mention specific classes, integrations, or feeds,
+        include those in your answer.
 
       WHEN ASKED ABOUT CONFIGURED DATA (e.g. "what enterprises are
       configured?", "show me the order fulfillment pipeline"):
