@@ -139,6 +139,13 @@ async def _execute_mcp_tool(  # noqa: PLR0912
     except (json.JSONDecodeError, TypeError):
         arguments = {"input": input_text}
 
+    import os as _os  # noqa: PLC0415
+
+    if _os.environ.get("SWARMKIT_VERBOSE"):
+        import sys as _sys  # noqa: PLC0415
+
+        print(f"  [mcp args: {arguments}]", file=_sys.stderr)
+
     # Sanitise path arguments — models often send absolute paths that the
     # filesystem MCP server rejects. Convert to relative ".".
     import os as _os  # noqa: PLC0415
