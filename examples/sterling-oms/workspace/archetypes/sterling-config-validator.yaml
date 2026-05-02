@@ -29,8 +29,10 @@ defaults:
     - search-sterling-docs
     - search-project-docs
     - read-context
-    - query-sterling-config
-    - query-sterling-sourcing
+    - get-service-config
+    - get-pipeline
+    - search-configs
+    - get-common-codes
   iam:
     base_scope: [knowledge:read, sterling:read]
 provenance:
