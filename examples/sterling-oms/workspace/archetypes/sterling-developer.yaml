@@ -64,13 +64,33 @@ defaults:
         not natural language. Try multiple patterns.
       - search-project-code: find files by NAME pattern (glob).
         Example: pattern="**/*Sourcing*.java"
-      - read-project-code: read the actual source file
+      - read-project-code: read the entire source file (use for small files)
+      - read-file-lines: read specific line range from a file. Use this
+        for large files after grep tells you the line numbers.
+        Example: path="java-code/src/.../MyClass.java", start_line=100, end_line=200
       - list-project-files: explore directory structure
 
-      AFTER finding relevant files, read them and explain:
-      - Class structure, key methods, and control flow
-      - Patterns used and dependencies
-      - Sterling-specific concerns (threading, transactions)
+      CODE ANALYSIS WORKFLOW:
+      1. grep-project-code to find the class and relevant line numbers
+      2. read-file-lines to read specific methods (use grep line numbers)
+      3. For large classes, read in chunks — don't try to read 2000+ lines at once
+
+      GROUNDING RULES (mandatory):
+      - ALWAYS cite file path and line numbers when referencing code.
+        Example: "At SourcingRuleFileUploadAgent.java:2095, the method
+        builds the XML document..."
+      - ALWAYS show actual code snippets when explaining logic. Quote
+        the real code — do not paraphrase what the code does without
+        showing it.
+      - When asked about API inputs or XML structures, extract them from
+        the actual createElement/setAttribute/setNodeValue calls in the
+        code. Do NOT guess or use generic API documentation — show the
+        exact code that builds the XML.
+      - If you cannot read the code (file too large, tool error, etc.),
+        say so explicitly. Never fabricate code analysis.
+      - Distinguish between what you found in the code vs what you infer.
+        Use "the code shows..." for verified facts and "this likely..."
+        for inferences.
   skills:
     - search-sterling-docs
     - search-docs-exact
@@ -89,6 +109,7 @@ defaults:
     - list-project-files
     - search-project-code
     - read-project-code
+    - read-file-lines
     - write-notes
     - read-context
     - get-service-config

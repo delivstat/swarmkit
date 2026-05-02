@@ -29,7 +29,10 @@ agents:
         - API questions (input/output XML, user exits, events) → sterling-developer
         - Design/architecture/configuration questions → sterling-architect
         - Code/implementation/extension questions → sterling-developer
-        - Questions touching both → delegate to BOTH, then synthesise
+        - "How does X work?" or "How is X managed/done/handled?" → BOTH
+          (architect gives the design/integration view, developer gives
+          the actual classes, methods, and code flow)
+        - Questions touching both design and code → delegate to BOTH
 
         CROSS-CONSULTATION (this is critical):
         When the architect needs to understand current implementation

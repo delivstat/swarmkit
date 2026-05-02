@@ -81,5 +81,31 @@ def grep_project_code(pattern: str, file_glob: str = "*.java", max_results: int 
     return "\n".join(lines)
 
 
+@server.tool()
+def read_file_lines(path: str, start_line: int, end_line: int | None = None) -> str:
+    """Read a specific line range from a source file. Use after grep to examine code at specific locations."""
+    if end_line is None:
+        end_line = start_line + 100
+    if end_line < start_line:
+        return "Error: end_line must be >= start_line."
+    if end_line - start_line + 1 > 200:
+        end_line = start_line + 199
+    full_path = os.path.join(_CODE_DIR, path)
+    if not os.path.isfile(full_path):
+        return f"Error: file not found: {path}"
+    try:
+        with open(full_path) as f:
+            lines = f.readlines()
+    except OSError as exc:
+        return f"Error reading file: {exc}"
+    total = len(lines)
+    if start_line < 1 or start_line > total:
+        return f"Error: start_line {start_line} out of range (file has {total} lines)."
+    selected = lines[start_line - 1 : end_line]
+    numbered = [f"{start_line + i:>6}\t{line}" for i, line in enumerate(selected)]
+    header = f"# {path}  (lines {start_line}–{start_line + len(selected) - 1} of {total})"
+    return header + "\n" + "".join(numbered)
+
+
 if __name__ == "__main__":
     server.run()
