@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.0.17"
+version = "1.0.18"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,7 @@ dependencies = [
     "pyyaml>=6.0",
     "typer>=0.12",           # CLI — `swarmkit` entrypoint
     "rich>=13.7",            # terminal rendering for authoring chat
+    "prompt-toolkit>=3.0",   # interactive chat UX (history, completion, cursor)
     "httpx>=0.27",
     "anyio>=4.4",
 

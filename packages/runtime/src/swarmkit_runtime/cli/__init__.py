@@ -749,6 +749,35 @@ def _show_and_continue_conversation(conv: Any, manager: Any) -> None:
 _EXIT_COMMANDS = {"exit", "quit", "bye", "/exit", "/quit"}
 
 
+def _build_chat_session():
+    """Build a prompt_toolkit session with history and completion."""
+    from prompt_toolkit import PromptSession  # noqa: PLC0415
+    from prompt_toolkit.completion import WordCompleter  # noqa: PLC0415
+    from prompt_toolkit.history import FileHistory  # noqa: PLC0415
+
+    history_path = Path.home() / ".swarmkit" / "chat_history"
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+
+    commands = WordCompleter(
+        [
+            "/model",
+            "/model reset",
+            "exit",
+            "quit",
+            "bye",
+            "/exit",
+            "/quit",
+        ],
+        sentence=True,
+    )
+
+    return PromptSession(
+        history=FileHistory(str(history_path)),
+        completer=commands,
+        enable_history_search=True,
+    )
+
+
 def _conversation_loop(conv: Any, manager: Any) -> None:
     """Interactive REPL for a conversation.
 
@@ -758,11 +787,12 @@ def _conversation_loop(conv: Any, manager: Any) -> None:
 
 
 async def _async_conversation_loop(conv: Any, manager: Any) -> None:
+    session = _build_chat_session()
     await manager.start_session()
     try:
         while True:
             try:
-                user_input = input("> ").strip()
+                user_input = session.prompt("> ").strip()
             except (KeyboardInterrupt, EOFError):
                 user_input = "exit"
 
