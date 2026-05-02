@@ -20,14 +20,13 @@ credentials:
     config:
       env: STERLING_API_PASSWORD
 mcp_servers:
-  # Live Sterling API access — queries Application Manager config
-  - id: sterling-api
+  # Sterling CDT config — parsed config dump (services, pipelines, events, etc.)
+  # Ingest: python scripts/ingest-cdt.py /path/to/CDT/ --output $STERLING_CDT_INDEX
+  - id: sterling-config
     transport: stdio
-    command: ["uv", "run", "sterling_api_server.py"]
+    command: ["uv", "run", "sterling_cdt_server.py"]
     env:
-      STERLING_API_URL: "${STERLING_API_URL}"
-      STERLING_API_USER: "${STERLING_API_USER}"
-      STERLING_API_PASSWORD: "${STERLING_API_PASSWORD}"
+      STERLING_CDT_INDEX: "${STERLING_CDT_INDEX}"
   # Sterling product docs — 17K files, ingest once, never changes
   # Product docs (markdown/HTML), Javadocs, ERD
   # Ingest with: STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py

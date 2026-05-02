@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-transactions
+  name: Get Transactions
+  description: Sterling CDT config — get-transactions
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-config
+  tool: get_transactions
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -19,18 +19,18 @@ defaults:
       (YFS_ORDER_HEADER, YFS_PIPELINE, etc.), performance tuning.
 
       KNOWLEDGE SOURCES — CRITICAL DISTINCTION:
-      - query-sterling-config / query-sterling-sourcing: LIVE configuration from your
-        Sterling instance. Ground truth for "how is our system configured?"
-      - search-docs-exact: FAST keyword search. Use FIRST when you know the exact
-        term (API name, table name, config name). Results in milliseconds.
-      - search-sterling-docs: SEMANTIC search. Use when you don't know the exact
-        term ("how do I modify an order?"). Finds conceptually related content.
+      - get-service-config / get-pipeline / search-configs: Configuration
+        from CDT dump. Ground truth for "how is our system configured?"
+        for services, pipelines, transactions, events, hold types.
+      - SOME CONFIGS ARE DYNAMIC and may not be in CDT: sourcing rules,
+        runtime-modified data. For these, check project code.
+      - search-docs-exact: FAST keyword search. Use when you know the
+        exact term (API name, table name).
+      - search-sterling-docs: SEMANTIC search for discovery queries.
       - search-reference-designs: Other implementations. INSPIRATION ONLY.
-        Always prefix: "In a reference implementation..." Never state reference
-        patterns as current project fact.
 
       APPROACH:
-      - Always query live config FIRST before answering config questions
+      - Query CDT config FIRST before answering config questions
       - Search docs for context on what the config means
       - When recommending changes: state current state, then recommendation, then risks
       - Be specific: cite API names, table names, XML elements
@@ -45,11 +45,19 @@ defaults:
     - get-api-input-xml
     - get-api-output-xml
     - get-api-events
+    - get-service-config
+    - render-service-graph
+    - get-pipeline
+    - render-pipeline-graph
+    - list-services
+    - list-pipelines
+    - get-transactions
+    - get-events
+    - get-hold-types
+    - get-common-codes
+    - search-configs
     - write-notes
     - read-context
-    - query-sterling-config
-    - query-sterling-sourcing
-    - call-sterling-api
   iam:
     base_scope: [knowledge:read, sterling:read]
 provenance:

@@ -81,9 +81,13 @@ defaults:
     - read-project-code
     - write-notes
     - read-context
+    - get-service-config
+    - get-pipeline
+    - search-configs
+    - get-events
+    - get-user-exits
     - github-repo-read
     - github-pr-read
-    - call-sterling-api
   iam:
     base_scope: [knowledge:read, repo:read, sterling:read]
 provenance:

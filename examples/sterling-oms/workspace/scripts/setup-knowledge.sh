@@ -90,10 +90,8 @@ cat > "$ENV_FILE" << ENVEOF
 # Model provider
 export OPENROUTER_API_KEY=
 
-# Sterling API (your local instance)
-export STERLING_API_URL=http://localhost:9080/smcfs/restapi/
-export STERLING_API_USER=admin
-export STERLING_API_PASSWORD=
+# Sterling CDT config dump (ingest with: python scripts/ingest-cdt.py)
+export STERLING_CDT_INDEX=$BASE/cdt-index
 
 # Knowledge base directories (indexed in ChromaDB)
 export STERLING_PRODUCT_DOCS_DIR=$PRODUCT_DOCS
@@ -161,15 +159,18 @@ echo ""
 echo "  3. Edit .env with your API keys and Sterling credentials:"
 echo "     nano $ENV_FILE"
 echo ""
-echo "  4. Source the env and ingest into ChromaDB (~30 min for 20K files):"
+echo "  4. Ingest CDT config dump:"
+echo "     python scripts/ingest-cdt.py /path/to/CDT/ --output $BASE/cdt-index"
+echo ""
+echo "  5. Source the env and ingest docs into ChromaDB (~30 min for 20K files):"
 echo "     source $ENV_FILE"
 echo "     STERLING_DOCS_DIR=$PRODUCT_DOCS uv run scripts/ingest-docs.py"
 echo "     STERLING_DOCS_DIR=$PROJECT_DOCS uv run scripts/ingest-docs.py"
 echo "     STERLING_DOCS_DIR=$REFERENCES uv run scripts/ingest-docs.py"
 echo ""
-echo "  5. Build code knowledge graph (optional):"
+echo "  6. Build code knowledge graph (optional):"
 echo "     uvx --from graphifyy graphify update $CODE_DIR"
 echo ""
-echo "  6. Validate and run:"
+echo "  7. Validate and run:"
 echo "     swarmkit validate ."
 echo "     swarmkit chat . sterling-qa"

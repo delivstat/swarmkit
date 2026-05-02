@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-service-config
+  name: Get Service Config
+  description: Sterling CDT config — get-service-config
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-config
+  tool: get_service_config
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
