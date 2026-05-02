@@ -109,8 +109,9 @@ export STERLING_JAVADOCS_DIR=$API_JAVADOCS
 # Notes/output directory (agents write here — not git tracked)
 export STERLING_NOTES_DIR=$NOTES_DIR
 
-# Code knowledge graph (optional — build: cd \$STERLING_PROJECT_CODE_DIR && uvx --from graphifyy graphify)
-export STERLING_CODE_GRAPH=$CODE_DIR/graph.json
+# Code knowledge graph (optional)
+# Build: uvx --from graphifyy graphify update \$STERLING_PROJECT_CODE_DIR
+export STERLING_CODE_GRAPH=$CODE_DIR/graphify-out/graph.json
 
 # GitHub (for code review topology)
 export GITHUB_TOKEN=
@@ -167,7 +168,7 @@ echo "     STERLING_DOCS_DIR=$PROJECT_DOCS uv run scripts/ingest-docs.py"
 echo "     STERLING_DOCS_DIR=$REFERENCES uv run scripts/ingest-docs.py"
 echo ""
 echo "  5. Build code knowledge graph (optional):"
-echo "     cd $CODE_DIR && uvx --from graphifyy graphify"
+echo "     uvx --from graphifyy graphify update $CODE_DIR"
 echo ""
 echo "  6. Validate and run:"
 echo "     swarmkit validate ."

@@ -161,7 +161,9 @@ STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py --res
 ### 7. Build code knowledge graph (optional)
 
 ```bash
-cd $STERLING_PROJECT_CODE_DIR && uvx --from graphifyy graphify
+uvx --from graphifyy graphify update $STERLING_PROJECT_CODE_DIR
+# Outputs: $STERLING_PROJECT_CODE_DIR/graphify-out/graph.json
+# (4818 nodes, 16162 edges from 1209 files — takes ~30 seconds)
 ```
 
 ### 8. Validate and run
@@ -396,7 +398,7 @@ Five MCP servers, each with a distinct role:
 │ • query-code-graph: find related classes, call chains   │
 │ • explain-code-path: trace how components connect       │
 │ • ~2K tokens per query vs ~50K for raw file reads       │
-│ • Build once: cd $PROJECT_CODE && graphify              │
+│ • Build: graphify update $PROJECT_CODE (~30 seconds)     │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
