@@ -91,6 +91,12 @@ defaults:
       - Distinguish between what you found in the code vs what you infer.
         Use "the code shows..." for verified facts and "this likely..."
         for inferences.
+
+      SELF-VERIFICATION:
+      After producing a code analysis with file:line citations, call
+      verify-code-citations with your full analysis text. This checks
+      every citation against the actual source. If any citation fails,
+      correct your analysis before returning it.
   skills:
     - search-sterling-docs
     - search-docs-exact
@@ -110,6 +116,7 @@ defaults:
     - search-project-code
     - read-project-code
     - read-file-lines
+    - verify-code-citations
     - write-notes
     - read-context
     - get-service-config

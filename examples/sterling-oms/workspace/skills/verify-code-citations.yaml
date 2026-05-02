@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: verify-code-citations
+  name: Verify Code Citations
+  description: >
+    Verify file:line citations in a code analysis against actual source files.
+    Pass the full analysis text — extracts all FileName.java:123 references,
+    reads those lines, and reports which are accurate vs. wrong.
+category: capability
+implementation:
+  type: mcp_tool
+  server: code-graph
+  tool: verify_code_citations
+iam:
+  required_scopes: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

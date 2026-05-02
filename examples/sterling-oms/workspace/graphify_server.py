@@ -107,5 +107,72 @@ def read_file_lines(path: str, start_line: int, end_line: int | None = None) -> 
     return header + "\n" + "".join(numbered)
 
 
+@server.tool()
+def verify_code_citations(analysis: str) -> str:
+    """Verify file:line citations in an agent's code analysis against actual source files.
+
+    Extracts all citations matching patterns like `FileName.java:123` or
+    `path/to/File.java:45`, reads those lines, and reports which citations
+    are accurate vs. wrong or missing.
+    """
+    import re as _re  # noqa: PLC0415
+
+    citation_re = _re.compile(r"([\w/.\-]+\.java):(\d+)")
+    matches = citation_re.findall(analysis)
+    if not matches:
+        return "No file:line citations found in the analysis."
+
+    seen: set[tuple[str, int]] = set()
+    results: list[str] = []
+    verified = 0
+    failed = 0
+
+    for file_ref, line_str in matches:
+        line_num = int(line_str)
+        key = (file_ref, line_num)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        candidates = []
+        for root, _dirs, files in os.walk(_CODE_DIR):
+            for f in files:
+                if f == os.path.basename(file_ref):
+                    full = os.path.join(root, f)
+                    rel = os.path.relpath(full, _CODE_DIR)
+                    if file_ref in rel or os.path.basename(file_ref) == f:
+                        candidates.append(full)
+
+        if not candidates:
+            results.append(f"MISSING  {file_ref}:{line_num} — file not found")
+            failed += 1
+            continue
+
+        found = False
+        for cand in candidates:
+            try:
+                with open(cand) as fh:
+                    lines = fh.readlines()
+                if line_num < 1 or line_num > len(lines):
+                    results.append(
+                        f"INVALID  {file_ref}:{line_num} — file has {len(lines)} lines"
+                    )
+                    failed += 1
+                else:
+                    actual = lines[line_num - 1].rstrip()
+                    results.append(f"OK       {file_ref}:{line_num} → {actual[:120]}")
+                    verified += 1
+                found = True
+                break
+            except OSError:
+                continue
+        if not found:
+            results.append(f"ERROR    {file_ref}:{line_num} — could not read file")
+            failed += 1
+
+    header = f"Citation check: {verified} verified, {failed} failed, {len(seen)} total\n"
+    return header + "\n".join(results)
+
+
 if __name__ == "__main__":
     server.run()
