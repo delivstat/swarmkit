@@ -80,6 +80,11 @@ export interface MCPServerElement {
     command?:         string[];
     credentials_ref?: string;
     /**
+     * Working directory for stdio servers. Supports ${VAR} expansion. Defaults to workspace
+     * root.
+     */
+    cwd?: string;
+    /**
      * Required when transport=http.
      */
     endpoint?: string;
