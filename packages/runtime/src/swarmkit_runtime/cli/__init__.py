@@ -792,7 +792,7 @@ async def _async_conversation_loop(conv: Any, manager: Any) -> None:
     try:
         while True:
             try:
-                user_input = session.prompt("> ").strip()
+                user_input = (await session.prompt_async("> ")).strip()
             except (KeyboardInterrupt, EOFError):
                 user_input = "exit"
 
