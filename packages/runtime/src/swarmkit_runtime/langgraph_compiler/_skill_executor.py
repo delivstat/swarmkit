@@ -139,6 +139,13 @@ async def _execute_mcp_tool(
     except (json.JSONDecodeError, TypeError):
         arguments = {"input": input_text}
 
+    # Sanitise path arguments — models often send absolute paths that the
+    # filesystem MCP server rejects. Convert to relative ".".
+    if "path" in arguments and isinstance(arguments["path"], str):
+        path_val = arguments["path"]
+        if path_val.startswith("/") or path_val.startswith("\\"):
+            arguments["path"] = "."
+
     try:
         result = await mcp_manager.call_tool(server_id, tool_name, arguments)
     except LookupError as exc:
