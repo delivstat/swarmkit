@@ -281,47 +281,54 @@ def _build_agent_node(  # noqa: PLR0915
                     )
                 )
 
-                # Build tool_result messages and call the model again to
-                # synthesize a coherent answer from the raw tool output.
-                assistant_blocks = list(response.content)
-                tool_result_blocks = [
-                    ContentBlock(
-                        type="tool_result",
-                        tool_use_id=tr.tool_use_id,
-                        tool_result=tr.result,
-                    )
-                    for tr in tool_results
-                ]
-                synthesis_messages = [
-                    *messages,
-                    Message(role="assistant", content=assistant_blocks),
-                    Message(role="user", content=tool_result_blocks),
-                ]
-                synthesis_request = CompletionRequest(
-                    model=model_name,
-                    messages=tuple(synthesis_messages),
-                    system=system_prompt,
-                    tools=tuple(tools) if tools else None,
-                    temperature=(agent.model or {}).get("temperature"),
-                )
-                if _verbose:
-                    print(
-                        f"  [synthesis call with {len(tool_results)} tool results]",
-                        file=sys.stderr,
-                    )
-                synthesis = await model_provider.complete(synthesis_request)
-                synth_text = _extract_text(synthesis)
+                # Multi-turn tool loop: keep calling the model with tool
+                # results until it produces a final text response (no more
+                # tool calls) or we hit the turn limit.
+                _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "5"))
+                loop_messages = list(messages)
+                current_response = response
+                current_results = tool_results
 
-                # If the synthesis call makes more tool calls, handle
-                # them iteratively (up to remaining retries).
-                synth_tool_results = await _handle_skill_tool_calls(
-                    synthesis, agent, model_provider, model_name,
-                    mcp_manager, governance,
-                )
-                if synth_tool_results:
-                    raw_parts = [tr.result for tr in synth_tool_results]
-                    synth_text = synth_text + "\n\n" + "\n\n".join(raw_parts)
+                for _turn in range(_max_tool_turns):
+                    assistant_blocks = list(current_response.content)
+                    tool_result_blocks = [
+                        ContentBlock(
+                            type="tool_result",
+                            tool_use_id=tr.tool_use_id,
+                            tool_result=tr.result,
+                        )
+                        for tr in current_results
+                    ]
+                    loop_messages.append(
+                        Message(role="assistant", content=assistant_blocks),
+                    )
+                    loop_messages.append(
+                        Message(role="user", content=tool_result_blocks),
+                    )
+                    follow_up = CompletionRequest(
+                        model=model_name,
+                        messages=tuple(loop_messages),
+                        system=system_prompt,
+                        tools=tuple(tools) if tools else None,
+                        temperature=(agent.model or {}).get("temperature"),
+                    )
+                    if _verbose:
+                        print(
+                            f"  [tool loop turn {_turn + 1}: "
+                            f"{len(current_results)} tool results]",
+                            file=sys.stderr,
+                        )
+                    current_response = await model_provider.complete(follow_up)
 
+                    next_results = await _handle_skill_tool_calls(
+                        current_response, agent, model_provider, model_name,
+                        mcp_manager, governance,
+                    )
+                    if next_results is None:
+                        break
+                    current_results = next_results
+
+                synth_text = _extract_text(current_response)
                 return {
                     "current_agent": agent.id,
                     "agent_results": {agent_id: synth_text},
