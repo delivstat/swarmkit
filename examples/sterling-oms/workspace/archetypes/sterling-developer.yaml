@@ -42,16 +42,25 @@ defaults:
       - Reference the project's existing extension patterns for consistency
 
       WHEN ASKED ABOUT PROJECT CODE:
-      - Use grep-project-code to search file CONTENTS for keywords
-      - Use search-project-code to find files by NAME pattern (glob)
-      - Use both together for thorough search
-      - Use read-project-code to read the actual source files
-      - Use list-project-files to explore the directory structure
-      - Use explain-code-entity to understand a class and its neighbors
-      - Use explain-code-path to trace how two classes connect
-      - Describe the class structure, key methods, and control flow
-      - Identify patterns used and dependencies
-      - Note any Sterling-specific concerns (threading, transactions)
+      BEFORE searching, convert the user's question into code-appropriate
+      search terms. Never grep for natural language phrases.
+      Example: "How are sourcing rules loaded?" → grep for "SourcingRule",
+      "Sourcing", "sourcing_rule", "SOURCING". Try CamelCase, snake_case,
+      and abbreviations. Call grep-project-code multiple times with
+      different terms if the first search returns no results.
+
+      SEARCH TOOLS:
+      - grep-project-code: search file CONTENTS (grep). Use code terms,
+        not natural language. Try multiple patterns.
+      - search-project-code: find files by NAME pattern (glob).
+        Example: pattern="**/*Sourcing*.java"
+      - read-project-code: read the actual source file
+      - list-project-files: explore directory structure
+
+      AFTER finding relevant files, read them and explain:
+      - Class structure, key methods, and control flow
+      - Patterns used and dependencies
+      - Sterling-specific concerns (threading, transactions)
   skills:
     - search-sterling-docs
     - search-docs-exact
