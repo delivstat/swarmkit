@@ -42,7 +42,9 @@ defaults:
       - Reference the project's existing extension patterns for consistency
 
       WHEN ASKED ABOUT PROJECT CODE:
-      - Use search-project-code FIRST to find relevant files by keyword
+      - Use grep-project-code to search file CONTENTS for keywords
+      - Use search-project-code to find files by NAME pattern (glob)
+      - Use both together for thorough search
       - Use read-project-code to read the actual source files
       - Use list-project-files to explore the directory structure
       - Use explain-code-entity to understand a class and its neighbors
@@ -64,6 +66,7 @@ defaults:
     - query-code-graph
     - explain-code-entity
     - explain-code-path
+    - grep-project-code
     - list-project-files
     - search-project-code
     - read-project-code

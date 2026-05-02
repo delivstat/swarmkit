@@ -24,6 +24,7 @@ _GRAPH = os.environ.get(
     "STERLING_CODE_GRAPH",
     "graphify-out/graph.json",
 )
+_CODE_DIR = os.environ.get("STERLING_PROJECT_CODE_DIR", ".")
 
 
 def _run(args: list[str]) -> str:
@@ -57,6 +58,26 @@ def explain_code_entity(entity: str) -> str:
 def find_code_path(source: str, target: str) -> str:
     """Find the shortest path between two code entities — how class A reaches class B."""
     return _run(["path", source, target, "--graph", _GRAPH])
+
+
+@server.tool()
+def grep_project_code(pattern: str, file_glob: str = "*.java", max_results: int = 20) -> str:
+    """Search file contents for a text pattern (grep). Returns matching lines."""
+    result = subprocess.run(
+        ["grep", "-rn", "--include", file_glob, "-i", pattern, _CODE_DIR],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
+    if not lines:
+        return f"No matches for '{pattern}' in {file_glob} files."
+    if len(lines) > max_results:
+        lines = lines[:max_results]
+        total = len(result.stdout.strip().split(chr(10)))
+        lines.append(f"... ({total} total matches, showing first {max_results})")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

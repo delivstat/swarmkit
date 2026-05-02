@@ -80,6 +80,7 @@ mcp_servers:
     command: ["uv", "run", "graphify_server.py"]
     env:
       STERLING_CODE_GRAPH: "${STERLING_CODE_GRAPH}"
+      STERLING_PROJECT_CODE_DIR: "${STERLING_PROJECT_CODE_DIR}"
   # GitHub for code access (PRs, remote repos)
   - id: github
     transport: stdio

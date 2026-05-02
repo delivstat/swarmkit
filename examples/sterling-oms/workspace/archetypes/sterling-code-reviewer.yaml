@@ -35,6 +35,7 @@ defaults:
     - query-code-graph
     - explain-code-entity
     - explain-code-path
+    - grep-project-code
     - list-project-files
     - search-project-code
     - read-project-code
