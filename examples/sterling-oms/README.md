@@ -1,8 +1,8 @@
 # Sterling OMS Project Workspace
 
 A multi-swarm workspace for an IBM Sterling OMS implementation project.
-Four topologies, five archetypes, eleven skills, backed by live Sterling
-API access and vector-search RAG over product documentation.
+Five topologies, five archetypes, nineteen skills, backed by CDT config
+access, structured API javadocs, and vector-search RAG over product documentation.
 
 ## What this gives you
 
@@ -20,8 +20,7 @@ API access and vector-search RAG over product documentation.
 - Node.js 18+ with `npx` (for GitHub, filesystem MCP servers)
 - SwarmKit installed (`pip install swarmkit-runtime` or source checkout)
 - An OpenRouter API key (`OPENROUTER_API_KEY`)
-- A local Sterling OMS instance (for live API access)
-- Sterling product documentation (for RAG)
+- Sterling CDT XML dump (for config access) and/or product documentation (for RAG)
 
 ## Setup — step by step
 
@@ -73,8 +72,7 @@ nano .env   # or: source .env after editing
 Key variables:
 ```bash
 OPENROUTER_API_KEY=sk-or-...
-STERLING_API_URL=http://localhost:9080/smcfs/restapi/
-STERLING_API_PASSWORD=your_password
+STERLING_CDT_DIR=/path/to/CDT-dump/        # raw CDT XML files
 GITHUB_TOKEN=ghp_...
 ```
 
@@ -149,20 +147,37 @@ cp -r /path/to/project-alpha/docs $REFERENCE_DESIGNS_DIR/project-alpha/
 cp -r /path/to/industry-templates $REFERENCE_DESIGNS_DIR/templates/
 ```
 
-### 7. Ingest docs into ChromaDB
+### 7. Ingest everything
 
-Batch ingestion builds two indexes per directory:
-- **ChromaDB** (`chromadb/`) — semantic vector search (~30 min for 20K files)
-- **SQLite FTS5** (`fts.db`) — fast exact keyword search (~2 seconds)
+The master ingestion script runs all applicable ingestions in parallel:
 
 ```bash
-# Ingest product docs (run once)
+# Run all ingestions (checks which env vars are set)
+python scripts/ingest-all.py
+
+# Reset indexes and re-ingest from scratch
+python scripts/ingest-all.py --reset
+
+# Run just one ingestion
+python scripts/ingest-all.py --only cdt
+
+# See what would run
+python scripts/ingest-all.py --list
+```
+
+Or run individual ingestions manually:
+
+```bash
+# CDT config dump → structured JSON
+python scripts/ingest-cdt.py /path/to/CDT/ --output $STERLING_CDT_INDEX
+
+# Product docs → ChromaDB + FTS5 (~30 min for 20K files)
 STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py
 
-# Ingest project docs (re-run when project files change)
+# Project docs → ChromaDB + FTS5
 STERLING_DOCS_DIR=$STERLING_PROJECT_DOCS_DIR uv run scripts/ingest-docs.py
 
-# Ingest reference designs (run once)
+# Reference designs → ChromaDB + FTS5
 STERLING_DOCS_DIR=$REFERENCE_DESIGNS_DIR uv run scripts/ingest-docs.py
 
 # Reset and re-ingest from scratch
@@ -180,39 +195,19 @@ uvx --from graphifyy graphify update $STERLING_PROJECT_CODE_DIR
 ### 9. Validate and run
 
 ```bash
-swarmkit validate .
+swarmkit validate examples/sterling-oms/workspace --tree
+# Should see: 5 topologies, 19 skills, 12 archetypes
+
 swarmkit chat . sterling-qa
 ```
 
-**Knowledge architecture:**
-- **CDT Config server** — services, pipelines, transactions, events, hold types from CDT dump
-- **FTS5** — fast exact keyword search ("YFS_ORDER_HEADER", "getOrderList")
-- **ChromaDB** — semantic search for discovery ("which API modifies an order?")
-- **API Javadocs server** — 1006 APIs with input/output XML, user exits, events
-- **Graphify + grep** — code knowledge graph + content search over project code
-- **Filesystem server** — direct file read/write with `cwd` support
-- **Notes server** — agents write analysis to `$STERLING_NOTES_DIR`
-- **Graphify** (optional) — structural code queries at ~2K tokens per query
-- **Notes MCP server** — agents write analysis to `$STERLING_NOTES_DIR`
-
-### 6. Validate the workspace
-
-```bash
-swarmkit validate examples/sterling-oms/workspace --tree
-```
-
-You should see 5 topologies, 19 skills, 12 archetypes.
-
-### 7. Test the Sterling API connection
+### 10. Test it
 
 ```bash
 swarmkit run examples/sterling-oms/workspace sterling-qa \
-  --input "What organizations are configured in our Sterling instance?" \
+  --input "What services are configured for order creation?" \
   --verbose
 ```
-
-If the Sterling API is accessible, the architect will query
-`getOrganizationList` and return the actual organizations.
 
 ## Usage
 
@@ -502,11 +497,14 @@ workspace/
 │   ├── github-pr-read.yaml
 │   └── github-repo-read.yaml
 ├── scripts/
+│   ├── ingest-all.py           # Master script — runs all ingestions in parallel
 │   ├── ingest-docs.py          # Batch ingestion into ChromaDB + FTS5 (ONNX embeddings)
+│   ├── ingest-cdt.py           # CDT XML dumps → structured JSON indexes
 │   ├── setup-knowledge.sh      # Create knowledge directories + .env file
 │   ├── convert-entity-xml.py   # Sterling entity XMLs → consolidated markdown (merges by TableName)
-│   ├── convert-javadocs.py    # Core/baseutils Javadoc HTML → markdown for RAG
+│   ├── convert-javadocs.py     # Core/baseutils Javadoc HTML → markdown for RAG
 │   ├── convert-excel.py        # Excel integration specs → markdown tables
-│   └── split-markdown.py       # Split large markdown files on ## headings
+│   ├── split-markdown.py       # Split large markdown files on ## headings
+│   └── scrape-ibm-docs.py      # Scrape IBM docs site with Playwright (offline indexing)
 └── policies/                   # (empty — for AGT governance when ready)
 ```

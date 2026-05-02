@@ -90,7 +90,9 @@ cat > "$ENV_FILE" << ENVEOF
 # Model provider
 export OPENROUTER_API_KEY=
 
-# Sterling CDT config dump (ingest with: python scripts/ingest-cdt.py)
+# Sterling CDT config dump
+# Point CDT_DIR to your raw CDT XML dump, CDT_INDEX is the parsed output
+export STERLING_CDT_DIR=
 export STERLING_CDT_INDEX=$BASE/cdt-index
 
 # Knowledge base directories (indexed in ChromaDB)
