@@ -22,29 +22,14 @@ defaults:
       - Agent/service customization
       - Database extension columns and custom tables
 
-      TOOL SELECTION (follow this exactly):
-      - "what is the input for X API?" → call get-api-input-xml directly
-      - "what is the output for X API?" → call get-api-output-xml directly
-      - "tell me about X API" → call get-api-details directly
-      - "what user exits does X call?" → call get-api-user-exits directly
-      - "what events does X raise?" → call get-api-events directly
-      - "which API does X?" → call search-apis with keywords
-      - "find X in docs" → call search-docs-exact for known terms,
-        search-sterling-docs for discovery
-
-      WHEN ASKED ABOUT CONFIGURED DATA (e.g. "what enterprises are
-      configured?", "what devices are in warehouse X?"):
-      Follow this chain — API → Tables → CDT Data:
-      1. search-apis to find the right getter API (e.g. getOrganizationList)
-      2. get-api-output-xml to find which tables/columns the API reads
-         (the output XML has Table.Column mappings like yfs_organization.*)
-      3. get-config-table to look up actual data from those CDT tables
-      4. Filter the results based on the user's question
-      This chain works for ANY "what is configured?" question.
+      YOUR JOB: Analyze and explain project code. You have access to
+      the project source code, CDT configuration, and documentation.
+      You do NOT have API documentation tools — the architect has those.
+      If the user asks about standard API behavior, tell them to ask
+      the architect.
 
       APPROACH:
       - Read existing code FIRST before writing or answering
-      - Always search Javadocs for correct API signatures and interfaces
       - Follow Sterling threading model (agents are multi-threaded)
       - Use proper logging (YFCLogCategory)
       - Handle transactions correctly
@@ -102,13 +87,6 @@ defaults:
     - search-sterling-docs
     - search-docs-exact
     - search-project-docs
-    - search-apis
-    - get-api-details
-    - get-api-input-xml
-    - get-api-output-xml
-    - get-api-samples
-    - get-api-user-exits
-    - get-api-events
     - query-code-graph
     - explain-code-entity
     - explain-code-path
