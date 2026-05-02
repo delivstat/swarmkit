@@ -305,9 +305,7 @@ def list_pipelines(filter: str = "") -> str:
         return f"No pipelines matching '{filter}'."
     lines = [f"Found {len(matches)} pipelines:\n"]
     for p in sorted(matches, key=lambda x: x.get("pipeline_id", "")):
-        lines.append(
-            f"- **{p['pipeline_id']}**: {p.get('description', '')}"
-        )
+        lines.append(f"- **{p['pipeline_id']}**: {p.get('description', '')}")
     return "\n".join(lines)
 
 
@@ -385,9 +383,7 @@ def get_hold_types(filter: str = "") -> str:
     lines = [f"Found {len(matches)} hold types:\n"]
     for h in matches:
         lines.append(f"- **{h['hold_type']}**: {h.get('description', '')}")
-        lines.append(
-            f"  Level={h.get('hold_level', '')}, Doc={h.get('doc_type', '')}"
-        )
+        lines.append(f"  Level={h.get('hold_level', '')}, Doc={h.get('doc_type', '')}")
         if h.get("process_transaction"):
             lines.append(
                 f"  Process: {h['process_transaction']}, Reject: {h.get('reject_transaction', '')}"
@@ -407,9 +403,7 @@ def get_common_codes(code_type: str) -> str:
         return f"Code type '{code_type}' not found. Use list_config_tables to see available types."
     lines = [f"# Common Codes: {code_type} ({len(codes)} codes)\n"]
     for c in codes[:50]:
-        lines.append(
-            f"- **{c['code_value']}**: {c.get('code_short_description', '')}"
-        )
+        lines.append(f"- **{c['code_value']}**: {c.get('code_short_description', '')}")
     if len(codes) > 50:
         lines.append(f"\n... and {len(codes) - 50} more")
     return "\n".join(lines)
