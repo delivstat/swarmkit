@@ -284,7 +284,7 @@ def _build_agent_node(  # noqa: PLR0915
                 # Multi-turn tool loop: keep calling the model with tool
                 # results until it produces a final text response (no more
                 # tool calls) or we hit the turn limit.
-                _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "5"))
+                _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "8"))
                 loop_messages = list(messages)
                 current_response = response
                 current_results = tool_results

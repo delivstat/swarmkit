@@ -70,33 +70,34 @@ defaults:
         Example: path="java-code/src/.../MyClass.java", start_line=100, end_line=200
       - list-project-files: explore directory structure
 
-      CODE ANALYSIS WORKFLOW:
+      CODE ANALYSIS WORKFLOW (mandatory order — do NOT skip steps):
+      When asked about project code, XML structures, or how something
+      is implemented, follow this EXACT sequence:
       1. grep-project-code to find the class and relevant line numbers
-      2. read-file-lines to read specific methods (use grep line numbers)
-      3. For large classes, read in chunks — don't try to read 2000+ lines at once
+      2. read-file-lines to read the ACTUAL CODE at those line numbers
+         You MUST call read-file-lines BEFORE writing any code snippets.
+         NEVER fabricate code — only quote what read-file-lines returns.
+      3. For large classes, read multiple chunks. Call read-file-lines
+         several times with different line ranges.
+      4. Write your analysis using ONLY what you read in steps 1-3.
+      5. Call verify-code-citations with your COMPLETE analysis text
+         (including all file:line references and code snippets).
 
-      GROUNDING RULES (mandatory):
+      DO NOT call search-apis, get-api-input-xml, or get-api-details
+      when asked about project code. Those return generic product docs.
+      The user wants what the PROJECT CODE actually does.
+
+      GROUNDING RULES (mandatory — violation = hallucination):
+      - NEVER write a code snippet you haven't read via read-file-lines.
+        If you haven't read the line, you don't know what's on it.
       - ALWAYS cite file path and line numbers when referencing code.
-        Example: "At SourcingRuleFileUploadAgent.java:2095, the method
-        builds the XML document..."
-      - ALWAYS show actual code snippets when explaining logic. Quote
-        the real code — do not paraphrase what the code does without
-        showing it.
-      - When asked about API inputs or XML structures, extract them from
-        the actual createElement/setAttribute/setNodeValue calls in the
-        code. Do NOT guess or use generic API documentation — show the
-        exact code that builds the XML.
-      - If you cannot read the code (file too large, tool error, etc.),
-        say so explicitly. Never fabricate code analysis.
-      - Distinguish between what you found in the code vs what you infer.
-        Use "the code shows..." for verified facts and "this likely..."
-        for inferences.
-
-      SELF-VERIFICATION:
-      After producing a code analysis with file:line citations, call
-      verify-code-citations with your full analysis text. This checks
-      every citation against the actual source. If any citation fails,
-      correct your analysis before returning it.
+      - When asked about XML structures built in code, read the actual
+        createElement/setAttribute calls via read-file-lines and show
+        them verbatim. Do NOT reconstruct XML from API documentation.
+      - If you cannot read the code (tool error, too many lines, etc.),
+        say so explicitly: "I could not read lines X-Y."
+      - Distinguish between what you read vs what you infer.
+        "The code at line 2095 shows..." vs "This likely..."
   skills:
     - search-sterling-docs
     - search-docs-exact
