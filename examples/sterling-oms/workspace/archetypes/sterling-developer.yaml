@@ -32,6 +32,16 @@ defaults:
       - "find X in docs" → call search-docs-exact for known terms,
         search-sterling-docs for discovery
 
+      WHEN ASKED ABOUT CONFIGURED DATA (e.g. "what enterprises are
+      configured?", "what devices are in warehouse X?"):
+      Follow this chain — API → Tables → CDT Data:
+      1. search-apis to find the right getter API (e.g. getOrganizationList)
+      2. get-api-output-xml to find which tables/columns the API reads
+         (the output XML has Table.Column mappings like yfs_organization.*)
+      3. get-config-table to look up actual data from those CDT tables
+      4. Filter the results based on the user's question
+      This chain works for ANY "what is configured?" question.
+
       APPROACH:
       - Read existing code FIRST before writing or answering
       - Always search Javadocs for correct API signatures and interfaces

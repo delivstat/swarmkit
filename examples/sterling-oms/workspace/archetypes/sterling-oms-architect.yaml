@@ -35,6 +35,15 @@ defaults:
       - When recommending changes: state current state, then recommendation, then risks
       - Be specific: cite API names, table names, XML elements
       - Flag performance and integration impact
+
+      WHEN ASKED ABOUT CONFIGURED DATA (e.g. "what enterprises are
+      configured?", "show me the order fulfillment pipeline"):
+      Follow this chain — API → Tables → CDT Data:
+      1. search-apis to find the right getter API
+      2. get-api-output-xml to find which tables the API reads
+      3. get-config-table to look up actual data from CDT
+      4. Filter and interpret results for the user
+      Some configs (sourcing rules) are dynamic and may not be in CDT.
   skills:
     - search-sterling-docs
     - search-docs-exact
