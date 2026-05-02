@@ -94,7 +94,7 @@ async def _execute_llm_prompt(
     return "\n".join(parts) or "(no response)"
 
 
-async def _execute_mcp_tool(
+async def _execute_mcp_tool(  # noqa: PLR0912
     skill: ResolvedSkill,
     *,
     input_text: str,
@@ -141,10 +141,20 @@ async def _execute_mcp_tool(
 
     # Sanitise path arguments — models often send absolute paths that the
     # filesystem MCP server rejects. Convert to relative ".".
-    if "path" in arguments and isinstance(arguments["path"], str):
-        path_val = arguments["path"]
-        if path_val.startswith("/") or path_val.startswith("\\"):
-            arguments["path"] = "."
+    import os as _os  # noqa: PLC0415
+
+    for path_key in ("path", "directory", "root", "rootPath"):
+        if path_key in arguments and isinstance(arguments[path_key], str):
+            path_val = arguments[path_key]
+            if path_val.startswith("/") or path_val.startswith("\\"):
+                if _os.environ.get("SWARMKIT_VERBOSE"):
+                    import sys as _sys  # noqa: PLC0415
+
+                    print(
+                        f"  [path sanitised: {path_val} → .]",
+                        file=_sys.stderr,
+                    )
+                arguments[path_key] = "."
 
     try:
         result = await mcp_manager.call_tool(server_id, tool_name, arguments)
