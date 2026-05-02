@@ -121,7 +121,7 @@ def _build_agent_node(  # noqa: PLR0915
 ) -> Any:
     """Build an async node function for one agent."""
 
-    async def node_fn(state: SwarmState) -> dict[str, Any]:
+    async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         agent_id = agent.id
         _start = datetime.now(tz=UTC)
         await governance.record_event(
@@ -245,43 +245,84 @@ def _build_agent_node(  # noqa: PLR0915
             print(f"  tool_calls: {tool_calls}", file=sys.stderr)
             print(f"  text: {text_parts}", file=sys.stderr)
 
-        # Check for delegation tool calls
-        delegation = _extract_delegation(response, agent)
-        if delegation:
-            child_id, task_text = delegation
-            return {
-                "current_agent": child_id,
-                "agent_results": {
-                    agent_id: f"__delegated__:{child_id}",
-                },
-                "messages": [
-                    AIMessage(
-                        content=f"[{agent_id}] Delegating to {child_id}: {task_text}",
-                        name=agent_id,
-                    ),
-                    HumanMessage(content=task_text, name=agent_id),
-                ],
-            }
+        _max_retries = int(os.environ.get("SWARMKIT_AGENT_RETRIES", "2"))
+        for _attempt in range(_max_retries + 1):
+            # Check for delegation tool calls
+            delegation = _extract_delegation(response, agent)
+            if delegation:
+                child_id, task_text = delegation
+                return {
+                    "current_agent": child_id,
+                    "agent_results": {
+                        agent_id: f"__delegated__:{child_id}",
+                    },
+                    "messages": [
+                        AIMessage(
+                            content=f"[{agent_id}] Delegating to {child_id}: {task_text}",
+                            name=agent_id,
+                        ),
+                        HumanMessage(content=task_text, name=agent_id),
+                    ],
+                }
 
-        # Check for skill tool calls (llm_prompt skills)
-        skill_result = await _handle_skill_tool_calls(
-            response, agent, model_provider, model_name, mcp_manager, governance
-        )
-        if skill_result is not None:
-            await governance.record_event(
-                AuditEvent(
-                    event_type="skill.executed",
-                    agent_id=agent_id,
-                    timestamp=datetime.now(tz=UTC),
-                    payload={"result_length": len(skill_result)},
-                )
+            # Check for skill tool calls
+            skill_result = await _handle_skill_tool_calls(
+                response, agent, model_provider, model_name, mcp_manager, governance
             )
-            return {
-                "current_agent": agent.id,
-                "agent_results": {agent_id: skill_result},
-                "messages": [AIMessage(content=skill_result, name=agent_id)],
-                "output": skill_result,
-            }
+            if skill_result is not None:
+                await governance.record_event(
+                    AuditEvent(
+                        event_type="skill.executed",
+                        agent_id=agent_id,
+                        timestamp=datetime.now(tz=UTC),
+                        payload={"result_length": len(skill_result)},
+                    )
+                )
+                return {
+                    "current_agent": agent.id,
+                    "agent_results": {agent_id: skill_result},
+                    "messages": [AIMessage(content=skill_result, name=agent_id)],
+                    "output": skill_result,
+                }
+
+            # Model returned text instead of tool calls.
+            # Retry only if agent has skill tools (not just delegation).
+            skill_tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+            if skill_tools and _attempt < _max_retries:
+                if _verbose:
+                    print(
+                        f"  [retry {_attempt + 1}: model returned text, nudging to use tools]",
+                        file=sys.stderr,
+                    )
+                nudge = HumanMessage(
+                    content=(
+                        "You have tools available. Do NOT describe what you would do — "
+                        "call the tools now. Use the tool_use format to execute actions."
+                    ),
+                    name="system",
+                )
+                messages = [
+                    *messages,
+                    AIMessage(content=_extract_text(response), name=agent_id),
+                    nudge,
+                ]
+                request = CompletionRequest(
+                    model=model_name,
+                    messages=tuple(messages),
+                    system=system_prompt,
+                    tools=tuple(tools) if tools else None,
+                    temperature=(agent.model or {}).get("temperature"),
+                )
+                response = await model_provider.complete(request)
+                if _verbose:
+                    tc = [
+                        b.tool_name
+                        for b in response.content
+                        if hasattr(b, "tool_name") and b.tool_name
+                    ]
+                    print(f"  tool_calls: {tc}", file=sys.stderr)
+                continue
+            break
 
         # No delegation or skill calls — agent produced a final text response.
         # If skills have output schemas, validate + auto-correct.
