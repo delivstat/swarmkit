@@ -122,7 +122,7 @@ class MCPClientManager:
             args = resolved_cmd[1:]
             env = _resolve_env(config.env)
 
-        cwd = str(self._workspace_root) if self._workspace_root and not config.sandboxed else None
+        cwd = _resolve_cwd(resolved_cmd, self._workspace_root, config.sandboxed)
         params = StdioServerParameters(command=cmd, args=args, env=env, cwd=cwd)
         transport = await self._stack.enter_async_context(stdio_client(params))
         session = await self._stack.enter_async_context(ClientSession(*transport))
@@ -237,6 +237,27 @@ def _expand_var(value: str) -> str:
     if value.startswith("${") and value.endswith("}"):
         return os.environ.get(value[2:-1], "")
     return value
+
+
+def _resolve_cwd(
+    resolved_cmd: list[str],
+    workspace_root: Path | None,
+    sandboxed: bool,
+) -> str | None:
+    """Determine cwd for the MCP server subprocess.
+
+    If the command has a resolved directory path as an argument (like
+    the filesystem server), use that as cwd so "." resolves to the
+    server's target directory. Otherwise use the workspace root so
+    local scripts (uv run script.py) can be found.
+    """
+    if sandboxed:
+        return None
+    # Check if any command argument is an existing absolute directory
+    for arg in reversed(resolved_cmd[1:]):
+        if arg.startswith("/") and os.path.isdir(arg):
+            return arg
+    return str(workspace_root) if workspace_root else None
 
 
 def _resolve_env(env: dict[str, str] | None, *, inherit: bool = True) -> dict[str, str] | None:
