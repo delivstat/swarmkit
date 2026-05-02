@@ -147,21 +147,29 @@ async def _execute_mcp_tool(  # noqa: PLR0912
         print(f"  [mcp args: {arguments}]", file=_sys.stderr)
 
     # Sanitise path arguments — models often send absolute paths that the
-    # filesystem MCP server rejects. Convert to relative ".".
+    # filesystem MCP server rejects.  Try to convert to a relative path
+    # within the server's cwd; fall back to "." only as a last resort.
     import os as _os  # noqa: PLC0415
+    from pathlib import PurePosixPath as _PurePath  # noqa: PLC0415
+
+    server_cwd = mcp_manager.get_server_cwd(server_id) if mcp_manager else None
 
     for path_key in ("path", "directory", "root", "rootPath"):
         if path_key in arguments and isinstance(arguments[path_key], str):
             path_val = arguments[path_key]
             if path_val.startswith("/") or path_val.startswith("\\"):
+                relative = "."
+                if server_cwd and path_val.startswith(server_cwd):
+                    suffix = path_val[len(server_cwd):]
+                    relative = suffix.lstrip("/") or "."
+                arguments[path_key] = relative
                 if _os.environ.get("SWARMKIT_VERBOSE"):
                     import sys as _sys  # noqa: PLC0415
 
                     print(
-                        f"  [path sanitised: {path_val} → .]",
+                        f"  [path sanitised: {path_val} → {relative}]",
                         file=_sys.stderr,
                     )
-                arguments[path_key] = "."
 
     try:
         result = await mcp_manager.call_tool(server_id, tool_name, arguments)

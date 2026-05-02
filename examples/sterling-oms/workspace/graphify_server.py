@@ -62,13 +62,14 @@ def find_code_path(source: str, target: str) -> str:
 
 @server.tool()
 def grep_project_code(pattern: str, file_glob: str = "*.java", max_results: int = 20) -> str:
-    """Search file contents for a text pattern (grep). Returns matching lines."""
+    """Search file contents for a text pattern (grep). Returns matching lines with relative paths."""
     result = subprocess.run(
-        ["grep", "-rn", "--include", file_glob, "-i", pattern, _CODE_DIR],
+        ["grep", "-rn", "--include", file_glob, "-i", pattern, "."],
         capture_output=True,
         text=True,
         timeout=30,
         check=False,
+        cwd=_CODE_DIR,
     )
     lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
     if not lines:

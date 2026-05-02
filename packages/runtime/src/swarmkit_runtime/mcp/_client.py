@@ -146,6 +146,15 @@ class MCPClientManager:
         await session.initialize()
         return session
 
+    def get_server_cwd(self, server_id: str) -> str | None:
+        """Return the resolved cwd for a server, or ``None``."""
+        cfg = self._configs.get(server_id)
+        if cfg and cfg.cwd:
+            return _expand_var(cfg.cwd)
+        if self._workspace_root:
+            return str(self._workspace_root)
+        return None
+
     async def call_tool(
         self,
         server_id: str,
