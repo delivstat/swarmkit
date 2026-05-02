@@ -3,7 +3,9 @@ kind: Skill
 metadata:
   id: search-project-code
   name: Search Project Code
-  description: Search for text patterns in the project codebase. Use path "." to search all files. Example args — {"path": ".", "pattern": "SourcingRule"}
+  description: >
+    Search for text patterns in the project codebase. Use path "." to search all files.
+    Example: path=".", pattern="SourcingRule"
 category: capability
 implementation:
   type: mcp_tool
