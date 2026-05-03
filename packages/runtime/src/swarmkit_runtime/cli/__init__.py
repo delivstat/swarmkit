@@ -749,7 +749,7 @@ def _show_and_continue_conversation(conv: Any, manager: Any) -> None:
 _EXIT_COMMANDS = {"exit", "quit", "bye", "/exit", "/quit"}
 
 
-def _build_chat_session():
+def _build_chat_session() -> Any:
     """Build a prompt_toolkit session with history and completion."""
     from prompt_toolkit import PromptSession  # noqa: PLC0415
     from prompt_toolkit.completion import WordCompleter  # noqa: PLC0415

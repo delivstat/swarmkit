@@ -277,7 +277,7 @@ def _print_status(text: str) -> None:
     print(text, file=sys.stderr)
 
 
-def _build_author_session():
+def _build_author_session() -> Any | None:
     """Build a prompt_toolkit session for authoring."""
     try:
         from prompt_toolkit import PromptSession  # noqa: PLC0415
@@ -298,7 +298,7 @@ _author_session = _build_author_session()
 
 def _read_input() -> str:
     if _author_session is not None:
-        return _author_session.prompt("> ")
+        return str(_author_session.prompt("> "))
     return input("> ")
 
 
