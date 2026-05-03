@@ -160,7 +160,7 @@ async def run_ingestion(
     t0 = time.time()
 
     if reset:
-        import shutil
+        import shutil  # noqa: PLC0415
 
         for p in ing.reset_paths:
             path = Path(p)
@@ -217,7 +217,7 @@ async def run_all(
     return results
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0912, PLR0915
     parser = argparse.ArgumentParser(
         description="Run all Sterling knowledge ingestions in parallel",
     )
@@ -268,10 +268,7 @@ def main() -> None:
                 print(f"  {i.name:20s} needs: {missing}")
         return
 
-    if args.only:
-        to_run = [i for i in all_ingestions if i.is_ready()]
-    else:
-        to_run = ready
+    to_run = [i for i in all_ingestions if i.is_ready()] if args.only else ready
 
     if not to_run:
         print("Nothing to ingest. Set environment variables first:")

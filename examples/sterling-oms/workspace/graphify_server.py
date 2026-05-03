@@ -62,7 +62,7 @@ def find_code_path(source: str, target: str) -> str:
 
 @server.tool()
 def grep_project_code(pattern: str, file_glob: str = "*.java", max_results: int = 20) -> str:
-    """Search file contents for a text pattern (grep). Returns matching lines with relative paths."""
+    """Search file contents for a text pattern (grep). Returns matching lines."""
     result = subprocess.run(
         ["grep", "-rn", "--include", file_glob, "-i", pattern, "."],
         capture_output=True,
@@ -83,7 +83,7 @@ def grep_project_code(pattern: str, file_glob: str = "*.java", max_results: int 
 
 @server.tool()
 def read_file_lines(path: str, start_line: int, end_line: int | None = None) -> str:
-    """Read a specific line range from a source file. Use after grep to examine code at specific locations."""
+    """Read specific lines from a source file. Use after grep."""
     if end_line is None:
         end_line = start_line + 100
     if end_line < start_line:
@@ -103,12 +103,12 @@ def read_file_lines(path: str, start_line: int, end_line: int | None = None) -> 
         return f"Error: start_line {start_line} out of range (file has {total} lines)."
     selected = lines[start_line - 1 : end_line]
     numbered = [f"{start_line + i:>6}\t{line}" for i, line in enumerate(selected)]
-    header = f"# {path}  (lines {start_line}–{start_line + len(selected) - 1} of {total})"
+    header = f"# {path}  (lines {start_line}-{start_line + len(selected) - 1} of {total})"
     return header + "\n" + "".join(numbered)
 
 
 @server.tool()
-def verify_code_citations(analysis: str) -> str:
+def verify_code_citations(analysis: str) -> str:  # noqa: PLR0912
     """Verify file:line citations in an agent's code analysis against actual source files.
 
     Extracts all citations matching patterns like `FileName.java:123` or

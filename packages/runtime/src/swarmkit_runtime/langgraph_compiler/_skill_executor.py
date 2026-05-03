@@ -150,7 +150,6 @@ async def _execute_mcp_tool(  # noqa: PLR0912
     # filesystem MCP server rejects.  Try to convert to a relative path
     # within the server's cwd; fall back to "." only as a last resort.
     import os as _os  # noqa: PLC0415
-    from pathlib import PurePosixPath as _PurePath  # noqa: PLC0415
 
     server_cwd = mcp_manager.get_server_cwd(server_id) if mcp_manager else None
 
