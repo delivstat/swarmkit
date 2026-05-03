@@ -147,7 +147,7 @@ Open source: github.com/delivstat/swarmkit. The design doc is in the repo.
 
 ### LinkedIn
 
-A developer on my team asked our AI assistant how sourcing rules work in our Sterling OMS project last week, and the way the system handled it is what convinced me we're on the right track with SwarmKit.
+Today I asked our AI assistant how sourcing rules work in our Sterling OMS project, and the way the system handled it is what convinced me we're on the right track with SwarmKit.
 
 The system didn't pass the question to a single agent. It recognised that this touches both design and implementation, so it routed to two specialists at the same time. The architect searched 17,000 product docs, the CDT configuration dump, and 1,006 API references in a single call, and came back with the integration pattern: SAP feeds sourcing rules to OMS via a JMS queue, OMS pushes them to the Inventory Cache microservice, and the rules define which ship nodes can serve which pincodes for each fulfillment type. Meanwhile, the developer grepped the Java source, found `SourcingRuleFileUploadAgent.java`, read lines 2080-2216 using a line-range read tool, and traced the actual `createElement` and `setAttribute` calls that build the XML input for the `manageSourcingRule` API.
 
