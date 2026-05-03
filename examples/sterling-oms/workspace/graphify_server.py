@@ -154,9 +154,7 @@ def verify_code_citations(analysis: str) -> str:  # noqa: PLR0912
                 with open(cand) as fh:
                     lines = fh.readlines()
                 if line_num < 1 or line_num > len(lines):
-                    results.append(
-                        f"INVALID  {file_ref}:{line_num} — file has {len(lines)} lines"
-                    )
+                    results.append(f"INVALID  {file_ref}:{line_num} — file has {len(lines)} lines")
                     failed += 1
                 else:
                     actual = lines[line_num - 1].rstrip()
