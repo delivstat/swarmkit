@@ -393,17 +393,16 @@ def _build_agent_node(  # noqa: PLR0915
                         f"  [retry {_attempt + 1}: model returned text, nudging to use tools]",
                         file=sys.stderr,
                     )
-                nudge = HumanMessage(
-                    content=(
-                        "You have tools available. Do NOT describe what you would do — "
-                        "call the tools now. Use the tool_use format to execute actions."
-                    ),
-                    name="system",
-                )
                 messages = [
                     *messages,
-                    AIMessage(content=_extract_text(response), name=agent_id),
-                    nudge,
+                    Message(role="assistant", content=_extract_text(response)),
+                    Message(
+                        role="user",
+                        content=(
+                            "You have tools available. Do NOT describe what you would do — "
+                            "call the tools now. Use the tool_use format to execute actions."
+                        ),
+                    ),
                 ]
                 request = CompletionRequest(
                     model=model_name,
