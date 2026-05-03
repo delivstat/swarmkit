@@ -190,7 +190,19 @@ audit:
   redact: ["$.api_key", "$.password"]
 ```
 
-## Reference workspace
+## Example workspaces
+
+### Sterling OMS (production use)
+
+A real-world workspace used daily on an IBM Sterling OMS implementation project. Five topologies, five archetypes, twenty-one skills, nine MCP tool servers.
+
+Agents cross-consult: the architect searches 17K product docs, CDT configuration, and 1,006 API javadocs while the developer greps Java source, reads specific line ranges, and traces XML construction code. The root synthesises both views into a single answer. Multi-turn tool loops let agents call tools iteratively (grep → read-file-lines → check API schema → verify citations) before synthesising.
+
+507 API requests, 1.9M tokens, $0.33 total — using llama-3.3 for routing and deepseek-chat for workers via OpenRouter.
+
+See the [Sterling OMS guide](../guides/sterling-oms-workspace.md) for the full walkthrough.
+
+### Reference workspace
 
 The `reference/` directory ships two production-quality topologies:
 
@@ -208,6 +220,15 @@ reference/
 └── skills/                 # 15 skills (GitHub MCP + decision + knowledge)
 ```
 
+### Hello Swarm (minimal on-ramp)
+
+The smallest workspace that exercises every concept — root supervisor, greeter worker, one MCP server, one skill. Includes a deliberately broken variant to demonstrate human-readable validation errors.
+
+```bash
+swarmkit validate examples/hello-swarm/workspace --tree
+swarmkit run examples/hello-swarm/workspace hello --input "Greet the team"
+```
+
 ## Monorepo layout
 
 ```
@@ -219,7 +240,7 @@ swarmkit/
 │   └── ui/              # Next.js (v1.1)
 ├── reference/           # Reference topologies, archetypes, skills
 ├── docker/              # Sandbox images for MCP server isolation
-├── examples/            # On-ramp examples (hello-swarm)
+├── examples/            # On-ramp examples (hello-swarm, sterling-oms, rynko-content)
 ├── docs/                # User-facing docs + discipline notes
 ├── scripts/             # Dev scripts (codegen, demos)
 └── llms.txt             # LLM-queryable index (llmstxt.org)
@@ -289,7 +310,7 @@ From [design doc §7](./design/SwarmKit-Design-v0.6.md):
 - **Trust boundaries as first-class concept.** Communication patterns categorised by trust zone.
 - **Governance built in, not bolted on.** Separation of Powers model on Microsoft AGT.
 - **Growth through human-approved authoring.** Swarms surface gaps; humans decide.
-- **Eject, never lock in.** `swarmkit eject` exports standalone LangGraph code.
+- **Eject, never lock in.** `swarmkit eject` will export standalone LangGraph code (designed, not yet implemented — the constraint shapes every feature).
 
 ## License
 

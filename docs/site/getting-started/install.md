@@ -8,10 +8,16 @@ uv sync --all-packages    # Python deps
 pnpm install              # TypeScript deps (optional, for schema validation)
 ```
 
-## From PyPI (coming soon)
+## From PyPI
 
 ```bash
-pip install swarmkit
+pip install swarmkit-runtime
+```
+
+Or install as a CLI tool with uv:
+
+```bash
+uv tool install swarmkit-runtime
 ```
 
 ## Verify
