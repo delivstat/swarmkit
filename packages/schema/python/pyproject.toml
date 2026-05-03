@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-schema"
-version = "1.0.29"
+version = "1.0.31"
 description = "SwarmKit JSON Schemas + Python validator."
 readme = {text = "SwarmKit canonical JSON Schemas + Python validator. See https://github.com/delivstat/swarmkit", content-type = "text/markdown"}
 requires-python = ">=3.11"
