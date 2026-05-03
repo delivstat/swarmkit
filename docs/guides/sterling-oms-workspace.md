@@ -11,7 +11,7 @@ base that grounds the agents in your actual project configuration.
 
 ## Prerequisites
 
-- SwarmKit installed (`pip install swarmkit-runtime` or source checkout)
+- SwarmKit installed (`uv tool install swarmkit-runtime` or `pip install swarmkit-runtime` or source checkout)
 - A model provider configured (e.g. `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`)
 - Your Sterling OMS project files accessible on disk:
   - Product documentation (IBM InfoCenter HTML/PDF or your team's docs)

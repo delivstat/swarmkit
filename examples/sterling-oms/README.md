@@ -18,7 +18,7 @@ access, structured API javadocs, and vector-search RAG over product documentatio
 
 - Python 3.11+ with `uv`
 - Node.js 18+ with `npx` (for GitHub, filesystem MCP servers)
-- SwarmKit installed (`pip install swarmkit-runtime` or source checkout)
+- SwarmKit installed (`uv tool install swarmkit-runtime` or `pip install swarmkit-runtime` or source checkout)
 - An OpenRouter API key (`OPENROUTER_API_KEY`)
 - Sterling CDT XML dump (for config access) and/or product documentation (for RAG)
 

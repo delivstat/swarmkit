@@ -248,6 +248,18 @@ swarmkit/
 
 ## Getting started
 
+### Install from PyPI
+
+```bash
+# Recommended — installs as a CLI tool (no venv needed)
+uv tool install swarmkit-runtime
+
+# Or with pip in a virtual environment
+pip install swarmkit-runtime
+```
+
+### Install from source
+
 Prerequisites: Python 3.11+, Node 20+, `pnpm`, `uv`, `just`.
 
 ```bash

@@ -180,7 +180,12 @@ For capabilities without a public server — like parsing Sterling CDT XML dumps
 ## Getting started
 
 ```bash
+# Recommended — installs as a CLI tool (no venv needed)
+uv tool install swarmkit-runtime
+
+# Or with pip in a virtual environment
 pip install swarmkit-runtime
+
 export OPENROUTER_API_KEY=sk-or-...
 mkdir my-swarm && cd my-swarm
 swarmkit init .

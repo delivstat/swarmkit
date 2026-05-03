@@ -11,13 +11,11 @@ pnpm install              # TypeScript deps (optional, for schema validation)
 ## From PyPI
 
 ```bash
-pip install swarmkit-runtime
-```
-
-Or install as a CLI tool with uv:
-
-```bash
+# Recommended — installs as a CLI tool (no venv needed)
 uv tool install swarmkit-runtime
+
+# Or with pip in a virtual environment
+pip install swarmkit-runtime
 ```
 
 ## Verify

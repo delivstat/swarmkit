@@ -115,7 +115,12 @@ I'm also working on a content creation workspace for [rynko.dev](https://rynko.d
 ## Try it
 
 ```bash
+# Recommended — installs as a CLI tool (no venv needed)
+uv tool install swarmkit-runtime
+
+# Or with pip in a virtual environment
 pip install swarmkit-runtime
+
 swarmkit init my-swarm/
 ```
 
@@ -183,4 +188,4 @@ github.com/delivstat/swarmkit
 
 **5/** Governance isn't bolted on — it's structural. AGT-backed separation of powers. Deterministic policy checks (sub-ms, $0) on every action. LLM judges only when semantic evaluation needed. 10-20% overhead target, not 300%.
 
-**6/** The framework authors itself. `swarmkit author skill .` → conversation → validated YAML. Workspace grew from 11 to 21 skills through this flow. 7 model providers. MIT license. pip install swarmkit-runtime.
+**6/** The framework authors itself. `swarmkit author skill .` → conversation → validated YAML. Workspace grew from 11 to 21 skills through this flow. 7 model providers. MIT license. `uv tool install swarmkit-runtime`.
