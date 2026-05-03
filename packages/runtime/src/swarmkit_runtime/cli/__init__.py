@@ -32,6 +32,32 @@ from swarmkit_runtime.review import FileReviewQueue
 from ._knowledge import build_pack, find_repo_root
 from ._render import render_errors, render_success, should_colour
 
+_BANNER = r"""
+  _____                       _  ___ _
+ / __\ \      ____ _ _ __ _ _| |/ (_) |_
+ \__ \\ \ /\ / / _` | '__| ' \  <| |  _|
+ |___/ \ V  V / (_| | |  | |_| . \ | |_|
+        \_/\_/ \__,_|_|  |_|_|_|\_\_|\__|
+"""
+
+
+def _print_banner() -> None:
+    if sys.stdout.isatty() and os.environ.get("NO_COLOR") is None:
+        typer.echo(f"\033[1;36m{_BANNER.rstrip()}\033[0m")
+    else:
+        typer.echo(_BANNER.rstrip())
+
+
+def _suppress_noisy_logs() -> None:
+    """Suppress MCP SDK and third-party INFO messages unless SWARMKIT_VERBOSE is set."""
+    if os.environ.get("SWARMKIT_VERBOSE"):
+        return
+    import logging  # noqa: PLC0415
+
+    for name in ("mcp", "httpx", "httpcore", "sentence_transformers"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 app = typer.Typer(
     name="swarmkit",
     help="Compose, run, and grow multi-agent swarms.",
@@ -366,6 +392,8 @@ def init(
     ] = Path("."),
 ) -> None:
     """Create a new SwarmKit workspace through conversation."""
+    _print_banner()
+    _suppress_noisy_logs()
     provider, model = resolve_authoring_provider()
     run_authoring_session(
         mode="init", model_provider=provider, model_name=model, workspace_path=path.resolve()
@@ -383,6 +411,8 @@ def _run_authoring(
     input_text: str = "",
 ) -> None:
     """Route authoring to single-agent (quick) or swarm (thorough)."""
+    _print_banner()
+    _suppress_noisy_logs()
     if thorough:
         try:
             runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
@@ -574,6 +604,7 @@ def run(
     color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
 ) -> None:
     """One-shot execution of a topology (design §14.1)."""
+    _suppress_noisy_logs()
     use_colour = should_colour(sys.stdout.isatty(), color)
 
     try:
@@ -650,6 +681,9 @@ def chat(
     resumed with --resume <id>.
     """
     from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+    _print_banner()
+    _suppress_noisy_logs()
 
     try:
         runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
@@ -1284,6 +1318,8 @@ def serve(
     Loads the workspace and exposes topology execution via REST API.
     Endpoints: GET /health, GET /topologies, GET /skills, POST /run/{topology}.
     """
+    _print_banner()
+    _suppress_noisy_logs()
     import uvicorn  # noqa: PLC0415
 
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
