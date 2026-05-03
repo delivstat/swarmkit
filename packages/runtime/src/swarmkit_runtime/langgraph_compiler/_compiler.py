@@ -328,6 +328,51 @@ def _build_agent_node(  # noqa: PLR0915
                         governance,
                     )
                     if next_results is None:
+                        # Model returned text without tool calls. Check if
+                        # it looks incomplete (planning language instead of
+                        # a final answer) and nudge it to continue.
+                        text = _extract_text(current_response)
+                        if _turn < _max_tool_turns - 1 and _looks_incomplete(text):
+                            if _verbose:
+                                print(
+                                    "  [nudge: response looks incomplete, prompting to continue]",
+                                    file=sys.stderr,
+                                )
+                            loop_messages.append(
+                                Message(role="assistant", content=text),
+                            )
+                            loop_messages.append(
+                                Message(
+                                    role="user",
+                                    content=(
+                                        "You described what you plan to do but "
+                                        "didn't do it. Call the tools now — use "
+                                        "read-file-lines to read the actual code."
+                                    ),
+                                ),
+                            )
+                            nudge_req = CompletionRequest(
+                                model=model_name,
+                                messages=tuple(loop_messages),
+                                system=system_prompt,
+                                tools=tuple(tools) if tools else None,
+                                temperature=(agent.model or {}).get("temperature"),
+                            )
+                            current_response = await model_provider.complete(
+                                nudge_req,
+                            )
+                            next_results = await _handle_skill_tool_calls(
+                                current_response,
+                                agent,
+                                model_provider,
+                                model_name,
+                                mcp_manager,
+                                governance,
+                            )
+                            if next_results is None:
+                                break
+                            current_results = next_results
+                            continue
                         break
                     current_results = next_results
 
@@ -589,6 +634,29 @@ def _build_prompt_messages(
             messages.append(Message(role="user", content=str(last_human or task)))
 
     return messages
+
+
+_INCOMPLETE_MARKERS = [
+    "let me",
+    "i'll ",
+    "i will ",
+    "i need to",
+    "next, i",
+    "now i'll",
+    "now let me",
+    "i should",
+    "to find out",
+    "to examine",
+    "to investigate",
+    "to read",
+    "to check",
+]
+
+
+def _looks_incomplete(text: str) -> bool:
+    """Check if a response contains planning language without actual results."""
+    lower = text.lower().strip()
+    return len(lower) < 200 and any(m in lower for m in _INCOMPLETE_MARKERS)
 
 
 def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec]:
