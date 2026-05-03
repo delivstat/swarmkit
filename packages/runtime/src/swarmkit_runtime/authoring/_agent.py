@@ -277,13 +277,37 @@ def _print_status(text: str) -> None:
     print(text, file=sys.stderr)
 
 
+def _build_author_session():
+    """Build a prompt_toolkit session for authoring."""
+    try:
+        from prompt_toolkit import PromptSession  # noqa: PLC0415
+        from prompt_toolkit.history import FileHistory  # noqa: PLC0415
+
+        history_path = Path.home() / ".swarmkit" / "author_history"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        return PromptSession(
+            history=FileHistory(str(history_path)),
+            enable_history_search=True,
+        )
+    except ImportError:
+        return None
+
+
+_author_session = _build_author_session()
+
+
 def _read_input() -> str:
+    if _author_session is not None:
+        return _author_session.prompt("> ")
     return input("> ")
 
 
 def _read_confirm() -> bool:
     try:
-        answer = input("[Y/n] > ").strip().lower()
+        if _author_session is not None:
+            answer = _author_session.prompt("[Y/n] > ").strip().lower()
+        else:
+            answer = input("[Y/n] > ").strip().lower()
         return answer in ("", "y", "yes")
     except (EOFError, KeyboardInterrupt):
         return False
