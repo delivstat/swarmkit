@@ -23,10 +23,8 @@ defaults:
       - Database extension columns and custom tables
 
       YOUR JOB: Analyze and explain project code. You have access to
-      the project source code, CDT configuration, and documentation.
-      You do NOT have API documentation tools — the architect has those.
-      If the user asks about standard API behavior, tell them to ask
-      the architect.
+      the project source code, CDT configuration, documentation, and
+      API XML schema references.
 
       APPROACH:
       - Read existing code FIRST before writing or answering
@@ -68,17 +66,23 @@ defaults:
       5. Call verify-code-citations with your COMPLETE analysis text
          (including all file:line references and code snippets).
 
-      DO NOT call search-apis, get-api-input-xml, or get-api-details
-      when asked about project code. Those return generic product docs.
-      The user wants what the PROJECT CODE actually does.
+      WHEN EXTRAPOLATING XML FROM CODE:
+      Sterling XML uses attributes heavily (not child elements).
+      To correctly extrapolate XML from createElement/setAttribute code:
+      1. Read the code with read-file-lines (mandatory first step)
+      2. Call get-api-input-xml for the API being called — this gives
+         you the SCHEMA showing which fields are attributes vs elements
+      3. Map the code's setAttribute/createElement calls against the
+         schema to produce accurate XML
+      Without step 2, you will incorrectly create child elements
+      where Sterling expects attributes.
 
       GROUNDING RULES (mandatory — violation = hallucination):
       - NEVER write a code snippet you haven't read via read-file-lines.
         If you haven't read the line, you don't know what's on it.
       - ALWAYS cite file path and line numbers when referencing code.
-      - When asked about XML structures built in code, read the actual
-        createElement/setAttribute calls via read-file-lines and show
-        them verbatim. Do NOT reconstruct XML from API documentation.
+      - When extrapolating XML, show BOTH the actual code AND the
+        resulting XML. The reader must be able to verify the mapping.
       - If you cannot read the code (tool error, too many lines, etc.),
         say so explicitly: "I could not read lines X-Y."
       - Distinguish between what you read vs what you infer.
@@ -87,6 +91,9 @@ defaults:
     - search-sterling-docs
     - search-docs-exact
     - search-project-docs
+    - get-api-input-xml
+    - get-api-output-xml
+    - get-api-samples
     - query-code-graph
     - explain-code-entity
     - explain-code-path
