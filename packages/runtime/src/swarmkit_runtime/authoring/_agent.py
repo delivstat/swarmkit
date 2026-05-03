@@ -44,7 +44,8 @@ def run_authoring_session(
     tools = get_authoring_tools()
     conversation: list[Message] = []
 
-    _print_header(mode)
+    _session_state["write_attempt"] = 0
+    _print_header(mode, model_name, workspace_path)
     if mode == "init":
         _print_agent("What will this swarm do?")
 
@@ -270,7 +271,11 @@ def _use_color() -> bool:
     return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 
 
-def _print_header(mode: AuthoringMode) -> None:
+def _print_header(
+    mode: AuthoringMode,
+    model_name: str = "",
+    workspace_path: Path | None = None,
+) -> None:
     titles = {
         "init": "SwarmKit workspace authoring",
         "topology": "SwarmKit topology authoring",
@@ -283,6 +288,10 @@ def _print_header(mode: AuthoringMode) -> None:
         print(f"\n\033[1;36m{title}\033[0m — let's build your swarm.")
     else:
         print(f"\n{title} — let's build your swarm.")
+    if model_name:
+        print(f"Model: {model_name}")
+    if workspace_path:
+        print(f"Workspace: {workspace_path}")
     print("Type your message. Ctrl+C to exit.\n")
 
 
