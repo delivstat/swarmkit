@@ -159,7 +159,7 @@ async def _execute_mcp_tool(  # noqa: PLR0912
             if path_val.startswith("/") or path_val.startswith("\\"):
                 relative = "."
                 if server_cwd and path_val.startswith(server_cwd):
-                    suffix = path_val[len(server_cwd):]
+                    suffix = path_val[len(server_cwd) :]
                     relative = suffix.lstrip("/") or "."
                 arguments[path_key] = relative
                 if _os.environ.get("SWARMKIT_VERBOSE"):

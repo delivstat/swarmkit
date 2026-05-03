@@ -314,15 +314,18 @@ def _build_agent_node(  # noqa: PLR0915
                     )
                     if _verbose:
                         print(
-                            f"  [tool loop turn {_turn + 1}: "
-                            f"{len(current_results)} tool results]",
+                            f"  [tool loop turn {_turn + 1}: {len(current_results)} tool results]",
                             file=sys.stderr,
                         )
                     current_response = await model_provider.complete(follow_up)
 
                     next_results = await _handle_skill_tool_calls(
-                        current_response, agent, model_provider, model_name,
-                        mcp_manager, governance,
+                        current_response,
+                        agent,
+                        model_provider,
+                        model_name,
+                        mcp_manager,
+                        governance,
                     )
                     if next_results is None:
                         break
@@ -698,11 +701,13 @@ async def _handle_skill_tool_calls(
             governance=governance,
             agent_id=agent.id,
         )
-        results.append(ToolCallResult(
-            tool_use_id=block.tool_use_id or f"call_{len(results)}",
-            tool_name=block.tool_name,
-            result=result or "(no result)",
-        ))
+        results.append(
+            ToolCallResult(
+                tool_use_id=block.tool_use_id or f"call_{len(results)}",
+                tool_name=block.tool_name,
+                result=result or "(no result)",
+            )
+        )
 
     return results if results else None
 

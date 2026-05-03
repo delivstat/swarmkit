@@ -284,7 +284,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     results = asyncio.run(run_all(to_run, args.reset))
     total = time.time() - t0
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Completed in {total:.1f}s\n")
 
     ok = [r for r in results.values() if r.status == "ok"]
