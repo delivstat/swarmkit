@@ -29,7 +29,6 @@ from swarmkit_runtime.model_providers import (
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
 from swarmkit_runtime.review._hitl import prompt_human_review
-from swarmkit_runtime.skills import impl_get
 from swarmkit_runtime.skills._output_validator import (
     format_correction_prompt,
     validate_all_skill_output,
@@ -112,10 +111,415 @@ def _collect_agents(root: ResolvedAgent) -> dict[str, ResolvedAgent]:
     return agents
 
 
+# ---- extracted node helpers ----------------------------------------------
+
+
+async def _check_governance(
+    agent_id: str,
+    agent: ResolvedAgent,
+    governance: GovernanceProvider,
+) -> dict[str, Any] | None:
+    """Evaluate governance policy; return denial state dict or None if allowed."""
+    iam = agent.iam or {}
+    scopes_required = frozenset(iam.get("base_scope", []))
+
+    decision = await governance.evaluate_action(
+        agent_id=agent_id,
+        action="agent:execute",
+        scopes_required=scopes_required,
+    )
+
+    if not decision.allowed:
+        await governance.record_event(
+            AuditEvent(
+                event_type="policy.denied",
+                agent_id=agent_id,
+                timestamp=datetime.now(tz=UTC),
+                payload={
+                    "action": "agent:execute",
+                    "reason": decision.reason,
+                    "scopes_denied": sorted(decision.scopes_denied),
+                },
+            )
+        )
+        return {
+            "current_agent": agent_id,
+            "agent_results": {agent_id: f"DENIED: {decision.reason}"},
+            "messages": [
+                AIMessage(
+                    content=f"[{agent_id}] DENIED: {decision.reason}",
+                    name=agent_id,
+                )
+            ],
+            "output": f"DENIED: {decision.reason}",
+        }
+    return None
+
+
+async def _check_trust(
+    agent_id: str,
+    agent: ResolvedAgent,
+    governance: GovernanceProvider,
+) -> dict[str, Any] | None:
+    """Evaluate trust score; return denial state dict or None if trusted."""
+    trust = await governance.get_trust_score(agent_id=agent_id)
+    if trust.score < _TRUST_DENY_THRESHOLD:
+        await governance.record_event(
+            AuditEvent(
+                event_type="trust.denied",
+                agent_id=agent_id,
+                timestamp=datetime.now(tz=UTC),
+                payload={
+                    "score": trust.score,
+                    "tier": trust.tier,
+                },
+            )
+        )
+        return {
+            "current_agent": agent_id,
+            "agent_results": {agent_id: f"DENIED: trust score {trust.score} below threshold"},
+            "messages": [
+                AIMessage(
+                    content=f"[{agent_id}] DENIED: trust score too low ({trust.score})",
+                    name=agent_id,
+                )
+            ],
+            "output": f"DENIED: trust score {trust.score} below threshold",
+        }
+    if trust.tier == "degraded":
+        await governance.record_event(
+            AuditEvent(
+                event_type="trust.degraded",
+                agent_id=agent_id,
+                timestamp=datetime.now(tz=UTC),
+                payload={"score": trust.score, "tier": trust.tier},
+            )
+        )
+    return None
+
+
+def _build_completion_request(
+    model_name: str,
+    messages: list[Message] | tuple[Message, ...],
+    system_prompt: str | None,
+    tools: list[ToolSpec],
+    agent: ResolvedAgent,
+) -> CompletionRequest:
+    """Build a CompletionRequest -- single source for the repeated construction."""
+    return CompletionRequest(
+        model=model_name,
+        messages=tuple(messages),
+        system=system_prompt,
+        tools=tuple(tools) if tools else None,
+        temperature=(agent.model or {}).get("temperature"),
+    )
+
+
+def _get_completed_children(
+    agent: ResolvedAgent,
+    agent_results: dict[str, Any],
+) -> set[str]:
+    """Return child IDs that have completed (non-delegated) results."""
+    return {
+        c.id
+        for c in agent.children
+        if c.id in agent_results
+        and isinstance(agent_results[c.id], str)
+        and not str(agent_results[c.id]).startswith("__delegated__:")
+    }
+
+
+def _make_result(agent_id: str, result_text: str) -> dict[str, Any]:
+    """Build the standard return dict for a completed agent."""
+    return {
+        "current_agent": agent_id,
+        "agent_results": {agent_id: result_text},
+        "messages": [AIMessage(content=result_text, name=agent_id)],
+        "output": result_text,
+    }
+
+
+def _log_verbose_request(
+    agent_id: str,
+    model_name: str,
+    tools: list[ToolSpec],
+    messages: list[Message],
+) -> None:
+    """Log request details when SWARMKIT_VERBOSE is set."""
+    print(f"\n--- [{agent_id}] calling {model_name} ---", file=sys.stderr)
+    print(f"  tools: {[t.name for t in tools]}", file=sys.stderr)
+    print(f"  input: {messages[-1].content[:200]}...", file=sys.stderr)
+
+
+def _log_verbose_response(response: CompletionResponse) -> None:
+    """Log response details when SWARMKIT_VERBOSE is set."""
+    tool_calls = [b.tool_name for b in response.content if hasattr(b, "tool_name") and b.tool_name]
+    text_parts = [b.text[:100] for b in response.content if hasattr(b, "text") and b.text]
+    print(f"  tool_calls: {tool_calls}", file=sys.stderr)
+    print(f"  text: {text_parts}", file=sys.stderr)
+
+
+async def _record_completion(
+    governance: GovernanceProvider,
+    agent_id: str,
+    role: str,
+    result_text: str,
+    start: datetime,
+) -> None:
+    """Record the agent.completed audit event."""
+    end = datetime.now(tz=UTC)
+    duration_ms = int((end - start).total_seconds() * 1000)
+    await governance.record_event(
+        AuditEvent(
+            event_type="agent.completed",
+            agent_id=agent_id,
+            timestamp=end,
+            payload={
+                "result_length": len(result_text),
+                "duration_ms": duration_ms,
+                "role": role,
+            },
+            topology_id=agent_id,
+        )
+    )
+
+
+async def _run_tool_loop(
+    response: CompletionResponse,
+    agent: ResolvedAgent,
+    messages: list[Message],
+    tools: list[ToolSpec],
+    model_name: str,
+    system_prompt: str | None,
+    model_provider: ModelProviderProtocol,
+    mcp_manager: Any,
+    governance: GovernanceProvider,
+    tool_results: list[ToolCallResult],
+    verbose: str,
+) -> str:
+    """Run the multi-turn tool loop until final text or turn limit.
+
+    Keeps calling the model with tool results until it produces a final
+    text response (no more tool calls) or we hit the turn limit. Includes
+    nudging for incomplete responses.
+    """
+    _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "8"))
+    loop_messages = list(messages)
+    current_response = response
+    current_results = tool_results
+
+    for _turn in range(_max_tool_turns):
+        assistant_blocks = list(current_response.content)
+        tool_result_blocks = [
+            ContentBlock(
+                type="tool_result",
+                tool_use_id=tr.tool_use_id,
+                tool_result=tr.result,
+            )
+            for tr in current_results
+        ]
+        loop_messages.append(
+            Message(role="assistant", content=assistant_blocks),
+        )
+        loop_messages.append(
+            Message(role="user", content=tool_result_blocks),
+        )
+        follow_up = _build_completion_request(
+            model_name, loop_messages, system_prompt, tools, agent
+        )
+        if verbose:
+            print(
+                f"  [tool loop turn {_turn + 1}: {len(current_results)} tool results]",
+                file=sys.stderr,
+            )
+        current_response = await model_provider.complete(follow_up)
+
+        next_results = await _handle_skill_tool_calls(
+            current_response,
+            agent,
+            model_provider,
+            model_name,
+            mcp_manager,
+            governance,
+        )
+        if next_results is None:
+            # Model returned text without tool calls. Check if it looks
+            # incomplete (planning language) and nudge it to continue.
+            text = _extract_text(current_response)
+            if _turn < _max_tool_turns - 1 and _looks_incomplete(text):
+                if verbose:
+                    print(
+                        "  [nudge: response looks incomplete, prompting to continue]",
+                        file=sys.stderr,
+                    )
+                loop_messages.append(
+                    Message(role="assistant", content=text),
+                )
+                loop_messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            "You described what you plan to do but "
+                            "didn't do it. Call the tools now — use "
+                            "read-file-lines to read the actual code."
+                        ),
+                    ),
+                )
+                nudge_req = _build_completion_request(
+                    model_name, loop_messages, system_prompt, tools, agent
+                )
+                current_response = await model_provider.complete(nudge_req)
+                next_results = await _handle_skill_tool_calls(
+                    current_response,
+                    agent,
+                    model_provider,
+                    model_name,
+                    mcp_manager,
+                    governance,
+                )
+                if next_results is None:
+                    break
+                current_results = next_results
+                continue
+            break
+        current_results = next_results
+
+    return _extract_text(current_response)
+
+
+async def _dispatch_response(
+    response: CompletionResponse,
+    agent: ResolvedAgent,
+    agent_id: str,
+    messages: list[Message],
+    tools: list[ToolSpec],
+    model_name: str,
+    system_prompt: str | None,
+    model_provider: ModelProviderProtocol,
+    mcp_manager: Any,
+    governance: GovernanceProvider,
+    verbose: str,
+) -> dict[str, Any] | tuple[CompletionResponse, list[Message]]:
+    """Run the retry loop: delegation, tool-loop, or text-with-retry.
+
+    Returns either a final state dict (delegation / tool-loop) or a
+    ``(response, messages)`` tuple when the model produced text only.
+    """
+    _max_retries = int(os.environ.get("SWARMKIT_AGENT_RETRIES", "2"))
+    for _attempt in range(_max_retries + 1):
+        delegation = _extract_delegation(response, agent)
+        if delegation:
+            child_id, task_text = delegation
+            return {
+                "current_agent": child_id,
+                "agent_results": {
+                    agent_id: f"__delegated__:{child_id}",
+                },
+                "messages": [
+                    AIMessage(
+                        content=f"[{agent_id}] Delegating to {child_id}: {task_text}",
+                        name=agent_id,
+                    ),
+                    HumanMessage(content=task_text, name=agent_id),
+                ],
+            }
+
+        tool_results = await _handle_skill_tool_calls(
+            response, agent, model_provider, model_name, mcp_manager, governance
+        )
+        if tool_results is not None:
+            await governance.record_event(
+                AuditEvent(
+                    event_type="skill.executed",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={"tools_called": len(tool_results)},
+                )
+            )
+            synth_text = await _run_tool_loop(
+                response,
+                agent,
+                messages,
+                tools,
+                model_name,
+                system_prompt,
+                model_provider,
+                mcp_manager,
+                governance,
+                tool_results,
+                verbose,
+            )
+            return _make_result(agent_id, synth_text)
+
+        # Model returned text -- retry if agent has skill tools.
+        skill_tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+        if skill_tools and _attempt < _max_retries:
+            if verbose:
+                print(
+                    f"  [retry {_attempt + 1}: model returned text, nudging to use tools]",
+                    file=sys.stderr,
+                )
+            messages = [
+                *messages,
+                Message(role="assistant", content=_extract_text(response)),
+                Message(
+                    role="user",
+                    content=(
+                        "You have tools available. Do NOT describe what you would do — "
+                        "call the tools now. Use the tool_use format to execute actions."
+                    ),
+                ),
+            ]
+            request = _build_completion_request(model_name, messages, system_prompt, tools, agent)
+            response = await model_provider.complete(request)
+            if verbose:
+                _log_verbose_response(response)
+            continue
+        break
+
+    return (response, messages)
+
+
+async def _finalize_text_result(
+    response: CompletionResponse,
+    messages: list[Message],
+    agent: ResolvedAgent,
+    agent_id: str,
+    model_provider: ModelProviderProtocol,
+    model_name: str,
+    system_prompt: str | None,
+    governance: GovernanceProvider,
+    agent_results: dict[str, Any],
+    completed_children: set[str],
+) -> str:
+    """Validate output, apply child fallback, return final text."""
+    result_text = _extract_text(response)
+    outputs_schema = _get_outputs_schema(agent)
+    if outputs_schema and result_text != "(no response)":
+        result_text = await _validate_and_correct(
+            result_text,
+            outputs_schema,
+            model_provider=model_provider,
+            model_name=model_name,
+            system_prompt=system_prompt,
+            messages=messages,
+            governance=governance,
+            agent_id=agent_id,
+        )
+
+    if result_text == "(no response)" and completed_children:
+        child_texts = [
+            str(agent_results[cid]) for cid in completed_children if cid in agent_results
+        ]
+        result_text = "\n\n".join(child_texts)
+
+    return result_text
+
+
 # ---- node construction --------------------------------------------------
 
 
-def _build_agent_node(  # noqa: PLR0915
+def _build_agent_node(
     agent: ResolvedAgent,
     model_provider: ModelProviderProtocol,
     governance: GovernanceProvider,
@@ -124,7 +528,7 @@ def _build_agent_node(  # noqa: PLR0915
 ) -> Any:
     """Build an async node function for one agent."""
 
-    async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
+    async def node_fn(state: SwarmState) -> dict[str, Any]:
         agent_id = agent.id
         _start = datetime.now(tz=UTC)
         await governance.record_event(
@@ -135,340 +539,77 @@ def _build_agent_node(  # noqa: PLR0915
                 payload={"role": agent.role},
             )
         )
-        iam = agent.iam or {}
-        scopes_required = frozenset(iam.get("base_scope", []))
 
-        decision = await governance.evaluate_action(
-            agent_id=agent_id,
-            action="agent:execute",
-            scopes_required=scopes_required,
-        )
+        # ---- governance + trust gates --------------------------------
+        denial = await _check_governance(agent_id, agent, governance)
+        if denial is not None:
+            return denial
 
-        if not decision.allowed:
-            await governance.record_event(
-                AuditEvent(
-                    event_type="policy.denied",
-                    agent_id=agent_id,
-                    timestamp=datetime.now(tz=UTC),
-                    payload={
-                        "action": "agent:execute",
-                        "reason": decision.reason,
-                        "scopes_denied": sorted(decision.scopes_denied),
-                    },
-                )
-            )
-            return {
-                "current_agent": agent_id,
-                "agent_results": {agent_id: f"DENIED: {decision.reason}"},
-                "messages": [
-                    AIMessage(
-                        content=f"[{agent_id}] DENIED: {decision.reason}",
-                        name=agent_id,
-                    )
-                ],
-                "output": f"DENIED: {decision.reason}",
-            }
+        denial = await _check_trust(agent_id, agent, governance)
+        if denial is not None:
+            return denial
 
-        trust = await governance.get_trust_score(agent_id=agent_id)
-        if trust.score < _TRUST_DENY_THRESHOLD:
-            await governance.record_event(
-                AuditEvent(
-                    event_type="trust.denied",
-                    agent_id=agent_id,
-                    timestamp=datetime.now(tz=UTC),
-                    payload={
-                        "score": trust.score,
-                        "tier": trust.tier,
-                    },
-                )
-            )
-            return {
-                "current_agent": agent_id,
-                "agent_results": {agent_id: f"DENIED: trust score {trust.score} below threshold"},
-                "messages": [
-                    AIMessage(
-                        content=f"[{agent_id}] DENIED: trust score too low ({trust.score})",
-                        name=agent_id,
-                    )
-                ],
-                "output": f"DENIED: trust score {trust.score} below threshold",
-            }
-        if trust.tier == "degraded":
-            await governance.record_event(
-                AuditEvent(
-                    event_type="trust.degraded",
-                    agent_id=agent_id,
-                    timestamp=datetime.now(tz=UTC),
-                    payload={"score": trust.score, "tier": trust.tier},
-                )
-            )
-
+        # ---- message + tool construction -----------------------------
         messages = _build_prompt_messages(agent, state)
         tools = _build_tools(agent, mcp_manager=mcp_manager)
-
-        # Remove delegation tools if children already returned results —
-        # the agent should synthesise, not re-delegate.
         agent_results = state.get("agent_results", {})
-        completed_children = {
-            c.id
-            for c in agent.children
-            if c.id in agent_results
-            and isinstance(agent_results[c.id], str)
-            and not str(agent_results[c.id]).startswith("__delegated__:")
-        }
+        completed_children = _get_completed_children(agent, agent_results)
         if completed_children:
             tools = [t for t in tools if not t.name.startswith("delegate_to_")]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
         system_prompt = _build_system_prompt(agent, tools)
-
-        request = CompletionRequest(
-            model=model_name,
-            messages=tuple(messages),
-            system=system_prompt,
-            tools=tuple(tools) if tools else None,
-            temperature=(agent.model or {}).get("temperature"),
-        )
-
         _verbose = os.environ.get("SWARMKIT_VERBOSE", "")
+
         if _verbose:
-            import sys  # noqa: PLC0415
+            _log_verbose_request(agent_id, model_name, tools, messages)
 
-            print(f"\n--- [{agent_id}] calling {model_name} ---", file=sys.stderr)
-            print(f"  tools: {[t.name for t in tools]}", file=sys.stderr)
-            print(f"  input: {messages[-1].content[:200]}...", file=sys.stderr)
-
+        request = _build_completion_request(model_name, messages, system_prompt, tools, agent)
         response = await model_provider.complete(request)
 
         if _verbose:
-            tool_calls = [
-                b.tool_name for b in response.content if hasattr(b, "tool_name") and b.tool_name
-            ]
-            text_parts = [b.text[:100] for b in response.content if hasattr(b, "text") and b.text]
-            print(f"  tool_calls: {tool_calls}", file=sys.stderr)
-            print(f"  text: {text_parts}", file=sys.stderr)
+            _log_verbose_response(response)
 
-        _max_retries = int(os.environ.get("SWARMKIT_AGENT_RETRIES", "2"))
-        for _attempt in range(_max_retries + 1):
-            # Check for delegation tool calls
-            delegation = _extract_delegation(response, agent)
-            if delegation:
-                child_id, task_text = delegation
-                return {
-                    "current_agent": child_id,
-                    "agent_results": {
-                        agent_id: f"__delegated__:{child_id}",
-                    },
-                    "messages": [
-                        AIMessage(
-                            content=f"[{agent_id}] Delegating to {child_id}: {task_text}",
-                            name=agent_id,
-                        ),
-                        HumanMessage(content=task_text, name=agent_id),
-                    ],
-                }
-
-            # Check for skill tool calls
-            tool_results = await _handle_skill_tool_calls(
-                response, agent, model_provider, model_name, mcp_manager, governance
-            )
-            if tool_results is not None:
-                await governance.record_event(
-                    AuditEvent(
-                        event_type="skill.executed",
-                        agent_id=agent_id,
-                        timestamp=datetime.now(tz=UTC),
-                        payload={"tools_called": len(tool_results)},
-                    )
-                )
-
-                # Multi-turn tool loop: keep calling the model with tool
-                # results until it produces a final text response (no more
-                # tool calls) or we hit the turn limit.
-                _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "8"))
-                loop_messages = list(messages)
-                current_response = response
-                current_results = tool_results
-
-                for _turn in range(_max_tool_turns):
-                    assistant_blocks = list(current_response.content)
-                    tool_result_blocks = [
-                        ContentBlock(
-                            type="tool_result",
-                            tool_use_id=tr.tool_use_id,
-                            tool_result=tr.result,
-                        )
-                        for tr in current_results
-                    ]
-                    loop_messages.append(
-                        Message(role="assistant", content=assistant_blocks),
-                    )
-                    loop_messages.append(
-                        Message(role="user", content=tool_result_blocks),
-                    )
-                    follow_up = CompletionRequest(
-                        model=model_name,
-                        messages=tuple(loop_messages),
-                        system=system_prompt,
-                        tools=tuple(tools) if tools else None,
-                        temperature=(agent.model or {}).get("temperature"),
-                    )
-                    if _verbose:
-                        print(
-                            f"  [tool loop turn {_turn + 1}: {len(current_results)} tool results]",
-                            file=sys.stderr,
-                        )
-                    current_response = await model_provider.complete(follow_up)
-
-                    next_results = await _handle_skill_tool_calls(
-                        current_response,
-                        agent,
-                        model_provider,
-                        model_name,
-                        mcp_manager,
-                        governance,
-                    )
-                    if next_results is None:
-                        # Model returned text without tool calls. Check if
-                        # it looks incomplete (planning language instead of
-                        # a final answer) and nudge it to continue.
-                        text = _extract_text(current_response)
-                        if _turn < _max_tool_turns - 1 and _looks_incomplete(text):
-                            if _verbose:
-                                print(
-                                    "  [nudge: response looks incomplete, prompting to continue]",
-                                    file=sys.stderr,
-                                )
-                            loop_messages.append(
-                                Message(role="assistant", content=text),
-                            )
-                            loop_messages.append(
-                                Message(
-                                    role="user",
-                                    content=(
-                                        "You described what you plan to do but "
-                                        "didn't do it. Call the tools now — use "
-                                        "read-file-lines to read the actual code."
-                                    ),
-                                ),
-                            )
-                            nudge_req = CompletionRequest(
-                                model=model_name,
-                                messages=tuple(loop_messages),
-                                system=system_prompt,
-                                tools=tuple(tools) if tools else None,
-                                temperature=(agent.model or {}).get("temperature"),
-                            )
-                            current_response = await model_provider.complete(
-                                nudge_req,
-                            )
-                            next_results = await _handle_skill_tool_calls(
-                                current_response,
-                                agent,
-                                model_provider,
-                                model_name,
-                                mcp_manager,
-                                governance,
-                            )
-                            if next_results is None:
-                                break
-                            current_results = next_results
-                            continue
-                        break
-                    current_results = next_results
-
-                synth_text = _extract_text(current_response)
-                return {
-                    "current_agent": agent.id,
-                    "agent_results": {agent_id: synth_text},
-                    "messages": [AIMessage(content=synth_text, name=agent_id)],
-                    "output": synth_text,
-                }
-
-            # Model returned text instead of tool calls.
-            # Retry only if agent has skill tools (not just delegation).
-            skill_tools = [t for t in tools if not t.name.startswith("delegate_to_")]
-            if skill_tools and _attempt < _max_retries:
-                if _verbose:
-                    print(
-                        f"  [retry {_attempt + 1}: model returned text, nudging to use tools]",
-                        file=sys.stderr,
-                    )
-                messages = [
-                    *messages,
-                    Message(role="assistant", content=_extract_text(response)),
-                    Message(
-                        role="user",
-                        content=(
-                            "You have tools available. Do NOT describe what you would do — "
-                            "call the tools now. Use the tool_use format to execute actions."
-                        ),
-                    ),
-                ]
-                request = CompletionRequest(
-                    model=model_name,
-                    messages=tuple(messages),
-                    system=system_prompt,
-                    tools=tuple(tools) if tools else None,
-                    temperature=(agent.model or {}).get("temperature"),
-                )
-                response = await model_provider.complete(request)
-                if _verbose:
-                    tc = [
-                        b.tool_name
-                        for b in response.content
-                        if hasattr(b, "tool_name") and b.tool_name
-                    ]
-                    print(f"  tool_calls: {tc}", file=sys.stderr)
-                continue
-            break
-
-        # No delegation or skill calls — agent produced a final text response.
-        # If skills have output schemas, validate + auto-correct.
-        result_text = _extract_text(response)
-        outputs_schema = _get_outputs_schema(agent)
-        if outputs_schema and result_text != "(no response)":
-            result_text = await _validate_and_correct(
-                result_text,
-                outputs_schema,
-                model_provider=model_provider,
-                model_name=model_name,
-                system_prompt=system_prompt,
-                messages=messages,
-                governance=governance,
-                agent_id=agent_id,
-            )
-
-        # Fallback: if the model returned nothing useful but children
-        # have results, pass through the child output directly.
-        if result_text == "(no response)" and completed_children:
-            child_texts = [
-                str(agent_results[cid]) for cid in completed_children if cid in agent_results
-            ]
-            result_text = "\n\n".join(child_texts)
-
-        _end = datetime.now(tz=UTC)
-        _duration_ms = int((_end - _start).total_seconds() * 1000)
-        await governance.record_event(
-            AuditEvent(
-                event_type="agent.completed",
-                agent_id=agent_id,
-                timestamp=_end,
-                payload={
-                    "result_length": len(result_text),
-                    "duration_ms": _duration_ms,
-                    "role": agent.role,
-                },
-                topology_id=agent_id,
-            )
+        # ---- retry / delegation / tool-loop dispatch -----------------
+        result = await _dispatch_response(
+            response,
+            agent,
+            agent_id,
+            messages,
+            tools,
+            model_name,
+            system_prompt,
+            model_provider,
+            mcp_manager,
+            governance,
+            _verbose,
         )
+        if isinstance(result, dict):
+            await _record_completion(
+                governance,
+                agent_id,
+                agent.role,
+                result.get("output", ""),
+                _start,
+            )
+            return result
 
-        return {
-            "current_agent": agent.id,
-            "agent_results": {agent_id: result_text},
-            "messages": [AIMessage(content=result_text, name=agent_id)],
-            "output": result_text,
-        }
+        # Text path -- result is (final_response, final_messages).
+        final_response, final_messages = result
+        result_text = await _finalize_text_result(
+            final_response,
+            final_messages,
+            agent,
+            agent_id,
+            model_provider,
+            model_name,
+            system_prompt,
+            governance,
+            agent_results,
+            completed_children,
+        )
+        await _record_completion(governance, agent_id, agent.role, result_text, _start)
+        return _make_result(agent_id, result_text)
 
     node_fn.__name__ = f"agent_{agent.id}"
     return node_fn
@@ -674,13 +815,17 @@ def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec
     _executable_types = {"llm_prompt", "mcp_tool"}
     for skill in agent.skills:
         impl = skill.raw.implementation
-        impl_type = impl_get(impl, "type")
+        impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
         if impl_type in _executable_types:
             desc = getattr(skill, "description", "") or skill.id
             input_schema: dict[str, Any] = {}
             if impl_type == "mcp_tool" and mcp_manager is not None:
-                server_id = str(impl_get(impl, "server"))
-                tool_name = str(impl_get(impl, "tool"))
+                server_id = (
+                    impl.get("server") if isinstance(impl, dict) else getattr(impl, "server", "")
+                )
+                tool_name = (
+                    impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
+                )
                 input_schema = mcp_manager.get_tool_input_schema(server_id, tool_name)
             tools.append(ToolSpec(name=skill.id, description=desc, input_schema=input_schema))
 
@@ -805,7 +950,11 @@ def _extract_delegation(
 
 
 def _extract_text(response: CompletionResponse) -> str:
-    return response.text or "(no response)"
+    parts: list[str] = []
+    for block in response.content:
+        if block.type == "text" and block.text:
+            parts.append(block.text)
+    return "\n".join(parts) or "(no response)"
 
 
 # ---- output governance --------------------------------------------------
