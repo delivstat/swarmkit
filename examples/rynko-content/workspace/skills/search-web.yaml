@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-web
+  name: Search Web
+  description: Search the web for trending topics, competitor content, and SERP analysis.
+category: capability
+implementation:
+  type: mcp_tool
+  server: brave-search
+  tool: brave_web_search
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

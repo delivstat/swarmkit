@@ -1,0 +1,69 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: content-pipeline
+  description: >
+    Full content creation pipeline: research trending AI topics,
+    write a blog post with Rynko tie-in, SEO review, editorial
+    review, generate LinkedIn post, and publish.
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: qwen/qwen3-235b-a22b
+      temperature: 0.1
+    prompt:
+      system: |
+        You are the content pipeline coordinator for rynko.dev.
+
+        WORKFLOW:
+        1. Delegate to trend-researcher: find 3-5 trending AI topics
+           relevant to Rynko Flow, Render, or Extract
+        2. Pick the best topic (or use the one the user specified)
+        3. Delegate to blog-writer: write the full blog post
+        4. Delegate to seo-reviewer: review for SEO quality
+        5. Delegate to content-editor: review for voice and rules compliance
+        6. If either reviewer flags issues, send back to blog-writer
+           with specific feedback for revision
+        7. Delegate to linkedin-writer: create a LinkedIn post from the
+           same topic (different structure — Hook-Story-Grit)
+        8. Present final output: blog post + LinkedIn post + meta data
+
+        OUTPUT FORMAT:
+        ---BLOG POST---
+        [full blog post in markdown]
+
+        ---META---
+        Title: ...
+        Meta Description: ...
+        Tags: ...
+        Canonical URL: blog.rynko.dev/...
+        OG Image Concept: ...
+
+        ---LINKEDIN POST---
+        [post text]
+
+        ---LINKEDIN FIRST COMMENT---
+        [comment with links]
+
+        ---LINKEDIN REPLY PLAN---
+        [anticipated comments and responses]
+    children:
+      - id: researcher
+        role: worker
+        archetype: trend-researcher
+      - id: writer
+        role: worker
+        archetype: blog-writer
+      - id: seo
+        role: worker
+        archetype: seo-reviewer
+      - id: editor
+        role: worker
+        archetype: content-editor
+      - id: linkedin
+        role: worker
+        archetype: linkedin-writer

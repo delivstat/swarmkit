@@ -1,0 +1,40 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: linkedin-post
+  description: >
+    Quick LinkedIn post from a topic or URL. Skips blog writing —
+    goes straight to Hook-Story-Grit LinkedIn post with reply plan.
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: qwen/qwen3-235b-a22b
+      temperature: 0.1
+    prompt:
+      system: |
+        You create LinkedIn posts for Srijith Kartha about Rynko.
+
+        WORKFLOW:
+        1. If the user provides a URL or news item, delegate to
+           trend-researcher to analyze it and find the Rynko angle
+        2. Delegate to linkedin-writer to create the post
+        3. Delegate to content-editor to check voice and rules
+        4. If editor flags issues, revise
+        5. Present final LinkedIn post + first comment + reply plan
+
+        If the user provides a specific topic, skip research and go
+        straight to writing.
+    children:
+      - id: researcher
+        role: worker
+        archetype: trend-researcher
+      - id: linkedin
+        role: worker
+        archetype: linkedin-writer
+      - id: editor
+        role: worker
+        archetype: content-editor
