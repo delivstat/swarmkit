@@ -16,7 +16,7 @@ from swarmkit_runtime.model_providers import (
     Message,
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
-from swarmkit_runtime.skills import ResolvedSkill
+from swarmkit_runtime.skills import ResolvedSkill, impl_get
 
 
 async def execute_skill(
@@ -34,7 +34,7 @@ async def execute_skill(
     Dispatches by implementation type.
     """
     impl = skill.raw.implementation
-    impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
+    impl_type = impl_get(impl, "type")
 
     if impl_type == "llm_prompt":
         return await _execute_llm_prompt(
@@ -74,9 +74,9 @@ async def _execute_llm_prompt(
 ) -> str:
     """Execute an ``llm_prompt`` skill by calling the model with its prompt."""
     impl = skill.raw.implementation
-    prompt = impl.get("prompt") if isinstance(impl, dict) else getattr(impl, "prompt", "")
+    prompt = impl_get(impl, "prompt")
 
-    model_config = impl.get("model") if isinstance(impl, dict) else getattr(impl, "model", None)
+    model_config = impl_get(impl, "model", None)
     if model_config and isinstance(model_config, dict):
         model_name = model_config.get("name", model_name)
 
@@ -110,8 +110,8 @@ async def _execute_mcp_tool(  # noqa: PLR0912
     (``design/details/mcp-client.md``).
     """
     impl = skill.raw.implementation
-    server_id: str = _impl_str(impl, "server")
-    tool_name: str = _impl_str(impl, "tool")
+    server_id = str(impl_get(impl, "server"))
+    tool_name = str(impl_get(impl, "tool"))
 
     if governance is not None:
         iam = getattr(skill.raw, "iam", None)
@@ -209,8 +209,3 @@ async def _execute_composed(
         model_provider=model_provider,
         model_name=model_name,
     )
-
-
-def _impl_str(impl: Any, key: str) -> str:
-    val = impl.get(key) if isinstance(impl, dict) else getattr(impl, key, "")
-    return str(val) if val else ""

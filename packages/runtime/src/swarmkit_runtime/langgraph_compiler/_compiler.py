@@ -29,6 +29,7 @@ from swarmkit_runtime.model_providers import (
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
 from swarmkit_runtime.review._hitl import prompt_human_review
+from swarmkit_runtime.skills import impl_get
 from swarmkit_runtime.skills._output_validator import (
     format_correction_prompt,
     validate_all_skill_output,
@@ -673,17 +674,13 @@ def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec
     _executable_types = {"llm_prompt", "mcp_tool"}
     for skill in agent.skills:
         impl = skill.raw.implementation
-        impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
+        impl_type = impl_get(impl, "type")
         if impl_type in _executable_types:
             desc = getattr(skill, "description", "") or skill.id
             input_schema: dict[str, Any] = {}
             if impl_type == "mcp_tool" and mcp_manager is not None:
-                server_id = (
-                    impl.get("server") if isinstance(impl, dict) else getattr(impl, "server", "")
-                )
-                tool_name = (
-                    impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
-                )
+                server_id = str(impl_get(impl, "server"))
+                tool_name = str(impl_get(impl, "tool"))
                 input_schema = mcp_manager.get_tool_input_schema(server_id, tool_name)
             tools.append(ToolSpec(name=skill.id, description=desc, input_schema=input_schema))
 
@@ -808,11 +805,7 @@ def _extract_delegation(
 
 
 def _extract_text(response: CompletionResponse) -> str:
-    parts: list[str] = []
-    for block in response.content:
-        if block.type == "text" and block.text:
-            parts.append(block.text)
-    return "\n".join(parts) or "(no response)"
+    return response.text or "(no response)"
 
 
 # ---- output governance --------------------------------------------------

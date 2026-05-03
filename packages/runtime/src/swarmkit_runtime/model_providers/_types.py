@@ -74,3 +74,9 @@ class CompletionResponse:
     stop_reason: Literal["end_turn", "max_tokens", "tool_use", "error"]
     usage: Usage
     raw: Any = None
+
+    @property
+    def text(self) -> str:
+        """Extract joined text from all text blocks."""
+        parts = [b.text for b in self.content if b.type == "text" and b.text]
+        return "\n".join(parts)

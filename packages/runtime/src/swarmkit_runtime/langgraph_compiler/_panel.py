@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
-from swarmkit_runtime.skills import ResolvedSkill
+from swarmkit_runtime.skills import ResolvedSkill, impl_get
 
 from ._skill_executor import execute_skill
+
+_logger = logging.getLogger(__name__)
 
 
 async def execute_panel(
@@ -26,11 +29,7 @@ async def execute_panel(
 ) -> str:
     """Execute a composed decision skill panel and aggregate verdicts."""
     impl = panel_skill.raw.implementation
-    strategy = (
-        impl.get("strategy", "parallel-consensus")
-        if isinstance(impl, dict)
-        else "parallel-consensus"
-    )
+    strategy = str(impl_get(impl, "strategy", "parallel-consensus"))
 
     if strategy == "sequential":
         return await _sequential(constituent_skills, input_text, model_provider, model_name)
@@ -84,6 +83,21 @@ def _parse_votes(skills: list[ResolvedSkill], results: list[str]) -> list[dict[s
 
 
 def _parse_single_vote(judge_id: str, result: str) -> dict[str, Any]:
+    # Detect error/denial results that should not count toward quorum.
+    is_error = result.startswith("[skill:") or "DENIED:" in result
+    if is_error:
+        _logger.warning(
+            "Judge '%s' returned an error/denial — excluded from quorum: %s",
+            judge_id,
+            result[:200],
+        )
+        return {
+            "judge": judge_id,
+            "verdict": "error",
+            "confidence": 0.0,
+            "reasoning": result[:200],
+            "is_error": True,
+        }
     try:
         parsed = json.loads(result)
         return {
@@ -91,6 +105,7 @@ def _parse_single_vote(judge_id: str, result: str) -> dict[str, Any]:
             "verdict": parsed.get("verdict", "unknown"),
             "confidence": parsed.get("confidence", 0.0),
             "reasoning": parsed.get("reasoning", ""),
+            "is_error": False,
         }
     except (json.JSONDecodeError, TypeError):
         return {
@@ -98,27 +113,42 @@ def _parse_single_vote(judge_id: str, result: str) -> dict[str, Any]:
             "verdict": "error",
             "confidence": 0.0,
             "reasoning": result[:200],
+            "is_error": True,
         }
 
 
 def _aggregate_majority(votes: list[dict[str, Any]]) -> dict[str, Any]:
-    pass_count = sum(1 for v in votes if v.get("verdict") == "pass")
-    fail_count = sum(1 for v in votes if v.get("verdict") == "fail")
+    valid_votes = [v for v in votes if not v.get("is_error", False)]
+    total_judges = len(votes)
+    required_quorum = (total_judges // 2) + 1
+
+    pass_count = sum(1 for v in valid_votes if v.get("verdict") == "pass")
+    fail_count = sum(1 for v in valid_votes if v.get("verdict") == "fail")
     verdict = "pass" if pass_count > fail_count else "fail"
 
-    agreeing = [v for v in votes if v.get("verdict") == verdict]
+    agreeing = [v for v in valid_votes if v.get("verdict") == verdict]
     confidence = (
         sum(v.get("confidence", 0.0) for v in agreeing) / len(agreeing) if agreeing else 0.0
     )
 
     reasons = [f"[{v['judge']}]: {v.get('reasoning', '')}" for v in votes]
 
-    return {
+    result: dict[str, Any] = {
         "verdict": verdict,
         "confidence": round(confidence, 3),
         "reasoning": " | ".join(reasons),
         "panel_votes": votes,
     }
+
+    if len(valid_votes) < required_quorum:
+        warning = (
+            f"Quorum not met: {len(valid_votes)} valid votes out of "
+            f"{total_judges} judges (need {required_quorum})"
+        )
+        _logger.warning(warning)
+        result["warning"] = warning
+
+    return result
 
 
 def _aggregate_first_fail(votes: list[dict[str, Any]]) -> dict[str, Any]:

@@ -13,6 +13,7 @@ See ``design/details/mcp-client.md``.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -116,6 +117,7 @@ class MCPClientManager:
                 f"Add a `command: [...]` list to its workspace.yaml entry."
             )
 
+        resolved_cmd = list(config.command)
         if config.sandboxed:
             cmd, args, env = _build_sandboxed_command(config, workspace_root=self._workspace_root)
         else:
@@ -200,6 +202,8 @@ class MCPClientManager:
         return sorted(self._configs.keys())
 
 
+_logger = logging.getLogger(__name__)
+
 _SANDBOX_IMAGE = os.environ.get("SWARMKIT_SANDBOX_IMAGE", "swarmkit-mcp-sandbox")
 
 
@@ -249,11 +253,18 @@ def _build_sandboxed_command(
 
 def _expand_var(value: str) -> str:
     """Expand ``${VAR}`` references in a single string value."""
-    return re.sub(
-        r"\$\{([^}]+)\}",
-        lambda m: os.environ.get(m.group(1), ""),
-        value,
-    )
+
+    def _replace(m: re.Match[str]) -> str:
+        var_name = m.group(1)
+        if var_name not in os.environ:
+            _logger.warning(
+                "Undefined environment variable '${%s}' — expanding to empty string",
+                var_name,
+            )
+            return ""
+        return os.environ[var_name]
+
+    return re.sub(r"\$\{([^}]+)\}", _replace, value)
 
 
 def _resolve_cwd(
@@ -292,12 +303,26 @@ def _resolve_env(env: dict[str, str] | None, *, inherit: bool = True) -> dict[st
         return None
     resolved: dict[str, str] = dict(os.environ) if inherit else {}
     for key, value in env.items():
-        resolved[key] = re.sub(
-            r"\$\{([^}]+)\}",
-            lambda m: os.environ.get(m.group(1), ""),
-            value,
-        )
+        resolved[key] = _expand_env_value(value, key)
     return resolved
+
+
+def _expand_env_value(value: str, env_key: str) -> str:
+    """Expand ``${VAR}`` references in a single env value, warning on undefined vars."""
+
+    def _replace(m: re.Match[str]) -> str:
+        var_name = m.group(1)
+        if var_name not in os.environ:
+            _logger.warning(
+                "Undefined environment variable '${%s}' in env key '%s'"
+                " — expanding to empty string",
+                var_name,
+                env_key,
+            )
+            return ""
+        return os.environ[var_name]
+
+    return re.sub(r"\$\{([^}]+)\}", _replace, value)
 
 
 def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerConfig]:

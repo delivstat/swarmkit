@@ -16,12 +16,20 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 from swarmkit_schema.models import SwarmKitSkill
 
 from swarmkit_runtime.errors import ResolutionError
 from swarmkit_runtime.workspace import DiscoveredArtifact
+
+
+def impl_get(impl: Any, key: str, default: Any = "") -> Any:
+    """Access a skill implementation field regardless of whether it's a dict or pydantic model."""
+    if isinstance(impl, dict):
+        return impl.get(key, default)
+    return getattr(impl, key, default)
 
 
 @dataclass(frozen=True)

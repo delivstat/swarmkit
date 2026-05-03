@@ -29,6 +29,7 @@ from swarmkit_runtime.model_providers import (
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
+from swarmkit_runtime.skills import impl_get
 
 
 @dataclass(frozen=True)
@@ -386,10 +387,9 @@ def find_missing_mcp_servers(
     missing: list[tuple[str, str]] = []
     for skill_id, skill in workspace.skills.items():
         impl = skill.raw.implementation
-        impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
-        if impl_type != "mcp_tool":
+        if impl_get(impl, "type") != "mcp_tool":
             continue
-        server_id = impl.get("server") if isinstance(impl, dict) else getattr(impl, "server", "")
+        server_id = str(impl_get(impl, "server"))
         if server_id and server_id not in mcp_configs:
             missing.append((skill_id, server_id))
     return missing

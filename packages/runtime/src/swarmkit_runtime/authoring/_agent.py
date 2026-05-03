@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -165,12 +166,11 @@ async def _safe_complete(
         raise
 
 
-_write_attempt = 0
+_session_state = {"write_attempt": 0}
 
 
 def _handle_tool_call(tc: ContentBlock) -> str:
     """Execute a single tool call, with user confirmation for writes."""
-    global _write_attempt  # noqa: PLW0603
 
     tool_input = tc.tool_input
     if isinstance(tool_input, str):
@@ -186,31 +186,31 @@ def _handle_tool_call(tc: ContentBlock) -> str:
         if not files:
             return execute_tool(tool_name, tool_input or {})
 
-        _write_attempt += 1
-        if _write_attempt == 1:
+        _session_state["write_attempt"] += 1
+        attempt = _session_state["write_attempt"]
+        if attempt == 1:
             _print_agent(_format_file_plan(files))
             if not _read_confirm():
-                _write_attempt = 0
+                _session_state["write_attempt"] = 0
                 return "User declined. Ask what they'd like to change."
 
         result = execute_tool(tool_name, tool_input)
         _print_status(result)
 
         if "validation FAILED" in result:
-            if _write_attempt >= _MAX_WRITE_RETRIES:
-                _write_attempt = 0
+            if attempt >= _MAX_WRITE_RETRIES:
+                _session_state["write_attempt"] = 0
                 _print_status(
-                    f"  ✗ Validation failed after {_MAX_WRITE_RETRIES} attempts. "
+                    f"  Validation failed after {_MAX_WRITE_RETRIES} attempts. "
                     "Files written but may need manual corrections."
                 )
                 return result
             _print_status(
-                f"  ↻ Validation failed (attempt {_write_attempt}/{_MAX_WRITE_RETRIES}). "
-                "Asking AI to fix..."
+                f"  Validation failed (attempt {attempt}/{_MAX_WRITE_RETRIES}). Asking AI to fix..."
             )
             return result
 
-        _write_attempt = 0
+        _session_state["write_attempt"] = 0
         return result
 
     result = execute_tool(tool_name, tool_input or {})
@@ -220,11 +220,15 @@ def _handle_tool_call(tc: ContentBlock) -> str:
 
 
 def _is_confirmation(text: str) -> bool:
-    """Detect if the user's message is confirming/approving generation."""
+    """Detect if the user's message is a short confirmation/approval."""
     lower = text.strip().lower()
-    confirmations = [
+    if len(lower) > 40:
+        return False
+    exact = {
         "yes",
         "y",
+        "ok",
+        "sure",
         "confirmed",
         "go ahead",
         "proceed",
@@ -235,27 +239,35 @@ def _is_confirmation(text: str) -> bool:
         "approved",
         "confirm",
         "do it",
-        "ok",
-        "sure",
         "please",
-    ]
-    return any(c in lower for c in confirmations)
+        "go",
+        "yep",
+        "yeah",
+    }
+    return lower in exact
 
 
 # ---- UI helpers ---------------------------------------------------------
 
 
 def _extract_text(response: CompletionResponse) -> str:
-    parts = [b.text for b in response.content if b.type == "text" and b.text]
-    return "\n".join(parts)
+    return response.text
 
 
 def _format_file_plan(files: dict[str, str]) -> str:
+    color = _use_color()
     lines = ["I'll create these files:\n"]
     for path in sorted(files.keys()):
-        lines.append(f"  {path}")
+        if color:
+            lines.append(f"  \033[1;32m{path}\033[0m")
+        else:
+            lines.append(f"  {path}")
     lines.append("\nCreate these files?")
     return "\n".join(lines)
+
+
+def _use_color() -> bool:
+    return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 
 
 def _print_header(mode: AuthoringMode) -> None:
@@ -266,15 +278,26 @@ def _print_header(mode: AuthoringMode) -> None:
         "archetype": "SwarmKit archetype authoring",
         "mcp-server": "SwarmKit MCP server authoring",
     }
-    print(f"\n{titles[mode]} — let's build your swarm.\n")
+    title = titles[mode]
+    if _use_color():
+        print(f"\n\033[1;36m{title}\033[0m — let's build your swarm.")
+    else:
+        print(f"\n{title} — let's build your swarm.")
+    print("Type your message. Ctrl+C to exit.\n")
 
 
 def _print_agent(text: str) -> None:
-    print(f"\n{text}\n")
+    if _use_color():
+        print(f"\n\033[0;37m{text}\033[0m\n")
+    else:
+        print(f"\n{text}\n")
 
 
 def _print_status(text: str) -> None:
-    print(text, file=sys.stderr)
+    if _use_color():
+        print(f"\033[0;33m{text}\033[0m", file=sys.stderr)
+    else:
+        print(text, file=sys.stderr)
 
 
 def _build_author_session() -> Any | None:
@@ -293,16 +316,25 @@ def _build_author_session() -> Any | None:
         return None
 
 
-_author_session = _build_author_session()
+_author_session: Any | None = None
+_author_session_initialized = False
 
 
 def _read_input() -> str:
+    global _author_session, _author_session_initialized  # noqa: PLW0603
+    if not _author_session_initialized:
+        _author_session = _build_author_session()
+        _author_session_initialized = True
     if _author_session is not None:
         return str(_author_session.prompt("> "))
     return input("> ")
 
 
 def _read_confirm() -> bool:
+    global _author_session, _author_session_initialized  # noqa: PLW0603
+    if not _author_session_initialized:
+        _author_session = _build_author_session()
+        _author_session_initialized = True
     try:
         if _author_session is not None:
             answer = _author_session.prompt("[Y/n] > ").strip().lower()

@@ -1164,8 +1164,7 @@ def why(
             )
         )
     )
-    parts = [b.text for b in result.content if b.type == "text" and b.text]
-    typer.echo("\n".join(parts) or "(no analysis)")
+    typer.echo(result.text or "(no analysis)")
 
 
 # ---- ask -----------------------------------------------------------------
@@ -1239,8 +1238,7 @@ def ask(
             )
         )
     )
-    parts = [b.text for b in result.content if b.type == "text" and b.text]
-    typer.echo("\n".join(parts) or "(no response)")
+    typer.echo(result.text or "(no response)")
 
 
 # ---- knowledge-server ----------------------------------------------------
