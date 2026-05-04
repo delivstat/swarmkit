@@ -100,6 +100,10 @@ defaults:
     - search-sterling-docs
     - search-docs-exact
     - search-project-docs
+    - search-jira
+    - get-jira-issue
+    - get-jira-comments
+    - search-confluence
     - get-api-input-xml
     - get-api-output-xml
     - get-api-samples
