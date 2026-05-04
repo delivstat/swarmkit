@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: read-review-doc
+  name: Read Review Document
+  description: >
+    Read a document from the review-docs directory. Use when the user
+    asks you to review a design, spec, or document they've placed for
+    review. Pass the filename (e.g. "my-design.md").
+category: capability
+implementation:
+  type: mcp_tool
+  server: review-docs
+  tool: read_file
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

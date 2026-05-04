@@ -132,6 +132,8 @@ defaults:
     - read-project-code
     - read-file-lines
     - verify-code-citations
+    - read-review-doc
+    - list-review-docs
     - write-notes
     - read-context
     - get-service-config

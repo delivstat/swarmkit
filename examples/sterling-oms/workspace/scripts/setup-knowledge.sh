@@ -49,6 +49,9 @@ mkdir -p "$REFERENCES/templates"
 # Notes/output (agents write analysis here — not git tracked)
 mkdir -p "$NOTES_DIR"
 
+# Review docs (drop files here for agent review — not git tracked)
+mkdir -p "$BASE/review-docs"
+
 echo "Created directories:"
 echo ""
 echo "  $PRODUCT_DOCS/              (indexed in ChromaDB via ingest-docs.py)"
@@ -108,6 +111,9 @@ export STERLING_JAVADOCS_DIR=$API_JAVADOCS
 
 # Notes/output directory (agents write here — not git tracked)
 export STERLING_NOTES_DIR=$NOTES_DIR
+
+# Review docs (drop files here for agents to review designs/specs)
+export STERLING_REVIEW_DOCS_DIR=$BASE/review-docs
 
 # Code knowledge graph (optional)
 # Build: uvx --from graphifyy graphify update \$STERLING_PROJECT_CODE_DIR

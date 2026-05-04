@@ -76,6 +76,11 @@ mcp_servers:
     transport: stdio
     command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_NOTES_DIR}"]
     cwd: "${STERLING_NOTES_DIR}"
+  # Review docs — drop files here for agents to review designs, specs, etc.
+  - id: review-docs
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_REVIEW_DOCS_DIR}"]
+    cwd: "${STERLING_REVIEW_DOCS_DIR}"
   # Code knowledge graph — structural queries over project code (optional)
   # Build graph first: cd $STERLING_PROJECT_CODE_DIR && uvx --from graphifyy graphify
   - id: code-graph

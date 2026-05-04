@@ -94,6 +94,8 @@ defaults:
     - get-hold-types
     - get-common-codes
     - search-configs
+    - read-review-doc
+    - list-review-docs
     - write-notes
     - read-context
   iam:
