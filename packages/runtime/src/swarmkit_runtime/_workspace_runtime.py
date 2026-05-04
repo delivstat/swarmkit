@@ -366,12 +366,19 @@ def resolve_authoring_provider(
         if provider is not None:
             return provider, model_name or "claude-sonnet-4-6"
 
+    _preferred = ["openrouter", "anthropic", "openai", "google", "groq", "together"]
+    for pid in _preferred:
+        provider = registry.get(pid)
+        if provider is not None:
+            default_model = "deepseek/deepseek-chat" if pid == "openrouter" else "claude-sonnet-4-6"
+            return provider, model_name or default_model
+
     for pid in registry.provider_ids:
         if pid == "mock":
             continue
         provider = registry.get(pid)
         if provider is not None:
-            return provider, model_name or "claude-sonnet-4-6"
+            return provider, model_name or "deepseek/deepseek-chat"
 
     raise RuntimeError(
         "No model provider available. Set SWARMKIT_PROVIDER "
