@@ -115,6 +115,12 @@ export STERLING_CODE_GRAPH=$CODE_DIR/graphify-out/graph.json
 
 # GitHub (for code review topology)
 export GITHUB_TOKEN=
+
+# Confluence (for project wiki access)
+# Get API token: https://id.atlassian.com/manage-profile/security/api-tokens
+export CONFLUENCE_URL=https://your-site.atlassian.net/wiki
+export CONFLUENCE_USERNAME=your-email@example.com
+export CONFLUENCE_API_TOKEN=
 ENVEOF
 
 echo "Generated: $ENV_FILE"

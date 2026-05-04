@@ -19,6 +19,10 @@ credentials:
     source: env
     config:
       env: STERLING_API_PASSWORD
+  confluence-creds:
+    source: env
+    config:
+      env: CONFLUENCE_API_TOKEN
 mcp_servers:
   # Sterling CDT config — parsed config dump (services, pipelines, events, etc.)
   # Ingest: python scripts/ingest-cdt.py /path/to/CDT/ --output $STERLING_CDT_INDEX
@@ -80,6 +84,16 @@ mcp_servers:
     env:
       STERLING_CODE_GRAPH: "${STERLING_CODE_GRAPH}"
       STERLING_PROJECT_CODE_DIR: "${STERLING_PROJECT_CODE_DIR}"
+  # Confluence — live access to project wiki pages
+  # Requires: CONFLUENCE_URL, CONFLUENCE_USERNAME, CONFLUENCE_API_TOKEN
+  - id: confluence
+    transport: stdio
+    command: ["uvx", "mcp-atlassian", "--confluence-url", "${CONFLUENCE_URL}", "--confluence-username", "${CONFLUENCE_USERNAME}", "--confluence-token", "${CONFLUENCE_API_TOKEN}"]
+    env:
+      CONFLUENCE_URL: "${CONFLUENCE_URL}"
+      CONFLUENCE_USERNAME: "${CONFLUENCE_USERNAME}"
+      CONFLUENCE_API_TOKEN: "${CONFLUENCE_API_TOKEN}"
+    credentials_ref: confluence-creds
   # GitHub for code access (PRs, remote repos)
   - id: github
     transport: stdio

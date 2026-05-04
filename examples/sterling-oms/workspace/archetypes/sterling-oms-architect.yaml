@@ -57,6 +57,8 @@ defaults:
     - search-docs-exact
     - search-project-docs
     - search-reference-designs
+    - search-confluence
+    - get-confluence-page
     - search-apis
     - get-api-details
     - get-api-input-xml

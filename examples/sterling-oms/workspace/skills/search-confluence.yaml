@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-confluence
+  name: Search Confluence
+  description: >
+    Search Confluence wiki pages using CQL or text query. Returns matching
+    pages with titles, space keys, and content snippets. Use for finding
+    project documentation, design specs, and meeting notes.
+category: capability
+implementation:
+  type: mcp_tool
+  server: confluence
+  tool: confluence_search
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

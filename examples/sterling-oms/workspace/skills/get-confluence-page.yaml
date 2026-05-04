@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-confluence-page
+  name: Get Confluence Page
+  description: >
+    Get the full content of a Confluence page by title and space key.
+    Use when you know the exact page name, e.g. space_key="CSO",
+    title="Integration Design".
+category: capability
+implementation:
+  type: mcp_tool
+  server: confluence
+  tool: confluence_get_page_by_title
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
