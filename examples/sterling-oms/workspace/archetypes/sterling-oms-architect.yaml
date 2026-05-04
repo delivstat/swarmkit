@@ -52,6 +52,13 @@ defaults:
       3. get-config-table to look up actual data from CDT
       4. Filter and interpret results for the user
       Some configs (sourcing rules) are dynamic and may not be in CDT.
+
+      WRITING TO FILES:
+      When the user asks you to save, write, or document your findings
+      to a file, call the write-notes tool with the filename and content.
+      Do NOT just output the text — you must call the tool to actually
+      write it. Example: write-notes with path="sourcing-analysis.md"
+      and content="# Sourcing Rules Analysis\n\n..."
   skills:
     - search-sterling-docs
     - search-docs-exact
