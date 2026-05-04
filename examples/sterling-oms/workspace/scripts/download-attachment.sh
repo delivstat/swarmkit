@@ -17,12 +17,15 @@
 #   # Confluence attachment
 #   ./scripts/download-attachment.sh confluence 2236875064 my-doc.docx
 #
+#   # Download ALL attachments from a ticket
+#   ./scripts/download-attachment.sh all RT-679
+#
 #   # List Jira attachments to find the ID
 #   ./scripts/download-attachment.sh list RT-679
 
 set -e
 
-CMD="${1:?Usage: download-attachment.sh <jira|confluence|list> <issue-or-page-id> <attachment-id-or-name>}"
+CMD="${1:?Usage: download-attachment.sh <jira|confluence|list|all> <issue-or-page-id> [attachment-id-or-name]}"
 
 : "${ATLASSIAN_USERNAME:?Set ATLASSIAN_USERNAME}"
 : "${ATLASSIAN_API_TOKEN:?Set ATLASSIAN_API_TOKEN}"
@@ -30,6 +33,40 @@ CMD="${1:?Usage: download-attachment.sh <jira|confluence|list> <issue-or-page-id
 
 AUTH_ARGS=(-u "${ATLASSIAN_USERNAME}:${ATLASSIAN_API_TOKEN}")
 mkdir -p "$STERLING_REVIEW_DOCS_DIR"
+
+# ---- download all attachments ----
+
+if [ "$CMD" = "all" ]; then
+    ISSUE_KEY="${2:?Usage: download-attachment.sh all <ISSUE_KEY>}"
+    : "${JIRA_URL:?Set JIRA_URL}"
+
+    echo "Downloading all attachments for ${ISSUE_KEY}..."
+    echo ""
+
+    ATTACH_IDS=$(curl -s "${AUTH_ARGS[@]}" \
+        "${JIRA_URL}/rest/api/3/issue/${ISSUE_KEY}?fields=attachment" | \
+        python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for a in data.get('fields', {}).get('attachment', []):
+    print(a['id'])
+")
+
+    if [ -z "$ATTACH_IDS" ]; then
+        echo "  No attachments found."
+        exit 0
+    fi
+
+    COUNT=0
+    for AID in $ATTACH_IDS; do
+        "$0" jira "$ISSUE_KEY" "$AID"
+        COUNT=$((COUNT + 1))
+        echo ""
+    done
+
+    echo "Downloaded ${COUNT} attachments to ${STERLING_REVIEW_DOCS_DIR}"
+    exit 0
+fi
 
 # ---- list attachments ----
 
