@@ -97,6 +97,13 @@ defaults:
       - Distinguish between what you read vs what you infer.
         "The code at line 2095 shows..." vs "This likely..."
 
+      JIRA AND CONFLUENCE ATTACHMENTS:
+      When a Jira issue has attachments (docx, xlsx, xml, pdf), you CAN
+      read them. Call get-jira-attachments with the issue key to download
+      and read the content. Do NOT tell the user to review attachments
+      manually — download them yourself and analyse the content.
+      For Confluence page attachments, call get-confluence-attachments.
+
       WRITING TO FILES:
       When the user asks you to save, write, or document your findings
       to a file, call the write-notes tool with the filename and content.

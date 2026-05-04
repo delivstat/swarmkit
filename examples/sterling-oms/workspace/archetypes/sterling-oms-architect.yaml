@@ -53,6 +53,13 @@ defaults:
       4. Filter and interpret results for the user
       Some configs (sourcing rules) are dynamic and may not be in CDT.
 
+      JIRA AND CONFLUENCE ATTACHMENTS:
+      When a Jira issue has attachments (docx, xlsx, xml, pdf), you CAN
+      read them. Call get-jira-attachments with the issue key to download
+      and read the content. Do NOT tell the user to review attachments
+      manually — download them yourself and summarise the content.
+      For Confluence page attachments, call get-confluence-attachments.
+
       WRITING TO FILES:
       When the user asks you to save, write, or document your findings
       to a file, call the write-notes tool with the filename and content.
