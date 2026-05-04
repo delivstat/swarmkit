@@ -69,6 +69,8 @@ defaults:
     - search-jira
     - get-jira-issue
     - get-jira-comments
+    - get-jira-attachments
+    - get-confluence-attachments
     - search-apis
     - get-api-details
     - get-api-input-xml

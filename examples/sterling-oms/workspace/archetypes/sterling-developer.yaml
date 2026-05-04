@@ -110,7 +110,9 @@ defaults:
     - search-jira
     - get-jira-issue
     - get-jira-comments
+    - get-jira-attachments
     - search-confluence
+    - get-confluence-attachments
     - get-api-input-xml
     - get-api-output-xml
     - get-api-samples
