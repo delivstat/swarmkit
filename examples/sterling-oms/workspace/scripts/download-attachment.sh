@@ -118,11 +118,16 @@ if [ "$CMD" = "jira" ]; then
     echo "Downloading: ${FILENAME} (attachment ${ATTACH_ID} from ${ISSUE_KEY})"
 
     TMPFILE=$(mktemp "/tmp/swarmkit-attach-XXXXXX")
-    curl -s "${AUTH_ARGS[@]}" \
+    curl -sL "${AUTH_ARGS[@]}" \
         -o "$TMPFILE" \
         "${JIRA_URL}/rest/api/3/attachment/content/${ATTACH_ID}"
 
-    DOWNLOAD_URL="${JIRA_URL}/rest/api/3/attachment/content/${ATTACH_ID}"
+    FILESIZE=$(stat -c%s "$TMPFILE" 2>/dev/null || stat -f%z "$TMPFILE" 2>/dev/null || echo "0")
+    if [ "$FILESIZE" = "0" ]; then
+        echo "  ERROR: Download returned empty file. Check credentials and attachment ID."
+        rm -f "$TMPFILE"
+        exit 1
+    fi
 fi
 
 # ---- download confluence attachment ----
@@ -156,7 +161,7 @@ print('')
     fi
 
     TMPFILE=$(mktemp "/tmp/swarmkit-attach-XXXXXX")
-    curl -s "${AUTH_ARGS[@]}" \
+    curl -sL "${AUTH_ARGS[@]}" \
         -o "$TMPFILE" \
         "${CONFLUENCE_URL}${DOWNLOAD_URL}"
 fi
