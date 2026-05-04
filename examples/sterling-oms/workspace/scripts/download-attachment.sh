@@ -58,9 +58,13 @@ for a in data.get('fields', {}).get('attachment', []):
     fi
 
     COUNT=0
+    FAILED=0
     for AID in $ATTACH_IDS; do
-        "$0" jira "$ISSUE_KEY" "$AID"
-        COUNT=$((COUNT + 1))
+        if "$0" jira "$ISSUE_KEY" "$AID"; then
+            COUNT=$((COUNT + 1))
+        else
+            FAILED=$((FAILED + 1))
+        fi
         echo ""
     done
 
@@ -118,9 +122,19 @@ if [ "$CMD" = "jira" ]; then
     echo "Downloading: ${FILENAME} (attachment ${ATTACH_ID} from ${ISSUE_KEY})"
 
     TMPFILE=$(mktemp "/tmp/swarmkit-attach-XXXXXX")
-    curl -sL "${AUTH_ARGS[@]}" \
-        -o "$TMPFILE" \
-        "${JIRA_URL}/rest/api/3/attachment/content/${ATTACH_ID}"
+
+    # Jira Cloud redirects to a pre-signed S3 URL. Sending auth to S3
+    # causes rejection, so get the redirect URL first, then follow without auth.
+    REDIRECT_URL=$(curl -s -w '%{redirect_url}' -o /dev/null \
+        "${AUTH_ARGS[@]}" \
+        "${JIRA_URL}/rest/api/3/attachment/content/${ATTACH_ID}")
+
+    if [ -n "$REDIRECT_URL" ]; then
+        curl -sL -o "$TMPFILE" "$REDIRECT_URL"
+    else
+        curl -sL "${AUTH_ARGS[@]}" -o "$TMPFILE" \
+            "${JIRA_URL}/rest/api/3/attachment/content/${ATTACH_ID}"
+    fi
 
     FILESIZE=$(stat -c%s "$TMPFILE" 2>/dev/null || stat -f%z "$TMPFILE" 2>/dev/null || echo "0")
     if [ "$FILESIZE" = "0" ]; then
@@ -172,33 +186,7 @@ EXT="${FILENAME##*.}"
 EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
 SAFE_NAME=$(echo "$FILENAME" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
 
-case "$EXT_LOWER" in
-    docx|xlsx|pptx)
-        echo "Converting ${EXT_LOWER} → markdown..."
-        MD_NAME="${SAFE_NAME%.*}.md"
-        uvx markitdown "$TMPFILE" > "$STERLING_REVIEW_DOCS_DIR/$MD_NAME" 2>/dev/null
-        rm -f "$TMPFILE"
-        CHARS=$(wc -c < "$STERLING_REVIEW_DOCS_DIR/$MD_NAME")
-        echo "Saved: $STERLING_REVIEW_DOCS_DIR/$MD_NAME (${CHARS} bytes)"
-        echo ""
-        echo "Review with:"
-        echo "  swarmkit chat . sterling-assistant"
-        echo "  > Review the document ${MD_NAME}"
-        ;;
-    xml|txt|md|json|csv|html|htm|xsl|properties|yaml|yml)
-        cp "$TMPFILE" "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME"
-        rm -f "$TMPFILE"
-        echo "Saved: $STERLING_REVIEW_DOCS_DIR/$SAFE_NAME"
-        ;;
-    pdf)
-        cp "$TMPFILE" "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME"
-        rm -f "$TMPFILE"
-        echo "Saved: $STERLING_REVIEW_DOCS_DIR/$SAFE_NAME"
-        echo "Note: PDF saved as-is. Text content readable, images not accessible to agents."
-        ;;
-    *)
-        cp "$TMPFILE" "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME"
-        rm -f "$TMPFILE"
-        echo "Saved: $STERLING_REVIEW_DOCS_DIR/$SAFE_NAME (no conversion available for .${EXT_LOWER})"
-        ;;
-esac
+cp "$TMPFILE" "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME"
+FILESIZE=$(stat -c%s "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME" 2>/dev/null || stat -f%z "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME" 2>/dev/null || echo "0")
+rm -f "$TMPFILE"
+echo "  Saved: $STERLING_REVIEW_DOCS_DIR/$SAFE_NAME (${FILESIZE} bytes)"
