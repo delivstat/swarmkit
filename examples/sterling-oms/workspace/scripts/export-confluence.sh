@@ -6,7 +6,7 @@
 # via ingest-docs.py.
 #
 # Prerequisites:
-#   source .env  (needs CONFLUENCE_URL, CONFLUENCE_USERNAME, CONFLUENCE_API_TOKEN)
+#   source .env  (needs CONFLUENCE_URL, ATLASSIAN_USERNAME, ATLASSIAN_API_TOKEN)
 #
 # Usage:
 #   ./scripts/export-confluence.sh CSO                    # export space CSO
@@ -20,11 +20,11 @@ OUTPUT_DIR="${2:-${STERLING_PROJECT_DOCS_DIR}/confluence/${SPACE_KEY}}"
 MAX_PAGES="${3:-1000}"
 
 : "${CONFLUENCE_URL:?Set CONFLUENCE_URL (e.g. https://your-site.atlassian.net/wiki)}"
-: "${CONFLUENCE_USERNAME:?Set CONFLUENCE_USERNAME (your email)}"
-: "${CONFLUENCE_API_TOKEN:?Set CONFLUENCE_API_TOKEN}"
+: "${ATLASSIAN_USERNAME:?Set ATLASSIAN_USERNAME (your email)}"
+: "${ATLASSIAN_API_TOKEN:?Set ATLASSIAN_API_TOKEN}"
 
 WIKI_URL="${CONFLUENCE_URL}"
-AUTH=$(echo -n "${CONFLUENCE_USERNAME}:${CONFLUENCE_API_TOKEN}" | base64)
+AUTH=$(echo -n "${ATLASSIAN_USERNAME}:${ATLASSIAN_API_TOKEN}" | base64)
 
 mkdir -p "$OUTPUT_DIR"
 

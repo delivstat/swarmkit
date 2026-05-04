@@ -120,8 +120,8 @@ export GITHUB_TOKEN=
 # Get API token: https://id.atlassian.com/manage-profile/security/api-tokens
 export CONFLUENCE_URL=https://your-site.atlassian.net/wiki
 export JIRA_URL=https://your-site.atlassian.net
-export CONFLUENCE_USERNAME=your-email@example.com
-export CONFLUENCE_API_TOKEN=
+export ATLASSIAN_USERNAME=your-email@example.com
+export ATLASSIAN_API_TOKEN=
 ENVEOF
 
 echo "Generated: $ENV_FILE"

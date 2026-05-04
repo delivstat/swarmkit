@@ -75,10 +75,11 @@ OPENROUTER_API_KEY=sk-or-...
 STERLING_CDT_DIR=/path/to/CDT-dump/        # raw CDT XML files
 GITHUB_TOKEN=ghp_...
 
-# Confluence (for project wiki access)
+# Atlassian — Confluence + Jira (same API token for both)
 CONFLUENCE_URL=https://your-site.atlassian.net/wiki
-CONFLUENCE_USERNAME=your-email@example.com
-CONFLUENCE_API_TOKEN=your-token             # from https://id.atlassian.com/manage-profile/security/api-tokens
+JIRA_URL=https://your-site.atlassian.net
+ATLASSIAN_USERNAME=your-email@example.com
+ATLASSIAN_API_TOKEN=your-token             # from https://id.atlassian.com/manage-profile/security/api-tokens
 ```
 
 ### 3. Copy/symlink your source files
