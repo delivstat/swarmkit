@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-jira
+  name: Search Jira
+  description: >
+    Search Jira tickets using JQL or text query. Returns matching issues
+    with keys, summaries, status, and assignees. Use for finding project
+    tickets, decisions, and requirements.
+category: capability
+implementation:
+  type: mcp_tool
+  server: atlassian
+  tool: jira_search
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -84,15 +84,16 @@ mcp_servers:
     env:
       STERLING_CODE_GRAPH: "${STERLING_CODE_GRAPH}"
       STERLING_PROJECT_CODE_DIR: "${STERLING_PROJECT_CODE_DIR}"
-  # Confluence — live access to project wiki pages
-  # Requires: CONFLUENCE_URL, CONFLUENCE_USERNAME, CONFLUENCE_API_TOKEN
-  - id: confluence
+  # Atlassian — Confluence wiki + Jira tickets (same API token)
+  # Requires: CONFLUENCE_URL, JIRA_URL, CONFLUENCE_USERNAME, CONFLUENCE_API_TOKEN
+  - id: atlassian
     transport: stdio
-    command: ["uvx", "mcp-atlassian", "--confluence-url", "${CONFLUENCE_URL}", "--confluence-username", "${CONFLUENCE_USERNAME}", "--confluence-token", "${CONFLUENCE_API_TOKEN}"]
+    command: ["uvx", "mcp-atlassian", "--confluence-url", "${CONFLUENCE_URL}", "--confluence-username", "${CONFLUENCE_USERNAME}", "--confluence-token", "${CONFLUENCE_API_TOKEN}", "--jira-url", "${JIRA_URL}", "--jira-username", "${CONFLUENCE_USERNAME}", "--jira-token", "${CONFLUENCE_API_TOKEN}"]
     env:
       CONFLUENCE_URL: "${CONFLUENCE_URL}"
       CONFLUENCE_USERNAME: "${CONFLUENCE_USERNAME}"
       CONFLUENCE_API_TOKEN: "${CONFLUENCE_API_TOKEN}"
+      JIRA_URL: "${JIRA_URL}"
     credentials_ref: confluence-creds
   # GitHub for code access (PRs, remote repos)
   - id: github
