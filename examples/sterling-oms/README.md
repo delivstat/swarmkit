@@ -74,6 +74,11 @@ Key variables:
 OPENROUTER_API_KEY=sk-or-...
 STERLING_CDT_DIR=/path/to/CDT-dump/        # raw CDT XML files
 GITHUB_TOKEN=ghp_...
+
+# Confluence (for project wiki access)
+CONFLUENCE_URL=https://your-site.atlassian.net/wiki
+CONFLUENCE_USERNAME=your-email@example.com
+CONFLUENCE_API_TOKEN=your-token             # from https://id.atlassian.com/manage-profile/security/api-tokens
 ```
 
 ### 3. Copy/symlink your source files
@@ -139,7 +144,31 @@ python scripts/ingest-cdt.py /path/to/CDT-directory/ \
 # 985 events, 527 statuses, 27 hold types, 2854 common codes
 ```
 
-### 6. Prepare reference designs (optional)
+### 6. Export Confluence pages (optional)
+
+If your project documentation is in Confluence, export it for RAG ingestion
+and enable live access:
+
+```bash
+# Export all pages from a Confluence space as markdown
+./scripts/export-confluence.sh CSO
+# Exports → $STERLING_PROJECT_DOCS_DIR/confluence/CSO/
+
+# Export multiple spaces
+./scripts/export-confluence.sh CSO
+./scripts/export-confluence.sh DEV
+```
+
+The exported markdown files land in your project-docs directory and get
+ingested into ChromaDB alongside existing design docs (step 8).
+
+The workspace also has a live Confluence MCP server — agents can search
+and read pages in real-time without needing the export. The export gives
+you semantic search via ChromaDB; the live server gives you exact page
+lookups for the latest content.
+
+### 7. Prepare reference designs (optional)
+
 
 ```bash
 # Sanitized designs from other projects (no client names/secrets)
@@ -147,7 +176,7 @@ cp -r /path/to/project-alpha/docs $REFERENCE_DESIGNS_DIR/project-alpha/
 cp -r /path/to/industry-templates $REFERENCE_DESIGNS_DIR/templates/
 ```
 
-### 7. Ingest everything
+### 8. Ingest everything
 
 The master ingestion script runs all applicable ingestions in parallel:
 
@@ -184,7 +213,7 @@ STERLING_DOCS_DIR=$REFERENCE_DESIGNS_DIR uv run scripts/ingest-docs.py
 STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py --reset
 ```
 
-### 8. Build code knowledge graph (optional)
+### 9. Build code knowledge graph (optional)
 
 ```bash
 uvx --from graphifyy graphify update $STERLING_PROJECT_CODE_DIR
@@ -192,7 +221,7 @@ uvx --from graphifyy graphify update $STERLING_PROJECT_CODE_DIR
 # (4818 nodes, 16162 edges from 1209 files — takes ~30 seconds)
 ```
 
-### 9. Validate and run
+### 10. Validate and run
 
 ```bash
 swarmkit validate examples/sterling-oms/workspace --tree
@@ -201,7 +230,7 @@ swarmkit validate examples/sterling-oms/workspace --tree
 swarmkit chat . sterling-qa
 ```
 
-### 10. Test it
+### 11. Test it
 
 ```bash
 swarmkit run examples/sterling-oms/workspace sterling-qa \
@@ -417,6 +446,14 @@ Nine MCP servers, each with a distinct role:
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
+│ Confluence MCP Server (live project wiki access)        │
+│ • confluence_search: CQL + text search across pages     │
+│ • confluence_get_page_by_title: exact page lookup       │
+│ • Real-time access — always the latest content          │
+│ • Exported pages also ingested in ChromaDB for RAG      │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
 │ GitHub MCP Server (code access)                         │
 │ • Developer agent reads .java, .xsl, .xml directly      │
 │ • Full file context, not vector-search fragments         │
@@ -426,13 +463,13 @@ Nine MCP servers, each with a distinct role:
 
 ### Which archetype has access to what
 
-| Archetype | Product docs | Project docs | Reference designs | API Javadocs | CDT Config | Code | Code Graph |
-|---|---|---|---|---|---|---|---|
-| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
-| retail-domain-expert | ✅ | ✅ | ✅ | — | — | — | — |
-| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | — | ✅ | — | — |
-| sterling-code-reviewer | ✅ | ✅ | — | ✅ | — | ✅ | ✅ |
-| sterling-developer | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| Archetype | Product docs | Project docs | Reference designs | API Javadocs | CDT Config | Confluence | Code | Code Graph |
+|---|---|---|---|---|---|---|---|---|
+| sterling-oms-architect | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
+| retail-domain-expert | ✅ | ✅ | ✅ | — | — | — | — | — |
+| sterling-config-validator | ✅ | ✅ | ❌ (intentional) | — | ✅ | — | — | — |
+| sterling-code-reviewer | ✅ | ✅ | — | ✅ | — | — | ✅ | ✅ |
+| sterling-developer | ✅ | ✅ | — | ✅ | ✅ | — | ✅ | ✅ |
 
 **Key design decisions:**
 - The config-validator has no reference design access — it validates
@@ -495,7 +532,9 @@ workspace/
 │   ├── business-validation.yaml
 │   ├── code-quality-review.yaml
 │   ├── github-pr-read.yaml
-│   └── github-repo-read.yaml
+│   ├── github-repo-read.yaml
+│   ├── search-confluence.yaml     # Search Confluence wiki pages (CQL/text)
+│   └── get-confluence-page.yaml   # Get page by title and space key
 ├── scripts/
 │   ├── ingest-all.py           # Master script — runs all ingestions in parallel
 │   ├── ingest-docs.py          # Batch ingestion into ChromaDB + FTS5 (ONNX embeddings)
@@ -505,6 +544,7 @@ workspace/
 │   ├── convert-javadocs.py     # Core/baseutils Javadoc HTML → markdown for RAG
 │   ├── convert-excel.py        # Excel integration specs → markdown tables
 │   ├── split-markdown.py       # Split large markdown files on ## headings
-│   └── scrape-ibm-docs.py      # Scrape IBM docs site with Playwright (offline indexing)
+│   ├── scrape-ibm-docs.py      # Scrape IBM docs site with Playwright (offline indexing)
+│   └── export-confluence.sh    # Export Confluence space pages as markdown for RAG
 └── policies/                   # (empty — for AGT governance when ready)
 ```
