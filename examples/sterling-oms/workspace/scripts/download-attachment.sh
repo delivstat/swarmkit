@@ -180,13 +180,15 @@ print('')
         "${CONFLUENCE_URL}${DOWNLOAD_URL}"
 fi
 
-# ---- convert and store ----
+# ---- store in issue/page subdirectory ----
 
-EXT="${FILENAME##*.}"
-EXT_LOWER=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
+PARENT_ID="${ISSUE_KEY:-${PAGE_ID:-unknown}}"
+SAFE_DIR=$(echo "$PARENT_ID" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g')
 SAFE_NAME=$(echo "$FILENAME" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+OUTPUT_DIR="$STERLING_REVIEW_DOCS_DIR/$SAFE_DIR"
+mkdir -p "$OUTPUT_DIR"
 
-cp "$TMPFILE" "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME"
-FILESIZE=$(stat -c%s "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME" 2>/dev/null || stat -f%z "$STERLING_REVIEW_DOCS_DIR/$SAFE_NAME" 2>/dev/null || echo "0")
+cp "$TMPFILE" "$OUTPUT_DIR/$SAFE_NAME"
+FILESIZE=$(stat -c%s "$OUTPUT_DIR/$SAFE_NAME" 2>/dev/null || stat -f%z "$OUTPUT_DIR/$SAFE_NAME" 2>/dev/null || echo "0")
 rm -f "$TMPFILE"
-echo "  Saved: $STERLING_REVIEW_DOCS_DIR/$SAFE_NAME (${FILESIZE} bytes)"
+echo "  Saved: $OUTPUT_DIR/$SAFE_NAME (${FILESIZE} bytes)"
