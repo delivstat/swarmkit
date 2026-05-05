@@ -242,19 +242,30 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: P
             if src.startswith("data:"):
                 return m.group(0)
             img_url = src if src.startswith("http") else base + src
-            try:
-                r = httpx.get(
-                    img_url,
-                    auth=auth,
-                    timeout=15,
-                    follow_redirects=True,
-                )
-                if r.status_code == 200 and len(r.content) > 100:
-                    ct = r.headers.get("content-type", "image/png")
-                    b64 = base64.b64encode(r.content).decode("utf-8")
-                    return f'src="data:{ct};base64,{b64}"'
-            except Exception:
-                pass
+
+            # Try multiple URL variants — thumbnails often 401,
+            # but attachment URLs work with auth + redirect
+            urls = [img_url]
+            if "/thumbnails/" in img_url:
+                att_url = img_url.replace("/thumbnails/", "/attachments/")
+                att_url = re.sub(r"[&?]width=\d+", "", att_url)
+                att_url = re.sub(r"[&?]height=\d+", "", att_url)
+                urls.append(att_url)
+
+            for url in urls:
+                try:
+                    r = httpx.get(
+                        url,
+                        auth=auth,
+                        timeout=15,
+                        follow_redirects=True,
+                    )
+                    if r.status_code == 200 and len(r.content) > 100:
+                        ct = r.headers.get("content-type", "image/png")
+                        b64 = base64.b64encode(r.content).decode("utf-8")
+                        return f'src="data:{ct};base64,{b64}"'
+                except Exception:
+                    continue
             return m.group(0)
 
         return img_re.sub(_replace, html)

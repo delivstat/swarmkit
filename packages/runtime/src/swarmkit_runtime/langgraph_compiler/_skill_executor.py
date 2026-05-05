@@ -156,11 +156,10 @@ async def _execute_mcp_tool(  # noqa: PLR0912, PLR0915
     for path_key in ("path", "directory", "root", "rootPath"):
         if path_key in arguments and isinstance(arguments[path_key], str):
             path_val = arguments[path_key]
-            if path_val.startswith("/") or path_val.startswith("\\"):
-                relative = "."
-                if server_cwd and path_val.startswith(server_cwd):
-                    suffix = path_val[len(server_cwd) :]
-                    relative = suffix.lstrip("/") or "."
+            is_absolute = path_val.startswith("/") or path_val.startswith("\\")
+            if is_absolute and server_cwd and path_val.startswith(server_cwd):
+                suffix = path_val[len(server_cwd) :]
+                relative = suffix.lstrip("/") or "."
                 arguments[path_key] = relative
                 if _os.environ.get("SWARMKIT_VERBOSE"):
                     import sys as _sys  # noqa: PLC0415
