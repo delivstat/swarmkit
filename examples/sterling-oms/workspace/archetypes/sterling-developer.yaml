@@ -120,6 +120,7 @@ defaults:
     - get-jira-attachments
     - search-confluence
     - get-confluence-attachments
+    - download-confluence-pdf
     - get-api-input-xml
     - get-api-output-xml
     - get-api-samples
