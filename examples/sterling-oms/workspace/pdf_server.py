@@ -230,6 +230,27 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: P
     if not body_html:
         return f"Error: Page {page_id} has no content."
 
+    # Inline images as base64 data URIs — weasyprint can't auth to Confluence
+    def _inline_images(html: str) -> str:
+        img_re = re.compile(r'src="(/[^"]+(?:\.png|\.jpg|\.jpeg|\.gif|\.svg)[^"]*)"', re.IGNORECASE)
+        base = _CONFLUENCE_URL.rstrip("/")
+
+        def _replace(m: re.Match) -> str:  # type: ignore[type-arg]
+            img_url = base + m.group(1)
+            try:
+                r = httpx.get(img_url, auth=auth, timeout=15, follow_redirects=True)
+                if r.status_code == 200 and len(r.content) > 0:
+                    ct = r.headers.get("content-type", "image/png")
+                    b64 = base64.b64encode(r.content).decode("utf-8")
+                    return f'src="data:{ct};base64,{b64}"'
+            except Exception:
+                pass
+            return m.group(0)
+
+        return img_re.sub(_replace, html)
+
+    body_html = _inline_images(body_html)
+
     if not filename:
         safe = re.sub(r"[^a-zA-Z0-9_-]", "-", title).strip("-")[:80]
         filename = f"{safe}.pdf"
