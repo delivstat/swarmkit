@@ -22,6 +22,7 @@ server = FastMCP("chromadb-search")
 
 _DB_PATH = os.environ.get("CHROMADB_PATH", "chromadb")
 _model = None
+_collection = None
 
 
 def _get_model():
@@ -34,13 +35,17 @@ def _get_model():
 
 
 def _get_collection():
+    global _collection  # noqa: PLW0603
+    if _collection is not None:
+        return _collection
     import chromadb  # noqa: PLC0415
 
     client = chromadb.PersistentClient(path=_DB_PATH)
     collections = client.list_collections()
     if not collections:
         return None
-    return client.get_collection(collections[0].name)
+    _collection = client.get_collection(collections[0].name)
+    return _collection
 
 
 @server.tool()
