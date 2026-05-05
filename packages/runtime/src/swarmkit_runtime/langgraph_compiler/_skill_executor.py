@@ -199,8 +199,15 @@ async def _execute_mcp_tool(  # noqa: PLR0912, PLR0915
     else:
         output = "(no response from MCP)"
 
-    # Cache successful, non-empty results
-    if output and not output.startswith("[skill:") and output != "(no response from MCP)":
+    # Cache successful, non-empty, non-error results
+    if (
+        output
+        and len(output) > 20
+        and not output.startswith("[skill:")
+        and not output.startswith("Error")
+        and not output.startswith("MCP error")
+        and output != "(no response from MCP)"
+    ):
         mcp_manager.cache_result(server_id, tool_name, arguments, output)
 
     return output
