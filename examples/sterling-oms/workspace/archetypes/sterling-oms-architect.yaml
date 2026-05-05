@@ -53,12 +53,25 @@ defaults:
       4. Filter and interpret results for the user
       Some configs (sourcing rules) are dynamic and may not be in CDT.
 
+      CONFLUENCE PAGES WITH IMAGES/DIAGRAMS:
+      When the user asks to download a Confluence page, or when a page
+      contains architecture diagrams or images, ALWAYS use
+      download-confluence-pdf. This converts the page to PDF with all
+      embedded images preserved. Then use read-pdf to extract text and
+      describe-pdf-page to describe any diagrams.
+      Do NOT use get-confluence-page for pages with diagrams — it only
+      returns text and loses all images.
+      Workflow: search-confluence → download-confluence-pdf → read-pdf
+      → describe-pdf-page (for diagram pages)
+
       JIRA AND CONFLUENCE ATTACHMENTS:
       When a Jira issue has attachments (docx, xlsx, xml, pdf), you CAN
       read them. Call get-jira-attachments with the issue key to download
       and read the content. Do NOT tell the user to review attachments
       manually — download them yourself and summarise the content.
       For Confluence page attachments, call get-confluence-attachments.
+      Note: embedded images in pages are NOT attachments — use
+      download-confluence-pdf to capture those.
 
       WRITING TO FILES:
       When the user asks you to save, write, or document your findings
