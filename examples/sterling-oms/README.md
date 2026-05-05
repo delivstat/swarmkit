@@ -20,6 +20,7 @@ access, structured API javadocs, and vector-search RAG over product documentatio
 - Node.js 18+ with `npx` (for GitHub, filesystem MCP servers)
 - SwarmKit installed (`uv tool install swarmkit-runtime` or `pip install swarmkit-runtime` or source checkout)
 - An OpenRouter API key (`OPENROUTER_API_KEY`)
+- `poppler-utils` for PDF diagram understanding (`sudo apt install poppler-utils`)
 - Sterling CDT XML dump (for config access) and/or product documentation (for RAG)
 
 ## Setup — step by step
@@ -167,6 +168,54 @@ The workspace also has a live Confluence MCP server — agents can search
 and read pages in real-time without needing the export. The export gives
 you semantic search via ChromaDB; the live server gives you exact page
 lookups for the latest content.
+
+You can also download individual pages as PDF (preserves images):
+```bash
+# Download by URL as PDF
+./scripts/download-confluence-page.sh "https://tatacroma.atlassian.net/wiki/spaces/CSO/pages/2236875064"
+
+# Download as markdown instead (for RAG, no images)
+./scripts/download-confluence-page.sh 2236875064 --md
+```
+
+Download Jira attachments for review:
+```bash
+# List all attachments on a ticket
+./scripts/download-attachment.sh list RT-679
+
+# Download all attachments
+./scripts/download-attachment.sh all RT-679
+# Saves to: review-docs/RT-679/
+
+# Download a specific attachment by ID
+./scripts/download-attachment.sh jira RT-679 174794
+```
+
+### PDF reading and diagram understanding
+
+Agents can read any PDF on the filesystem and understand diagrams:
+
+```bash
+swarmkit chat . sterling-assistant
+> Read the PDF at /path/to/design-doc.pdf and summarise the architecture
+> Describe the diagram on page 3 of that document
+```
+
+The `read-pdf` skill extracts text with page numbers for citations ($0, local).
+The `describe-pdf-page` skill renders a page as an image and sends it to a
+vision model (Gemini Flash by default) for understanding flowcharts, pipelines,
+architecture diagrams, and other visual content (~$0.001 per page).
+
+Configure the vision model via environment variable:
+```bash
+# Default (cheapest, good quality for diagrams)
+export PDF_VISION_MODEL=google/gemini-2.5-flash
+
+# Or use Claude for complex diagram understanding
+export PDF_VISION_MODEL=anthropic/claude-sonnet-4-6
+```
+
+Prerequisites: `sudo apt install poppler-utils` (provides `pdftoppm` for page rendering).
 
 ### 7. Prepare reference designs (optional)
 
