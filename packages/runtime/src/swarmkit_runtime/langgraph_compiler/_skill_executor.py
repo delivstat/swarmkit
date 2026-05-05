@@ -94,7 +94,7 @@ async def _execute_llm_prompt(
     return "\n".join(parts) or "(no response)"
 
 
-async def _execute_mcp_tool(  # noqa: PLR0912
+async def _execute_mcp_tool(  # noqa: PLR0912, PLR0915
     skill: ResolvedSkill,
     *,
     input_text: str,
@@ -170,6 +170,18 @@ async def _execute_mcp_tool(  # noqa: PLR0912
                         file=_sys.stderr,
                     )
 
+    # Check tool result cache before making the call
+    cached = mcp_manager.get_cached_result(server_id, tool_name, arguments)
+    if cached is not None:
+        mcp_manager._cache_hits += 1
+        if _os.environ.get("SWARMKIT_VERBOSE"):
+            import sys as _sys  # noqa: PLC0415
+
+            print(f"  [cache hit: {tool_name}]", file=_sys.stderr)
+        return cached
+
+    mcp_manager._cache_misses += 1
+
     try:
         result = await mcp_manager.call_tool(server_id, tool_name, arguments)
     except LookupError as exc:
@@ -183,8 +195,15 @@ async def _execute_mcp_tool(  # noqa: PLR0912
             text = getattr(block, "text", None)
             if text:
                 parts.append(text)
-        return "\n".join(parts) or str(result.content)
-    return "(no response from MCP)"
+        output = "\n".join(parts) or str(result.content)
+    else:
+        output = "(no response from MCP)"
+
+    # Cache successful, non-empty results
+    if output and not output.startswith("[skill:") and output != "(no response from MCP)":
+        mcp_manager.cache_result(server_id, tool_name, arguments, output)
+
+    return output
 
 
 async def _execute_composed(

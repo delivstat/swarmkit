@@ -40,6 +40,10 @@ class Conversation:
     created_at: str = ""
     updated_at: str = ""
 
+    def clear(self) -> None:
+        """Clear conversation history for a fresh start."""
+        self.turns.clear()
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 

@@ -798,6 +798,7 @@ def _build_chat_session() -> Any:
         [
             "/model",
             "/model reset",
+            "/clear",
             "exit",
             "quit",
             "bye",
@@ -822,7 +823,7 @@ def _conversation_loop(conv: Any, manager: Any) -> None:
     asyncio.run(_async_conversation_loop(conv, manager))
 
 
-async def _async_conversation_loop(conv: Any, manager: Any) -> None:
+async def _async_conversation_loop(conv: Any, manager: Any) -> None:  # noqa: PLR0912, PLR0915
     session = _build_chat_session()
     await manager.start_session()
     try:
@@ -838,6 +839,16 @@ async def _async_conversation_loop(conv: Any, manager: Any) -> None:
                 typer.echo(f"\nConversation saved: {conv.id}")
                 typer.echo(f"Resume with: swarmkit chat ... --resume {conv.id}")
                 break
+
+            # /clear command — reset conversation context and tool cache
+            if user_input.strip() == "/clear":
+                conv.clear()
+                if hasattr(manager, "_runtime") and hasattr(manager._runtime, "_mcp_manager"):
+                    mcp = manager._runtime._mcp_manager
+                    if mcp:
+                        mcp.clear_cache()
+                typer.echo("Conversation cleared. Starting fresh (MCP servers still running).")
+                continue
 
             # /model command — switch model dynamically
             if user_input.startswith("/model"):

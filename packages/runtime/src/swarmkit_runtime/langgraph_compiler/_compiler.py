@@ -198,6 +198,26 @@ async def _check_trust(
     return None
 
 
+_MAX_RESULT_CHARS = int(os.environ.get("SWARMKIT_MAX_RESULT_CHARS", "3000"))
+
+
+def _truncate_result(text: str, max_chars: int = 0) -> str:
+    """Truncate a tool result to keep context manageable.
+
+    Keeps the first and last portions so the model sees both the
+    beginning (often headers/structure) and end (often summary/totals).
+    """
+    limit = max_chars or _MAX_RESULT_CHARS
+    if len(text) <= limit:
+        return text
+    half = limit // 2
+    return (
+        text[:half]
+        + f"\n\n... ({len(text)} chars total, truncated for context) ...\n\n"
+        + text[-half:]
+    )
+
+
 def _build_completion_request(
     model_name: str,
     messages: list[Message] | tuple[Message, ...],
@@ -328,7 +348,7 @@ async def _run_tool_loop(
             ContentBlock(
                 type="tool_result",
                 tool_use_id=tr.tool_use_id,
-                tool_result=tr.result,
+                tool_result=_truncate_result(tr.result),
             )
             for tr in current_results
         ]
@@ -729,7 +749,7 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
 # ---- tool / message construction ----------------------------------------
 
 
-def _build_prompt_messages(
+def _build_prompt_messages(  # noqa: PLR0912
     agent: ResolvedAgent,
     state: SwarmState,
 ) -> list[Message]:
@@ -765,27 +785,51 @@ def _build_prompt_messages(
             )
         )
     else:
-        # Build conversation context for worker agents so they can see
-        # prior findings and avoid redundant tool calls.
-        conversation: list[Message] = []
+        # Build compacted conversation context. Keep last N turns full,
+        # summarise older turns to one line each. Only Q+A pairs — strip
+        # internal delegations, tool calls, and raw tool outputs.
+        _keep_recent = int(os.environ.get("SWARMKIT_HISTORY_TURNS", "3"))
+        turns: list[tuple[str, str]] = []
+        current_q = ""
         for msg in state.get("messages", []):
             if isinstance(msg, HumanMessage):
-                conversation.append(Message(role="user", content=str(msg.content)))
+                current_q = str(msg.content)
             elif isinstance(msg, AIMessage) and msg.content:
                 content = str(msg.content)
-                if not content.startswith("__delegated__:"):
-                    conversation.append(Message(role="assistant", content=content))
+                if not content.startswith("__delegated__:") and current_q:
+                    turns.append((current_q, content))
+                    current_q = ""
 
-        task = state.get("input", "")
-        last_human = None
-        for msg in reversed(state.get("messages", [])):
-            if isinstance(msg, HumanMessage):
-                last_human = msg.content
-                break
+        if turns:
+            older = turns[:-_keep_recent] if len(turns) > _keep_recent else []
+            recent = turns[-_keep_recent:]
 
-        if conversation:
-            messages.extend(conversation)
+            if older:
+                summary_lines = ["Previous conversation context:"]
+                for q, a in older:
+                    q_short = q[:80] + "..." if len(q) > 80 else q
+                    a_short = a[:120] + "..." if len(a) > 120 else a
+                    summary_lines.append(f"- Q: {q_short} → A: {a_short}")
+                messages.append(
+                    Message(role="user", content="\n".join(summary_lines)),
+                )
+                messages.append(
+                    Message(
+                        role="assistant",
+                        content="Understood, I have the context from previous turns.",
+                    ),
+                )
+
+            for q, a in recent:
+                messages.append(Message(role="user", content=q))
+                messages.append(Message(role="assistant", content=a))
         else:
+            task = state.get("input", "")
+            last_human = None
+            for msg in reversed(state.get("messages", [])):
+                if isinstance(msg, HumanMessage):
+                    last_human = msg.content
+                    break
             messages.append(Message(role="user", content=str(last_human or task)))
 
     return messages

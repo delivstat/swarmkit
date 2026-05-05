@@ -13,6 +13,8 @@ See ``design/details/mcp-client.md``.
 
 from __future__ import annotations
 
+import hashlib
+import json as _json
 import logging
 import os
 import re
@@ -62,6 +64,9 @@ class MCPClientManager:
         self._sessions: dict[str, ClientSession] = {}
         self._tool_schemas: dict[str, dict[str, dict[str, Any]]] = {}
         self._stack = AsyncExitStack()
+        self._tool_cache: dict[str, str] = {}
+        self._cache_hits = 0
+        self._cache_misses = 0
 
     async def start_all(self) -> None:
         """Eagerly open every configured server's session.
@@ -156,6 +161,49 @@ class MCPClientManager:
         if self._workspace_root:
             return str(self._workspace_root)
         return None
+
+    @staticmethod
+    def _cache_key(server_id: str, tool_name: str, arguments: dict[str, Any] | None) -> str:
+        raw = _json.dumps(
+            {"s": server_id, "t": tool_name, "a": arguments or {}},
+            sort_keys=True,
+        )
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    def get_cached_result(
+        self,
+        server_id: str,
+        tool_name: str,
+        arguments: dict[str, Any] | None,
+    ) -> str | None:
+        """Return cached tool result, or None if not cached."""
+        key = self._cache_key(server_id, tool_name, arguments)
+        return self._tool_cache.get(key)
+
+    def cache_result(
+        self,
+        server_id: str,
+        tool_name: str,
+        arguments: dict[str, Any] | None,
+        result: str,
+    ) -> None:
+        """Cache a successful tool result."""
+        key = self._cache_key(server_id, tool_name, arguments)
+        self._tool_cache[key] = result
+
+    def clear_cache(self) -> None:
+        """Clear the tool result cache."""
+        self._tool_cache.clear()
+        self._cache_hits = 0
+        self._cache_misses = 0
+
+    @property
+    def cache_stats(self) -> dict[str, int]:
+        return {
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "size": len(self._tool_cache),
+        }
 
     async def call_tool(
         self,
