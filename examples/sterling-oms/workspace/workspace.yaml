@@ -76,12 +76,16 @@ mcp_servers:
     transport: stdio
     command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_NOTES_DIR}"]
     cwd: "${STERLING_NOTES_DIR}"
-  # PDF reader — read any PDF on filesystem, describe diagrams with vision model
+  # PDF reader — read any PDF, describe diagrams, download Confluence pages as PDF
   - id: pdf-reader
     transport: stdio
     command: ["uv", "run", "pdf_server.py"]
     env:
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      CONFLUENCE_URL: "${CONFLUENCE_URL}"
+      ATLASSIAN_USERNAME: "${ATLASSIAN_USERNAME}"
+      ATLASSIAN_API_TOKEN: "${ATLASSIAN_API_TOKEN}"
+      STERLING_REVIEW_DOCS_DIR: "${STERLING_REVIEW_DOCS_DIR}"
   # Review docs — drop files here for agents to review designs, specs, etc.
   - id: review-docs
     transport: stdio

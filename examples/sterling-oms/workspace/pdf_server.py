@@ -28,6 +28,12 @@ server = FastMCP("pdf-reader")
 
 _VISION_MODEL = os.environ.get("PDF_VISION_MODEL", "google/gemini-2.5-flash")
 _OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+_CONFLUENCE_URL = os.environ.get("CONFLUENCE_URL", "")
+_ATLASSIAN_USER = os.environ.get("ATLASSIAN_USERNAME", "")
+_ATLASSIAN_TOKEN = os.environ.get("ATLASSIAN_API_TOKEN", "")
+_REVIEW_DOCS_DIR = os.environ.get(
+    "STERLING_REVIEW_DOCS_DIR", ""
+) or os.environ.get("STERLING_NOTES_DIR", "/tmp")
 
 
 @server.tool()
@@ -183,6 +189,73 @@ def describe_pdf_page(path: str, page_number: int) -> str:
     description = result["choices"][0]["message"]["content"]
 
     return f"--- Page {page_number} (visual description) ---\n\n{description}"
+
+
+@server.tool()
+def download_confluence_pdf(page_id: str, filename: str = "") -> str:
+    """Export a Confluence page as PDF and save to the review-docs directory.
+
+    Downloads the page with images and formatting preserved. Returns the
+    saved file path. Use after search-confluence to find the page ID.
+    """
+    if not _CONFLUENCE_URL or not _ATLASSIAN_USER or not _ATLASSIAN_TOKEN:
+        return "Error: CONFLUENCE_URL, ATLASSIAN_USERNAME, and ATLASSIAN_API_TOKEN must be set."
+
+    import httpx  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    auth = (_ATLASSIAN_USER, _ATLASSIAN_TOKEN)
+
+    if not filename:
+        try:
+            resp = httpx.get(
+                f"{_CONFLUENCE_URL}/api/v2/pages/{page_id}",
+                auth=auth,
+                timeout=30,
+            )
+            title = resp.json().get("title", f"page-{page_id}")
+        except Exception:
+            title = f"page-{page_id}"
+        safe = re.sub(r"[^a-zA-Z0-9_-]", "-", title).strip("-")[:80]
+        filename = f"{safe}.pdf"
+
+    output_dir = Path(_REVIEW_DOCS_DIR) / "confluence"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    outpath = output_dir / filename
+
+    try:
+        resp = httpx.get(
+            f"{_CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId={page_id}",
+            auth=auth,
+            follow_redirects=True,
+            timeout=60,
+        )
+
+        if resp.status_code != 200 or len(resp.content) < 1000:
+            resp = httpx.get(
+                f"{_CONFLUENCE_URL}/rest/api/content/{page_id}/export/pdf",
+                auth=auth,
+                follow_redirects=True,
+                timeout=60,
+            )
+
+        if resp.status_code != 200:
+            return f"Error: PDF export returned status {resp.status_code}."
+
+        if resp.content[:5] in (b"<!DOC", b"<html"):
+            return (
+                f"Error: PDF export not available for this page. "
+                f"Use get-confluence-page to read the content as text instead."
+            )
+
+        outpath.write_bytes(resp.content)
+        return (
+            f"Downloaded: {outpath} ({len(resp.content)} bytes)\n"
+            f"Read with: read_pdf(path='{outpath}')"
+        )
+
+    except Exception as exc:
+        return f"Error downloading PDF: {exc}"
 
 
 if __name__ == "__main__":

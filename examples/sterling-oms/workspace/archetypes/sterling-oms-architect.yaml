@@ -78,6 +78,7 @@ defaults:
     - get-jira-comments
     - get-jira-attachments
     - get-confluence-attachments
+    - download-confluence-pdf
     - search-apis
     - get-api-details
     - get-api-input-xml
