@@ -181,13 +181,27 @@ needs — do not ask the user to list skills. You are the expert. Think: \
 "To achieve this goal, what does each agent need to be able to do? Each \
 capability is a skill." Generate skill YAMLs for every skill you identify.
 
-IMPORTANT: prefer existing public MCP servers over writing skills from \
-scratch. There are 7,000+ community MCP servers. If the swarm needs to \
-read GitHub repos, use @modelcontextprotocol/server-github. If it needs \
-to search the web, use @anthropic/brave-search-mcp. Create mcp_tool \
-skills that reference these servers and add mcp_servers entries to \
-workspace.yaml. Only use llm_prompt skills for tasks that are purely \
-LLM reasoning with no external tool needed.
+IMPORTANT: before creating skills from scratch, check existing sources \
+in this order:
+
+1. WORKSPACE — call read_workspace to see existing skills and MCP servers. \
+Reuse what's already there.
+
+2. REFERENCE DIRECTORY — SwarmKit ships ~20 reference skills and custom \
+MCP server examples in reference/skills/ and examples/. These include \
+ChromaDB search, FTS5 search, CDT config access, PDF reading, code graph \
+queries, Jira/Confluence access, and more. Check if a reference skill \
+can be copied and adapted.
+
+3. PUBLIC MCP SERVERS — 7,000+ community servers. GitHub: \
+@modelcontextprotocol/server-github. Web search: @anthropic/brave-search-mcp. \
+Atlassian: mcp-atlassian. Slack: @anthropic/slack-mcp. PostgreSQL: \
+@modelcontextprotocol/server-postgres.
+
+4. ONLY THEN write a custom skill or MCP server from scratch.
+
+Create mcp_tool skills that reference existing servers. Only use llm_prompt \
+skills for tasks that are purely LLM reasoning with no external tool needed.
 
 For example, if the user says "a code review swarm with quality and \
 security reviewers", you should identify skills like:
@@ -307,21 +321,30 @@ an agent can exercise. Four categories:
 - coordination: hands work to another agent
 - persistence: writes to storage (audit log, knowledge base)
 
-IMPORTANT — before writing a skill from scratch, check whether a public MCP \
-server already provides the capability. There are 7,000+ community MCP servers \
-covering GitHub, Slack, databases, file systems, search, and more. Common ones:
+IMPORTANT — before writing a skill from scratch, follow this order:
+
+1. CHECK THE WORKSPACE FIRST. Call read_workspace to see what skills and \
+MCP servers already exist. The workspace may already have custom MCP servers \
+(e.g. chromadb_server.py, sterling_cdt_server.py, pdf_server.py, \
+graphify_server.py, fts_server.py) with tools that can be wrapped as new \
+skills. Reusing an existing server is always better than adding a new one.
+
+2. CHECK PUBLIC MCP SERVERS. There are 7,000+ community MCP servers \
+covering GitHub, Slack, databases, file systems, search, and more:
 - GitHub: @modelcontextprotocol/server-github (repo read, PR, issues, actions)
 - Filesystem: @modelcontextprotocol/server-filesystem (read/write local files)
+- Atlassian: mcp-atlassian (Confluence wiki + Jira tickets + attachments)
 - Slack: @anthropic/slack-mcp (channels, messages, users)
 - PostgreSQL: @modelcontextprotocol/server-postgres (queries)
 - Google Drive: @anthropic/gdrive-mcp (docs, sheets)
 - Brave Search: @anthropic/brave-search-mcp (web search)
 - Memory/Qdrant: mcp-server-qdrant (vector store + RAG)
 
-If a public MCP server exists for the user's need, create an mcp_tool skill \
-that references it and add the server to workspace.yaml's mcp_servers block. \
-Only generate an llm_prompt skill or a custom MCP server when no existing \
-server covers the use case.
+3. ONLY THEN write a custom skill from scratch if nothing above covers it.
+
+If a workspace or public MCP server exists for the user's need, create an \
+mcp_tool skill that references it. Only generate an llm_prompt skill or a \
+custom MCP server when no existing server covers the use case.
 
 Reference skills in reference/skills/ show the pattern for mcp_tool skills \
 (e.g. github-repo-read, github-pr-read, github-issue-read).
