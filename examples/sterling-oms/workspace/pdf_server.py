@@ -31,9 +31,9 @@ _OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 _CONFLUENCE_URL = os.environ.get("CONFLUENCE_URL", "")
 _ATLASSIAN_USER = os.environ.get("ATLASSIAN_USERNAME", "")
 _ATLASSIAN_TOKEN = os.environ.get("ATLASSIAN_API_TOKEN", "")
-_REVIEW_DOCS_DIR = os.environ.get(
-    "STERLING_REVIEW_DOCS_DIR", ""
-) or os.environ.get("STERLING_NOTES_DIR", "/tmp")
+_REVIEW_DOCS_DIR = os.environ.get("STERLING_REVIEW_DOCS_DIR", "") or os.environ.get(
+    "STERLING_NOTES_DIR", "/tmp"
+)
 
 
 @server.tool()
@@ -201,10 +201,7 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:
     with describe_pdf_page.
     """
     if not _CONFLUENCE_URL or not _ATLASSIAN_USER or not _ATLASSIAN_TOKEN:
-        return (
-            "Error: CONFLUENCE_URL, ATLASSIAN_USERNAME, "
-            "and ATLASSIAN_API_TOKEN must be set."
-        )
+        return "Error: CONFLUENCE_URL, ATLASSIAN_USERNAME, and ATLASSIAN_API_TOKEN must be set."
 
     import re  # noqa: PLC0415
 
@@ -232,8 +229,7 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:
 
     try:
         resp = httpx.get(
-            f"{_CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action"
-            f"?pageId={page_id}",
+            f"{_CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId={page_id}",
             auth=auth,
             headers=headers,
             follow_redirects=True,
