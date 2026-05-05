@@ -219,14 +219,28 @@ def _get_completed_children(
     agent: ResolvedAgent,
     agent_results: dict[str, Any],
 ) -> set[str]:
-    """Return child IDs that have completed (non-delegated) results."""
-    return {
-        c.id
-        for c in agent.children
-        if c.id in agent_results
-        and isinstance(agent_results[c.id], str)
-        and not str(agent_results[c.id]).startswith("__delegated__:")
-    }
+    """Return child IDs that have completed with meaningful results.
+
+    Excludes delegated markers, error results, and short incomplete
+    responses so the root can re-delegate on the next turn.
+    """
+    completed = set()
+    for c in agent.children:
+        if c.id not in agent_results:
+            continue
+        result = agent_results[c.id]
+        if not isinstance(result, str):
+            continue
+        if result.startswith("__delegated__:"):
+            continue
+        if result.startswith("DENIED:"):
+            continue
+        if result == "(no response)":
+            continue
+        if len(result) < 100 and _looks_incomplete(result):
+            continue
+        completed.add(c.id)
+    return completed
 
 
 def _make_result(agent_id: str, result_text: str) -> dict[str, Any]:
