@@ -100,28 +100,40 @@ space_id = d.get('spaceId', '')
 print(space_id)
 " 2>/dev/null)
 
-    # Try the PDF export endpoint
-    curl -sL "${AUTH_ARGS[@]}" \
+    # Step 1: Trigger PDF export — get Location header with download path
+    PDF_LOCATION=$(curl -s -o /dev/null -w '%{redirect_url}' \
+        "${AUTH_ARGS[@]}" \
         -H "X-Atlassian-Token: no-check" \
-        -o "$OUTFILE" \
-        "${CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId=${PAGE_ID}"
+        "${CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId=${PAGE_ID}")
 
-    FILESIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || stat -f%z "$OUTFILE" 2>/dev/null || echo "0")
+    if [ -z "$PDF_LOCATION" ]; then
+        # No redirect — try reading the response body for a download link
+        STEP1_BODY=$(curl -s "${AUTH_ARGS[@]}" \
+            -H "X-Atlassian-Token: no-check" \
+            "${CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId=${PAGE_ID}")
 
-    # Check if we got HTML error page instead of PDF
-    if [ "$FILESIZE" -lt 1000 ] || head -c 5 "$OUTFILE" | grep -q "<!DOC\|<html"; then
-        # Fallback: try the /wiki/rest/api endpoint
-        rm -f "$OUTFILE"
+        PDF_LOCATION=$(echo "$STEP1_BODY" | grep -oP '/download/[^"'"'"'>\s]+\.pdf' | head -1)
+
+        if [ -n "$PDF_LOCATION" ]; then
+            # Make relative URL absolute
+            BASE_ROOT=$(echo "$CONFLUENCE_URL" | sed 's|/wiki.*||')
+            PDF_LOCATION="${BASE_ROOT}${PDF_LOCATION}"
+        fi
+    fi
+
+    if [ -n "$PDF_LOCATION" ]; then
+        # Step 2: Download the actual PDF
         curl -sL "${AUTH_ARGS[@]}" \
             -H "X-Atlassian-Token: no-check" \
             -o "$OUTFILE" \
-            "${CONFLUENCE_URL}/rest/api/content/${PAGE_ID}/export/pdf"
+            "$PDF_LOCATION"
+    fi
 
-        FILESIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || stat -f%z "$OUTFILE" 2>/dev/null || echo "0")
+    FILESIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || stat -f%z "$OUTFILE" 2>/dev/null || echo "0")
 
-        if [ "$FILESIZE" -lt 1000 ] || head -c 5 "$OUTFILE" | grep -q "<!DOC\|<html"; then
-            rm -f "$OUTFILE"
-            echo "  ERROR: PDF export not available. Falling back to markdown."
+    if [ "$FILESIZE" -lt 500 ] || ! head -c 4 "$OUTFILE" | grep -q "%PDF"; then
+        rm -f "$OUTFILE" 2>/dev/null
+        echo "  ERROR: PDF export not available. Falling back to markdown."
             FORMAT="md"
         fi
     fi

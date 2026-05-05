@@ -228,33 +228,91 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:
     outpath = output_dir / filename
 
     try:
-        resp = httpx.get(
+        # Step 1: Trigger the PDF export — returns Location header
+        step1 = httpx.get(
             f"{_CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId={page_id}",
+            auth=auth,
+            headers=headers,
+            follow_redirects=False,
+            timeout=120,
+        )
+
+        # The export may return a redirect (302/303) with Location,
+        # or 200 with the PDF content directly, or 200 with HTML
+        # containing a polling URL for async export.
+        pdf_url = ""
+
+        if step1.status_code in (301, 302, 303, 307, 308):
+            pdf_url = step1.headers.get("location", "")
+        elif step1.status_code == 200:
+            content = step1.content
+            # Check if it's already a PDF
+            if content[:4] == b"%PDF":
+                outpath.write_bytes(content)
+                size_kb = len(content) / 1024
+                return (
+                    f"Downloaded: {outpath} ({size_kb:.0f} KB)\n"
+                    f"Read text: read_pdf(path='{outpath}')\n"
+                    f"Describe diagrams: "
+                    f"describe_pdf_page(path='{outpath}', page_number=N)"
+                )
+            # Check if HTML contains a download link
+            body = content.decode("utf-8", errors="replace")
+            import re as _re  # noqa: PLC0415
+
+            match = _re.search(
+                r'(/download/[^"\'>\s]+\.pdf)',
+                body,
+            )
+            if match:
+                pdf_url = match.group(1)
+        else:
+            return (
+                f"Error: Step 1 returned status {step1.status_code}. Response: {step1.text[:300]}"
+            )
+
+        if not pdf_url:
+            return (
+                f"Error: Could not find PDF download URL. "
+                f"Step 1 status: {step1.status_code}. "
+                f"Response: {step1.text[:300]}"
+            )
+
+        # Make relative URLs absolute
+        if pdf_url.startswith("/"):
+            base = _CONFLUENCE_URL.rstrip("/")
+            # Strip /wiki if present since Location might include it
+            if "/wiki" in base and not pdf_url.startswith("/wiki"):
+                pdf_url = base + pdf_url
+            else:
+                base_root = base.split("/wiki")[0] if "/wiki" in base else base
+                pdf_url = base_root + pdf_url
+
+        # Step 2: Download the actual PDF
+        step2 = httpx.get(
+            pdf_url,
             auth=auth,
             headers=headers,
             follow_redirects=True,
             timeout=120,
         )
 
-        if resp.status_code != 200 or len(resp.content) < 500:
+        if step2.status_code != 200:
+            return f"Error: Step 2 download returned {step2.status_code}. URL: {pdf_url}"
+
+        if step2.content[:4] != b"%PDF" and len(step2.content) < 500:
             return (
-                f"Error: PDF export returned status {resp.status_code} "
-                f"({len(resp.content)} bytes). "
-                f"The page may not support PDF export."
+                f"Error: Downloaded content is not a PDF "
+                f"({len(step2.content)} bytes). URL: {pdf_url}"
             )
 
-        if resp.content[:5] in (b"<!DOC", b"<html"):
-            return (
-                "Error: Received HTML instead of PDF. "
-                "Use get-confluence-page to read content as text."
-            )
-
-        outpath.write_bytes(resp.content)
-        size_kb = len(resp.content) / 1024
+        outpath.write_bytes(step2.content)
+        size_kb = len(step2.content) / 1024
         return (
             f"Downloaded: {outpath} ({size_kb:.0f} KB)\n"
             f"Read text: read_pdf(path='{outpath}')\n"
-            f"Describe diagrams: describe_pdf_page(path='{outpath}', page_number=N)"
+            f"Describe diagrams: "
+            f"describe_pdf_page(path='{outpath}', page_number=N)"
         )
 
     except Exception as exc:
