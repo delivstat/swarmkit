@@ -236,7 +236,9 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: P
         base = _CONFLUENCE_URL.rstrip("/")
 
         def _replace(m: re.Match) -> str:  # type: ignore[type-arg]
-            src = m.group(1)
+            import html as _html  # noqa: PLC0415
+
+            src = _html.unescape(m.group(1))
             if src.startswith("data:"):
                 return m.group(0)
             img_url = src if src.startswith("http") else base + src
