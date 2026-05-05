@@ -1,5 +1,8 @@
 # /// script
-# dependencies = ["mcp[cli]>=1.0", "pypdf>=4.0", "pdf2image>=1.16", "httpx>=0.27"]
+# dependencies = [
+#   "mcp[cli]>=1.0", "pypdf>=4.0", "pdf2image>=1.16",
+#   "httpx>=0.27", "weasyprint>=62.0",
+# ]
 # ///
 """PDF reader MCP server — read any PDF with text extraction and image understanding.
 
@@ -192,13 +195,12 @@ def describe_pdf_page(path: str, page_number: int) -> str:
 
 
 @server.tool()
-def download_confluence_pdf(page_id: str, filename: str = "") -> str:
+def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: PLR0911
     """Export a Confluence page as PDF and save to review-docs.
 
-    Downloads the page with images and formatting preserved as PDF.
-    Returns the saved file path. Use after search-confluence to find
-    the page ID. The PDF can then be read with read_pdf or described
-    with describe_pdf_page.
+    Fetches rendered HTML via REST API, converts to PDF locally with
+    weasyprint (preserves tables, formatting). Returns the saved file
+    path. Use after search-confluence to find the page ID.
     """
     if not _CONFLUENCE_URL or not _ATLASSIAN_USER or not _ATLASSIAN_TOKEN:
         return "Error: CONFLUENCE_URL, ATLASSIAN_USERNAME, and ATLASSIAN_API_TOKEN must be set."
@@ -208,18 +210,27 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:
     import httpx  # noqa: PLC0415
 
     auth = (_ATLASSIAN_USER, _ATLASSIAN_TOKEN)
-    headers = {"X-Atlassian-Token": "no-check"}
+
+    # Fetch rendered HTML via v1 REST API
+    try:
+        resp = httpx.get(
+            f"{_CONFLUENCE_URL}/rest/api/content/{page_id}?expand=body.view,metadata.labels",
+            auth=auth,
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return f"Error: API returned {resp.status_code} for page {page_id}."
+        data = resp.json()
+    except Exception as exc:
+        return f"Error fetching page: {exc}"
+
+    title = data.get("title", f"page-{page_id}")
+    body_html = data.get("body", {}).get("view", {}).get("value", "")
+
+    if not body_html:
+        return f"Error: Page {page_id} has no content."
 
     if not filename:
-        try:
-            resp = httpx.get(
-                f"{_CONFLUENCE_URL}/api/v2/pages/{page_id}",
-                auth=auth,
-                timeout=30,
-            )
-            title = resp.json().get("title", f"page-{page_id}")
-        except Exception:
-            title = f"page-{page_id}"
         safe = re.sub(r"[^a-zA-Z0-9_-]", "-", title).strip("-")[:80]
         filename = f"{safe}.pdf"
 
@@ -227,96 +238,53 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:
     output_dir.mkdir(parents=True, exist_ok=True)
     outpath = output_dir / filename
 
+    # Wrap in a full HTML document with basic styling
+    base_url = _CONFLUENCE_URL.rstrip("/")
+    full_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{title}</title>
+    <base href="{base_url}">
+    <style>
+        body {{ font-family: -apple-system, sans-serif; font-size: 11pt;
+               max-width: 800px; margin: 40px auto; padding: 0 20px; }}
+        h1 {{ font-size: 20pt; border-bottom: 1px solid #ccc; padding-bottom: 8px; }}
+        h2 {{ font-size: 16pt; margin-top: 24px; }}
+        h3 {{ font-size: 13pt; margin-top: 20px; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 12px 0; }}
+        th, td {{ border: 1px solid #ddd; padding: 6px 10px; text-align: left;
+                  font-size: 10pt; }}
+        th {{ background-color: #f5f5f5; }}
+        code {{ background: #f4f4f4; padding: 2px 4px; font-size: 10pt; }}
+        pre {{ background: #f4f4f4; padding: 12px; overflow-x: auto; }}
+        img {{ max-width: 100%; height: auto; }}
+    </style>
+</head>
+<body>
+    <h1>{title}</h1>
+    <p style="color: #666; font-size: 9pt;">Page ID: {page_id}</p>
+    <hr>
+    {body_html}
+</body>
+</html>"""
+
     try:
-        # Step 1: Trigger the PDF export — returns Location header
-        step1 = httpx.get(
-            f"{_CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId={page_id}",
-            auth=auth,
-            headers=headers,
-            follow_redirects=False,
-            timeout=120,
-        )
+        from weasyprint import HTML  # noqa: PLC0415
 
-        # The export may return a redirect (302/303) with Location,
-        # or 200 with the PDF content directly, or 200 with HTML
-        # containing a polling URL for async export.
-        pdf_url = ""
-
-        if step1.status_code in (301, 302, 303, 307, 308):
-            pdf_url = step1.headers.get("location", "")
-        elif step1.status_code == 200:
-            content = step1.content
-            # Check if it's already a PDF
-            if content[:4] == b"%PDF":
-                outpath.write_bytes(content)
-                size_kb = len(content) / 1024
-                return (
-                    f"Downloaded: {outpath} ({size_kb:.0f} KB)\n"
-                    f"Read text: read_pdf(path='{outpath}')\n"
-                    f"Describe diagrams: "
-                    f"describe_pdf_page(path='{outpath}', page_number=N)"
-                )
-            # Check if HTML contains a download link
-            body = content.decode("utf-8", errors="replace")
-            import re as _re  # noqa: PLC0415
-
-            match = _re.search(
-                r'(/download/[^"\'>\s]+\.pdf)',
-                body,
-            )
-            if match:
-                pdf_url = match.group(1)
-        else:
-            return (
-                f"Error: Step 1 returned status {step1.status_code}. Response: {step1.text[:300]}"
-            )
-
-        if not pdf_url:
-            return (
-                f"Error: Could not find PDF download URL. "
-                f"Step 1 status: {step1.status_code}. "
-                f"Response: {step1.text[:300]}"
-            )
-
-        # Make relative URLs absolute
-        if pdf_url.startswith("/"):
-            base = _CONFLUENCE_URL.rstrip("/")
-            # Strip /wiki if present since Location might include it
-            if "/wiki" in base and not pdf_url.startswith("/wiki"):
-                pdf_url = base + pdf_url
-            else:
-                base_root = base.split("/wiki")[0] if "/wiki" in base else base
-                pdf_url = base_root + pdf_url
-
-        # Step 2: Download the actual PDF
-        step2 = httpx.get(
-            pdf_url,
-            auth=auth,
-            headers=headers,
-            follow_redirects=True,
-            timeout=120,
-        )
-
-        if step2.status_code != 200:
-            return f"Error: Step 2 download returned {step2.status_code}. URL: {pdf_url}"
-
-        if step2.content[:4] != b"%PDF" and len(step2.content) < 500:
-            return (
-                f"Error: Downloaded content is not a PDF "
-                f"({len(step2.content)} bytes). URL: {pdf_url}"
-            )
-
-        outpath.write_bytes(step2.content)
-        size_kb = len(step2.content) / 1024
-        return (
-            f"Downloaded: {outpath} ({size_kb:.0f} KB)\n"
-            f"Read text: read_pdf(path='{outpath}')\n"
-            f"Describe diagrams: "
-            f"describe_pdf_page(path='{outpath}', page_number=N)"
-        )
-
+        HTML(string=full_html, base_url=base_url).write_pdf(str(outpath))
+    except ImportError:
+        return "Error: weasyprint not installed. Install with: pip install weasyprint"
     except Exception as exc:
-        return f"Error downloading PDF: {exc}"
+        return f"Error converting to PDF: {exc}"
+
+    size_kb = outpath.stat().st_size / 1024
+    return (
+        f"Downloaded: {outpath} ({size_kb:.0f} KB)\n"
+        f"Read text: read_pdf(path='{outpath}')\n"
+        f"Describe diagrams: "
+        f"describe_pdf_page(path='{outpath}', page_number=N)"
+    )
 
 
 if __name__ == "__main__":
