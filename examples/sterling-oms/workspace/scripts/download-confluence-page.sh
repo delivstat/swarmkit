@@ -1,24 +1,44 @@
 #!/bin/bash
-# Download a Confluence page by URL and save as markdown to project-docs or notes.
+# Download a Confluence page by URL or ID as PDF (default) or markdown.
 #
-# Fetches the page content via v2 API, converts HTML to markdown, and saves
-# to the specified output directory (defaults to project-docs/confluence/).
+# PDF preserves images, diagrams, and formatting. Use for design reviews.
+# Markdown is text-only but searchable by agents via ChromaDB.
 #
 # Usage:
-#   # Download by URL
+#   # Download as PDF (default — preserves images)
 #   ./scripts/download-confluence-page.sh "https://tatacroma.atlassian.net/wiki/spaces/CSO/pages/2236875064"
 #
-#   # Download to notes directory instead
-#   ./scripts/download-confluence-page.sh "https://tatacroma.atlassian.net/wiki/spaces/CSO/pages/2236875064" notes
+#   # Download as markdown (for RAG ingestion)
+#   ./scripts/download-confluence-page.sh 2236875064 --md
 #
-#   # Download by page ID directly
-#   ./scripts/download-confluence-page.sh 2236875064
-#   ./scripts/download-confluence-page.sh 2236875064 notes
+#   # Save to notes directory
+#   ./scripts/download-confluence-page.sh 2236875064 --notes
+#
+#   # Both flags
+#   ./scripts/download-confluence-page.sh 2236875064 --md --notes
 
 set -e
 
-INPUT="${1:?Usage: download-confluence-page.sh <URL or PAGE_ID> [notes|docs]}"
-DEST="${2:-docs}"
+INPUT=""
+FORMAT="pdf"
+DEST="docs"
+
+for arg in "$@"; do
+    case "$arg" in
+        --md|--markdown) FORMAT="md" ;;
+        --notes) DEST="notes" ;;
+        *) INPUT="$arg" ;;
+    esac
+done
+
+if [ -z "$INPUT" ]; then
+    echo "Usage: download-confluence-page.sh <URL or PAGE_ID> [--md] [--notes]"
+    echo ""
+    echo "Options:"
+    echo "  --md      Download as markdown instead of PDF"
+    echo "  --notes   Save to notes directory instead of project-docs"
+    exit 1
+fi
 
 : "${CONFLUENCE_URL:?Set CONFLUENCE_URL (e.g. https://your-site.atlassian.net/wiki)}"
 : "${ATLASSIAN_USERNAME:?Set ATLASSIAN_USERNAME}"
@@ -29,7 +49,7 @@ AUTH_ARGS=(-u "${ATLASSIAN_USERNAME}:${ATLASSIAN_API_TOKEN}")
 # Extract page ID from URL or use directly
 if echo "$INPUT" | grep -q "pages/"; then
     PAGE_ID=$(echo "$INPUT" | grep -oP 'pages/\K[0-9]+')
-elif echo "$INPUT" | grep -q "^[0-9]*$"; then
+elif echo "$INPUT" | grep -qE "^[0-9]+$"; then
     PAGE_ID="$INPUT"
 else
     echo "ERROR: Cannot extract page ID from: $INPUT"
@@ -52,49 +72,81 @@ else
 fi
 mkdir -p "$OUTPUT_DIR"
 
-echo "Fetching Confluence page ${PAGE_ID}..."
+# Get page title for filename
+TITLE=$(curl -s "${AUTH_ARGS[@]}" \
+    -H "Accept: application/json" \
+    "${CONFLUENCE_URL}/api/v2/pages/${PAGE_ID}" | \
+    python3 -c "import sys,json; print(json.load(sys.stdin).get('title','page-${PAGE_ID}'))" 2>/dev/null)
 
-# Fetch page with body content
+SAFE_NAME=$(echo "$TITLE" | sed 's/[^a-zA-Z0-9_-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//' | cut -c1-80)
+
+echo "Downloading: ${TITLE} (page ${PAGE_ID})"
+echo "  Format: ${FORMAT}"
+
+if [ "$FORMAT" = "pdf" ]; then
+    # Export as PDF via Confluence Cloud export endpoint
+    OUTFILE="$OUTPUT_DIR/${SAFE_NAME}.pdf"
+
+    # Confluence Cloud PDF export: /wiki/spaces/{spaceKey}/pdfpageexport.action?pageId={id}
+    # This returns a PDF directly
+    SPACE_KEY=$(curl -s "${AUTH_ARGS[@]}" \
+        -H "Accept: application/json" \
+        "${CONFLUENCE_URL}/api/v2/pages/${PAGE_ID}" | \
+        python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+space_id = d.get('spaceId', '')
+# Need to get space key from space ID
+print(space_id)
+" 2>/dev/null)
+
+    # Try the PDF export endpoint
+    curl -sL "${AUTH_ARGS[@]}" \
+        -o "$OUTFILE" \
+        "${CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId=${PAGE_ID}"
+
+    FILESIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || stat -f%z "$OUTFILE" 2>/dev/null || echo "0")
+
+    # Check if we got HTML error page instead of PDF
+    if [ "$FILESIZE" -lt 1000 ] || head -c 5 "$OUTFILE" | grep -q "<!DOC\|<html"; then
+        # Fallback: try the /wiki/rest/api endpoint
+        rm -f "$OUTFILE"
+        curl -sL "${AUTH_ARGS[@]}" \
+            -o "$OUTFILE" \
+            "${CONFLUENCE_URL}/rest/api/content/${PAGE_ID}/export/pdf"
+
+        FILESIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || stat -f%z "$OUTFILE" 2>/dev/null || echo "0")
+
+        if [ "$FILESIZE" -lt 1000 ] || head -c 5 "$OUTFILE" | grep -q "<!DOC\|<html"; then
+            rm -f "$OUTFILE"
+            echo "  ERROR: PDF export not available. Falling back to markdown."
+            FORMAT="md"
+        fi
+    fi
+
+    if [ "$FORMAT" = "pdf" ]; then
+        echo "  Saved: $OUTFILE (${FILESIZE} bytes)"
+        exit 0
+    fi
+fi
+
+# Markdown export (fallback or explicit --md)
+OUTFILE="$OUTPUT_DIR/${SAFE_NAME}.md"
+
 RESPONSE=$(curl -s "${AUTH_ARGS[@]}" \
     -H "Accept: application/json" \
     "${CONFLUENCE_URL}/api/v2/pages/${PAGE_ID}?body-format=storage")
 
-# Check for errors
-ERROR=$(echo "$RESPONSE" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    if 'errors' in d:
-        print(json.dumps(d['errors']))
-    elif 'message' in d:
-        print(d['message'])
-    elif not d.get('id'):
-        print('Unknown error - no page ID in response')
-    else:
-        print('')
-except Exception as e:
-    print(f'Parse error: {e}')
-" 2>/dev/null)
-
-if [ -n "$ERROR" ]; then
-    echo "ERROR: $ERROR"
-    exit 1
-fi
-
-# Convert to markdown and save
 echo "$RESPONSE" | python3 -c "
-import sys, json, re, html
+import sys, json, re, html, os
 
 data = json.load(sys.stdin)
 title = data.get('title', 'Untitled')
 page_id = data.get('id', '')
-space_id = data.get('spaceId', '')
-status = data.get('status', '')
-parent_id = data.get('parentId', '')
-body_html = data.get('body', {}).get('storage', {}).get('value', '')
 version = data.get('version', {}).get('number', '')
 created = data.get('createdAt', '')
-author = data.get('authorId', '')
+parent_id = data.get('parentId', '')
+body_html = data.get('body', {}).get('storage', {}).get('value', '')
 
 def html_to_markdown(h):
     h = re.sub(r'<script[^>]*>.*?</script>', '', h, flags=re.DOTALL)
@@ -110,24 +162,10 @@ def html_to_markdown(h):
     h = re.sub(r'<em[^>]*>(.*?)</em>', r'*\1*', h, flags=re.DOTALL)
     h = re.sub(r'<code[^>]*>(.*?)</code>', r'\`\1\`', h, flags=re.DOTALL)
     h = re.sub(r'<a[^>]*href=\"([^\"]*)\"[^>]*>(.*?)</a>', r'[\2](\1)', h, flags=re.DOTALL)
-    h = re.sub(r'<table[^>]*>(.*?)</table>', lambda m: _table_to_md(m.group(1)), h, flags=re.DOTALL)
     h = re.sub(r'<[^>]+>', '', h)
     h = html.unescape(h)
     h = re.sub(r'\n{3,}', '\n\n', h)
     return h.strip()
-
-def _table_to_md(table_html):
-    rows = re.findall(r'<tr[^>]*>(.*?)</tr>', table_html, re.DOTALL)
-    if not rows:
-        return ''
-    md_rows = []
-    for i, row in enumerate(rows):
-        cells = re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, re.DOTALL)
-        cells = [re.sub(r'<[^>]+>', '', c).strip() for c in cells]
-        md_rows.append('| ' + ' | '.join(cells) + ' |')
-        if i == 0:
-            md_rows.append('| ' + ' | '.join(['---'] * len(cells)) + ' |')
-    return '\n'.join(md_rows) + '\n'
 
 md = f'# {title}\n\n'
 md += f'**Page ID:** {page_id}\n'
@@ -138,15 +176,9 @@ if parent_id:
 md += f'\n---\n\n'
 md += html_to_markdown(body_html)
 
-safe_name = re.sub(r'[^a-zA-Z0-9_-]', '-', title).strip('-')[:80]
-filename = f'{safe_name}.md'
-
-import os
-filepath = os.path.join('${OUTPUT_DIR}', filename)
+filepath = '${OUTFILE}'
 with open(filepath, 'w') as f:
     f.write(md)
-
-chars = len(md)
-print(f'  Title: {title}')
-print(f'  Saved: {filepath} ({chars} chars)')
+print(f'  Saved: {filepath} ({len(md)} chars)')
+print(f'  Note: Images/diagrams not included in markdown. Use without --md for PDF.')
 "
