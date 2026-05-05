@@ -128,6 +128,10 @@ export CONFLUENCE_URL=https://your-site.atlassian.net/wiki
 export JIRA_URL=https://your-site.atlassian.net
 export ATLASSIAN_USERNAME=your-email@example.com
 export ATLASSIAN_API_TOKEN=
+
+# PDF vision model (for diagram/image understanding in PDFs)
+# Requires: sudo apt install poppler-utils
+export PDF_VISION_MODEL=google/gemini-2.5-flash
 ENVEOF
 
 echo "Generated: $ENV_FILE"
