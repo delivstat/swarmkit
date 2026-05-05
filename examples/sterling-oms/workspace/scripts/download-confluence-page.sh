@@ -84,64 +84,76 @@ echo "Downloading: ${TITLE} (page ${PAGE_ID})"
 echo "  Format: ${FORMAT}"
 
 if [ "$FORMAT" = "pdf" ]; then
-    # Export as PDF via Confluence Cloud export endpoint
+    # Fetch rendered HTML via v1 REST API, convert to PDF with weasyprint
     OUTFILE="$OUTPUT_DIR/${SAFE_NAME}.pdf"
 
-    # Confluence Cloud PDF export: /wiki/spaces/{spaceKey}/pdfpageexport.action?pageId={id}
-    # This returns a PDF directly
-    SPACE_KEY=$(curl -s "${AUTH_ARGS[@]}" \
+    HTML_CONTENT=$(curl -s "${AUTH_ARGS[@]}" \
         -H "Accept: application/json" \
-        "${CONFLUENCE_URL}/api/v2/pages/${PAGE_ID}" | \
+        "${CONFLUENCE_URL}/rest/api/content/${PAGE_ID}?expand=body.view" | \
         python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-space_id = d.get('spaceId', '')
-# Need to get space key from space ID
-print(space_id)
-" 2>/dev/null)
+title = d.get('title', 'Untitled')
+body = d.get('body', {}).get('view', {}).get('value', '')
+base_url = '${CONFLUENCE_URL}'.rstrip('/')
+html = f'''<!DOCTYPE html>
+<html>
+<head>
+<meta charset=\"utf-8\">
+<title>{title}</title>
+<base href=\"{base_url}\">
+<style>
+body {{ font-family: -apple-system, sans-serif; font-size: 11pt;
+       max-width: 800px; margin: 40px auto; padding: 0 20px; }}
+h1 {{ font-size: 20pt; border-bottom: 1px solid #ccc; padding-bottom: 8px; }}
+h2 {{ font-size: 16pt; margin-top: 24px; }}
+h3 {{ font-size: 13pt; margin-top: 20px; }}
+table {{ border-collapse: collapse; width: 100%; margin: 12px 0; }}
+th, td {{ border: 1px solid #ddd; padding: 6px 10px; text-align: left; font-size: 10pt; }}
+th {{ background-color: #f5f5f5; }}
+code {{ background: #f4f4f4; padding: 2px 4px; font-size: 10pt; }}
+pre {{ background: #f4f4f4; padding: 12px; overflow-x: auto; }}
+img {{ max-width: 100%; height: auto; }}
+</style>
+</head>
+<body>
+<h1>{title}</h1>
+<p style=\"color: #666; font-size: 9pt;\">Page ID: ${PAGE_ID}</p>
+<hr>
+{body}
+</body>
+</html>'''
+print(html)
+")
 
-    # Step 1: Trigger PDF export — get Location header with download path
-    PDF_LOCATION=$(curl -s -o /dev/null -w '%{redirect_url}' \
-        "${AUTH_ARGS[@]}" \
-        -H "X-Atlassian-Token: no-check" \
-        "${CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId=${PAGE_ID}")
-
-    if [ -z "$PDF_LOCATION" ]; then
-        # No redirect — try reading the response body for a download link
-        STEP1_BODY=$(curl -s "${AUTH_ARGS[@]}" \
-            -H "X-Atlassian-Token: no-check" \
-            "${CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId=${PAGE_ID}")
-
-        PDF_LOCATION=$(echo "$STEP1_BODY" | grep -oP '/download/[^"'"'"'>\s]+\.pdf' | head -1)
-
-        if [ -n "$PDF_LOCATION" ]; then
-            # Make relative URL absolute
-            BASE_ROOT=$(echo "$CONFLUENCE_URL" | sed 's|/wiki.*||')
-            PDF_LOCATION="${BASE_ROOT}${PDF_LOCATION}"
-        fi
+    if [ -z "$HTML_CONTENT" ]; then
+        echo "  ERROR: Could not fetch page content. Falling back to markdown."
+        FORMAT="md"
+    else
+        echo "$HTML_CONTENT" | python3 -c "
+import sys
+try:
+    from weasyprint import HTML
+    html_content = sys.stdin.read()
+    HTML(string=html_content, base_url='${CONFLUENCE_URL}').write_pdf('${OUTFILE}')
+    print('ok')
+except ImportError:
+    print('ERROR: weasyprint not installed. Install with: pip install weasyprint')
+except Exception as e:
+    print(f'ERROR: {e}')
+" | while read -r line; do
+            if [ "$line" = "ok" ]; then
+                FILESIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || stat -f%z "$OUTFILE" 2>/dev/null || echo "0")
+                echo "  Saved: $OUTFILE (${FILESIZE} bytes)"
+                exit 0
+            else
+                echo "  $line"
+                echo "  Falling back to markdown."
+                FORMAT="md"
+            fi
+        done
     fi
-
-    if [ -n "$PDF_LOCATION" ]; then
-        # Step 2: Download the actual PDF
-        curl -sL "${AUTH_ARGS[@]}" \
-            -H "X-Atlassian-Token: no-check" \
-            -o "$OUTFILE" \
-            "$PDF_LOCATION"
-    fi
-
-    FILESIZE=$(stat -c%s "$OUTFILE" 2>/dev/null || stat -f%z "$OUTFILE" 2>/dev/null || echo "0")
-
-    if [ "$FILESIZE" -lt 500 ] || ! head -c 4 "$OUTFILE" | grep -q "%PDF"; then
-        rm -f "$OUTFILE" 2>/dev/null
-        echo "  ERROR: PDF export not available. Falling back to markdown."
-            FORMAT="md"
-        fi
-    fi
-
-    if [ "$FORMAT" = "pdf" ]; then
-        echo "  Saved: $OUTFILE (${FILESIZE} bytes)"
-        exit 0
-    fi
+fi
 fi
 
 # Markdown export (fallback or explicit --md)
