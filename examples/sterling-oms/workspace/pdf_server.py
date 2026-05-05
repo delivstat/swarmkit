@@ -193,18 +193,25 @@ def describe_pdf_page(path: str, page_number: int) -> str:
 
 @server.tool()
 def download_confluence_pdf(page_id: str, filename: str = "") -> str:
-    """Export a Confluence page as PDF and save to the review-docs directory.
+    """Export a Confluence page as PDF and save to review-docs.
 
-    Downloads the page with images and formatting preserved. Returns the
-    saved file path. Use after search-confluence to find the page ID.
+    Downloads the page with images and formatting preserved as PDF.
+    Returns the saved file path. Use after search-confluence to find
+    the page ID. The PDF can then be read with read_pdf or described
+    with describe_pdf_page.
     """
     if not _CONFLUENCE_URL or not _ATLASSIAN_USER or not _ATLASSIAN_TOKEN:
-        return "Error: CONFLUENCE_URL, ATLASSIAN_USERNAME, and ATLASSIAN_API_TOKEN must be set."
+        return (
+            "Error: CONFLUENCE_URL, ATLASSIAN_USERNAME, "
+            "and ATLASSIAN_API_TOKEN must be set."
+        )
 
-    import httpx  # noqa: PLC0415
     import re  # noqa: PLC0415
 
+    import httpx  # noqa: PLC0415
+
     auth = (_ATLASSIAN_USER, _ATLASSIAN_TOKEN)
+    headers = {"X-Atlassian-Token": "no-check"}
 
     if not filename:
         try:
@@ -225,33 +232,33 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:
 
     try:
         resp = httpx.get(
-            f"{_CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId={page_id}",
+            f"{_CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action"
+            f"?pageId={page_id}",
             auth=auth,
+            headers=headers,
             follow_redirects=True,
-            timeout=60,
+            timeout=120,
         )
 
-        if resp.status_code != 200 or len(resp.content) < 1000:
-            resp = httpx.get(
-                f"{_CONFLUENCE_URL}/rest/api/content/{page_id}/export/pdf",
-                auth=auth,
-                follow_redirects=True,
-                timeout=60,
+        if resp.status_code != 200 or len(resp.content) < 500:
+            return (
+                f"Error: PDF export returned status {resp.status_code} "
+                f"({len(resp.content)} bytes). "
+                f"The page may not support PDF export."
             )
-
-        if resp.status_code != 200:
-            return f"Error: PDF export returned status {resp.status_code}."
 
         if resp.content[:5] in (b"<!DOC", b"<html"):
             return (
-                f"Error: PDF export not available for this page. "
-                f"Use get-confluence-page to read the content as text instead."
+                "Error: Received HTML instead of PDF. "
+                "Use get-confluence-page to read content as text."
             )
 
         outpath.write_bytes(resp.content)
+        size_kb = len(resp.content) / 1024
         return (
-            f"Downloaded: {outpath} ({len(resp.content)} bytes)\n"
-            f"Read with: read_pdf(path='{outpath}')"
+            f"Downloaded: {outpath} ({size_kb:.0f} KB)\n"
+            f"Read text: read_pdf(path='{outpath}')\n"
+            f"Describe diagrams: describe_pdf_page(path='{outpath}', page_number=N)"
         )
 
     except Exception as exc:

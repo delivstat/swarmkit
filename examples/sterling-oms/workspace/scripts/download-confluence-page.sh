@@ -102,6 +102,7 @@ print(space_id)
 
     # Try the PDF export endpoint
     curl -sL "${AUTH_ARGS[@]}" \
+        -H "X-Atlassian-Token: no-check" \
         -o "$OUTFILE" \
         "${CONFLUENCE_URL}/spaces/flyingpdf/pdfpageexport.action?pageId=${PAGE_ID}"
 
@@ -112,6 +113,7 @@ print(space_id)
         # Fallback: try the /wiki/rest/api endpoint
         rm -f "$OUTFILE"
         curl -sL "${AUTH_ARGS[@]}" \
+            -H "X-Atlassian-Token: no-check" \
             -o "$OUTFILE" \
             "${CONFLUENCE_URL}/rest/api/content/${PAGE_ID}/export/pdf"
 
