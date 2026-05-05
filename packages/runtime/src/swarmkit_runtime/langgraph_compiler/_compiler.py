@@ -65,7 +65,14 @@ def compile_topology(
 
     for agent in agents.values():
         agent_provider = _resolve_agent_provider(agent, provider_registry, model_provider)
-        node_fn = _build_agent_node(agent, agent_provider, governance, agents, mcp_manager)
+        node_fn = _build_agent_node(
+            agent,
+            agent_provider,
+            governance,
+            agents,
+            mcp_manager,
+            provider_registry,
+        )
         graph.add_node(agent.id, node_fn)
 
     graph.add_edge(START, topology.root.id)
@@ -433,6 +440,8 @@ async def _dispatch_response(
     mcp_manager: Any,
     governance: GovernanceProvider,
     verbose: str,
+    all_agents: dict[str, ResolvedAgent] | None = None,
+    provider_registry: ProviderRegistry | None = None,
 ) -> dict[str, Any] | tuple[CompletionResponse, list[Message]]:
     """Run the retry loop: delegation, tool-loop, or text-with-retry.
 
@@ -441,21 +450,88 @@ async def _dispatch_response(
     """
     _max_retries = int(os.environ.get("SWARMKIT_AGENT_RETRIES", "2"))
     for _attempt in range(_max_retries + 1):
-        delegation = _extract_delegation(response, agent)
-        if delegation:
-            child_id, task_text = delegation
-            return {
-                "current_agent": child_id,
-                "agent_results": {
-                    agent_id: f"__delegated__:{child_id}",
-                },
-                "messages": [
+        delegations = _extract_delegation(response, agent)
+        if delegations:
+            if len(delegations) == 1:
+                child_id, task_text = delegations[0]
+                return {
+                    "current_agent": child_id,
+                    "agent_results": {
+                        agent_id: f"__delegated__:{child_id}",
+                    },
+                    "messages": [
+                        AIMessage(
+                            content=f"[{agent_id}] Delegating to {child_id}: {task_text}",
+                            name=agent_id,
+                        ),
+                        HumanMessage(content=task_text, name=agent_id),
+                    ],
+                }
+
+            # Multiple delegations — run child nodes in parallel
+            import asyncio as _asyncio  # noqa: PLC0415
+
+            child_map = {c.id: c for c in agent.children}
+
+            async def _run_child(
+                cid: str,
+                task: str,
+                _cm: dict = child_map,
+            ) -> tuple[str, str]:
+                child = _cm[cid]
+                child_state: SwarmState = {
+                    "input": task,
+                    "messages": [HumanMessage(content=task, name=agent_id)],
+                    "agent_results": {},
+                    "current_agent": cid,
+                    "output": "",
+                }
+                child_provider = _resolve_agent_provider(
+                    child,
+                    provider_registry,
+                    model_provider,
+                )
+                child_fn = _build_agent_node(
+                    child,
+                    child_provider,
+                    governance,
+                    all_agents,
+                    mcp_manager,
+                )
+                result_state = await child_fn(child_state)
+                return (cid, result_state.get("output", "(no response)"))
+
+            if verbose:
+                names = [d[0] for d in delegations]
+                print(
+                    f"  [parallel delegation: {names}]",
+                    file=sys.stderr,
+                )
+
+            tasks = [_run_child(cid, task) for cid, task in delegations]
+            child_results = await _asyncio.gather(*tasks)
+
+            merged_results = dict(child_results)
+            merged_messages = []
+            for cid, _task in delegations:
+                merged_messages.append(
                     AIMessage(
-                        content=f"[{agent_id}] Delegating to {child_id}: {task_text}",
+                        content=f"[{agent_id}] Delegated to {cid}",
                         name=agent_id,
                     ),
-                    HumanMessage(content=task_text, name=agent_id),
-                ],
+                )
+            for cid, result in child_results:
+                merged_messages.append(
+                    AIMessage(content=result, name=cid),
+                )
+
+            return {
+                "current_agent": agent_id,
+                "agent_results": {
+                    agent_id: "__delegated_parallel__",
+                    **merged_results,
+                },
+                "messages": merged_messages,
             }
 
         tool_results = await _handle_skill_tool_calls(
@@ -559,6 +635,7 @@ def _build_agent_node(
     governance: GovernanceProvider,
     all_agents: dict[str, ResolvedAgent],
     mcp_manager: Any = None,
+    provider_registry: ProviderRegistry | None = None,
 ) -> Any:
     """Build an async node function for one agent."""
 
@@ -617,6 +694,8 @@ def _build_agent_node(
             mcp_manager,
             governance,
             _verbose,
+            all_agents=all_agents,
+            provider_registry=provider_registry,
         )
         if isinstance(result, dict):
             await _record_completion(
@@ -666,6 +745,7 @@ def _add_routing_edges(
 
         child_ids = {c.id for c in agent.children}
         destinations: dict[str, str] = {cid: cid for cid in child_ids}
+        destinations[agent.id] = agent.id
         destinations["__end__"] = END
 
         def router(
@@ -681,6 +761,9 @@ def _add_routing_edges(
                 target = agent_result.split(":", 1)[1]
                 if target in _dests:
                     return target
+
+            if agent_result == "__delegated_parallel__":
+                return _agent_id
 
             return "__end__"
 
@@ -985,15 +1068,18 @@ async def _handle_skill_tool_calls(
 def _extract_delegation(
     response: CompletionResponse,
     agent: ResolvedAgent,
-) -> tuple[str, str] | None:
-    """If the response contains a delegate_to_<child> tool call, return (child_id, task)."""
+) -> list[tuple[str, str]]:
+    """Extract all delegate_to_<child> tool calls. Returns [(child_id, task), ...]."""
     child_ids = {c.id for c in agent.children}
+    delegations: list[tuple[str, str]] = []
+    seen: set[str] = set()
     for block in response.content:
         if block.type != "tool_use" or not block.tool_name:
             continue
         if block.tool_name.startswith("delegate_to_"):
             target = block.tool_name[len("delegate_to_") :]
-            if target in child_ids:
+            if target in child_ids and target not in seen:
+                seen.add(target)
                 task = ""
                 if isinstance(block.tool_input, dict):
                     task = block.tool_input.get("task", "")
@@ -1003,8 +1089,8 @@ def _extract_delegation(
                         task = parsed.get("task", block.tool_input)
                     except (json.JSONDecodeError, AttributeError):
                         task = block.tool_input
-                return (target, str(task))
-    return None
+                delegations.append((target, str(task)))
+    return delegations
 
 
 def _extract_text(response: CompletionResponse) -> str:
