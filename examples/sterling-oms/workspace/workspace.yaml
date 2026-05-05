@@ -76,6 +76,12 @@ mcp_servers:
     transport: stdio
     command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_NOTES_DIR}"]
     cwd: "${STERLING_NOTES_DIR}"
+  # PDF reader — read any PDF on filesystem, describe diagrams with vision model
+  - id: pdf-reader
+    transport: stdio
+    command: ["uv", "run", "pdf_server.py"]
+    env:
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
   # Review docs — drop files here for agents to review designs, specs, etc.
   - id: review-docs
     transport: stdio

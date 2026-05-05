@@ -132,6 +132,9 @@ defaults:
     - read-project-code
     - read-file-lines
     - verify-code-citations
+    - read-pdf
+    - describe-pdf-page
+    - get-pdf-info
     - read-review-doc
     - list-review-docs
     - write-notes

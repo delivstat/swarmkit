@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-pdf-info
+  name: Get PDF Info
+  description: >
+    Get PDF metadata: total pages, title, author, file size. Use before
+    read-pdf to know how many pages the document has. Pass the full file path.
+category: capability
+implementation:
+  type: mcp_tool
+  server: pdf-reader
+  tool: get_pdf_info
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

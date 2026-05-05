@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: read-pdf
+  name: Read PDF
+  description: >
+    Read text from any PDF file with page numbers for citation. Access
+    any file on the filesystem. Returns text per page. For large PDFs,
+    specify start_page and end_page. Use get_pdf_info first for page count.
+category: capability
+implementation:
+  type: mcp_tool
+  server: pdf-reader
+  tool: read_pdf
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
