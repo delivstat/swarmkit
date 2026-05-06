@@ -190,22 +190,46 @@ audit:
   redact: ["$.api_key", "$.password"]
 ```
 
-## Reference workspace
+## Reference topologies
 
-The `reference/` directory ships two production-quality topologies:
+The `reference/` directory ships production-quality topologies that any workspace can adopt:
 
-**Code Review Swarm** — three leaders (Engineering, QA, Operations) coordinate a PR review. Engineering fetches the PR via GitHub MCP, analyses code quality and security. QA assesses test coverage. Operations evaluates deployment risk with HITL approval for low-confidence verdicts.
+### Code Review Swarm
 
-**Skill Authoring Swarm** — six specialist agents (conversation leader, knowledge searcher, schema drafter, validator, test writer, publisher) create and edit SwarmKit artifacts through conversation, grounded by the Knowledge MCP Server.
+Three leaders (Engineering, QA, Operations) coordinate a PR review. Engineering fetches the PR via GitHub MCP, analyses code quality and security. QA assesses test coverage. Operations evaluates deployment risk with HITL approval for low-confidence verdicts.
+
+```bash
+swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit"
+```
+
+### Skill Authoring Swarm
+
+Six specialist agents (conversation leader, knowledge searcher, schema drafter, validator, test writer, publisher) create and edit SwarmKit artifacts through conversation, grounded by the Knowledge MCP Server.
+
+```bash
+swarmkit author skill my-workspace/ --thorough   # uses the authoring swarm
+```
+
+### Knowledge Curator (designed, implementation pending)
+
+Maintains a persistent wiki of accumulated knowledge. Three agents: curator (reads sources, writes wiki pages), indexer (builds cross-references and catalogue), linter (checks for staleness, contradictions, gaps). Any workspace can add this topology to build institutional knowledge that persists across conversations.
+
+Three operations:
+- **Ingest** — feed a new document, Confluence page, or Jira ticket. Curator creates/updates wiki pages with cross-references.
+- **Query-and-persist** — during normal chat, high-quality answers are written to the wiki. Future queries on the same topic find the wiki page first and skip expensive tool chains.
+- **Lint** — periodic health check for contradictions, stale content, orphan pages, and missing topics.
+
+Inspired by [Karpathy's LLM-maintained wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). See [`design/details/knowledge-curator-topology.md`](./design/details/knowledge-curator-topology.md) for the full design.
 
 ```
 reference/
 ├── workspace.yaml          # MCP servers (GitHub + Knowledge)
 ├── topologies/
 │   ├── code-review.yaml    # 10-agent, 3-level tree
-│   └── skill-authoring.yaml
-├── archetypes/             # 16 reusable agent configs
-└── skills/                 # 15 skills (GitHub MCP + decision + knowledge)
+│   ├── skill-authoring.yaml
+│   └── knowledge-curator.yaml  # (pending implementation)
+├── archetypes/             # 16+ reusable agent configs
+└── skills/                 # 15+ skills (GitHub MCP + decision + knowledge + wiki)
 ```
 
 ## Monorepo layout
