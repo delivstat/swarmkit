@@ -476,7 +476,7 @@ async def _dispatch_response(
             async def _run_child(
                 cid: str,
                 task: str,
-                _cm: dict = child_map,
+                _cm: dict[str, ResolvedAgent] = child_map,
             ) -> tuple[str, str]:
                 child = _cm[cid]
                 child_state: SwarmState = {
@@ -495,8 +495,9 @@ async def _dispatch_response(
                     child,
                     child_provider,
                     governance,
-                    all_agents,
+                    all_agents or {},
                     mcp_manager,
+                    provider_registry,
                 )
                 result_state = await child_fn(child_state)
                 return (cid, result_state.get("output", "(no response)"))
