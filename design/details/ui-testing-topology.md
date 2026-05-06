@@ -189,6 +189,103 @@ swarmkit chat . ui-testing
 - Vision-capable model for validation (Gemini Flash recommended)
 - The application under test accessible via browser
 
+## Primary use case: AI-generated Selenium/Playwright tests
+
+The most valuable mode is NOT running vision-based tests repeatedly —
+it's generating coded tests that run for free forever.
+
+### How it works
+
+The agent navigates the UI once using vision + Playwright MCP. While
+navigating, it captures two things simultaneously:
+
+1. **Vision model** identifies WHAT to interact with ("the order search
+   field", "the submit button", "the status dropdown")
+2. **Playwright DOM access** extracts HOW to select it (CSS selector,
+   ID, XPath, aria-label, data-testid)
+
+The agent then generates Selenium/Playwright code:
+
+```python
+# Generated from: "Search for order 12345 and verify it shows Shipped"
+
+def test_search_order():
+    driver.get("https://sterling.company.com/oms/orders")
+
+    # Vision identified: "Order Search" input field
+    # DOM extracted: id="orderSearchInput", placeholder="Enter order number"
+    search_field = driver.find_element(By.ID, "orderSearchInput")
+    search_field.send_keys("12345")
+
+    # Vision identified: blue "Search" button next to the input
+    # DOM extracted: button.btn-primary[data-action="search"]
+    search_btn = driver.find_element(By.CSS_SELECTOR, "button[data-action='search']")
+    search_btn.click()
+
+    # Vision identified: order status showing "Shipped" in green
+    # DOM extracted: span.order-status with text content
+    WebDriverWait(driver, 10).until(
+        EC.text_to_be_present_in_element(
+            (By.CSS_SELECTOR, "span.order-status"), "Shipped"
+        )
+    )
+```
+
+### Economics
+
+| Approach | Cost to create | Cost per run | Maintenance |
+|----------|---------------|-------------|-------------|
+| Manual Selenium | Developer: 4-8 hours | Free | High (selector rot) |
+| Vision-based testing | $0.13 per test | $0.13 per run | Low |
+| **AI-generated Selenium** | **$0.13 one-time** | **Free** | **Regenerate on UI change** |
+
+When selectors break (UI redesign, ID change, new layout), you don't
+fix them manually — re-run the generator against the current UI and it
+produces fresh selectors. One $0.13 vision run replaces hours of
+developer time hunting for the right CSS path.
+
+### Selector strategy
+
+The generator should produce resilient selectors in priority order:
+
+1. `data-testid` attributes (most stable, if the app uses them)
+2. `aria-label` / `role` attributes (accessibility-based, stable)
+3. `id` attributes (stable but not always present)
+4. Text content selectors (`contains(text(), "Search")`)
+5. CSS class selectors (least stable, last resort)
+
+The vision model identifies the element visually. Playwright extracts
+ALL available selectors from the DOM. The generator picks the most
+resilient one based on the priority above.
+
+### Workflow
+
+```
+Natural language test case (written by BA/QA)
+    ↓
+Agent navigates UI with vision + Playwright (one-time, ~$0.13)
+    ↓
+Captures: screenshots + DOM selectors at each step
+    ↓
+Generates: Selenium/Playwright Python test code
+    ↓
+Human reviews generated code (approve/adjust)
+    ↓
+Tests run in CI for free on every commit
+    ↓
+UI changes? Re-run generator ($0.13) → fresh selectors
+```
+
+### Additional output modes
+
+**Documentation generation:** Same workflow but outputs a markdown
+guide with annotated screenshots instead of test code. Each step
+becomes a numbered instruction with a screenshot callout.
+
+**Interactive walkthrough:** Screen recording of the agent's
+navigation with generated voiceover from step descriptions. Requires
+ffmpeg for recording + TTS for narration.
+
 ## Open questions
 
 1. How to handle dynamic data (order numbers, timestamps) that change
@@ -196,3 +293,8 @@ swarmkit chat . ui-testing
 2. Should baseline screenshots be stored for visual diff comparison?
 3. How to authenticate with SSO-protected enterprise apps?
 4. Can test results feed back into a Rynko Flow gate for CI/CD?
+5. Should generated tests include page object model (POM) classes or
+   flat test functions?
+6. How to handle multi-tab/multi-window scenarios?
+7. Can the generator produce tests in multiple frameworks (Selenium,
+   Playwright, Cypress) from the same navigation run?
