@@ -334,17 +334,36 @@ def get_transactions(filter: str = "") -> str:
 
 @server.tool()
 def get_events(transaction_id: str) -> str:
-    """Get events configured for a Sterling transaction."""
+    """Get events, actions, and invoked flows for a Sterling transaction.
+
+    Shows the full chain: Transaction → Events → Actions → Invoked Flows.
+    """
     fl = transaction_id.lower()
     for t in _transactions.values():
         if t.get("transaction_id", "").lower() == fl or t.get("transaction_key", "").lower() == fl:
             events = t.get("events", [])
             if not events:
                 return f"Transaction '{transaction_id}' has no events configured."
-            lines = [f"# Events for {t['transaction_id']}\n"]
+            tname = t.get("transaction_name") or t["transaction_id"]
+            lines = [f"# Events for {tname} ({t['transaction_id']})\n"]
             for e in events:
                 active = "ACTIVE" if e.get("active") == "Y" else "inactive"
-                lines.append(f"- **{e['event_id']}**: {e.get('event_name', '')} ({active})")
+                eid = e.get("event_id", "")
+                ename = e.get("event_name", "")
+                lines.append(f"## Event: {eid} - {ename} ({active})")
+                actions = e.get("actions", [])
+                if actions:
+                    for a in actions:
+                        acode = a.get("action_code", "")
+                        aname = a.get("action_name", "")
+                        lines.append(f"  - Action: **{acode}** ({aname})")
+                        for fl_item in a.get("invoked_flows", []):
+                            fname = fl_item.get("flow_name", "")
+                            fpt = fl_item.get("process_type", "")
+                            lines.append(f"    - Invokes: **{fname}** (process type: {fpt})")
+                else:
+                    lines.append("  - (no actions configured)")
+                lines.append("")
             return "\n".join(lines)
     return f"Transaction '{transaction_id}' not found."
 

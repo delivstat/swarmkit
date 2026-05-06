@@ -205,10 +205,15 @@ def _build_pipelines(cdt_dir: Path) -> dict:
     return pipelines
 
 
-def _build_transactions(cdt_dir: Path) -> dict:
-    """Build transaction index with events."""
+def _build_transactions(cdt_dir: Path) -> dict:  # noqa: PLR0912
+    """Build transaction index with events, actions, and invoked flows.
+
+    Joins: YFS_TRANSACTION → YFS_EVENT → YFS_EVENT_CONDITION →
+           YFS_ACTION → YFS_INVOKED_FLOWS → YFS_FLOW
+    """
     transactions = {}
 
+    # 1. Transactions
     tran_path = cdt_dir / "YFS_TRANSACTION.cdt.xml"
     if tran_path.exists():
         _, rows = _parse_cdt(tran_path)
@@ -217,6 +222,7 @@ def _build_transactions(cdt_dir: Path) -> dict:
             transactions[key] = {
                 "transaction_key": key,
                 "transaction_id": row.get("Tranid", row.get("TransactionKey", "")),
+                "transaction_name": row.get("Tranname", ""),
                 "base_transaction": row.get("BaseTransactionKey", ""),
                 "process_type": row.get("ProcessTypeKey", ""),
                 "owner": row.get("OwnerKey", ""),
@@ -225,19 +231,73 @@ def _build_transactions(cdt_dir: Path) -> dict:
                 "events": [],
             }
 
+    # 2. Events (keyed by EventKey for condition lookup)
+    events_by_key: dict[str, dict] = {}
     event_path = cdt_dir / "YFS_EVENT.cdt.xml"
     if event_path.exists():
         _, rows = _parse_cdt(event_path)
         for row in rows:
+            ek = row.get("EventKey", "")
             tk = row.get("TransactionKey", "")
+            event = {
+                "event_key": ek,
+                "event_id": row.get("Eventid", ""),
+                "event_name": row.get("EventName", ""),
+                "active": row.get("ActiveFlag", ""),
+                "actions": [],
+            }
+            events_by_key[ek] = event
             if tk in transactions:
-                transactions[tk]["events"].append(
-                    {
-                        "event_id": row.get("Eventid", ""),
-                        "event_name": row.get("EventName", ""),
-                        "active": row.get("ActiveFlag", ""),
-                    }
-                )
+                transactions[tk]["events"].append(event)
+
+    # 3. Actions (keyed by ActionKey for invoked flow lookup)
+    actions_by_key: dict[str, dict] = {}
+    action_path = cdt_dir / "YFS_ACTION.cdt.xml"
+    if action_path.exists():
+        _, rows = _parse_cdt(action_path)
+        for row in rows:
+            ak = row.get("ActionKey", "")
+            actions_by_key[ak] = {
+                "action_key": ak,
+                "action_code": row.get("ActionCode", row.get("Actioncode", "")),
+                "action_name": row.get("ActionName", row.get("Actionname", "")),
+                "invoked_flows": [],
+            }
+
+    # 4. Event Conditions → link events to actions
+    cond_path = cdt_dir / "YFS_EVENT_CONDITION.cdt.xml"
+    if cond_path.exists():
+        _, rows = _parse_cdt(cond_path)
+        for row in rows:
+            ek = row.get("EventKey", "")
+            ak = row.get("ActionKey", "")
+            if ek in events_by_key and ak in actions_by_key:
+                action = actions_by_key[ak]
+                if action not in events_by_key[ek]["actions"]:
+                    events_by_key[ek]["actions"].append(action)
+
+    # 5. Flows (keyed by FlowKey)
+    flows_by_key: dict[str, dict] = {}
+    flow_path = cdt_dir / "YFS_FLOW.cdt.xml"
+    if flow_path.exists():
+        _, rows = _parse_cdt(flow_path)
+        for row in rows:
+            fk = row.get("FlowKey", "")
+            flows_by_key[fk] = {
+                "flow_key": fk,
+                "flow_name": row.get("FlowName", ""),
+                "process_type": row.get("ProcessTypeKey", ""),
+            }
+
+    # 6. Invoked Flows → link actions to flows
+    invoked_path = cdt_dir / "YFS_INVOKED_FLOWS.cdt.xml"
+    if invoked_path.exists():
+        _, rows = _parse_cdt(invoked_path)
+        for row in rows:
+            ak = row.get("ActionKey", "")
+            fk = row.get("FlowKey", "")
+            if ak in actions_by_key and fk in flows_by_key:
+                actions_by_key[ak]["invoked_flows"].append(flows_by_key[fk])
 
     return transactions
 
@@ -286,9 +346,13 @@ def main() -> None:  # noqa: PLR0915
     pipelines = _build_pipelines(args.cdt_dir)
     print(f"    {len(pipelines)} pipelines")
 
-    print("  Building transaction index...")
+    print("  Building transaction index (with events, actions, flows)...")
     transactions = _build_transactions(args.cdt_dir)
-    print(f"    {len(transactions)} transactions")
+    total_events = sum(len(t.get("events", [])) for t in transactions.values())
+    total_actions = sum(
+        len(a.get("actions", [])) for t in transactions.values() for a in t.get("events", [])
+    )
+    print(f"    {len(transactions)} transactions, {total_events} events, {total_actions} actions")
 
     print("  Building status index...")
     statuses = _build_statuses(args.cdt_dir)
