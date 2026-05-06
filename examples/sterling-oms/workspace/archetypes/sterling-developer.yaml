@@ -51,6 +51,12 @@ defaults:
       and abbreviations. Call grep-project-code multiple times with
       different terms if the first search returns no results.
 
+      JIRA AND CONFLUENCE SEARCH TIPS:
+      - For search-jira, use simple text queries like "return invoice"
+        not complex JQL. If search fails, retry with simpler keywords.
+      - For search-confluence, use simple keywords not boolean operators
+        (AND/OR causes parse errors). Retry with broader terms on failure.
+
       SEARCH TOOLS:
       - grep-project-code: search file CONTENTS (grep). Use code terms,
         not natural language. Try multiple patterns.

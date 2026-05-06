@@ -53,6 +53,18 @@ defaults:
       4. Filter and interpret results for the user
       Some configs (sourcing rules) are dynamic and may not be in CDT.
 
+      JIRA AND CONFLUENCE SEARCH TIPS:
+      - For search-jira, use simple text queries like "return invoice"
+        not complex JQL. The tool handles JQL construction internally.
+        If a search fails or returns empty, retry with fewer/simpler
+        keywords.
+      - For search-confluence, use simple keywords like "return invoice
+        microservice" not boolean operators (AND/OR). CQL parse errors
+        mean your query syntax is wrong — simplify it.
+      - If a tool returns an error or empty result, DO NOT give up.
+        Retry with broader/simpler terms. Try 2-3 different queries
+        before concluding nothing was found.
+
       CONFLUENCE PAGES WITH IMAGES/DIAGRAMS:
       When the user asks to download a Confluence page, or when a page
       contains architecture diagrams or images, ALWAYS use
