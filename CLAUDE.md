@@ -97,7 +97,9 @@ These hold across the whole repo. Individual package `CLAUDE.md`s add more.
 
 ## Feature delivery workflow — MANDATORY
 
-Every feature, big or small, follows this lifecycle. No exceptions. Never push directly to `main`.
+Every feature, big or small, follows this lifecycle. No exceptions.
+
+**Branch protection is enforced on `main`.** Direct pushes are blocked for all contributors including admins. Every change — code, docs, workspace files, design notes — goes through a pull request.
 
 1. **Design first.** Write a short design note at `design/details/<feature-slug>.md` — or, if the v0.6 doc already covers it, reference the section. Must state: goal, non-goals, API shape, test plan, demo plan. For large features open a design-only PR and get review before implementation.
 2. **Branch.** `feat/<scope>-<slug>`, `fix/<scope>-<slug>`, `design/<slug>`, `docs/<slug>`, etc. One feature per branch.
