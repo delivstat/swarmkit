@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450" font-family="'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <filter id="s" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="turbulence" baseFrequency="0.02" numOctaves="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="1"/>
+    </filter>
+  </defs>
+  <rect width="900" height="450" fill="#0f172a"/>
+
+  <text x="450" y="35" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="600">Before vs After: Tool Result Synthesis</text>
+
+  <!-- Before panel -->
+  <rect x="30" y="55" width="410" height="370" rx="12" fill="#1c1117" stroke="#ef4444" stroke-width="1.5" filter="url(#s)"/>
+  <text x="235" y="85" text-anchor="middle" fill="#ef4444" font-size="16" font-weight="600">Before — Raw Tool Output</text>
+
+  <text x="50" y="115" fill="#94a3b8" font-size="11">Found 5 results:</text>
+  <text x="50" y="138" fill="#fca5a5" font-size="10" font-weight="600">Croma_Functional.docx</text>
+  <text x="50" y="153" fill="#64748b" font-size="10">(design-docs/Croma_Functional.docx) [score: 0.50]</text>
+  <text x="50" y="168" fill="#64748b" font-size="9">  # Croma_Functional Source: design-docs/Croma_F...</text>
+
+  <text x="50" y="193" fill="#fca5a5" font-size="10" font-weight="600">YFS_SOURCING_RULE_HDR.md</text>
+  <text x="50" y="208" fill="#64748b" font-size="10">(data-model/YFS_SOURCING_RULE_HDR.md) [score: 0.35]</text>
+  <text x="50" y="223" fill="#64748b" font-size="9">  | SRC_RULE_HDR_I2 | ORGANIZATION_CODE, ORDER_SO...</text>
+
+  <text x="50" y="248" fill="#fca5a5" font-size="10" font-weight="600">Croma KT Notes by Gemini.pdf</text>
+  <text x="50" y="263" fill="#64748b" font-size="10">(design-docs/implementation_notes/...) [score: 0.35]</text>
+  <text x="50" y="278" fill="#64748b" font-size="9">  cost associated with necessary changes, like in...</text>
+
+  <text x="50" y="308" fill="#94a3b8" font-size="11">No config matches for 'Sourcing Rules'.</text>
+  <text x="50" y="333" fill="#94a3b8" font-size="11">Found 4 APIs:</text>
+  <text x="50" y="353" fill="#64748b" font-size="9">- generateWorkOrder (com.yantra.api.omp): The ge...</text>
+  <text x="50" y="368" fill="#64748b" font-size="9">- getAvailableInventory (com.yantra.api.omp): The...</text>
+  <text x="50" y="383" fill="#64748b" font-size="9">- getSourcingRuleList (com.yantra.api.omp): The g...</text>
+
+  <text x="235" y="415" text-anchor="middle" fill="#ef4444" font-size="10">Scores, truncated snippets, raw dumps</text>
+
+  <!-- After panel -->
+  <rect x="460" y="55" width="410" height="370" rx="12" fill="#111c17" stroke="#34d399" stroke-width="1.5" filter="url(#s)"/>
+  <text x="665" y="85" text-anchor="middle" fill="#34d399" font-size="16" font-weight="600">After — Synthesised Answer</text>
+
+  <text x="480" y="115" fill="#e2e8f0" font-size="12" font-weight="600">1. Data Flow &amp; Integration</text>
+  <text x="490" y="133" fill="#94a3b8" font-size="10">Sourcing rules pushed from SAP to OMS via</text>
+  <text x="490" y="148" fill="#94a3b8" font-size="10">CROMAPH2_SEND_SOURCINGRULE_FILE_TO_IC_Q</text>
+  <text x="490" y="163" fill="#94a3b8" font-size="10">Then forwarded to IC microservice</text>
+
+  <text x="480" y="190" fill="#e2e8f0" font-size="12" font-weight="600">2. Database Structure</text>
+  <text x="490" y="208" fill="#94a3b8" font-size="10">Primary table: YFS_SOURCING_RULE_HDR</text>
+  <text x="490" y="223" fill="#94a3b8" font-size="10">Indexed by: ORG_CODE, CLASSIFICATION,</text>
+  <text x="490" y="238" fill="#94a3b8" font-size="10">FULFILLMENT_TYPE (HDEL, SDEL, STOR)</text>
+
+  <text x="480" y="265" fill="#e2e8f0" font-size="12" font-weight="600">3. Key APIs</text>
+  <text x="490" y="283" fill="#94a3b8" font-size="10">getSourcingRuleList — retrieves configured rules</text>
+  <text x="490" y="298" fill="#94a3b8" font-size="10">getAvailableInventory — uses rules for availability</text>
+
+  <text x="480" y="325" fill="#e2e8f0" font-size="12" font-weight="600">4. Implementation Notes</text>
+  <text x="490" y="343" fill="#94a3b8" font-size="10">Rules are dynamic (fed from SAP), not static CDT</text>
+  <text x="490" y="358" fill="#94a3b8" font-size="10">IC microservice handles real-time promising</text>
+  <text x="490" y="373" fill="#94a3b8" font-size="10">Feed-based: near-real-time, not batch</text>
+
+  <text x="665" y="415" text-anchor="middle" fill="#34d399" font-size="10">Structured, grounded, project-specific</text>
+
+  <!-- Arrow between panels -->
+  <text x="450" y="240" text-anchor="middle" fill="#fbbf24" font-size="24">→</text>
+  <text x="450" y="260" text-anchor="middle" fill="#94a3b8" font-size="9">+1 LLM call</text>
+</svg>

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 400" font-family="'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <filter id="sk2" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="turbulence" baseFrequency="0.02" numOctaves="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="1"/>
+    </filter>
+  </defs>
+  <rect width="700" height="400" fill="#0f172a"/>
+
+  <text x="350" y="40" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="600">Cost Per Day — Production Usage</text>
+  <text x="350" y="62" text-anchor="middle" fill="#94a3b8" font-size="13">507 requests · 1.9M tokens · Sterling OMS workspace</text>
+
+  <!-- Bar chart -->
+  <!-- Router -->
+  <text x="200" y="115" text-anchor="end" fill="#94a3b8" font-size="13">Router (llama-3.3)</text>
+  <rect x="210" y="100" width="24" height="22" rx="4" fill="#38bdf8" filter="url(#sk2)"/>
+  <text x="245" y="116" fill="#38bdf8" font-size="13" font-weight="600">$0.02</text>
+  <text x="295" y="116" fill="#64748b" font-size="11">$0.10/M tokens</text>
+
+  <!-- Workers -->
+  <text x="200" y="165" text-anchor="end" fill="#94a3b8" font-size="13">Workers (deepseek)</text>
+  <rect x="210" y="150" width="280" height="22" rx="4" fill="#a78bfa" filter="url(#sk2)"/>
+  <text x="500" y="166" fill="#a78bfa" font-size="13" font-weight="600">$0.28</text>
+  <text x="550" y="166" fill="#64748b" font-size="11">$0.32/M tokens</text>
+
+  <!-- Tool calls -->
+  <text x="200" y="215" text-anchor="end" fill="#94a3b8" font-size="13">Tool calls (local)</text>
+  <rect x="210" y="200" width="2" height="22" rx="1" fill="#34d399" filter="url(#sk2)"/>
+  <text x="225" y="216" fill="#34d399" font-size="13" font-weight="600">$0.00</text>
+  <text x="275" y="216" fill="#64748b" font-size="11">grep, ChromaDB, config — free</text>
+
+  <!-- Synthesis -->
+  <text x="200" y="265" text-anchor="end" fill="#94a3b8" font-size="13">Synthesis calls</text>
+  <rect x="210" y="250" width="30" height="22" rx="4" fill="#fbbf24" filter="url(#sk2)"/>
+  <text x="250" y="266" fill="#fbbf24" font-size="13" font-weight="600">$0.03</text>
+  <text x="300" y="266" fill="#64748b" font-size="11">follow-up LLM for coherent output</text>
+
+  <!-- Divider -->
+  <line x1="80" y1="300" x2="620" y2="300" stroke="#334155" stroke-width="1"/>
+
+  <!-- Total -->
+  <text x="200" y="335" text-anchor="end" fill="#e2e8f0" font-size="16" font-weight="700">TOTAL</text>
+  <rect x="210" y="315" width="310" height="28" rx="6" fill="#1e293b" stroke="#e2e8f0" stroke-width="1" filter="url(#sk2)"/>
+  <text x="530" y="335" fill="#e2e8f0" font-size="18" font-weight="700">$0.33</text>
+
+  <!-- Annotation -->
+  <text x="350" y="375" text-anchor="middle" fill="#64748b" font-size="12">Per-agent model control: cheap model routes, capable model reasons</text>
+</svg>

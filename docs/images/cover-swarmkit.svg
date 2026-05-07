@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" font-family="'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <filter id="sketch" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="turbulence" baseFrequency="0.03" numOctaves="4" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5"/>
+    </filter>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <text x="600" y="120" text-anchor="middle" fill="#e2e8f0" font-size="52" font-weight="700">SwarmKit</text>
+  <text x="600" y="165" text-anchor="middle" fill="#94a3b8" font-size="22">Multi-agent AI swarms from YAML, not code</text>
+
+  <!-- Three pillars -->
+  <!-- Topology as Data -->
+  <rect x="80" y="220" width="320" height="200" rx="16" fill="none" stroke="#38bdf8" stroke-width="2" filter="url(#sketch)"/>
+  <text x="240" y="260" text-anchor="middle" fill="#38bdf8" font-size="18" font-weight="600">Topology as Data</text>
+  <text x="240" y="295" text-anchor="middle" fill="#94a3b8" font-size="14">agents:</text>
+  <text x="240" y="315" text-anchor="middle" fill="#94a3b8" font-size="14">  root:</text>
+  <text x="240" y="335" text-anchor="middle" fill="#94a3b8" font-size="14">    children:</text>
+  <text x="240" y="355" text-anchor="middle" fill="#94a3b8" font-size="14">      - architect</text>
+  <text x="240" y="375" text-anchor="middle" fill="#94a3b8" font-size="14">      - developer</text>
+  <text x="240" y="405" text-anchor="middle" fill="#64748b" font-size="12">YAML in → LangGraph out</text>
+
+  <!-- Skills -->
+  <rect x="440" y="220" width="320" height="200" rx="16" fill="none" stroke="#a78bfa" stroke-width="2" filter="url(#sketch)"/>
+  <text x="600" y="260" text-anchor="middle" fill="#a78bfa" font-size="18" font-weight="600">Skills as Extension</text>
+  <text x="600" y="295" text-anchor="middle" fill="#94a3b8" font-size="14">capability · decision</text>
+  <text x="600" y="320" text-anchor="middle" fill="#94a3b8" font-size="14">coordination · persistence</text>
+  <text x="600" y="360" text-anchor="middle" fill="#94a3b8" font-size="14">7,000+ MCP servers</text>
+  <text x="600" y="385" text-anchor="middle" fill="#94a3b8" font-size="14">as plug-in skills</text>
+  <text x="600" y="405" text-anchor="middle" fill="#64748b" font-size="12">One mental model</text>
+
+  <!-- Growth -->
+  <rect x="800" y="220" width="320" height="200" rx="16" fill="none" stroke="#34d399" stroke-width="2" filter="url(#sketch)"/>
+  <text x="960" y="260" text-anchor="middle" fill="#34d399" font-size="18" font-weight="600">Growth by Authoring</text>
+  <text x="960" y="295" text-anchor="middle" fill="#94a3b8" font-size="14">swarmkit init .</text>
+  <text x="960" y="320" text-anchor="middle" fill="#94a3b8" font-size="14">swarmkit author skill .</text>
+  <text x="960" y="355" text-anchor="middle" fill="#94a3b8" font-size="14">Gap detected →</text>
+  <text x="960" y="380" text-anchor="middle" fill="#94a3b8" font-size="14">skill authored →</text>
+  <text x="960" y="405" text-anchor="middle" fill="#64748b" font-size="12">Human-approved evolution</text>
+
+  <!-- Bottom stats -->
+  <text x="200" y="490" text-anchor="middle" fill="#38bdf8" font-size="36" font-weight="700">7</text>
+  <text x="200" y="515" text-anchor="middle" fill="#94a3b8" font-size="14">Model Providers</text>
+
+  <text x="440" y="490" text-anchor="middle" fill="#a78bfa" font-size="36" font-weight="700">$0.33</text>
+  <text x="440" y="515" text-anchor="middle" fill="#94a3b8" font-size="14">per 500 requests</text>
+
+  <text x="680" y="490" text-anchor="middle" fill="#34d399" font-size="36" font-weight="700">9</text>
+  <text x="680" y="515" text-anchor="middle" fill="#94a3b8" font-size="14">MCP Tool Servers</text>
+
+  <text x="960" y="490" text-anchor="middle" fill="#fbbf24" font-size="36" font-weight="700">21</text>
+  <text x="960" y="515" text-anchor="middle" fill="#94a3b8" font-size="14">Skills in Production</text>
+
+  <!-- Footer -->
+  <text x="600" y="590" text-anchor="middle" fill="#475569" font-size="14">github.com/delivstat/swarmkit · MIT License · Open Source</text>
+</svg>

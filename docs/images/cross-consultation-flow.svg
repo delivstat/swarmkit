@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 550" font-family="'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <filter id="sk" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="turbulence" baseFrequency="0.02" numOctaves="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="1.2"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    </marker>
+    <marker id="arrow-cyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+    </marker>
+  </defs>
+  <rect width="900" height="550" fill="#0f172a"/>
+
+  <text x="450" y="35" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="600">Cross-Consultation Flow</text>
+
+  <!-- User -->
+  <rect x="350" y="55" width="200" height="45" rx="22" fill="#1e293b" stroke="#64748b" stroke-width="1.5" filter="url(#sk)"/>
+  <text x="450" y="83" text-anchor="middle" fill="#e2e8f0" font-size="14">"How do sourcing rules work?"</text>
+
+  <!-- Arrow down to root -->
+  <line x1="450" y1="100" x2="450" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Root agent -->
+  <rect x="325" y="135" width="250" height="60" rx="12" fill="#1e293b" stroke="#fbbf24" stroke-width="2" filter="url(#sk)"/>
+  <text x="450" y="160" text-anchor="middle" fill="#fbbf24" font-size="15" font-weight="600">Root Agent</text>
+  <text x="450" y="180" text-anchor="middle" fill="#94a3b8" font-size="11">llama-3.3-70b · $0.10/M · routes only</text>
+
+  <!-- Parallel split -->
+  <line x1="380" y1="195" x2="230" y2="250" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <line x1="520" y1="195" x2="670" y2="250" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="450" y="228" text-anchor="middle" fill="#94a3b8" font-size="11" font-style="italic">asyncio.gather — parallel</text>
+
+  <!-- Architect -->
+  <rect x="80" y="250" width="300" height="150" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="2" filter="url(#sk)"/>
+  <text x="230" y="278" text-anchor="middle" fill="#38bdf8" font-size="15" font-weight="600">Architect</text>
+  <text x="230" y="298" text-anchor="middle" fill="#94a3b8" font-size="11">deepseek-chat · $0.32/M</text>
+  <rect x="100" y="312" width="110" height="26" rx="6" fill="#1e3a5f" filter="url(#sk)"/>
+  <text x="155" y="330" text-anchor="middle" fill="#7dd3fc" font-size="10">search-project-docs</text>
+  <rect x="220" y="312" width="80" height="26" rx="6" fill="#1e3a5f" filter="url(#sk)"/>
+  <text x="260" y="330" text-anchor="middle" fill="#7dd3fc" font-size="10">search-config</text>
+  <rect x="100" y="345" width="80" height="26" rx="6" fill="#1e3a5f" filter="url(#sk)"/>
+  <text x="140" y="363" text-anchor="middle" fill="#7dd3fc" font-size="10">search-apis</text>
+  <rect x="190" y="345" width="100" height="26" rx="6" fill="#1e3a5f" filter="url(#sk)"/>
+  <text x="240" y="363" text-anchor="middle" fill="#7dd3fc" font-size="10">search-confluence</text>
+  <text x="230" y="390" text-anchor="middle" fill="#64748b" font-size="10">design view + integration context</text>
+
+  <!-- Developer -->
+  <rect x="520" y="250" width="300" height="150" rx="12" fill="#1e293b" stroke="#34d399" stroke-width="2" filter="url(#sk)"/>
+  <text x="670" y="278" text-anchor="middle" fill="#34d399" font-size="15" font-weight="600">Developer</text>
+  <text x="670" y="298" text-anchor="middle" fill="#94a3b8" font-size="11">deepseek-chat · $0.32/M</text>
+  <rect x="540" y="312" width="100" height="26" rx="6" fill="#132f1e" filter="url(#sk)"/>
+  <text x="590" y="330" text-anchor="middle" fill="#86efac" font-size="10">grep-project-code</text>
+  <rect x="650" y="312" width="90" height="26" rx="6" fill="#132f1e" filter="url(#sk)"/>
+  <text x="695" y="330" text-anchor="middle" fill="#86efac" font-size="10">read-file-lines</text>
+  <rect x="540" y="345" width="105" height="26" rx="6" fill="#132f1e" filter="url(#sk)"/>
+  <text x="593" y="363" text-anchor="middle" fill="#86efac" font-size="10">verify-code-citations</text>
+  <rect x="655" y="345" width="90" height="26" rx="6" fill="#132f1e" filter="url(#sk)"/>
+  <text x="700" y="363" text-anchor="middle" fill="#86efac" font-size="10">get-api-input-xml</text>
+  <text x="670" y="390" text-anchor="middle" fill="#64748b" font-size="10">code analysis + line citations</text>
+
+  <!-- Merge back -->
+  <line x1="230" y1="400" x2="380" y2="440" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrow-cyan)"/>
+  <line x1="670" y1="400" x2="520" y2="440" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+
+  <!-- Synthesis -->
+  <rect x="325" y="435" width="250" height="50" rx="12" fill="#1e293b" stroke="#fbbf24" stroke-width="2" filter="url(#sk)"/>
+  <text x="450" y="458" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="600">Root Synthesises</text>
+  <text x="450" y="475" text-anchor="middle" fill="#94a3b8" font-size="11">merges both perspectives</text>
+
+  <!-- Output -->
+  <line x1="450" y1="485" x2="450" y2="510" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="300" y="510" width="300" height="30" rx="8" fill="#1e293b" stroke="#e2e8f0" stroke-width="1" filter="url(#sk)"/>
+  <text x="450" y="530" text-anchor="middle" fill="#e2e8f0" font-size="12">Coherent answer with design + code citations</text>
+</svg>
