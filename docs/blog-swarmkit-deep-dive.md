@@ -7,7 +7,7 @@ date: 2026-05-03
 
 # SwarmKit: multi-agent AI swarms as YAML, not code
 
-I've spent 20+ years building enterprise systems — IBM Sterling, SAP integrations, complex orchestration layers where the core challenge was always the same: getting different components to work together without drowning in glue code.
+I've spent 20+ years building enterprise systems — order management, supply chain, complex integrations where the core challenge was always the same: getting different components to work together without drowning in glue code.
 
 Last year I started building multi-agent AI systems for a real project, and I hit that same wall. LangGraph is powerful, but every time I needed a new agent topology — three agents instead of two, a different routing pattern, one more tool — I was back in Python, wiring state graphs by hand. The topology was trapped in code. I couldn't share it, version it independently, or let a non-developer on the team adjust it.
 
@@ -45,7 +45,7 @@ _add_routing_edges(graph, topology.root, agents)
 return graph.compile()
 ```
 
-The delegation mechanism is where it gets interesting. SwarmKit creates synthetic tools for each agent's children — `delegate_to_architect`, `delegate_to_developer`, and so on. When the model calls one of these tools, the runtime intercepts it, updates the graph state with `current_agent = "developer"`, and LangGraph's conditional edge routes execution to that node. The parent doesn't need to know the child's internal logic, tool list, or model configuration. It just delegates.
+The delegation mechanism is where it gets interesting. SwarmKit creates synthetic tools for each agent's children — `delegate_to_researcher`, `delegate_to_analyst`, and so on. When the model calls one of these tools, the runtime intercepts it, updates the graph state with `current_agent = "developer"`, and LangGraph's conditional edge routes execution to that node. The parent doesn't need to know the child's internal logic, tool list, or model configuration. It just delegates.
 
 The graph state (`SwarmState`) carries the conversation through the graph: the user's input, which agent runs next, accumulated results from each agent, conversation history, and the final output. When an agent finishes without delegating further, execution flows back to the root. When the root produces a final text response with no more delegation calls, the graph routes to `END`.
 
@@ -65,7 +65,7 @@ SwarmKit doesn't lock you into a single LLM provider. The runtime ships with sev
 
 The `ModelProvider` abstraction works the same way as the `GovernanceProvider` — a narrow interface that each provider implements, with a registry that resolves the right provider per agent at runtime. Your topology doesn't know or care which provider serves a particular agent.
 
-This means you can run your root agent on Groq for fast routing, your workers on OpenRouter for model variety, and your validation agents on a local Ollama instance for zero-cost evaluation — all in the same topology, all configured in YAML. In the Sterling workspace, we mix llama-3.3 (via OpenRouter) for routing with deepseek-chat (via OpenRouter) for workers, but we've tested the same topology with Ollama-hosted models for fully offline operation and with Anthropic's Claude directly for complex reasoning tasks.
+This means you can run your root agent on Groq for fast routing, your workers on OpenRouter for model variety, and your validation agents on a local Ollama instance for zero-cost evaluation — all in the same topology, all configured in YAML. In our production workspace, we mix llama-3.3 (via OpenRouter) for routing with deepseek-chat (via OpenRouter) for workers, but we've tested the same topology with Ollama-hosted models for fully offline operation and with Anthropic's Claude directly for complex reasoning tasks.
 
 The `/model` command in chat mode lets you switch at runtime without restarting: `/model google/gemini-2.5-flash` swaps the active model for all agents, `/model reset` returns to the topology defaults. Useful for comparing quality and cost across providers on the same query.
 
@@ -107,7 +107,7 @@ The naive approach to AI governance — run every output through an LLM judge �
 
 **Tier 3 is a multi-persona panel** with multiple judge skills and consensus logic. It fires when Tier 2 returns low confidence or the action crosses a sensitivity threshold. On panel disagreement, the system escalates to human-in-the-loop review.
 
-The governance overhead target is 10-20% of token cost in typical use. In practice, most of our Sterling workspace interactions clear at Tier 1 and never invoke an LLM judge at all.
+The governance overhead target is 10-20% of token cost in typical use. In practice, most interactions in our production workspace clear at Tier 1 and never invoke an LLM judge at all.
 
 ### Where Rynko Flow fits
 
@@ -145,17 +145,17 @@ SwarmKit is general-purpose, but the architecture is particularly well suited to
 
 **Document processing** — schema-driven extraction, validation against business rules, and output generation. Each step is a different agent with governance ensuring no agent approves its own output.
 
-## The Sterling OMS workspace in depth
+## A real workspace in depth
 
-The most complete example in the repo is the Sterling OMS workspace, which we use daily on a real IBM Sterling implementation project.
+The most complete example in the repo is a workspace we use daily on an enterprise order management implementation project.
 
-The workspace has five topologies (sterling-assistant, solution-review, sterling-qa, code-review, coding-assistant), five archetypes, twenty-one skills, and nine MCP tool servers covering CDT configuration, ChromaDB vector search over 17K product docs, SQLite FTS5 exact keyword search, structured API javadocs for 1,006 APIs, a code knowledge graph, GitHub access, and filesystem tools for project code and notes.
+The workspace has five topologies (general assistant, solution review, Q&A, code review, coding assistant), five archetypes, twenty-one skills, and nine MCP tool servers covering configuration dumps, ChromaDB vector search over 17K product docs, SQLite FTS5 exact keyword search, structured API javadocs for 1,006 APIs, Jira/Confluence integration, GitHub access, and filesystem tools for project code and notes.
 
 ### Cross-consultation in practice
 
-When someone asks "how are sourcing rules managed in this project?", the sterling-assistant topology routes to both the architect and the developer. The architect searches project documentation, CDT configuration, and API references simultaneously, finding that sourcing rules flow from SAP to OMS via a JMS queue and then to the Inventory Cache microservice. The developer greps the Java source, finds `SourcingRuleFileUploadAgent.java`, reads specific line ranges, and traces the actual `createElement` and `setAttribute` calls.
+When someone asks "how does feature X work in this project?", the assistant topology routes to both a domain researcher and a code analyst. The researcher searches project documentation, configuration data, and API references simultaneously. The code analyst greps the Java source, finds the relevant class, reads specific line ranges, and traces the actual function calls that build the API input.
 
-The root synthesises both into a single answer with the integration architecture from one side and the actual code with line references from the other.
+The root synthesises both into a single answer with the design context from one side and the actual code with line references from the other.
 
 ### Cost in practice
 
@@ -165,11 +165,11 @@ The root synthesises both into a single answer with the integration architecture
 
 There are over 7,000 community MCP servers. When someone needs a new capability, the first question isn't "how do I write this?" but "which existing MCP server does this?" A skill that wraps a public server is three lines of configuration in the workspace YAML plus a skill definition.
 
-For capabilities without a public server — like parsing Sterling CDT XML dumps or providing structured API javadoc access — you write a custom MCP server. `swarmkit author mcp-server .` scaffolds these through conversation.
+For capabilities without a public server — like parsing proprietary configuration dumps or providing structured API documentation access — you write a custom MCP server. `swarmkit author mcp-server .` scaffolds these through conversation.
 
 ## What we've learned
 
-**Tool names drive model behaviour more than prompts.** When we had `get-api-input-xml` in the developer's tool list, the model called it every time someone asked about XML — regardless of prompt instructions. Removing the tool fixed it immediately. Shape agent behaviour through tool availability, not prompt engineering.
+**Tool names drive model behaviour more than prompts.** When we had a documentation lookup tool in the code analyst's tool list, the model called it every time someone asked about code — regardless of prompt instructions saying to read the actual source. Removing the tool fixed it immediately. Shape agent behaviour through tool availability, not prompt engineering.
 
 **The synthesis step changed everything.** One additional LLM call where the agent sees its own tool results and writes a coherent answer turned the system from a developer tool into something the whole team could use.
 
