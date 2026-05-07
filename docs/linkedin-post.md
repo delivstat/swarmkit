@@ -1,17 +1,17 @@
 ---
 title: LinkedIn post for SwarmKit
-description: Hook-Story-Grit structure, Rynko voice
+description: Hook-Story-Grit structure, Rynko voice, no domain-specific references
 ---
 
 # LinkedIn Post
 
-I asked our AI assistant how sourcing rules work in our Sterling OMS
-project. It sent the question to two specialist agents at the same time.
+I asked our AI assistant how a specific feature works in our project.
+It sent the question to two specialist agents at the same time.
 
-One searched 17,000 product docs, the CDT configuration dump, and
-1,006 API references. The other grepped the Java source, read lines
-2080-2216 of a specific class, and traced the actual createElement
-and setAttribute calls that build the XML input.
+One searched 17,000 product docs, configuration dumps, and API
+references. The other grepped the source code, read specific line
+ranges from a 2,200-line file, and traced the actual function calls
+that build the API input.
 
 Both ran in parallel. The coordinator merged both views — the design
 context from one side, the actual code with line references from the
@@ -37,25 +37,25 @@ not a codebase.
 A few things I didn't expect to learn along the way.
 
 Tool names drive model behaviour more than prompt instructions. I had
-a tool called get-api-input-xml in the developer's list. When users
-asked about XML in the project code, the model called that tool every
-time — regardless of what the system prompt said. It returns generic
-product documentation, not what the code actually builds. Removing the
-tool from the agent's list fixed it immediately. I've learned to shape
-behaviour through tool availability, not prompt engineering.
+a documentation lookup tool in a code analyst's tool list. When users
+asked about code, the model called the docs tool every time because
+the name matched the query. The system prompt saying "don't use this
+for code" was completely ignored. Removing the tool from the agent's
+list fixed it immediately. I've learned to shape behaviour through
+tool availability, not prompt engineering.
 
-Models describe what they plan to do instead of doing it. After grep
-found the right file, the model would respond with "Let me examine
-the code..." and stop. Planning language, no action. I added detection
-for this — if the response looks like intent rather than execution,
-the runtime pushes back. Small thing, but it eliminated an entire
-class of non-answers.
+Models describe what they plan to do instead of doing it. After a
+search found the right file, the model would respond with "Let me
+examine the code..." and stop. Planning language, no action. I added
+detection for this — if the response looks like intent rather than
+execution, the runtime pushes back. Small thing, but it eliminated
+an entire class of non-answers.
 
 The framework can also author itself. Running swarmkit author skill
 starts a conversation where the system helps create new capabilities,
-validates the output, and corrects errors. Our Sterling workspace
-started with 11 skills and grew to 21 through this flow — each new
-skill came from a gap we noticed during real use.
+validates the output, and corrects errors. Our workspace started with
+11 skills and grew to 21 through this flow — each new skill came from
+a gap we noticed during real use.
 
 [IMAGE: cost-breakdown.png]
 
@@ -73,19 +73,17 @@ github.com/delivstat/swarmkit
 
 # First comment (post separately)
 
-Open source, MIT license. The design doc is in the repo if you want
-the architectural reasoning behind the decisions.
+Open source, MIT license. The design doc is in the repo.
 
 What we're working on next:
 - Knowledge Curator — a persistent wiki that accumulates findings
   across conversations so agents don't start from scratch every time
-- W2A sensor integration — agents that notice events (Jira ticket
-  created, Confluence updated) and act without a human prompt
 - Installable expertise packages — swarmkit install @company/domain
-  and your AI assistant gains that domain knowledge
+  and your AI assistant gains that domain knowledge via MCP
+- Parallel delegation shipped last week — when the root sends to
+  multiple workers, they run concurrently
 
 Docs: github.com/delivstat/swarmkit
-Discord: (add link when ready)
 
 ---
 
@@ -111,30 +109,15 @@ No catch, but it's because most of the work is tool calls (grep,
 file read, ChromaDB search) that run locally for free. The LLM only
 handles routing and synthesis. If every step was an LLM call, it
 would be 10-20x more. The architecture deliberately pushes work to
-deterministic tools and only uses the LLM where reasoning is needed.
+deterministic tools.
 
 **"Does it work with Ollama / local models?"**
-Yes. Ollama is one of the 7 built-in providers. You can run the
-entire thing locally with zero API costs. Quality depends on the
+Yes. Ollama is one of 7 built-in providers. Quality depends on the
 model — llama-3.3 works well for routing, but local models struggle
 with complex tool-use chains compared to deepseek or Claude.
 
 **"Why not just use LangGraph directly?"**
 For a 2-agent setup, LangGraph directly is fine. When you have 5
 topologies, 12 archetypes, 21 skills, and 9 MCP servers — all with
-different model configs, IAM scopes, and tool assignments — managing
-that in code gets painful. The YAML layer is what makes it manageable.
-
----
-
-# Images needed
-
-### Image 1: cross-consultation-flow.png
-Same as Reddit Image 2 — flow diagram showing parallel delegation
-to architect + developer with model costs annotated. Clean,
-professional, light background for LinkedIn.
-
-### Image 2: cost-breakdown.png
-Same data as Reddit Image 4 but styled for LinkedIn — cleaner,
-more corporate. Horizontal bar chart with the $0.33 total
-prominently displayed. Light background, professional font.
+different model configs and tool assignments — managing that in code
+gets painful. The YAML layer is what makes it manageable.
