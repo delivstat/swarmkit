@@ -1,73 +1,73 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" font-family="'Segoe UI', system-ui, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" font-family="'Segoe UI', system-ui, sans-serif">
   <defs>
-    <filter id="sk3" x="-2%" y="-2%" width="104%" height="104%">
-      <feTurbulence type="turbulence" baseFrequency="0.02" numOctaves="3" result="n"/>
-      <feDisplacementMap in="SourceGraphic" in2="n" scale="1"/>
-    </filter>
-    <marker id="ar" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    <marker id="a1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
     </marker>
   </defs>
-  <rect width="900" height="400" fill="#0f172a"/>
+  <rect width="900" height="380" fill="#f8fafc"/>
 
-  <text x="450" y="35" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="600">Topology as Data — YAML in, LangGraph out</text>
+  <text x="450" y="32" text-anchor="middle" fill="#0f172a" font-size="20" font-weight="600">Topology as Data — YAML in, LangGraph out</text>
 
   <!-- YAML side -->
-  <rect x="40" y="60" width="340" height="300" rx="12" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" filter="url(#sk3)"/>
-  <text x="210" y="90" text-anchor="middle" fill="#38bdf8" font-size="14" font-weight="600">topology.yaml</text>
+  <rect x="40" y="55" width="340" height="285" rx="12" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="2"/>
+  <rect x="40" y="55" width="340" height="36" rx="12" fill="#0ea5e9"/>
+  <rect x="40" y="75" width="340" height="16" fill="#0ea5e9"/>
+  <text x="210" y="80" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="600">topology.yaml</text>
 
-  <text x="65" y="120" fill="#fbbf24" font-size="12">agents:</text>
-  <text x="65" y="140" fill="#94a3b8" font-size="12">  root:</text>
-  <text x="65" y="158" fill="#64748b" font-size="11">    role: root</text>
-  <text x="65" y="176" fill="#64748b" font-size="11">    model: llama-3.3-70b</text>
-  <text x="65" y="194" fill="#94a3b8" font-size="12">    children:</text>
-  <text x="65" y="214" fill="#38bdf8" font-size="12">      - id: architect</text>
-  <text x="65" y="232" fill="#64748b" font-size="11">        archetype: oms-architect</text>
-  <text x="65" y="252" fill="#34d399" font-size="12">      - id: developer</text>
-  <text x="65" y="270" fill="#64748b" font-size="11">        archetype: oms-developer</text>
+  <text x="65" y="115" fill="#f59e0b" font-size="13" font-weight="600">agents:</text>
+  <text x="65" y="137" fill="#475569" font-size="13">  root:</text>
+  <text x="65" y="157" fill="#94a3b8" font-size="12">    role: root</text>
+  <text x="65" y="177" fill="#94a3b8" font-size="12">    model: llama-3.3-70b</text>
+  <text x="65" y="199" fill="#475569" font-size="13">    children:</text>
+  <text x="65" y="221" fill="#0ea5e9" font-size="13">      - id: architect</text>
+  <text x="65" y="241" fill="#94a3b8" font-size="12">        archetype: oms-architect</text>
+  <text x="65" y="263" fill="#10b981" font-size="13">      - id: developer</text>
+  <text x="65" y="283" fill="#94a3b8" font-size="12">        archetype: oms-developer</text>
 
-  <text x="210" y="340" text-anchor="middle" fill="#64748b" font-size="11">Edit this file to change the swarm</text>
+  <text x="210" y="325" text-anchor="middle" fill="#94a3b8" font-size="11">Edit this file to change the swarm</text>
 
   <!-- Arrow -->
-  <line x1="395" y1="200" x2="485" y2="200" stroke="#fbbf24" stroke-width="2" marker-end="url(#ar)"/>
-  <text x="440" y="185" text-anchor="middle" fill="#fbbf24" font-size="10">compile_topology()</text>
+  <line x1="395" y1="195" x2="485" y2="195" stroke="#f59e0b" stroke-width="2" marker-end="url(#a1)"/>
+  <text x="440" y="183" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="600">compile_topology()</text>
 
   <!-- Graph side -->
-  <rect x="500" y="60" width="370" height="300" rx="12" fill="#1e293b" stroke="#a78bfa" stroke-width="1.5" filter="url(#sk3)"/>
-  <text x="685" y="90" text-anchor="middle" fill="#a78bfa" font-size="14" font-weight="600">LangGraph StateGraph</text>
+  <rect x="500" y="55" width="360" height="285" rx="12" fill="#faf5ff" stroke="#8b5cf6" stroke-width="2"/>
+  <rect x="500" y="55" width="360" height="36" rx="12" fill="#8b5cf6"/>
+  <rect x="500" y="75" width="360" height="16" fill="#8b5cf6"/>
+  <text x="680" y="80" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="600">LangGraph StateGraph</text>
 
-  <!-- START node -->
-  <circle cx="685" cy="125" r="14" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
-  <text x="685" y="130" text-anchor="middle" fill="#94a3b8" font-size="9">START</text>
+  <!-- START -->
+  <circle cx="680" cy="120" r="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="680" y="125" text-anchor="middle" fill="#64748b" font-size="9">START</text>
 
-  <!-- Root node -->
-  <rect x="635" y="155" width="100" height="40" rx="8" fill="#2d2006" stroke="#fbbf24" stroke-width="1.5" filter="url(#sk3)"/>
-  <text x="685" y="180" text-anchor="middle" fill="#fbbf24" font-size="12">root</text>
+  <!-- Root -->
+  <rect x="630" y="150" width="100" height="38" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="680" y="174" text-anchor="middle" fill="#92400e" font-size="12" font-weight="600">root</text>
 
-  <!-- Architect node -->
-  <rect x="540" y="230" width="110" height="40" rx="8" fill="#0c2744" stroke="#38bdf8" stroke-width="1.5" filter="url(#sk3)"/>
-  <text x="595" y="255" text-anchor="middle" fill="#38bdf8" font-size="12">architect</text>
+  <!-- Architect -->
+  <rect x="535" y="220" width="110" height="38" rx="8" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="590" y="244" text-anchor="middle" fill="#0369a1" font-size="12">architect</text>
 
-  <!-- Developer node -->
-  <rect x="720" y="230" width="110" height="40" rx="8" fill="#0c2e14" stroke="#34d399" stroke-width="1.5" filter="url(#sk3)"/>
-  <text x="775" y="255" text-anchor="middle" fill="#34d399" font-size="12">developer</text>
+  <!-- Developer -->
+  <rect x="715" y="220" width="110" height="38" rx="8" fill="#f0fdf4" stroke="#10b981" stroke-width="1.5"/>
+  <text x="770" y="244" text-anchor="middle" fill="#166534" font-size="12">developer</text>
 
-  <!-- END node -->
-  <circle cx="685" cy="320" r="14" fill="#334155" stroke="#94a3b8" stroke-width="1.5"/>
-  <text x="685" y="325" text-anchor="middle" fill="#94a3b8" font-size="9">END</text>
+  <!-- END -->
+  <circle cx="680" cy="305" r="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="680" y="310" text-anchor="middle" fill="#64748b" font-size="9">END</text>
 
   <!-- Edges -->
-  <line x1="685" y1="139" x2="685" y2="155" stroke="#94a3b8" stroke-width="1.2"/>
-  <line x1="655" y1="195" x2="610" y2="230" stroke="#38bdf8" stroke-width="1.2"/>
-  <line x1="715" y1="195" x2="760" y2="230" stroke="#34d399" stroke-width="1.2"/>
-  <line x1="595" y1="270" x2="670" y2="306" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4"/>
-  <line x1="775" y1="270" x2="700" y2="306" stroke="#34d399" stroke-width="1.2" stroke-dasharray="4"/>
+  <line x1="680" y1="134" x2="680" y2="150" stroke="#94a3b8" stroke-width="1.2"/>
+  <line x1="650" y1="188" x2="605" y2="220" stroke="#0ea5e9" stroke-width="1.2"/>
+  <line x1="710" y1="188" x2="755" y2="220" stroke="#10b981" stroke-width="1.2"/>
+  <line x1="590" y1="258" x2="665" y2="291" stroke="#0ea5e9" stroke-width="1" stroke-dasharray="4"/>
+  <line x1="770" y1="258" x2="695" y2="291" stroke="#10b981" stroke-width="1" stroke-dasharray="4"/>
 
-  <!-- Labels on edges -->
-  <text x="560" y="215" fill="#64748b" font-size="9">delegate_to_</text>
-  <text x="760" y="215" fill="#64748b" font-size="9">delegate_to_</text>
-  <text x="605" y="295" fill="#64748b" font-size="9">return</text>
-  <text x="740" y="295" fill="#64748b" font-size="9">return</text>
+  <!-- Edge labels -->
+  <text x="562" y="208" fill="#94a3b8" font-size="9">delegate_to_</text>
+  <text x="745" y="208" fill="#94a3b8" font-size="9">delegate_to_</text>
+  <text x="600" y="280" fill="#94a3b8" font-size="9">return</text>
+  <text x="735" y="280" fill="#94a3b8" font-size="9">return</text>
 
-  <text x="685" y="355" text-anchor="middle" fill="#64748b" font-size="11">Nodes, edges, routing — all from YAML</text>
+  <text x="680" y="338" text-anchor="middle" fill="#94a3b8" font-size="11">Nodes, edges, routing — all from YAML</text>
 </svg>
