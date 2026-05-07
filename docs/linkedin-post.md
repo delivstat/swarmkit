@@ -1,71 +1,71 @@
 ---
 title: LinkedIn post for SwarmKit
-description: Hook-Story-Grit structure, Rynko voice, no domain-specific references
+description: Hook-Story-Grit structure, outcome-focused, one image max
 ---
 
 # LinkedIn Post
 
 I asked our AI assistant how a specific feature works in our project.
-It sent the question to two specialist agents at the same time.
 
-One searched 17,000 product docs, configuration dumps, and API
-references. The other grepped the source code, read specific line
-ranges from a 2,200-line file, and traced the actual function calls
-that build the API input.
+It didn't look it up in one place. It sent the question to two
+specialist agents running in parallel — one searched 17,000 documents,
+configuration data, and API references while the other read the actual
+source code line by line.
 
-Both ran in parallel. The coordinator merged both views — the design
-context from one side, the actual code with line references from the
-other — into a single answer.
+Both finished in under 10 seconds. The answer cited real file paths,
+real line numbers, and real configuration values — not generic
+documentation.
 
-507 requests that day. 1.9 million tokens. $0.33.
+Total cost for 500+ queries that day: $0.33.
 
-That number still surprises me. It's possible because each agent runs
-on a different model. The router uses llama-3.3 at $0.10 per million
-tokens — it's just deciding who handles each question. The workers
-use deepseek-chat at $0.32 for the actual reasoning. All the tool
-calls — grep, file reads, vector search, config lookups — run locally
-and cost nothing.
+That's not a typo. Here's why the economics work.
 
-I built SwarmKit because I kept rewriting the same LangGraph Python
-every time I needed a new agent setup. The idea is simple: your agent
-topology is a YAML file, not code. Change the YAML, the graph changes.
-Add an agent, swap a model, assign a new tool — edit a config file,
-not a codebase.
+Each agent runs on a different model. The router uses a $0.10/M model
+— it's just deciding who handles the question, not answering it. The
+workers use a $0.32/M model for the actual reasoning and tool use.
+Every tool call — searching documents, reading files, querying
+configuration — runs locally and costs nothing.
+
+The expensive model doesn't touch simple tasks. The cheap model doesn't
+touch hard ones. One line in a config file controls which model each
+agent uses.
+
+I built this framework because I kept rewriting the same Python every
+time I needed a different agent setup. Now the agent topology is a
+YAML file — who exists, who reports to whom, what tools they have,
+which model they use. Change the file, the system changes. No code
+to rewrite.
 
 [IMAGE: cross-consultation-flow.png]
 
-A few things I didn't expect to learn along the way.
+What you can actually do with this today:
 
-Tool names drive model behaviour more than prompt instructions. I had
-a documentation lookup tool in a code analyst's tool list. When users
-asked about code, the model called the docs tool every time because
-the name matched the query. The system prompt saying "don't use this
-for code" was completely ignored. Removing the tool from the agent's
-list fixed it immediately. I've learned to shape behaviour through
-tool availability, not prompt engineering.
+→ Ask a question that spans docs, code, and configuration — get one
+  merged answer with citations from all three
 
-Models describe what they plan to do instead of doing it. After a
-search found the right file, the model would respond with "Let me
-examine the code..." and stop. Planning language, no action. I added
-detection for this — if the response looks like intent rather than
-execution, the runtime pushes back. Small thing, but it eliminated
-an entire class of non-answers.
+→ Review a Jira ticket, download its attachments, and analyse the
+  design documents — in a single conversation
 
-The framework can also author itself. Running swarmkit author skill
-starts a conversation where the system helps create new capabilities,
-validates the output, and corrects errors. Our workspace started with
-11 skills and grew to 21 through this flow — each new skill came from
-a gap we noticed during real use.
+→ Search Confluence, download pages as PDF with images preserved,
+  and have a vision model describe the architecture diagrams
 
-[IMAGE: cost-breakdown.png]
+→ Create new agent capabilities through conversation — describe what
+  you need, the system generates the YAML, validates it, and deploys
 
-I'm still working through a question I don't have a clean answer to.
-We built a tool that checks every file:line citation in an agent's
-code analysis against the actual source — catches hallucinated line
-numbers at zero cost. But it can't tell me whether the model's
-interpretation of what that code does is correct. The line is real,
-the code is real, but the explanation might still be wrong. How do
-you verify understanding, not just reference accuracy?
+→ Switch models mid-conversation to compare quality and cost —
+  /model deepseek/deepseek-chat vs /model anthropic/claude-sonnet-4-6
+
+The workspace I run in production grew from 11 capabilities to 21 in
+two weeks. Not because I wrote more code — because the agents
+identified gaps during real use and I authored new skills through the
+same conversational interface.
+
+One thing I'm still figuring out: when an agent cites a specific line
+of code in its analysis, we can verify the line exists. But we can't
+automatically verify that the agent's interpretation of what that code
+does is correct. The reference is real. The explanation might not be.
+
+How are others solving this last-mile verification problem?
 
 github.com/delivstat/swarmkit
 
@@ -73,51 +73,43 @@ github.com/delivstat/swarmkit
 
 # First comment (post separately)
 
-Open source, MIT license. The design doc is in the repo.
+Open source, MIT license. Installs in one command:
+uv tool install swarmkit-runtime
 
-What we're working on next:
-- Knowledge Curator — a persistent wiki that accumulates findings
-  across conversations so agents don't start from scratch every time
-- Installable expertise packages — swarmkit install @company/domain
-  and your AI assistant gains that domain knowledge via MCP
-- Parallel delegation shipped last week — when the root sends to
-  multiple workers, they run concurrently
+Built on LangGraph, 7 model providers (OpenRouter, Anthropic, OpenAI,
+Google, Groq, Together, Ollama), MCP tool servers for Jira,
+Confluence, ChromaDB, code search, and PDF reading with vision.
 
-Docs: github.com/delivstat/swarmkit
+Full design doc in the repo for anyone who wants the architectural
+reasoning.
 
 ---
 
-# Reply plan (for first 3-5 likely comments)
+# Reply plan
 
-**"How does this compare to CrewAI?"**
-CrewAI is code-first — agents are Python classes. SwarmKit is
-data-first — agents are YAML that the runtime interprets. The
-trade-off is flexibility vs simplicity. CrewAI gives you full
-Python control; SwarmKit gives you a config file that non-developers
-can read and modify. Both use the same underlying idea of specialised
-agents with tools.
+**"What outcomes have you seen vs a single RAG pipeline?"**
+The cross-consultation pattern (two specialists merging perspectives)
+produces answers that a single pipeline can't. A docs-only search
+misses the code. A code-only grep misses the design intent. The
+merged answer has both — and costs under a cent per query.
 
-**"What models work best?"**
-We've tested with deepseek-chat (best value for tool use), llama-3.3
-(good router), qwen3-235b (good for reasoning), and Claude Sonnet
-(best overall but 10x the cost). The per-agent model control means
-you can mix — cheap model for routing, capable model for the hard
-thinking. Gemini Flash for vision tasks (diagram understanding).
+**"How does this compare to CrewAI / AutoGen?"**
+Those are code-first — agents are Python classes. SwarmKit is
+data-first — agents are YAML. The trade-off: they give you full
+programmatic control, we give you a config file anyone can read.
 
-**"$0.33 seems too low — what's the catch?"**
-No catch, but it's because most of the work is tool calls (grep,
-file read, ChromaDB search) that run locally for free. The LLM only
-handles routing and synthesis. If every step was an LLM call, it
-would be 10-20x more. The architecture deliberately pushes work to
-deterministic tools.
+**"$0.33 seems too low"**
+Most work is deterministic tool calls (grep, file read, vector
+search) that run locally for free. The LLM only handles routing
+and synthesis. If every step was an LLM call it would be 10-20x more.
 
-**"Does it work with Ollama / local models?"**
-Yes. Ollama is one of 7 built-in providers. Quality depends on the
-model — llama-3.3 works well for routing, but local models struggle
-with complex tool-use chains compared to deepseek or Claude.
+**"Can I use this for X?"**
+If X involves multiple knowledge sources, specialised agents, and
+tool use — yes. The framework is general-purpose. The enterprise
+workspace is just one example.
 
-**"Why not just use LangGraph directly?"**
-For a 2-agent setup, LangGraph directly is fine. When you have 5
-topologies, 12 archetypes, 21 skills, and 9 MCP servers — all with
-different model configs and tool assignments — managing that in code
-gets painful. The YAML layer is what makes it manageable.
+**"How do you handle hallucination?"**
+Three layers: tool result caching (same call returns cached result),
+citation verification (checks file:line references against actual
+source), and grounding rules in the agent prompt (must read code
+before citing it). Not foolproof, but raises the floor significantly.
