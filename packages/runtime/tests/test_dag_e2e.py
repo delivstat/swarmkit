@@ -125,7 +125,7 @@ class TestDAGE2E:
 
         topology = ResolvedTopology(
             id="test-pipeline",
-            raw=None,
+            raw=None,  # type: ignore[arg-type]
             source_path=None,
             root=root,
         )
