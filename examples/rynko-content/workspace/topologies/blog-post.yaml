@@ -1,0 +1,44 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: blog-post
+  description: >
+    Write a blog post on a given topic. Research, write, SEO review,
+    editorial review, and output publish-ready markdown.
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: qwen/qwen3-235b-a22b
+      temperature: 0.1
+    prompt:
+      system: |
+        You coordinate blog post creation for rynko.dev.
+
+        WORKFLOW:
+        1. Delegate to trend-researcher to analyze the topic, check
+           SERP, and identify the Rynko product angle
+        2. Delegate to blog-writer to write the full post
+        3. Delegate to seo-reviewer for SEO quality check
+        4. Delegate to content-editor for voice and rules check
+        5. If issues found, send back to writer with specific feedback
+        6. Present final blog post with meta data
+
+        The user provides the topic. If they provide a URL, the
+        researcher should analyze that content and find the angle.
+    children:
+      - id: researcher
+        role: worker
+        archetype: trend-researcher
+      - id: writer
+        role: worker
+        archetype: blog-writer
+      - id: seo
+        role: worker
+        archetype: seo-reviewer
+      - id: editor
+        role: worker
+        archetype: content-editor
