@@ -100,6 +100,9 @@ def _resolve_topology(
     if root is None:
         return None, errors
 
+    dag_errors = _validate_dag(root, artifact.path)
+    errors.extend(dag_errors)
+
     topology_id = _topology_id_from_raw(raw)
     return (
         ResolvedTopology(
@@ -214,6 +217,9 @@ def _resolve_agent(
         # Drop the bad agent; don't materialise with an invalid literal.
         return None, errors
 
+    raw_deps = raw_agent.get("depends_on") or []
+    depends_on = tuple(str(d) for d in raw_deps)
+
     return (
         ResolvedAgent(
             id=agent_id,
@@ -223,6 +229,7 @@ def _resolve_agent(
             skills=skills_resolved,
             iam=iam,
             children=tuple(resolved_children),
+            depends_on=depends_on,
             source_archetype=str(archetype_id) if archetype_id else None,
         ),
         errors,
@@ -499,6 +506,74 @@ def _pointer_with(parts: Sequence[str | int], *extra: str | int) -> str:
     """
     full: list[object] = ["agents", "root", *parts, *extra]
     return yaml_pointer(full)
+
+
+def _validate_dag(root: ResolvedAgent, artifact_path: Path) -> list[ResolutionError]:
+    """Validate depends_on declarations: no cycles, no unknown refs, no self-refs."""
+    errors: list[ResolutionError] = []
+
+    all_agents: dict[str, ResolvedAgent] = {}
+
+    def _collect(agent: ResolvedAgent) -> None:
+        all_agents[agent.id] = agent
+        for child in agent.children:
+            _collect(child)
+
+    _collect(root)
+
+    for agent in all_agents.values():
+        for dep_id in agent.depends_on:
+            if dep_id == agent.id:
+                errors.append(
+                    ResolutionError(
+                        code="agent.depends-on-self",
+                        message=f"Agent {agent.id!r} depends on itself.",
+                        artifact_path=artifact_path,
+                        suggestion="Remove the self-reference from depends_on.",
+                    )
+                )
+            elif dep_id not in all_agents:
+                errors.append(
+                    ResolutionError(
+                        code="agent.depends-on-unknown",
+                        message=(f"Agent {agent.id!r} depends on unknown agent {dep_id!r}."),
+                        artifact_path=artifact_path,
+                        suggestion=(
+                            f"Check the agent ID. Available agents: {sorted(all_agents.keys())}"
+                        ),
+                    )
+                )
+
+    visited: set[str] = set()
+    in_progress: set[str] = set()
+
+    def _visit(agent_id: str) -> None:
+        if agent_id in visited:
+            return
+        if agent_id in in_progress:
+            cycle = [*in_progress, agent_id]
+            errors.append(
+                ResolutionError(
+                    code="agent.depends-on-cycle",
+                    message=(f"Dependency cycle detected: {' -> '.join(cycle)}"),
+                    artifact_path=artifact_path,
+                    suggestion="Break the cycle by removing one depends_on reference.",
+                )
+            )
+            return
+        in_progress.add(agent_id)
+        agent = all_agents.get(agent_id)
+        if agent:
+            for dep_id in agent.depends_on:
+                if dep_id in all_agents:
+                    _visit(dep_id)
+        in_progress.discard(agent_id)
+        visited.add(agent_id)
+
+    for agent_id in all_agents:
+        _visit(agent_id)
+
+    return errors
 
 
 __all__ = [

@@ -100,7 +100,16 @@
     "child_agent": {
       "allOf": [
         { "$ref": "#/$defs/agent" },
-        { "properties": { "role": { "enum": ["leader", "worker"] } } }
+        {
+          "properties": {
+            "role": { "enum": ["leader", "worker"] },
+            "depends_on": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Agent IDs that must complete before this agent runs. Enables DAG-based execution ordering."
+            }
+          }
+        }
       ]
     },
     "model": {
