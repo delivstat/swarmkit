@@ -36,6 +36,62 @@ SwarmKit's wedge is not "another multi-agent framework" — the framework space 
 | **Prefect** | Open-source Python data orchestration, commercial cloud UI. Hybrid model: code runs in user's VPC, only metadata/state goes to Prefect Cloud. | SwarmKit is doing for AI agents what Prefect did for data pipelines. Closest 1:1 business analogue. |
 | **LangSmith / LangGraph Cloud** | LangChain's commercial observability (LangSmith) and managed execution (LangGraph Cloud). | They generally want your payload data. SwarmKit's strict separation of prompt payloads (local) vs structural telemetry (cloud) + YAML abstraction layer. |
 | **CrewAI Enterprise** | Open-source multi-agent framework with recently launched enterprise platform for observability, metrics, and collaboration. | Proves the demand exists. Their architecture is more code-heavy than SwarmKit's YAML approach. |
+| **AgentField** | Open-source Go control plane (1.6k stars, Apache 2.0). Agents are code-first microservices (Python/Go/TS SDKs) that register with a stateless control plane via WebSocket. Features: async execution, durable queues (Postgres), W3C DID cryptographic identity, canary deployments, agent mesh discovery, structured LLM output, human-in-the-loop via `app.pause()`. | Different philosophical bet: AgentField is code-first ("agents are microservices"), SwarmKit is data-first ("agents are topology declarations"). See detailed analysis below. |
+
+### AgentField — detailed analysis
+
+AgentField (github.com/Agent-Field/agentfield) is the closest competitor in terms of ambition. It validates the AgentOps market — they're building exactly the category SwarmKit targets. Key comparison:
+
+**Where AgentField is ahead:**
+- Shipping product (v0.79, 290 releases, active community)
+- Go control plane — stateless, horizontally scalable
+- Multi-language SDKs (Python, Go, TypeScript)
+- Canary deployments and A/B testing for agent versions (SwarmKit should adopt — see below)
+- Zero external dependencies for memory, queues, metrics
+
+**Where SwarmKit is genuinely different:**
+- Topology-as-data (YAML vs code decorators) — lower barrier for platform teams
+- Skills as the only extension primitive — stricter architectural discipline
+- Self-improving through conversational authoring — no equivalent in AgentField
+- Intent drift detection — not present in AgentField
+- Governance separation of powers (legislative/executive/judicial) vs tag-based policies
+- Rynko platform integration — agent orchestration + data validation in one product
+
+**Where AgentField's design is a liability:**
+
+AgentField's "agent mesh discovery" — where agents discover and call each other by capability tags across the entire control plane — is a governance hole. If agent A from swarm X can discover and invoke agent B from swarm Y based on a tag match:
+- Who authorized that interaction?
+- Which topology's audit trail owns it?
+- What IAM scopes apply?
+- How do you revoke access without breaking unknown callers?
+
+The answer is "nobody knows." This is the exact class of problem SwarmKit's topology-as-data model prevents. The topology declares the complete agent boundary. Everything inside it is governed, audited, and traceable. Agents outside the topology do not exist to agents inside it. This is not a missing feature — it is a deliberate security and governance guarantee.
+
+Organizations can share archetypes and skills across topologies via shared repositories (one repo for archetypes, one for skills/MCP servers), but cross-topology agent interaction must be explicitly declared in a topology, not dynamically discovered at runtime.
+
+### Feature to adopt: canary deployments
+
+AgentField's canary deployment model (traffic weight routing: 5% → 50% → 100%, per-version health tracking, blue-green zero-downtime deploys) is a legitimate production capability SwarmKit should adopt. In SwarmKit's model, this would apply at the topology level:
+
+```yaml
+topology:
+  id: claims-processor
+  deployment:
+    strategy: canary
+    versions:
+      - version: "2.1.0"
+        weight: 95
+      - version: "2.2.0"
+        weight: 5
+        promote_when:
+          drift_below: 0.20
+          error_rate_below: 0.01
+          min_runs: 100
+```
+
+This integrates naturally with intent drift detection — a new version that drifts more than the previous version should not be promoted. Governance circuit breakers apply per-version. The Rynko dashboard surfaces version comparison metrics.
+
+This needs its own design note before implementation.
 
 ### The positioning statement
 
@@ -160,4 +216,4 @@ The moat is not any single feature. It's the combination:
 5. **Intent drift detection** — "we show you where your agents waste money" is a unique diagnostic
 6. **Rynko platform integration** — agent orchestration + data validation in a single view, unified workspace
 
-No single competitor has all six. CrewAI has #1 partially. LangSmith has observability but not #2. Nobody has #4 or #5 in production.
+No single competitor has all six. CrewAI has #1 partially. LangSmith has observability but not #2. AgentField has strong ops (#3 partially) but is code-first and lacks #1, #4, #5, and the governance model. Nobody has #4 or #5 in production.
