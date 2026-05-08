@@ -8,13 +8,13 @@ import pytest
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler._compiler import _has_dag_deps, _run_dag
 from swarmkit_runtime.model_providers import MockModelProvider
-from swarmkit_runtime.resolver._resolved import ResolvedAgent
+from swarmkit_runtime.resolver._resolved import AgentRole, ResolvedAgent
 from swarmkit_runtime.resolver._topology import _validate_dag
 
 
 def _make_agent(
     agent_id: str,
-    role: str = "worker",
+    role: AgentRole = "worker",
     children: tuple[ResolvedAgent, ...] = (),
     depends_on: tuple[str, ...] = (),
 ) -> ResolvedAgent:

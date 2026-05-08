@@ -227,7 +227,7 @@ class ChildAgent(Agent):
     role: Role2 | None = None
     depends_on: list[str] | None = Field(
         None,
-        description="Agent IDs that must complete before this agent runs.",
+        description="Agent IDs that must complete before this agent runs. Enables DAG-based execution ordering.",
     )
 
 
