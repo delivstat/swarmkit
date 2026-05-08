@@ -43,9 +43,21 @@ Three concrete user paths depend on it:
 2. **`swarmkit ask "..."`** — the observer sends events as LLM context. Missing events → wrong answers. Raw PII in events → privacy breach.
 3. **Post-hoc audit / compliance** — "what did the swarm do on run X" must be answerable six months later. If events were skipped, the answer doesn't exist.
 
+## Relationship to OpenTelemetry
+
+Audit events and OTel traces are complementary, not competing:
+
+- **Audit events** (this note) — immutable, compliance-grade, append-only records emitted via `GovernanceProvider.record_event`. Owned by the governance layer. Cannot be deleted or modified by agents. The source of truth for "what did the swarm do."
+- **OTel traces** (`design/details/opentelemetry-observability.md`) — structured telemetry for operational observability. Exportable to any OTel backend (Jaeger, Grafana, Rynko). The source of truth for "how long did it take and where are the bottlenecks."
+- **Local ring buffer** (`design/details/product-architecture-refinements.md`) — SQLite-backed prompt/response pairs keyed by OTel span ID. Never leaves the user's environment. The source of truth for "what did the LLM actually say."
+
+All three layers share data (span IDs link them) but have different retention, immutability, and privacy guarantees.
+
 ## See also
 
 - `design/details/human-interaction-model.md` — the authoritative event schema and CLI surface
+- `design/details/opentelemetry-observability.md` — OTel traces, metrics, and `swarmkit.*` semantic attributes (M6)
+- `design/details/product-architecture-refinements.md` — local ring buffer for prompt privacy, governance circuit breakers
+- `design/details/intent-drift-detection.md` — drift scores emitted as audit events and OTel span events (M7)
 - `design/SwarmKit-Design-v0.6.md` §16.4 (audit logging), §8.3 (media pillar, append-only)
 - `docs/notes/usability-first.md` — the broader per-PR checklist this note extends
-- Tasks #33–#37 — implementation PRs for audit schema, CLI primitives, `swarmkit ask`, notifications

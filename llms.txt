@@ -2,14 +2,14 @@
 
 > An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
 
-**Status:** v1.0 shipped. CLI, HTTP server, 7 model providers, MCP integration, Knowledge MCP Server, observability, Docker sandbox, 2 reference topologies, 20 skills, 16 archetypes, 500+ tests.
+**Status:** v1.0 shipped (M0-M5 complete). CLI, HTTP server, 7 model providers, MCP integration with Docker sandboxing, Knowledge MCP Server, governance via AGT, 2 reference topologies, 20 skills, 16 archetypes, 500+ tests. Next: M6 (OpenTelemetry observability), M7 (intent drift detection).
 
 ## Start here
 
 - [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, what works today, milestone progress.
 - [CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/CLAUDE.md): repo-wide invariants, feature-delivery workflow, release checklist.
 - [SwarmKit Design v0.6](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md): the authoritative architecture. §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §14 (Runtime), §18 (MCP Integration).
-- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): all milestones complete.
+- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): 4 phases — Phase 1 (Foundation) complete, Phase 2 (Runtime Completion) current.
 - [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): v1.0 release notes.
 
 ## CLI commands
@@ -48,7 +48,20 @@ Per-feature design notes under `design/details/`:
 - [Model provider](https://github.com/delivstat/swarmkit/blob/main/design/details/model-provider-abstraction.md): 7 built-in providers, per-agent model selection.
 - [Conversational authoring](https://github.com/delivstat/swarmkit/blob/main/design/details/conversational-authoring.md): swarmkit init/author/edit.
 - [Structured output](https://github.com/delivstat/swarmkit/blob/main/design/details/structured-output-governance.md): schema-constrained generation + auto-correction.
-- [LangGraph compiler](https://github.com/delivstat/swarmkit/blob/main/design/details/langgraph-compiler.md): topology → StateGraph translation.
+- [LangGraph compiler](https://github.com/delivstat/swarmkit/blob/main/design/details/langgraph-compiler.md): topology → StateGraph translation, approval gate checkpointing.
+- [DAG dependency graph](https://github.com/delivstat/swarmkit/blob/main/design/details/dag-dependency-graph.md): `depends_on` for parallel-with-dependencies execution.
+- [Decision skills](https://github.com/delivstat/swarmkit/blob/main/design/details/decision-skills.md): LLM judge verdicts, confidence scores, multi-persona panels.
+- [Human interaction model](https://github.com/delivstat/swarmkit/blob/main/design/details/human-interaction-model.md): audit event schema, CLI primitives, notification plugins.
+- [Skill registry](https://github.com/delivstat/swarmkit/blob/main/design/details/skill-registry.md): community skill import from SKILL.md repos and MCP catalogues.
+- [Knowledge Curator topology](https://github.com/delivstat/swarmkit/blob/main/design/details/knowledge-curator-topology.md): persistent wiki maintained by LLM agents.
+
+## Product architecture & observability (design, not yet implemented)
+
+- [Product architecture](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture.md): open-source runtime + Rynko as the commercial ops platform. Deployment models, revenue model, brand separation.
+- [Product architecture refinements](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture-refinements.md): local ring buffer for prompt privacy, LangGraph checkpointer for approval gates, usage-based pricing, OTLP/HTTP transport.
+- [OpenTelemetry observability](https://github.com/delivstat/swarmkit/blob/main/design/details/opentelemetry-observability.md): OTel as the telemetry standard. Trace-per-run, span-per-agent-step, `swarmkit.*` semantic attributes, console + OTLP exporters.
+- [Intent drift detection](https://github.com/delivstat/swarmkit/blob/main/design/details/intent-drift-detection.md): optional per-agent intent monitoring via embedding similarity. Log/warn/nudge strategies.
+- [Market analysis and risk mitigations](https://github.com/delivstat/swarmkit/blob/main/design/details/market-analysis-and-risk-mitigations.md): competitive landscape (Prefect, LangSmith, CrewAI, AgentField), canary deployments, governance circuit breakers.
 
 ## Guides
 
@@ -68,6 +81,7 @@ Per-feature design notes under `design/details/`:
 - [Schema change discipline](https://github.com/delivstat/swarmkit/blob/main/docs/notes/schema-change-discipline.md)
 - [Usability-first](https://github.com/delivstat/swarmkit/blob/main/docs/notes/usability-first.md)
 - [LLM-friendly knowledge](https://github.com/delivstat/swarmkit/blob/main/docs/notes/llm-friendly-knowledge.md)
+- [Observability discipline](https://github.com/delivstat/swarmkit/blob/main/docs/notes/observability.md)
 
 ## Package docs
 
