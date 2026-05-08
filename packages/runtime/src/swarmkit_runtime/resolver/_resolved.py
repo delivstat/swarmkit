@@ -39,6 +39,7 @@ class ResolvedAgent:
     skills: tuple[ResolvedSkill, ...]
     iam: Mapping[str, Any] | None
     children: tuple[ResolvedAgent, ...] = field(default_factory=tuple)
+    depends_on: tuple[str, ...] = field(default_factory=tuple)
     source_archetype: str | None = None
 
 

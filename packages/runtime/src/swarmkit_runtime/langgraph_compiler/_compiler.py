@@ -428,7 +428,7 @@ async def _run_tool_loop(
     return _extract_text(current_response)
 
 
-async def _dispatch_response(
+async def _dispatch_response(  # noqa: PLR0912
     response: CompletionResponse,
     agent: ResolvedAgent,
     agent_id: str,
@@ -450,6 +450,36 @@ async def _dispatch_response(
     """
     _max_retries = int(os.environ.get("SWARMKIT_AGENT_RETRIES", "2"))
     for _attempt in range(_max_retries + 1):
+        # Check for DAG-based execution first
+        if _has_dag_deps(agent):
+            delegations = _extract_delegation(response, agent)
+            if delegations:
+                task_text = delegations[0][1] or str(messages[-1].content)[:500]
+                if verbose:
+                    print("  [dag mode: running children in dependency order]", file=sys.stderr)
+                dag_results = await _run_dag(
+                    agent,
+                    agent_id,
+                    task_text,
+                    model_provider,
+                    governance,
+                    all_agents or {},
+                    mcp_manager,
+                    provider_registry,
+                    verbose,
+                )
+                merged_messages = []
+                for cid, result in dag_results.items():
+                    merged_messages.append(AIMessage(content=result, name=cid))
+                return {
+                    "current_agent": agent_id,
+                    "agent_results": {
+                        agent_id: "__delegated_parallel__",
+                        **dag_results,
+                    },
+                    "messages": merged_messages,
+                }
+
         delegations = _extract_delegation(response, agent)
         if delegations:
             if len(delegations) == 1:
@@ -1061,6 +1091,94 @@ async def _handle_skill_tool_calls(
         )
 
     return results if results else None
+
+
+# ---- DAG execution ------------------------------------------------------
+
+
+def _has_dag_deps(agent: ResolvedAgent) -> bool:
+    """Check if any child agent has depends_on declarations."""
+    return any(c.depends_on for c in agent.children)
+
+
+async def _run_dag(
+    agent: ResolvedAgent,
+    agent_id: str,
+    task: str,
+    model_provider: ModelProviderProtocol,
+    governance: GovernanceProvider,
+    all_agents: dict[str, ResolvedAgent],
+    mcp_manager: Any,
+    provider_registry: ProviderRegistry | None,
+    verbose: str,
+) -> dict[str, str]:
+    """Execute child agents in dependency order. Returns {child_id: result}."""
+    import asyncio as _asyncio  # noqa: PLC0415
+
+    children = {c.id: c for c in agent.children}
+    results: dict[str, str] = {}
+    completed: set[str] = set()
+
+    def _ready(child: ResolvedAgent) -> bool:
+        if child.id in completed:
+            return False
+        return all(d in completed for d in child.depends_on)
+
+    max_rounds = len(children) + 1
+    for _round in range(max_rounds):
+        runnable = [c for c in children.values() if _ready(c)]
+        if not runnable:
+            break
+
+        if verbose:
+            names = [c.id for c in runnable]
+            print(f"  [dag round {_round + 1}: running {names}]", file=sys.stderr)
+
+        async def _exec_child(
+            child: ResolvedAgent,
+            _children: dict[str, ResolvedAgent] = children,
+        ) -> tuple[str, str]:
+            dep_context = ""
+            if child.depends_on:
+                parts = []
+                for dep_id in child.depends_on:
+                    if dep_id in results:
+                        parts.append(f"[{dep_id}]:\n{results[dep_id]}")
+                if parts:
+                    dep_context = (
+                        "Previous agents produced these results:\n\n" + "\n\n".join(parts) + "\n\n"
+                    )
+
+            child_input = f"{dep_context}Your task: {task}"
+            child_state: SwarmState = {
+                "input": child_input,
+                "messages": [HumanMessage(content=child_input, name=agent_id)],
+                "agent_results": {},
+                "current_agent": child.id,
+                "output": "",
+            }
+            child_provider = _resolve_agent_provider(
+                child,
+                provider_registry,
+                model_provider,
+            )
+            child_fn = _build_agent_node(
+                child,
+                child_provider,
+                governance,
+                all_agents or {},
+                mcp_manager,
+                provider_registry,
+            )
+            result_state = await child_fn(child_state)
+            return (child.id, result_state.get("output", "(no response)"))
+
+        batch = await _asyncio.gather(*[_exec_child(c) for c in runnable])
+        for cid, result in batch:
+            results[cid] = result
+            completed.add(cid)
+
+    return results
 
 
 # ---- response parsing ---------------------------------------------------

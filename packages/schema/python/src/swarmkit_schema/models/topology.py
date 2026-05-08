@@ -225,6 +225,10 @@ class ChildAgent(Agent):
         populate_by_name=True,
     )
     role: Role2 | None = None
+    depends_on: list[str] | None = Field(
+        None,
+        description="Agent IDs that must complete before this agent runs. Enables DAG-based execution ordering.",
+    )
 
 
 SwarmKitTopology.model_rebuild()
