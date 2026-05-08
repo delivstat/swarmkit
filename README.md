@@ -71,21 +71,36 @@ swarmkit knowledge-server
 
 ## Milestone progress
 
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for full details.
+
+### Phase 1 — Foundation (complete)
+
 | # | Milestone | Status |
 |---|---|---|
-| 0 | Schemas (5 artifact types, dual-language validators, codegen) | ✅ |
-| 1 | Topology loading and resolution | ✅ |
-| 2 | GovernanceProvider + AGT integration | ✅ |
-| 2.5 | ModelProvider abstraction (7 built-in providers) | ✅ |
-| 3 | LangGraph compiler (capability + coordination) | ✅ |
-| 3.5 | Conversational authoring (`swarmkit init/author`) | ✅ |
-| 4 | Decision skills, structured output, review queue, HITL | ✅ |
-| 5 | MCP integration (stdio + HTTP, sandboxed servers, Knowledge MCP Server) | ✅ |
-| 6 | Code Review Swarm (3-leader reference topology) | ✅ |
-| 7 | Skill Authoring Swarm + `swarmkit edit` + `--thorough` | ✅ |
-| 8 | Workspace Authoring Swarm | Superseded by M3.5 + M7 |
-| 9 | HTTP server (`swarmkit serve`) — eject deferred | ✅ |
-| 10 | Catalogue polish + launch | Planned |
+| M0 | Schemas (5 artifact types, dual-language validators, codegen) | ✅ |
+| M1 | Topology loading and resolution | ✅ |
+| M2 | GovernanceProvider + AGT integration | ✅ |
+| M2.5 | ModelProvider abstraction (7 built-in providers) | ✅ |
+| M3 | LangGraph compiler (capability + coordination + DAG) | ✅ |
+| M3.5 | Conversational authoring (`swarmkit init/author/edit`) | ✅ |
+| M4 | Decision skills, structured output, review queue, HITL | ✅ |
+| M5 | MCP integration (stdio + HTTP, sandboxed servers, governance gating) | ✅ |
+
+### Phase 2 — Runtime completion (current)
+
+| # | Milestone | Status |
+|---|---|---|
+| M6 | Observability: OpenTelemetry traces, local ring buffer, CLI primitives, governance circuit breakers | Next |
+| M7 | Intent drift detection: embedding-based drift scoring, nudge strategies | Planned |
+
+### Phase 3-4 — Ecosystem + production readiness
+
+| # | Milestone | Status |
+|---|---|---|
+| M8 | Knowledge + skills ecosystem: skill registry CLI, user knowledge server | Planned |
+| M9 | Reference topologies: code review + skill authoring swarms runnable e2e | Planned |
+| M10 | Eject + execution modes: `swarmkit eject`, HTTP server, canary deployments | Planned |
+| M11 | Launch prep: docs site, PyPI/npm publish, expertise packages | Planned |
 
 ## Key features
 
@@ -167,7 +182,7 @@ The Knowledge MCP Server exposes SwarmKit's own docs, schemas, and reference ski
 
 ### Observability
 
-Every run records structured events (agent start/complete with timing, skill calls, policy denials, validation failures) to `.swarmkit/logs/` as JSONL. CLI commands for analysis:
+Every run records structured audit events (agent steps, skill calls, policy decisions, validation failures) to `.swarmkit/logs/` as JSONL. CLI commands for analysis:
 
 | Command | What it does |
 |---|---|
@@ -189,6 +204,14 @@ audit:
   log_outputs: full
   redact: ["$.api_key", "$.password"]
 ```
+
+**Coming in M6-M7** (designed, not yet implemented):
+
+- **OpenTelemetry integration** — trace-per-run, span-per-agent-step with `swarmkit.*` semantic attributes. Console + OTLP/HTTP exporters. Send structural telemetry to any OTel-compatible backend (Jaeger, Grafana, Rynko). See [`design/details/opentelemetry-observability.md`](./design/details/opentelemetry-observability.md).
+- **Local ring buffer** — SQLite-backed prompt/response store keyed by OTel span ID. Prompts never leave the user's environment. `swarmkit debug --span-id <id>` retrieves them locally.
+- **Intent drift detection** — optional per-agent embedding-based drift scoring. Detects when agents wander from the original goal. Log, warn, or nudge strategies. See [`design/details/intent-drift-detection.md`](./design/details/intent-drift-detection.md).
+- **Governance circuit breakers** — `max_steps_per_run`, `max_cost_per_run_usd` — prevent runaway agents.
+- **Notification plugins** — webhook-based alerts on HITL requests, errors, skill gaps (Slack, email, generic webhook).
 
 ## Reference topologies
 
@@ -228,8 +251,8 @@ reference/
 │   ├── code-review.yaml    # 10-agent, 3-level tree
 │   ├── skill-authoring.yaml
 │   └── knowledge-curator.yaml  # (pending implementation)
-├── archetypes/             # 16+ reusable agent configs
-└── skills/                 # 15+ skills (GitHub MCP + decision + knowledge + wiki)
+├── archetypes/             # 16 reusable agent configs
+└── skills/                 # 20 skills (GitHub MCP + decision + knowledge + wiki)
 ```
 
 ## Monorepo layout
