@@ -26,13 +26,13 @@ status: active
 |-------|---|-----------|--------|-----------|
 | 1 | M0 | Schemas | ✅ | `just demo-schema` validates all fixtures in Python + TS |
 | 1 | M1 | Topology loading & resolution | ✅ | `swarmkit validate` prints resolved tree |
-| 1 | M2 | GovernanceProvider + AGT Tier 1 | 🟡 | AGT policy denies + audits; CLI wiring gap remains |
+| 1 | M2 | GovernanceProvider + AGT Tier 1 | ✅ | AGT policy denies + audits; CLI wires provider from workspace.yaml |
 | 1 | M2.5 | ModelProvider abstraction | ✅ | Multi-provider topology loads and runs |
 | 1 | M3 | LangGraph compiler | ✅ | `swarmkit run` executes two-agent swarm |
 | 1 | M3.5 | Conversational authoring (v1) | ✅ | `swarmkit init` produces working workspace |
 | 1 | M4 | Decision + persistence skills | ✅ | Structured output + LLM judge + review queue |
 | 1 | — | DAG dependency graph | ✅ | Agents execute in dependency order |
-| 2 | M5 | MCP integration (finish) | 🟡 | MCP calls gated through governance |
+| 1 | M5 | MCP integration | ✅ | MCP calls gated through governance, sandboxed execution |
 | 2 | M6 | Observability + human interaction | — | `swarmkit status/logs/review/ask` + OTel traces |
 | 2 | M7 | Intent drift detection | — | Drift scores per step, nudge on threshold breach |
 | 3 | M8 | Knowledge + skills ecosystem (enhance) | 🟡 | Skill registry CLI + user knowledge server + knowledge curator topology |
@@ -94,7 +94,7 @@ All milestones in this phase shipped between 2026-04-21 and 2026-04-26. v1.0.0 t
 
 **Exit demo:** `just demo-resolver` — valid workspace resolves; broken workspace prints actionable error.
 
-### M2 — GovernanceProvider + AGT Tier 1 🟡
+### M2 — GovernanceProvider + AGT Tier 1 ✅
 
 **Goal:** governance abstraction with real AGT policy engine for Tier 1 checks.
 
@@ -107,7 +107,7 @@ All milestones in this phase shipped between 2026-04-21 and 2026-04-26. v1.0.0 t
 - [x] MockGovernanceProvider — used in all unit tests
 - [x] Middleware pipeline for skill invocation — PR #43
 - [x] Separation-of-powers integration tests
-- [ ] **CLI governance provider wiring** — `swarmkit run` reads `workspace.yaml` `governance:` block instead of hardcoding mock. Shared gap with M5.
+- [x] CLI governance provider wiring — `build_governance()` in `_workspace_runtime.py` reads `workspace.yaml` `governance:` block, instantiates `AGTGovernanceProvider.from_config()` when `provider: agt`, falls back to mock when unset.
 
 **Exit demo:** AGT denies unauthorised scope, audit records denial with tamper-evident hash chain.
 
@@ -186,21 +186,13 @@ All milestones in this phase shipped between 2026-04-21 and 2026-04-26. v1.0.0 t
 - [x] DAG router + dependency-based execution — PR #83
 - [x] E2E tests — PR #84
 
----
-
-## Phase 2 — Runtime Completion (CURRENT PRIORITY)
-
-Finish the runtime to production quality. Everything here is open-source. These milestones make SwarmKit ready for real workloads.
-
-### M5 — MCP integration (finish) 🟡
+### M5 — MCP integration ✅
 
 **Goal:** real MCP servers power capability skills; governance gates every MCP call.
 
 **Design reference:** §18. `design/details/mcp-client.md`.
 
-**Status:** ~70% complete. Core plumbing done. Remaining: governance wiring, sandboxing, reference skills.
-
-**Features (done):**
+**Features:**
 
 - [x] MCPClientManager + stdio/SSE transports — PR #45
 - [x] MCP server registry in workspace.yaml — PR #47, fixed PR #49
@@ -208,16 +200,17 @@ Finish the runtime to production quality. Everything here is open-source. These 
 - [x] `swarmkit author mcp-server` — conversational authoring
 - [x] Knowledge Curator topology design — PR #46
 - [x] Skill registry design — `design/details/skill-registry.md`
+- [x] MCP calls gated through GovernanceProvider — `evaluate_action` before `call_tool` in `_skill_executor.py`. Action string: `mcp:call:<server>:<tool>`.
+- [x] Sandboxed server supervisor — Docker-based (`_build_sandboxed_command` in `_client.py`). `--network=none`, workspace mounted read-only at `/workspace`, env vars injected via `-e`. Configurable image via `sandbox_image` or `SWARMKIT_SANDBOX_IMAGE` env var.
+- [x] Reference skills: github-repo-read, github-pr-read, github-issue-read, slack-notify, and 16 more under `reference/skills/`
 
-**Features (remaining):**
+**Exit demo:** topology reads GitHub repo via MCP → judge evaluates → audit records result. Sandboxed servers run in Docker with no network access.
 
-- [ ] **CLI governance provider wiring** — `swarmkit run` reads `workspace.yaml` `governance:` block. Closes M2 gap too.
-- [ ] MCP calls gated through GovernanceProvider — `evaluate_action` before `call_tool`
-- [ ] Sandboxed server supervisor — Docker-based, §8.8
-- [ ] Reference skill: github-repo-read
-- [ ] Reference skill: slack-notify
+---
 
-**Exit demo:** topology reads GitHub repo via MCP → judge evaluates → audit records result. Kill MCP server mid-run; runtime reports failure gracefully.
+## Phase 2 — Runtime Completion (CURRENT PRIORITY)
+
+Add observability, intent drift detection, and operational tooling. Everything here is open-source. These milestones make SwarmKit ready for real production workloads.
 
 ### M6 — Observability + human interaction (NEW)
 
@@ -225,7 +218,7 @@ Finish the runtime to production quality. Everything here is open-source. These 
 
 **Design reference:** `design/details/opentelemetry-observability.md`, `design/details/human-interaction-model.md`, `design/details/product-architecture-refinements.md`.
 
-**Dependencies:** M5 (governance wiring needed for audit events).
+**Dependencies:** none — M5 governance wiring is complete. Ready to start.
 
 **Features:**
 
@@ -251,7 +244,7 @@ Finish the runtime to production quality. Everything here is open-source. These 
 
 **Design reference:** `design/details/intent-drift-detection.md`.
 
-**Dependencies:** M6 (OTel spans for drift events, audit log for recording).
+**Dependencies:** M6 (OTel spans for drift events, audit provider for recording).
 
 **Features:**
 
@@ -300,7 +293,7 @@ Make swarms useful with real knowledge sources and a rich skill catalogue.
 
 **Goal:** make existing reference topologies production-quality and runnable end-to-end with real MCP servers.
 
-**Dependencies:** M5 (MCP), M6 (observability), M7 (drift detection optional but adds value).
+**Dependencies:** M5 ✅ (MCP), M6 (observability), M7 (drift detection optional but adds value).
 
 **What already exists:**
 
@@ -473,8 +466,8 @@ Every design note under `design/details/` and where it appears in this plan:
 
 | Question | Blocks |
 |----------|--------|
-| Sandboxing requirement for generated MCP servers | M5 |
-| Governance CLI wiring (mock → AGT based on workspace config) | M5 |
+| ~~Sandboxing requirement for generated MCP servers~~ | ~~M5~~ — resolved: Docker-based, `--network=none`, read-only mounts |
+| ~~Governance CLI wiring (mock → AGT based on workspace config)~~ | ~~M5~~ — resolved: `build_governance()` reads workspace.yaml |
 | Audit log derived from OTel traces or separate system? | M6 |
 | `swarmkit.cost.tokens` attribute on LLM spans (model provider cooperation) | M6 |
 | Intent drift: nudge message customisable or generic? | M7 |
