@@ -126,13 +126,13 @@ class TestDAGE2E:
         topology = ResolvedTopology(
             id="test-pipeline",
             raw=None,  # type: ignore[arg-type]
-            source_path=None,
+            source_path=None,  # type: ignore[arg-type]
             root=root,
         )
 
         graph = compile_topology(
             topology,
-            model_provider=provider,
+            model_provider=provider,  # type: ignore[arg-type]
             governance=governance,
         )
 
@@ -187,14 +187,14 @@ class TestDAGE2E:
 
         topology = ResolvedTopology(
             id="test-parallel-merge",
-            raw=None,
-            source_path=None,
+            raw=None,  # type: ignore[arg-type]
+            source_path=None,  # type: ignore[arg-type]
             root=root,
         )
 
         graph = compile_topology(
             topology,
-            model_provider=provider,
+            model_provider=provider,  # type: ignore[arg-type]
             governance=governance,
         )
 
@@ -236,14 +236,14 @@ class TestDAGE2E:
 
         topology = ResolvedTopology(
             id="test-no-deps",
-            raw=None,
-            source_path=None,
+            raw=None,  # type: ignore[arg-type]
+            source_path=None,  # type: ignore[arg-type]
             root=root,
         )
 
         graph = compile_topology(
             topology,
-            model_provider=provider,
+            model_provider=provider,  # type: ignore[arg-type]
             governance=governance,
         )
 
