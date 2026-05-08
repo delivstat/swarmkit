@@ -373,6 +373,34 @@ graph = compiled_graph.compile(checkpointer=checkpointer)
 where execution stopped. Useful for long-running swarms that crash
 mid-execution.
 
+### Long-lived pauses (approval gates)
+
+The runtime does not manage state freezing manually. When an agent
+triggers an approval gate (human-in-the-loop scope like
+`skills:activate` or `topologies:modify`), the runtime relies entirely
+on LangGraph's native checkpointer.
+
+**Flow:**
+
+1. Agent hits approval gate → runtime serializes full graph state to
+   disk via the checkpointer.
+2. Runtime process can safely terminate — state is durable.
+3. Approval arrives via Rynko webhook, CLI input, or polling — hours
+   or days later.
+4. Runtime rehydrates from the checkpoint and resumes execution from
+   exactly where it paused.
+
+**Implementation requirement:** approval gates must compile strictly as
+LangGraph interrupt points. The compiler emits an interrupt node
+wherever the topology declares a governance scope reserved for human
+identity (§8.7). The interrupt serializes state and yields control;
+resumption is a standard LangGraph checkpoint restore.
+
+For the Rynko cloud deployment model, the approval event surfaces in
+the Rynko UI's review queue. For CLI-only mode, the runtime prompts
+in the terminal and blocks until the user responds. Same checkpointer,
+different approval surface.
+
 ## `swarmkit run` CLI
 
 ```
