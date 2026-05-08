@@ -35,8 +35,8 @@ status: active
 | 2 | M5 | MCP integration (finish) | 🟡 | MCP calls gated through governance |
 | 2 | M6 | Observability + human interaction | — | `swarmkit status/logs/review/ask` + OTel traces |
 | 2 | M7 | Intent drift detection | — | Drift scores per step, nudge on threshold breach |
-| 3 | M8 | Knowledge layer | — | `swarmkit knowledge-server` + skill registry |
-| 3 | M9 | Reference topologies | — | Code review swarm + skill authoring swarm + knowledge curator |
+| 3 | M8 | Knowledge + skills ecosystem (enhance) | 🟡 | Skill registry CLI + user knowledge server + knowledge curator topology |
+| 3 | M9 | Reference topologies (enhance) | 🟡 | Code review + skill authoring swarms runnable end-to-end |
 | 4 | M10 | Eject + execution modes | — | `swarmkit eject` + `swarmkit serve` + canary deployments |
 | 4 | M11 | Launch prep | — | `pip install swarmkit` → working swarm in <15 min |
 
@@ -238,9 +238,10 @@ Finish the runtime to production quality. Everything here is open-source. These 
 - [ ] **CLI primitives** — `swarmkit status` (snapshot), `swarmkit logs <run-id> [--follow]` (event tail), `swarmkit events [--filter]` (cross-run stream), `swarmkit stop <run-id>` (graceful shutdown), `swarmkit why <run-id>` (decision chain).
 - [ ] **`swarmkit review`** — interactive TUI for pending HITL approvals (approve/reject/edit/skip).
 - [ ] **`swarmkit ask`** — conversational observer, LLM-backed. Parses question → loads audit events → answers.
-- [ ] **Notification plugin** — interface + built-ins: terminal, slack (webhook), email (SMTP), plugin. Fires on: `hitl_requested`, `run_ended { status: error }`, `skill_gap_surfaced`.
-- [ ] **Governance circuit breakers** — `max_steps_per_agent`, `max_steps_per_run`, `max_runs_per_topology_per_day`, `max_cost_per_run_usd`. Enforced in governance engine, not billing. From `market-analysis-and-risk-mitigations.md` Risk 3.
+- [ ] **Notification plugin** — webhook-based, runs outside the SwarmKit runtime process. The runtime emits structured events; notification providers consume them via webhooks. Multiple providers can be configured in parallel. Built-ins: terminal (stdout, for local dev), slack (outgoing webhook), email (SMTP), generic webhook (configurable URL + payload template). Fires on: `hitl_requested`, `run_ended { status: error }`, `skill_gap_surfaced`. Workspace config specifies provider + endpoint + event filters.
+- [ ] **Governance circuit breakers** — `max_steps_per_agent`, `max_steps_per_run`, `max_runs_per_topology_per_day`, `max_cost_per_run_usd`. Sensible defaults ship out of the box (e.g., `max_steps_per_run: 500`). Enforced in governance engine, not billing. From `market-analysis-and-risk-mitigations.md` Risk 3.
 - [ ] **OTel metrics** — counters: `swarmkit.runs.total`, `swarmkit.agent.steps.total`, `swarmkit.tool.calls.total`. Histograms: `swarmkit.runs.duration_ms`, `swarmkit.tool.duration_ms`.
+- [ ] **Execution detail API** — beyond high-level `swarmkit status`, users need root-cause access. `swarmkit logs <run-id> --follow` streams full execution detail (every agent step, tool call, governance decision). `swarmkit why <run-id>` traces the decision chain. `swarmkit debug --span-id <id>` retrieves actual prompts/responses from the local ring buffer. For HITL flows, the webhook payload includes the run ID + span ID so the reviewer can pull execution context via CLI or (in Rynko) via the dashboard trace view.
 
 **Exit demo:** run a topology with `telemetry.exporter: console` — span output in terminal showing agent steps, tool calls, governance decisions. `swarmkit logs` tails the same run. `swarmkit debug --run-id xyz` retrieves prompt/response pairs from local SQLite. `swarmkit ask "what went wrong?"` answers from audit context. Optional: spin up local Jaeger, see the full trace.
 
@@ -273,54 +274,65 @@ Finish the runtime to production quality. Everything here is open-source. These 
 
 Make swarms useful with real knowledge sources and a rich skill catalogue.
 
-### M8 — Knowledge layer (NEW)
+### M8 — Knowledge + skills ecosystem (enhance) 🟡
 
-**Goal:** SwarmKit docs queryable as MCP tools; user knowledge sources wired at authoring time; community skills importable.
+**Goal:** enhance existing knowledge server; add user knowledge server authoring; add skill registry CLI for community import.
 
 **Design reference:** `design/details/knowledge-mcp-server.md`, `design/details/user-knowledge-server.md`, `design/details/skill-registry.md`.
 
 **Dependencies:** M5 (MCP framework).
 
-**Features:**
+**What already exists:**
 
-- [ ] **Knowledge MCP server** — `swarmkit knowledge-server`. Tools: `search_docs`, `get_schema`, `get_design_note`, `list_design_notes`, `list_schemas`, `get_error_reference`, `validate_workspace`, `list_reference_skills`. Keyword search v1 (no embeddings required).
+- [x] **Knowledge MCP server** — `swarmkit knowledge-server` is implemented (437 lines). Tools: `search_docs`, `get_schema`, `get_design_note`, `list_design_notes`, `list_schemas`, `get_error_reference`, `validate_workspace`, `list_reference_skills`, `write_workspace_file`, `read_workspace_file`, `run_pytest`. Keyword search with term-frequency scoring.
+- [x] **Seed skills** — 20 reference skills already exist under `reference/skills/` (code-quality-review, security-scan, github-pr-read, audit-log-write, etc.)
+
+**Features (remaining):**
+
 - [ ] **User knowledge server** — `swarmkit author knowledge-server`. Generates a FastMCP server from user's docs/code/APIs. Three search tiers: keyword (default), TF-IDF (optional), vector (Qdrant, optional). Integrates into `swarmkit init` as a proactive knowledge question.
-- [ ] **Skill registry** — SKILL.md → SwarmKit YAML converter. CLI: `swarmkit skill install`, `swarmkit skill import <repo-url>`, `swarmkit skill import-mcp <repo-url>`, `swarmkit skill search`, `swarmkit skill list [--available]`.
+- [ ] **Skill registry CLI** — SKILL.md → SwarmKit YAML converter. CLI: `swarmkit skill install`, `swarmkit skill import <repo-url>`, `swarmkit skill import-mcp <repo-url>`, `swarmkit skill search`, `swarmkit skill list [--available]`.
 - [ ] **Authoring AI integration** — authoring agent searches registry before generating, proposes installing existing skills when a match is found.
-- [ ] **Seed skills** — 20+ reference skills: file-read/write, web-fetch/search, git-diff/log, github-pr-read, database-query, code-execute, code-quality-review, security-vulnerability-scan, content-moderation, schema-validation, coordinate-workers, audit-log-write, knowledge-base-update, review-queue-submit.
+- [ ] **Knowledge server enhancements** — vector search (optional Qdrant tier), workspace-scoped knowledge queries.
 
-**Exit demo:** `swarmkit knowledge-server` running → Claude Code queries SwarmKit docs live. `swarmkit skill search "code review"` finds community skills. `swarmkit skill install code-quality-review` adds it to workspace. `swarmkit author knowledge-server` generates a server from user's API docs.
+**Exit demo:** `swarmkit skill search "code review"` finds community skills. `swarmkit skill install` adds to workspace. `swarmkit author knowledge-server` generates a server from user's API docs.
 
-### M9 — Reference topologies
+### M9 — Reference topologies (enhance) 🟡
 
-**Goal:** production-quality reference topologies that demonstrate SwarmKit's capabilities.
+**Goal:** make existing reference topologies production-quality and runnable end-to-end with real MCP servers.
 
 **Dependencies:** M5 (MCP), M6 (observability), M7 (drift detection optional but adds value).
 
-**Features:**
+**What already exists:**
 
-#### Code Review Swarm (original M6)
+- [x] `reference/topologies/code-review.yaml` — topology YAML (62 lines)
+- [x] `reference/topologies/skill-authoring.yaml` — topology YAML (30 lines)
+- [x] 16 archetypes under `reference/archetypes/` (engineering-leader, qa-leader, ops-leader, supervisor-leader, security-reviewer, code-analyst, github-reader, llm-judge, authoring-supervisor, schema-drafter, test-writer, test-analyst, artifact-validator, artifact-publisher, conversation-leader, knowledge-searcher)
+- [x] 20 skills under `reference/skills/` (code-quality-review, security-scan, github-pr-read, deploy-risk-review, qa-verdict, run-tests, lint-check, test-coverage-review, summarize-review, audit-log-write, etc.)
+- [x] `design/details/topology-code-review.md` — design note
+- [x] `design/details/topology-skill-authoring.md` — design note
+- [x] `design/details/knowledge-curator-topology.md` — design note
 
-- [ ] `design/topology-code-review.md` — full agent tree, skill map, HITL gates
-- [ ] Topology YAML — three leaders, workers, guarded channels
-- [ ] 5–7 archetypes + 10–12 skills for the topology
-- [ ] GitHub webhook handler trigger
-- [ ] Golden-path PR review end-to-end test
+**Features (remaining):**
 
-**Exit demo:** `just demo-code-review` — fixture PR → engineering/QA/ops leaders coordinate → deploy step pauses for HITL → approve releases deploy.
+#### Code Review Swarm — make runnable
 
-#### Skill Authoring Swarm (original M7)
+- [ ] Wire to real MCP servers (GitHub MCP for PR reading)
+- [ ] GitHub webhook handler trigger — kicks swarm on PR open
+- [ ] Golden-path PR review end-to-end test with fixture PR
+- [ ] HITL gate: deploy step pauses for human approval
 
-- [ ] `design/topology-skill-authoring.md` — multi-agent version extending M3.5's single-agent authoring
-- [ ] Topology YAML with conversation-leader, schema-drafter, test-execution-leader, publication-worker
+**Exit demo:** `just demo-code-review` — fixture PR → leaders coordinate → deploy pauses for HITL → approve releases.
+
+#### Skill Authoring Swarm — make runnable
+
+- [ ] Wire multi-agent authoring flow (extends M3.5's single-agent `swarmkit author`)
 - [ ] Authoring-provenance tagging — swarm-authored skills locked until human review
 - [ ] End-to-end test: scripted conversation → valid skill file
 
-**Exit demo:** `swarmkit author skill` — multi-agent swarm produces a new skill, runs its test, publishes on approval.
+**Exit demo:** `swarmkit author skill` — multi-agent swarm produces a new skill, tests it, publishes on approval.
 
-#### Knowledge Curator Topology
+#### Knowledge Curator Topology — implement
 
-- [ ] `design/details/knowledge-curator-topology.md` — three-layer architecture (raw sources → wiki → schema)
 - [ ] Topology YAML with knowledge-coordinator, knowledge-curator, knowledge-indexer, knowledge-linter
 - [ ] Wiki-fs MCP server skills (wiki-read, wiki-write, wiki-search, wiki-list, wiki-log)
 - [ ] Ingest, query-and-persist, and lint operations
@@ -373,8 +385,9 @@ deployment:
 
 **Features:**
 
-- [ ] Remaining archetypes to hit ~15 (§13.1 list)
-- [ ] Remaining skills to hit ~20
+- [x] ~16 archetypes already in `reference/archetypes/`
+- [x] ~20 skills already in `reference/skills/`
+- [ ] Review and polish existing catalogue — ensure all validate, have descriptions, and cover the §13.1 list
 - [ ] Documentation site (MkDocs or Docusaurus)
 - [ ] Docker image build + publish workflow
 - [ ] PyPI + npm publish workflows with trusted publishing
@@ -431,7 +444,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `intent-drift-detection.md` | M7 |
 | `knowledge-curator.md` | M9 |
 | `knowledge-curator-topology.md` | M9 |
-| `knowledge-mcp-server.md` | M8 |
+| `knowledge-mcp-server.md` | M8 (server implemented ✅, enhancements remaining) |
 | `knowledge-pack-cli.md` | M1 ✅ |
 | `langgraph-compiler.md` | M3 ✅ |
 | `market-analysis-and-risk-mitigations.md` | M10 (canary), cross-cutting (risk awareness) |
