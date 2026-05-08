@@ -125,8 +125,8 @@ class TestDAGE2E:
 
         topology = ResolvedTopology(
             id="test-pipeline",
-            raw=None,  # type: ignore[arg-type]
-            source_path=None,  # type: ignore[arg-type]
+            raw=None,
+            source_path=None,
             root=root,
         )
 
@@ -187,8 +187,8 @@ class TestDAGE2E:
 
         topology = ResolvedTopology(
             id="test-parallel-merge",
-            raw=None,  # type: ignore[arg-type]
-            source_path=None,  # type: ignore[arg-type]
+            raw=None,
+            source_path=None,
             root=root,
         )
 
@@ -236,8 +236,8 @@ class TestDAGE2E:
 
         topology = ResolvedTopology(
             id="test-no-deps",
-            raw=None,  # type: ignore[arg-type]
-            source_path=None,  # type: ignore[arg-type]
+            raw=None,
+            source_path=None,
             root=root,
         )
 
