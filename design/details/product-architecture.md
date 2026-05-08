@@ -124,7 +124,7 @@ platform:
 
 **Audience:** teams, production deployments, anyone who wants visual ops without running infrastructure.
 
-### 3. Self-hosted UI (enterprise)
+### 3. Self-hosted UI (enterprise) — Phase 3, deferred
 
 Same UI, deployed in the customer's environment. Connects to a customer-managed database. No data leaves their network.
 
@@ -138,6 +138,8 @@ Customer's environment
 
 **Audience:** enterprises with strict data policies, regulated industries, air-gapped environments.
 **Pricing:** annual contract, includes support and onboarding.
+
+**De-prioritization note:** supporting on-prem software across custom Kubernetes clusters, varied ingress controllers, and restrictive enterprise firewalls is a massive engineering drain that turns the product team into an outsourced IT support desk. Treat self-hosted UI strictly as Phase 3 — only when revenue from the cloud-hosted tier justifies dedicated deployment engineering. The core pitch for 95% of customers is "Cloud UI + Local Runtime" (Tier 2). Self-hosted is a negotiation lever for large enterprise contracts, not an actively marketed product early on.
 
 ## Upgrade path
 
@@ -156,10 +158,12 @@ No migration, no re-architecture, no data export/import. The runtime doesn't car
 | Tier | What you get | Price |
 |------|-------------|-------|
 | **Open-source** | Runtime + CLI, full functionality, unlimited agents/runs | Free |
-| **Team** | Rynko cloud UI, team RBAC, audit retention, alerting, drift analytics | Per-seat/month or usage-based |
-| **Enterprise** | Self-hosted UI, SSO/SAML, compliance exports, SLA, support | Annual contract |
+| **Team** | Rynko cloud UI, team RBAC, audit retention, alerting, drift analytics | Usage-based (per-run or per-agent-step) |
+| **Enterprise** | Self-hosted UI (Phase 3), SSO/SAML, compliance exports, SLA, support | Annual contract |
 
 The free tier is generous enough that solo developers never need to pay. Conversion happens naturally when teams need collaboration, visibility across environments, retention, and compliance — capabilities that don't make sense to build yourself.
+
+**Why usage-based over per-seat:** per-seat pricing is fundamentally misaligned with multi-agent systems. A swarm may execute 10,000 times a day autonomously without a human logging into the UI — generating massive telemetry and storage costs with zero "seat" revenue. Per-run or per-agent-step pricing aligns cost with value delivered and scales naturally with automated workloads.
 
 ## Non-goals
 
@@ -169,7 +173,7 @@ The free tier is generous enough that solo developers never need to pay. Convers
 
 ## Open questions
 
-- Exact telemetry protocol — WebSocket, gRPC, or HTTPS polling?
+- ~~Exact telemetry protocol~~ — resolved: OTLP/HTTP (see `opentelemetry-observability.md`, #88)
 - Data retention defaults per tier
 - Whether the enterprise self-hosted tier includes the analytics/learning engine or just the dashboard
 - Pricing model details (per-seat vs per-run vs hybrid)
