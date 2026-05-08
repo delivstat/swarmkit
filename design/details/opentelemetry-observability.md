@@ -213,8 +213,39 @@ The telemetry layer is injected into the runtime via dependency injection — no
 
 Run a reference topology with `telemetry.exporter: console`, show the span output in the terminal. Optionally spin up a local Jaeger via Docker and show the trace visualization.
 
+## Local ring buffer — privacy-first prompt debugging
+
+Raw LLM prompts and responses never leave the user's environment. To maintain a high-quality debugging experience in the Rynko UI without compromising privacy, the runtime uses a persistent local ring buffer.
+
+- **Storage:** local SQLite database (not in-memory). Must survive process restarts — overnight batch jobs fail, developer debugs the next morning.
+- **Keyed by:** OTel `span_id` and `run_id`, linking local debug data to cloud trace visualization.
+- **Retention:** configurable time-to-live (default: last 7 days) or run-count limit, whichever is larger.
+- **Retrieval via CLI:**
+
+```bash
+swarmkit debug --span-id <id>              # prompt/response for a specific span
+swarmkit debug --run-id <id>               # all prompts for a run
+swarmkit debug --agent researcher --last 5 # last 5 steps for an agent
+```
+
+- **Privacy guarantee:** the ring buffer is local-only. Rynko never receives prompt content unless `send_prompts: true` is explicitly set in the telemetry config.
+
+This enables a "Zero-Trust AI Ops" positioning — enterprises get a collaborative debugging UI in Rynko without proprietary data ever leaving their VPC. The Rynko dashboard shows the structural OTel trace; the CLI pulls the sensitive content from local storage when needed.
+
+## Transport recommendation
+
+Start with **OTLP/HTTP** using asynchronous batching. Advantages over gRPC:
+
+- Keeps the runtime lightweight
+- Avoids connection-drop headaches in diverse network environments (enterprise firewalls, proxies)
+- Makes Rynko instantly compatible with the broader observability ecosystem
+
+Move to gRPC only when payload size or velocity becomes a bottleneck.
+
 ## Open questions
 
 - Should the audit log (§8.3) be derived from OTel traces, or remain a separate system that shares data? The audit log has immutability guarantees that OTel storage may not.
 - Span event vs child span for drift scores — events are lighter but less visible in trace UIs
 - Whether to include a `swarmkit.cost.tokens` attribute on LLM call spans (requires model provider cooperation)
+- How granular should the prompt opt-in be? Per-topology? Per-agent? Per-run? Per-MCP-server?
+- Should the local ring buffer support a "secure tunnel" mode where the Rynko UI can pull prompts on-demand from the runtime (with user approval), or is CLI-only access sufficient?
