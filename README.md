@@ -104,49 +104,9 @@ swarmkit edit my-swarm/ --input "Add a security scan"  # modify via conversation
 
 ## How it works
 
-```mermaid
-graph TD
-    subgraph INPUT["You write YAML"]
-        T["Topology\n(agents + hierarchy)"]
-        A["Archetypes\n(reusable agent configs)"]
-        S["Skills\n(LLM prompts + MCP tools)"]
-    end
-
-    subgraph RUNTIME["SwarmKit Runtime"]
-        R["Resolve\n& Validate"]
-        C["Compile to\nLangGraph StateGraph"]
-        E["Execute"]
-    end
-
-    subgraph INFRA["Infrastructure"]
-        LLM["7 LLM Providers\nAnthropic / OpenAI / Google\nOllama / OpenRouter / Groq / Together"]
-        MCP["MCP Tool Servers\n7,000+ available\nGitHub / DB / Slack / FS / ..."]
-        GOV["Governance\nIAM scopes / policy engine\nhash-chained audit trail"]
-    end
-
-    subgraph OUTPUT["Output"]
-        O1["Structured results"]
-        O2["Audit log"]
-        O3["Review queue"]
-    end
-
-    T --> R
-    A --> R
-    S --> R
-    R --> C
-    C --> E
-    E <--> LLM
-    E <--> MCP
-    E <--> GOV
-    E --> O1
-    E --> O2
-    E --> O3
-
-    style INPUT fill:#1a1a2e,stroke:#16213e,color:#e6e6e6
-    style RUNTIME fill:#16213e,stroke:#0f3460,color:#e6e6e6
-    style INFRA fill:#0f3460,stroke:#533483,color:#e6e6e6
-    style OUTPUT fill:#533483,stroke:#e94560,color:#e6e6e6
-```
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="SwarmKit architecture" width="800" />
+</p>
 
 ## Key features
 
