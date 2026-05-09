@@ -72,7 +72,7 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 | Governance / permissions | IAM scopes + policy engine (AGT) | DIY | None | None |
 | Audit trail | Hash-chained, append-only | DIY | None | None |
 | Human-in-the-loop | Native approval gates in YAML | Manual interrupt points | None | None |
-| Escape hatch | `swarmkit eject` to pure LangGraph | N/A | None | None |
+| Escape hatch | `swarmkit eject` to pure LangGraph (planned) | N/A | None | None |
 | Model support | 7 providers (Anthropic, OpenAI, Google, Ollama, ...) | Any | Multiple | Claude only |
 
 ## Quick start
@@ -188,10 +188,6 @@ swarmkit gaps my-swarm/                        # recorded skill gaps
 ```
 
 **Coming soon:** OpenTelemetry integration (traces + metrics), intent drift detection, local prompt ring buffer, governance circuit breakers.
-
-### Eject when you outgrow it
-
-`swarmkit eject` exports your topology as standalone LangGraph Python code. No lock-in, ever.
 
 ## Reference topologies
 
