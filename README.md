@@ -56,7 +56,7 @@ agents:
 ```
 
 ```bash
-pip install swarmkit-runtime
+pip install swarmkit-runtime  # or: uv tool install swarmkit-runtime
 swarmkit run my-swarm/ code-review --input "Review PR #49"
 ```
 
@@ -68,19 +68,29 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 |---|---|---|---|---|
 | Agent definition | YAML topology | Python code | Python classes | Code + config |
 | Multi-agent orchestration | Declarative hierarchy + DAG | Manual graph construction | Role-based | Single agent loop |
-| Tool integration | 7,000+ MCP servers via YAML config | Build from scratch | Built-in tools | Built-in harness |
+| Tool integration | 7,000+ MCP servers via YAML config | Build or wire yourself | Built-in + MCP | Built-in harness + MCP |
 | Governance / permissions | IAM scopes + policy engine (AGT) | DIY | None | None |
 | Audit trail | Hash-chained, append-only | DIY | None | None |
 | Human-in-the-loop | Native approval gates in YAML | Manual interrupt points | None | None |
 | Escape hatch | `swarmkit eject` to pure LangGraph | N/A | None | None |
-| Model lock-in | 7 providers (Anthropic, OpenAI, Google, Ollama, ...) | Any | OpenAI-focused | Claude only |
+| Model support | 7 providers (Anthropic, OpenAI, Google, Ollama, ...) | Any | Multiple | Claude only |
 
 ## Quick start
 
-```bash
-# Install
-pip install swarmkit-runtime
+### Install
 
+```bash
+# Option 1: uv (recommended — fast, no venv needed)
+curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv if you don't have it
+uv tool install swarmkit-runtime
+
+# Option 2: pip
+pip install swarmkit-runtime
+```
+
+### Create and run a swarm
+
+```bash
 # Create a workspace through conversation (you never write YAML)
 swarmkit init my-swarm/
 
@@ -94,11 +104,11 @@ swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit
 ### 30-second workflow
 
 ```bash
-swarmkit init my-swarm/                    # conversational workspace creation
-swarmkit validate my-swarm/ --tree         # validate + show agent tree
-swarmkit run my-swarm/ my-topology         # run end-to-end
-swarmkit chat my-swarm/ my-topology        # multi-turn conversation
-swarmkit author skill my-swarm/            # add skills conversationally
+swarmkit init my-swarm/                                # conversational workspace creation
+swarmkit validate my-swarm/ --tree                     # validate + show agent tree
+swarmkit run my-swarm/ my-topology --input "Greet us"  # run end-to-end
+swarmkit chat my-swarm/ my-topology                    # multi-turn conversation
+swarmkit author skill my-swarm/                        # add skills conversationally
 swarmkit edit my-swarm/ --input "Add a security scan"  # modify via conversation
 ```
 
@@ -207,9 +217,13 @@ The [`examples/sterling-oms/`](./examples/sterling-oms/) workspace demonstrates 
 
 ## Install from source
 
-Prerequisites: Python 3.11+, Node 20+, `pnpm`, `uv`, `just`.
+Prerequisites: Python 3.11+, Node 20+, [`uv`](https://docs.astral.sh/uv/), `pnpm`, `just`.
 
 ```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone and build
 git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
 just install          # uv sync + pnpm install
 just test             # 500+ tests across Python + TypeScript
