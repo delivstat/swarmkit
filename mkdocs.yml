@@ -32,15 +32,30 @@ nav:
     - Design overview: architecture/design-overview.md
     - Implementation plan: architecture/implementation-plan.md
   - Design notes:
-    - MCP client: design-notes/mcp-client.md
-    - Knowledge MCP Server: design-notes/knowledge-mcp-server.md
-    - User Knowledge Server: design-notes/user-knowledge-server.md
-    - Code Review Swarm: design-notes/topology-code-review.md
-    - Skill Authoring Swarm: design-notes/topology-skill-authoring.md
-    - Governance provider: design-notes/governance-provider-interface.md
-    - Model provider: design-notes/model-provider-abstraction.md
-    - Conversational authoring: design-notes/conversational-authoring.md
-    - Structured output: design-notes/structured-output-governance.md
+    - Runtime:
+      - LangGraph compiler: design-notes/langgraph-compiler.md
+      - MCP client: design-notes/mcp-client.md
+      - Governance provider: design-notes/governance-provider-interface.md
+      - Model provider: design-notes/model-provider-abstraction.md
+      - DAG dependency graph: design-notes/dag-dependency-graph.md
+      - Conversational authoring: design-notes/conversational-authoring.md
+      - Structured output: design-notes/structured-output-governance.md
+    - Observability (M6-M7):
+      - OpenTelemetry observability: design-notes/opentelemetry-observability.md
+      - Intent drift detection: design-notes/intent-drift-detection.md
+      - Human interaction model: design-notes/human-interaction-model.md
+    - Knowledge & skills:
+      - Knowledge MCP Server: design-notes/knowledge-mcp-server.md
+      - User Knowledge Server: design-notes/user-knowledge-server.md
+      - Knowledge Curator topology: design-notes/knowledge-curator-topology.md
+      - Skill registry: design-notes/skill-registry.md
+    - Reference topologies:
+      - Code Review Swarm: design-notes/topology-code-review.md
+      - Skill Authoring Swarm: design-notes/topology-skill-authoring.md
+    - Product & architecture:
+      - Product architecture: design-notes/product-architecture.md
+      - Product refinements: design-notes/product-architecture-refinements.md
+      - Market analysis: design-notes/market-analysis-and-risk-mitigations.md
   - Reference:
     - CLI commands: reference/cli.md
     - Skills catalogue: reference/skills.md
