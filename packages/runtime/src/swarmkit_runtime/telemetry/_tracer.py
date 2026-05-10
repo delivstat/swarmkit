@@ -54,8 +54,9 @@ class SwarmKitTelemetry:
             )
 
             headers = dict(config.headers)
-            if config.api_key:
-                headers["Authorization"] = f"Bearer {config.api_key}"
+            if config.api_key and config.api_key_header not in headers:
+                prefix = "Bearer " if config.api_key_header == "Authorization" else ""
+                headers[config.api_key_header] = f"{prefix}{config.api_key}"
 
             exporter = OTLPSpanExporter(
                 endpoint=config.endpoint,
