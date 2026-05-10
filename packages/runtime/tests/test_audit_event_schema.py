@@ -59,18 +59,12 @@ class TestAuditEventExpanded:
         assert event.duration_ms == 2400
 
     def test_event_id_unique(self):
-        e1 = AuditEvent(
-            event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC)
-        )
-        e2 = AuditEvent(
-            event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC)
-        )
+        e1 = AuditEvent(event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC))
+        e2 = AuditEvent(event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC))
         assert e1.event_id != e2.event_id
 
     def test_frozen(self):
-        event = AuditEvent(
-            event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC)
-        )
+        event = AuditEvent(event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC))
         try:
             event.agent_id = "b"  # type: ignore[misc]
             raise AssertionError("Should have raised")
