@@ -15,7 +15,7 @@ from swarmkit_runtime.governance import (
 
 
 class TestAuditEventExpanded:
-    def test_backward_compat_minimal(self):
+    def test_backward_compat_minimal(self) -> None:
         event = AuditEvent(
             event_type="policy.denied",
             agent_id="worker-1",
@@ -29,7 +29,7 @@ class TestAuditEventExpanded:
         assert event.tokens_in is None
         assert isinstance(event.event_id, UUID)
 
-    def test_full_fields(self):
+    def test_full_fields(self) -> None:
         event = AuditEvent(
             event_type="agent.completed",
             agent_id="code-reviewer",
@@ -58,73 +58,73 @@ class TestAuditEventExpanded:
         assert event.cost_usd == 0.003
         assert event.duration_ms == 2400
 
-    def test_event_id_unique(self):
+    def test_event_id_unique(self) -> None:
         e1 = AuditEvent(event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC))
         e2 = AuditEvent(event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC))
         assert e1.event_id != e2.event_id
 
-    def test_frozen(self):
+    def test_frozen(self) -> None:
         event = AuditEvent(event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC))
         try:
-            event.agent_id = "b"  # type: ignore[misc]
+            event.agent_id = "b"  # type: ignore[misc,unused-ignore]
             raise AssertionError("Should have raised")
         except AttributeError:
             pass
 
 
 class TestRedaction:
-    def test_redact_top_level(self):
+    def test_redact_top_level(self) -> None:
         data = {"name": "Alice", "password": "secret123", "role": "admin"}
         result = redact_json_pointers(data, ["$.password"])
         assert result["password"] == "[REDACTED]"
         assert result["name"] == "Alice"
         assert result["role"] == "admin"
 
-    def test_redact_multiple(self):
+    def test_redact_multiple(self) -> None:
         data = {"api_key": "sk-xxx", "token": "tok-yyy", "value": 42}
         result = redact_json_pointers(data, ["$.api_key", "$.token"])
         assert result["api_key"] == "[REDACTED]"
         assert result["token"] == "[REDACTED]"
         assert result["value"] == 42
 
-    def test_redact_missing_path(self):
+    def test_redact_missing_path(self) -> None:
         data = {"name": "Alice"}
         result = redact_json_pointers(data, ["$.nonexistent"])
         assert result == {"name": "Alice"}
 
-    def test_redact_empty_paths(self):
+    def test_redact_empty_paths(self) -> None:
         data = {"secret": "val"}
         result = redact_json_pointers(data, [])
         assert result == {"secret": "val"}
 
-    def test_redact_empty_obj(self):
+    def test_redact_empty_obj(self) -> None:
         result = redact_json_pointers({}, ["$.x"])
         assert result == {}
 
-    def test_redact_without_dollar_prefix(self):
+    def test_redact_without_dollar_prefix(self) -> None:
         data = {"password": "secret"}
         result = redact_json_pointers(data, ["password"])
         assert result["password"] == "[REDACTED]"
 
 
 class TestSummarize:
-    def test_short_value(self):
+    def test_short_value(self) -> None:
         assert summarize_value("hello") == "hello"
 
-    def test_long_value_truncated(self):
+    def test_long_value_truncated(self) -> None:
         long_text = "x" * 500
         result = summarize_value(long_text)
         assert len(result) < 500
         assert result.startswith("x" * 200)
         assert "500 chars" in result
 
-    def test_non_string(self):
+    def test_non_string(self) -> None:
         result = summarize_value({"key": "value"})
         assert "key" in result
 
 
 class TestWorkspaceEvents:
-    def test_run_started(self):
+    def test_run_started(self) -> None:
         event = run_started_event(
             run_id="run-001",
             topology_id="code-review",
@@ -138,7 +138,7 @@ class TestWorkspaceEvents:
         assert event.inputs == {"pr": "#49"}
         assert event.payload["trigger_source"] == "cli"
 
-    def test_run_ended_success(self):
+    def test_run_ended_success(self) -> None:
         event = run_ended_event(
             run_id="run-001",
             topology_id="code-review",
@@ -152,7 +152,7 @@ class TestWorkspaceEvents:
         assert event.payload["status"] == "success"
         assert event.error is None
 
-    def test_run_ended_error(self):
+    def test_run_ended_error(self) -> None:
         event = run_ended_event(
             run_id="run-002",
             topology_id="hello",
@@ -164,7 +164,7 @@ class TestWorkspaceEvents:
         assert event.error is not None
         assert event.error["type"] == "TimeoutError"
 
-    def test_hitl_requested(self):
+    def test_hitl_requested(self) -> None:
         event = hitl_requested_event(
             run_id="run-001",
             agent_id="resolution-agent",
@@ -176,7 +176,7 @@ class TestWorkspaceEvents:
         assert event.payload["review_queue_id"] == "rq-42"
         assert event.payload["summary"] == "High-value order requires manual approval"
 
-    def test_hitl_resolved(self):
+    def test_hitl_resolved(self) -> None:
         event = hitl_resolved_event(
             run_id="run-001",
             agent_id="resolution-agent",
