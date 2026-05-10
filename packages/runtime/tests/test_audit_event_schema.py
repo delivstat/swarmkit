@@ -1,6 +1,6 @@
 """Tests for expanded AuditEvent schema and redaction utilities (M6 PR 1)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from swarmkit_runtime.governance import (
@@ -19,7 +19,7 @@ class TestAuditEventExpanded:
         event = AuditEvent(
             event_type="policy.denied",
             agent_id="worker-1",
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             payload={"reason": "scope denied"},
         )
         assert event.event_type == "policy.denied"
@@ -33,7 +33,7 @@ class TestAuditEventExpanded:
         event = AuditEvent(
             event_type="agent.completed",
             agent_id="code-reviewer",
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=UTC),
             run_id="run-abc-123",
             agent_role="worker",
             skill_id="code-quality-review",
@@ -60,16 +60,16 @@ class TestAuditEventExpanded:
 
     def test_event_id_unique(self):
         e1 = AuditEvent(
-            event_type="test", agent_id="a", timestamp=datetime.now(tz=timezone.utc)
+            event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC)
         )
         e2 = AuditEvent(
-            event_type="test", agent_id="a", timestamp=datetime.now(tz=timezone.utc)
+            event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC)
         )
         assert e1.event_id != e2.event_id
 
     def test_frozen(self):
         event = AuditEvent(
-            event_type="test", agent_id="a", timestamp=datetime.now(tz=timezone.utc)
+            event_type="test", agent_id="a", timestamp=datetime.now(tz=UTC)
         )
         try:
             event.agent_id = "b"  # type: ignore[misc]
