@@ -332,6 +332,23 @@ Make swarms useful with real knowledge sources and a rich skill catalogue.
 
 **Exit demo:** `swarmkit run . knowledge-curator --input "Ingest this Confluence page"` — curator reads source, creates wiki pages, rebuilds index.
 
+#### Logistics Control Tower — implement (after M6+M7)
+
+A reference topology demonstrating DAG execution, HITL approval gates, governance scopes, intent drift detection, and structured output in a single end-to-end example. Inspired by [ai-logistics-control-tower](https://github.com/sarthakshirsatai-lab/ai-logistics-control-tower).
+
+- [ ] Design note: `design/details/logistics-control-tower.md`
+- [ ] Topology YAML — orchestrator + 4 workers (exception-detector, courier-scorer, resolution-agent, communication-agent) with `depends_on` DAG
+- [ ] HITL gate on resolution agent: auto-execute low-risk, escalate high-cost/VIP/unprecedented to `swarmkit review`
+- [ ] Governance scopes: `logistics:auto-reroute` (agent), `logistics:refund` (human-only)
+- [ ] Intent drift monitoring: detect if resolution agent starts auto-executing what it should escalate
+- [ ] Structured output schema for exception alerts (shipment ID, severity, action, timestamp)
+- [ ] MCP servers: shipment tracker (simulated), courier performance DB, notification service
+- [ ] Circuit breaker: `max_cost_per_run_usd` prevents runaway rerouting
+
+**Dependencies:** M6 (HITL notifications, circuit breakers), M7 (intent drift detection).
+
+**Exit demo:** `swarmkit run examples/logistics-control-tower/ control-tower --input "Process today's exceptions"` — detects exceptions → scores couriers → resolves (some auto-execute, some escalate to HITL) → sends customer notifications. Drift detection flags if the resolution agent drifts from its mandate.
+
 ---
 
 ## Phase 4 — Production Readiness
