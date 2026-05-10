@@ -19,18 +19,16 @@ Fires on:
 See design/details/human-interaction-model.md.
 """
 
+from swarmkit_runtime.notifications._discord import DiscordNotificationProvider
 from swarmkit_runtime.notifications._provider import (
     NotificationEvent,
     NotificationProvider,
     NotificationRegistry,
 )
-from swarmkit_runtime.notifications._providers import (
-    DiscordNotificationProvider,
-    SlackNotificationProvider,
-    TelegramNotificationProvider,
-    TerminalNotificationProvider,
-    WebhookNotificationProvider,
-)
+from swarmkit_runtime.notifications._slack import SlackNotificationProvider
+from swarmkit_runtime.notifications._telegram import TelegramNotificationProvider
+from swarmkit_runtime.notifications._terminal import TerminalNotificationProvider
+from swarmkit_runtime.notifications._webhook import WebhookNotificationProvider
 
 __all__ = [
     "DiscordNotificationProvider",
