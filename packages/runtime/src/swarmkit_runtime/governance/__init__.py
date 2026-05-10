@@ -17,6 +17,12 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
+from swarmkit_runtime.governance._limits import (
+    CircuitBreakerError,
+    CircuitBreakerTracker,
+    GovernanceLimits,
+)
+
 # ---- types --------------------------------------------------------------
 
 
@@ -258,6 +264,9 @@ class GovernanceProvider(ABC):
 __all__ = [
     "AgentCredential",
     "AuditEvent",
+    "CircuitBreakerError",
+    "CircuitBreakerTracker",
+    "GovernanceLimits",
     "GovernanceProvider",
     "IdentityVerification",
     "PolicyDecision",

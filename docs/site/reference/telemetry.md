@@ -202,6 +202,50 @@ Trace: topology.run (swarmkit.topology.id, swarmkit.run.id)
 - When false, prompts are stored only in the local ring buffer (`.swarmkit/prompts.sqlite`) keyed by span ID — never sent to the telemetry backend
 - `send_prompts: true` — opt-in, includes prompt text as span events (for debugging when privacy is not a concern)
 
+## Governance circuit breakers
+
+Circuit breakers prevent runaway agent execution and cost overruns. They're enforced inside the runtime — not at the billing layer — so they abort immediately when a limit is exceeded.
+
+### Configuration
+
+Add a `limits` block to the `governance` section in `workspace.yaml`:
+
+```yaml
+governance:
+  provider: agt
+  limits:
+    max_steps_per_agent: 20      # per individual agent
+    max_steps_per_run: 200       # total across all agents
+    max_cost_per_run_usd: 5.00   # estimated LLM cost cap
+```
+
+### Limits
+
+| Limit | Default | Description |
+|---|---|---|
+| `max_steps_per_agent` | unlimited | Maximum execution steps for any single agent |
+| `max_steps_per_run` | 500 | Maximum total steps across all agents in one run |
+| `max_cost_per_run_usd` | not yet active | Maximum estimated LLM cost (USD) per run |
+
+**Note on cost-based limits:** `max_cost_per_run_usd` is not active yet. Accurate cost tracking requires each LLM provider to report per-call cost from their API response — not static price tables (prices vary by model, subscription, and change frequently). The plumbing exists in the runtime but is disabled until provider-level cost extraction is implemented. Each `ModelProvider` implementation will be updated to return `cost_usd` when the provider API supports it.
+
+### Behavior
+
+When a limit is exceeded, the runtime raises `CircuitBreakerError` with a clear message:
+
+```
+Circuit breaker triggered: max_steps_per_run exceeded (limit=200, actual=201).
+Configure governance.limits.max_steps_per_run in workspace.yaml to adjust.
+```
+
+The error names the specific limit, shows the actual vs allowed value, and tells the user which config to change.
+
+### Use cases
+
+- **Prevent infinite loops:** two agents arguing back and forth hit `max_steps_per_run` and abort
+- **Cost control:** a topology running against an expensive model hits `max_cost_per_run_usd` before burning through the budget
+- **Agent isolation:** a single misbehaving agent hitting `max_steps_per_agent` doesn't take down the whole run
+
 ## MCP server trace propagation (future)
 
 Currently, the SwarmKit runtime creates spans *around* MCP tool calls. The MCP server process itself does not contribute child spans to the trace.

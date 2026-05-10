@@ -70,7 +70,29 @@
           "enum": ["yaml", "rego", "cedar"],
           "description": "§21 open question — default yaml for v1.0."
         },
-        "config": { "type": "object", "additionalProperties": true }
+        "config": { "type": "object", "additionalProperties": true },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Circuit breaker thresholds. Prevents runaway execution and cost overruns.",
+          "properties": {
+            "max_steps_per_agent": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum execution steps per individual agent before abort."
+            },
+            "max_steps_per_run": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum total steps across all agents in a single run. Default: 500."
+            },
+            "max_cost_per_run_usd": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Maximum estimated LLM cost (USD) per run before abort."
+            }
+          }
+        }
       }
     },
     "identity": {

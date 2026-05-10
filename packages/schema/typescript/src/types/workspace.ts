@@ -39,6 +39,10 @@ export type Source = "env" | "file" | "hashicorp-vault" | "aws-secrets-manager" 
 export interface Governance {
     config?: { [key: string]: any };
     /**
+     * Circuit breaker thresholds. Prevents runaway execution and cost overruns.
+     */
+    limits?: Limits;
+    /**
      * §21 open question — default yaml for v1.0.
      */
     policy_language?: PolicyLanguage;
@@ -46,6 +50,24 @@ export interface Governance {
      * GovernanceProvider implementation (design §8.5).
      */
     provider: GovernanceProvider;
+}
+
+/**
+ * Circuit breaker thresholds. Prevents runaway execution and cost overruns.
+ */
+export interface Limits {
+    /**
+     * Maximum estimated LLM cost (USD) per run before abort.
+     */
+    max_cost_per_run_usd?: number;
+    /**
+     * Maximum execution steps per individual agent before abort.
+     */
+    max_steps_per_agent?: number;
+    /**
+     * Maximum total steps across all agents in a single run. Default: 500.
+     */
+    max_steps_per_run?: number;
 }
 
 /**
