@@ -8,7 +8,8 @@ Built-in providers:
   - terminal: prints to stdout (local dev)
   - webhook: generic HTTP POST with configurable URL + payload template
   - slack: Slack incoming webhook
-  - email: SMTP (future)
+  - discord: Discord webhook with embeds
+  - telegram: Telegram Bot API
 
 Fires on:
   - hitl_requested: human approval needed
@@ -24,16 +25,20 @@ from swarmkit_runtime.notifications._provider import (
     NotificationRegistry,
 )
 from swarmkit_runtime.notifications._providers import (
+    DiscordNotificationProvider,
     SlackNotificationProvider,
+    TelegramNotificationProvider,
     TerminalNotificationProvider,
     WebhookNotificationProvider,
 )
 
 __all__ = [
+    "DiscordNotificationProvider",
     "NotificationEvent",
     "NotificationProvider",
     "NotificationRegistry",
     "SlackNotificationProvider",
+    "TelegramNotificationProvider",
     "TerminalNotificationProvider",
     "WebhookNotificationProvider",
 ]

@@ -7,10 +7,12 @@ from unittest.mock import AsyncMock, patch
 import httpx as httpx_mod
 import pytest
 from swarmkit_runtime.notifications import (
+    DiscordNotificationProvider,
     NotificationEvent,
     NotificationProvider,
     NotificationRegistry,
     SlackNotificationProvider,
+    TelegramNotificationProvider,
     TerminalNotificationProvider,
     WebhookNotificationProvider,
 )
@@ -177,6 +179,45 @@ class TestNotificationRegistry:
         assert registry.provider_count == 1
 
 
+class TestDiscordProvider:
+    @pytest.mark.asyncio
+    async def test_sends_embed(self) -> None:
+        provider = DiscordNotificationProvider(webhook_url="http://discord.com/api/webhooks/xxx")
+        mock_response = AsyncMock()
+        mock_response.status_code = 204
+
+        with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
+            result = await provider.notify(_make_event())
+
+        assert result is True
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["username"] == "SwarmKit"
+        assert len(payload["embeds"]) == 1
+        assert payload["embeds"][0]["title"] == "hitl_requested"
+        assert "Human approval needed" in payload["embeds"][0]["description"]
+        assert payload["embeds"][0]["color"] == 0xFFA500
+
+
+class TestTelegramProvider:
+    @pytest.mark.asyncio
+    async def test_sends_message(self) -> None:
+        provider = TelegramNotificationProvider(bot_token="123:ABC", chat_id="-100123")
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+
+        with patch("httpx.AsyncClient.post", return_value=mock_response) as mock_post:
+            result = await provider.notify(_make_event())
+
+        assert result is True
+        call_url = mock_post.call_args.args[0]
+        assert "bot123:ABC/sendMessage" in call_url
+        payload = mock_post.call_args.kwargs["json"]
+        assert payload["chat_id"] == "-100123"
+        assert payload["parse_mode"] == "Markdown"
+        assert "hitl_requested" in payload["text"]
+        assert "Human approval needed" in payload["text"]
+
+
 class TestBuildProvider:
     def test_terminal(self) -> None:
         p = build_provider("terminal", {})
@@ -189,6 +230,14 @@ class TestBuildProvider:
     def test_slack(self) -> None:
         p = build_provider("slack", {"webhook_url": "http://hooks.slack.com/xxx"})
         assert isinstance(p, SlackNotificationProvider)
+
+    def test_discord(self) -> None:
+        p = build_provider("discord", {"webhook_url": "http://discord.com/api/webhooks/xxx"})
+        assert isinstance(p, DiscordNotificationProvider)
+
+    def test_telegram(self) -> None:
+        p = build_provider("telegram", {"bot_token": "123:ABC", "chat_id": "-100123"})
+        assert isinstance(p, TelegramNotificationProvider)
 
     def test_unknown_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown notification provider"):

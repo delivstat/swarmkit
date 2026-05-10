@@ -96,6 +96,84 @@ class SlackNotificationProvider(NotificationProvider):
             return False
 
 
+class DiscordNotificationProvider(NotificationProvider):
+    """Discord webhook. Sends formatted embed messages."""
+
+    provider_id = "discord"
+
+    def __init__(self, webhook_url: str, username: str = "SwarmKit") -> None:
+        self._webhook_url = webhook_url
+        self._username = username
+
+    async def notify(self, event: NotificationEvent) -> bool:
+        color = {
+            "hitl_requested": 0xFFA500,
+            "run_ended_error": 0xFF0000,
+            "skill_gap_surfaced": 0x00BFFF,
+        }.get(event.event_type, 0x808080)
+
+        payload: dict[str, Any] = {
+            "username": self._username,
+            "embeds": [
+                {
+                    "title": event.event_type,
+                    "description": event.summary,
+                    "color": color,
+                    "fields": [
+                        {"name": "Run", "value": event.run_id, "inline": True},
+                        {"name": "Topology", "value": event.topology_id, "inline": True},
+                    ],
+                }
+            ],
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    self._webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                return resp.status_code < 400
+        except (httpx.HTTPError, OSError):
+            return False
+
+
+class TelegramNotificationProvider(NotificationProvider):
+    """Telegram Bot API. Sends messages to a chat via bot token."""
+
+    provider_id = "telegram"
+
+    def __init__(self, bot_token: str, chat_id: str) -> None:
+        self._bot_token = bot_token
+        self._chat_id = chat_id
+
+    async def notify(self, event: NotificationEvent) -> bool:
+        icon = {
+            "hitl_requested": "✋",
+            "run_ended_error": "❌",
+            "skill_gap_surfaced": "\U0001f4a1",
+        }.get(event.event_type, "\U0001f514")
+
+        text = (
+            f"{icon} *{event.event_type}*\n"
+            f"{event.summary}\n"
+            f"`run={event.run_id}` `topology={event.topology_id}`"
+        )
+
+        url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
+        payload = {
+            "chat_id": self._chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(url, json=payload)
+                return resp.status_code < 400
+        except (httpx.HTTPError, OSError):
+            return False
+
+
 def build_provider(provider_type: str, config: dict[str, Any]) -> NotificationProvider:
     """Factory for notification providers from workspace config."""
     if provider_type == "terminal":
@@ -111,5 +189,18 @@ def build_provider(provider_type: str, config: dict[str, Any]) -> NotificationPr
             webhook_url=config["webhook_url"],
             channel=config.get("channel"),
         )
-    msg = f"Unknown notification provider: {provider_type}. Available: terminal, webhook, slack."
+    if provider_type == "discord":
+        return DiscordNotificationProvider(
+            webhook_url=config["webhook_url"],
+            username=config.get("username", "SwarmKit"),
+        )
+    if provider_type == "telegram":
+        return TelegramNotificationProvider(
+            bot_token=config["bot_token"],
+            chat_id=config["chat_id"],
+        )
+    msg = (
+        f"Unknown notification provider: {provider_type}. "
+        f"Available: terminal, webhook, slack, discord, telegram."
+    )
     raise ValueError(msg)
