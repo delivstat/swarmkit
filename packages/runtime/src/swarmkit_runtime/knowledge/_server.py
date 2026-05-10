@@ -187,9 +187,7 @@ def _get_corpus(root: Path) -> list[dict[str, Any]]:
 
 
 @server.tool()
-def search_docs(
-    query: str, max_results: int = 5, domain: str = ""
-) -> list[dict[str, str]]:
+def search_docs(query: str, max_results: int = 5, domain: str = "") -> list[dict[str, str]]:
     """Search SwarmKit design docs, schemas, and notes by keyword.
 
     Optional domain filter reduces cross-domain contamination.
