@@ -19,6 +19,7 @@ from typing import Any
 
 from langgraph.graph.state import CompiledStateGraph
 
+from swarmkit_runtime.audit import AuditProvider, SQLiteAuditProvider
 from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
@@ -80,12 +81,16 @@ class WorkspaceRuntime:
         provider_registry: ProviderRegistry,
         governance: GovernanceProvider,
         mcp_manager: MCPClientManager | None,
+        audit_provider: AuditProvider | None = None,
     ) -> None:
         self._workspace = workspace
         self._workspace_root = workspace_root
         self._provider_registry = provider_registry
         self._governance = governance
         self._mcp_manager = mcp_manager
+        self._audit_provider = audit_provider or SQLiteAuditProvider(
+            db_path=workspace_root / ".swarmkit" / "audit.sqlite"
+        )
         self._session_active = False
 
     @classmethod
@@ -219,6 +224,10 @@ class WorkspaceRuntime:
     @property
     def governance(self) -> GovernanceProvider:
         return self._governance
+
+    @property
+    def audit_provider(self) -> AuditProvider:
+        return self._audit_provider
 
     @property
     def mcp_manager(self) -> MCPClientManager | None:
