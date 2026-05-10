@@ -11,7 +11,24 @@ configure explicit limits in workspace.yaml:
       limits:
         max_steps_per_agent: 20
         max_steps_per_run: 200
-        max_cost_per_run_usd: 5.00
+
+NOTE on cost tracking (max_cost_per_run_usd):
+  Cost-based circuit breaking is NOT exposed yet. The plumbing exists
+  (add_cost + check) but is disabled by default (None = unlimited).
+  Accurate cost requires each ModelProvider to report per-call cost
+  from the LLM provider's response — not static price tables.
+
+  Strategy (to implement per-provider):
+  - Anthropic: response.usage has input/output tokens; pricing via API
+  - OpenAI: response.usage has tokens; cost varies by model
+  - Google: response.usage_metadata has token counts
+  - OpenRouter: response includes usage but cost varies by underlying model
+  - Groq/Together: response.usage has tokens
+  - Ollama: local, no cost
+
+  Each provider's ModelProvider implementation must be updated to
+  extract and return cost_usd from the completion response when the
+  provider API supports it. Until then, max_cost_per_run_usd stays None.
 
 See design/details/market-analysis-and-risk-mitigations.md (Risk 3).
 """

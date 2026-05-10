@@ -225,7 +225,9 @@ governance:
 |---|---|---|
 | `max_steps_per_agent` | unlimited | Maximum execution steps for any single agent |
 | `max_steps_per_run` | 500 | Maximum total steps across all agents in one run |
-| `max_cost_per_run_usd` | unlimited | Maximum estimated LLM cost (USD) per run |
+| `max_cost_per_run_usd` | not yet active | Maximum estimated LLM cost (USD) per run |
+
+**Note on cost-based limits:** `max_cost_per_run_usd` is not active yet. Accurate cost tracking requires each LLM provider to report per-call cost from their API response — not static price tables (prices vary by model, subscription, and change frequently). The plumbing exists in the runtime but is disabled until provider-level cost extraction is implemented. Each `ModelProvider` implementation will be updated to return `cost_usd` when the provider API supports it.
 
 ### Behavior
 
