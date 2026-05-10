@@ -23,6 +23,20 @@ server = FastMCP("swarmkit-knowledge")
 _NOTES_EXCLUDE = {"README.md", "_template.md"}
 
 _repo_root: Path | None = None
+_corpus_cache: list[dict[str, Any]] | None = None
+_corpus_cache_mtime: float = 0.0
+
+_DOMAIN_MAP: dict[str, str] = {
+    "design/details/": "design",
+    "docs/notes/": "docs",
+    "packages/schema/schemas/": "schema",
+    "packages/runtime/CLAUDE.md": "docs",
+    "packages/schema/CLAUDE.md": "docs",
+    "README.md": "docs",
+    "CLAUDE.md": "docs",
+}
+
+_DOMAIN_BOOST = 1.5
 
 
 def _get_repo_root() -> Path:
@@ -98,7 +112,14 @@ def _read_sections(path: Path) -> list[dict[str, str]]:
     return sections
 
 
-# ---- search engine (keyword, term-frequency) ----------------------------
+# ---- search engine (keyword, term-frequency, domain-aware) ---------------
+
+
+def _classify_domain(file_path: str) -> str:
+    for prefix, domain in _DOMAIN_MAP.items():
+        if file_path.startswith(prefix) or file_path == prefix:
+            return domain
+    return "other"
 
 
 def _score_section(query_terms: list[str], text: str) -> float:
@@ -123,12 +144,15 @@ def _build_corpus(root: Path) -> list[dict[str, Any]]:
         for f in sorted(root.glob(pattern)):
             if f.name in _NOTES_EXCLUDE:
                 continue
+            rel = str(f.relative_to(root))
+            domain = _classify_domain(rel)
             for section in _read_sections(f):
                 corpus.append(
                     {
-                        "file": str(f.relative_to(root)),
+                        "file": rel,
                         "heading": section["heading"],
                         "content": section["content"],
+                        "domain": domain,
                     }
                 )
 
@@ -139,29 +163,53 @@ def _build_corpus(root: Path) -> list[dict[str, Any]]:
                 "file": str(f.relative_to(root)),
                 "heading": f.stem,
                 "content": content,
+                "domain": "schema",
             }
         )
 
     return corpus
 
 
+def _get_corpus(root: Path) -> list[dict[str, Any]]:
+    global _corpus_cache, _corpus_cache_mtime  # noqa: PLW0603
+    marker = root / "design" / "details"
+    try:
+        mtime = marker.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    if _corpus_cache is None or mtime > _corpus_cache_mtime:
+        _corpus_cache = _build_corpus(root)
+        _corpus_cache_mtime = mtime
+    return _corpus_cache
+
+
 # ---- MCP tools -----------------------------------------------------------
 
 
 @server.tool()
-def search_docs(query: str, max_results: int = 5) -> list[dict[str, str]]:
-    """Search SwarmKit design docs, schemas, and notes by keyword."""
+def search_docs(
+    query: str, max_results: int = 5, domain: str = ""
+) -> list[dict[str, str]]:
+    """Search SwarmKit design docs, schemas, and notes by keyword.
+
+    Optional domain filter reduces cross-domain contamination.
+    Valid domains: design, schema, docs. Empty string searches all.
+    """
     root = _get_repo_root()
-    corpus = _build_corpus(root)
+    corpus = _get_corpus(root)
     terms = [t.lower() for t in re.split(r"\s+", query.strip()) if t]
     if not terms:
         return []
 
     scored = []
     for entry in corpus:
+        if domain and entry.get("domain") != domain:
+            continue
         text = f"{entry['heading']} {entry['content']}"
         score = _score_section(terms, text)
         if score > 0:
+            if domain and entry.get("domain") == domain:
+                score *= _DOMAIN_BOOST
             snippet = entry["content"][:300]
             scored.append(
                 (
@@ -171,6 +219,7 @@ def search_docs(query: str, max_results: int = 5) -> list[dict[str, str]]:
                         "heading": entry["heading"],
                         "snippet": snippet,
                         "score": str(round(score, 1)),
+                        "domain": entry.get("domain", "other"),
                     },
                 )
             )

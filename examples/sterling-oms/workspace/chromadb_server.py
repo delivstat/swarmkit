@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -49,8 +50,13 @@ def _get_collection():
 
 
 @server.tool()
-def search_docs(query: str, n_results: int = 5) -> str:
-    """Semantic search over documentation. Finds conceptually related content."""
+def search_docs(query: str, n_results: int = 5, source_filter: str = "") -> str:
+    """Semantic search over documentation. Finds conceptually related content.
+
+    Optional source_filter restricts results to documents whose source path
+    contains the given substring (e.g. "product-docs", "javadoc", "api").
+    This reduces cross-domain contamination when searching large corpora.
+    """
     collection = _get_collection()
     if collection is None:
         return "No ChromaDB collection found. Run ingest-docs.py first."
@@ -58,14 +64,20 @@ def search_docs(query: str, n_results: int = 5) -> str:
     model = _get_model()
     embedding = model.encode([query], normalize_embeddings=True).tolist()
 
-    results = collection.query(
-        query_embeddings=embedding,
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"],
-    )
+    query_kwargs: dict[str, Any] = {
+        "query_embeddings": embedding,
+        "n_results": n_results,
+        "include": ["documents", "metadatas", "distances"],
+    }
+    if source_filter:
+        query_kwargs["where"] = {"source": {"$contains": source_filter}}
+
+    results = collection.query(**query_kwargs)
 
     if not results["documents"] or not results["documents"][0]:
-        return f"No results for '{query}'."
+        return f"No results for '{query}'." + (
+            f" (filtered to source containing '{source_filter}')" if source_filter else ""
+        )
 
     lines = [f"Found {len(results['documents'][0])} results:\n"]
     for doc, meta, dist in zip(
