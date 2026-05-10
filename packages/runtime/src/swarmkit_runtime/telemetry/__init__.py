@@ -7,9 +7,11 @@ See design/details/opentelemetry-observability.md.
 """
 
 from swarmkit_runtime.telemetry._config import TelemetryConfig, load_telemetry_config
+from swarmkit_runtime.telemetry._ring_buffer import PromptRingBuffer
 from swarmkit_runtime.telemetry._tracer import SwarmKitTelemetry
 
 __all__ = [
+    "PromptRingBuffer",
     "SwarmKitTelemetry",
     "TelemetryConfig",
     "load_telemetry_config",
