@@ -26,6 +26,7 @@ from swarmkit_runtime.notifications._provider import (
     NotificationRegistry,
 )
 from swarmkit_runtime.notifications._slack import SlackNotificationProvider
+from swarmkit_runtime.notifications._store import NotificationRecord, NotificationStore
 from swarmkit_runtime.notifications._telegram import TelegramNotificationProvider
 from swarmkit_runtime.notifications._terminal import TerminalNotificationProvider
 from swarmkit_runtime.notifications._webhook import WebhookNotificationProvider
@@ -34,7 +35,9 @@ __all__ = [
     "DiscordNotificationProvider",
     "NotificationEvent",
     "NotificationProvider",
+    "NotificationRecord",
     "NotificationRegistry",
+    "NotificationStore",
     "SlackNotificationProvider",
     "TelegramNotificationProvider",
     "TerminalNotificationProvider",

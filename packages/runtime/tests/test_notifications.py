@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx as httpx_mod
@@ -11,6 +12,7 @@ from swarmkit_runtime.notifications import (
     NotificationEvent,
     NotificationProvider,
     NotificationRegistry,
+    NotificationStore,
     SlackNotificationProvider,
     TelegramNotificationProvider,
     TerminalNotificationProvider,
@@ -242,3 +244,140 @@ class TestBuildProvider:
     def test_unknown_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown notification provider"):
             build_provider("nonexistent", {})
+
+
+class TestNotificationStore:
+    def test_create_and_query(self, tmp_path: Path) -> None:
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        notif_id = store.create(_make_event())
+
+        assert notif_id is not None
+        records = store.query()
+        assert len(records) == 1
+        assert records[0].id == notif_id
+        assert records[0].status == "pending"
+        assert records[0].event_type == "hitl_requested"
+        assert records[0].summary == "Human approval needed for deploy"
+        store.close()
+
+    def test_mark_delivered(self, tmp_path: Path) -> None:
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        notif_id = store.create(_make_event())
+        store.mark_delivered(notif_id, "slack")
+
+        records = store.query()
+        assert records[0].status == "delivered"
+        assert records[0].provider == "slack"
+        assert records[0].delivered_at is not None
+        store.close()
+
+    def test_mark_failed(self, tmp_path: Path) -> None:
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        notif_id = store.create(_make_event())
+        store.mark_failed(notif_id, "webhook", "connection refused")
+
+        records = store.query()
+        assert records[0].status == "failed"
+        assert records[0].provider == "webhook"
+        assert records[0].error == "connection refused"
+        store.close()
+
+    def test_query_by_status(self, tmp_path: Path) -> None:
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        id1 = store.create(_make_event())
+        store.create(_make_event(summary="second"))
+        store.mark_delivered(id1, "slack")
+
+        pending = store.query(status="pending")
+        assert len(pending) == 1
+        assert pending[0].summary == "second"
+
+        delivered = store.query(status="delivered")
+        assert len(delivered) == 1
+        assert delivered[0].id == id1
+        store.close()
+
+    def test_query_by_run_id(self, tmp_path: Path) -> None:
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        store.create(_make_event(run_id="run-1"))
+        store.create(_make_event(run_id="run-2"))
+
+        results = store.query(run_id="run-1")
+        assert len(results) == 1
+        assert results[0].run_id == "run-1"
+        store.close()
+
+    def test_count(self, tmp_path: Path) -> None:
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        store.create(_make_event())
+        id2 = store.create(_make_event())
+        store.mark_delivered(id2, "terminal")
+
+        assert store.count() == 2
+        assert store.count(status="pending") == 1
+        assert store.count(status="delivered") == 1
+        store.close()
+
+    def test_persists_across_instances(self, tmp_path: Path) -> None:
+        db = tmp_path / "notifications.sqlite"
+        store1 = NotificationStore(db_path=db)
+        store1.create(_make_event())
+        store1.close()
+
+        store2 = NotificationStore(db_path=db)
+        assert store2.count() == 1
+        store2.close()
+
+    def test_to_dict(self, tmp_path: Path) -> None:
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        store.create(_make_event())
+        record = store.query()[0]
+        d = record.to_dict()
+        assert d["event_type"] == "hitl_requested"
+        assert d["status"] == "pending"
+        assert "id" in d
+        assert "created_at" in d
+        store.close()
+
+
+class TestRegistryWithStore:
+    @pytest.mark.asyncio
+    async def test_dispatch_persists_to_store(self, tmp_path: Path) -> None:
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        registry = NotificationRegistry(store=store)
+        registry.register(TerminalNotificationProvider())
+
+        await registry.dispatch(_make_event())
+
+        records = store.query()
+        assert len(records) == 1
+        assert records[0].status == "delivered"
+        assert records[0].provider == "terminal"
+        store.close()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_records_failure(self, tmp_path: Path) -> None:
+        class FailingProvider(NotificationProvider):
+            provider_id = "failing"
+
+            async def notify(self, event: NotificationEvent) -> bool:
+                raise RuntimeError("boom")
+
+        store = NotificationStore(db_path=tmp_path / "notifications.sqlite")
+        registry = NotificationRegistry(store=store)
+        registry.register(FailingProvider())
+
+        await registry.dispatch(_make_event())
+
+        records = store.query()
+        assert len(records) == 1
+        assert records[0].status == "failed"
+        assert records[0].error == "boom"
+        store.close()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_without_store(self) -> None:
+        registry = NotificationRegistry(store=None)
+        registry.register(TerminalNotificationProvider())
+        results = await registry.dispatch(_make_event())
+        assert results == [True]

@@ -45,11 +45,13 @@ class NotificationRegistry:
     """Registry and dispatcher for notification providers.
 
     Holds configured provider instances and dispatches events to
-    matching providers based on their event filters.
+    matching providers based on their event filters. Persists every
+    notification to the NotificationStore for CLI/web UI access.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, store: Any | None = None) -> None:
         self._providers: list[tuple[NotificationProvider, list[str]]] = []
+        self._store = store
 
     def register(self, provider: NotificationProvider, events: list[str] | None = None) -> None:
         """Register a provider with optional event filter.
@@ -61,16 +63,29 @@ class NotificationRegistry:
     async def dispatch(self, event: NotificationEvent) -> list[bool]:
         """Dispatch an event to all matching providers.
 
+        Persists the notification to the store, then delivers to
+        external providers. Delivery status is tracked per-provider.
         Returns a list of success/failure booleans per provider.
         """
+        notif_id: str | None = None
+        if self._store is not None:
+            notif_id = self._store.create(event)
+
         results: list[bool] = []
         for provider, event_filter in self._providers:
             if event_filter and event.event_type not in event_filter:
                 continue
             try:
                 result = await provider.notify(event)
-            except Exception:
+            except Exception as exc:
                 result = False
+                if self._store is not None and notif_id:
+                    self._store.mark_failed(notif_id, provider.provider_id, str(exc))
+            else:
+                if result and self._store is not None and notif_id:
+                    self._store.mark_delivered(notif_id, provider.provider_id)
+                elif not result and self._store is not None and notif_id:
+                    self._store.mark_failed(notif_id, provider.provider_id, "delivery failed")
             results.append(result)
         return results
 
