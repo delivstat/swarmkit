@@ -17,6 +17,12 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
+from swarmkit_runtime.governance._limits import (
+    CircuitBreakerError,
+    CircuitBreakerTracker,
+    GovernanceLimits,
+)
+
 # ---- types --------------------------------------------------------------
 
 
@@ -254,12 +260,6 @@ class GovernanceProvider(ABC):
     async def get_trust_score(self, *, agent_id: str) -> TrustScore:
         """Return the current trust score for the agent."""
 
-
-from swarmkit_runtime.governance._limits import (
-    CircuitBreakerError,
-    CircuitBreakerTracker,
-    GovernanceLimits,
-)
 
 __all__ = [
     "AgentCredential",

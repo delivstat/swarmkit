@@ -56,6 +56,32 @@ class PolicyLanguage(Enum):
     cedar = "cedar"
 
 
+class Limits(BaseModel):
+    """
+    Circuit breaker thresholds. Prevents runaway execution and cost overruns.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_steps_per_agent: int | None = Field(
+        None,
+        description="Maximum execution steps per individual agent before abort.",
+        ge=1,
+    )
+    max_steps_per_run: int | None = Field(
+        None,
+        description="Maximum total steps across all agents in a single run. Default: 500.",
+        ge=1,
+    )
+    max_cost_per_run_usd: float | None = Field(
+        None,
+        description="Maximum estimated LLM cost (USD) per run before abort.",
+        ge=0.0,
+    )
+
+
 class Governance(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -68,6 +94,10 @@ class Governance(BaseModel):
         None, description="§21 open question — default yaml for v1.0."
     )
     config: dict[str, Any] | None = None
+    limits: Limits | None = Field(
+        None,
+        description="Circuit breaker thresholds. Prevents runaway execution and cost overruns.",
+    )
 
 
 class Provider1(Enum):
