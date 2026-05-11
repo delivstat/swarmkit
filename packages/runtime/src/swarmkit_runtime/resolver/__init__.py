@@ -338,7 +338,7 @@ def errors_or_raise(
         raise ResolutionErrors(combined)
 
 
-def _apply_env_interpolation(ws_root: Path, artifacts: list[object]) -> None:
+def _apply_env_interpolation(ws_root: Path, artifacts: Sequence[DiscoveredArtifact]) -> None:
     """Apply workspace.env.yaml property interpolation to all artifacts.
 
     Modifies artifact.raw dicts in place before schema validation.
