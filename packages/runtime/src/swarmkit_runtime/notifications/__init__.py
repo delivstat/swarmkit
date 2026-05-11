@@ -1,0 +1,45 @@
+"""Notification plugin system — webhook-based alerts for runtime events.
+
+Notifications run outside the SwarmKit runtime process. The runtime emits
+structured events; notification providers consume them via configured
+endpoints. Multiple providers can be configured in parallel.
+
+Built-in providers:
+  - terminal: prints to stdout (local dev)
+  - webhook: generic HTTP POST with configurable URL + payload template
+  - slack: Slack incoming webhook
+  - discord: Discord webhook with embeds
+  - telegram: Telegram Bot API
+
+Fires on:
+  - hitl_requested: human approval needed
+  - run_ended_error: topology run failed
+  - skill_gap_surfaced: new skill gap detected
+
+See design/details/human-interaction-model.md.
+"""
+
+from swarmkit_runtime.notifications._discord import DiscordNotificationProvider
+from swarmkit_runtime.notifications._provider import (
+    NotificationEvent,
+    NotificationProvider,
+    NotificationRegistry,
+)
+from swarmkit_runtime.notifications._slack import SlackNotificationProvider
+from swarmkit_runtime.notifications._store import NotificationRecord, NotificationStore
+from swarmkit_runtime.notifications._telegram import TelegramNotificationProvider
+from swarmkit_runtime.notifications._terminal import TerminalNotificationProvider
+from swarmkit_runtime.notifications._webhook import WebhookNotificationProvider
+
+__all__ = [
+    "DiscordNotificationProvider",
+    "NotificationEvent",
+    "NotificationProvider",
+    "NotificationRecord",
+    "NotificationRegistry",
+    "NotificationStore",
+    "SlackNotificationProvider",
+    "TelegramNotificationProvider",
+    "TerminalNotificationProvider",
+    "WebhookNotificationProvider",
+]

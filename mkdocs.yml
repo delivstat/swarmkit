@@ -59,6 +59,7 @@ nav:
   - Reference:
     - CLI commands: reference/cli.md
     - Telemetry configuration: reference/telemetry.md
+    - Notifications: reference/notifications.md
     - Skills catalogue: reference/skills.md
     - Archetypes catalogue: reference/archetypes.md
 
