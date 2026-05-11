@@ -338,6 +338,28 @@ def errors_or_raise(
         raise ResolutionErrors(combined)
 
 
+def _apply_env_interpolation(ws_root: Path, artifacts: list[object]) -> None:
+    """Apply workspace.env.yaml property interpolation to all artifacts.
+
+    Modifies artifact.raw dicts in place before schema validation.
+    If no env file exists, this is a no-op (backward compatible).
+    """
+    from swarmkit_runtime.resolver._env_config import (  # noqa: PLC0415
+        interpolate_dict,
+        load_env_config,
+    )
+
+    properties = load_env_config(ws_root)
+    if not properties:
+        return
+
+    for artifact in artifacts:
+        if hasattr(artifact, "raw") and isinstance(artifact.raw, dict):
+            interpolated = interpolate_dict(artifact.raw, properties)
+            artifact.raw.clear()
+            artifact.raw.update(interpolated)
+
+
 def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     """Load a SwarmKit workspace and produce a fully-resolved, typed tree.
 
@@ -353,6 +375,8 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
         artifacts = list(discover(root))
     except DiscoveryError as exc:
         raise ResolutionErrors([resolution_error_from_discovery(exc)]) from exc
+
+    _apply_env_interpolation(Path(root).resolve(), artifacts)
 
     validation_errors = validate_discovered(artifacts)
     if validation_errors:
