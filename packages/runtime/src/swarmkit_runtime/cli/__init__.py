@@ -1034,7 +1034,7 @@ def logs(
 
 
 def _logs_from_audit(
-    provider: object,
+    provider: Any,
     *,
     last: int,
     run_id: str | None,
@@ -1042,14 +1042,13 @@ def _logs_from_audit(
     fmt: str,
 ) -> None:
     """Read logs from AuditProvider (SQLite)."""
-    import asyncio  # noqa: PLC0415
-
     from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
 
     assert isinstance(provider, SQLiteAuditProvider)
 
-    events = asyncio.get_event_loop().run_until_complete(
-        _collect_async(provider.query(run_id=run_id, agent_id=agent, limit=last * 50))
+    events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
+        _collect_audit_events(provider.query(run_id=run_id, agent_id=agent, limit=last * 50))
     )
 
     if not events:
@@ -1079,10 +1078,10 @@ def _logs_from_audit(
             typer.echo(_format_log_event(evt))
 
 
-async def _collect_async(aiter: object) -> list[object]:
-    """Collect an async iterator into a list."""
-    results = []
-    async for item in aiter:  # type: ignore[union-attr]
+async def _collect_audit_events(aiter: Any) -> list[Any]:
+    """Collect an async iterator of AuditEvents into a list."""
+    results: list[Any] = []
+    async for item in aiter:
         results.append(item)
     return results
 
@@ -1217,21 +1216,20 @@ def status(
     _status_from_jsonl(ws_root, last=last)
 
 
-def _status_from_audit(provider: object, *, last: int) -> None:
+def _status_from_audit(provider: Any, *, last: int) -> None:
     """Show status from AuditProvider (SQLite)."""
-    import asyncio  # noqa: PLC0415
-
     from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
 
     assert isinstance(provider, SQLiteAuditProvider)
 
-    events = asyncio.get_event_loop().run_until_complete(
-        _collect_async(provider.query(limit=last * 50))
+    events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
+        _collect_audit_events(provider.query(limit=last * 50))
     )
 
-    runs: dict[str, list[object]] = {}
+    runs: dict[str, list[AuditEvent]] = {}
     for e in events:
-        key = e.run_id or e.topology_id or "unknown"  # type: ignore[union-attr]
+        key = e.run_id or e.topology_id or "unknown"
         runs.setdefault(key, []).append(e)
 
     typer.echo(f"{'topology':<20} {'agents':<8} {'duration':<10} {'issues':<8} {'source'}")
@@ -1239,12 +1237,12 @@ def _status_from_audit(provider: object, *, last: int) -> None:
     for idx, (run_key, run_events) in enumerate(runs.items()):
         if idx >= last:
             break
-        completed = [e for e in run_events if e.event_type == "agent.completed"]  # type: ignore[union-attr]
-        denied = [e for e in run_events if "denied" in (e.event_type or "")]  # type: ignore[union-attr]
-        fails = [e for e in run_events if "failed" in (e.event_type or "")]  # type: ignore[union-attr]
-        total_ms = sum(e.duration_ms or 0 for e in completed)  # type: ignore[union-attr]
+        completed = [e for e in run_events if e.event_type == "agent.completed"]
+        denied = [e for e in run_events if "denied" in (e.event_type or "")]
+        fails = [e for e in run_events if "failed" in (e.event_type or "")]
+        total_ms = sum(e.duration_ms or 0 for e in completed)
         issues = len(denied) + len(fails)
-        topo = run_events[0].topology_id or run_key  # type: ignore[union-attr]
+        topo = run_events[0].topology_id or run_key
         typer.echo(f"{topo:<20} {len(completed):<8} {total_ms:>6}ms   {issues:<8} {'audit'}")
 
 
