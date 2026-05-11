@@ -270,6 +270,24 @@ def _get_completed_children(
     return completed
 
 
+def _safe_parse_json(tool_name: str, response: Any, agent: Any) -> dict[str, object]:
+    """Extract tool call inputs from the response for audit logging."""
+    for block in getattr(response, "content", ()):
+        if getattr(block, "tool_name", None) == tool_name:
+            tool_input = getattr(block, "tool_input", None)
+            if isinstance(tool_input, dict):
+                return dict(tool_input)
+            if isinstance(tool_input, str):
+                try:
+                    parsed = json.loads(tool_input)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                return {"raw_input": tool_input[:1000]}
+    return {}
+
+
 def _make_result(agent_id: str, result_text: str) -> dict[str, Any]:
     """Build the standard return dict for a completed agent."""
     return {
@@ -569,14 +587,20 @@ async def _dispatch_response(  # noqa: PLR0912
             response, agent, model_provider, model_name, mcp_manager, governance
         )
         if tool_results is not None:
-            await governance.record_event(
-                AuditEvent(
-                    event_type="skill.executed",
-                    agent_id=agent_id,
-                    timestamp=datetime.now(tz=UTC),
-                    payload={"tools_called": len(tool_results)},
+            for tr in tool_results:
+                await governance.record_event(
+                    AuditEvent(
+                        event_type="skill.executed",
+                        agent_id=agent_id,
+                        timestamp=datetime.now(tz=UTC),
+                        skill_id=tr.tool_name,
+                        payload={
+                            "tools_called": len(tool_results),
+                            "inputs": _safe_parse_json(tr.tool_name, response, agent),
+                            "outputs": {"result": tr.result[:1000]},
+                        },
+                    )
                 )
-            )
             synth_text = await _run_tool_loop(
                 response,
                 agent,
