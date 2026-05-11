@@ -157,15 +157,16 @@ Auto-detected from environment variables. Mix providers within a single topology
 | Together | `TOGETHER_API_KEY` | `meta-llama/llama-3.3-70b` |
 | Ollama | (always available) | `llama3.3` |
 
-### Observability
+### Observability (M6 — shipped)
 
-Every run records structured audit events. CLI tools for analysis:
+Every run records structured audit events to SQLite. OpenTelemetry traces, metrics, governance circuit breakers, notifications, and a local prompt ring buffer are built in.
 
 ```bash
-swarmkit status my-swarm/                      # recent runs at a glance
-swarmkit logs my-swarm/ --last 3               # detailed events
+swarmkit status my-swarm/                      # recent runs from audit store
+swarmkit logs my-swarm/ --last 3               # detailed events (--run-id, --agent filters)
 swarmkit why <run-id> my-swarm/                # LLM explains what happened
-swarmkit ask "Which agents are slowest?" -w .  # conversational observer
+swarmkit ask "Which agents are slowest?" -w .  # conversational observer (--run scoping)
+swarmkit debug my-swarm/ --span-id <id>        # retrieve prompts locally
 swarmkit review list my-swarm/                 # pending human reviews
 swarmkit gaps my-swarm/                        # recorded skill gaps
 ```
@@ -215,7 +216,8 @@ See the [Implementation Plan](architecture/implementation-plan.md) for the full 
 
 | # | Milestone | Status |
 |---|---|---|
-| M6 | Observability: OpenTelemetry traces, local ring buffer, CLI primitives, governance circuit breakers | Next |
+| M6 | Observability: AuditProvider, OTel traces + metrics, ring buffer, circuit breakers, notifications, CLI rewrite, audit redaction | Done |
+| M6.5 | Workspace env configuration: `workspace.env.yaml` + `SWARMKIT_ENV` switching | Next |
 | M7 | Intent drift detection: embedding-based drift scoring, nudge strategies | Planned |
 
 ### Phase 3-4 — Ecosystem + production readiness

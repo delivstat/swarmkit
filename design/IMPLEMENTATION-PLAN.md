@@ -33,7 +33,7 @@ status: active
 | 1 | M4 | Decision + persistence skills | ✅ | Structured output + LLM judge + review queue |
 | 1 | — | DAG dependency graph | ✅ | Agents execute in dependency order |
 | 1 | M5 | MCP integration | ✅ | MCP calls gated through governance, sandboxed execution |
-| 2 | M6 | Observability + human interaction | — | `swarmkit status/logs/review/ask` + OTel traces |
+| 2 | M6 | Observability + human interaction | ✅ | AuditProvider, OTel, ring buffer, circuit breakers, notifications, CLI rewrite, redaction |
 | 2 | M6.5 | Workspace env configuration | — | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
 | 2 | M7 | Intent drift detection | — | Drift scores per step, nudge on threshold breach |
 | 3 | M8 | Knowledge + skills ecosystem (enhance) | 🟡 | Skill registry CLI + user knowledge server + knowledge curator topology |

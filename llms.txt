@@ -14,7 +14,7 @@
 
 ## CLI commands
 
-`validate`, `run` (with `--verbose`, `--dry-run`), `chat` (multi-turn with `--resume`), `conversations` (with `--pick`), `init`, `author` (with `--thorough`), `edit`, `serve`, `status`, `logs` (with `--format markdown`), `why`, `ask`, `knowledge-pack`, `knowledge-server`, `review list/show/approve/reject`, `gaps`.
+`validate`, `run` (with `--verbose`, `--dry-run`), `chat` (multi-turn with `--resume`), `conversations` (with `--pick`), `init`, `author` (with `--thorough`), `edit`, `serve`, `status` (reads from SQLite audit store), `logs` (with `--run-id`, `--agent`, `--format markdown`), `why` (LLM analysis from audit store), `ask` (with `--run` scoping), `debug` (query local prompt ring buffer: `--span-id`, `--run-id`, `--agent`), `stop` (planned), `knowledge-pack`, `knowledge-server`, `review list/show/approve/reject`, `gaps`.
 
 ## Schemas
 
