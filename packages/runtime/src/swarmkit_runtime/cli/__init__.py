@@ -1513,32 +1513,19 @@ def ask(
         Path,
         typer.Option("--workspace", "-w", help="Workspace root."),
     ] = Path("."),
+    run: Annotated[
+        str | None,
+        typer.Option("--run", "-r", help="Scope to a specific run ID or topology."),
+    ] = None,
 ) -> None:
     """Ask a question about the workspace or recent runs.
 
-    Single-shot LLM query over the workspace state + recent audit events.
-    The conversational counterpart to swarmkit logs.
+    Reads structured events from the AuditProvider (SQLite) and workspace
+    state, sends to an LLM for analysis. Use --run to scope to a specific
+    run. Falls back to JSONL logs if no audit events.
     """
     ws_root = workspace_path.resolve()
-
-    context_parts = ["# Workspace state"]
-    try:
-        workspace = resolve_workspace(ws_root)
-        context_parts.append(f"Workspace: {workspace.raw.metadata.id}")
-        context_parts.append(f"Topologies: {sorted(workspace.topologies.keys())}")
-        context_parts.append(f"Skills: {sorted(workspace.skills.keys())}")
-        context_parts.append(f"Archetypes: {sorted(workspace.archetypes.keys())}")
-    except Exception:
-        context_parts.append("(workspace could not be resolved)")
-
-    log_dir = ws_root / ".swarmkit" / "logs"
-    if log_dir.is_dir():
-        recent = sorted(log_dir.glob("*.jsonl"), reverse=True)[:3]
-        if recent:
-            context_parts.append("\n# Recent run logs")
-            for lf in recent:
-                context_parts.append(f"\n## {lf.name}")
-                context_parts.append(lf.read_text(encoding="utf-8").strip())
+    context_parts = _build_ask_context(ws_root, run_filter=run)
 
     provider, model = resolve_authoring_provider()
 
@@ -1556,9 +1543,8 @@ def ask(
                 messages=(Message(role="user", content=prompt),),
                 system=(
                     "You are a SwarmKit workspace assistant. You have access "
-                    "to the workspace configuration (topologies, skills, "
-                    "archetypes) and recent run logs (JSONL events with "
-                    "agent timing, skill calls, denials, failures).\n\n"
+                    "to the workspace configuration and structured audit events "
+                    "from recent runs.\n\n"
                     "When answering:\n"
                     "- Cite specific data: agent names, duration_ms, skill IDs\n"
                     "- If asked about performance, compare agent timings\n"
@@ -1572,6 +1558,66 @@ def ask(
         )
     )
     typer.echo(result.text or "(no response)")
+
+
+def _build_ask_context(ws_root: Path, *, run_filter: str | None) -> list[str]:
+    """Build context for the ask command from workspace + audit events."""
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+    parts = ["# Workspace state"]
+    try:
+        workspace = resolve_workspace(ws_root)
+        parts.append(f"Workspace: {workspace.raw.metadata.id}")
+        parts.append(f"Topologies: {sorted(workspace.topologies.keys())}")
+        parts.append(f"Skills: {sorted(workspace.skills.keys())}")
+        parts.append(f"Archetypes: {sorted(workspace.archetypes.keys())}")
+    except Exception:
+        parts.append("(workspace could not be resolved)")
+
+    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
+    if audit_db.is_file():
+        audit_provider = WorkspaceRuntime.audit_provider_for(ws_root)
+        events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
+            _collect_audit_events(audit_provider.query(limit=200))
+        )
+        audit_provider.close_sync()
+
+        if run_filter:
+            events = [
+                e
+                for e in events
+                if (e.topology_id and run_filter in e.topology_id)
+                or (e.run_id and run_filter in e.run_id)
+            ]
+
+        if events:
+            parts.append("\n# Audit events (structured)")
+            for e in events:
+                parts.append(
+                    json.dumps(
+                        {
+                            "event_type": e.event_type,
+                            "agent_id": e.agent_id,
+                            "duration_ms": e.duration_ms,
+                            "role": e.agent_role,
+                            "topology": e.topology_id,
+                            "skill": e.skill_id,
+                            "policy": e.policy_decision,
+                        }
+                    )
+                )
+            return parts
+
+    log_dir = ws_root / ".swarmkit" / "logs"
+    if log_dir.is_dir():
+        recent = sorted(log_dir.glob("*.jsonl"), reverse=True)[:3]
+        if recent:
+            parts.append("\n# Recent run logs (JSONL fallback)")
+            for lf in recent:
+                parts.append(f"\n## {lf.name}")
+                parts.append(lf.read_text(encoding="utf-8").strip()[:3000])
+
+    return parts
 
 
 # ---- knowledge-server ----------------------------------------------------
