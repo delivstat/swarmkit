@@ -13,6 +13,7 @@ design/details/opentelemetry-observability.md for OTel integration.
 
 from swarmkit_runtime.audit._mock import MockAuditProvider
 from swarmkit_runtime.audit._provider import AuditProvider, AuditProviderRegistry, get_registry
+from swarmkit_runtime.audit._redact import apply_audit_policy, resolve_audit_config
 from swarmkit_runtime.audit._sqlite import SQLiteAuditProvider
 
 # Register built-in providers
@@ -25,5 +26,7 @@ __all__ = [
     "AuditProviderRegistry",
     "MockAuditProvider",
     "SQLiteAuditProvider",
+    "apply_audit_policy",
     "get_registry",
+    "resolve_audit_config",
 ]
