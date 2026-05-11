@@ -1279,7 +1279,7 @@ def _status_from_jsonl(ws_root: Path, *, last: int) -> None:
 def why(
     run_id: Annotated[
         str,
-        typer.Argument(help="Run log filename or prefix (from swarmkit logs)."),
+        typer.Argument(help="Run log filename, prefix, or topology name."),
     ],
     workspace_path: Annotated[
         Path,
@@ -1288,23 +1288,13 @@ def why(
 ) -> None:
     """Explain what happened in a run using an LLM.
 
-    Reads the run's JSONL events, sends them to the configured model
-    provider, and returns a plain-English explanation.
+    Reads events from the AuditProvider (SQLite) or JSONL logs, sends
+    them to the configured model provider, and returns an analysis.
     """
-    log_dir = workspace_path.resolve() / ".swarmkit" / "logs"
-    if not log_dir.is_dir():
-        _stderr("No run logs found.")
+    events_text = _load_events_for_why(workspace_path, run_id)
+    if not events_text:
+        _stderr(f"No events found for '{run_id}'.")
         raise typer.Exit(_EXIT_USAGE)
-
-    matches = [
-        f for f in log_dir.glob("*.jsonl") if f.name.startswith(run_id) or f.stem.startswith(run_id)
-    ]
-    if not matches:
-        _stderr(f"No run log matching '{run_id}'. Use `swarmkit logs` to see available runs.")
-        raise typer.Exit(_EXIT_USAGE)
-
-    log_file = sorted(matches, reverse=True)[0]
-    events_text = log_file.read_text(encoding="utf-8").strip()
 
     provider, model = resolve_authoring_provider()
 
@@ -1313,27 +1303,19 @@ def why(
     prompt = (
         f"Analyze this SwarmKit topology execution log and explain "
         f"what happened.\n\n"
-        f"Run log ({log_file.name}):\n{events_text}"
+        f"Run: {run_id}\n{events_text}"
     )
     system = (
-        "You are a SwarmKit run analyst. Given a JSONL execution log, "
+        "You are a SwarmKit run analyst. Given execution events, "
         "provide a useful analysis covering:\n"
-        "1. FLOW: Which agents ran and in what order (root delegates to "
-        "leaders, leaders delegate to workers)\n"
-        "2. TIMING: Which agents took the longest and why that matters "
-        "(is the root bottlenecked synthesising? is a worker slow on "
-        "an MCP call?)\n"
-        "3. SKILLS: What skills were called, what they produced "
-        "(result_length gives a sense of output size)\n"
-        "4. ISSUES: Any policy denials, trust failures, or output "
-        "validation failures — explain what went wrong and what to fix\n"
-        "5. INSIGHT: One actionable observation — e.g., 'the root took "
-        "3x longer than the workers, suggesting the synthesis prompt "
-        "could be optimised' or 'no workers beyond engineering ran, "
-        "the topology may not be delegating to QA/ops'\n\n"
-        "Be specific with numbers (cite duration_ms, result_length). "
-        "Be concise — aim for 5-8 sentences, not a wall of text. "
-        "Don't just describe the log literally — interpret it."
+        "1. FLOW: Which agents ran and in what order\n"
+        "2. TIMING: Which agents took the longest and why\n"
+        "3. SKILLS: What skills were called\n"
+        "4. ISSUES: Any policy denials, trust failures, or validation "
+        "failures — what went wrong and what to fix\n"
+        "5. INSIGHT: One actionable observation\n\n"
+        "Be specific with numbers (cite duration_ms). "
+        "Be concise — 5-8 sentences. Interpret, don't just describe."
     )
     result = asyncio.run(
         provider.complete(
@@ -1345,6 +1327,77 @@ def why(
         )
     )
     typer.echo(result.text or "(no analysis)")
+
+
+def _load_events_for_why(workspace_path: Path, run_id: str) -> str:
+    """Load events as text for the why command. Tries audit store first."""
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
+
+    if audit_db.is_file():
+        audit_provider = WorkspaceRuntime.audit_provider_for(workspace_path)
+        events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
+            _collect_audit_events(audit_provider.query(limit=200))
+        )
+        audit_provider.close_sync()
+
+        matching = [
+            e
+            for e in events
+            if (e.topology_id and run_id in e.topology_id) or (e.run_id and run_id in e.run_id)
+        ]
+        if matching:
+            lines = []
+            for e in matching:
+                lines.append(
+                    json.dumps(
+                        {
+                            "event_type": e.event_type,
+                            "agent_id": e.agent_id,
+                            "timestamp": e.timestamp.isoformat() if e.timestamp else "",
+                            "duration_ms": e.duration_ms,
+                            "role": e.agent_role,
+                            **(e.payload or {}),
+                        }
+                    )
+                )
+            return "\n".join(lines)
+
+    log_dir = ws_root / ".swarmkit" / "logs"
+    if log_dir.is_dir():
+        matches = [
+            f
+            for f in log_dir.glob("*.jsonl")
+            if f.name.startswith(run_id) or f.stem.startswith(run_id)
+        ]
+        if matches:
+            return sorted(matches, reverse=True)[0].read_text(encoding="utf-8").strip()
+
+    return ""
+
+
+# ---- stop ----------------------------------------------------------------
+
+
+@app.command()
+def stop(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run ID to stop."),
+    ],
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Gracefully stop a running topology.
+
+    Requests the runtime to checkpoint state and abort the current run.
+    The run can be resumed later with `swarmkit run --resume`.
+    """
+    _not_implemented("stop", milestone="M6 (persistent mode integration)")
 
 
 # ---- ask -----------------------------------------------------------------
