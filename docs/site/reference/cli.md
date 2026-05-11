@@ -64,12 +64,34 @@ SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=deepseek/deepseek-chat \
 
 | Command | Description |
 |---|---|
-| `swarmkit status <workspace>` | Recent runs at a glance (topology, agents, duration, issues) |
-| `swarmkit logs <workspace>` | Detailed events from past runs (`--last N`, `--topology filter`, `--format markdown`) |
-| `swarmkit why <run-id> <workspace>` | LLM-powered explanation of what happened in a run |
-| `swarmkit ask "question" -w <workspace>` | Conversational observer over workspace state + recent runs |
+| `swarmkit status <workspace>` | Recent runs at a glance — reads from AuditProvider (SQLite), falls back to JSONL |
+| `swarmkit logs <workspace>` | Detailed events from past runs. Filters: `--last N`, `--run-id`, `--agent`, `--topology`, `--format markdown` |
+| `swarmkit why <run-id> <workspace>` | LLM-powered explanation — reads from AuditProvider, falls back to JSONL |
+| `swarmkit ask "question" -w <workspace>` | Conversational observer with structured audit context. Use `--run <id>` to scope |
+| `swarmkit debug <workspace>` | Query local prompt ring buffer (prompts never leave your machine) |
+| `swarmkit debug ... --span-id <id>` | Retrieve prompt/response for a specific OTel span |
+| `swarmkit debug ... --run-id <id>` | All prompts for a run |
+| `swarmkit debug ... --agent <name> -n 5` | Last N prompts for an agent |
+| `swarmkit stop <run-id> <workspace>` | Gracefully stop a running topology (planned — persistent mode) |
 
-Run events are auto-saved to `.swarmkit/logs/` as JSONL after every `swarmkit run`.
+### Data sources
+
+Events are persisted to `.swarmkit/audit.sqlite` (SQLite, default) after every `swarmkit run`. All observability commands read from this store via `WorkspaceRuntime.audit_provider_for()` — the same service layer the web UI will use. JSONL logs (`.swarmkit/logs/`) are kept as a fallback.
+
+Prompts are stored separately in `.swarmkit/prompts.sqlite` (local ring buffer). They never leave your environment — use `swarmkit debug` to access them.
+
+### Audit redaction
+
+Skills can declare audit policies in YAML:
+
+```yaml
+audit:
+  log_inputs: summary     # full | summary | none
+  log_outputs: full
+  redact: ["$.password", "$.api_key"]
+```
+
+Redacted fields appear as `[REDACTED]` in all outputs. Summary mode truncates long values. Workspace-level `audit.level` (minimal/standard/detailed) clamps all skills.
 
 ## Review + gaps
 
@@ -138,6 +160,8 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`.
 
 ## Environment variables
 
+### Runtime
+
 | Variable | Purpose |
 |---|---|
 | `SWARMKIT_PROVIDER` | Override model provider for all agents |
@@ -145,6 +169,20 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`.
 | `SWARMKIT_VERBOSE` | Enable verbose output (set to `1`) |
 | `SWARMKIT_MAX_TOOL_TURNS` | Max tool loop iterations per agent turn (default: 8) |
 | `SWARMKIT_AGENT_RETRIES` | Max retries when model returns text instead of tools (default: 2) |
+
+### Telemetry (see [Telemetry configuration](telemetry.md))
+
+| Variable | Purpose |
+|---|---|
+| `SWARMKIT_OTEL_EXPORTER` | Exporter type: `console`, `otlp`, or `none` |
+| `SWARMKIT_OTEL_ENDPOINT` | OTLP collector URL |
+| `SWARMKIT_OTEL_API_KEY` | API key for telemetry backend |
+| `SWARMKIT_OTEL_HEADERS` | Comma-separated key=value pairs for custom headers |
+
+### LLM provider API keys
+
+| Variable | Purpose |
+|---|---|
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `OPENAI_API_KEY` | OpenAI API key |

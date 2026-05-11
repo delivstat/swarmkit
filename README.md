@@ -174,20 +174,32 @@ Auto-detected from environment variables. Mix providers within a single topology
 | Together | `TOGETHER_API_KEY` | `meta-llama/llama-3.3-70b` |
 | Ollama | (always available) | `llama3.3` |
 
-### Observability
+### Observability (M6 — shipped)
 
-Every run records structured audit events. CLI tools for analysis:
+Every run records structured audit events to SQLite (`.swarmkit/audit.sqlite`). OpenTelemetry traces, metrics, governance circuit breakers, notification plugins, and a local prompt ring buffer are all built in.
 
 ```bash
-swarmkit status my-swarm/                      # recent runs at a glance
-swarmkit logs my-swarm/ --last 3               # detailed events
+swarmkit status my-swarm/                      # recent runs from audit store
+swarmkit logs my-swarm/ --last 3               # detailed events (--run-id, --agent filters)
 swarmkit why <run-id> my-swarm/                # LLM explains what happened
-swarmkit ask "Which agents are slowest?" -w .  # conversational observer
+swarmkit ask "Which agents are slowest?" -w .  # conversational observer (--run scoping)
+swarmkit debug my-swarm/ --span-id <id>        # retrieve prompts from local ring buffer
 swarmkit review list my-swarm/                 # pending human reviews
 swarmkit gaps my-swarm/                        # recorded skill gaps
 ```
 
-**Coming soon:** OpenTelemetry integration (traces + metrics), intent drift detection, local prompt ring buffer, governance circuit breakers.
+Per-skill audit redaction — sensitive fields are `[REDACTED]` before storage:
+
+```yaml
+audit:
+  log_inputs: summary
+  log_outputs: full
+  redact: ["$.password", "$.api_key"]
+```
+
+OTel traces to any backend: `SWARMKIT_OTEL_EXPORTER=console swarmkit run ...`
+
+**Coming in M7:** intent drift detection — embedding-based drift scoring with nudge strategies.
 
 ## Reference topologies
 
@@ -253,7 +265,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. Current focus: M6 (OpenTelemetry observability + governance circuit breakers).
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M6 (observability) complete. Current focus: M6.5 (workspace env config), then M7 (intent drift detection).
 
 ## Contributing
 
