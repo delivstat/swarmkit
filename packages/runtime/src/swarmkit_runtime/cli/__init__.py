@@ -997,6 +997,14 @@ def logs(
         str | None,
         typer.Option("--topology", "-t", help="Filter by topology name."),
     ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", "-r", help="Filter by run ID."),
+    ] = None,
+    agent: Annotated[
+        str | None,
+        typer.Option("--agent", "-a", help="Filter by agent ID."),
+    ] = None,
     format: Annotated[
         str,
         typer.Option("--format", "-f", help="Output format: text (default) or markdown."),
@@ -1004,10 +1012,86 @@ def logs(
 ) -> None:
     """Show events from recent topology runs.
 
-    Reads from .swarmkit/logs/*.jsonl saved by swarmkit run.
+    Reads from the AuditProvider (SQLite). Falls back to JSONL logs
+    if the audit database has no events.
     Use --format markdown for a compliance-ready audit report.
     """
-    log_dir = workspace_path.resolve() / ".swarmkit" / "logs"
+    import asyncio  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
+
+    if audit_db.is_file():
+        from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
+
+        provider = SQLiteAuditProvider(db_path=audit_db)
+        count = asyncio.get_event_loop().run_until_complete(provider.count())
+        if count > 0:
+            _logs_from_audit(provider, last=last, run_id=run_id, agent=agent, fmt=format)
+            provider.close_sync()
+            return
+        provider.close_sync()
+
+    _logs_from_jsonl(ws_root, last=last, topology=topology, fmt=format)
+
+
+def _logs_from_audit(
+    provider: object,
+    *,
+    last: int,
+    run_id: str | None,
+    agent: str | None,
+    fmt: str,
+) -> None:
+    """Read logs from AuditProvider (SQLite)."""
+    import asyncio  # noqa: PLC0415
+
+    from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
+
+    assert isinstance(provider, SQLiteAuditProvider)
+
+    events = asyncio.get_event_loop().run_until_complete(
+        _collect_async(provider.query(run_id=run_id, agent_id=agent, limit=last * 50))
+    )
+
+    if not events:
+        typer.echo("No events found in audit store.")
+        return
+
+    event_dicts = []
+    for e in reversed(events):
+        event_dicts.append(
+            {
+                "event_type": e.event_type,
+                "agent_id": e.agent_id,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else "",
+                "skill_id": e.skill_id,
+                "duration_ms": e.duration_ms,
+                "role": e.agent_role,
+                "reason": e.policy_reason,
+                **(e.payload or {}),
+            }
+        )
+
+    if fmt == "markdown":
+        typer.echo(_format_log_markdown("audit-store", event_dicts))
+    else:
+        typer.echo("\n── audit store ──")
+        for evt in event_dicts:
+            typer.echo(_format_log_event(evt))
+
+
+async def _collect_async(aiter: object) -> list[object]:
+    """Collect an async iterator into a list."""
+    results = []
+    async for item in aiter:  # type: ignore[union-attr]
+        results.append(item)
+    return results
+
+
+def _logs_from_jsonl(ws_root: Path, *, last: int, topology: str | None, fmt: str) -> None:
+    """Fallback: read logs from JSONL files."""
+    log_dir = ws_root / ".swarmkit" / "logs"
     if not log_dir.is_dir():
         typer.echo("No run logs found. Run a topology with `swarmkit run` first.")
         return
@@ -1027,7 +1111,7 @@ def logs(
             for line in log_file.read_text(encoding="utf-8").strip().split("\n")
             if line
         ]
-        if format == "markdown":
+        if fmt == "markdown":
             typer.echo(_format_log_markdown(log_file.name, events))
         else:
             typer.echo(f"\n── {log_file.name} ──")
@@ -1114,8 +1198,63 @@ def status(
         typer.Option("--last", "-n", help="Show last N runs."),
     ] = 5,
 ) -> None:
-    """Show recent run status at a glance."""
-    log_dir = workspace_path.resolve() / ".swarmkit" / "logs"
+    """Show recent run status at a glance.
+
+    Reads from AuditProvider (SQLite) first, falls back to JSONL logs.
+    """
+    import asyncio  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
+
+    if audit_db.is_file():
+        from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
+
+        provider = SQLiteAuditProvider(db_path=audit_db)
+        count = asyncio.get_event_loop().run_until_complete(provider.count())
+        if count > 0:
+            _status_from_audit(provider, last=last)
+            provider.close_sync()
+            return
+        provider.close_sync()
+
+    _status_from_jsonl(ws_root, last=last)
+
+
+def _status_from_audit(provider: object, *, last: int) -> None:
+    """Show status from AuditProvider (SQLite)."""
+    import asyncio  # noqa: PLC0415
+
+    from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
+
+    assert isinstance(provider, SQLiteAuditProvider)
+
+    events = asyncio.get_event_loop().run_until_complete(
+        _collect_async(provider.query(limit=last * 50))
+    )
+
+    runs: dict[str, list[object]] = {}
+    for e in events:
+        key = e.run_id or e.topology_id or "unknown"  # type: ignore[union-attr]
+        runs.setdefault(key, []).append(e)
+
+    typer.echo(f"{'topology':<20} {'agents':<8} {'duration':<10} {'issues':<8} {'source'}")
+    typer.echo("-" * 65)
+    for idx, (run_key, run_events) in enumerate(runs.items()):
+        if idx >= last:
+            break
+        completed = [e for e in run_events if e.event_type == "agent.completed"]  # type: ignore[union-attr]
+        denied = [e for e in run_events if "denied" in (e.event_type or "")]  # type: ignore[union-attr]
+        fails = [e for e in run_events if "failed" in (e.event_type or "")]  # type: ignore[union-attr]
+        total_ms = sum(e.duration_ms or 0 for e in completed)  # type: ignore[union-attr]
+        issues = len(denied) + len(fails)
+        topo = run_events[0].topology_id or run_key  # type: ignore[union-attr]
+        typer.echo(f"{topo:<20} {len(completed):<8} {total_ms:>6}ms   {issues:<8} {'audit'}")
+
+
+def _status_from_jsonl(ws_root: Path, *, last: int) -> None:
+    """Fallback: show status from JSONL files."""
+    log_dir = ws_root / ".swarmkit" / "logs"
     if not log_dir.is_dir():
         typer.echo("No runs recorded yet.")
         return
