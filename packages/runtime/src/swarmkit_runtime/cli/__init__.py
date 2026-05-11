@@ -603,6 +603,13 @@ def run(
             help="Show resolved agents and skills without executing.",
         ),
     ] = False,
+    resume: Annotated[
+        bool,
+        typer.Option(
+            "--resume",
+            help="Resume a previously interrupted run from checkpoint.",
+        ),
+    ] = False,
     color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
 ) -> None:
     """One-shot execution of a topology (design §14.1)."""
@@ -636,13 +643,15 @@ def run(
     if verbose:
         os.environ["SWARMKIT_VERBOSE"] = "1"
 
-    user_input = input_text or ""
-    if not user_input and not sys.stdin.isatty():
-        user_input = sys.stdin.read().strip()
-    if not user_input:
-        user_input = "hello"
-
-    result = _execute_run(runtime, topology_name, user_input, workspace_path)
+    if resume:
+        result = _execute_resume(runtime, topology_name, workspace_path)
+    else:
+        user_input = input_text or ""
+        if not user_input and not sys.stdin.isatty():
+            user_input = sys.stdin.read().strip()
+        if not user_input:
+            user_input = "hello"
+        result = _execute_run(runtime, topology_name, user_input, workspace_path)
 
     if result.output:
         typer.echo(result.output)
@@ -660,8 +669,13 @@ def _execute_run(
     workspace_path: Path,
 ) -> RunResult:
     """Execute a topology run with HITL and interrupt handling."""
+    from uuid import uuid4  # noqa: PLC0415
+
+    thread_id = str(uuid4())
+    _save_thread_id(workspace_path, thread_id)
+
     try:
-        return asyncio.run(runtime.run(topology_name, user_input))
+        return asyncio.run(runtime.run(topology_name, user_input, thread_id=thread_id))
     except KeyError as exc:
         _stderr(str(exc).strip("'\""))
         raise typer.Exit(_EXIT_USAGE) from exc
@@ -678,6 +692,35 @@ def _execute_run(
             _stderr(f"  2. Resume:  swarmkit run {workspace_path} {topology_name} --resume")
             raise typer.Exit(0) from None
         _stderr(f"error: execution failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+
+def _save_thread_id(workspace_path: Path, thread_id: str) -> None:
+    """Save the thread_id so --resume can find it."""
+    state_dir = workspace_path.resolve() / ".swarmkit" / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "last_thread.txt").write_text(thread_id, encoding="utf-8")
+
+
+def _execute_resume(
+    runtime: WorkspaceRuntime,
+    topology_name: str,
+    workspace_path: Path,
+) -> RunResult:
+    """Resume a previously checkpointed run."""
+    thread_file = workspace_path.resolve() / ".swarmkit" / "state" / "last_thread.txt"
+    if not thread_file.is_file():
+        _stderr("No checkpointed run found to resume.")
+        _stderr(f"Expected at: {thread_file}")
+        raise typer.Exit(_EXIT_USAGE)
+
+    thread_id = thread_file.read_text(encoding="utf-8").strip()
+    _stderr(f"Resuming from checkpoint: {thread_id}")
+
+    try:
+        return asyncio.run(runtime.resume(topology_name, thread_id))
+    except Exception as exc:
+        _stderr(f"error: resume failed: {exc}")
         raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
 
 

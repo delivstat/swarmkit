@@ -47,6 +47,7 @@ def compile_topology(
     provider_registry: ProviderRegistry | None = None,
     governance: GovernanceProvider,
     mcp_manager: Any = None,
+    checkpointer: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -59,6 +60,7 @@ def compile_topology(
     resolves to its own provider based on ``model.provider``). Pass
     ``model_provider`` as a shortcut when all agents share one provider.
     Pass ``mcp_manager`` for MCP tool execution.
+    Pass ``checkpointer`` for state persistence (resume after HITL defer).
     """
     graph: StateGraph[Any] = StateGraph(SwarmState)
     agents = _collect_agents(topology.root)
@@ -78,6 +80,8 @@ def compile_topology(
     graph.add_edge(START, topology.root.id)
     _add_routing_edges(graph, topology.root, agents)
 
+    if checkpointer is not None:
+        return graph.compile(checkpointer=checkpointer)
     return graph.compile()
 
 
