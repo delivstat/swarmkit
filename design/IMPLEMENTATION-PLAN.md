@@ -34,6 +34,7 @@ status: active
 | 1 | — | DAG dependency graph | ✅ | Agents execute in dependency order |
 | 1 | M5 | MCP integration | ✅ | MCP calls gated through governance, sandboxed execution |
 | 2 | M6 | Observability + human interaction | — | `swarmkit status/logs/review/ask` + OTel traces |
+| 2 | M6.5 | Workspace env configuration | — | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
 | 2 | M7 | Intent drift detection | — | Drift scores per step, nudge on threshold breach |
 | 3 | M8 | Knowledge + skills ecosystem (enhance) | 🟡 | Skill registry CLI + user knowledge server + knowledge curator topology |
 | 3 | M9 | Reference topologies (enhance) | 🟡 | Code review + skill authoring swarms runnable end-to-end |
@@ -238,6 +239,25 @@ Add observability, intent drift detection, and operational tooling. Everything h
 - [ ] **Execution detail API** — beyond high-level `swarmkit status`, users need root-cause access. `swarmkit logs <run-id> --follow` streams full execution detail (every agent step, tool call, governance decision). `swarmkit why <run-id>` traces the decision chain. `swarmkit debug --span-id <id>` retrieves actual prompts/responses from the local ring buffer. For HITL flows, the webhook payload includes the run ID + span ID so the reviewer can pull execution context via CLI or (in Rynko) via the dashboard trace view.
 
 **Exit demo:** run a topology with `telemetry.exporter: console` — span output in terminal showing agent steps, tool calls, governance decisions. `swarmkit logs` tails the same run. `swarmkit debug --run-id xyz` retrieves prompt/response pairs from local SQLite. `swarmkit ask "what went wrong?"` answers from audit context. Optional: spin up local Jaeger, see the full trace.
+
+### M6.5 — Workspace environment configuration (NEW)
+
+**Goal:** separate environment-specific values (URLs, credentials, feature flags) from structural workspace config. Single interpolation point.
+
+**Design reference:** `design/details/workspace-env-config.md`.
+
+**Dependencies:** M6 complete. Cleans up how telemetry, notifications, and governance are configured before M7+ adds more.
+
+**Features:**
+
+- [ ] **Property resolution engine** — two-phase: load `workspace.env.yaml`, then resolve `${ENV_VAR}` in property values
+- [ ] **Env file loading** — `workspace.env.yaml` (default) + `workspace.env.{SWARMKIT_ENV}.yaml` (per-environment override)
+- [ ] **Resolver integration** — load env file before resolving workspace, merge properties into config
+- [ ] **`swarmkit init` update** — generates template `workspace.env.yaml` + adds `workspace.env*.yaml` to `.gitignore`
+- [ ] **`swarmkit validate` update** — warns on unresolved `${property}` references
+- [ ] **Backward compatibility** — existing workspaces with inline values work unchanged
+
+**Exit demo:** same workspace runs against dev and prod with `SWARMKIT_ENV=dev` vs `SWARMKIT_ENV=prod`, each picking up different notification URLs and model providers from their env file.
 
 ### M7 — Intent drift detection (NEW)
 
@@ -478,6 +498,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `ts-codegen.md` | M0 ✅ |
 | `ui-testing-topology.md` | Deferred |
 | `user-knowledge-server.md` | M8 |
+| `workspace-env-config.md` | M6.5 |
 | `workspace-schema-v1.md` | M0 ✅ |
 
 ## Open questions
