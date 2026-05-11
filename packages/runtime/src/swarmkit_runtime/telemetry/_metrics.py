@@ -1,0 +1,109 @@
+"""OTel metrics for SwarmKit runtime.
+
+Counters and histograms for operational monitoring. Emitted via the
+OpenTelemetry metrics API alongside traces.
+
+See design/details/opentelemetry-observability.md.
+"""
+
+from __future__ import annotations
+
+from opentelemetry import metrics
+
+_ATTR_PREFIX = "swarmkit"
+
+_meter: metrics.Meter | None = None
+
+_runs_total: metrics.Counter | None = None
+_agent_steps_total: metrics.Counter | None = None
+_tool_calls_total: metrics.Counter | None = None
+_governance_decisions_total: metrics.Counter | None = None
+
+_run_duration_ms: metrics.Histogram | None = None
+_tool_duration_ms: metrics.Histogram | None = None
+_approval_wait_ms: metrics.Histogram | None = None
+
+
+def init_metrics(service_name: str = "swarmkit") -> None:
+    """Initialize OTel metrics instruments. Call once at startup."""
+    global _meter  # noqa: PLW0603
+    global _runs_total, _agent_steps_total, _tool_calls_total  # noqa: PLW0603
+    global _governance_decisions_total  # noqa: PLW0603
+    global _run_duration_ms, _tool_duration_ms, _approval_wait_ms  # noqa: PLW0603
+
+    _meter = metrics.get_meter(service_name)
+
+    _runs_total = _meter.create_counter(
+        f"{_ATTR_PREFIX}.runs.total",
+        description="Total topology runs",
+        unit="1",
+    )
+    _agent_steps_total = _meter.create_counter(
+        f"{_ATTR_PREFIX}.agent.steps.total",
+        description="Total agent execution steps across all runs",
+        unit="1",
+    )
+    _tool_calls_total = _meter.create_counter(
+        f"{_ATTR_PREFIX}.tool.calls.total",
+        description="Total tool/MCP invocations",
+        unit="1",
+    )
+    _governance_decisions_total = _meter.create_counter(
+        f"{_ATTR_PREFIX}.governance.decisions.total",
+        description="Total governance policy decisions",
+        unit="1",
+    )
+
+    _run_duration_ms = _meter.create_histogram(
+        f"{_ATTR_PREFIX}.runs.duration_ms",
+        description="Topology run duration in milliseconds",
+        unit="ms",
+    )
+    _tool_duration_ms = _meter.create_histogram(
+        f"{_ATTR_PREFIX}.tool.duration_ms",
+        description="Tool call duration in milliseconds",
+        unit="ms",
+    )
+    _approval_wait_ms = _meter.create_histogram(
+        f"{_ATTR_PREFIX}.approval.wait_ms",
+        description="Human approval wait time in milliseconds",
+        unit="ms",
+    )
+
+
+def record_run_started(*, topology_id: str) -> None:
+    """Increment run counter."""
+    if _runs_total is not None:
+        _runs_total.add(1, {"topology_id": topology_id})
+
+
+def record_run_completed(*, topology_id: str, duration_ms: int) -> None:
+    """Record run duration."""
+    if _run_duration_ms is not None:
+        _run_duration_ms.record(duration_ms, {"topology_id": topology_id})
+
+
+def record_agent_step(*, agent_id: str, topology_id: str) -> None:
+    """Increment agent step counter."""
+    if _agent_steps_total is not None:
+        _agent_steps_total.add(1, {"agent_id": agent_id, "topology_id": topology_id})
+
+
+def record_tool_call(*, tool_name: str, status: str, duration_ms: int = 0) -> None:
+    """Increment tool call counter and record duration."""
+    if _tool_calls_total is not None:
+        _tool_calls_total.add(1, {"tool_name": tool_name, "status": status})
+    if _tool_duration_ms is not None and duration_ms > 0:
+        _tool_duration_ms.record(duration_ms, {"tool_name": tool_name, "status": status})
+
+
+def record_governance_decision(*, decision: str, scope: str = "") -> None:
+    """Increment governance decision counter."""
+    if _governance_decisions_total is not None:
+        _governance_decisions_total.add(1, {"decision": decision, "scope": scope})
+
+
+def record_approval_wait(*, scope: str, wait_ms: int) -> None:
+    """Record human approval wait time."""
+    if _approval_wait_ms is not None:
+        _approval_wait_ms.record(wait_ms, {"scope": scope})

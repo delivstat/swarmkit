@@ -196,6 +196,31 @@ Trace: topology.run (swarmkit.topology.id, swarmkit.run.id)
     └── status: completed
 ```
 
+## Metrics
+
+SwarmKit emits OTel metrics alongside traces for operational dashboards and alerting.
+
+### Counters
+
+| Metric | Labels | Description |
+|---|---|---|
+| `swarmkit.runs.total` | `topology_id` | Total topology runs |
+| `swarmkit.agent.steps.total` | `agent_id`, `topology_id` | Total agent execution steps |
+| `swarmkit.tool.calls.total` | `tool_name`, `status` | Total tool/MCP invocations |
+| `swarmkit.governance.decisions.total` | `decision`, `scope` | Total governance policy decisions |
+
+### Histograms
+
+| Metric | Labels | Description |
+|---|---|---|
+| `swarmkit.runs.duration_ms` | `topology_id` | Run duration distribution |
+| `swarmkit.tool.duration_ms` | `tool_name`, `status` | Tool call latency distribution |
+| `swarmkit.approval.wait_ms` | `scope` | Human approval wait time distribution |
+
+Metrics are emitted via the OTel metrics API. When using OTLP export, they go to the same endpoint as traces. Dashboards in Grafana, Datadog, or Rynko can query them for operational monitoring.
+
+Metrics are safe to call before initialization — all recording functions are no-ops when instruments haven't been created yet.
+
 ## Privacy
 
 - `send_prompts: false` (default) — no LLM prompt/response content in spans
