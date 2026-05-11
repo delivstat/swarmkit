@@ -227,7 +227,7 @@ class WorkspaceRuntime:
         from swarmkit_runtime.audit import apply_audit_policy, resolve_audit_config  # noqa: PLC0415
         from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
 
-        workspace_audit_level = self._get_workspace_audit_level()
+        ws_audit_level = self._get_workspace_audit_level()
 
         for evt in events:
             try:
@@ -241,8 +241,8 @@ class WorkspaceRuntime:
             raw_role = evt.payload.get("role")
             role = str(raw_role) if raw_role is not None else None
 
-            redacted_payload = self._apply_redaction(
-                evt, workspace_audit_level, resolve_audit_config, apply_audit_policy
+            redacted = self._apply_skill_redaction(
+                evt, ws_audit_level, resolve_audit_config, apply_audit_policy
             )
 
             audit_event = AuditEvent(
@@ -251,7 +251,7 @@ class WorkspaceRuntime:
                 timestamp=ts,
                 skill_id=evt.skill_id,
                 topology_id=topology_name,
-                payload=redacted_payload,
+                payload=redacted,
                 duration_ms=duration,
                 agent_role=role,  # type: ignore[arg-type]
             )
@@ -262,19 +262,19 @@ class WorkspaceRuntime:
         storage = getattr(self._workspace.raw, "storage", None)
         if storage is None:
             return None
-        audit_config = getattr(storage, "audit", None)
-        if audit_config is None:
+        audit_cfg = getattr(storage, "audit", None)
+        if audit_cfg is None:
             return None
-        return getattr(audit_config, "level", None)
+        return getattr(audit_cfg, "level", None)
 
-    def _apply_redaction(
+    def _apply_skill_redaction(
         self,
         evt: RunEvent,
-        workspace_level: str | None,
+        ws_level: str | None,
         resolve_fn: Any,
         apply_fn: Any,
     ) -> dict[str, object]:
-        """Apply per-skill audit redaction to an event's payload."""
+        """Apply per-skill audit redaction to event payload."""
         if not evt.skill_id or evt.skill_id not in self._workspace.skills:
             return dict(evt.payload)
 
@@ -283,25 +283,26 @@ class WorkspaceRuntime:
         skill_category = getattr(skill.raw, "category", None)
 
         log_inputs, log_outputs, redact_paths = resolve_fn(
-            skill_audit, skill_category, workspace_level=workspace_level
+            skill_audit, skill_category, workspace_level=ws_level
         )
 
         payload = dict(evt.payload)
 
         if "inputs" in payload and isinstance(payload["inputs"], dict):
-            result = apply_fn(
-                payload["inputs"], field="inputs", log_level=log_inputs, redact_paths=redact_paths
+            payload["inputs"] = apply_fn(
+                payload["inputs"],
+                field="inputs",
+                log_level=log_inputs,
+                redact_paths=redact_paths,
             )
-            payload["inputs"] = result
 
         if "outputs" in payload and isinstance(payload["outputs"], dict):
-            result = apply_fn(
+            payload["outputs"] = apply_fn(
                 payload["outputs"],
                 field="outputs",
                 log_level=log_outputs,
                 redact_paths=redact_paths,
             )
-            payload["outputs"] = result
 
         return payload
 

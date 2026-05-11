@@ -74,7 +74,9 @@ def resolve_audit_config(
 
     Resolution: workspace level clamps > skill audit block > category defaults.
     """
-    category = skill_category or "capability"
+    category = str(
+        skill_category.value if hasattr(skill_category, "value") else skill_category or "capability"
+    )
     defaults = _CATEGORY_DEFAULTS.get(category, _CATEGORY_DEFAULTS["capability"])
 
     log_inputs = defaults["log_inputs"]
@@ -83,9 +85,11 @@ def resolve_audit_config(
 
     if skill_audit is not None:
         if hasattr(skill_audit, "log_inputs") and skill_audit.log_inputs:
-            log_inputs = skill_audit.log_inputs
+            raw = skill_audit.log_inputs
+            log_inputs = raw.value if hasattr(raw, "value") else str(raw)
         if hasattr(skill_audit, "log_outputs") and skill_audit.log_outputs:
-            log_outputs = skill_audit.log_outputs
+            raw = skill_audit.log_outputs
+            log_outputs = raw.value if hasattr(raw, "value") else str(raw)
         if hasattr(skill_audit, "redact") and skill_audit.redact:
             redact_paths = list(skill_audit.redact)
 
