@@ -58,6 +58,7 @@ nav:
       - Market analysis: design-notes/market-analysis-and-risk-mitigations.md
   - Reference:
     - CLI commands: reference/cli.md
+    - Environment configuration: reference/env-config.md
     - Telemetry configuration: reference/telemetry.md
     - Notifications: reference/notifications.md
     - Skills catalogue: reference/skills.md

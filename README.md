@@ -265,7 +265,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M6 (observability) complete. Current focus: M6.5 (workspace env config), then M7 (intent drift detection).
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M6 (observability) and M6.5 (workspace env config) complete. Current focus: M7 (intent drift detection).
 
 ## Contributing
 
