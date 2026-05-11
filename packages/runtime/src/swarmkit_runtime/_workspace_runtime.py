@@ -139,6 +139,21 @@ class WorkspaceRuntime:
             mcp_manager=mcp_manager,
         )
 
+    def _get_checkpointer(self) -> Any:
+        """Get or create the checkpointer for run state persistence."""
+        if not hasattr(self, "_checkpointer"):
+            try:
+                from langgraph.checkpoint.sqlite import SqliteSaver  # noqa: PLC0415
+
+                db_path = self._workspace_root / ".swarmkit" / "state" / "checkpoints.db"
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                self._checkpointer = SqliteSaver.from_conn_string(str(db_path))
+            except ImportError:
+                from langgraph.checkpoint.memory import MemorySaver  # noqa: PLC0415
+
+                self._checkpointer = MemorySaver()
+        return self._checkpointer
+
     def compile(self, topology_name: str) -> CompiledStateGraph[Any]:
         """Compile a named topology into a LangGraph graph.
 
@@ -157,6 +172,7 @@ class WorkspaceRuntime:
             provider_registry=self._provider_registry,
             governance=self._governance,
             mcp_manager=self._mcp_manager,
+            checkpointer=self._get_checkpointer(),
         )
 
     async def start_session(self) -> None:
@@ -181,14 +197,21 @@ class WorkspaceRuntime:
         user_input: str,
         *,
         max_steps: int = 10,
+        thread_id: str | None = None,
     ) -> RunResult:
         """Execute a topology end-to-end and return the result.
 
         If a session is active (via start_session), MCP servers are
         already running and won't be restarted. Otherwise, handles
         MCP lifecycle per-run (start_all / close_all).
+
+        Pass ``thread_id`` to enable checkpoint-based resume. The same
+        thread_id is used to resume a deferred run later.
         """
+        from uuid import uuid4  # noqa: PLC0415
+
         graph = self.compile(topology_name)
+        run_thread = thread_id or str(uuid4())
 
         owns_mcp = not self._session_active
         if owns_mcp and self._mcp_manager is not None:
@@ -202,7 +225,10 @@ class WorkspaceRuntime:
                     "current_agent": "",
                     "output": "",
                 },
-                config={"recursion_limit": max_steps},
+                config={
+                    "recursion_limit": max_steps,
+                    "configurable": {"thread_id": run_thread},
+                },
             )
         finally:
             if owns_mcp and self._mcp_manager is not None:
@@ -216,6 +242,48 @@ class WorkspaceRuntime:
             output=result.get("output", ""),
             agent_results={
                 k: str(v) for k, v in result.get("agent_results", {}).items() if isinstance(v, str)
+            },
+            events=events,
+        )
+
+    async def resume(
+        self,
+        topology_name: str,
+        thread_id: str,
+        *,
+        max_steps: int = 10,
+    ) -> RunResult:
+        """Resume a previously checkpointed run.
+
+        Rehydrates graph state from the SQLite checkpoint and continues
+        execution from where it was interrupted (e.g., after HITL defer).
+        """
+        graph = self.compile(topology_name)
+
+        owns_mcp = not self._session_active
+        if owns_mcp and self._mcp_manager is not None:
+            await self._mcp_manager.start_all()
+        try:
+            result = await graph.ainvoke(
+                None,
+                config={
+                    "recursion_limit": max_steps,
+                    "configurable": {"thread_id": thread_id},
+                },
+            )
+        finally:
+            if owns_mcp and self._mcp_manager is not None:
+                await self._mcp_manager.close_all()
+
+        events = _extract_events(self._governance)
+        await self._persist_events_to_audit(events, topology_name)
+
+        return RunResult(
+            output=result.get("output", "") if result else "",
+            agent_results={
+                k: str(v)
+                for k, v in (result or {}).get("agent_results", {}).items()
+                if isinstance(v, str)
             },
             events=events,
         )
