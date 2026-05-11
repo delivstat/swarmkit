@@ -93,6 +93,17 @@ class WorkspaceRuntime:
         )
         self._session_active = False
 
+    @staticmethod
+    def audit_provider_for(path: Path) -> SQLiteAuditProvider:
+        """Get the audit provider for a workspace without loading the full runtime.
+
+        Used by CLI commands (status, logs, notifications) that only need
+        to query events — not compile or run topologies. Same provider
+        and same database the full runtime uses.
+        """
+        ws_root = path.resolve()
+        return SQLiteAuditProvider(db_path=ws_root / ".swarmkit" / "audit.sqlite")
+
     @classmethod
     def from_workspace_path(cls, path: Path) -> WorkspaceRuntime:
         """Build a fully-wired runtime from a workspace directory.
@@ -199,6 +210,8 @@ class WorkspaceRuntime:
 
         events = _extract_events(self._governance)
 
+        await self._persist_events_to_audit(events, topology_name)
+
         return RunResult(
             output=result.get("output", ""),
             agent_results={
@@ -206,6 +219,36 @@ class WorkspaceRuntime:
             },
             events=events,
         )
+
+    async def _persist_events_to_audit(self, events: list[RunEvent], topology_name: str) -> None:
+        """Write extracted events to the AuditProvider for CLI/web UI queries."""
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+        for evt in events:
+            try:
+                ts = (
+                    datetime.fromisoformat(evt.timestamp) if evt.timestamp else datetime.now(tz=UTC)
+                )
+            except (ValueError, TypeError):
+                ts = datetime.now(tz=UTC)
+            raw_duration = evt.payload.get("duration_ms")
+            duration: int | None = int(raw_duration) if raw_duration is not None else None  # type: ignore[call-overload]
+            raw_role = evt.payload.get("role")
+            role = str(raw_role) if raw_role is not None else None
+
+            audit_event = AuditEvent(
+                event_type=evt.event_type,
+                agent_id=evt.agent_id,
+                timestamp=ts,
+                skill_id=evt.skill_id,
+                topology_id=topology_name,
+                payload=dict(evt.payload),
+                duration_ms=duration,
+                agent_role=role,  # type: ignore[arg-type]
+            )
+            await self._audit_provider.record(audit_event)
 
     async def close(self) -> None:
         """Release all held resources."""

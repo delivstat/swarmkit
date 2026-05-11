@@ -200,6 +200,10 @@ class SQLiteAuditProvider(AuditProvider):
     async def close(self) -> None:
         self._conn.close()
 
+    def close_sync(self) -> None:
+        """Synchronous close for use in non-async CLI contexts."""
+        self._conn.close()
+
 
 def _row_to_event(row: tuple[Any, ...]) -> AuditEvent:
     """Convert a database row to an AuditEvent."""
