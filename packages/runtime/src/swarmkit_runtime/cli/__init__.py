@@ -642,14 +642,7 @@ def run(
     if not user_input:
         user_input = "hello"
 
-    try:
-        result = asyncio.run(runtime.run(topology_name, user_input))
-    except KeyError as exc:
-        _stderr(str(exc).strip("'\""))
-        raise typer.Exit(_EXIT_USAGE) from exc
-    except Exception as exc:
-        _stderr(f"error: execution failed: {exc}")
-        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    result = _execute_run(runtime, topology_name, user_input, workspace_path)
 
     if result.output:
         typer.echo(result.output)
@@ -658,6 +651,34 @@ def run(
 
     if verbose and result.events:
         _print_run_summary(result)
+
+
+def _execute_run(
+    runtime: WorkspaceRuntime,
+    topology_name: str,
+    user_input: str,
+    workspace_path: Path,
+) -> RunResult:
+    """Execute a topology run with HITL and interrupt handling."""
+    try:
+        return asyncio.run(runtime.run(topology_name, user_input))
+    except KeyError as exc:
+        _stderr(str(exc).strip("'\""))
+        raise typer.Exit(_EXIT_USAGE) from exc
+    except KeyboardInterrupt:
+        _stderr("\n⏸ Run interrupted. State checkpointed.")
+        _stderr(f"  Resume with: swarmkit run {workspace_path} {topology_name} --resume")
+        raise typer.Exit(0) from None
+    except Exception as exc:
+        from swarmkit_runtime.review._hitl import HITLDeferredError  # noqa: PLC0415
+
+        if isinstance(exc, HITLDeferredError):
+            _stderr(f"\n⏸ Review deferred: {exc.reason}")
+            _stderr(f"  1. Approve: swarmkit review approve <id> {workspace_path}")
+            _stderr(f"  2. Resume:  swarmkit run {workspace_path} {topology_name} --resume")
+            raise typer.Exit(0) from None
+        _stderr(f"error: execution failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
 
 
 # ---- chat (multi-turn conversation) --------------------------------------
