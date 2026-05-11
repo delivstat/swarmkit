@@ -74,9 +74,11 @@ def resolve_audit_config(
 
     Resolution: workspace level clamps > skill audit block > category defaults.
     """
-    category = str(
-        skill_category.value if hasattr(skill_category, "value") else skill_category or "capability"
-    )
+    raw_cat = skill_category
+    if raw_cat is not None and hasattr(raw_cat, "value"):
+        category = str(raw_cat.value)
+    else:
+        category = str(raw_cat or "capability")
     defaults = _CATEGORY_DEFAULTS.get(category, _CATEGORY_DEFAULTS["capability"])
 
     log_inputs = defaults["log_inputs"]
