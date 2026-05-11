@@ -1022,9 +1022,7 @@ def logs(
     audit_db = ws_root / ".swarmkit" / "audit.sqlite"
 
     if audit_db.is_file():
-        from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
-
-        provider = SQLiteAuditProvider(db_path=audit_db)
+        provider = WorkspaceRuntime.audit_provider_for(workspace_path)
         count = asyncio.get_event_loop().run_until_complete(provider.count())
         if count > 0:
             _logs_from_audit(provider, last=last, run_id=run_id, agent=agent, fmt=format)
@@ -1208,9 +1206,7 @@ def status(
     audit_db = ws_root / ".swarmkit" / "audit.sqlite"
 
     if audit_db.is_file():
-        from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
-
-        provider = SQLiteAuditProvider(db_path=audit_db)
+        provider = WorkspaceRuntime.audit_provider_for(workspace_path)
         count = asyncio.get_event_loop().run_until_complete(provider.count())
         if count > 0:
             _status_from_audit(provider, last=last)

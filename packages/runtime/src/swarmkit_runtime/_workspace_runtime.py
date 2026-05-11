@@ -93,6 +93,17 @@ class WorkspaceRuntime:
         )
         self._session_active = False
 
+    @staticmethod
+    def audit_provider_for(path: Path) -> SQLiteAuditProvider:
+        """Get the audit provider for a workspace without loading the full runtime.
+
+        Used by CLI commands (status, logs, notifications) that only need
+        to query events — not compile or run topologies. Same provider
+        and same database the full runtime uses.
+        """
+        ws_root = path.resolve()
+        return SQLiteAuditProvider(db_path=ws_root / ".swarmkit" / "audit.sqlite")
+
     @classmethod
     def from_workspace_path(cls, path: Path) -> WorkspaceRuntime:
         """Build a fully-wired runtime from a workspace directory.
