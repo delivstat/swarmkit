@@ -1400,6 +1400,106 @@ def stop(
     _not_implemented("stop", milestone="M6 (persistent mode integration)")
 
 
+# ---- debug ---------------------------------------------------------------
+
+
+@app.command()
+def debug(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+    span_id: Annotated[
+        str | None,
+        typer.Option("--span-id", "-s", help="Retrieve prompt/response for a specific OTel span."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", "-r", help="Retrieve all prompts for a run."),
+    ] = None,
+    agent: Annotated[
+        str | None,
+        typer.Option("--agent", "-a", help="Retrieve recent prompts for an agent."),
+    ] = None,
+    last: Annotated[
+        int,
+        typer.Option("--last", "-n", help="Number of recent entries (with --agent)."),
+    ] = 5,
+) -> None:
+    """Retrieve LLM prompts and responses from the local ring buffer.
+
+    Prompts are stored locally in .swarmkit/prompts.sqlite and never
+    sent to the telemetry backend. Use span IDs from OTel traces to
+    correlate with the Rynko dashboard.
+    """
+    from swarmkit_runtime.telemetry import PromptRingBuffer  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+    db_path = ws_root / ".swarmkit" / "prompts.sqlite"
+
+    if not db_path.is_file():
+        typer.echo("No prompt ring buffer found. Run a topology first.")
+        return
+
+    buf = PromptRingBuffer(db_path=db_path)
+    _debug_query(buf, span_id=span_id, run_id=run_id, agent=agent, last=last)
+    buf.close()
+
+
+def _debug_query(
+    buf: Any,
+    *,
+    span_id: str | None,
+    run_id: str | None,
+    agent: str | None,
+    last: int,
+) -> None:
+    """Dispatch debug query to the ring buffer."""
+    if span_id:
+        result = buf.query_by_span_id(span_id)
+        if result is None:
+            typer.echo(f"No prompt found for span_id '{span_id}'.")
+        else:
+            _print_prompt_entry(result)
+        return
+    if run_id:
+        results = buf.query_by_run_id(run_id)
+        if not results:
+            typer.echo(f"No prompts found for run_id '{run_id}'.")
+        else:
+            for entry in results:
+                _print_prompt_entry(entry)
+                typer.echo("")
+        return
+    if agent:
+        results = buf.query_by_agent(agent, last_n=last)
+        if not results:
+            typer.echo(f"No prompts found for agent '{agent}'.")
+        else:
+            for entry in results:
+                _print_prompt_entry(entry)
+                typer.echo("")
+        return
+    typer.echo(f"Prompt ring buffer: {buf.count()} entries")
+    typer.echo("Use --span-id, --run-id, or --agent to query.")
+
+
+def _print_prompt_entry(entry: dict[str, Any]) -> None:
+    """Format and print a single prompt/response entry."""
+    typer.echo(f"  span:     {entry['span_id']}")
+    typer.echo(f"  run:      {entry['run_id']}")
+    typer.echo(f"  agent:    {entry['agent_id']}")
+    typer.echo(f"  step:     {entry['step']}")
+    typer.echo(f"  model:    {entry['model']}")
+    typer.echo(f"  time:     {entry['timestamp']}")
+    prompt_text = entry["prompt"][:200] + ("..." if len(entry["prompt"]) > 200 else "")
+    resp_text = entry["response"][:200] + ("..." if len(entry["response"]) > 200 else "")
+    typer.echo(f"  prompt:   {prompt_text}")
+    typer.echo(f"  response: {resp_text}")
+    if entry.get("metadata"):
+        typer.echo(f"  metadata: {json.dumps(entry['metadata'])}")
+
+
 # ---- ask -----------------------------------------------------------------
 
 
