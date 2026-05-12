@@ -154,6 +154,40 @@ class Artifacts(BaseModel):
     )
 
 
+class OnDrift(Enum):
+    """
+    Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject refocus message.
+    """
+
+    log = "log"
+    warn = "warn"
+    nudge = "nudge"
+
+
+class IntentMonitoring(BaseModel):
+    """
+    Optional intent drift detection. Monitors semantic drift from the original goal. See design/details/intent-drift-detection.md.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    enabled: bool | None = Field(
+        None, description="Enable drift detection for this topology."
+    )
+    threshold: float | None = Field(
+        None,
+        description="Drift score above which action is taken. Default: 0.75. Range guide: 0.5=aggressive, 0.75=balanced, 0.9=permissive.",
+        ge=0.0,
+        le=2.0,
+    )
+    on_drift: OnDrift | None = Field(
+        None,
+        description="Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject refocus message.",
+    )
+
+
 class SwarmKitTopology(BaseModel):
     """
     A complete swarm definition. See design §10 and design/details/topology-schema-v1.md.
@@ -171,6 +205,7 @@ class SwarmKitTopology(BaseModel):
     runtime: Runtime | None = None
     agents: Agents
     artifacts: Artifacts | None = None
+    intent_monitoring: IntentMonitoring | None = None
 
 
 class Agents(BaseModel):
@@ -207,6 +242,7 @@ class Agent(BaseModel):
         None, description="Skills merged onto the archetype defaults (design §6.6)."
     )
     iam: Iam | None = None
+    intent_monitoring: IntentMonitoring | None = None
     children: list[ChildAgent] | None = Field(
         None,
         description="Nested agents. Tree structure, one parent per agent (design §5.2).",

@@ -10,11 +10,12 @@ export interface SwarmKitTopology {
     /**
      * Schema version. Breaking changes bump this major.
      */
-    apiVersion: APIVersion;
-    artifacts?: Artifacts;
-    kind:       Kind;
-    metadata:   Metadata;
-    runtime?:   Runtime;
+    apiVersion:         APIVersion;
+    artifacts?:         Artifacts;
+    intent_monitoring?: IntentMonitoring;
+    kind:               Kind;
+    metadata:           Metadata;
+    runtime?:           Runtime;
 }
 
 export interface Agents {
@@ -26,12 +27,13 @@ export interface Root {
     /**
      * Nested agents. Tree structure, one parent per agent (design §5.2).
      */
-    children?: ChildAgent[];
-    iam?:      Iam;
-    id:        string;
-    model?:    Model;
-    prompt?:   Prompt;
-    role:      RootRole;
+    children?:          ChildAgent[];
+    iam?:               Iam;
+    id:                 string;
+    intent_monitoring?: IntentMonitoring;
+    model?:             Model;
+    prompt?:            Prompt;
+    role:               RootRole;
     /**
      * Skill IDs (design §6.1). Replaces the archetype's skill list when present.
      */
@@ -47,12 +49,13 @@ export interface ChildAgent {
     /**
      * Nested agents. Tree structure, one parent per agent (design §5.2).
      */
-    children?: ChildAgent[];
-    iam?:      Iam;
-    id:        string;
-    model?:    Model;
-    prompt?:   Prompt;
-    role:      ChildRole;
+    children?:          ChildAgent[];
+    iam?:               Iam;
+    id:                 string;
+    intent_monitoring?: IntentMonitoring;
+    model?:             Model;
+    prompt?:            Prompt;
+    role:               ChildRole;
     /**
      * Skill IDs (design §6.1). Replaces the archetype's skill list when present.
      */
@@ -67,6 +70,33 @@ export interface Iam {
     base_scope?:      string[];
     elevated_scopes?: string[];
 }
+
+/**
+ * Optional intent drift detection. Monitors semantic drift from the original goal. See
+ * design/details/intent-drift-detection.md.
+ */
+export interface IntentMonitoring {
+    /**
+     * Enable drift detection for this topology.
+     */
+    enabled?: boolean;
+    /**
+     * Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject
+     * refocus message.
+     */
+    on_drift?: OnDrift;
+    /**
+     * Drift score above which action is taken. Default: 0.75. Range guide: 0.5=aggressive,
+     * 0.75=balanced, 0.9=permissive.
+     */
+    threshold?: number;
+}
+
+/**
+ * Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject
+ * refocus message.
+ */
+export type OnDrift = "log" | "warn" | "nudge";
 
 export interface Model {
     max_tokens?: number;
