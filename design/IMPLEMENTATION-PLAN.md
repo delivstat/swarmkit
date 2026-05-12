@@ -309,6 +309,7 @@ Make swarms useful with real knowledge sources and a rich skill catalogue.
 - [ ] **Skill registry CLI** — SKILL.md → SwarmKit YAML converter. CLI: `swarmkit skill install`, `swarmkit skill import <repo-url>`, `swarmkit skill import-mcp <repo-url>`, `swarmkit skill search`, `swarmkit skill list [--available]`.
 - [ ] **Authoring AI integration** — authoring agent searches registry before generating, proposes installing existing skills when a match is found.
 - [ ] **Knowledge server enhancements** — vector search (optional Qdrant tier), workspace-scoped knowledge queries.
+- [ ] **MCP discovery pattern** — compiler-level tool filtering so agents only see tools from their declared skills, not all tools from all servers. Prevents context bloat in workspaces with many MCP servers. See `design/details/mcp-discovery-pattern.md`.
 
 **Exit demo:** `swarmkit skill search "code review"` finds community skills. `swarmkit skill install` adds to workspace. `swarmkit author knowledge-server` generates a server from user's API docs.
 
@@ -481,7 +482,8 @@ Every design note under `design/details/` and where it appears in this plan:
 | `knowledge-pack-cli.md` | M1 ✅ |
 | `langgraph-compiler.md` | M3 ✅ |
 | `market-analysis-and-risk-mitigations.md` | M10 (canary), cross-cutting (risk awareness) |
-| `mcp-client.md` | M5 🟡 |
+| `mcp-client.md` | M5 ✅ |
+| `mcp-discovery-pattern.md` | M8 |
 | `model-provider-abstraction.md` | M2.5 ✅ |
 | `model-provider-tool-calling.md` | M2.5 ✅ |
 | `opentelemetry-observability.md` | M6 |
