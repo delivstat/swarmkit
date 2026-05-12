@@ -35,7 +35,7 @@ status: active
 | 1 | M5 | MCP integration | ✅ | MCP calls gated through governance, sandboxed execution |
 | 2 | M6 | Observability + human interaction | ✅ | AuditProvider, OTel, ring buffer, circuit breakers, notifications, CLI rewrite, redaction |
 | 2 | M6.5 | Workspace env configuration | ✅ | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
-| 2 | M7 | Intent drift detection | — | Drift scores per step, nudge on threshold breach |
+| 2 | M7 | Intent drift detection | ✅ | IntentObserver, schema extension, compiler wiring, authoring integration |
 | 3 | M8 | Knowledge + skills ecosystem (enhance) | 🟡 | Skill registry CLI + user knowledge server + knowledge curator topology |
 | 3 | M9 | Reference topologies (enhance) | 🟡 | Code review + skill authoring swarms runnable end-to-end |
 | 4 | M10 | Eject + execution modes | — | `swarmkit eject` + `swarmkit serve` + canary deployments |
