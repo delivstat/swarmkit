@@ -284,6 +284,105 @@ def knowledge_pack(
     typer.echo(pack, nl=False)
 
 
+# ---- skill registry ------------------------------------------------------
+
+
+skill_app = typer.Typer(help="Find, install, and manage community skills.")
+app.add_typer(skill_app, name="skill")
+
+
+@skill_app.command("list")
+def skill_list(
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+    available: Annotated[
+        bool,
+        typer.Option("--available", "-a", help="Show all available skills from the registry."),
+    ] = False,
+) -> None:
+    """List skills in the workspace or the reference registry."""
+    from swarmkit_runtime.skills.registry import list_available, list_installed  # noqa: PLC0415
+
+    if available:
+        entries = list_available(workspace_path.resolve())
+        label = "Available skills (reference registry)"
+    else:
+        entries = list_installed(workspace_path.resolve())
+        label = "Installed skills (workspace)"
+
+    if not entries:
+        typer.echo(
+            f"No skills found. {'Use --available to see the registry.' if not available else ''}"
+        )
+        return
+
+    typer.echo(f"\n{label}:\n")
+    for e in entries:
+        typer.echo(f"  {e.id:<30s} {e.category:<14s} {e.description[:50]}")
+
+
+@skill_app.command("search")
+def skill_search(
+    query: Annotated[str, typer.Argument(help="Search term.")],
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Search for skills in the reference registry."""
+    from swarmkit_runtime.skills.registry import search_skills  # noqa: PLC0415
+
+    results = search_skills(query, workspace_path.resolve())
+    if not results:
+        typer.echo(f"No skills matching '{query}'.")
+        return
+
+    typer.echo(f"\nFound {len(results)} skill(s) matching '{query}':\n")
+    for e in results:
+        typer.echo(f"  {e.id:<30s} {e.category:<14s} {e.description[:50]}")
+
+
+@skill_app.command("install")
+def skill_install(
+    skill_id: Annotated[str, typer.Argument(help="Skill ID to install.")],
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Install a skill from the reference registry into the workspace."""
+    from swarmkit_runtime.skills.registry import install_skill  # noqa: PLC0415
+
+    result = install_skill(skill_id, workspace_path.resolve())
+    if result is None:
+        _stderr(f"Skill '{skill_id}' not found in registry. Use `swarmkit skill list --available`.")
+        raise typer.Exit(1)
+    typer.echo(f"Installed {skill_id} → {result}")
+
+
+@skill_app.command("show")
+def skill_show(
+    skill_id: Annotated[str, typer.Argument(help="Skill ID to show.")],
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Show details of a skill from the registry or workspace."""
+    from swarmkit_runtime.skills.registry import SkillRegistry  # noqa: PLC0415
+
+    registry = SkillRegistry(workspace_path.resolve())
+    entry = registry.get(skill_id)
+    if entry is None:
+        _stderr(f"Skill '{skill_id}' not found.")
+        raise typer.Exit(1)
+
+    typer.echo(f"ID:          {entry.id}")
+    typer.echo(f"Name:        {entry.name}")
+    typer.echo(f"Category:    {entry.category}")
+    typer.echo(f"Description: {entry.description}")
+    typer.echo(f"Source:      {entry.source}")
+    typer.echo(f"Path:        {entry.path}")
+
+
 # ---- review + gaps -------------------------------------------------------
 
 
