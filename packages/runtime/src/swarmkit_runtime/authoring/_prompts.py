@@ -278,6 +278,7 @@ kind: Topology
 metadata:
   name: hello
   version: 0.1.0
+# intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }
 agents:
   root:
     id: root
@@ -306,6 +307,14 @@ Ask about:
 - The agent hierarchy (root → leaders → workers)
 - Skills each agent needs (reference existing skills in the workspace)
 - Model preferences per agent
+- Whether they want intent drift monitoring (detects when agents wander \
+from the original goal). If yes, add intent_monitoring at topology level:
+  intent_monitoring:
+    enabled: true
+    threshold: 0.75
+    on_drift: log
+  If no, add it as a YAML comment so they can enable it later:
+  # intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }
 
 Use existing archetypes and skills from the workspace when possible — list \
 what's available before suggesting new ones.

@@ -2,7 +2,7 @@
 
 > An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
 
-**Status:** M0-M6.5 complete. CLI, HTTP server, 7 model providers, MCP integration with Docker sandboxing, Knowledge MCP Server, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, 2 reference topologies, 20 skills, 16 archetypes, 480+ tests. Next: M7 (intent drift detection).
+**Status:** M0-M7 complete. CLI, HTTP server, 7 model providers, MCP integration with Docker sandboxing, Knowledge MCP Server, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, 2 reference topologies, 20 skills, 16 archetypes, 500+ tests. Next: M8 (knowledge + skills ecosystem).
 
 ## Start here
 

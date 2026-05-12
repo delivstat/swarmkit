@@ -60,6 +60,7 @@ nav:
     - CLI commands: reference/cli.md
     - Environment configuration: reference/env-config.md
     - Telemetry configuration: reference/telemetry.md
+    - Intent drift detection: reference/intent-drift.md
     - Notifications: reference/notifications.md
     - Skills catalogue: reference/skills.md
     - Archetypes catalogue: reference/archetypes.md

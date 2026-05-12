@@ -218,7 +218,7 @@ See the [Implementation Plan](architecture/implementation-plan.md) for the full 
 |---|---|---|
 | M6 | Observability: AuditProvider, OTel traces + metrics, ring buffer, circuit breakers, notifications, CLI rewrite, audit redaction | Done |
 | M6.5 | Workspace env configuration: `workspace.env.yaml` + `SWARMKIT_ENV` switching | Done |
-| M7 | Intent drift detection: embedding-based drift scoring, nudge strategies | Next |
+| M7 | Intent drift detection: IntentObserver, schema extension, compiler wiring, authoring integration | Done |
 
 ### Phase 3-4 — Ecosystem + production readiness
 

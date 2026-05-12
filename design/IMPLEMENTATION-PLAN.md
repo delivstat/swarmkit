@@ -35,7 +35,7 @@ status: active
 | 1 | M5 | MCP integration | ✅ | MCP calls gated through governance, sandboxed execution |
 | 2 | M6 | Observability + human interaction | ✅ | AuditProvider, OTel, ring buffer, circuit breakers, notifications, CLI rewrite, redaction |
 | 2 | M6.5 | Workspace env configuration | ✅ | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
-| 2 | M7 | Intent drift detection | — | Drift scores per step, nudge on threshold breach |
+| 2 | M7 | Intent drift detection | ✅ | IntentObserver, schema extension, compiler wiring, authoring integration |
 | 3 | M8 | Knowledge + skills ecosystem (enhance) | 🟡 | Skill registry CLI + user knowledge server + knowledge curator topology |
 | 3 | M9 | Reference topologies (enhance) | 🟡 | Code review + skill authoring swarms runnable end-to-end |
 | 4 | M10 | Eject + execution modes | — | `swarmkit eject` + `swarmkit serve` + canary deployments |
@@ -309,6 +309,7 @@ Make swarms useful with real knowledge sources and a rich skill catalogue.
 - [ ] **Skill registry CLI** — SKILL.md → SwarmKit YAML converter. CLI: `swarmkit skill install`, `swarmkit skill import <repo-url>`, `swarmkit skill import-mcp <repo-url>`, `swarmkit skill search`, `swarmkit skill list [--available]`.
 - [ ] **Authoring AI integration** — authoring agent searches registry before generating, proposes installing existing skills when a match is found.
 - [ ] **Knowledge server enhancements** — vector search (optional Qdrant tier), workspace-scoped knowledge queries.
+- [ ] **MCP discovery pattern** — compiler-level tool filtering so agents only see tools from their declared skills, not all tools from all servers. Prevents context bloat in workspaces with many MCP servers. See `design/details/mcp-discovery-pattern.md`.
 
 **Exit demo:** `swarmkit skill search "code review"` finds community skills. `swarmkit skill install` adds to workspace. `swarmkit author knowledge-server` generates a server from user's API docs.
 
@@ -481,7 +482,8 @@ Every design note under `design/details/` and where it appears in this plan:
 | `knowledge-pack-cli.md` | M1 ✅ |
 | `langgraph-compiler.md` | M3 ✅ |
 | `market-analysis-and-risk-mitigations.md` | M10 (canary), cross-cutting (risk awareness) |
-| `mcp-client.md` | M5 🟡 |
+| `mcp-client.md` | M5 ✅ |
+| `mcp-discovery-pattern.md` | M8 |
 | `model-provider-abstraction.md` | M2.5 ✅ |
 | `model-provider-tool-calling.md` | M2.5 ✅ |
 | `opentelemetry-observability.md` | M6 |

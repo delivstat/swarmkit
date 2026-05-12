@@ -199,7 +199,7 @@ audit:
 
 OTel traces to any backend: `SWARMKIT_OTEL_EXPORTER=console swarmkit run ...`
 
-**Coming in M7:** intent drift detection — embedding-based drift scoring with nudge strategies.
+Intent drift detection (M7 — shipped): detects when agents wander from the original goal. Add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }` to your topology.
 
 ## Reference topologies
 
@@ -265,7 +265,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M6 (observability) and M6.5 (workspace env config) complete. Current focus: M7 (intent drift detection).
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M0-M7 complete. Current focus: M8 (knowledge + skills ecosystem).
 
 ## Contributing
 
