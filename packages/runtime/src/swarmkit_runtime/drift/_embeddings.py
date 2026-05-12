@@ -1,3 +1,4 @@
+# ruff: noqa: I001
 """Embedding backend for intent drift detection.
 
 Default: sentence-transformers (local, no API keys needed).
@@ -22,7 +23,7 @@ def embed(text: str) -> list[float]:
 
     if _model is None:
         try:
-            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]  # noqa: PLC0415
 
             _model = SentenceTransformer("all-MiniLM-L6-v2", backend="onnx")
             _use_tfidf = False
@@ -31,10 +32,12 @@ def embed(text: str) -> list[float]:
             _use_tfidf = True
 
     if _use_tfidf:
-        return _model.embed(text)
+        tfidf_result: list[float] = _model.embed(text)
+        return tfidf_result
 
     result = _model.encode([text], normalize_embeddings=True)
-    return list(result[0].tolist())
+    vec: list[float] = list(result[0].tolist())
+    return vec
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
