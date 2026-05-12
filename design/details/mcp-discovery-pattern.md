@@ -89,25 +89,80 @@ This is partially what SwarmKit already does via skill-to-MCP mapping — skills
 
 The agent starts with a `list_available_servers` tool. When it needs a specific server, it calls `load_server_tools(server_id)` which dynamically adds that server's tools to its available set.
 
+## Patterns from Corsair (open-source reference)
+
+[Corsair](https://github.com/corsairdev/corsair) is an open-source "integration layer for agents" (Apache 2.0, TypeScript). Their architecture solves the same problem and has proven patterns worth adopting:
+
+### 1. Single MCP connection, many integrations
+
+Instead of N separate MCP servers each registering their tools, Corsair exposes one MCP endpoint that proxies to all integrations. Agents call `corsair.slack.api.messages.post()` — namespace-based routing, single connection.
+
+**SwarmKit equivalent:** a `swarmkit mcp-gateway` that wraps all workspace MCP servers behind one connection:
+
+```yaml
+mcp_servers:
+  - id: gateway
+    transport: stdio
+    command: ["swarmkit", "mcp-gateway"]
+    # wraps all other servers declared in workspace
+```
+
+Agent sees: `gateway.github.get_pr`, `gateway.chromadb.search`, `gateway.cdt.get_service` — one tool namespace instead of 30 separate tool registrations.
+
+### 2. Permission tiers per integration
+
+Corsair implements four tiers: `open`, `cautious` (recommended), `strict`, `readonly`. Individual endpoints within an integration can override the tier.
+
+**SwarmKit equivalent:** extend `mcp_servers:` config:
+
+```yaml
+mcp_servers:
+  - id: github
+    transport: stdio
+    command: [...]
+    permission: cautious    # reads immediate, writes need approval
+    overrides:
+      delete_branch: strict  # this specific tool needs explicit approval
+```
+
+This maps to SwarmKit's governance layer — `evaluate_action` already gates tool calls. The permission tier would set the default governance policy per-server, with per-tool overrides.
+
+### 3. Approval as a database row
+
+When an action needs human approval, Corsair creates a DB record the agent cannot access or modify. The agent blocks until the record is approved externally. The agent cannot bypass the permission by retrying or rephrasing.
+
+**SwarmKit already has this:** the HITL review queue + `HITLDeferredError` + `--resume` flow. The NotificationStore (SQLite) is the equivalent of Corsair's approval database. The key difference: Corsair enforces it at the integration layer, SwarmKit enforces it at the governance layer. Both approaches work — SwarmKit's is more flexible because governance policies can be changed per-workspace.
+
+### 4. Dynamic tool filtering by permissions
+
+Tools are computed at request time based on tenant permissions, not statically enumerated at startup. The agent only sees tools it has permission to call.
+
+**SwarmKit equivalent:** at compile time, the compiler reads the agent's IAM scopes and only registers MCP tools the agent is allowed to call. An agent with `scopes: [code:read]` only sees read tools, not write/delete tools from the same server.
+
 ## Recommendation
 
-**Option B** (compiler-level filtering) is the lowest-effort, highest-impact change. SwarmKit already maps skills to specific MCP server tools — extending this to filter the tool registration at compile time would prevent unused tools from bloating context. No new MCP server needed, no protocol changes.
+**Phase 1 (M8):** Option B — compiler-level tool filtering. The compiler already knows which skills map to which MCP tools. Extend this to only register tools the agent's skills reference. Zero new infrastructure.
 
-**Option A** (discovery wrapper) is worth building for workspaces with many servers where agents need dynamic exploration — but it's a bigger change and should come after Option B proves the concept.
+**Phase 2 (future):** Option A — unified MCP gateway with namespace routing, inspired by Corsair's single-connection model. Useful when workspaces have 10+ MCP servers. The gateway wraps them all, handles routing, and applies permission tiers.
+
+**Phase 3 (future):** Permission tiers on MCP servers, mapping to governance policies. Per-server defaults with per-tool overrides.
 
 ## Non-goals
 
 - Changing the MCP protocol
 - Building a custom tool routing layer outside MCP
 - Replacing the existing skill-to-MCP mapping
+- Full multi-tenancy (Corsair supports this for SaaS — SwarmKit doesn't need it for single-user workspaces)
 
 ## Open questions
 
 - Should the discovery pattern be opt-in per topology, or should the compiler always filter unused tools?
 - How does this interact with agents that use `skills_additional` (which merges onto archetype defaults)?
-- For Option A, should the discovery MCP server be part of the SwarmKit runtime or a separate package?
+- For the MCP gateway, should it be part of the SwarmKit runtime or a separate package?
+- Should permission tiers be a workspace-level config or per-topology?
 
 ## References
 
+- [Corsair](https://github.com/corsairdev/corsair) — open-source agent integration layer (Apache 2.0)
 - [Do we need MCP anymore?](https://corsair.dev/mcp-vs-cli) — benchmark analysis showing discovery-first MCP matches CLI performance
-- `design/details/mcp-client.md` — current MCP integration design
+- `design/details/mcp-client.md` — current SwarmKit MCP integration design
