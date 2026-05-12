@@ -10,7 +10,7 @@ class TestIntentMonitoringConfig:
     def test_defaults(self) -> None:
         config = IntentMonitoringConfig()
         assert config.enabled is False
-        assert config.threshold == 0.25
+        assert config.threshold == 0.75
         assert config.on_drift == "log"
 
     def test_from_dict(self) -> None:
