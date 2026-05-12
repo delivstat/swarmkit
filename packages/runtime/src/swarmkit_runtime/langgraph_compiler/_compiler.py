@@ -697,6 +697,7 @@ def _build_agent_node(
     provider_registry: ProviderRegistry | None = None,
 ) -> Any:
     """Build an async node function for one agent."""
+    drift_observer = _create_drift_observer(agent)
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:
         agent_id = agent.id
@@ -781,10 +782,85 @@ def _build_agent_node(
             completed_children,
         )
         await _record_completion(governance, agent_id, agent.role, result_text, _start)
+
+        if drift_observer and drift_observer.config.enabled:
+            if not drift_observer.anchor_text:
+                drift_observer.set_anchor(state.get("input", ""))
+            drift_result = drift_observer.observe(
+                step=len(drift_observer.history), output=result_text
+            )
+            await _handle_drift_result(drift_result, drift_observer, governance, agent_id, messages)
+
         return _make_result(agent_id, result_text)
 
     node_fn.__name__ = f"agent_{agent.id}"
     return node_fn
+
+
+# ---- intent drift --------------------------------------------------------
+
+
+def _create_drift_observer(agent: ResolvedAgent) -> Any:
+    """Create an IntentObserver for the agent if monitoring is configured."""
+    from swarmkit_runtime.drift import IntentMonitoringConfig, IntentObserver  # noqa: PLC0415
+
+    raw_config = getattr(agent, "intent_monitoring", None)
+    if raw_config is None:
+        return None
+
+    if isinstance(raw_config, dict):
+        config = IntentMonitoringConfig.from_dict(raw_config)
+    else:
+        config = IntentMonitoringConfig.from_dict(
+            {
+                "enabled": getattr(raw_config, "enabled", False),
+                "threshold": getattr(raw_config, "threshold", 0.75),
+                "on_drift": getattr(raw_config, "on_drift", "log"),
+            }
+        )
+
+    if not config.enabled:
+        return None
+    return IntentObserver(config)
+
+
+async def _handle_drift_result(
+    drift_result: Any,
+    observer: Any,
+    governance: GovernanceProvider,
+    agent_id: str,
+    messages: list[Message],
+) -> None:
+    """Record drift and apply strategy (log/warn/nudge)."""
+    await governance.record_event(
+        AuditEvent(
+            event_type="intent.drift",
+            agent_id=agent_id,
+            timestamp=datetime.now(tz=UTC),
+            payload={
+                "drift_score": drift_result.score,
+                "threshold": drift_result.threshold,
+                "exceeded": drift_result.exceeded,
+                "action": drift_result.action_taken,
+            },
+        )
+    )
+
+    if drift_result.exceeded and drift_result.action_taken == "nudge":
+        nudge_msg = observer.get_nudge_message()
+        messages.append(Message(role="user", content=nudge_msg))
+        if os.environ.get("SWARMKIT_VERBOSE"):
+            print(
+                f"  [drift] score={drift_result.score:.4f} "
+                f"threshold={drift_result.threshold} → nudge injected",
+                file=sys.stderr,
+            )
+    elif drift_result.exceeded and os.environ.get("SWARMKIT_VERBOSE"):
+        print(
+            f"  [drift] score={drift_result.score:.4f} "
+            f"threshold={drift_result.threshold} → {drift_result.action_taken}",
+            file=sys.stderr,
+        )
 
 
 # ---- routing / edges ----------------------------------------------------

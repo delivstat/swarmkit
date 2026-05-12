@@ -15,7 +15,8 @@
     "metadata": { "$ref": "#/$defs/metadata" },
     "runtime": { "$ref": "#/$defs/runtime" },
     "agents": { "$ref": "#/$defs/agents" },
-    "artifacts": { "$ref": "#/$defs/artifacts" }
+    "artifacts": { "$ref": "#/$defs/artifacts" },
+    "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" }
   },
   "$defs": {
     "identifier": {
@@ -90,6 +91,7 @@
           "description": "Skills merged onto the archetype defaults (design §6.6)."
         },
         "iam": { "$ref": "#/$defs/iam" },
+        "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" },
         "children": {
           "type": "array",
           "items": { "$ref": "#/$defs/child_agent" },
@@ -100,7 +102,16 @@
     "child_agent": {
       "allOf": [
         { "$ref": "#/$defs/agent" },
-        { "properties": { "role": { "enum": ["leader", "worker"] } } }
+        {
+          "properties": {
+            "role": { "enum": ["leader", "worker"] },
+            "depends_on": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Agent IDs that must complete before this agent runs. Enables DAG-based execution ordering."
+            }
+          }
+        }
       ]
     },
     "model": {
@@ -167,6 +178,27 @@
             "enabled": { "type": "boolean" },
             "surface_threshold": { "type": "integer", "minimum": 1 }
           }
+        }
+      }
+    },
+    "intent_monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional intent drift detection. Monitors semantic drift from the original goal. See design/details/intent-drift-detection.md.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable drift detection for this topology."
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Drift score above which action is taken. Default: 0.75. Range guide: 0.5=aggressive, 0.75=balanced, 0.9=permissive."
+        },
+        "on_drift": {
+          "enum": ["log", "warn", "nudge"],
+          "description": "Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject refocus message."
         }
       }
     }

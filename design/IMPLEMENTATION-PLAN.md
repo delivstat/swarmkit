@@ -278,9 +278,11 @@ Add observability, intent drift detection, and operational tooling. Everything h
 - [ ] **OTel integration** — drift scores as span events with `swarmkit.drift.*` attributes.
 - [ ] **OTel drift metrics** — histogram: `swarmkit.agent.drift.score`. Counter: drift threshold breaches.
 
+- [ ] **Authoring integration** — `swarmkit init` and `swarmkit author topology` ask if the user wants intent monitoring. If yes, add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: log }`. If no, add as a commented-out block so users discover the feature.
+
 **Not in scope:** `threshold: auto` self-learning mode. Needs feedback signal design, cold-start strategy, and run history storage (Rynko). See open questions in design note.
 
-**Exit demo:** reference topology with `intent_monitoring: { enabled: true, threshold: 0.25, on_drift: nudge }`. Run it, show drift scores per step in CLI output. Demonstrate a nudge firing when an agent drifts past threshold. OTel console exporter shows drift events in spans.
+**Exit demo:** reference topology with `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }`. Run it, show drift scores per step in CLI output. Demonstrate a nudge firing when an agent drifts past threshold. OTel console exporter shows drift events in spans.
 
 ---
 
