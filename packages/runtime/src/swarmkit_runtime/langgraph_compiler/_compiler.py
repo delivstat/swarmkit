@@ -366,7 +366,7 @@ async def _run_tool_loop(
     text response (no more tool calls) or we hit the turn limit. Includes
     nudging for incomplete responses.
     """
-    _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "15"))
+    _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "25"))
     loop_messages = list(messages)
     current_response = response
     current_results = tool_results
@@ -449,7 +449,28 @@ async def _run_tool_loop(
             break
         current_results = next_results
 
-    return _extract_text(current_response)
+    text = _extract_text(current_response)
+    if text:
+        return text
+
+    if verbose:
+        print("  [tool limit reached — forcing synthesis]", file=sys.stderr)
+    loop_messages.append(
+        Message(role="assistant", content=list(current_response.content)),
+    )
+    loop_messages.append(
+        Message(
+            role="user",
+            content=(
+                "You have reached the tool call limit. Do NOT call any more tools. "
+                "Based on ALL the information you have gathered so far, write your "
+                "complete analysis now. Synthesize everything into a final response."
+            ),
+        ),
+    )
+    synthesis_req = _build_completion_request(model_name, loop_messages, system_prompt, [], agent)
+    synthesis_response = await model_provider.complete(synthesis_req)
+    return _extract_text(synthesis_response) or "(analysis incomplete — tool limit reached)"
 
 
 async def _dispatch_response(  # noqa: PLR0912
