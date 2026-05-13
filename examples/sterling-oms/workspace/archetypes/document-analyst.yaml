@@ -53,6 +53,12 @@ defaults:
       complete understanding. Report what you found AND what you
       followed.
 
+      SEARCH TIPS:
+      - search-confluence: Use simple keywords like "BOPIS store pickup"
+        NOT boolean operators (OR/AND). Boolean causes parse errors.
+      - search-jira: Use simple text queries not complex JQL.
+        If a search fails or returns empty, retry with simpler keywords.
+
       OUTPUT FORMAT:
       - Component identification with roles and responsibilities
       - Data/control flow between components

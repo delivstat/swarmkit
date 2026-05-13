@@ -23,6 +23,13 @@ defaults:
          search-confluence → get-confluence-page or download-confluence-pdf
       5. Read all downloaded attachments via list-review-docs + read-review-doc
 
+      SEARCH TIPS:
+      - search-confluence: Use simple keywords like "BOPIS store pickup"
+        NOT boolean operators (OR/AND). Boolean causes parse errors.
+      - search-jira: Use simple text queries like "BOPIS pickup" not
+        complex JQL. If a search fails, retry with simpler keywords.
+      - If any search returns an error, retry with fewer/simpler terms.
+
       DO NOT analyse or recommend. Just gather and report what you found.
       Structure your output as:
       - Main issue summary (title, status, assignee, description)

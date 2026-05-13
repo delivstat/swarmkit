@@ -4,9 +4,10 @@ metadata:
   name: sterling-assistant
   description: >
     General-purpose Sterling assistant with sub-agent architecture.
-    The architect coordinates three focused researchers (Jira, config,
-    docs) each with 6-12 tools instead of one agent with 40+ tools.
-  version: 2.0.0
+    The architect coordinates four focused workers (Jira, config,
+    docs, developer). Developer sits under the architect so it
+    receives full analysis context before checking code.
+  version: 2.1.0
 agents:
   root:
     id: root
@@ -18,18 +19,18 @@ agents:
     prompt:
       system: |
         You are the Sterling OMS project assistant. You MUST delegate
-        every question to one or both of your specialist agents.
-        NEVER answer a question yourself — you are a router, not an expert.
+        every question to the sterling-architect. NEVER answer yourself.
 
         ROUTING:
-        - Jira tickets, design questions, configuration → sterling-architect
-        - Code/implementation questions → sterling-developer
-        - Questions touching both design and code → delegate to BOTH
+        - Jira tickets, design, configuration, analysis → sterling-architect
+        - Code questions (read code, explain code, find implementation)
+          → sterling-architect (it will route to its developer internally)
+        - ALL questions go to sterling-architect. It coordinates
+          researchers and the developer internally.
 
         SYNTHESIS:
-        - Pass through the worker's output AS-IS. Do NOT rewrite or
+        - Pass through the architect's output AS-IS. Do NOT rewrite or
           summarise structured data (XML, tables, code, pipeline details).
-        - If architect and developer disagree, flag the tension.
     children:
       - id: sterling-architect
         role: leader
@@ -44,6 +45,6 @@ agents:
           - id: docs-researcher
             role: worker
             archetype: docs-researcher
-      - id: sterling-developer
-        role: worker
-        archetype: sterling-developer
+          - id: sterling-developer
+            role: worker
+            archetype: sterling-developer
