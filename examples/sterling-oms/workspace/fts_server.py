@@ -30,11 +30,16 @@ def _get_conn() -> sqlite3.Connection:
 
 @server.tool()
 def search_text(query: str, limit: int = 10) -> str:
-    """Full-text search over documentation. Fast exact keyword matching with ranking."""
+    """Full-text search over documentation. Fast exact keyword matching with ranking.
+
+    Results include chunk_id — use get_full_chunk(chunk_id) to read the
+    complete text of any result.
+    """
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT source, file_name, snippet(docs_fts, 3, '>>>', '<<<', '...', 64), "
+            "SELECT source, file_name, chunk_id, "
+            "       snippet(docs_fts, 3, '>>>', '<<<', '...', 64), "
             "       rank "
             "FROM docs_fts "
             "WHERE docs_fts MATCH ? "
@@ -51,8 +56,10 @@ def search_text(query: str, limit: int = 10) -> str:
         return f"No results for '{query}'. Try different keywords."
 
     lines = [f"Found {len(rows)} results:\n"]
-    for source, file_name, snippet, _rank in rows:
+    lines.append("Use get_full_chunk(chunk_id) to read the full text of any result.\n")
+    for source, file_name, chunk_id, snippet, _rank in rows:
         lines.append(f"**{file_name}** ({source})")
+        lines.append(f"  chunk_id: {chunk_id}")
         lines.append(f"  {snippet}")
         lines.append("")
     return "\n".join(lines)
@@ -60,11 +67,16 @@ def search_text(query: str, limit: int = 10) -> str:
 
 @server.tool()
 def search_text_by_file(query: str, file_pattern: str, limit: int = 10) -> str:
-    """Search within files matching a pattern (e.g. 'order' for order-related files)."""
+    """Search within files matching a pattern (e.g. 'order' for order-related files).
+
+    Results include chunk_id — use get_full_chunk(chunk_id) to read the
+    complete text of any result.
+    """
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT source, file_name, snippet(docs_fts, 3, '>>>', '<<<', '...', 64) "
+            "SELECT source, file_name, chunk_id, "
+            "       snippet(docs_fts, 3, '>>>', '<<<', '...', 64) "
             "FROM docs_fts "
             "WHERE docs_fts MATCH ? AND file_name LIKE ? "
             "ORDER BY rank "
@@ -80,8 +92,10 @@ def search_text_by_file(query: str, file_pattern: str, limit: int = 10) -> str:
         return f"No results for '{query}' in files matching '{file_pattern}'."
 
     lines = [f"Found {len(rows)} results:\n"]
-    for source, file_name, snippet in rows:
+    lines.append("Use get_full_chunk(chunk_id) to read the full text of any result.\n")
+    for source, file_name, chunk_id, snippet in rows:
         lines.append(f"**{file_name}** ({source})")
+        lines.append(f"  chunk_id: {chunk_id}")
         lines.append(f"  {snippet}")
         lines.append("")
     return "\n".join(lines)
