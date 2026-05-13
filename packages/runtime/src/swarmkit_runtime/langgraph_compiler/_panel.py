@@ -49,7 +49,8 @@ async def _parallel_consensus(
         )
         for s in skills
     ]
-    results = await asyncio.gather(*tasks)
+    raw_results = await asyncio.gather(*tasks)
+    results = [r[0] if isinstance(r, tuple) else r for r in raw_results]
 
     votes = _parse_votes(skills, results)
     return json.dumps(_aggregate_majority(votes))
@@ -64,9 +65,10 @@ async def _sequential(
     """Judges run in order. First fail stops the chain."""
     votes: list[dict[str, Any]] = []
     for skill in skills:
-        result = await execute_skill(
+        raw_result = await execute_skill(
             skill, input_text=input_text, model_provider=model_provider, model_name=model_name
         )
+        result = raw_result[0] if isinstance(raw_result, tuple) else raw_result
         vote = _parse_single_vote(skill.id, result)
         votes.append(vote)
         if vote.get("verdict") == "fail":

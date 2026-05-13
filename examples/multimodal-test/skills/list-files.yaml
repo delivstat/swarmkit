@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: list-files
+  name: List Files
+  description: List files in a directory to discover documents and images
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: docs-reader
+  tool: list_files

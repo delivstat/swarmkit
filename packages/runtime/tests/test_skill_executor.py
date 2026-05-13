@@ -38,8 +38,8 @@ async def test_llm_prompt_skill_executes() -> None:
         model_provider=mock,
         model_name="mock",
     )
-    # mcp_tool should return a not-yet-available message
-    assert "MCP" in result or "not yet" in result.lower()
+    text = result[0] if isinstance(result, tuple) else result
+    assert "MCP" in text or "not yet" in text.lower()
 
 
 @pytest.mark.asyncio

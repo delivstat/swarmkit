@@ -1,8 +1,18 @@
-"""Document reader MCP server — extract text and structure from files.
+"""Document reader MCP server — visual image analysis and structured file parsing.
 
-Supports PDF, DOCX, Excel, CSV, draw.io XML, SVG, and plain text.
-Document parsing libraries are optional — tools that need missing
-libraries return a clear install instruction instead of failing silently.
+Complements MarkItDown (which handles PDF, DOCX, Excel, PPTX → markdown).
+This server provides tools MarkItDown doesn't: visual image return for
+multimodal models, draw.io/SVG diagram parsing, CSV reading, and file discovery.
+
+For document reading, configure the markitdown MCP server alongside this one:
+
+    mcp_servers:
+      - id: markitdown
+        transport: stdio
+        command: ["uvx", "markitdown-mcp"]
+      - id: docs-reader
+        transport: stdio
+        command: ["swarmkit", "docs-reader"]
 
 See ``design/details/document-reader-mcp.md``.
 """
@@ -22,10 +32,16 @@ server = FastMCP("swarmkit-docs-reader")
 
 _workspace_root: Path | None = None
 
-_MAX_TEXT_BYTES = 500 * 1024
-_MAX_PDF_PAGES = 50
-_MAX_EXCEL_ROWS = 100
 _MAX_CSV_ROWS = 100
+
+_IMAGE_MIME_TYPES: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
 
 
 def _resolve_path(path: str) -> Path:
@@ -44,226 +60,48 @@ def _truncation_notice(actual: int, limit: int, unit: str, hint: str) -> str:
     )
 
 
-@server.tool()
-def read_pdf(
-    path: str,
-    start_page: int = 1,
-    end_page: int | None = None,
-) -> str:
-    """Extract text from a PDF file.
-
-    Args:
-        path: File path (relative to workspace root or absolute).
-        start_page: First page to extract (1-indexed, default 1).
-        end_page: Last page to extract (inclusive). Defaults to start_page + 49.
-    """
-    try:
-        import pymupdf  # type: ignore[import-not-found]  # noqa: PLC0415
-    except ImportError:
-        return (
-            "ERROR: pymupdf is not installed. Install it with:\n"
-            "  pip install pymupdf\n"
-            "  # or: uv pip install pymupdf"
-        )
-
-    resolved = _resolve_path(path)
-    if not resolved.exists():
-        return f"ERROR: file not found: {resolved}"
-
-    try:
-        doc = pymupdf.open(str(resolved))
-    except Exception as exc:
-        return f"ERROR: cannot open PDF: {exc}"
-
-    total_pages = len(doc)
-    start = max(0, start_page - 1)
-    end = min(total_pages, (end_page or start + _MAX_PDF_PAGES))
-    truncated = end < total_pages and end_page is None
-
-    parts: list[str] = [f"# {resolved.name} ({total_pages} pages)\n"]
-    for i in range(start, end):
-        page = doc[i]
-        text = page.get_text()
-        parts.append(f"## Page {i + 1}\n\n{text.strip()}\n")
-
-    doc.close()
-
-    result = "\n".join(parts)
-    if truncated:
-        result += _truncation_notice(total_pages, end - start, "pages", "start_page/end_page")
-    return result
+# ---- visual image tools (unique to this server) ----------------------------
 
 
 @server.tool()
-def read_docx(path: str) -> str:
-    """Extract text from a DOCX file, preserving heading hierarchy.
+def view_image(path: str) -> list[Any]:
+    """Return an image as visual content for multimodal models.
+
+    Returns the raw image bytes so a vision-capable model (Claude Sonnet,
+    GPT-4o, Gemini) can see and analyze diagrams, charts, screenshots,
+    and other visual content directly. This is NOT OCR — the model sees
+    the actual image.
 
     Args:
         path: File path (relative to workspace root or absolute).
     """
-    try:
-        import docx  # type: ignore[import-not-found]  # noqa: PLC0415
-    except ImportError:
-        return (
-            "ERROR: python-docx is not installed. Install it with:\n"
-            "  pip install python-docx\n"
-            "  # or: uv pip install python-docx"
-        )
+    import base64  # noqa: PLC0415
+
+    from mcp.types import ImageContent, TextContent  # noqa: PLC0415
 
     resolved = _resolve_path(path)
     if not resolved.exists():
-        return f"ERROR: file not found: {resolved}"
+        return [TextContent(type="text", text=f"ERROR: file not found: {resolved}")]
 
-    try:
-        document = docx.Document(str(resolved))
-    except Exception as exc:
-        return f"ERROR: cannot open DOCX: {exc}"
+    ext = resolved.suffix.lower()
+    mime_type = _IMAGE_MIME_TYPES.get(ext)
+    if mime_type is None:
+        return [
+            TextContent(
+                type="text",
+                text=f"ERROR: unsupported image format '{ext}'. "
+                f"Supported: {', '.join(sorted(_IMAGE_MIME_TYPES.keys()))}",
+            )
+        ]
 
-    parts: list[str] = [f"# {resolved.name}\n"]
-    for para in document.paragraphs:
-        style = para.style.name if para.style else ""
-        text = para.text.strip()
-        if not text:
-            continue
-        if style.startswith("Heading 1"):
-            parts.append(f"\n## {text}\n")
-        elif style.startswith("Heading 2"):
-            parts.append(f"\n### {text}\n")
-        elif style.startswith("Heading 3"):
-            parts.append(f"\n#### {text}\n")
-        elif style.startswith("Heading"):
-            parts.append(f"\n##### {text}\n")
-        else:
-            parts.append(text)
-
-    for table in document.tables:
-        parts.append(_docx_table_to_markdown(table))
-
-    result = "\n".join(parts)
-    if len(result.encode()) > _MAX_TEXT_BYTES:
-        result = result[:_MAX_TEXT_BYTES] + "\n\n--- TRUNCATED at 500KB ---"
-    return result
+    data = base64.standard_b64encode(resolved.read_bytes()).decode("ascii")
+    return [
+        TextContent(type="text", text=f"Image: {resolved.name} ({ext}, {len(data)} bytes base64)"),
+        ImageContent(type="image", data=data, mimeType=mime_type),
+    ]
 
 
-def _docx_table_to_markdown(table: Any) -> str:
-    """Convert a python-docx Table to a markdown table."""
-    rows: list[list[str]] = []
-    for row in table.rows:
-        cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
-        rows.append(cells)
-    if not rows:
-        return ""
-    header = "| " + " | ".join(rows[0]) + " |"
-    separator = "| " + " | ".join("---" for _ in rows[0]) + " |"
-    body = "\n".join("| " + " | ".join(r) + " |" for r in rows[1:])
-    return f"\n{header}\n{separator}\n{body}\n"
-
-
-@server.tool()
-def read_excel(
-    path: str,
-    sheet: str | None = None,
-    max_rows: int = _MAX_EXCEL_ROWS,
-) -> str:
-    """Extract data from an Excel file as markdown tables.
-
-    Args:
-        path: File path (relative to workspace root or absolute).
-        sheet: Sheet name to read. Reads all sheets if not specified.
-        max_rows: Maximum rows per sheet (default 100).
-    """
-    try:
-        import openpyxl  # type: ignore[import-untyped]  # noqa: PLC0415
-    except ImportError:
-        return (
-            "ERROR: openpyxl is not installed. Install it with:\n"
-            "  pip install openpyxl\n"
-            "  # or: uv pip install openpyxl"
-        )
-
-    resolved = _resolve_path(path)
-    if not resolved.exists():
-        return f"ERROR: file not found: {resolved}"
-
-    try:
-        wb = openpyxl.load_workbook(str(resolved), read_only=True, data_only=True)
-    except Exception as exc:
-        return f"ERROR: cannot open Excel file: {exc}"
-
-    sheet_names = [sheet] if sheet else wb.sheetnames
-    parts: list[str] = [f"# {resolved.name}\n"]
-
-    for sname in sheet_names:
-        if sname not in wb.sheetnames:
-            parts.append(f"\n## Sheet: {sname}\n\nERROR: sheet not found.\n")
-            continue
-
-        ws = wb[sname]
-        parts.append(f"\n## Sheet: {sname}\n")
-
-        rows: list[list[str]] = []
-        total_rows = 0
-        for row in ws.iter_rows(values_only=True):
-            total_rows += 1
-            if total_rows <= max_rows + 1:
-                rows.append([str(c) if c is not None else "" for c in row])
-
-        if not rows:
-            parts.append("(empty sheet)\n")
-            continue
-
-        header = "| " + " | ".join(rows[0]) + " |"
-        separator = "| " + " | ".join("---" for _ in rows[0]) + " |"
-        body = "\n".join("| " + " | ".join(r) + " |" for r in rows[1:])
-        parts.append(f"{header}\n{separator}\n{body}\n")
-
-        if total_rows > max_rows + 1:
-            parts.append(_truncation_notice(total_rows - 1, max_rows, "rows", "max_rows"))
-
-    wb.close()
-    return "\n".join(parts)
-
-
-@server.tool()
-def read_csv(
-    path: str,
-    max_rows: int = _MAX_CSV_ROWS,
-    delimiter: str = ",",
-) -> str:
-    """Read a CSV file and return it as a markdown table.
-
-    Args:
-        path: File path (relative to workspace root or absolute).
-        max_rows: Maximum data rows to include (default 100).
-        delimiter: Column delimiter (default comma).
-    """
-    resolved = _resolve_path(path)
-    if not resolved.exists():
-        return f"ERROR: file not found: {resolved}"
-
-    try:
-        with open(resolved, newline="", encoding="utf-8", errors="replace") as f:
-            reader = csv.reader(f, delimiter=delimiter)
-            rows: list[list[str]] = []
-            total = 0
-            for row in reader:
-                total += 1
-                if total <= max_rows + 1:
-                    rows.append([c.strip() for c in row])
-    except Exception as exc:
-        return f"ERROR: cannot read CSV: {exc}"
-
-    if not rows:
-        return f"# {resolved.name}\n\n(empty file)"
-
-    header = "| " + " | ".join(rows[0]) + " |"
-    separator = "| " + " | ".join("---" for _ in rows[0]) + " |"
-    body = "\n".join("| " + " | ".join(r) + " |" for r in rows[1:])
-    result = f"# {resolved.name}\n\n{header}\n{separator}\n{body}"
-
-    if total > max_rows + 1:
-        result += _truncation_notice(total - 1, max_rows, "rows", "max_rows")
-    return result
+# ---- structured parsing tools (not covered by MarkItDown) ------------------
 
 
 @server.tool()
@@ -348,7 +186,6 @@ def read_svg(path: str) -> str:
         return f"ERROR: cannot parse SVG: {exc}"
 
     root = tree.getroot()
-    ns = {"svg": "http://www.w3.org/2000/svg"}
 
     texts: list[str] = []
     for elem in root.iter():
@@ -366,6 +203,7 @@ def read_svg(path: str) -> str:
             if t:
                 texts.append(f"[description: {t}]")
 
+    ns = {"svg": "http://www.w3.org/2000/svg"}
     title_elem = root.find("svg:title", ns) or root.find("title")
     title = (title_elem.text if title_elem is not None else None) or resolved.name
 
@@ -381,51 +219,45 @@ def read_svg(path: str) -> str:
 
 
 @server.tool()
-def read_image(path: str) -> str:
-    """Extract text from an image using OCR.
-
-    Requires tesseract to be installed on the system.
-    For diagram understanding, consider using a multimodal model instead.
+def read_csv(
+    path: str,
+    max_rows: int = _MAX_CSV_ROWS,
+    delimiter: str = ",",
+) -> str:
+    """Read a CSV file and return it as a markdown table.
 
     Args:
         path: File path (relative to workspace root or absolute).
+        max_rows: Maximum data rows to include (default 100).
+        delimiter: Column delimiter (default comma).
     """
     resolved = _resolve_path(path)
     if not resolved.exists():
         return f"ERROR: file not found: {resolved}"
 
     try:
-        from PIL import Image  # type: ignore[import-not-found]  # noqa: PLC0415
-    except ImportError:
-        return (
-            "ERROR: Pillow is not installed. Install it with:\n"
-            "  pip install Pillow\n"
-            "  # or: uv pip install Pillow"
-        )
-
-    try:
-        import pytesseract  # type: ignore[import-not-found]  # noqa: PLC0415
-    except ImportError:
-        return (
-            "ERROR: pytesseract is not installed. Install it with:\n"
-            "  pip install pytesseract\n"
-            "  # Also install tesseract OCR: sudo apt install tesseract-ocr"
-        )
-
-    try:
-        img = Image.open(resolved)
-        text = pytesseract.image_to_string(img)
+        with open(resolved, newline="", encoding="utf-8", errors="replace") as f:
+            reader = csv.reader(f, delimiter=delimiter)
+            rows: list[list[str]] = []
+            total = 0
+            for row in reader:
+                total += 1
+                if total <= max_rows + 1:
+                    rows.append([c.strip() for c in row])
     except Exception as exc:
-        return f"ERROR: cannot process image: {exc}"
+        return f"ERROR: cannot read CSV: {exc}"
 
-    if not text.strip():
-        return (
-            f"# {resolved.name}\n\n"
-            "(no text detected via OCR — this image may contain diagrams "
-            "or graphics that require a multimodal model to understand)"
-        )
+    if not rows:
+        return f"# {resolved.name}\n\n(empty file)"
 
-    return f"# {resolved.name} (OCR extraction)\n\n{text.strip()}"
+    header = "| " + " | ".join(rows[0]) + " |"
+    separator = "| " + " | ".join("---" for _ in rows[0]) + " |"
+    body = "\n".join("| " + " | ".join(r) + " |" for r in rows[1:])
+    result = f"# {resolved.name}\n\n{header}\n{separator}\n{body}"
+
+    if total > max_rows + 1:
+        result += _truncation_notice(total - 1, max_rows, "rows", "max_rows")
+    return result
 
 
 @server.tool()

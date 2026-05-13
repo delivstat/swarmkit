@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -373,14 +373,16 @@ async def _run_tool_loop(
 
     for _turn in range(_max_tool_turns):
         assistant_blocks = list(current_response.content)
-        tool_result_blocks = [
-            ContentBlock(
-                type="tool_result",
-                tool_use_id=tr.tool_use_id,
-                tool_result=_truncate_result(tr.result),
+        tool_result_blocks: list[ContentBlock] = []
+        for tr in current_results:
+            tool_result_blocks.append(
+                ContentBlock(
+                    type="tool_result",
+                    tool_use_id=tr.tool_use_id,
+                    tool_result=_truncate_result(tr.result),
+                )
             )
-            for tr in current_results
-        ]
+            tool_result_blocks.extend(tr.image_blocks)
         loop_messages.append(
             Message(role="assistant", content=assistant_blocks),
         )
@@ -1136,6 +1138,7 @@ class ToolCallResult:
     tool_use_id: str
     tool_name: str
     result: str
+    image_blocks: list[ContentBlock] = field(default_factory=list)
 
 
 async def _handle_skill_tool_calls(
@@ -1177,7 +1180,7 @@ async def _handle_skill_tool_calls(
             input_text = block.tool_input
         if _verbose:
             print(f"  executing: {block.tool_name}", file=sys.stderr)
-        result = await execute_skill(
+        raw_result = await execute_skill(
             skill,
             input_text=input_text,
             model_provider=model_provider,
@@ -1186,11 +1189,16 @@ async def _handle_skill_tool_calls(
             governance=governance,
             agent_id=agent.id,
         )
+        if isinstance(raw_result, tuple):
+            text_result, images = raw_result
+        else:
+            text_result, images = raw_result, []
         results.append(
             ToolCallResult(
                 tool_use_id=block.tool_use_id or f"call_{len(results)}",
                 tool_name=block.tool_name,
-                result=result or "(no result)",
+                result=text_result or "(no result)",
+                image_blocks=images,
             )
         )
 
