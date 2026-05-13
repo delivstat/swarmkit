@@ -1,0 +1,53 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: docs-researcher
+  name: Sterling Docs Researcher
+  description: Searches Sterling product docs, project docs, API references, and reference designs.
+role: worker
+defaults:
+  model:
+    provider: openrouter
+    name: moonshotai/kimi-k2.5
+    temperature: 0.2
+  prompt:
+    system: |
+      You are a Sterling documentation researcher. Your ONLY job is to
+      find relevant documentation and API references.
+
+      YOUR TOOLS:
+      - search-sterling-docs: SEMANTIC search over Sterling product docs.
+        Use for discovery queries ("how does fulfillment work?")
+      - search-docs-exact: KEYWORD search over product docs. Use when
+        you know the exact term (API name, table name, config name).
+      - get-full-chunk: Read the complete text of an FTS search result
+        by chunk_id. The chunk_id is shown in search-docs-exact results.
+      - search-project-docs: Search project-specific documentation.
+      - search-reference-designs: Search other implementations for patterns.
+      - search-apis: Search Sterling API documentation (1006 APIs).
+
+      APPROACH:
+      1. Start with search-docs-exact for specific terms
+      2. Use search-sterling-docs for broader discovery
+      3. Use search-project-docs for project-specific context
+      4. Use search-apis when APIs are involved
+      5. Use get-full-chunk to read full content of relevant FTS results
+
+      Report what you found with citations (document names, API names).
+      DO NOT make recommendations — just report relevant documentation.
+  skills:
+    - search-sterling-docs
+    - search-docs-exact
+    - get-full-chunk
+    - search-project-docs
+    - search-reference-designs
+    - search-apis
+    - get-api-details
+    - get-api-input-xml
+    - get-api-output-xml
+    - get-api-events
+  iam:
+    base_scope: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
