@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: multimodal-test
+  name: Multimodal Test
+
+governance:
+  provider: mock

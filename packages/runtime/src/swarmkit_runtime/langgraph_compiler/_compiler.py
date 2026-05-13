@@ -467,6 +467,7 @@ async def _dispatch_response(  # noqa: PLR0912
     verbose: str,
     all_agents: dict[str, ResolvedAgent] | None = None,
     provider_registry: ProviderRegistry | None = None,
+    image_paths: list[str] | None = None,
 ) -> dict[str, Any] | tuple[CompletionResponse, list[Message]]:
     """Run the retry loop: delegation, tool-loop, or text-with-retry.
 
@@ -492,6 +493,7 @@ async def _dispatch_response(  # noqa: PLR0912
                     mcp_manager,
                     provider_registry,
                     verbose,
+                    image_paths=image_paths,
                 )
                 merged_messages = []
                 for cid, result in dag_results.items():
@@ -540,7 +542,7 @@ async def _dispatch_response(  # noqa: PLR0912
                     "agent_results": {},
                     "current_agent": cid,
                     "output": "",
-                    "image_paths": [],
+                    "image_paths": list(image_paths or []),
                 }
                 child_provider = _resolve_agent_provider(
                     child,
@@ -760,6 +762,7 @@ def _build_agent_node(
             _verbose,
             all_agents=all_agents,
             provider_registry=provider_registry,
+            image_paths=state.get("image_paths", []),
         )
         if isinstance(result, dict):
             await _record_completion(
@@ -1054,7 +1057,7 @@ def _build_prompt_messages(  # noqa: PLR0912
                     break
             user_text = str(last_human or task)
             image_paths = state.get("image_paths", [])
-            if image_paths:
+            if image_paths and not agent.children:
                 import contextlib  # noqa: PLC0415
 
                 blocks: list[ContentBlock] = [ContentBlock(type="text", text=user_text)]
@@ -1236,6 +1239,7 @@ async def _run_dag(
     mcp_manager: Any,
     provider_registry: ProviderRegistry | None,
     verbose: str,
+    image_paths: list[str] | None = None,
 ) -> dict[str, str]:
     """Execute child agents in dependency order. Returns {child_id: result}."""
     import asyncio as _asyncio  # noqa: PLC0415
@@ -1281,7 +1285,7 @@ async def _run_dag(
                 "agent_results": {},
                 "current_agent": child.id,
                 "output": "",
-                "image_paths": [],
+                "image_paths": list(image_paths or []),
             }
             child_provider = _resolve_agent_provider(
                 child,

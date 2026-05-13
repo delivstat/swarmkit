@@ -1,0 +1,39 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: diagram-analysis
+  version: 0.1.0
+  description: Multi-agent topology where coordinator delegates diagram analysis to a vision-capable agent
+agents:
+  root:
+    id: coordinator
+    role: root
+    model:
+      provider: openrouter
+      name: meta-llama/llama-3.3-70b-instruct
+    prompt:
+      system: |
+        You are a project coordinator. You receive architecture diagrams and need to
+        delegate their analysis to your specialist worker — the diagram-analyst.
+
+        Delegate to diagram-analyst with the task: "Analyze the architecture diagrams
+        and describe the components, data flow, and architectural patterns."
+
+        After receiving the analyst's response, present it as the final answer.
+    children:
+      - id: diagram-analyst
+        role: worker
+        model:
+          provider: openrouter
+          name: anthropic/claude-sonnet-4-6
+        prompt:
+          system: |
+            You are a technical diagram analyst with expertise in software architecture.
+            When given architecture diagrams, flow charts, or system diagrams, provide:
+
+            1. Component identification — what are the major components/services
+            2. Data flow — how do components communicate
+            3. Patterns — what architectural patterns are used
+            4. Observations — anything notable about the design
+
+            Be specific and reference what you see in the diagrams.
