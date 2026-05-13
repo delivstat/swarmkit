@@ -118,6 +118,17 @@ export interface MCPServerElement {
     env?: { [key: string]: string };
     id:   string;
     /**
+     * Governance permission tier for this server's tools. open: skip governance checks.
+     * cautious (default): reads auto-approved, writes go through governance. strict: all calls
+     * require explicit approval. readonly: write operations denied.
+     */
+    permission?: Permission;
+    /**
+     * Per-tool permission overrides. Keys are MCP tool names, values are permission tiers that
+     * override the server default.
+     */
+    permission_overrides?: { [key: string]: Permission };
+    /**
      * Docker image for sandboxed servers. Defaults to swarmkit-mcp-sandbox (Python + mcp SDK).
      * Use node:22-slim for Node.js servers.
      */
@@ -128,6 +139,13 @@ export interface MCPServerElement {
     sandboxed?: boolean;
     transport:  Transport;
 }
+
+/**
+ * Governance permission tier for this server's tools. open: skip governance checks.
+ * cautious (default): reads auto-approved, writes go through governance. strict: all calls
+ * require explicit approval. readonly: write operations denied.
+ */
+export type Permission = "open" | "cautious" | "strict" | "readonly";
 
 export type Transport = "stdio" | "http";
 

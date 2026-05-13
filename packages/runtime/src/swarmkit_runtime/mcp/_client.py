@@ -30,6 +30,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolResult
 from swarmkit_schema.models.workspace import McpServer
 
+PermissionTier = Literal["open", "cautious", "strict", "readonly"]
+
 
 @dataclass(frozen=True)
 class MCPServerConfig:
@@ -48,6 +50,8 @@ class MCPServerConfig:
     cwd: str = ""
     sandboxed: bool = False
     sandbox_image: str = ""
+    permission: PermissionTier = "cautious"
+    permission_overrides: dict[str, PermissionTier] = field(default_factory=dict)
 
 
 class MCPClientManager:
@@ -172,6 +176,20 @@ class MCPClientManager:
         session = await self._stack.enter_async_context(ClientSession(*transport))
         await session.initialize()
         return session
+
+    def get_permission(self, server_id: str, tool_name: str) -> PermissionTier:
+        """Resolve the effective permission tier for a server+tool.
+
+        Per-tool overrides take precedence over the server default.
+        Returns ``"cautious"`` if the server is not configured.
+        """
+        cfg = self._configs.get(server_id)
+        if cfg is None:
+            return "cautious"
+        override = cfg.permission_overrides.get(tool_name)
+        if override is not None:
+            return override
+        return cfg.permission
 
     def get_server_cwd(self, server_id: str) -> str | None:
         """Return the resolved cwd for a server, or ``None``."""
@@ -408,6 +426,14 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
         transport: Literal["stdio", "http"] = (
             "http" if server.transport.value == "http" else "stdio"
         )
+        perm_raw = getattr(server, "permission", None)
+        permission: PermissionTier = (
+            perm_raw.value if hasattr(perm_raw, "value") else str(perm_raw or "cautious")
+        )
+        overrides_raw = getattr(server, "permission_overrides", None) or {}
+        overrides: dict[str, PermissionTier] = {
+            k: (v.value if hasattr(v, "value") else str(v)) for k, v in overrides_raw.items()
+        }
         configs[server.id] = MCPServerConfig(
             server_id=server.id,
             transport=transport,
@@ -417,6 +443,8 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
             cwd=server.cwd or "",
             sandboxed=bool(server.sandboxed) if server.sandboxed is not None else False,
             sandbox_image=server.sandbox_image or "",
+            permission=permission,
+            permission_overrides=overrides,
         )
     return configs
 
