@@ -290,35 +290,36 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 Make swarms useful with real knowledge sources and a rich skill catalogue.
 
-### M8 — MCP integration layer 🟡
+### M8 — MCP integration layer ✅
 
-**Goal:** make the agent-to-tool interface clean, filtered, and governed. Lazy server startup, permission tiers on MCP servers, and MCP gateway prototype.
+**Goal:** make the agent-to-tool interface clean, filtered, and governed. Lazy server startup, permission tiers, multimodal document understanding.
 
-**Design reference:** `design/details/mcp-discovery-pattern.md`.
+**Design reference:** `design/details/mcp-discovery-pattern.md`, `design/details/document-reader-mcp.md`.
 
 **Dependencies:** M5 (MCP framework).
 
 **What already exists:**
 
-- [x] **Per-agent tool filtering** — the compiler's `_build_tools()` already creates `ToolSpec` entries only for the agent's own skills. An agent with `skills: [github-pr-read]` sees only that tool (plus delegation tools for children). The "all tools to all agents" scenario does not happen.
-- [x] **Knowledge MCP server** — `swarmkit knowledge-server` is implemented (437 lines). Domain-tagged corpus, TF-IDF search, workspace-scoped queries.
+- [x] **Per-agent tool filtering** — the compiler's `_build_tools()` already creates `ToolSpec` entries only for the agent's own skills.
+- [x] **Knowledge MCP server** — `swarmkit knowledge-server` with domain-tagged corpus, TF-IDF search.
 - [x] **Seed skills** — 20 reference skills under `reference/skills/`.
 
-**Features:**
+**Features (shipped):**
 
 - [x] **Lazy MCP server startup** — `start_required(topology)` only starts servers the topology needs. PR #123.
 - [x] **Permission tiers on MCP servers** — `permission: open|cautious|strict|readonly` per server with per-tool overrides. PR #124.
-- [x] **Document reader MCP server** — `swarmkit-docs-reader` MCP server for PDF, DOCX, Excel, images, draw.io/SVG. PR #125.
-- [x] **Multimodal model provider support** — image content blocks in `ContentBlock`, wired through all 7 providers (Anthropic, OpenAI, Google, Ollama, OpenRouter, Groq, Together). `image_block(path)` helper for file-to-base64. PR #126.
-- [ ] **MCP gateway prototype** — single `swarmkit mcp-gateway` server wrapping all workspace servers with namespace routing. Optional — replaces N server processes with 1.
+- [x] **Document reader MCP server** — `view_image` (ImageContent for vision models), draw.io/SVG parsing, CSV, text, file discovery. Complements MarkItDown for document text. PR #125.
+- [x] **Multimodal model provider support** — image content blocks wired through all 7 providers. `image_block(path)` helper. PR #126.
+- [x] **Compiler image wiring** — skill-driven image flow (Option C). MCP tools returning ImageContent flow through tool results to the model. MarkItDown integration for document reading. PR #127.
 
 **Deferred to future milestones:**
 
-- **User knowledge server** — `swarmkit author knowledge-server`. Moved to a future milestone — independent of MCP integration layer.
-- **Skill registry CLI** — dropped as premature. Revisit after gateway pattern is built.
+- **MCP gateway prototype** — single server wrapping all workspace servers with namespace routing. Needs more design discussion.
+- **User knowledge server** — `swarmkit author knowledge-server`. Independent of MCP integration layer.
+- **Skill registry CLI** — dropped as premature. Revisit after gateway is designed.
 - **Authoring AI integration** — depends on registry, deferred.
 
-**Exit demo:** `swarmkit run` a workspace with 5 MCP servers configured but a topology that only uses 2 — show only 2 servers start. Permission tier demo: read tool auto-approved, write tool triggers HITL approval.
+**Exit demo:** `swarmkit run` with multimodal-test example — coordinator (llama-3.3) delegates to vision agent (claude-sonnet) which calls `view_image` via MCP skill and produces detailed architecture diagram analysis.
 
 ### M9 — Reference topologies (enhance) 🟡
 
