@@ -290,28 +290,33 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 Make swarms useful with real knowledge sources and a rich skill catalogue.
 
-### M8 — Knowledge + skills ecosystem (enhance) 🟡
+### M8 — MCP integration layer 🟡
 
-**Goal:** enhance existing knowledge server; add user knowledge server authoring; add skill registry CLI for community import.
+**Goal:** make the agent-to-tool interface clean, filtered, and governed. Lazy server startup, permission tiers on MCP servers, and MCP gateway prototype.
 
-**Design reference:** `design/details/knowledge-mcp-server.md`, `design/details/user-knowledge-server.md`, `design/details/skill-registry.md`.
+**Design reference:** `design/details/mcp-discovery-pattern.md`.
 
 **Dependencies:** M5 (MCP framework).
 
 **What already exists:**
 
-- [x] **Knowledge MCP server** — `swarmkit knowledge-server` is implemented (437 lines). Tools: `search_docs`, `get_schema`, `get_design_note`, `list_design_notes`, `list_schemas`, `get_error_reference`, `validate_workspace`, `list_reference_skills`, `write_workspace_file`, `read_workspace_file`, `run_pytest`. Keyword search with term-frequency scoring.
-- [x] **Seed skills** — 20 reference skills already exist under `reference/skills/` (code-quality-review, security-scan, github-pr-read, audit-log-write, etc.)
+- [x] **Per-agent tool filtering** — the compiler's `_build_tools()` already creates `ToolSpec` entries only for the agent's own skills. An agent with `skills: [github-pr-read]` sees only that tool (plus delegation tools for children). The "all tools to all agents" scenario does not happen.
+- [x] **Knowledge MCP server** — `swarmkit knowledge-server` is implemented (437 lines). Domain-tagged corpus, TF-IDF search, workspace-scoped queries.
+- [x] **Seed skills** — 20 reference skills under `reference/skills/`.
 
-**Features (remaining):**
+**Features:**
 
-- [ ] **User knowledge server** — `swarmkit author knowledge-server`. Generates a FastMCP server from user's docs/code/APIs. Three search tiers: keyword (default), TF-IDF (optional), vector (Qdrant, optional). Integrates into `swarmkit init` as a proactive knowledge question.
-- [ ] **Skill registry CLI** — SKILL.md → SwarmKit YAML converter. CLI: `swarmkit skill install`, `swarmkit skill import <repo-url>`, `swarmkit skill import-mcp <repo-url>`, `swarmkit skill search`, `swarmkit skill list [--available]`.
-- [ ] **Authoring AI integration** — authoring agent searches registry before generating, proposes installing existing skills when a match is found.
-- [ ] **Knowledge server enhancements** — vector search (optional Qdrant tier), workspace-scoped knowledge queries.
-- [ ] **MCP discovery pattern** — compiler-level tool filtering so agents only see tools from their declared skills, not all tools from all servers. Prevents context bloat in workspaces with many MCP servers. See `design/details/mcp-discovery-pattern.md`.
+- [ ] **Lazy MCP server startup** — `start_all()` becomes `start_required(topology)`. Scan topology's agents' skills, collect referenced server IDs, only start those servers. Reduces startup time and resource usage for workspaces with many MCP servers.
+- [ ] **Permission tiers on MCP servers** — `permission: open|cautious|strict|readonly` per server in workspace.yaml. Maps to governance `evaluate_action` decisions. Per-tool overrides via `overrides:` block.
+- [ ] **MCP gateway prototype** — single `swarmkit mcp-gateway` server wrapping all workspace servers with namespace routing. Optional — replaces N server processes with 1.
 
-**Exit demo:** `swarmkit skill search "code review"` finds community skills. `swarmkit skill install` adds to workspace. `swarmkit author knowledge-server` generates a server from user's API docs.
+**Deferred to future milestones:**
+
+- **User knowledge server** — `swarmkit author knowledge-server`. Moved to a future milestone — independent of MCP integration layer.
+- **Skill registry CLI** — dropped as premature. Revisit after gateway pattern is built.
+- **Authoring AI integration** — depends on registry, deferred.
+
+**Exit demo:** `swarmkit run` a workspace with 5 MCP servers configured but a topology that only uses 2 — show only 2 servers start. Permission tier demo: read tool auto-approved, write tool triggers HITL approval.
 
 ### M9 — Reference topologies (enhance) 🟡
 

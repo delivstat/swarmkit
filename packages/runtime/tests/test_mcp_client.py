@@ -8,10 +8,15 @@ subprocess startup. End-to-end execution is exercised through
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from swarmkit_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
-from swarmkit_runtime.mcp._client import _build_sandboxed_command, _resolve_env
+from swarmkit_runtime.mcp._client import (
+    _build_sandboxed_command,
+    _resolve_env,
+    collect_required_servers,
+)
 from swarmkit_schema.models.workspace import McpServer, Transport
 
 
@@ -210,3 +215,78 @@ def test_build_sandboxed_command_no_workspace() -> None:
     _, args, _ = _build_sandboxed_command(config, workspace_root=None)
     assert "-v" not in args
     assert "-w" not in args
+
+
+# ---- collect_required_servers -------------------------------------------
+
+
+def _make_skill(
+    impl_type: str, server: str | None = None, tool: str | None = None
+) -> SimpleNamespace:
+    impl: dict[str, str] = {"type": impl_type}
+    if server:
+        impl["server"] = server
+    if tool:
+        impl["tool"] = tool
+    return SimpleNamespace(raw=SimpleNamespace(implementation=impl))
+
+
+def _make_agent(
+    agent_id: str,
+    skills: list[SimpleNamespace],
+    children: list[SimpleNamespace] | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=agent_id,
+        skills=tuple(skills),
+        children=tuple(children or []),
+    )
+
+
+def _make_topology(root: SimpleNamespace) -> SimpleNamespace:
+    return SimpleNamespace(root=root)
+
+
+def test_collect_required_servers_single_mcp_tool() -> None:
+    skill = _make_skill("mcp_tool", server="github", tool="get_pr")
+    root = _make_agent("root", [skill])
+    topo = _make_topology(root)
+    assert collect_required_servers(topo) == {"github"}
+
+
+def test_collect_required_servers_ignores_non_mcp_skills() -> None:
+    s1 = _make_skill("llm_prompt")
+    s2 = _make_skill("mcp_tool", server="github", tool="get_pr")
+    root = _make_agent("root", [s1, s2])
+    topo = _make_topology(root)
+    assert collect_required_servers(topo) == {"github"}
+
+
+def test_collect_required_servers_walks_children() -> None:
+    child1 = _make_agent("reader", [_make_skill("mcp_tool", server="github", tool="get_pr")])
+    child2 = _make_agent("searcher", [_make_skill("mcp_tool", server="chromadb", tool="search")])
+    root = _make_agent("supervisor", [_make_skill("llm_prompt")], [child1, child2])
+    topo = _make_topology(root)
+    assert collect_required_servers(topo) == {"github", "chromadb"}
+
+
+def test_collect_required_servers_deduplicates() -> None:
+    s1 = _make_skill("mcp_tool", server="github", tool="get_pr")
+    s2 = _make_skill("mcp_tool", server="github", tool="list_repos")
+    root = _make_agent("root", [s1, s2])
+    topo = _make_topology(root)
+    assert collect_required_servers(topo) == {"github"}
+
+
+def test_collect_required_servers_empty_for_llm_only() -> None:
+    root = _make_agent("root", [_make_skill("llm_prompt")])
+    topo = _make_topology(root)
+    assert collect_required_servers(topo) == set()
+
+
+def test_collect_required_servers_deep_nesting() -> None:
+    leaf = _make_agent("leaf", [_make_skill("mcp_tool", server="deep-server", tool="x")])
+    mid = _make_agent("mid", [_make_skill("llm_prompt")], [leaf])
+    root = _make_agent("root", [_make_skill("llm_prompt")], [mid])
+    topo = _make_topology(root)
+    assert collect_required_servers(topo) == {"deep-server"}

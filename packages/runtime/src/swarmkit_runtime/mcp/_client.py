@@ -71,6 +71,9 @@ class MCPClientManager:
     async def start_all(self) -> None:
         """Eagerly open every configured server's session.
 
+        Prefer ``start_required()`` when you have a topology — it only
+        starts the servers the topology actually needs.
+
         The MCP SDK's stdio task group must be entered and exited from
         the same asyncio task. Lazy-start works for one-shot tests but
         breaks under LangGraph, where the first ``call_tool`` happens
@@ -80,7 +83,24 @@ class MCPClientManager:
         Servers that fail to start (missing deps, bad command, etc.)
         are skipped with a warning — the run continues without them.
         """
-        for server_id in list(self._configs.keys()):
+        await self._start_servers(set(self._configs.keys()))
+
+    async def start_required(self, required_server_ids: set[str]) -> None:
+        """Start only the MCP servers in *required_server_ids*.
+
+        Servers not in the set are left unstarted — no process spawned,
+        no connection opened. This reduces startup latency and resource
+        usage for workspaces with many MCP servers when the topology
+        only references a few.
+
+        Unknown server IDs (not in ``_configs``) are silently ignored.
+        """
+        known = required_server_ids & set(self._configs.keys())
+        await self._start_servers(known)
+
+    async def _start_servers(self, server_ids: set[str]) -> None:
+        """Start sessions and cache tool schemas for the given server IDs."""
+        for server_id in sorted(server_ids):
             try:
                 await self.get_session(server_id)
                 await self._cache_tool_schemas(server_id)
@@ -399,3 +419,30 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
             sandbox_image=server.sandbox_image or "",
         )
     return configs
+
+
+def collect_required_servers(topology: Any) -> set[str]:
+    """Walk a resolved topology's agent tree and return the set of MCP server IDs needed.
+
+    Inspects each agent's skills — skills with ``implementation.type == "mcp_tool"``
+    reference a server via ``implementation.server``. Only those server IDs are returned.
+
+    Accepts a ``ResolvedTopology`` (avoiding a hard import to keep this module
+    import-light).
+    """
+    from swarmkit_runtime.skills import impl_get  # noqa: PLC0415
+
+    server_ids: set[str] = set()
+
+    def _walk(agent: Any) -> None:
+        for skill in agent.skills:
+            impl = skill.raw.implementation
+            if impl_get(impl, "type") == "mcp_tool":
+                sid = impl_get(impl, "server")
+                if sid:
+                    server_ids.add(str(sid))
+        for child in agent.children:
+            _walk(child)
+
+    _walk(topology.root)
+    return server_ids

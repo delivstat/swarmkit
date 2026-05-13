@@ -35,6 +35,7 @@ nav:
     - Runtime:
       - LangGraph compiler: design-notes/langgraph-compiler.md
       - MCP client: design-notes/mcp-client.md
+      - MCP discovery pattern: design-notes/mcp-discovery-pattern.md
       - Governance provider: design-notes/governance-provider-interface.md
       - Model provider: design-notes/model-provider-abstraction.md
       - DAG dependency graph: design-notes/dag-dependency-graph.md

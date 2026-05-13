@@ -23,7 +23,12 @@ from swarmkit_runtime.audit import AuditProvider, SQLiteAuditProvider
 from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
-from swarmkit_runtime.mcp import MCPClientManager, MCPServerConfig, parse_mcp_servers
+from swarmkit_runtime.mcp import (
+    MCPClientManager,
+    MCPServerConfig,
+    collect_required_servers,
+    parse_mcp_servers,
+)
 from swarmkit_runtime.model_providers import (
     MockModelProvider,
     ProviderRegistry,
@@ -211,11 +216,13 @@ class WorkspaceRuntime:
         from uuid import uuid4  # noqa: PLC0415
 
         graph = self.compile(topology_name)
+        topology = self._workspace.topologies[topology_name]
         run_thread = thread_id or str(uuid4())
 
         owns_mcp = not self._session_active
         if owns_mcp and self._mcp_manager is not None:
-            await self._mcp_manager.start_all()
+            required = collect_required_servers(topology)
+            await self._mcp_manager.start_required(required)
         try:
             result = await graph.ainvoke(
                 {
@@ -259,10 +266,12 @@ class WorkspaceRuntime:
         execution from where it was interrupted (e.g., after HITL defer).
         """
         graph = self.compile(topology_name)
+        topology = self._workspace.topologies[topology_name]
 
         owns_mcp = not self._session_active
         if owns_mcp and self._mcp_manager is not None:
-            await self._mcp_manager.start_all()
+            required = collect_required_servers(topology)
+            await self._mcp_manager.start_required(required)
         try:
             result = await graph.ainvoke(
                 None,
