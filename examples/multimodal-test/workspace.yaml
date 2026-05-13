@@ -6,3 +6,13 @@ metadata:
 
 governance:
   provider: mock
+
+mcp_servers:
+  - id: markitdown
+    transport: stdio
+    command: ["uvx", "markitdown-mcp"]
+    permission: open
+  - id: docs-reader
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.docs_reader"]
+    permission: open

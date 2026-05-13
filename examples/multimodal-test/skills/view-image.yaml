@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: view-image
+  name: View Image
+  description: View an image file visually — returns the actual image for multimodal models to see and analyze
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: docs-reader
+  tool: view_image

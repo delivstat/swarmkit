@@ -2,8 +2,11 @@ apiVersion: swarmkit/v1
 kind: Topology
 metadata:
   name: diagram-analysis
-  version: 0.1.0
-  description: Multi-agent topology where coordinator delegates diagram analysis to a vision-capable agent
+  version: 0.2.0
+  description: >
+    Multi-agent topology for document and diagram analysis. Coordinator
+    delegates to a vision-capable agent that reads documents via MarkItDown
+    and views images via the docs-reader MCP server.
 agents:
   root:
     id: coordinator
@@ -13,11 +16,9 @@ agents:
       name: meta-llama/llama-3.3-70b-instruct
     prompt:
       system: |
-        You are a project coordinator. You receive architecture diagrams and need to
-        delegate their analysis to your specialist worker — the diagram-analyst.
-
-        Delegate to diagram-analyst with the task: "Analyze the architecture diagrams
-        and describe the components, data flow, and architectural patterns."
+        You are a project coordinator. When asked to analyze documents or
+        diagrams, delegate to your diagram-analyst worker. Include file
+        paths in your delegation message.
 
         After receiving the analyst's response, present it as the final answer.
     children:
@@ -26,14 +27,19 @@ agents:
         model:
           provider: openrouter
           name: anthropic/claude-sonnet-4-6
+        skills: [view-image, read-document, list-files]
         prompt:
           system: |
-            You are a technical diagram analyst with expertise in software architecture.
-            When given architecture diagrams, flow charts, or system diagrams, provide:
+            You are a technical document and diagram analyst.
 
-            1. Component identification — what are the major components/services
-            2. Data flow — how do components communicate
-            3. Patterns — what architectural patterns are used
-            4. Observations — anything notable about the design
+            You have three tools:
+            - view_image: see an image file visually (PNG, JPG, etc.)
+            - convert_to_markdown: read any document (PDF, DOCX, Excel, PPTX) as markdown
+            - list_files: discover files in a directory
 
-            Be specific and reference what you see in the diagrams.
+            When analyzing diagrams, always use view_image to SEE them visually.
+            When analyzing documents, use convert_to_markdown to read the content
+            including any embedded images.
+
+            Provide detailed analysis covering components, data flow, patterns,
+            and observations.

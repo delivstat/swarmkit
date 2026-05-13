@@ -1,80 +1,79 @@
 ---
 title: Document reader MCP server
-description: MCP server for extracting text and structure from PDFs, DOCX, Excel, images, and diagrams. Enables agents to understand documents without multimodal models.
+description: Two-server architecture for document understanding — MarkItDown for text extraction, swarmkit-docs-reader for visual image analysis and structured diagram parsing.
 tags: [mcp, knowledge, skills, m8]
-status: draft
+status: active
 ---
 
-# Document reader MCP server
+# Document reader architecture
 
-**Scope:** new MCP server, optional dependency
+**Scope:** MCP integration, document understanding
 **Design reference:** §18 (MCP integration)
-**Status:** implementing as part of M8
+**Status:** implemented in M8
 
-## Problem
+## Architecture: two complementary MCP servers
 
-Agents in the Sterling OMS workspace need to understand documents: API javadocs (PDF), solution designs (DOCX), data mappings (Excel), architecture diagrams (draw.io/SVG), and flow diagrams (images). Currently they can only search pre-ingested text via ChromaDB/FTS5. When a user points them at a new document, they can't read it.
+Document understanding requires two capabilities that map to different tools:
 
-Claude Code works for this use case because it has native multimodal support and can read files directly. SwarmKit agents need an equivalent capability as an MCP tool.
+### 1. MarkItDown (Microsoft, open-source)
 
-## Design
+Handles document → markdown conversion with embedded images preserved as data URIs.
+The model receives coherent markdown where images appear inline with surrounding text context.
 
-A standalone FastMCP server with one tool per document type:
+```yaml
+mcp_servers:
+  - id: markitdown
+    transport: stdio
+    command: ["uvx", "markitdown-mcp"]
+    permission: open
+```
 
-| Tool | Input | Output | Library |
-|------|-------|--------|---------|
-| `read_pdf` | file path, optional page range | extracted text with page markers | PyMuPDF (`pymupdf`) |
-| `read_docx` | file path | structured text with heading hierarchy | `python-docx` |
-| `read_excel` | file path, optional sheet name | markdown table(s) | `openpyxl` |
-| `read_image` | file path | OCR text extraction | Pillow + `pytesseract` (optional) |
-| `read_drawio` | file path | parsed node/edge descriptions | XML parsing (stdlib) |
-| `read_csv` | file path, optional row limit | markdown table | `csv` (stdlib) |
-| `read_text` | file path | raw text with line numbers | stdlib |
+**Formats:** PDF, DOCX, XLSX, PPTX, HTML, EPUB, CSV, JSON, XML, images (OCR), audio (transcription).
 
-All tools accept a `path` argument (resolved relative to workspace root or absolute). Output is always text — suitable for any LLM, no multimodal needed.
+**Key advantage:** images embedded in documents stay in context. A diagram on page 5 of a PDF appears inline with the text that references it ("Figure 3 shows the data flow..."). This is critical for coherent understanding.
 
-## Key decisions
+**Tool:** `convert_to_markdown(uri)` — accepts file:// and http:// URIs.
 
-1. **Text extraction, not rendering.** The server extracts text and structure from documents. For true visual understanding (e.g. reading a chart from an image), multimodal model support in ModelProvider is needed separately.
+### 2. swarmkit-docs-reader
 
-2. **Optional dependencies.** The server works with whatever libraries are installed. Missing `pymupdf`? `read_pdf` returns a clear error telling the user to `pip install pymupdf`. No hard dependency on any document library.
-
-3. **Workspace-relative paths.** The server resolves paths relative to the workspace root (passed as `--workspace` or `SWARMKIT_WORKSPACE`). This matches how other MCP servers work.
-
-4. **Output truncation.** Large documents are truncated with a message showing total size and a hint to use page/row range arguments. Default limits: 50 pages for PDF, 100 rows for Excel/CSV, 500KB for text files.
-
-## Non-goals
-
-- Multimodal/vision model support (separate PR — ModelProvider change)
-- Document indexing or search (that's the knowledge server's job)
-- Document writing/editing
-- Proprietary format support (e.g. Visio .vsdx)
-
-## Usage in workspace.yaml
+Provides capabilities MarkItDown doesn't: visual image return for multimodal models, draw.io diagram parsing, and file discovery.
 
 ```yaml
 mcp_servers:
   - id: docs-reader
     transport: stdio
-    command: ["uv", "run", "swarmkit-docs-reader"]
-    permission: open  # read-only, no governance needed
+    command: ["swarmkit", "docs-reader"]
+    permission: open
 ```
 
-## Skill definitions
+**Tools:**
 
-```yaml
-apiVersion: swarmkit/v1
-kind: Skill
-metadata:
-  name: read-document
-  description: Read and extract text from PDF, DOCX, Excel, CSV, images, and diagrams
-  category: capability
-  provenance:
-    source: swarmkit-builtin
-implementation:
-  type: mcp_tool
-  server: docs-reader
-  tool: read_pdf  # or read_docx, read_excel, etc.
+| Tool | Purpose |
+|------|---------|
+| `view_image` | Returns raw image as MCP `ImageContent` — the model SEES the image visually |
+| `read_drawio` | Parses draw.io XML → structured node/edge descriptions |
+| `read_svg` | Extracts text elements from SVG diagrams |
+| `read_csv` | CSV → markdown table with truncation |
+| `read_text` | Plain text with line numbers and range support |
+| `list_files` | File discovery with glob patterns |
+
+## Why two servers
+
+MarkItDown converts documents to text (with embedded images as data URIs). This works for models that process data URIs in markdown. But for true visual understanding — where the model needs to SEE a diagram and reason about spatial relationships, colours, arrows — the image must be passed as MCP `ImageContent`. That's what `view_image` does.
+
+The split also follows SwarmKit's "skills are the extension primitive" principle. An agent with `skills: [read-document]` gets MarkItDown. An agent with `skills: [view-image]` gets visual analysis. An agent with both can read documents AND see their embedded diagrams.
+
+## Image flow (Option C — skill-driven)
+
+Images flow through skill tool results, not through state injection:
+
+```
+Agent calls view_image("architecture.png")
+  → docs-reader MCP returns [TextContent, ImageContent]
+  → compiler detects ImageContent in tool result
+  → adds image ContentBlock to tool_result message
+  → model sees the image in its next turn
 ```
 
-In practice, a single `read-document` composed skill wrapping all the individual tools would be more ergonomic.
+No `--image` CLI flag, no `image_paths` in state, no broadcasting.
+The agent decides when to look at an image by calling the tool.

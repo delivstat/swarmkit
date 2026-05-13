@@ -1,7 +1,8 @@
 """Tests for the document reader MCP server.
 
-Tests cover stdlib-based tools directly and verify optional-dependency
-tools return clear install instructions when libraries are missing.
+Tests cover the tools that remain after slimming down in favour of
+MarkItDown: view_image, read_drawio, read_svg, read_csv, read_text,
+and list_files.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from swarmkit_runtime.docs_reader._server import (
     read_drawio,
     read_svg,
     read_text,
+    view_image,
 )
 
 
@@ -43,6 +45,41 @@ def test_resolve_relative_path(tmp_workspace: Path) -> None:
     p.write_text("hello")
     result = _resolve_path("docs/test.txt")
     assert result == p
+
+
+# ---- view_image -------------------------------------------------------------
+
+
+def test_view_image_returns_image_content(tmp_workspace: Path) -> None:
+    p = tmp_workspace / "test.png"
+    p.write_bytes(b"\x89PNG\r\n\x1a\n fake png data")
+    result = view_image(str(p))
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0].type == "text"
+    assert result[1].type == "image"
+    assert result[1].mimeType == "image/png"
+    assert len(result[1].data) > 0
+
+
+def test_view_image_jpeg(tmp_workspace: Path) -> None:
+    p = tmp_workspace / "photo.jpg"
+    p.write_bytes(b"\xff\xd8\xff fake jpeg")
+    result = view_image(str(p))
+    assert result[1].mimeType == "image/jpeg"
+
+
+def test_view_image_missing_file(tmp_workspace: Path) -> None:
+    result = view_image(str(tmp_workspace / "nope.png"))
+    assert result[0].type == "text"
+    assert "ERROR: file not found" in result[0].text
+
+
+def test_view_image_unsupported_format(tmp_workspace: Path) -> None:
+    p = tmp_workspace / "doc.pdf"
+    p.write_bytes(b"%PDF-1.4")
+    result = view_image(str(p))
+    assert "unsupported image format" in result[0].text.lower()
 
 
 # ---- read_text --------------------------------------------------------------
@@ -215,7 +252,7 @@ def test_list_files_basic(tmp_workspace: Path) -> None:
     result = list_files(str(tmp_workspace))
     assert "a.txt" in result
     assert "b.pdf" in result
-    assert "c.txt" not in result  # not recursive by default
+    assert "c.txt" not in result
 
 
 def test_list_files_recursive(tmp_workspace: Path) -> None:
@@ -242,47 +279,3 @@ def test_list_files_empty_dir(tmp_workspace: Path) -> None:
 def test_list_files_missing_dir(tmp_workspace: Path) -> None:
     result = list_files(str(tmp_workspace / "nope"))
     assert "ERROR: directory not found" in result
-
-
-# ---- optional dependency error messages -------------------------------------
-
-
-def test_read_pdf_missing_dep_message(tmp_workspace: Path) -> None:
-    """If pymupdf is missing, read_pdf should return install instructions."""
-    p = tmp_workspace / "test.pdf"
-    p.write_bytes(b"%PDF-1.4 fake")
-    result = _mod.read_pdf(str(p))
-    if "pymupdf" in result.lower() and "install" in result.lower():
-        pass  # pymupdf not installed — got the expected message
-    else:
-        assert "Page 1" in result or "ERROR" in result  # pymupdf IS installed
-
-
-def test_read_docx_missing_dep_message(tmp_workspace: Path) -> None:
-    p = tmp_workspace / "test.docx"
-    p.write_bytes(b"PK fake")
-    result = _mod.read_docx(str(p))
-    if "python-docx" in result.lower() and "install" in result.lower():
-        pass  # python-docx not installed
-    else:
-        assert "ERROR" in result or "test.docx" in result
-
-
-def test_read_excel_missing_dep_message(tmp_workspace: Path) -> None:
-    p = tmp_workspace / "test.xlsx"
-    p.write_bytes(b"PK fake")
-    result = _mod.read_excel(str(p))
-    if "openpyxl" in result.lower() and "install" in result.lower():
-        pass  # openpyxl not installed
-    else:
-        assert "ERROR" in result or "test.xlsx" in result
-
-
-def test_read_image_missing_dep_message(tmp_workspace: Path) -> None:
-    p = tmp_workspace / "test.png"
-    p.write_bytes(b"\x89PNG fake")
-    result = _mod.read_image(str(p))
-    if "pillow" in result.lower() or "pytesseract" in result.lower():
-        pass  # dependency missing
-    else:
-        assert "ERROR" in result or "test.png" in result

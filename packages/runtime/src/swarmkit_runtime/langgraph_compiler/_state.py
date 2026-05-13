@@ -38,4 +38,3 @@ class SwarmState(TypedDict):
     agent_results: Annotated[dict[str, Any], _merge_dicts]
     current_agent: Annotated[str, _last_write_wins]
     output: Annotated[str, _last_write_wins]
-    image_paths: list[str]

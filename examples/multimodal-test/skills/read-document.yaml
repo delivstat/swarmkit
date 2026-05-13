@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: read-document
+  name: Read Document
+  description: Convert PDF, DOCX, Excel, PPTX, HTML to markdown using MarkItDown. Returns coherent text with embedded images as data URIs.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: markitdown
+  tool: convert_to_markdown

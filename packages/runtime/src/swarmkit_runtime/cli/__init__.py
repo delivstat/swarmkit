@@ -610,13 +610,6 @@ def run(
             help="Resume a previously interrupted run from checkpoint.",
         ),
     ] = False,
-    image: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--image",
-            help="Image file path(s) to include in the input. Repeatable.",
-        ),
-    ] = None,
     color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
 ) -> None:
     """One-shot execution of a topology (design §14.1)."""
@@ -658,9 +651,7 @@ def run(
             user_input = sys.stdin.read().strip()
         if not user_input:
             user_input = "hello"
-        result = _execute_run(
-            runtime, topology_name, user_input, workspace_path, image_paths=image or []
-        )
+        result = _execute_run(runtime, topology_name, user_input, workspace_path)
 
     if result.output:
         typer.echo(result.output)
@@ -676,8 +667,6 @@ def _execute_run(
     topology_name: str,
     user_input: str,
     workspace_path: Path,
-    *,
-    image_paths: list[str] | None = None,
 ) -> RunResult:
     """Execute a topology run with HITL and interrupt handling."""
     from uuid import uuid4  # noqa: PLC0415
@@ -686,14 +675,7 @@ def _execute_run(
     _save_thread_id(workspace_path, thread_id)
 
     try:
-        return asyncio.run(
-            runtime.run(
-                topology_name,
-                user_input,
-                thread_id=thread_id,
-                image_paths=image_paths,
-            )
-        )
+        return asyncio.run(runtime.run(topology_name, user_input, thread_id=thread_id))
     except KeyError as exc:
         _stderr(str(exc).strip("'\""))
         raise typer.Exit(_EXIT_USAGE) from exc
