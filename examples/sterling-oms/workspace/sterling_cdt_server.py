@@ -39,13 +39,14 @@ _statuses: dict = {}
 _common_codes: dict = {}
 _user_exits: list = []
 _hold_types: list = []
+_monitor_rules: list = []
 _meta: dict = {}
 
 
 def _init() -> None:
     global _services, _pipelines, _transactions  # noqa: PLW0603
     global _statuses, _common_codes, _user_exits  # noqa: PLW0603
-    global _hold_types, _meta  # noqa: PLW0603
+    global _hold_types, _monitor_rules, _meta  # noqa: PLW0603
     _services = _load("services.json")
     _pipelines = _load("pipelines.json")
     _transactions = _load("transactions.json")
@@ -53,6 +54,7 @@ def _init() -> None:
     _common_codes = _load("common_codes.json")
     _user_exits = _load("user_exits.json")
     _hold_types = _load("hold_types.json")
+    _monitor_rules = _load("monitor_rules.json")
     _meta = _load("meta.json")
 
 
@@ -119,62 +121,105 @@ def _format_service(svc: dict) -> str:
 def _render_mermaid_service(svc: dict) -> str:  # noqa: PLR0912
     lines = ["```mermaid", "graph LR"]
     for sf in svc.get("sub_flows", []):
+        sf_name = sf.get("sub_flow_name", "")
+        if sf_name:
+            lines.append(f"    subgraph {sf_name}")
+
         node_labels: dict[str, str] = {}
         for node in sf.get("nodes", []):
             nid = node.get("id", "")
             ntype = node.get("type", "")
             if ntype == "Start":
-                node_labels[nid] = "Start([Start])"
+                node_labels[nid] = f"    {nid}([Start])"
             elif ntype == "End":
-                node_labels[nid] = "End([End])"
+                node_labels[nid] = f"    {nid}([End])"
             elif ntype == "API":
-                node_labels[nid] = f'{nid}["{node.get("api_name", "")}"]'
+                api = node.get("api_name", "")
+                cls = node.get("class_name", "")
+                label = api or cls.split(".")[-1] if cls else ntype
+                node_labels[nid] = f'    {nid}["{label}"]'
             elif ntype == "XSL":
                 xsl = node.get("xsl_name", "").split("/")[-1]
-                node_labels[nid] = f'{nid}[/"XSL: {xsl}"/]'
+                node_labels[nid] = f'    {nid}[/"XSL: {xsl}"/]'
             elif ntype in ("JMS", "LOCAL"):
-                node_labels[nid] = f"{nid}>{ntype}]"
+                node_labels[nid] = f"    {nid}>{ntype}]"
             else:
-                node_labels[nid] = f'{nid}["{ntype}"]'
+                text = node.get("text", ntype)
+                node_labels[nid] = f'    {nid}["{text}"]'
 
         for _nid, label in node_labels.items():
-            lines.append(f"    {label}")
+            lines.append(label)
 
         for link in sf.get("links", []):
             frm = link.get("from", "")
             to = link.get("to", "")
-            if frm in node_labels and to in node_labels:
-                if link.get("type") == "Async":
-                    lines.append(f"    {frm} -.->|async| {to}")
-                else:
-                    lines.append(f"    {frm} --> {to}")
+            if frm not in node_labels or to not in node_labels:
+                continue
+            cond = link.get("condition", "")
+            transport = link.get("type", "")
+            queue = link.get("queue", "")
+            if transport == "Async":
+                edge_label = queue or "async"
+                lines.append(f"    {frm} -.->|{edge_label}| {to}")
+            elif cond:
+                lines.append(f"    {frm} -->|{cond}| {to}")
+            else:
+                lines.append(f"    {frm} --> {to}")
+
+        if sf_name:
+            lines.append("    end")
     lines.append("```")
     return "\n".join(lines)
 
 
 def _render_mermaid_pipeline(pipe: dict) -> str:
     lines = ["```mermaid", "graph TD"]
-    status_set = set()
-    for defn in pipe.get("definitions", []):
-        status_set.add(defn.get("drop_status", ""))
-    for pt in pipe.get("pickup_transactions", []):
-        status_set.add(pt.get("status", ""))
 
-    status_names = {}
     pt_key = pipe.get("process_type", "")
-    for s in _statuses.get(pt_key, []):
-        status_names[s["status"]] = s.get("status_name", s["status"])
+    owner_key = pipe.get("owner", "")
+    status_names = _resolve_status_names(pt_key, owner_key)
 
-    sorted_statuses = sorted(status_set - {""})
-    for status in sorted_statuses:
+    defns = sorted(
+        pipe.get("definitions", []),
+        key=lambda x: x.get("drop_status", ""),
+    )
+    for defn in defns:
+        status = defn.get("drop_status", "")
+        if not status:
+            continue
         name = status_names.get(status, status)
+        tran = defn.get("transaction_key", "")
         safe_id = status.replace(".", "_")
-        lines.append(f'    {safe_id}["{status} {name}"]')
+        label = f"{status} {name}"
+        if tran:
+            label += f"\\n({tran})"
+        lines.append(f'    {safe_id}["{label}"]')
 
-    for i in range(len(sorted_statuses) - 1):
-        s1 = sorted_statuses[i].replace(".", "_")
-        s2 = sorted_statuses[i + 1].replace(".", "_")
-        lines.append(f"    {s1} --> {s2}")
+    for i in range(len(defns) - 1):
+        s1 = defns[i].get("drop_status", "").replace(".", "_")
+        s2 = defns[i + 1].get("drop_status", "").replace(".", "_")
+        if s1 and s2:
+            lines.append(f"    {s1} --> {s2}")
+
+    hub_rules = pipe.get("hub_rules", [])
+    if hub_rules:
+        lines.append('    HUB{{"Hub Rule\\nDetermination"}}')
+        first_status = defns[0].get("drop_status", "") if defns else ""
+        if first_status:
+            lines.append(f"    HUB --> {first_status.replace('.', '_')}")
+        for rule in hub_rules:
+            cv = rule.get("condition_value", "")
+            pri = rule.get("priority", "")
+            lines.append(f'    HUB__{cv}[/"{cv} P{pri}"/] -.-> HUB')
+
+    for pt in pipe.get("pickup_transactions", []):
+        status = pt.get("status", "")
+        tran = pt.get("transaction_key", "")
+        if status:
+            safe_id = status.replace(".", "_")
+            name = status_names.get(status, status)
+            lines.append(f'    {safe_id}_pickup["{status} {name}\\n(pickup: {tran})"]')
+            lines.append(f"    {safe_id} -.-> {safe_id}_pickup")
 
     lines.append("```")
     return "\n".join(lines)
@@ -223,8 +268,31 @@ def list_services(filter: str = "") -> str:
     return "\n".join(lines)
 
 
+def _resolve_status_names(pt_key: str, owner_key: str = "") -> dict[str, str]:
+    """Build status code → name mapping, preferring owner-specific names.
+
+    Sterling allows enterprises to customize status descriptions. This
+    checks for owner-specific names first, then falls back to the
+    default (blank owner) entries.
+    """
+    defaults: dict[str, str] = {}
+    owner_specific: dict[str, str] = {}
+    for s in _statuses.get(pt_key, []):
+        code = s.get("status", "")
+        name = s.get("status_name", "")
+        desc = s.get("description", "")
+        label = name or desc or code
+        s_owner = s.get("owner", "")
+        if s_owner == owner_key and owner_key:
+            owner_specific[code] = label
+        elif not s_owner or s_owner == "DEFAULT":
+            defaults[code] = label
+    merged = {**defaults, **owner_specific}
+    return merged
+
+
 @server.tool()
-def get_pipeline(pipeline_id: str) -> str:
+def get_pipeline(pipeline_id: str) -> str:  # noqa: PLR0912, PLR0915
     """Get a Sterling pipeline — steps, statuses, conditions, transactions."""
     pipe = None
     pid_lower = pipeline_id.lower()
@@ -244,13 +312,14 @@ def get_pipeline(pipeline_id: str) -> str:
         return f"Pipeline '{pipeline_id}' not found."
 
     pt_key = pipe.get("process_type", "")
-    status_names = {s["status"]: s.get("status_name", "") for s in _statuses.get(pt_key, [])}
+    owner_key = pipe.get("owner", "")
+    status_names = _resolve_status_names(pt_key, owner_key)
 
     lines = [
         f"# Pipeline: {pipe['pipeline_id']}",
         f"**Description:** {pipe.get('description', '')}",
-        f"**Owner:** {pipe.get('owner', '')}",
-        f"**Process Type:** {pipe.get('process_type', '')}",
+        f"**Owner:** {pipe.get('owner_org', pipe.get('owner', ''))}",
+        f"**Process Type:** {pipe.get('process_type_name', pipe.get('process_type', ''))}",
         "",
         "## Status Steps",
         "",
@@ -261,17 +330,51 @@ def get_pipeline(pipeline_id: str) -> str:
         tran = defn.get("transaction_key", "")
         lines.append(f"- **{status}** {name} (transaction: {tran})")
 
+    if pipe.get("hub_rules"):
+        lines += ["", "## Hub Rules (Organization → Pipeline Mapping)", ""]
+        lines.append("Evaluated in priority order (lower = first):\n")
+        for rule in pipe["hub_rules"]:
+            cv = rule.get("condition_value", "")
+            ds = rule.get("drop_status", "")
+            ds_name = status_names.get(ds, "")
+            tk = rule.get("transaction_key", "")
+            pri = rule.get("priority", "")
+            lines.append(f"- [P{pri}] **{cv}** → status {ds} {ds_name} (transaction: {tk})")
+
     if pipe.get("conditions"):
         lines += ["", "## Conditions", ""]
         for cond in pipe["conditions"]:
+            pdk = cond.get("pipeline_definition_key", "")
             lines.append(
-                f"- {cond.get('condition_value', '')} (key: {cond.get('condition_key', '')})"
+                f"- {cond.get('condition_value', '')} → definition {pdk} "
+                f"(key: {cond.get('condition_key', '')})"
             )
 
     if pipe.get("pickup_transactions"):
         lines += ["", "## Pickup Transactions", ""]
         for pt in sorted(pipe["pickup_transactions"], key=lambda x: x.get("status", "")):
             lines.append(f"- Status {pt['status']} → {pt['transaction_key']}")
+
+    if pipe.get("monitor_rules"):
+        lines += ["", "## Monitoring Rules", ""]
+        for mr in pipe["monitor_rules"]:
+            name = mr.get("rule_name", "")
+            status = mr.get("status", "")
+            sname = status_names.get(status, "")
+            alert = mr.get("time_to_alert", "")
+            esc = mr.get("time_to_escalate", "")
+            active = mr.get("active", "")
+            cond = mr.get("condition", "")
+            parts = [f"- **{name}** at status {status} {sname}"]
+            if alert:
+                parts.append(f"alert={alert}m")
+            if esc:
+                parts.append(f"escalate={esc}m")
+            if cond:
+                parts.append(f"condition={cond}")
+            if active:
+                parts.append(f"active={active}")
+            lines.append(" | ".join(parts))
 
     return "\n".join(lines)
 
@@ -291,21 +394,39 @@ def render_pipeline_graph(pipeline_id: str) -> str:
 
 @server.tool()
 def list_pipelines(filter: str = "") -> str:
-    """List Sterling pipelines. Optional filter by name or process type."""
+    """List Sterling pipelines. Filter by name, process type, or organization.
+
+    Args:
+        filter: Search term — matches pipeline name, description, process type,
+                owner org, or hub rule condition values (organization names).
+    """
     matches = []
     fl = filter.lower()
     for p in _pipelines.values():
-        if (
-            not fl
-            or fl in p.get("pipeline_id", "").lower()
-            or fl in p.get("description", "").lower()
-        ):
+        if not fl:
+            matches.append(p)
+            continue
+        searchable = " ".join(
+            [
+                p.get("pipeline_id", ""),
+                p.get("description", ""),
+                p.get("process_type_name", ""),
+                p.get("owner_org", ""),
+            ]
+        ).lower()
+        hub_orgs = " ".join(r.get("condition_value", "") for r in p.get("hub_rules", [])).lower()
+        if fl in searchable or fl in hub_orgs:
             matches.append(p)
     if not matches:
         return f"No pipelines matching '{filter}'."
     lines = [f"Found {len(matches)} pipelines:\n"]
     for p in sorted(matches, key=lambda x: x.get("pipeline_id", "")):
-        lines.append(f"- **{p['pipeline_id']}**: {p.get('description', '')}")
+        orgs = [
+            r.get("condition_value", "") for r in p.get("hub_rules", []) if r.get("condition_value")
+        ]
+        org_str = f" (orgs: {', '.join(orgs)})" if orgs else ""
+        pt = p.get("process_type_name", p.get("process_type", ""))
+        lines.append(f"- **{p['pipeline_id']}**: {p.get('description', '')} [{pt}]{org_str}")
     return "\n".join(lines)
 
 
@@ -407,6 +528,61 @@ def get_hold_types(filter: str = "") -> str:
             lines.append(
                 f"  Process: {h['process_transaction']}, Reject: {h.get('reject_transaction', '')}"
             )
+    return "\n".join(lines)
+
+
+@server.tool()
+def get_monitor_rules(filter: str = "") -> str:
+    """Get Sterling monitoring rules for order/shipment status monitoring.
+
+    Args:
+        filter: Search by rule name, organization, status, or process type.
+    """
+    fl = filter.lower()
+    matches = [
+        r
+        for r in _monitor_rules
+        if not fl
+        or fl in r.get("rule_name", "").lower()
+        or fl in r.get("owner_org", "").lower()
+        or fl in r.get("status", "").lower()
+        or fl in r.get("process_type_name", "").lower()
+        or fl in r.get("monitoring_type", "").lower()
+    ]
+    if not matches:
+        return f"No monitoring rules matching '{filter}'."
+    lines = [f"Found {len(matches)} monitoring rules:\n"]
+    for r in matches:
+        name = r.get("rule_name", r.get("monitor_rule_key", ""))
+        org = r.get("owner_org", r.get("owner", ""))
+        status = r.get("status", "")
+        pt = r.get("process_type_name", r.get("process_type", ""))
+        active = r.get("active", "")
+        lines.append(f"### {name}")
+        lines.append(
+            f"**Org:** {org} | **Process:** {pt} | **Status:** {status} | **Active:** {active}"
+        )
+        if r.get("time_to_alert"):
+            lines.append(f"**Alert after:** {r['time_to_alert']} mins")
+        if r.get("time_to_escalate"):
+            lines.append(f"**Escalate after:** {r['time_to_escalate']} mins")
+        if r.get("alert_queue_details"):
+            aq = r["alert_queue_details"]
+            lines.append(f"**Alert Queue:** {aq.get('queue_name', aq.get('queue_id', ''))}")
+        if r.get("escalation_queue_details"):
+            eq = r["escalation_queue_details"]
+            lines.append(f"**Escalation Queue:** {eq.get('queue_name', eq.get('queue_id', ''))}")
+        if r.get("condition"):
+            cond = r["condition"]
+            cn = cond.get("condition_name", "")
+            ct = cond.get("condition_type", "")
+            lines.append(f"**Condition:** {cn} ({ct})")
+        if r.get("consolidation"):
+            consol = r["consolidation"]
+            ctype = consol.get("consolidation_type", "")
+            cint = consol.get("consolidation_interval", "")
+            lines.append(f"**Consolidation:** {ctype} every {cint} mins")
+        lines.append("")
     return "\n".join(lines)
 
 
