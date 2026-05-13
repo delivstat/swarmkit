@@ -6,6 +6,8 @@ See ``design/details/model-provider-abstraction.md``.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from swarmkit_runtime.model_providers import (
     AnthropicModelProvider,
@@ -19,7 +21,10 @@ from swarmkit_runtime.model_providers import (
     OpenAIModelProvider,
     ProviderRegistry,
     Usage,
+    image_block,
 )
+from swarmkit_runtime.model_providers._anthropic import _to_anthropic_messages
+from swarmkit_runtime.model_providers._openai import _build_openai_messages
 
 # ---- types --------------------------------------------------------------
 
@@ -316,3 +321,119 @@ async def test_registry_resolves_different_providers_per_agent() -> None:
         )
     )
     assert worker_resp.content[0].text == "gemini says hi"
+
+
+# ---- multimodal / image support -------------------------------------------
+
+
+def test_content_block_image_fields() -> None:
+    block = ContentBlock(
+        type="image",
+        image_data="iVBORw0KGgoAAAA...",
+        image_media_type="image/png",
+    )
+    assert block.type == "image"
+    assert block.image_data == "iVBORw0KGgoAAAA..."
+    assert block.image_media_type == "image/png"
+
+
+def test_image_block_from_file(tmp_path: Path) -> None:
+    img = tmp_path / "test.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n fake png data")
+    block = image_block(str(img))
+    assert block.type == "image"
+    assert block.image_media_type == "image/png"
+    assert block.image_data is not None
+    assert len(block.image_data) > 0
+
+
+def test_image_block_jpeg(tmp_path: Path) -> None:
+    img = tmp_path / "photo.jpg"
+    img.write_bytes(b"\xff\xd8\xff fake jpeg")
+    block = image_block(str(img))
+    assert block.image_media_type == "image/jpeg"
+
+
+def test_image_block_file_not_found() -> None:
+    with pytest.raises(FileNotFoundError):
+        image_block("/tmp/nonexistent_image_12345.png")
+
+
+def test_image_block_unsupported_format(tmp_path: Path) -> None:
+    f = tmp_path / "doc.pdf"
+    f.write_bytes(b"%PDF-1.4")
+    with pytest.raises(ValueError, match="Unsupported image format"):
+        image_block(str(f))
+
+
+def test_message_with_image_content() -> None:
+    """Messages can mix text and image content blocks."""
+    msg = Message(
+        role="user",
+        content=[
+            ContentBlock(type="text", text="What's in this diagram?"),
+            ContentBlock(
+                type="image",
+                image_data="base64data",
+                image_media_type="image/png",
+            ),
+        ],
+    )
+    assert len(msg.content) == 2
+    blocks = list(msg.content)
+    assert blocks[0].type == "text"
+    assert blocks[1].type == "image"
+
+
+def test_anthropic_image_translation() -> None:
+    """Anthropic adapter translates image blocks to Anthropic's format."""
+    request = CompletionRequest(
+        model="claude-sonnet-4-6",
+        messages=[
+            Message(
+                role="user",
+                content=[
+                    ContentBlock(type="text", text="Describe this"),
+                    ContentBlock(
+                        type="image",
+                        image_data="aW1hZ2VkYXRh",
+                        image_media_type="image/png",
+                    ),
+                ],
+            ),
+        ],
+    )
+    messages = _to_anthropic_messages(request)
+    assert len(messages) == 1
+    blocks = messages[0]["content"]
+    assert blocks[0] == {"type": "text", "text": "Describe this"}
+    assert blocks[1]["type"] == "image"
+    assert blocks[1]["source"]["type"] == "base64"
+    assert blocks[1]["source"]["media_type"] == "image/png"
+    assert blocks[1]["source"]["data"] == "aW1hZ2VkYXRh"
+
+
+def test_openai_image_translation() -> None:
+    """OpenAI adapter translates image blocks to data URL format."""
+    request = CompletionRequest(
+        model="gpt-4o",
+        messages=[
+            Message(
+                role="user",
+                content=[
+                    ContentBlock(type="text", text="What is this?"),
+                    ContentBlock(
+                        type="image",
+                        image_data="aW1hZ2VkYXRh",
+                        image_media_type="image/jpeg",
+                    ),
+                ],
+            ),
+        ],
+    )
+    messages = _build_openai_messages(request)
+    assert len(messages) == 1
+    parts = messages[0]["content"]
+    assert parts[0] == {"type": "text", "text": "What is this?"}
+    assert parts[1]["type"] == "image_url"
+    assert "data:image/jpeg;base64,aW1hZ2VkYXRh" in parts[1]["image_url"]["url"]

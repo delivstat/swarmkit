@@ -16,7 +16,12 @@ from typing import Any, Literal
 
 @dataclass(frozen=True)
 class ContentBlock:
-    """A single content block within a message or response."""
+    """A single content block within a message or response.
+
+    For ``type="image"``, set ``image_data`` (base64-encoded bytes) and
+    ``image_media_type`` (e.g. ``"image/png"``). Use :func:`image_block`
+    to construct image blocks from file paths.
+    """
 
     type: Literal["text", "tool_use", "tool_result", "image"]
     text: str | None = None
@@ -24,6 +29,8 @@ class ContentBlock:
     tool_name: str | None = None
     tool_input: dict[str, Any] | None = None
     tool_result: Any = None
+    image_data: str | None = None
+    image_media_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -80,3 +87,37 @@ class CompletionResponse:
         """Extract joined text from all text blocks."""
         parts = [b.text for b in self.content if b.type == "text" and b.text]
         return "\n".join(parts)
+
+
+_MEDIA_TYPES: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+    ".bmp": "image/bmp",
+}
+
+
+def image_block(path: str) -> ContentBlock:
+    """Create an image ContentBlock from a file path.
+
+    Reads the file, base64-encodes it, and infers the media type from
+    the extension. Raises ``FileNotFoundError`` if the file doesn't exist
+    and ``ValueError`` for unsupported image formats.
+    """
+    import base64  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Image file not found: {path}")
+    ext = p.suffix.lower()
+    media_type = _MEDIA_TYPES.get(ext)
+    if media_type is None:
+        raise ValueError(
+            f"Unsupported image format '{ext}'. Supported: {', '.join(sorted(_MEDIA_TYPES.keys()))}"
+        )
+    data = base64.standard_b64encode(p.read_bytes()).decode("ascii")
+    return ContentBlock(type="image", image_data=data, image_media_type=media_type)

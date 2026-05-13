@@ -19,6 +19,7 @@ from ._types import (
     Message,
     ToolSpec,
     Usage,
+    image_block,
 )
 
 _LAZY_PROVIDERS: dict[str, tuple[str, str]] = {
@@ -60,4 +61,5 @@ __all__ = [
     "TogetherModelProvider",
     "ToolSpec",
     "Usage",
+    "image_block",
 ]

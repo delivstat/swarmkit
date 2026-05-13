@@ -113,6 +113,17 @@ def _to_google_contents(
                             ),
                         )
                     )
+                elif block.type == "image" and block.image_data:
+                    import base64  # noqa: PLC0415
+
+                    parts.append(
+                        gtypes.Part(
+                            inline_data=gtypes.Blob(
+                                mime_type=block.image_media_type or "image/png",
+                                data=base64.standard_b64decode(block.image_data),
+                            ),
+                        )
+                    )
             contents.append(gtypes.Content(parts=parts, role=role))
     return contents
 
