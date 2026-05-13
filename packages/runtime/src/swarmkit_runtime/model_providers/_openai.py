@@ -114,9 +114,7 @@ def _build_openai_messages(request: CompletionRequest) -> list[dict[str, Any]]:
                 elif block.type == "image" and block.image_data:
                     mt = block.image_media_type or "image/png"
                     data_url = f"data:{mt};base64,{block.image_data}"
-                    parts.append(
-                        {"type": "image_url", "image_url": {"url": data_url}}
-                    )
+                    parts.append({"type": "image_url", "image_url": {"url": data_url}})
             if parts:
                 messages.append({"role": msg.role, "content": parts})
     return messages
