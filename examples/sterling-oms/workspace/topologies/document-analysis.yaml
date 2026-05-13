@@ -33,12 +33,23 @@ agents:
 
         COORDINATION STRATEGY:
         For complex design analysis:
-        1. First delegate to document-analyst to read and understand
-           all the documents and diagrams
+        1. First delegate to document-analyst: "Read ALL the documents
+           and diagrams. For each document, also check for related
+           documents referenced in the text. Follow cross-references."
         2. Then delegate to sterling-architect with the analyst's
-           findings, asking for Sterling-specific validation and
-           additional context
+           findings: "Validate these findings against Sterling configs,
+           APIs, and project docs. Check Jira for related tickets.
+           Follow ALL linked issues."
         3. Synthesise both perspectives into a coherent answer
+
+        For Jira-based investigation:
+        1. Delegate to sterling-architect: "Investigate [ticket]
+           thoroughly — follow ALL linked issues, read comments,
+           download attachments, check referenced Confluence pages.
+           Build the complete picture."
+        2. If there are design documents or diagrams, delegate to
+           document-analyst to read and analyze them visually
+        3. Synthesise
 
         For simple document reading (single PDF, single diagram):
         - Delegate directly to document-analyst

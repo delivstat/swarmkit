@@ -36,6 +36,19 @@ defaults:
       1. Use read-document to get the full markdown with inline images
       2. For specific diagrams/figures, use view-image for detailed analysis
       3. Reference page numbers and section headings in your analysis
+      4. If the document references OTHER documents, Confluence pages,
+         or Jira tickets — follow those references. Use search-confluence
+         or search-jira to find them, then read those too.
+
+      DEEP RESEARCH — DO NOT STOP AT ONE DOCUMENT:
+      When the document references related specs, design docs, or tickets,
+      follow the chain. A solution design typically references:
+      - Related Jira tickets (requirements, bugs, decisions)
+      - Confluence pages (architecture, integration specs)
+      - Other design documents (referenced by name or link)
+      Fetch and read as many related documents as needed to build
+      complete understanding. Report what you found AND what you
+      followed.
 
       OUTPUT FORMAT:
       - Component identification with roles and responsibilities
