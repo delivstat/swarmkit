@@ -178,15 +178,31 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
                         file=_sys.stderr,
                     )
 
-    # Check tool result cache before making the call
-    cached = mcp_manager.get_cached_result(server_id, tool_name, arguments)
-    if cached is not None:
-        mcp_manager._cache_hits += 1
-        if _os.environ.get("SWARMKIT_VERBOSE"):
-            import sys as _sys  # noqa: PLC0415
+    # Check tool result cache before making the call.
+    # Skip cache for side-effect tools (downloads, writes, creates, etc.)
+    _nocache_signals = (
+        "download",
+        "write",
+        "create",
+        "delete",
+        "update",
+        "send",
+        "upload",
+        "add",
+        "remove",
+    )
+    tool_lower = tool_name.lower()
+    cacheable = not any(sig in tool_lower for sig in _nocache_signals)
 
-            print(f"  [cache hit: {tool_name}]", file=_sys.stderr)
-        return cached
+    if cacheable:
+        cached = mcp_manager.get_cached_result(server_id, tool_name, arguments)
+        if cached is not None:
+            mcp_manager._cache_hits += 1
+            if _os.environ.get("SWARMKIT_VERBOSE"):
+                import sys as _sys  # noqa: PLC0415
+
+                print(f"  [cache hit: {tool_name}]", file=_sys.stderr)
+            return cached
 
     mcp_manager._cache_misses += 1
 
@@ -218,7 +234,8 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
     )
 
     if (
-        output
+        cacheable
+        and output
         and len(output) > 20
         and not output.startswith("[skill:")
         and not output.startswith("Error")
