@@ -48,6 +48,10 @@ class MockGovernanceProvider(GovernanceProvider):
         scopes_required: frozenset[str],
         context: dict[str, object] | None = None,
     ) -> PolicyDecision:
+        tier_decision = self._check_permission_tier(agent_id, action, context)
+        if tier_decision is not None:
+            return tier_decision
+
         if self._allow_all:
             return PolicyDecision(
                 allowed=True,
@@ -73,6 +77,62 @@ class MockGovernanceProvider(GovernanceProvider):
             scopes_granted=granted,
             scopes_denied=frozenset(),
         )
+
+    @staticmethod
+    def _check_permission_tier(
+        agent_id: str,
+        action: str,
+        context: dict[str, object] | None,
+    ) -> PolicyDecision | None:
+        """Apply MCP server permission tier rules from context.
+
+        Returns a PolicyDecision if the tier forces a decision (readonly
+        denying writes, strict denying unless explicitly approved), or
+        None to fall through to normal scope-based evaluation.
+        """
+        if context is None:
+            return None
+        tier = context.get("server_permission")
+        if tier is None:
+            return None
+
+        if tier == "readonly":
+            _write_signals = (
+                "create",
+                "delete",
+                "update",
+                "write",
+                "put",
+                "post",
+                "set",
+                "add",
+                "remove",
+                "modify",
+                "edit",
+                "insert",
+                "drop",
+                "push",
+                "send",
+            )
+            action_lower = action.lower()
+            if any(sig in action_lower for sig in _write_signals):
+                return PolicyDecision(
+                    allowed=False,
+                    reason=f"mock: server permission 'readonly' denies write action '{action}'",
+                    tier=1,
+                )
+
+        if tier == "strict":
+            return PolicyDecision(
+                allowed=False,
+                reason=(
+                    f"mock: server permission 'strict' requires explicit approval "
+                    f"for agent '{agent_id}' action '{action}'"
+                ),
+                tier=1,
+            )
+
+        return None
 
     async def verify_identity(
         self,

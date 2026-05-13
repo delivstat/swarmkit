@@ -190,6 +190,18 @@
         "sandbox_image": {
           "type": "string",
           "description": "Docker image for sandboxed servers. Defaults to swarmkit-mcp-sandbox (Python + mcp SDK). Use node:22-slim for Node.js servers."
+        },
+        "permission": {
+          "enum": ["open", "cautious", "strict", "readonly"],
+          "default": "cautious",
+          "description": "Governance permission tier for this server's tools. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: write operations denied."
+        },
+        "permission_overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["open", "cautious", "strict", "readonly"]
+          },
+          "description": "Per-tool permission overrides. Keys are MCP tool names, values are permission tiers that override the server default."
         }
       },
       "allOf": [

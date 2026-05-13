@@ -232,3 +232,67 @@ async def test_exit_demo_deny_and_audit() -> None:
     denied = gov.events[0].payload["scopes_denied"]
     assert isinstance(denied, list)
     assert "repo:write" in denied
+
+
+# ---- Permission tier handling in evaluate_action --------------------------
+
+
+@pytest.mark.asyncio
+async def test_readonly_denies_write_action() -> None:
+    gov = MockGovernanceProvider(allow_all=True)
+    decision = await gov.evaluate_action(
+        agent_id="worker-1",
+        action="mcp:call:github:delete_branch",
+        scopes_required=frozenset(),
+        context={"server_permission": "readonly"},
+    )
+    assert decision.allowed is False
+    assert "readonly" in decision.reason
+
+
+@pytest.mark.asyncio
+async def test_readonly_allows_read_action() -> None:
+    gov = MockGovernanceProvider(allow_all=True)
+    decision = await gov.evaluate_action(
+        agent_id="worker-1",
+        action="mcp:call:github:get_pr",
+        scopes_required=frozenset(),
+        context={"server_permission": "readonly"},
+    )
+    assert decision.allowed is True
+
+
+@pytest.mark.asyncio
+async def test_strict_denies_all() -> None:
+    gov = MockGovernanceProvider(allow_all=True)
+    decision = await gov.evaluate_action(
+        agent_id="worker-1",
+        action="mcp:call:github:get_pr",
+        scopes_required=frozenset(),
+        context={"server_permission": "strict"},
+    )
+    assert decision.allowed is False
+    assert "strict" in decision.reason
+
+
+@pytest.mark.asyncio
+async def test_cautious_falls_through_to_normal() -> None:
+    gov = MockGovernanceProvider(allow_all=True)
+    decision = await gov.evaluate_action(
+        agent_id="worker-1",
+        action="mcp:call:github:get_pr",
+        scopes_required=frozenset(),
+        context={"server_permission": "cautious"},
+    )
+    assert decision.allowed is True
+
+
+@pytest.mark.asyncio
+async def test_no_context_falls_through() -> None:
+    gov = MockGovernanceProvider(allow_all=True)
+    decision = await gov.evaluate_action(
+        agent_id="worker-1",
+        action="mcp:call:github:get_pr",
+        scopes_required=frozenset(),
+    )
+    assert decision.allowed is True

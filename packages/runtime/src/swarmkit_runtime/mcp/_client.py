@@ -30,6 +30,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolResult
 from swarmkit_schema.models.workspace import McpServer
 
+PermissionTier = Literal["open", "cautious", "strict", "readonly"]
+
 
 @dataclass(frozen=True)
 class MCPServerConfig:
@@ -48,6 +50,8 @@ class MCPServerConfig:
     cwd: str = ""
     sandboxed: bool = False
     sandbox_image: str = ""
+    permission: PermissionTier = "cautious"
+    permission_overrides: dict[str, PermissionTier] = field(default_factory=dict)
 
 
 class MCPClientManager:
@@ -172,6 +176,20 @@ class MCPClientManager:
         session = await self._stack.enter_async_context(ClientSession(*transport))
         await session.initialize()
         return session
+
+    def get_permission(self, server_id: str, tool_name: str) -> PermissionTier:
+        """Resolve the effective permission tier for a server+tool.
+
+        Per-tool overrides take precedence over the server default.
+        Returns ``"cautious"`` if the server is not configured.
+        """
+        cfg = self._configs.get(server_id)
+        if cfg is None:
+            return "cautious"
+        override = cfg.permission_overrides.get(tool_name)
+        if override is not None:
+            return override
+        return cfg.permission
 
     def get_server_cwd(self, server_id: str) -> str | None:
         """Return the resolved cwd for a server, or ``None``."""
@@ -393,6 +411,32 @@ def _expand_env_value(value: str, env_key: str) -> str:
     return re.sub(r"\$\{([^}]+)\}", _replace, value)
 
 
+_VALID_TIERS: set[str] = {"open", "cautious", "strict", "readonly"}
+
+
+def _extract_permission(raw: object) -> PermissionTier:
+    """Coerce a schema-generated Permission enum (or string) to PermissionTier."""
+    if raw is None:
+        return "cautious"
+    val = getattr(raw, "value", None) or str(raw)
+    if val in _VALID_TIERS:
+        return val  # type: ignore[return-value]
+    return "cautious"
+
+
+def _extract_permission_overrides(raw: object) -> dict[str, PermissionTier]:
+    """Coerce schema-generated permission_overrides to a typed dict."""
+    if not raw:
+        return {}
+    result: dict[str, PermissionTier] = {}
+    items: dict[str, Any] = raw if isinstance(raw, dict) else dict(raw)  # type: ignore[call-overload]
+    for k, v in items.items():
+        val = getattr(v, "value", None) or str(v)
+        if val in _VALID_TIERS:
+            result[k] = val  # type: ignore[assignment]
+    return result
+
+
 def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerConfig]:
     """Convert the workspace's typed ``mcp_servers`` list into client configs.
 
@@ -408,6 +452,8 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
         transport: Literal["stdio", "http"] = (
             "http" if server.transport.value == "http" else "stdio"
         )
+        permission = _extract_permission(getattr(server, "permission", None))
+        overrides = _extract_permission_overrides(getattr(server, "permission_overrides", None))
         configs[server.id] = MCPServerConfig(
             server_id=server.id,
             transport=transport,
@@ -417,6 +463,8 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
             cwd=server.cwd or "",
             sandboxed=bool(server.sandboxed) if server.sandboxed is not None else False,
             sandbox_image=server.sandbox_image or "",
+            permission=permission,
+            permission_overrides=overrides,
         )
     return configs
 

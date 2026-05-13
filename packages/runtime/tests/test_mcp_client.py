@@ -290,3 +290,58 @@ def test_collect_required_servers_deep_nesting() -> None:
     root = _make_agent("root", [_make_skill("llm_prompt")], [mid])
     topo = _make_topology(root)
     assert collect_required_servers(topo) == {"deep-server"}
+
+
+# ---- permission tiers ----------------------------------------------------
+
+
+def test_parse_permission_default_cautious() -> None:
+    configs = parse_mcp_servers([_stdio("github", ["npx", "server"])])
+    assert configs["github"].permission == "cautious"
+
+
+def test_parse_permission_explicit() -> None:
+    configs = parse_mcp_servers([_stdio("github", ["npx", "server"], permission="strict")])
+    assert configs["github"].permission == "strict"
+
+
+def test_parse_permission_overrides() -> None:
+    configs = parse_mcp_servers(
+        [
+            _stdio(
+                "github",
+                ["npx", "server"],
+                permission="cautious",
+                permission_overrides={"delete_branch": "strict", "get_pr": "open"},
+            )
+        ]
+    )
+    cfg = configs["github"]
+    assert cfg.permission == "cautious"
+    assert cfg.permission_overrides == {"delete_branch": "strict", "get_pr": "open"}
+
+
+def test_manager_get_permission_server_default() -> None:
+    configs = {
+        "github": MCPServerConfig(server_id="github", permission="strict"),
+    }
+    manager = MCPClientManager(configs)
+    assert manager.get_permission("github", "any_tool") == "strict"
+
+
+def test_manager_get_permission_tool_override() -> None:
+    configs = {
+        "github": MCPServerConfig(
+            server_id="github",
+            permission="cautious",
+            permission_overrides={"delete_branch": "strict"},
+        ),
+    }
+    manager = MCPClientManager(configs)
+    assert manager.get_permission("github", "get_pr") == "cautious"
+    assert manager.get_permission("github", "delete_branch") == "strict"
+
+
+def test_manager_get_permission_unknown_server() -> None:
+    manager = MCPClientManager()
+    assert manager.get_permission("unknown", "tool") == "cautious"

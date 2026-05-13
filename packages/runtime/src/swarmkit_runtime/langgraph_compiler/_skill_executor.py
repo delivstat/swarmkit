@@ -113,7 +113,11 @@ async def _execute_mcp_tool(  # noqa: PLR0912, PLR0915
     server_id = str(impl_get(impl, "server"))
     tool_name = str(impl_get(impl, "tool"))
 
-    if governance is not None:
+    permission = (
+        mcp_manager.get_permission(server_id, tool_name) if mcp_manager is not None else "cautious"
+    )
+
+    if permission != "open" and governance is not None:
         iam = getattr(skill.raw, "iam", None)
         scopes: frozenset[str] = frozenset()
         if iam and isinstance(iam, dict):
@@ -122,6 +126,7 @@ async def _execute_mcp_tool(  # noqa: PLR0912, PLR0915
             agent_id=agent_id,
             action=f"mcp:call:{server_id}:{tool_name}",
             scopes_required=scopes,
+            context={"server_permission": permission},
         )
         if not decision.allowed:
             return f"[skill:{skill.id}] DENIED: {decision.reason}"

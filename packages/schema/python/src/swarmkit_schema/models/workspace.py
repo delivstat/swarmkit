@@ -168,6 +168,24 @@ class Transport(Enum):
     http = "http"
 
 
+class Permission(Enum):
+    """
+    Governance permission tier for this server's tools. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: write operations denied.
+    """
+
+    open = "open"
+    cautious = "cautious"
+    strict = "strict"
+    readonly = "readonly"
+
+
+class PermissionOverrides(Enum):
+    open = "open"
+    cautious = "cautious"
+    strict = "strict"
+    readonly = "readonly"
+
+
 class McpServer(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -194,6 +212,14 @@ class McpServer(BaseModel):
     sandbox_image: str | None = Field(
         None,
         description="Docker image for sandboxed servers. Defaults to swarmkit-mcp-sandbox (Python + mcp SDK). Use node:22-slim for Node.js servers.",
+    )
+    permission: Permission | None = Field(
+        "cautious",
+        description="Governance permission tier for this server's tools. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: write operations denied.",
+    )
+    permission_overrides: dict[str, PermissionOverrides] | None = Field(
+        None,
+        description="Per-tool permission overrides. Keys are MCP tool names, values are permission tiers that override the server default.",
     )
 
 
