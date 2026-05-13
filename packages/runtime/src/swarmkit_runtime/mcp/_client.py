@@ -411,6 +411,32 @@ def _expand_env_value(value: str, env_key: str) -> str:
     return re.sub(r"\$\{([^}]+)\}", _replace, value)
 
 
+_VALID_TIERS: set[str] = {"open", "cautious", "strict", "readonly"}
+
+
+def _extract_permission(raw: object) -> PermissionTier:
+    """Coerce a schema-generated Permission enum (or string) to PermissionTier."""
+    if raw is None:
+        return "cautious"
+    val = getattr(raw, "value", None) or str(raw)
+    if val in _VALID_TIERS:
+        return val  # type: ignore[return-value]
+    return "cautious"
+
+
+def _extract_permission_overrides(raw: object) -> dict[str, PermissionTier]:
+    """Coerce schema-generated permission_overrides to a typed dict."""
+    if not raw:
+        return {}
+    result: dict[str, PermissionTier] = {}
+    items: dict[str, Any] = raw if isinstance(raw, dict) else dict(raw)  # type: ignore[call-overload]
+    for k, v in items.items():
+        val = getattr(v, "value", None) or str(v)
+        if val in _VALID_TIERS:
+            result[k] = val  # type: ignore[assignment]
+    return result
+
+
 def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerConfig]:
     """Convert the workspace's typed ``mcp_servers`` list into client configs.
 
@@ -426,14 +452,8 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
         transport: Literal["stdio", "http"] = (
             "http" if server.transport.value == "http" else "stdio"
         )
-        perm_raw = getattr(server, "permission", None)
-        permission: PermissionTier = (
-            perm_raw.value if hasattr(perm_raw, "value") else str(perm_raw or "cautious")
-        )
-        overrides_raw = getattr(server, "permission_overrides", None) or {}
-        overrides: dict[str, PermissionTier] = {
-            k: (v.value if hasattr(v, "value") else str(v)) for k, v in overrides_raw.items()
-        }
+        permission = _extract_permission(getattr(server, "permission", None))
+        overrides = _extract_permission_overrides(getattr(server, "permission_overrides", None))
         configs[server.id] = MCPServerConfig(
             server_id=server.id,
             transport=transport,
