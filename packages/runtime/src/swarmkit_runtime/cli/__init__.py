@@ -1704,6 +1704,31 @@ def knowledge_server(
     run_server(repo_root=repo.resolve() if repo else None)
 
 
+# ---- docs-reader ---------------------------------------------------------
+
+
+@app.command(name="docs-reader")
+def docs_reader(
+    workspace: Annotated[
+        Path | None,
+        typer.Option(
+            "--workspace",
+            "-w",
+            help="Workspace root for resolving relative paths.",
+            show_default=False,
+        ),
+    ] = None,
+) -> None:
+    """Launch the Document Reader MCP Server (stdio).
+
+    Reads PDF, DOCX, Excel, CSV, draw.io, SVG, and text files.
+    Document parsing libraries are optional — install as needed.
+    """
+    from swarmkit_runtime.docs_reader._server import run_server  # noqa: PLC0415
+
+    run_server(workspace=workspace.resolve() if workspace else None)
+
+
 # ---- stubs for later milestones ------------------------------------------
 
 

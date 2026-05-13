@@ -306,8 +306,9 @@ Make swarms useful with real knowledge sources and a rich skill catalogue.
 
 **Features:**
 
-- [ ] **Lazy MCP server startup** — `start_all()` becomes `start_required(topology)`. Scan topology's agents' skills, collect referenced server IDs, only start those servers. Reduces startup time and resource usage for workspaces with many MCP servers.
-- [ ] **Permission tiers on MCP servers** — `permission: open|cautious|strict|readonly` per server in workspace.yaml. Maps to governance `evaluate_action` decisions. Per-tool overrides via `overrides:` block.
+- [x] **Lazy MCP server startup** — `start_required(topology)` only starts servers the topology needs. PR #123.
+- [x] **Permission tiers on MCP servers** — `permission: open|cautious|strict|readonly` per server with per-tool overrides. PR #124.
+- [ ] **Document reader MCP server** — `swarmkit-docs-reader` MCP server for PDF, DOCX, Excel, images, draw.io/SVG. Extracts text and structure from documents so agents can understand them without multimodal models. See `design/details/document-reader-mcp.md`.
 - [ ] **MCP gateway prototype** — single `swarmkit mcp-gateway` server wrapping all workspace servers with namespace routing. Optional — replaces N server processes with 1.
 
 **Deferred to future milestones:**
