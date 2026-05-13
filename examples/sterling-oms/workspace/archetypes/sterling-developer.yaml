@@ -8,7 +8,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: deepseek/deepseek-chat
+    name: google/gemini-2.5-flash
     temperature: 0.3
   prompt:
     system: |

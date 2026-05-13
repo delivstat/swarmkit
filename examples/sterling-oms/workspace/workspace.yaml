@@ -110,6 +110,18 @@ mcp_servers:
       ATLASSIAN_API_TOKEN: "${ATLASSIAN_API_TOKEN}"
       JIRA_URL: "${JIRA_URL}"
     credentials_ref: confluence-creds
+  # MarkItDown — Microsoft's document-to-markdown converter
+  # Handles PDF, DOCX, XLSX, PPTX with embedded images as inline data URIs
+  - id: markitdown
+    transport: stdio
+    command: ["uvx", "markitdown-mcp"]
+    permission: open
+  # SwarmKit docs-reader — visual image analysis + structured diagram parsing
+  # view_image returns raw ImageContent for multimodal models
+  - id: docs-reader
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.docs_reader"]
+    permission: open
   # GitHub for code access (PRs, remote repos)
   - id: github
     transport: stdio
