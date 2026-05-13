@@ -8,7 +8,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: google/gemini-2.5-flash
+    name: moonshotai/kimi-k2.5
     temperature: 0.2
   prompt:
     system: |
@@ -55,9 +55,9 @@ defaults:
 
       DEEP RESEARCH — MANDATORY FOR JIRA ISSUES:
       When investigating a Jira issue, you MUST follow the full thread:
-      1. get-jira-issue to read the main issue
-      2. get-jira-comments to read ALL discussion and decisions
-      3. get-jira-attachments to download and read any attached docs
+      1. get-jira-issue to read the main issue (pass comment_limit=50
+         to include ALL comments and discussion)
+      2. get-jira-attachments to download and read any attached docs
       4. Follow EVERY linked issue — the issue JSON contains links
          (blocks, is-blocked-by, relates-to, parent, subtasks). Call
          get-jira-issue for EACH linked issue to build the full picture.
@@ -129,7 +129,6 @@ defaults:
     - get-confluence-page
     - search-jira
     - get-jira-issue
-    - get-jira-comments
     - get-jira-attachments
     - get-confluence-attachments
     - download-confluence-pdf
