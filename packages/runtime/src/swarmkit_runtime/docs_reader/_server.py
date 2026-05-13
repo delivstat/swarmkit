@@ -58,7 +58,7 @@ def read_pdf(
         end_page: Last page to extract (inclusive). Defaults to start_page + 49.
     """
     try:
-        import pymupdf  # noqa: PLC0415
+        import pymupdf  # type: ignore[import-not-found]  # noqa: PLC0415
     except ImportError:
         return (
             "ERROR: pymupdf is not installed. Install it with:\n"
@@ -83,7 +83,7 @@ def read_pdf(
     parts: list[str] = [f"# {resolved.name} ({total_pages} pages)\n"]
     for i in range(start, end):
         page = doc[i]
-        text = page.get_text()  # type: ignore[union-attr]
+        text = page.get_text()
         parts.append(f"## Page {i + 1}\n\n{text.strip()}\n")
 
     doc.close()
@@ -102,7 +102,7 @@ def read_docx(path: str) -> str:
         path: File path (relative to workspace root or absolute).
     """
     try:
-        import docx  # noqa: PLC0415
+        import docx  # type: ignore[import-not-found]  # noqa: PLC0415
     except ImportError:
         return (
             "ERROR: python-docx is not installed. Install it with:\n"
@@ -173,7 +173,7 @@ def read_excel(
         max_rows: Maximum rows per sheet (default 100).
     """
     try:
-        import openpyxl  # noqa: PLC0415
+        import openpyxl  # type: ignore[import-untyped]  # noqa: PLC0415
     except ImportError:
         return (
             "ERROR: openpyxl is not installed. Install it with:\n"
@@ -203,7 +203,7 @@ def read_excel(
 
         rows: list[list[str]] = []
         total_rows = 0
-        for row in ws.iter_rows(values_only=True):  # type: ignore[union-attr]
+        for row in ws.iter_rows(values_only=True):
             total_rows += 1
             if total_rows <= max_rows + 1:
                 rows.append([str(c) if c is not None else "" for c in row])
@@ -395,7 +395,7 @@ def read_image(path: str) -> str:
         return f"ERROR: file not found: {resolved}"
 
     try:
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image  # type: ignore[import-not-found]  # noqa: PLC0415
     except ImportError:
         return (
             "ERROR: Pillow is not installed. Install it with:\n"
@@ -404,7 +404,7 @@ def read_image(path: str) -> str:
         )
 
     try:
-        import pytesseract  # noqa: PLC0415
+        import pytesseract  # type: ignore[import-not-found]  # noqa: PLC0415
     except ImportError:
         return (
             "ERROR: pytesseract is not installed. Install it with:\n"
