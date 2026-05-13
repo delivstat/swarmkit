@@ -455,16 +455,31 @@ async def _run_tool_loop(
 
     if verbose:
         print("  [tool limit reached — forcing synthesis]", file=sys.stderr)
-    loop_messages.append(
-        Message(role="assistant", content=list(current_response.content)),
-    )
+
+    if current_results:
+        last_result_blocks: list[ContentBlock] = []
+        for tr in current_results:
+            last_result_blocks.append(
+                ContentBlock(
+                    type="tool_result",
+                    tool_use_id=tr.tool_use_id,
+                    tool_result=_truncate_result(tr.result),
+                )
+            )
+        loop_messages.append(
+            Message(role="assistant", content=list(current_response.content)),
+        )
+        loop_messages.append(
+            Message(role="user", content=last_result_blocks),
+        )
+
     loop_messages.append(
         Message(
             role="user",
             content=(
-                "You have reached the tool call limit. Do NOT call any more tools. "
-                "Based on ALL the information you have gathered so far, write your "
-                "complete analysis now. Synthesize everything into a final response."
+                "STOP. Do NOT call any more tools. You have gathered enough information. "
+                "Write your complete, detailed analysis NOW based on everything you found. "
+                "This is your final response — synthesize all findings into a coherent answer."
             ),
         ),
     )
