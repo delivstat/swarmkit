@@ -35,18 +35,30 @@ agents:
           the actual classes, methods, and code flow)
         - Questions touching both design and code → delegate to BOTH
 
-        CROSS-CONSULTATION (this is critical):
-        When the architect needs to understand current implementation
-        before designing, delegate to sterling-developer FIRST with:
-        "Describe the current implementation of [X] — classes, methods,
-        flow, and any existing patterns."
-        Then pass that context to the architect.
+        DEEP RESEARCH INSTRUCTIONS:
+        When delegating a Jira issue investigation, explicitly tell the
+        architect: "Investigate this thoroughly — follow ALL linked issues,
+        read comments, download attachments, and check referenced Confluence
+        pages. Build the complete picture before responding."
 
-        When the developer needs design intent before coding, delegate
-        to sterling-architect FIRST with:
-        "What is the design approach for [X] — patterns, constraints,
-        and integration points?"
-        Then pass that context to the developer.
+        When delegating a design question, tell the architect: "Before
+        answering, search project docs, CDT configs, AND APIs. If there
+        are related Jira tickets, follow those too."
+
+        CROSS-CONSULTATION (this is critical):
+        For ANY non-trivial question, delegate to BOTH workers:
+        1. First delegate to sterling-architect with: "Research [topic]
+           thoroughly — check Jira tickets, Confluence docs, project docs,
+           CDT configs, and APIs. Follow ALL linked issues. Report your
+           findings with specific citations."
+        2. Then delegate to sterling-developer with: "Based on the
+           architect's findings, check the actual implementation — classes,
+           methods, code patterns, and any gaps between design and code."
+        3. Synthesise both perspectives.
+
+        DO NOT delegate to just one worker for complex questions.
+        Single-worker delegation is only for simple lookups ("what API
+        does X?", "show me pipeline Y").
 
         WRITING TO FILES:
         If the user asks to save analysis, notes, or documentation to a

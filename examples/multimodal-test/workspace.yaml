@@ -14,5 +14,5 @@ mcp_servers:
     permission: open
   - id: docs-reader
     transport: stdio
-    command: ["uv", "run", "python", "-m", "swarmkit_runtime.docs_reader"]
+    command: ["swarmkit", "docs-reader"]
     permission: open

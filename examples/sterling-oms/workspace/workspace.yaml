@@ -120,7 +120,7 @@ mcp_servers:
   # view_image returns raw ImageContent for multimodal models
   - id: docs-reader
     transport: stdio
-    command: ["uv", "run", "python", "-m", "swarmkit_runtime.docs_reader"]
+    command: ["swarmkit", "docs-reader"]
     permission: open
   # GitHub for code access (PRs, remote repos)
   - id: github
