@@ -35,7 +35,7 @@ def test_completion_request_is_frozen() -> None:
         messages=(Message(role="user", content="hi"),),
     )
     with pytest.raises(AttributeError):
-        req.model = "other"  # type: ignore[misc]
+        req.model = "other"  # type: ignore[misc,unused-ignore]
 
 
 def test_completion_response_is_frozen() -> None:
@@ -45,7 +45,7 @@ def test_completion_response_is_frozen() -> None:
         usage=Usage(input_tokens=1, output_tokens=1),
     )
     with pytest.raises(AttributeError):
-        resp.stop_reason = "error"  # type: ignore[misc]
+        resp.stop_reason = "error"  # type: ignore[misc,unused-ignore]
 
 
 # ---- MockModelProvider ---------------------------------------------------
@@ -379,10 +379,10 @@ def test_message_with_image_content() -> None:
             ),
         ],
     )
+    assert not isinstance(msg.content, str)
     assert len(msg.content) == 2
-    blocks = list(msg.content)
-    assert blocks[0].type == "text"
-    assert blocks[1].type == "image"
+    assert msg.content[0].type == "text"
+    assert msg.content[1].type == "image"
 
 
 def test_anthropic_image_translation() -> None:
