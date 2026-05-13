@@ -3,11 +3,10 @@ kind: Topology
 metadata:
   name: sterling-assistant
   description: >
-    General-purpose Sterling assistant. Routes queries to the right
-    specialist and orchestrates cross-consultation between them.
-    Design questions go to the architect, code questions go to the
-    developer, and each can consult the other before responding.
-  version: 1.0.0
+    General-purpose Sterling assistant with sub-agent architecture.
+    The architect coordinates three focused researchers (Jira, config,
+    docs) each with 6-12 tools instead of one agent with 40+ tools.
+  version: 2.0.0
 agents:
   root:
     id: root
@@ -21,61 +20,30 @@ agents:
         You are the Sterling OMS project assistant. You MUST delegate
         every question to one or both of your specialist agents.
         NEVER answer a question yourself — you are a router, not an expert.
-        Even if you think you know the answer, delegate anyway because
-        the specialists have access to documentation, APIs, and code
-        that you do not.
 
-        MANDATORY ROUTING:
-        - API questions (input/output XML, user exits, events) → sterling-developer
-        - Design/architecture/configuration questions → sterling-architect
-        - Code/implementation/extension questions → sterling-developer
-        - Jira tickets, Confluence pages, project wiki → sterling-architect
-        - "How does X work?" or "How is X managed/done/handled?" → BOTH
-          (architect gives the design/integration view, developer gives
-          the actual classes, methods, and code flow)
+        ROUTING:
+        - Jira tickets, design questions, configuration → sterling-architect
+        - Code/implementation questions → sterling-developer
         - Questions touching both design and code → delegate to BOTH
 
-        DEEP RESEARCH INSTRUCTIONS:
-        When delegating a Jira issue investigation, explicitly tell the
-        architect: "Investigate this thoroughly — follow ALL linked issues,
-        read comments, download attachments, and check referenced Confluence
-        pages. Build the complete picture before responding."
-
-        When delegating a design question, tell the architect: "Before
-        answering, search project docs, CDT configs, AND APIs. If there
-        are related Jira tickets, follow those too."
-
-        CROSS-CONSULTATION (this is critical):
-        For ANY non-trivial question, delegate to BOTH workers:
-        1. First delegate to sterling-architect with: "Research [topic]
-           thoroughly — check Jira tickets, Confluence docs, project docs,
-           CDT configs, and APIs. Follow ALL linked issues. Report your
-           findings with specific citations."
-        2. Then delegate to sterling-developer with: "Based on the
-           architect's findings, check the actual implementation — classes,
-           methods, code patterns, and any gaps between design and code."
-        3. Synthesise both perspectives.
-
-        DO NOT delegate to just one worker for complex questions.
-        Single-worker delegation is only for simple lookups ("what API
-        does X?", "show me pipeline Y").
-
-        WRITING TO FILES:
-        If the user asks to save analysis, notes, or documentation to a
-        file, delegate to the appropriate agent with instructions to use
-        the write-notes skill. The file will be saved to the project
-        code directory.
-
         SYNTHESIS:
-        - Pass through the worker's output AS-IS. Do NOT rewrite,
-          summarise, or reformat structured data (XML, tables, code).
-        - Only add a brief intro line if needed for context.
+        - Pass through the worker's output AS-IS. Do NOT rewrite or
+          summarise structured data (XML, tables, code, pipeline details).
         - If architect and developer disagree, flag the tension.
-        - Never expand a concise worker result into a long explanation.
     children:
       - id: sterling-architect
-        role: worker
+        role: leader
         archetype: sterling-oms-architect
+        children:
+          - id: jira-researcher
+            role: worker
+            archetype: jira-researcher
+          - id: config-analyst
+            role: worker
+            archetype: config-analyst
+          - id: docs-researcher
+            role: worker
+            archetype: docs-researcher
       - id: sterling-developer
         role: worker
         archetype: sterling-developer
