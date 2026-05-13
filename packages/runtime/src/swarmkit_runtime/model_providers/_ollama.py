@@ -65,7 +65,7 @@ class OllamaModelProvider:
 
 
 def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
-    messages: list[dict[str, str]] = []
+    messages: list[dict[str, Any]] = []
     if request.system:
         messages.append({"role": "system", "content": request.system})
     for msg in request.messages:
@@ -73,7 +73,11 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
             messages.append({"role": msg.role, "content": msg.content})
         else:
             text_parts = [b.text for b in msg.content if b.type == "text" and b.text]
-            messages.append({"role": msg.role, "content": " ".join(text_parts)})
+            images = [b.image_data for b in msg.content if b.type == "image" and b.image_data]
+            entry: dict[str, Any] = {"role": msg.role, "content": " ".join(text_parts)}
+            if images:
+                entry["images"] = images
+            messages.append(entry)
 
     payload: dict[str, Any] = {"model": request.model, "messages": messages}
     options: dict[str, Any] = {}

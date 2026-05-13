@@ -308,7 +308,8 @@ Make swarms useful with real knowledge sources and a rich skill catalogue.
 
 - [x] **Lazy MCP server startup** — `start_required(topology)` only starts servers the topology needs. PR #123.
 - [x] **Permission tiers on MCP servers** — `permission: open|cautious|strict|readonly` per server with per-tool overrides. PR #124.
-- [ ] **Document reader MCP server** — `swarmkit-docs-reader` MCP server for PDF, DOCX, Excel, images, draw.io/SVG. Extracts text and structure from documents so agents can understand them without multimodal models. See `design/details/document-reader-mcp.md`.
+- [x] **Document reader MCP server** — `swarmkit-docs-reader` MCP server for PDF, DOCX, Excel, images, draw.io/SVG. PR #125.
+- [x] **Multimodal model provider support** — image content blocks in `ContentBlock`, wired through all 7 providers (Anthropic, OpenAI, Google, Ollama, OpenRouter, Groq, Together). `image_block(path)` helper for file-to-base64. PR #126.
 - [ ] **MCP gateway prototype** — single `swarmkit mcp-gateway` server wrapping all workspace servers with namespace routing. Optional — replaces N server processes with 1.
 
 **Deferred to future milestones:**

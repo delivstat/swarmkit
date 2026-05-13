@@ -109,6 +109,17 @@ def _to_anthropic_messages(
                             "content": str(block.tool_result) if block.tool_result else "",
                         }
                     )
+                elif block.type == "image" and block.image_data:
+                    blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": block.image_media_type or "image/png",
+                                "data": block.image_data,
+                            },
+                        }
+                    )
             messages.append({"role": msg.role, "content": blocks})
     return messages
 
