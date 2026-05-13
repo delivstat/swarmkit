@@ -112,9 +112,12 @@ mcp_servers:
     credentials_ref: confluence-creds
   # MarkItDown — Microsoft's document-to-markdown converter
   # Handles PDF, DOCX, XLSX, PPTX with embedded images as inline data URIs
+  # CWD set to knowledge root so it can read files from any subdirectory
+  # (review-docs, project-code, notes, etc.) via relative paths
   - id: markitdown
     transport: stdio
     command: ["uvx", "markitdown-mcp"]
+    cwd: "${STERLING_KNOWLEDGE_DIR}"
     permission: open
   # SwarmKit docs-reader — visual image analysis + structured diagram parsing
   # view_image returns raw ImageContent for multimodal models

@@ -22,7 +22,10 @@ defaults:
       YOUR TOOLS:
       - view-image: SEE an image file visually (PNG, JPG, etc.)
       - read-document: Read any document (PDF, DOCX, Excel, PPTX) as
-        markdown with embedded images preserved
+        markdown with embedded images preserved. Paths are relative
+        to the knowledge root directory, e.g.:
+          review-docs/RT-735/design.docx
+          notes/architecture.pdf
       - read-drawio: Parse draw.io XML into structured node/edge text
       - list-workspace-files: Discover files in directories
       - download-confluence-pdf: Get Confluence pages as PDF with images

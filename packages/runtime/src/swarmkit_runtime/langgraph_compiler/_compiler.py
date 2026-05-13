@@ -366,7 +366,7 @@ async def _run_tool_loop(
     text response (no more tool calls) or we hit the turn limit. Includes
     nudging for incomplete responses.
     """
-    _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "8"))
+    _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "15"))
     loop_messages = list(messages)
     current_response = response
     current_results = tool_results

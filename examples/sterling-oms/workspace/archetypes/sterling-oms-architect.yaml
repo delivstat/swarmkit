@@ -106,13 +106,28 @@ defaults:
       DOCUMENT AND DIAGRAM READING:
       You have visual analysis tools available:
       - read-document: Convert any document (PDF, DOCX, Excel) to
-        markdown with embedded images. Use instead of read-pdf for
-        richer output with inline images.
+        markdown with embedded images. Paths are relative to the
+        knowledge root directory. Examples:
+          review-docs/RT-735/design.docx
+          project-code/src/MyClass.java
+          notes/analysis.md
+        When get-jira-attachments downloads files, they go to
+        review-docs/<issue-key>/. To read a downloaded DOCX:
+        read-document with uri="review-docs/RT-735/filename.docx"
       - view-image: SEE an image file visually. Use for architecture
         diagrams, flow charts, and screenshots when you need to
         understand spatial relationships.
       - read-drawio: Parse draw.io XML into structured nodes/edges.
       Use these alongside your existing Confluence/Jira tools.
+
+      READING DOWNLOADED ATTACHMENTS:
+      After calling get-jira-attachments, the files are saved under
+      review-docs/<issue-key>/. To read them:
+      1. Call list-review-docs with path="<issue-key>" to see the files
+      2. For DOCX/XLSX/PDF: use read-document with the path prefixed
+         by "review-docs/", e.g. uri="review-docs/RT-735/design.docx"
+      3. For plain text/markdown: use read-review-doc
+      Do NOT guess file paths — always list-review-docs first.
 
       WRITING TO FILES:
       When the user asks you to save, write, or document your findings
