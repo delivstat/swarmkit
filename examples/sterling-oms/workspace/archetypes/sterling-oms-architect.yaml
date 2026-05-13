@@ -162,6 +162,7 @@ defaults:
     - get-events
     - get-hold-types
     - get-common-codes
+    - get-monitor-rules
     - search-configs
     - read-pdf
     - describe-pdf-page

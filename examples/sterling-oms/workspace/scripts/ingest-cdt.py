@@ -97,6 +97,8 @@ def _parse_service_flow(config_xml: ET.Element) -> dict:
 
 def _build_services(cdt_dir: Path) -> dict:
     """Build service index from YFS_FLOW + YFS_SUB_FLOW."""
+    org_lookup = _build_org_lookup(cdt_dir)
+    pt_lookup = _build_process_type_lookup(cdt_dir)
     services = {}
 
     flow_path = cdt_dir / "YFS_FLOW.cdt.xml"
@@ -104,13 +106,18 @@ def _build_services(cdt_dir: Path) -> dict:
         _, rows = _parse_cdt(flow_path)
         for row in rows:
             key = row.get("FlowKey", "")
+            owner_key = row.get("OwnerKey", "")
+            pt_key = row.get("ProcessTypeKey", "")
             services[key] = {
                 "flow_key": key,
                 "name": row.get("FlowName", ""),
                 "flow_type": row.get("FlowType", ""),
                 "group": row.get("FlowGroupName", ""),
-                "owner": row.get("OwnerKey", ""),
-                "process_type": row.get("ProcessTypeKey", ""),
+                "owner": owner_key,
+                "owner_org": org_lookup.get(owner_key, owner_key),
+                "process_type": pt_key,
+                "process_type_name": pt_lookup.get(pt_key, pt_key),
+                "graph_ui_key": row.get("GraphUIKey", ""),
                 "is_realtime": row.get("IsRealTime", ""),
                 "transport_type": row.get("TransportTypeKey", ""),
                 "sub_flows": [],
@@ -139,8 +146,48 @@ def _build_services(cdt_dir: Path) -> dict:
     return services
 
 
-def _build_pipelines(cdt_dir: Path) -> dict:
-    """Build pipeline index with definitions, conditions, pickup transactions."""
+def _build_org_lookup(cdt_dir: Path) -> dict[str, str]:
+    """Build OrganizationKey → OrganizationCode lookup from YFS_ORGANIZATION."""
+    lookup: dict[str, str] = {}
+    org_path = cdt_dir / "YFS_ORGANIZATION.cdt.xml"
+    if org_path.exists():
+        _, rows = _parse_cdt(org_path)
+        for row in rows:
+            key = row.get("OrganizationKey", "")
+            code = row.get("OrganizationCode", row.get("OrganizationName", key))
+            if key:
+                lookup[key] = code
+    return lookup
+
+
+def _build_process_type_lookup(cdt_dir: Path) -> dict[str, str]:
+    """Build ProcessTypeKey → ProcessType name lookup from YFS_PROCESS_TYPE."""
+    lookup: dict[str, str] = {}
+    pt_path = cdt_dir / "YFS_PROCESS_TYPE.cdt.xml"
+    if pt_path.exists():
+        _, rows = _parse_cdt(pt_path)
+        for row in rows:
+            key = row.get("ProcessTypeKey", "")
+            name = row.get("ProcessType", row.get("ProcessTypeName", key))
+            if key:
+                lookup[key] = name
+    return lookup
+
+
+def _build_pipelines(cdt_dir: Path) -> dict:  # noqa: PLR0912
+    """Build pipeline index with definitions, conditions, pickup transactions.
+
+    Hub rule linkage: conditions map to definitions via PipelineDefinitionKey.
+    Each condition specifies the organization/enterprise rule, and the linked
+    definition specifies which transaction to execute. This tells you which
+    pipeline path each organization uses.
+
+    Resolves OwnerKey → organization name, ProcessTypeKey → process type name.
+    Conditions are sorted by priority (lower = evaluated first).
+    """
+    org_lookup = _build_org_lookup(cdt_dir)
+    pt_lookup = _build_process_type_lookup(cdt_dir)
+
     pipelines = {}
 
     pipe_path = cdt_dir / "YFS_PIPELINE.cdt.xml"
@@ -148,45 +195,71 @@ def _build_pipelines(cdt_dir: Path) -> dict:
         _, rows = _parse_cdt(pipe_path)
         for row in rows:
             key = row.get("PipelineKey", "")
+            owner_key = row.get("OwnerKey", "")
+            pt_key = row.get("ProcessTypeKey", "")
             pipelines[key] = {
                 "pipeline_key": key,
                 "pipeline_id": row.get("PipelineId", ""),
                 "description": row.get("PipelineDescription", ""),
-                "owner": row.get("OwnerKey", ""),
-                "process_type": row.get("ProcessTypeKey", ""),
+                "owner": owner_key,
+                "owner_org": org_lookup.get(owner_key, owner_key),
+                "process_type": pt_key,
+                "process_type_name": pt_lookup.get(pt_key, pt_key),
                 "active": row.get("ActiveFlag", ""),
                 "definitions": [],
                 "conditions": [],
+                "hub_rules": [],
                 "pickup_transactions": [],
             }
 
     defn_path = cdt_dir / "YFS_PIPELINE_DEFINITION.cdt.xml"
+    defns_by_key: dict[str, dict] = {}
     if defn_path.exists():
         _, rows = _parse_cdt(defn_path)
         for row in rows:
             pk = row.get("PipelineKey", "")
+            pdk = row.get("PipelineDefinitionKey", "")
+            defn = {
+                "pipeline_definition_key": pdk,
+                "drop_status": row.get("DropStatus", ""),
+                "transaction_key": row.get("TransactionKey", ""),
+                "transaction_instance": row.get("TransactionInstanceKey", ""),
+            }
+            defns_by_key[pdk] = defn
             if pk in pipelines:
-                pipelines[pk]["definitions"].append(
-                    {
-                        "drop_status": row.get("DropStatus", ""),
-                        "transaction_key": row.get("TransactionKey", ""),
-                        "transaction_instance": row.get("TransactionInstanceKey", ""),
-                    }
-                )
+                pipelines[pk]["definitions"].append(defn)
 
     cond_path = cdt_dir / "YFS_PIPELINE_CONDITION.cdt.xml"
     if cond_path.exists():
         _, rows = _parse_cdt(cond_path)
         for row in rows:
             pk = row.get("PipelineKey", "")
+            pdk = row.get("PipelineDefinitionKey", "")
+            priority = row.get("Priority", row.get("SequenceNo", "999"))
+            condition = {
+                "condition_key": row.get("ConditionKey", ""),
+                "condition_value": row.get("ConditionValue", ""),
+                "pipeline_definition_key": pdk,
+                "priority": priority,
+            }
             if pk in pipelines:
-                pipelines[pk]["conditions"].append(
-                    {
-                        "condition_key": row.get("ConditionKey", ""),
-                        "condition_value": row.get("ConditionValue", ""),
-                        "pipeline_definition_key": row.get("PipelineDefinitionKey", ""),
-                    }
-                )
+                pipelines[pk]["conditions"].append(condition)
+                linked_defn = defns_by_key.get(pdk)
+                if linked_defn:
+                    pipelines[pk]["hub_rules"].append(
+                        {
+                            "condition_key": condition["condition_key"],
+                            "condition_value": condition["condition_value"],
+                            "priority": priority,
+                            "maps_to_definition": pdk,
+                            "drop_status": linked_defn["drop_status"],
+                            "transaction_key": linked_defn["transaction_key"],
+                            "transaction_instance": linked_defn["transaction_instance"],
+                        }
+                    )
+
+    for pipe in pipelines.values():
+        pipe["hub_rules"].sort(key=lambda r: str(r.get("priority", "999")))
 
     pickup_path = cdt_dir / "YFS_PIPELINE_PICKUP_TRAN.cdt.xml"
     if pickup_path.exists():
@@ -303,21 +376,142 @@ def _build_transactions(cdt_dir: Path) -> dict:  # noqa: PLR0912
 
 
 def _build_statuses(cdt_dir: Path) -> dict:
-    """Build status lookup by process type."""
+    """Build status lookup by process type.
+
+    Each status includes its owner organization so enterprise-specific
+    status names are preserved. The lookup is keyed by ProcessTypeKey
+    for backward compatibility — callers can filter by owner if needed.
+    """
+    org_lookup = _build_org_lookup(cdt_dir)
     statuses: dict[str, list[dict]] = {}
     status_path = cdt_dir / "YFS_STATUS.cdt.xml"
     if status_path.exists():
         _, rows = _parse_cdt(status_path)
         for row in rows:
             pt = row.get("ProcessTypeKey", "")
+            owner_key = row.get("OwnerKey", "")
             statuses.setdefault(pt, []).append(
                 {
                     "status": row.get("Status", ""),
                     "status_name": row.get("StatusName", ""),
                     "description": row.get("Description", ""),
+                    "owner": owner_key,
+                    "owner_org": org_lookup.get(owner_key, owner_key),
                 }
             )
     return statuses
+
+
+def _build_monitor_rules(cdt_dir: Path) -> list[dict]:
+    """Build monitoring rules index from YFS_MONITOR_RULE + YFS_MONITORING_CONSOLIDATION.
+
+    Monitor rules define alerts for orders/shipments stuck in a status.
+    Each rule specifies the process type, status to monitor, timeout,
+    and what action to take (raise alert, escalate, etc.).
+    Consolidation records define how monitoring events are grouped.
+    """
+    org_lookup = _build_org_lookup(cdt_dir)
+    pt_lookup = _build_process_type_lookup(cdt_dir)
+
+    rules: list[dict] = []
+    rule_path = cdt_dir / "YFS_MONITOR_RULE.cdt.xml"
+    if rule_path.exists():
+        _, rows = _parse_cdt(rule_path)
+        for row in rows:
+            owner_key = row.get("OwnerKey", "")
+            pt_key = row.get("ProcessTypeKey", "")
+            rules.append(
+                {
+                    "monitor_rule_key": row.get("MonitorRuleKey", ""),
+                    "rule_name": row.get("MonitorRuleName", row.get("RuleName", "")),
+                    "owner": owner_key,
+                    "owner_org": org_lookup.get(owner_key, owner_key),
+                    "process_type": pt_key,
+                    "process_type_name": pt_lookup.get(pt_key, pt_key),
+                    "document_type": row.get("DocumentType", ""),
+                    "status": row.get("Status", ""),
+                    "pipeline_key": row.get("PipelineKey", ""),
+                    "monitoring_type": row.get("MonitoringType", ""),
+                    "priority": row.get("Priority", ""),
+                    "active": row.get("ActiveFlag", row.get("IsActive", "")),
+                    "time_to_alert": row.get("TimeToAlert", ""),
+                    "time_to_escalate": row.get("TimeToEscalate", ""),
+                    "alert_queue": row.get("AlertQueue", ""),
+                    "escalation_queue": row.get("EscalationQueue", ""),
+                    "max_monitor_days": row.get("MaxMonitorDays", ""),
+                    "condition_key": row.get("ConditionKey", ""),
+                    "consolidation_key": row.get("ConsolidationKey", ""),
+                }
+            )
+
+    consolidations: dict[str, dict] = {}
+    consol_path = cdt_dir / "YFS_MONITORING_CONSOLIDATION.cdt.xml"
+    if consol_path.exists():
+        _, rows = _parse_cdt(consol_path)
+        for row in rows:
+            ck = row.get("ConsolidationKey", "")
+            consolidations[ck] = {
+                "consolidation_key": ck,
+                "consolidation_type": row.get("ConsolidationType", ""),
+                "consolidation_interval": row.get("ConsolidationInterval", ""),
+                "max_records": row.get("MaxRecords", ""),
+            }
+
+    conditions = _build_condition_lookup(cdt_dir)
+    queues = _build_queue_lookup(cdt_dir)
+
+    for rule in rules:
+        ck = rule.get("consolidation_key", "")
+        if ck and ck in consolidations:
+            rule["consolidation"] = consolidations[ck]
+        cond_key = rule.get("condition_key", "")
+        if cond_key and cond_key in conditions:
+            rule["condition"] = conditions[cond_key]
+        for q_field in ("alert_queue", "escalation_queue"):
+            q_key = rule.get(q_field, "")
+            if q_key and q_key in queues:
+                rule[f"{q_field}_details"] = queues[q_key]
+
+    return rules
+
+
+def _build_queue_lookup(cdt_dir: Path) -> dict[str, dict]:
+    """Build queue lookup from YFS_QUEUE table."""
+    queues: dict[str, dict] = {}
+    queue_path = cdt_dir / "YFS_QUEUE.cdt.xml"
+    if queue_path.exists():
+        _, rows = _parse_cdt(queue_path)
+        for row in rows:
+            qk = row.get("QueueKey", "")
+            queues[qk] = {
+                "queue_key": qk,
+                "queue_id": row.get("QueueId", row.get("QueueID", "")),
+                "queue_name": row.get("QueueName", row.get("QueueDescription", "")),
+                "queue_type": row.get("QueueType", ""),
+                "owner": row.get("OwnerKey", ""),
+            }
+    return queues
+
+
+def _build_condition_lookup(cdt_dir: Path) -> dict[str, dict]:
+    """Build condition lookup from YFS_CONDITION table."""
+    conditions: dict[str, dict] = {}
+    cond_path = cdt_dir / "YFS_CONDITION.cdt.xml"
+    if cond_path.exists():
+        _, rows = _parse_cdt(cond_path)
+        for row in rows:
+            ck = row.get("ConditionKey", "")
+            conditions[ck] = {
+                "condition_key": ck,
+                "condition_id": row.get("ConditionId", row.get("ConditionID", "")),
+                "condition_name": row.get("ConditionName", ""),
+                "condition_type": row.get("ConditionType", ""),
+                "condition_value": row.get("ConditionValue", ""),
+                "class_name": row.get("ClassName", ""),
+                "owner": row.get("OwnerKey", ""),
+                "process_type": row.get("ProcessTypeKey", ""),
+            }
+    return conditions
 
 
 def main() -> None:  # noqa: PLR0915
@@ -395,6 +589,25 @@ def main() -> None:  # noqa: PLR0915
         ]
         print(f"    {len(user_exits)} user exit implementations")
 
+    # Build monitoring rules and link to pipelines
+    print("  Building monitoring rules index...")
+    monitor_rules = _build_monitor_rules(args.cdt_dir)
+    for rule in monitor_rules:
+        pk = rule.get("pipeline_key", "")
+        if pk and pk in pipelines:
+            pipelines[pk].setdefault("monitor_rules", []).append(
+                {
+                    "rule_name": rule.get("rule_name", ""),
+                    "status": rule.get("status", ""),
+                    "monitoring_type": rule.get("monitoring_type", ""),
+                    "time_to_alert": rule.get("time_to_alert", ""),
+                    "time_to_escalate": rule.get("time_to_escalate", ""),
+                    "active": rule.get("active", ""),
+                    "condition": rule.get("condition", {}).get("condition_name", ""),
+                }
+            )
+    print(f"    {len(monitor_rules)} monitoring rules")
+
     # Parse hold types
     hold_types = []
     ht_path = args.cdt_dir / "YFS_HOLD_TYPE.cdt.xml"
@@ -422,6 +635,7 @@ def main() -> None:  # noqa: PLR0915
     (output_dir / "common_codes.json").write_text(json.dumps(common_codes, indent=2))
     (output_dir / "user_exits.json").write_text(json.dumps(user_exits, indent=2))
     (output_dir / "hold_types.json").write_text(json.dumps(hold_types, indent=2))
+    (output_dir / "monitor_rules.json").write_text(json.dumps(monitor_rules, indent=2))
 
     # Parse all remaining tables generically
     print("  Parsing all CDT tables...")
@@ -443,6 +657,7 @@ def main() -> None:  # noqa: PLR0915
     print(f"  common_codes.json: {sum(len(v) for v in common_codes.values())} codes")
     print(f"  user_exits.json: {len(user_exits)} implementations")
     print(f"  hold_types.json: {len(hold_types)} hold types")
+    print(f"  monitor_rules.json: {len(monitor_rules)} monitoring rules")
     print(f"  tables/: {len(meta)} generic tables")
 
 
