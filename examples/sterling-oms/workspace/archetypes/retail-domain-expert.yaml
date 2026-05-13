@@ -8,7 +8,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: google/gemini-2.5-flash
+    name: moonshotai/kimi-k2.5
     temperature: 0.3
   prompt:
     system: |
