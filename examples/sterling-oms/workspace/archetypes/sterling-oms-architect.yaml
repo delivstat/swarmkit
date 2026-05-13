@@ -138,6 +138,7 @@ defaults:
   skills:
     - search-sterling-docs
     - search-docs-exact
+    - get-full-chunk
     - search-project-docs
     - search-reference-designs
     - search-confluence
