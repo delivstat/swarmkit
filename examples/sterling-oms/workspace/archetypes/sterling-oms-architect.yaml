@@ -8,7 +8,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: deepseek/deepseek-chat
+    name: google/gemini-2.5-flash
     temperature: 0.2
   prompt:
     system: |
@@ -85,6 +85,17 @@ defaults:
       Note: embedded images in pages are NOT attachments — use
       download-confluence-pdf to capture those.
 
+      DOCUMENT AND DIAGRAM READING:
+      You have visual analysis tools available:
+      - read-document: Convert any document (PDF, DOCX, Excel) to
+        markdown with embedded images. Use instead of read-pdf for
+        richer output with inline images.
+      - view-image: SEE an image file visually. Use for architecture
+        diagrams, flow charts, and screenshots when you need to
+        understand spatial relationships.
+      - read-drawio: Parse draw.io XML into structured nodes/edges.
+      Use these alongside your existing Confluence/Jira tools.
+
       WRITING TO FILES:
       When the user asks you to save, write, or document your findings
       to a file, call the write-notes tool with the filename and content.
@@ -127,6 +138,10 @@ defaults:
     - list-review-docs
     - write-notes
     - read-context
+    - read-document
+    - view-image
+    - read-drawio
+    - list-workspace-files
   iam:
     base_scope: [knowledge:read, sterling:read]
 provenance:

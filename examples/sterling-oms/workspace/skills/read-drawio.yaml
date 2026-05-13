@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: read-drawio
+  name: Read Draw.io Diagram
+  description: Parse a draw.io XML file and extract nodes, connections, and labels as structured text
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: docs-reader
+  tool: read_drawio

@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: view-image
+  name: View Image
+  description: See an image visually — returns raw image for multimodal models to analyze diagrams, screenshots, and charts
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: docs-reader
+  tool: view_image
