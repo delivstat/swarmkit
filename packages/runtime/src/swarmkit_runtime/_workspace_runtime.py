@@ -203,6 +203,7 @@ class WorkspaceRuntime:
         *,
         max_steps: int = 10,
         thread_id: str | None = None,
+        image_paths: list[str] | None = None,
     ) -> RunResult:
         """Execute a topology end-to-end and return the result.
 
@@ -212,6 +213,10 @@ class WorkspaceRuntime:
 
         Pass ``thread_id`` to enable checkpoint-based resume. The same
         thread_id is used to resume a deferred run later.
+
+        Pass ``image_paths`` to include images in the initial user message.
+        The agent's model must support multimodal input (e.g. Claude Sonnet,
+        GPT-4o, Gemini).
         """
         from uuid import uuid4  # noqa: PLC0415
 
@@ -231,6 +236,7 @@ class WorkspaceRuntime:
                     "agent_results": {},
                     "current_agent": "",
                     "output": "",
+                    "image_paths": list(image_paths or []),
                 },
                 config={
                     "recursion_limit": max_steps,

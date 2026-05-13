@@ -13,10 +13,13 @@ from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.mcp._client import MCPClientManager
 from swarmkit_runtime.model_providers import (
     CompletionRequest,
+    ContentBlock,
     Message,
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.skills import ResolvedSkill, impl_get
+
+SkillResult = str | tuple[str, list[ContentBlock]]
 
 
 async def execute_skill(
@@ -28,10 +31,11 @@ async def execute_skill(
     mcp_manager: MCPClientManager | None = None,
     governance: GovernanceProvider | None = None,
     agent_id: str = "",
-) -> str:
-    """Execute a skill and return the result as a string.
+) -> SkillResult:
+    """Execute a skill and return the result.
 
-    Dispatches by implementation type.
+    Returns either a plain string or a ``(text, image_blocks)`` tuple
+    when the MCP tool response includes image content.
     """
     impl = skill.raw.implementation
     impl_type = impl_get(impl, "type")
@@ -94,14 +98,14 @@ async def _execute_llm_prompt(
     return "\n".join(parts) or "(no response)"
 
 
-async def _execute_mcp_tool(  # noqa: PLR0912, PLR0915
+async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
     skill: ResolvedSkill,
     *,
     input_text: str,
     mcp_manager: MCPClientManager | None,
     governance: GovernanceProvider | None = None,
     agent_id: str = "",
-) -> str:
+) -> SkillResult:
     """Execute an ``mcp_tool`` skill by calling the MCP server.
 
     If a ``GovernanceProvider`` is supplied, ``evaluate_action`` is called
@@ -193,17 +197,26 @@ async def _execute_mcp_tool(  # noqa: PLR0912, PLR0915
     except Exception as exc:
         return f"[skill:{skill.id}] MCP call failed: {exc}"
 
+    text_parts: list[str] = []
+    image_blocks: list[ContentBlock] = []
     if result.content:
-        parts = []
         for block in result.content:
             text = getattr(block, "text", None)
             if text:
-                parts.append(text)
-        output = "\n".join(parts) or str(result.content)
-    else:
-        output = "(no response from MCP)"
+                text_parts.append(text)
+            if getattr(block, "type", None) == "image":
+                image_blocks.append(
+                    ContentBlock(
+                        type="image",
+                        image_data=getattr(block, "data", None),
+                        image_media_type=getattr(block, "mimeType", None),
+                    )
+                )
 
-    # Cache successful, non-empty, non-error results
+    output = (
+        "\n".join(text_parts) or str(result.content) if result.content else "(no response from MCP)"
+    )
+
     if (
         output
         and len(output) > 20
@@ -214,6 +227,8 @@ async def _execute_mcp_tool(  # noqa: PLR0912, PLR0915
     ):
         mcp_manager.cache_result(server_id, tool_name, arguments, output)
 
+    if image_blocks:
+        return output, image_blocks
     return output
 
 

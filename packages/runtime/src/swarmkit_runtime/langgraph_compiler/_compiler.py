@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -25,6 +25,7 @@ from swarmkit_runtime.model_providers import (
     Message,
     MockModelProvider,
     ToolSpec,
+    image_block,
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
@@ -373,14 +374,16 @@ async def _run_tool_loop(
 
     for _turn in range(_max_tool_turns):
         assistant_blocks = list(current_response.content)
-        tool_result_blocks = [
-            ContentBlock(
-                type="tool_result",
-                tool_use_id=tr.tool_use_id,
-                tool_result=_truncate_result(tr.result),
+        tool_result_blocks: list[ContentBlock] = []
+        for tr in current_results:
+            tool_result_blocks.append(
+                ContentBlock(
+                    type="tool_result",
+                    tool_use_id=tr.tool_use_id,
+                    tool_result=_truncate_result(tr.result),
+                )
             )
-            for tr in current_results
-        ]
+            tool_result_blocks.extend(tr.image_blocks)
         loop_messages.append(
             Message(role="assistant", content=assistant_blocks),
         )
@@ -537,6 +540,7 @@ async def _dispatch_response(  # noqa: PLR0912
                     "agent_results": {},
                     "current_agent": cid,
                     "output": "",
+                    "image_paths": [],
                 }
                 child_provider = _resolve_agent_provider(
                     child,
@@ -1048,7 +1052,18 @@ def _build_prompt_messages(  # noqa: PLR0912
                 if isinstance(msg, HumanMessage):
                     last_human = msg.content
                     break
-            messages.append(Message(role="user", content=str(last_human or task)))
+            user_text = str(last_human or task)
+            image_paths = state.get("image_paths", [])
+            if image_paths:
+                import contextlib  # noqa: PLC0415
+
+                blocks: list[ContentBlock] = [ContentBlock(type="text", text=user_text)]
+                for img_path in image_paths:
+                    with contextlib.suppress(FileNotFoundError, ValueError):
+                        blocks.append(image_block(img_path))
+                messages.append(Message(role="user", content=blocks))
+            else:
+                messages.append(Message(role="user", content=user_text))
 
     return messages
 
@@ -1136,6 +1151,7 @@ class ToolCallResult:
     tool_use_id: str
     tool_name: str
     result: str
+    image_blocks: list[ContentBlock] = field(default_factory=list)
 
 
 async def _handle_skill_tool_calls(
@@ -1177,7 +1193,7 @@ async def _handle_skill_tool_calls(
             input_text = block.tool_input
         if _verbose:
             print(f"  executing: {block.tool_name}", file=sys.stderr)
-        result = await execute_skill(
+        raw_result = await execute_skill(
             skill,
             input_text=input_text,
             model_provider=model_provider,
@@ -1186,11 +1202,16 @@ async def _handle_skill_tool_calls(
             governance=governance,
             agent_id=agent.id,
         )
+        if isinstance(raw_result, tuple):
+            text_result, images = raw_result
+        else:
+            text_result, images = raw_result, []
         results.append(
             ToolCallResult(
                 tool_use_id=block.tool_use_id or f"call_{len(results)}",
                 tool_name=block.tool_name,
-                result=result or "(no result)",
+                result=text_result or "(no result)",
+                image_blocks=images,
             )
         )
 
@@ -1260,6 +1281,7 @@ async def _run_dag(
                 "agent_results": {},
                 "current_agent": child.id,
                 "output": "",
+                "image_paths": [],
             }
             child_provider = _resolve_agent_provider(
                 child,
