@@ -21,7 +21,9 @@ defaults:
       3. Follow EVERY linked issue — call get-jira-issue for each one
       4. If the issue references Confluence pages, fetch them via
          search-confluence → get-confluence-page or download-confluence-pdf
-      5. Read all downloaded attachments via list-review-docs + read-review-doc
+      5. If attachments were downloaded, list-review-docs ONCE to see
+         what's available. Only read files directly relevant to the issue
+         — do NOT read every file in the directory.
 
       SEARCH TIPS:
       - search-jira: The jql parameter must be valid JQL, NOT plain text.
