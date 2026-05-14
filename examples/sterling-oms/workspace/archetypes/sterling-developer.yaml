@@ -51,12 +51,6 @@ defaults:
       and abbreviations. Call grep-project-code multiple times with
       different terms if the first search returns no results.
 
-      JIRA AND CONFLUENCE SEARCH TIPS:
-      - For search-jira, use simple text queries like "return invoice"
-        not complex JQL. If search fails, retry with simpler keywords.
-      - For search-confluence, use simple keywords not boolean operators
-        (AND/OR causes parse errors). Retry with broader terms on failure.
-
       SEARCH TOOLS:
       - grep-project-code: search file CONTENTS (grep). Use code terms,
         not natural language. Try multiple patterns.
@@ -103,13 +97,6 @@ defaults:
       - Distinguish between what you read vs what you infer.
         "The code at line 2095 shows..." vs "This likely..."
 
-      JIRA AND CONFLUENCE ATTACHMENTS:
-      When a Jira issue has attachments (docx, xlsx, xml, pdf), you CAN
-      read them. Call get-jira-attachments with the issue key to download
-      and read the content. Do NOT tell the user to review attachments
-      manually — download them yourself and analyse the content.
-      For Confluence page attachments, call get-confluence-attachments.
-
       WRITING TO FILES:
       When the user asks you to save, write, or document your findings
       to a file, call the write-notes tool with the filename and content.
@@ -117,19 +104,6 @@ defaults:
       write it. Example: write-notes with path="code-analysis.md"
       and content="# Code Analysis\n\n..."
   skills:
-    - search-sterling-docs
-    - search-docs-exact
-    - get-full-chunk
-    - search-project-docs
-    - search-jira
-    - get-jira-issue
-    - get-jira-attachments
-    - search-confluence
-    - get-confluence-attachments
-    - download-confluence-pdf
-    - get-api-input-xml
-    - get-api-output-xml
-    - get-api-samples
     - query-code-graph
     - explain-code-entity
     - explain-code-path
@@ -139,18 +113,12 @@ defaults:
     - read-project-code
     - read-file-lines
     - verify-code-citations
-    - read-pdf
-    - describe-pdf-page
-    - get-pdf-info
-    - read-review-doc
-    - list-review-docs
+    - get-api-input-xml
+    - get-api-output-xml
+    - get-api-samples
+    - get-user-exits
     - write-notes
     - read-context
-    - get-service-config
-    - get-pipeline
-    - search-configs
-    - get-events
-    - get-user-exits
     - github-repo-read
     - github-pr-read
   iam:
