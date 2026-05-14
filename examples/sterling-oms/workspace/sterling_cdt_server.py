@@ -380,6 +380,20 @@ def get_pipeline(pipeline_id: str) -> str:  # noqa: PLR0912, PLR0915
                 parts.append(f"active={active}")
             lines.append(" | ".join(parts))
 
+    if pipe.get("listeners"):
+        lines += ["", "## Pipeline Listeners (Cross-Process Subscriptions)", ""]
+        for ln in pipe["listeners"]:
+            src_pt = ln.get(
+                "listening_to_process_type_name", ln.get("listening_to_process_type", "")
+            )
+            src_status = ln.get("listening_to_status", "")
+            tran = ln.get("transaction_key", "")
+            drop = ln.get("drop_status", "")
+            drop_str = f" → drop to {drop} {status_names.get(drop, '')}" if drop else ""
+            lines.append(
+                f"- Listens to **{src_pt}** status {src_status} → triggers {tran}{drop_str}"
+            )
+
     return "\n".join(lines)
 
 
