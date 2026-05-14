@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -44,7 +43,7 @@ def _build_jql(
     if assignee:
         clauses.append(f'assignee = "{assignee}"')
     if labels:
-        label_parts = ", ".join(f'"{l}"' for l in labels)
+        label_parts = ", ".join(f'"{lbl}"' for lbl in labels)
         clauses.append(f"labels IN ({label_parts})")
     if created_after:
         clauses.append(f'created >= "{created_after}"')
@@ -104,7 +103,10 @@ TOOLS = [
                 "keywords": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Search terms (e.g. ['return', 'RETN', 'RITN']). Each becomes a text ~ search joined with OR.",
+                    "description": (
+                        "Search terms (e.g. ['return', 'RETN', 'RITN']). "
+                        "Each becomes a text ~ search joined with OR."
+                    ),
                 },
                 "project": {
                     "type": "string",
@@ -157,7 +159,9 @@ TOOLS = [
                 "keywords": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Search terms (e.g. ['return order', 'CROMA']). Joined for text search.",
+                    "description": (
+                        "Search terms (e.g. ['return order', 'CROMA']). Joined for text search."
+                    ),
                 },
                 "space_key": {
                     "type": "string",
@@ -269,13 +273,20 @@ def _get_atlassian() -> subprocess.Popen:  # type: ignore[type-arg]
         return _atlassian_process
 
     cmd = [
-        "uvx", "mcp-atlassian",
-        "--confluence-url", os.environ.get("CONFLUENCE_URL", ""),
-        "--confluence-username", os.environ.get("ATLASSIAN_USERNAME", ""),
-        "--confluence-token", os.environ.get("ATLASSIAN_API_TOKEN", ""),
-        "--jira-url", os.environ.get("JIRA_URL", ""),
-        "--jira-username", os.environ.get("ATLASSIAN_USERNAME", ""),
-        "--jira-token", os.environ.get("ATLASSIAN_API_TOKEN", ""),
+        "uvx",
+        "mcp-atlassian",
+        "--confluence-url",
+        os.environ.get("CONFLUENCE_URL", ""),
+        "--confluence-username",
+        os.environ.get("ATLASSIAN_USERNAME", ""),
+        "--confluence-token",
+        os.environ.get("ATLASSIAN_API_TOKEN", ""),
+        "--jira-url",
+        os.environ.get("JIRA_URL", ""),
+        "--jira-username",
+        os.environ.get("ATLASSIAN_USERNAME", ""),
+        "--jira-token",
+        os.environ.get("ATLASSIAN_API_TOKEN", ""),
     ]
     _atlassian_process = subprocess.Popen(
         cmd,
@@ -283,11 +294,14 @@ def _get_atlassian() -> subprocess.Popen:  # type: ignore[type-arg]
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
     )
-    _send_jsonrpc("initialize", {
-        "protocolVersion": "2024-11-05",
-        "capabilities": {},
-        "clientInfo": {"name": "atlassian-wrapper", "version": "1.0"},
-    })
+    _send_jsonrpc(
+        "initialize",
+        {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "atlassian-wrapper", "version": "1.0"},
+        },
+    )
     return _atlassian_process
 
 
@@ -299,12 +313,17 @@ def _send_jsonrpc(method: str, params: dict) -> dict:  # type: ignore[type-arg]
     assert proc.stdin is not None
     assert proc.stdout is not None
 
-    request = json.dumps({
-        "jsonrpc": "2.0",
-        "id": _request_id,
-        "method": method,
-        "params": params,
-    }) + "\n"
+    request = (
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": _request_id,
+                "method": method,
+                "params": params,
+            }
+        )
+        + "\n"
+    )
     proc.stdin.write(request.encode())
     proc.stdin.flush()
 
@@ -319,10 +338,13 @@ def _send_jsonrpc(method: str, params: dict) -> dict:  # type: ignore[type-arg]
 
 def _call_atlassian_tool(tool_name: str, arguments: dict) -> str:  # type: ignore[type-arg]
     """Call a tool on the real mcp-atlassian server."""
-    response = _send_jsonrpc("tools/call", {
-        "name": tool_name,
-        "arguments": arguments,
-    })
+    response = _send_jsonrpc(
+        "tools/call",
+        {
+            "name": tool_name,
+            "arguments": arguments,
+        },
+    )
     if "error" in response:
         return f"Error: {response['error']}"
     result = response.get("result", {})
@@ -348,7 +370,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:  # type: i
     return [TextContent(type="text", text=result)]
 
 
-def _dispatch(name: str, args: dict) -> str:  # type: ignore[type-arg]
+def _dispatch(name: str, args: dict) -> str:  # type: ignore[type-arg]  # noqa: PLR0911
     if name == "search_jira":
         jql = _build_jql(
             keywords=args.get("keywords", []),
@@ -380,26 +402,39 @@ def _dispatch(name: str, args: dict) -> str:  # type: ignore[type-arg]
         if page_id:
             return _call_atlassian_tool("confluence_get_page", {"page_id": page_id})
         if title and space_key:
-            return _call_atlassian_tool("confluence_get_page", {
-                "title": title, "space_key": space_key,
-            })
+            return _call_atlassian_tool(
+                "confluence_get_page",
+                {
+                    "title": title,
+                    "space_key": space_key,
+                },
+            )
         return "Error: provide page_id, or both title and space_key"
 
     if name == "get_jira_issue":
-        return _call_atlassian_tool("jira_get_issue", {
-            "issue_key": args["issue_key"],
-            "comment_limit": args.get("comment_limit", 50),
-        })
+        return _call_atlassian_tool(
+            "jira_get_issue",
+            {
+                "issue_key": args["issue_key"],
+                "comment_limit": args.get("comment_limit", 50),
+            },
+        )
 
     if name == "get_jira_attachments":
-        return _call_atlassian_tool("jira_download_attachments", {
-            "issue_key": args["issue_key"],
-        })
+        return _call_atlassian_tool(
+            "jira_download_attachments",
+            {
+                "issue_key": args["issue_key"],
+            },
+        )
 
     if name == "get_confluence_attachments":
-        return _call_atlassian_tool("confluence_download_content_attachments", {
-            "page_id": args["page_id"],
-        })
+        return _call_atlassian_tool(
+            "confluence_download_content_attachments",
+            {
+                "page_id": args["page_id"],
+            },
+        )
 
     return f"Unknown tool: {name}"
 
@@ -411,4 +446,5 @@ async def main() -> None:
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(main())
