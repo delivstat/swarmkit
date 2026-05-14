@@ -215,9 +215,16 @@ class WorkspaceRuntime:
         """
         from uuid import uuid4  # noqa: PLC0415
 
+        from swarmkit_runtime.langgraph_compiler._compiler import set_active_trace  # noqa: PLC0415
+        from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
+
         graph = self.compile(topology_name)
         topology = self._workspace.topologies[topology_name]
         run_thread = thread_id or str(uuid4())
+
+        trace = RunTrace()
+        trace.start(run_thread, topology_name)
+        set_active_trace(trace)
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
 
@@ -242,6 +249,10 @@ class WorkspaceRuntime:
         finally:
             if owns_mcp and self._mcp_manager is not None:
                 await self._mcp_manager.close_all()
+
+        trace.finish()
+        trace.save(self._workspace_root)
+        set_active_trace(None)
 
         events = _extract_events(self._governance)
 

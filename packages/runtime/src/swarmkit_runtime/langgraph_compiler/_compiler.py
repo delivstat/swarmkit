@@ -33,11 +33,20 @@ from swarmkit_runtime.skills._output_validator import (
     format_correction_prompt,
     validate_all_skill_output,
 )
+from swarmkit_runtime.trace import AgentStep, RunTrace
 
 from ._state import SwarmState
 
 _MAX_OUTPUT_RETRIES = 2
 _TRUST_DENY_THRESHOLD = 0.2
+
+_active_trace: RunTrace | None = None
+
+
+def set_active_trace(trace: RunTrace | None) -> None:
+    """Set the active run trace for the current execution."""
+    global _active_trace  # noqa: PLW0603
+    _active_trace = trace
 
 
 def compile_topology(
@@ -812,6 +821,16 @@ def _build_agent_node(
         request = _build_completion_request(model_name, messages, system_prompt, tools, agent)
         response = await model_provider.complete(request)
 
+        _trace_step = AgentStep(
+            agent_id=agent_id,
+            model=model_name,
+            role=agent.role,
+            start_time=_start.timestamp(),
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            total_tokens=response.usage.input_tokens + response.usage.output_tokens,
+        )
+
         if _verbose:
             _log_verbose_response(response)
 
@@ -839,6 +858,16 @@ def _build_agent_node(
                 result.get("output", ""),
                 _start,
             )
+            delegated_to = [
+                k
+                for k, v in result.get("agent_results", {}).items()
+                if isinstance(v, str) and v.startswith("__delegated__:")
+            ]
+            _trace_step.delegations = delegated_to
+            _trace_step.end_time = datetime.now(tz=UTC).timestamp()
+            _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
+            if _active_trace is not None:
+                _active_trace.add_step(_trace_step)
             return result
 
         # Text path -- result is (final_response, final_messages).
@@ -856,6 +885,12 @@ def _build_agent_node(
             completed_children,
         )
         await _record_completion(governance, agent_id, agent.role, result_text, _start)
+
+        _trace_step.end_time = datetime.now(tz=UTC).timestamp()
+        _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
+        _trace_step.result_length = len(result_text)
+        if _active_trace is not None:
+            _active_trace.add_step(_trace_step)
 
         if drift_observer and drift_observer.config.enabled:
             if not drift_observer.anchor_text:
