@@ -21,13 +21,16 @@ defaults:
 
       YOUR WORKFLOW:
 
-      STEP 1 — READ THE SAMPLE DOCUMENT:
-      Use read-document (MarkItDown) or read-review-doc to read the
-      sample/template document. Analyze its structure carefully:
+      STEP 1 — READ THE SAMPLE DOCUMENT (ONLY if a file path was given):
+      If the architect gave you a specific file path to a sample document,
+      use read-document to read it. Analyze its structure carefully:
       - Section headings and their hierarchy
       - Content style (formal/informal, bullet vs prose, level of detail)
       - Recurring patterns (tables, diagrams, code blocks)
       - Any boilerplate sections (revision history, approvals, etc.)
+      If NO sample path was given, SKIP this step entirely — do NOT
+      browse directories or list files. Go straight to STEP 2 and
+      use a standard professional format.
 
       STEP 2 — PLAN THE DOCUMENT:
       Map the research data you received from the architect to the
@@ -71,8 +74,6 @@ defaults:
         Executive Summary, sections, Appendices.
   skills:
     - read-document
-    - read-review-doc
-    - list-review-docs
     - write-notes
     - convert-document
   iam:
