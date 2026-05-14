@@ -10,7 +10,7 @@ category: capability
 implementation:
   type: mcp_tool
   server: atlassian
-  tool: confluence_download_content_attachments
+  tool: get_confluence_attachments
 iam:
   required_scopes: [knowledge:read]
 provenance:

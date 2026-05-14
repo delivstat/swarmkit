@@ -4,14 +4,14 @@ metadata:
   id: search-jira
   name: Search Jira
   description: >
-    Search Jira tickets using JQL or text query. Returns matching issues
-    with keys, summaries, status, and assignees. Use for finding project
-    tickets, decisions, and requirements.
+    Search Jira tickets using structured filters. Pass keywords as an
+    array of strings — the tool builds valid JQL internally. Optionally
+    filter by project, status, assignee, labels, dates.
 category: capability
 implementation:
   type: mcp_tool
   server: atlassian
-  tool: jira_search
+  tool: search_jira
 iam:
   required_scopes: [knowledge:read]
 provenance:
