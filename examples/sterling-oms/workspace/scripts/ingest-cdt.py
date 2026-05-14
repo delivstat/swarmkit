@@ -174,7 +174,7 @@ def _build_process_type_lookup(cdt_dir: Path) -> dict[str, str]:
     return lookup
 
 
-def _build_pipelines(cdt_dir: Path) -> dict:
+def _build_pipelines(cdt_dir: Path) -> dict:  # noqa: PLR0912, PLR0915
     """Build pipeline index with definitions, conditions, pickup transactions.
 
     Hub rule linkage: conditions map to definitions via PipelineDefinitionKey.
@@ -285,6 +285,28 @@ def _build_pipelines(cdt_dir: Path) -> dict:
                         "status": row.get("Status", ""),
                         "transaction_key": row.get("TransactionKey", ""),
                         "transaction_instance": row.get("TransactionInstanceKey", ""),
+                    }
+                )
+
+    # Pipeline listeners — cross-process-type status subscriptions
+    listener_path = cdt_dir / "YFS_PIPELINE_LISTENER.cdt.xml"
+    if listener_path.exists():
+        _, rows = _parse_cdt(listener_path)
+        for row in rows:
+            pk = row.get("PipelineKey", "")
+            if pk in pipelines:
+                listening_to_pt = row.get("ListeningToProcessTypeKey", "")
+                listening_to_status = row.get("ListeningToStatus", "")
+                pipelines[pk].setdefault("listeners", []).append(
+                    {
+                        "listening_to_process_type": listening_to_pt,
+                        "listening_to_process_type_name": pt_lookup.get(
+                            listening_to_pt, listening_to_pt
+                        ),
+                        "listening_to_status": listening_to_status,
+                        "transaction_key": row.get("TransactionKey", ""),
+                        "drop_status": row.get("DropStatus", ""),
+                        "listener_type": row.get("ListenerType", ""),
                     }
                 )
 
