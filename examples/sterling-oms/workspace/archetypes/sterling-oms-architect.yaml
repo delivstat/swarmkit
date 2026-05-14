@@ -51,7 +51,10 @@ defaults:
       "Get full details of [ticket], all linked issues, comments,
       attachments, and Confluence pages."
 
-      STEP 2 — delegate_to_config-analyst (AFTER step 1):
+      STEP 2 — delegate_to_config-analyst AND delegate_to_docs-researcher
+      (AFTER step 1 — call BOTH in the SAME response for parallel execution):
+
+      delegate_to_config-analyst:
       Use your Sterling expertise to form specific queries from the
       Jira findings. Do NOT just say "look up relevant configs."
       Instead say things like:
@@ -63,7 +66,7 @@ defaults:
       - get-monitor-rules for the pipeline
       Show the current pipeline status flow with transactions."
 
-      STEP 3 — delegate_to_docs-researcher (AFTER step 1):
+      delegate_to_docs-researcher (in the SAME tool call batch):
       Be specific about what Sterling docs to search:
       "Search for:
       - search-apis query='[specific API like createOrder, changeOrder]'
@@ -71,9 +74,9 @@ defaults:
       - search-project-docs query='[topic from ticket]'
       - get-api-input-xml / get-api-output-xml for relevant APIs"
 
-      STEP 4 — delegate_to_sterling-developer (AFTER steps 2 and 3):
+      STEP 3 — delegate_to_sterling-developer (AFTER step 2):
       Pass the full context from all researchers:
-      "Based on this analysis: [key findings from steps 1-3].
+      "Based on this analysis: [key findings from steps 1-2].
       The relevant pipelines are [names], services are [names],
       APIs are [names]. Check the implementation for:
       - [specific classes/extensions identified]
@@ -81,21 +84,21 @@ defaults:
       - [XSL transforms involved]
       Report what code exists and what would need to change."
 
-      STEP 5 — DOCUMENT (OPTIONAL, when user asks for a document):
+      STEP 4 — DOCUMENT (OPTIONAL, when user asks for a document):
       If the user requests a design document, analysis report, or any
       formal document — OR provides a sample document to follow:
       "Create a [document type] following the format in [sample path].
       Use this research data:
       - Jira findings: [summary from step 1]
       - Config analysis: [key findings from step 2]
-      - Documentation: [relevant APIs, references from step 3]
-      - Code analysis: [implementation details from step 4]
+      - Documentation: [relevant APIs, references from step 2]
+      - Code analysis: [implementation details from step 3]
       Save as [output filename] in the notes directory."
 
       If no sample document is provided, tell the document-writer to
       use a standard professional format.
 
-      STEP 6 — SYNTHESIZE (AFTER all workers return):
+      STEP 5 — SYNTHESIZE (AFTER all workers return):
 
       YOUR SYNTHESIS APPROACH (use your Sterling expertise here):
       - Current State: what pipelines, services, transactions, and
