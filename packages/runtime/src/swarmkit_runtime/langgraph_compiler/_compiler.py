@@ -658,8 +658,16 @@ async def _dispatch_response(  # noqa: PLR0912
             )
             return _make_result(agent_id, synth_text)
 
-        # Model returned text -- retry if agent has skill tools.
-        skill_tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+        # Model returned text -- retry if agent has many skill tools
+        # (indicating it should be researching, not just talking).
+        # Agents with only write-notes or 1-2 utility tools should NOT
+        # be nudged — they're coordinators that synthesize via text.
+        _UTILITY_TOOLS = {"write-notes", "read-context"}
+        skill_tools = [
+            t
+            for t in tools
+            if not t.name.startswith("delegate_to_") and t.name not in _UTILITY_TOOLS
+        ]
         if skill_tools and _attempt < _max_retries:
             if verbose:
                 print(
