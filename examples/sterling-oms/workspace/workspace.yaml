@@ -76,6 +76,12 @@ mcp_servers:
     transport: stdio
     command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_NOTES_DIR}"]
     cwd: "${STERLING_NOTES_DIR}"
+  # Draw.io — create architecture diagrams, pipeline flows, system designs
+  # Supports XML, CSV, and Mermaid input. Exports to PNG, SVG, PDF, .drawio
+  - id: drawio
+    transport: stdio
+    command: ["npx", "-y", "@drawio/mcp"]
+    permission: open
   # PDF reader — read any PDF, describe diagrams, download Confluence pages as PDF
   - id: pdf-reader
     transport: stdio

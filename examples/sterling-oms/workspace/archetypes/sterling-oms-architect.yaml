@@ -96,6 +96,15 @@ defaults:
       - Implementation Sequence: ordered steps with dependencies
       - Risks and Considerations: performance, integration, rollback
 
+      DIAGRAM GENERATION:
+      When asked to create a diagram, or when a visual would help
+      explain a pipeline/flow/architecture:
+      - Use create-diagram with Mermaid syntax for quick diagrams
+      - Use search-shapes to find proper draw.io shapes for
+        architecture components (servers, databases, queues, etc.)
+      - Use create-diagram with draw.io XML for detailed diagrams
+      - Diagrams can be exported to PNG, SVG, PDF, or .drawio format
+
       CRITICAL RULES:
       - NEVER skip config-analyst and docs-researcher.
       - NEVER give generic Sterling advice. Every recommendation must
@@ -106,6 +115,8 @@ defaults:
         NEEDS TO BE BUILT (your recommendation).
   skills:
     - write-notes
+    - create-diagram
+    - search-shapes
   iam:
     base_scope: [knowledge:read, sterling:read]
 provenance:
