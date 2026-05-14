@@ -376,7 +376,7 @@ async def _run_tool_loop(
     text response (no more tool calls) or we hit the turn limit. Includes
     nudging for incomplete responses.
     """
-    _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "25"))
+    _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "50"))
     loop_messages = list(messages)
     current_response = response
     current_results = tool_results
@@ -489,7 +489,10 @@ async def _run_tool_loop(
             content=(
                 "STOP. Do NOT call any more tools. You have gathered enough information. "
                 "Write your complete, detailed analysis NOW based on everything you found. "
-                "This is your final response — synthesize all findings into a coherent answer."
+                "This is your final response — synthesize all findings into a coherent answer. "
+                "Start your response with: '## Analysis (tool limit reached)' so the "
+                "coordinator knows this is a complete best-effort answer and should NOT "
+                "re-delegate this task."
             ),
         ),
     )
@@ -1117,7 +1120,8 @@ def _build_prompt_messages(  # noqa: PLR0912
                     f"Your workers have produced the following results:\n\n{results_text}\n\n"
                     f"Present the workers' output directly to the user as the final response. "
                     f"Do not add commentary about the workers or the delegation process — "
-                    f"just deliver the result as if you produced it yourself."
+                    f"just deliver the result as if you produced it yourself. "
+                    f"Do NOT re-delegate to the same worker — their response is final."
                 ),
             )
         )
