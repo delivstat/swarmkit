@@ -12,7 +12,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: moonshotai/kimi-k2.5
+    name: deepseek/deepseek-v3-0324
     temperature: 0.3
   prompt:
     system: |
