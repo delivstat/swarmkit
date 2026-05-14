@@ -835,11 +835,6 @@ def _build_agent_node(  # noqa: PLR0915
         all_children_done = len(completed_children) == len(agent.children) and agent.children
         if all_children_done:
             tools = [t for t in tools if not t.name.startswith("delegate_to_")]
-        elif completed_children:
-            tools = [
-                t for t in tools
-                if not (t.name.startswith("delegate_to_") and t.name[len("delegate_to_"):] in completed_children)
-            ]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
         system_prompt = _build_system_prompt(agent, tools)
@@ -1152,7 +1147,10 @@ def _build_prompt_messages(  # noqa: PLR0912
         and not agent_results[cid].startswith("__delegated__:")
     }
 
-    if child_results:
+    all_children_ids = {c.id for c in agent.children}
+    all_done = child_results and set(child_results.keys()) == all_children_ids
+
+    if all_done:
         results_text = "\n\n".join(f"[{cid}]:\n{result}" for cid, result in child_results.items())
         messages.append(
             Message(
@@ -1164,6 +1162,26 @@ def _build_prompt_messages(  # noqa: PLR0912
                     f"Do not add commentary about the workers or the delegation process — "
                     f"just deliver the result as if you produced it yourself. "
                     f"Do NOT re-delegate to the same worker — their response is final."
+                ),
+            )
+        )
+    elif child_results:
+        results_text = "\n\n".join(f"[{cid}]:\n{result}" for cid, result in child_results.items())
+        done_names = ", ".join(child_results.keys())
+        remaining = all_children_ids - set(child_results.keys())
+        remaining_names = ", ".join(remaining) if remaining else "none"
+        messages.append(
+            Message(
+                role="user",
+                content=(
+                    f"Original request: {state.get('input', '')}\n\n"
+                    f"Workers already completed ({done_names}):\n\n{results_text}\n\n"
+                    f"Workers not yet called: {remaining_names}\n\n"
+                    f"Continue with your workflow. Delegate to workers that "
+                    f"have NOT been called yet. Do NOT re-delegate to "
+                    f"{done_names} with the same task — only call them again "
+                    f"if you have a NEW, DIFFERENT question based on what "
+                    f"you learned from other workers."
                 ),
             )
         )
