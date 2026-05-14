@@ -673,6 +673,30 @@ def main() -> None:  # noqa: PLR0915
     print(f"  monitor_rules.json: {len(monitor_rules)} monitoring rules")
     print(f"  tables/: {len(meta)} generic tables")
 
+    # Generate visual graph diagrams from YFS_GRAPH_UI
+    graph_ui_path = args.cdt_dir / "YFS_GRAPH_UI.cdt.xml"
+    if graph_ui_path.exists():
+        print("  Generating visual diagrams from YFS_GRAPH_UI...")
+        import subprocess  # noqa: PLC0415
+
+        scripts_dir = Path(__file__).parent
+        result = subprocess.run(  # noqa: PLW1510
+            [
+                sys.executable,
+                str(scripts_dir / "generate-graphs.py"),
+                str(args.cdt_dir),
+                "--index",
+                str(output_dir),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().splitlines():
+                print(f"    {line}")
+        else:
+            print(f"    Graph generation failed: {result.stderr[:200]}")
+
 
 if __name__ == "__main__":
     main()
