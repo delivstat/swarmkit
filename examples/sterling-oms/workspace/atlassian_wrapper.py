@@ -1,3 +1,6 @@
+# /// script
+# dependencies = ["mcp[cli]>=1.0"]
+# ///
 """Atlassian wrapper MCP server.
 
 Provides structured-input tools that generate valid JQL/CQL internally,
