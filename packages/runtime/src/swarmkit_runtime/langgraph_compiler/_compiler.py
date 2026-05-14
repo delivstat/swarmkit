@@ -363,7 +363,7 @@ async def _record_completion(
     )
 
 
-async def _run_tool_loop(
+async def _run_tool_loop(  # noqa: PLR0912, PLR0915
     response: CompletionResponse,
     agent: ResolvedAgent,
     messages: list[Message],
