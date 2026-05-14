@@ -312,6 +312,12 @@ def _make_result(agent_id: str, result_text: str) -> dict[str, Any]:
     }
 
 
+def _progress(msg: str) -> None:
+    """Print user-facing progress. Always shown unless SWARMKIT_QUIET is set."""
+    if not os.environ.get("SWARMKIT_QUIET"):
+        print(msg, file=sys.stderr)
+
+
 def _log_verbose_request(
     agent_id: str,
     model_name: str,
@@ -402,6 +408,7 @@ async def _run_tool_loop(
         follow_up = _build_completion_request(
             model_name, loop_messages, system_prompt, tools, agent
         )
+        _progress(f"  [{agent.id}] processing results... (turn {_turn + 1})")
         if verbose:
             print(
                 f"  [tool loop turn {_turn + 1}: {len(current_results)} tool results]",
@@ -463,6 +470,7 @@ async def _run_tool_loop(
     if text:
         return text
 
+    _progress(f"  [{agent.id}] tool limit reached — synthesizing final answer...")
     if verbose:
         print("  [tool limit reached — forcing synthesis]", file=sys.stderr)
 
@@ -584,6 +592,8 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
         if delegations:
             if len(delegations) == 1:
                 child_id, task_text = delegations[0]
+                _task_preview = (task_text or "")[:120].replace("\n", " ")
+                _progress(f"[{agent_id}] -> delegating to {child_id}: {_task_preview}")
                 return {
                     "current_agent": child_id,
                     "agent_results": {
@@ -632,8 +642,9 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                 result_state = await child_fn(child_state)
                 return (cid, result_state.get("output", "(no response)"))
 
+            names = [d[0] for d in delegations]
+            _progress(f"[{agent_id}] -> delegating in parallel: {', '.join(names)}")
             if verbose:
-                names = [d[0] for d in delegations]
                 print(
                     f"  [parallel delegation: {names}]",
                     file=sys.stderr,
@@ -819,6 +830,9 @@ def _build_agent_node(  # noqa: PLR0915
         system_prompt = _build_system_prompt(agent, tools)
         _verbose = os.environ.get("SWARMKIT_VERBOSE", "")
 
+        _short_model = model_name.rsplit("/", 1)[-1] if "/" in model_name else model_name
+        _progress(f"[{agent_id}] thinking... ({_short_model})")
+
         if _verbose:
             _log_verbose_request(agent_id, model_name, tools, messages)
 
@@ -859,11 +873,15 @@ def _build_agent_node(  # noqa: PLR0915
             provider_registry=provider_registry,
         )
         if isinstance(result, dict):
+            _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()
+            _output = result.get("output", "")
+            if _output and not _output.startswith("__delegated"):
+                _progress(f"[{agent_id}] done ({_elapsed:.1f}s)")
             await _record_completion(
                 governance,
                 agent_id,
                 agent.role,
-                result.get("output", ""),
+                _output,
                 _start,
             )
             delegated_to: list[str] = []
@@ -896,6 +914,8 @@ def _build_agent_node(  # noqa: PLR0915
             agent_results,
             completed_children,
         )
+        _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()
+        _progress(f"[{agent_id}] done ({_elapsed:.1f}s)")
         await _record_completion(governance, agent_id, agent.role, result_text, _start)
 
         _trace_step.end_time = datetime.now(tz=UTC).timestamp()
@@ -1299,6 +1319,10 @@ async def _handle_skill_tool_calls(
             input_text = json.dumps(block.tool_input)
         elif isinstance(block.tool_input, str):
             input_text = block.tool_input
+        _mcp_args_preview = ""
+        if isinstance(block.tool_input, dict):
+            _mcp_args_preview = " " + json.dumps(block.tool_input)[:100]
+        _progress(f"  [{agent.id}] calling {block.tool_name}{_mcp_args_preview}")
         if _verbose:
             print(f"  executing: {block.tool_name}", file=sys.stderr)
         raw_result = await execute_skill(

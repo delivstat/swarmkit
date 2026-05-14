@@ -610,10 +610,16 @@ def run(
             help="Resume a previously interrupted run from checkpoint.",
         ),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress progress output; only print final result."),
+    ] = False,
     color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
 ) -> None:
     """One-shot execution of a topology (design §14.1)."""
     _suppress_noisy_logs()
+    if quiet:
+        os.environ["SWARMKIT_QUIET"] = "1"
     use_colour = should_colour(sys.stdout.isatty(), color)
 
     try:
