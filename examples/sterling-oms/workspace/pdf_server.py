@@ -195,7 +195,7 @@ def describe_pdf_page(path: str, page_number: int) -> str:
 
 
 @server.tool()
-def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: PLR0911
+def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: PLR0911, PLR0915
     """Export a Confluence page as PDF and save to review-docs.
 
     Fetches rendered HTML via REST API, converts to PDF locally with
@@ -266,6 +266,34 @@ def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: P
                         return f'src="data:{ct};base64,{b64}"'
                 except Exception:
                     continue
+
+            # Fallback: try REST API download endpoint for attachments
+            fname_match = re.search(r"/([^/?]+\.\w+)(\?|$)", img_url)
+            if fname_match:
+                att_fname = fname_match.group(1)
+                rest_url = (
+                    f"{base}/rest/api/content/{page_id}"
+                    f"/child/attachment?filename={att_fname}&expand=extensions"
+                )
+                try:
+                    ar = httpx.get(rest_url, auth=auth, timeout=15)
+                    if ar.status_code == 200:
+                        results = ar.json().get("results", [])
+                        if results:
+                            dl = results[0].get("_links", {}).get("download", "")
+                            if dl:
+                                dr = httpx.get(
+                                    base + dl,
+                                    auth=auth,
+                                    timeout=15,
+                                    follow_redirects=True,
+                                )
+                                if dr.status_code == 200 and len(dr.content) > 100:
+                                    ct = dr.headers.get("content-type", "image/png")
+                                    b64 = base64.b64encode(dr.content).decode("utf-8")
+                                    return f'src="data:{ct};base64,{b64}"'
+                except Exception:
+                    pass
             return m.group(0)
 
         return img_re.sub(_replace, html)
