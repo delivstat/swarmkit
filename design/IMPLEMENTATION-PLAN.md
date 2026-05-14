@@ -381,6 +381,29 @@ A reference topology demonstrating DAG execution, HITL approval gates, governanc
 
 **Exit demo:** `swarmkit run examples/logistics-control-tower/ control-tower --input "Process today's exceptions"` — detects exceptions → scores couriers → resolves (some auto-execute, some escalate to HITL) → sends customer notifications. Drift detection flags if the resolution agent drifts from its mandate.
 
+#### Structured delegation model (v2 compiler)
+
+Replace free-text delegation with JSON task objects and persistent state. Inspired by Anthropic's [effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) — their key finding: models respect structured JSON data more than prose instructions, and persistent progress files survive context loss.
+
+**Problem:** current text-based delegation breaks with smaller models (hy3-preview, Reka Flash) — they re-delegate to completed children, lose track of progress when context compacts, and the architect's context window fills with 50KB+ of raw child output.
+
+**Design:**
+
+- [ ] **JSON task tracker** — compiler maintains a structured task object per delegation:
+  ```json
+  {"id": "jira-research", "agent": "jira-researcher", "status": "completed",
+   "key_findings": ["5 RETN tickets", "RT-727 main issue"],
+   "full_result_path": ".swarmkit/run-state/jira-research.md"}
+  ```
+- [ ] **Persistent run state** — task tracker written to `.swarmkit/run-state/<run-id>.json` after each child completes. Survives forced synthesis and context compaction.
+- [ ] **Summary-first child results** — pass `key_findings` (3-5 bullets) to the coordinator, not the full 50KB output. Full results persisted to disk, available via `read-context` skill if the coordinator needs detail.
+- [ ] **Status-aware tool filtering** — delegation tools for `"status": "completed"` children hidden from the model unless the coordinator explicitly requests a follow-up (new tool: `re_delegate_to_<child>`).
+- [ ] **Init-read pattern** — when a coordinator re-enters (after child returns), it reads the task tracker first to rebuild context. Mirrors the article's "session initialization sequence."
+
+**Dependencies:** M8 ✅ (MCP skills for write-notes/read-context), partial child results (v1.1.15).
+
+**Exit demo:** Sterling assistant with hy3-preview — no blind re-delegation, coordinator context stays under 10K tokens even with 5 children, full research preserved on disk.
+
 ---
 
 ## Phase 4 — Production Readiness
