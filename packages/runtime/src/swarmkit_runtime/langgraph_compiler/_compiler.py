@@ -1015,15 +1015,17 @@ def _add_routing_edges(
 ) -> None:
     """Wire conditional edges so delegation tool calls route to children."""
 
-    def walk(agent: ResolvedAgent) -> None:
+    def walk(agent: ResolvedAgent, parent_id: str | None = None) -> None:
         if not agent.children:
-            graph.add_edge(agent.id, _parent_of(agent, root) or END)
+            graph.add_edge(agent.id, parent_id or END)
             return
 
         child_ids = {c.id for c in agent.children}
         destinations: dict[str, str] = {cid: cid for cid in child_ids}
         destinations[agent.id] = agent.id
-        destinations["__end__"] = END
+        # Route to parent when done (or END if this is root)
+        _done_target = parent_id or END
+        destinations["__done__"] = _done_target
 
         def router(
             state: SwarmState,
@@ -1042,14 +1044,19 @@ def _add_routing_edges(
             if agent_result == "__delegated_parallel__":
                 return _agent_id
 
-            return "__end__"
+            return "__done__"
 
         graph.add_conditional_edges(agent.id, router, destinations)  # type: ignore[arg-type]
 
         for child in agent.children:
-            parent_id = agent.id
-            graph.add_edge(child.id, parent_id)
-            walk(child)
+            if child.children:
+                # Non-leaf child has its own conditional edges that
+                # route back to this agent via __done__. A fixed edge
+                # would conflict and cause duplicate parent invocations.
+                walk(child, parent_id=agent.id)
+            else:
+                graph.add_edge(child.id, agent.id)
+                walk(child, parent_id=agent.id)
 
     walk(root)
 
