@@ -1729,6 +1729,60 @@ def docs_reader(
     run_server(workspace=workspace.resolve() if workspace else None)
 
 
+# ---- trace ---------------------------------------------------------------
+
+
+@app.command()
+def trace(
+    run_id: Annotated[
+        str | None,
+        typer.Argument(help="Run ID to display. Omit to list recent runs.", show_default=False),
+    ] = None,
+    workspace_path: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", help="Workspace root directory."),
+    ] = Path("."),
+    limit: Annotated[
+        int,
+        typer.Option("--limit", "-n", help="Number of recent runs to list."),
+    ] = 10,
+) -> None:
+    """Show the agent call graph and token usage for a run.
+
+    Without arguments, lists recent runs. With a run ID, shows the
+    full call graph including agent delegation, tool calls, and
+    token counts per agent and model.
+    """
+    from swarmkit_runtime.trace import RunTrace, list_traces  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+
+    if run_id is None:
+        traces = list_traces(ws_root, limit=limit)
+        if not traces:
+            typer.echo("No traces found. Run a topology first.")
+            return
+        typer.echo(f"Recent runs ({len(traces)}):\n")
+        for t in traces:
+            dur = t["duration_ms"] / 1000
+            tokens = t["total_tokens"]
+            typer.echo(
+                f"  {t['run_id'][:12]}  {t['topology']:25s}  "
+                f"{dur:6.1f}s  {tokens:>8,} tokens  ({t['agents']} agents)"
+            )
+        typer.echo(f"\nUse: swarmkit trace <run-id> -w {workspace_path}")
+        return
+
+    traces_dir = ws_root / ".swarmkit" / "traces"
+    matches = list(traces_dir.glob(f"{run_id}*.json")) if traces_dir.exists() else []
+    if not matches:
+        _stderr(f"Trace not found: {run_id}")
+        raise typer.Exit(1)
+
+    trace_data = RunTrace.load(matches[0])
+    typer.echo(trace_data.render_text())
+
+
 # ---- stubs for later milestones ------------------------------------------
 
 
