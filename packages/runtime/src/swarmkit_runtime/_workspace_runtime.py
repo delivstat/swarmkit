@@ -201,7 +201,7 @@ class WorkspaceRuntime:
         topology_name: str,
         user_input: str,
         *,
-        max_steps: int = 10,
+        max_steps: int = 50,
         thread_id: str | None = None,
     ) -> RunResult:
         """Execute a topology end-to-end and return the result.
@@ -219,6 +219,8 @@ class WorkspaceRuntime:
         topology = self._workspace.topologies[topology_name]
         run_thread = thread_id or str(uuid4())
 
+        effective_limit = max(max_steps, _compute_recursion_limit(topology))
+
         owns_mcp = not self._session_active
         if owns_mcp and self._mcp_manager is not None:
             required = collect_required_servers(topology)
@@ -233,7 +235,7 @@ class WorkspaceRuntime:
                     "output": "",
                 },
                 config={
-                    "recursion_limit": max_steps,
+                    "recursion_limit": effective_limit,
                     "configurable": {"thread_id": run_thread},
                 },
             )
@@ -258,7 +260,7 @@ class WorkspaceRuntime:
         topology_name: str,
         thread_id: str,
         *,
-        max_steps: int = 10,
+        max_steps: int = 50,
     ) -> RunResult:
         """Resume a previously checkpointed run.
 
@@ -268,6 +270,8 @@ class WorkspaceRuntime:
         graph = self.compile(topology_name)
         topology = self._workspace.topologies[topology_name]
 
+        effective_limit = max(max_steps, _compute_recursion_limit(topology))
+
         owns_mcp = not self._session_active
         if owns_mcp and self._mcp_manager is not None:
             required = collect_required_servers(topology)
@@ -276,7 +280,7 @@ class WorkspaceRuntime:
             result = await graph.ainvoke(
                 None,
                 config={
-                    "recursion_limit": max_steps,
+                    "recursion_limit": effective_limit,
                     "configurable": {"thread_id": thread_id},
                 },
             )
@@ -585,3 +589,19 @@ def find_missing_mcp_servers(
         if server_id and server_id not in mcp_configs:
             missing.append((skill_id, server_id))
     return missing
+
+
+def _compute_recursion_limit(topology: Any) -> int:
+    """Compute a safe recursion limit based on topology size.
+
+    Each agent delegation is a graph step. Multi-level topologies
+    (root → coordinator → sub-agents) need more steps than flat ones.
+    Formula: 10 steps per agent, minimum 50.
+    """
+    from swarmkit_runtime.resolver import ResolvedAgent  # noqa: PLC0415
+
+    def _count_agents(agent: ResolvedAgent) -> int:
+        return 1 + sum(_count_agents(c) for c in agent.children)
+
+    count = _count_agents(topology.root)
+    return max(50, count * 10)
