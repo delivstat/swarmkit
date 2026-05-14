@@ -41,6 +41,7 @@ _MAX_OUTPUT_RETRIES = 2
 _TRUST_DENY_THRESHOLD = 0.2
 
 _active_trace: RunTrace | None = None
+_current_parent_agent: str | None = None
 
 
 def set_active_trace(trace: RunTrace | None) -> None:
@@ -770,7 +771,7 @@ async def _finalize_text_result(
 # ---- node construction --------------------------------------------------
 
 
-def _build_agent_node(
+def _build_agent_node(  # noqa: PLR0915
     agent: ResolvedAgent,
     model_provider: ModelProviderProtocol,
     governance: GovernanceProvider,
@@ -781,7 +782,7 @@ def _build_agent_node(
     """Build an async node function for one agent."""
     drift_observer = _create_drift_observer(agent)
 
-    async def node_fn(state: SwarmState) -> dict[str, Any]:
+    async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         agent_id = agent.id
         _start = datetime.now(tz=UTC)
         await governance.record_event(
@@ -821,15 +822,19 @@ def _build_agent_node(
         request = _build_completion_request(model_name, messages, system_prompt, tools, agent)
         response = await model_provider.complete(request)
 
+        global _current_parent_agent  # noqa: PLW0603
         _trace_step = AgentStep(
             agent_id=agent_id,
             model=model_name,
+            parent_agent=_current_parent_agent,
             role=agent.role,
             start_time=_start.timestamp(),
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
         )
+        _prev_parent = _current_parent_agent
+        _current_parent_agent = agent_id
 
         if _verbose:
             _log_verbose_response(response)
@@ -858,16 +863,20 @@ def _build_agent_node(
                 result.get("output", ""),
                 _start,
             )
-            delegated_to = [
-                k
-                for k, v in result.get("agent_results", {}).items()
-                if isinstance(v, str) and v.startswith("__delegated__:")
-            ]
+            delegated_to: list[str] = []
+            for k, v in result.get("agent_results", {}).items():
+                if isinstance(v, str) and v.startswith("__delegated__:"):
+                    delegated_to.append(v.split(":", 1)[1])
+                elif isinstance(v, str) and v == "__delegated_parallel__":
+                    delegated_to.extend(
+                        ck for ck in result.get("agent_results", {}) if ck not in {k, agent_id}
+                    )
             _trace_step.delegations = delegated_to
             _trace_step.end_time = datetime.now(tz=UTC).timestamp()
             _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
             if _active_trace is not None:
                 _active_trace.add_step(_trace_step)
+            _current_parent_agent = _prev_parent
             return result
 
         # Text path -- result is (final_response, final_messages).
@@ -891,6 +900,7 @@ def _build_agent_node(
         _trace_step.result_length = len(result_text)
         if _active_trace is not None:
             _active_trace.add_step(_trace_step)
+        _current_parent_agent = _prev_parent
 
         if drift_observer and drift_observer.config.enabled:
             if not drift_observer.anchor_text:
