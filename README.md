@@ -201,6 +201,27 @@ OTel traces to any backend: `SWARMKIT_OTEL_EXPORTER=console swarmkit run ...`
 
 Intent drift detection (M7 — shipped): detects when agents wander from the original goal. Add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }` to your topology.
 
+### Run trace (M8 — shipped)
+
+Every run saves a structured trace showing the agent call graph, tool usage, and token counts per agent and model.
+
+```bash
+swarmkit trace -w .            # list recent runs with token counts
+swarmkit trace <run-id> -w .   # show full call graph for a run
+```
+
+### Sub-agent architecture (M8 — shipped)
+
+Agents can delegate to focused sub-agents instead of handling everything with one overloaded tool set. A coordinator with 40+ tools becomes a coordinator with 4 delegate tools orchestrating focused researchers — each with 10-12 tools and their own 25-turn tool budget.
+
+### Multimodal support (M8 — shipped)
+
+Image content blocks across all 7 model providers. MCP tools can return `ImageContent` for vision models. `view_image` tool lets agents see diagrams, screenshots, and architecture drawings. MarkItDown integration for document reading with inline images.
+
+### MCP permission tiers (M8 — shipped)
+
+Per-server and per-tool governance: `permission: open|cautious|strict|readonly` in workspace.yaml. Reads auto-approved, writes need governance approval, readonly denies mutations.
+
 ## Reference topologies
 
 Ships with production-quality topologies you can use immediately:
