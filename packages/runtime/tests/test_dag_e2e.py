@@ -40,7 +40,10 @@ class TrackingMockProvider:
         self.calls.append(agent_hint)
 
         # Root agent: if it sees child results, synthesise; otherwise delegate
-        has_child_results = "workers have produced" in last_content or "Workers already completed" in last_content
+        has_child_results = (
+            "workers have produced" in last_content
+            or "Workers already completed" in last_content
+        )
         if request.tools and not has_child_results:
             tool_names = [t.name for t in request.tools]
             delegate_tools = [t for t in tool_names if t.startswith("delegate_to_")]
