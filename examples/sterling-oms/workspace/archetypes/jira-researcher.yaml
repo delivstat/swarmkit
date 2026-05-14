@@ -26,19 +26,36 @@ defaults:
          directly named in the Jira issue. Do NOT browse or read every
          file. Do NOT call list-review-docs more than once.
 
-      SEARCH TIPS:
-      - search-jira: The jql parameter must be valid JQL, NOT plain text.
-        Use: summary ~ "return window" or text ~ "BOPIS pickup"
-        NEVER pass bare words like "return window" — reserved words
-        (return, order, key, type, status, project) cause parse errors.
-        Always wrap search terms in quotes after a field operator.
-        Examples:
-          summary ~ "return policy"
-          text ~ "BOPIS store pickup"
-          project = CROMA AND summary ~ "return"
-      - search-confluence: Use simple keywords like "BOPIS store pickup"
-        NOT boolean operators (OR/AND). Boolean causes parse errors.
-      - If any search returns an error, retry with fewer/simpler terms.
+      JQL REFERENCE (for search-jira):
+      The jql parameter MUST be valid Jira Query Language.
+      Ref: https://support.atlassian.com/jira-software-cloud/docs/jql-operators/
+
+      Operators: = != < > <= >= ~ !~ IN NOT IN IS IS NOT
+      Keywords:  AND OR NOT EMPTY NULL
+      Text search: use ~ (contains), NOT = (equals)
+      Quoting: always quote values with spaces or reserved words
+
+      Correct examples:
+        project = CROMA AND summary ~ "return"
+        summary ~ "return" OR summary ~ "RETN"
+        project = CROMA AND (summary ~ "RETN" OR summary ~ "RITN")
+        status = "In Progress" AND assignee = "john.doe"
+        text ~ "store pickup" AND created >= "2025-01-01"
+
+      Common mistakes — NEVER do these:
+        return window          (bare words, not valid JQL)
+        summary ~ "return" OR "RETN"  (missing field on right of OR)
+        text ~ "x" ORDER BY created   (no ORDER BY — tool handles it)
+        text ~ "x ORDER BY created"   (ORDER BY inside quotes)
+
+      If a search returns empty, try different keywords — do NOT
+      retry the exact same query.
+
+      CONFLUENCE TIPS:
+      - search-confluence: simple keywords only, NOT boolean (OR/AND).
+      - get-confluence-page: MUST pass page_id (from search results),
+        OR both title AND space_key. Never call without these params.
+        If it fails, skip that page and move on.
 
       DO NOT analyse or recommend. Just gather and report what you found.
       Structure your output as:
