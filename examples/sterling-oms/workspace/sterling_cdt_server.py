@@ -207,10 +207,12 @@ def _render_mermaid_pipeline(pipe: dict) -> str:
         first_status = defns[0].get("drop_status", "") if defns else ""
         if first_status:
             lines.append(f"    HUB --> {first_status.replace('.', '_')}")
-        for rule in hub_rules:
-            cv = rule.get("condition_value", "")
+        for i, rule in enumerate(hub_rules):
+            ent = rule.get("enterprise_name", "")
+            cn = rule.get("condition_name", "default")
             pri = rule.get("priority", "")
-            lines.append(f'    HUB__{cv}[/"{cv} P{pri}"/] -.-> HUB')
+            safe = f"HR{i}"
+            lines.append(f'    {safe}[/"{ent} P{pri}\\n{cn}"/] -.-> HUB')
 
     for pt in pipe.get("pickup_transactions", []):
         status = pt.get("status", "")
@@ -331,24 +333,26 @@ def get_pipeline(pipeline_id: str) -> str:  # noqa: PLR0912, PLR0915
         lines.append(f"- **{status}** {name} (transaction: {tran})")
 
     if pipe.get("hub_rules"):
-        lines += ["", "## Hub Rules (Organization → Pipeline Mapping)", ""]
+        lines += ["", "## Hub Rules (Pipeline Selection Conditions)", ""]
         lines.append("Evaluated in priority order (lower = first):\n")
         for rule in pipe["hub_rules"]:
-            cv = rule.get("condition_value", "")
-            ds = rule.get("drop_status", "")
-            ds_name = status_names.get(ds, "")
-            tk = rule.get("transaction_key", "")
+            ent = rule.get("enterprise_name", rule.get("enterprise", ""))
+            cond_name = rule.get("condition_name", "")
+            cond_rule = rule.get("condition_rule", "")
             pri = rule.get("priority", "")
-            lines.append(f"- [P{pri}] **{cv}** → status {ds} {ds_name} (transaction: {tk})")
+            rule_desc = f": `{cond_rule}`" if cond_rule else ""
+            lines.append(f"- [P{pri}] Enterprise=**{ent}** — {cond_name}{rule_desc}")
 
     if pipe.get("conditions"):
-        lines += ["", "## Conditions", ""]
+        lines += ["", "## Conditions (Detail)", ""]
         for cond in pipe["conditions"]:
-            pdk = cond.get("pipeline_definition_key", "")
-            lines.append(
-                f"- {cond.get('condition_value', '')} → definition {pdk} "
-                f"(key: {cond.get('condition_key', '')})"
-            )
+            ent = cond.get("enterprise_name", cond.get("enterprise", ""))
+            cn = cond.get("condition_name", "")
+            cv = cond.get("condition_value", "")
+            pri = cond.get("priority", "")
+            cid = cond.get("condition_id", "")
+            rule_str = f" — `{cv}`" if cv else ""
+            lines.append(f"- [P{pri}] {ent}: **{cn}** ({cid}){rule_str}")
 
     if pipe.get("pickup_transactions"):
         lines += ["", "## Pickup Transactions", ""]
@@ -414,17 +418,24 @@ def list_pipelines(filter: str = "") -> str:
                 p.get("owner_org", ""),
             ]
         ).lower()
-        hub_orgs = " ".join(r.get("condition_value", "") for r in p.get("hub_rules", [])).lower()
-        if fl in searchable or fl in hub_orgs:
+        hub_text = " ".join(
+            f"{r.get('enterprise_name', '')} {r.get('condition_name', '')}"
+            for r in p.get("hub_rules", [])
+        ).lower()
+        if fl in searchable or fl in hub_text:
             matches.append(p)
     if not matches:
         return f"No pipelines matching '{filter}'."
     lines = [f"Found {len(matches)} pipelines:\n"]
     for p in sorted(matches, key=lambda x: x.get("pipeline_id", "")):
-        orgs = [
-            r.get("condition_value", "") for r in p.get("hub_rules", []) if r.get("condition_value")
-        ]
-        org_str = f" (orgs: {', '.join(orgs)})" if orgs else ""
+        ents = sorted(
+            {
+                r.get("enterprise_name", "")
+                for r in p.get("hub_rules", [])
+                if r.get("enterprise_name")
+            }
+        )
+        org_str = f" (enterprises: {', '.join(ents)})" if ents else ""
         pt = p.get("process_type_name", p.get("process_type", ""))
         lines.append(f"- **{p['pipeline_id']}**: {p.get('description', '')} [{pt}]{org_str}")
     return "\n".join(lines)
