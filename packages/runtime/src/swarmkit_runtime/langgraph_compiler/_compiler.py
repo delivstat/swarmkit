@@ -408,7 +408,17 @@ async def _run_tool_loop(
         follow_up = _build_completion_request(
             model_name, loop_messages, system_prompt, tools, agent
         )
-        _progress(f"  [{agent.id}] processing results... (turn {_turn + 1})")
+        _result_summaries = []
+        for tr in current_results:
+            _size = len(tr.result)
+            if _size > 1024:
+                _result_summaries.append(f"{tr.tool_name} ({_size // 1024}KB)")
+            else:
+                _result_summaries.append(f"{tr.tool_name} ({_size}B)")
+        _progress(
+            f"  [{agent.id}] got results: {', '.join(_result_summaries)} "
+            f"| waiting for model... (turn {_turn + 1})"
+        )
         if verbose:
             print(
                 f"  [tool loop turn {_turn + 1}: {len(current_results)} tool results]",
