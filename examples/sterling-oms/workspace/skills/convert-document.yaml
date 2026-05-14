@@ -14,4 +14,4 @@ provenance:
 implementation:
   type: mcp_tool
   server: pandoc
-  tool: convert_contents
+  tool: convert-contents
