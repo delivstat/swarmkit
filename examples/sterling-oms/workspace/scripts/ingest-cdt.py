@@ -174,7 +174,7 @@ def _build_process_type_lookup(cdt_dir: Path) -> dict[str, str]:
     return lookup
 
 
-def _build_pipelines(cdt_dir: Path) -> dict:  # noqa: PLR0912
+def _build_pipelines(cdt_dir: Path) -> dict:
     """Build pipeline index with definitions, conditions, pickup transactions.
 
     Hub rule linkage: conditions map to definitions via PipelineDefinitionKey.
@@ -229,34 +229,47 @@ def _build_pipelines(cdt_dir: Path) -> dict:  # noqa: PLR0912
             if pk in pipelines:
                 pipelines[pk]["definitions"].append(defn)
 
+    conditions_lookup = _build_condition_lookup(cdt_dir)
+
     cond_path = cdt_dir / "YFS_PIPELINE_CONDITION.cdt.xml"
     if cond_path.exists():
         _, rows = _parse_cdt(cond_path)
         for row in rows:
             pk = row.get("PipelineKey", "")
-            pdk = row.get("PipelineDefinitionKey", "")
+            cond_key = row.get("ConditionKey", "")
+            enterprise = row.get("EnterpriseKey", "")
+            enterprise_name = org_lookup.get(enterprise, enterprise)
             priority = row.get("Priority", row.get("SequenceNo", "999"))
+            proc_type = row.get("ProcessTypeKey", "")
+
+            cond_detail = conditions_lookup.get(cond_key, {})
+            cond_name = cond_detail.get("condition_name", "")
+            cond_value = cond_detail.get("condition_value", "")
+            cond_id = cond_detail.get("condition_id", "")
+
             condition = {
-                "condition_key": row.get("ConditionKey", ""),
-                "condition_value": row.get("ConditionValue", ""),
-                "pipeline_definition_key": pdk,
+                "condition_key": cond_key,
+                "condition_id": cond_id,
+                "condition_name": cond_name,
+                "condition_value": cond_value,
+                "enterprise": enterprise,
+                "enterprise_name": enterprise_name,
+                "process_type": proc_type,
                 "priority": priority,
             }
             if pk in pipelines:
                 pipelines[pk]["conditions"].append(condition)
-                linked_defn = defns_by_key.get(pdk)
-                if linked_defn:
-                    pipelines[pk]["hub_rules"].append(
-                        {
-                            "condition_key": condition["condition_key"],
-                            "condition_value": condition["condition_value"],
-                            "priority": priority,
-                            "maps_to_definition": pdk,
-                            "drop_status": linked_defn["drop_status"],
-                            "transaction_key": linked_defn["transaction_key"],
-                            "transaction_instance": linked_defn["transaction_instance"],
-                        }
-                    )
+                pipelines[pk]["hub_rules"].append(
+                    {
+                        "enterprise": enterprise,
+                        "enterprise_name": enterprise_name,
+                        "condition_id": cond_id,
+                        "condition_name": cond_name or "(default — no condition)",
+                        "condition_rule": cond_value,
+                        "priority": priority,
+                        "process_type": proc_type,
+                    }
+                )
 
     for pipe in pipelines.values():
         pipe["hub_rules"].sort(key=lambda r: str(r.get("priority", "999")))
