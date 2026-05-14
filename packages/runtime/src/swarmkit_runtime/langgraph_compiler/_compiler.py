@@ -835,6 +835,11 @@ def _build_agent_node(  # noqa: PLR0915
         all_children_done = len(completed_children) == len(agent.children) and agent.children
         if all_children_done:
             tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+        elif completed_children:
+            tools = [
+                t for t in tools
+                if not (t.name.startswith("delegate_to_") and t.name[len("delegate_to_"):] in completed_children)
+            ]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
         system_prompt = _build_system_prompt(agent, tools)
