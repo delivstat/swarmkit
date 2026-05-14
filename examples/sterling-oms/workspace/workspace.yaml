@@ -116,6 +116,12 @@ mcp_servers:
       ATLASSIAN_API_TOKEN: "${ATLASSIAN_API_TOKEN}"
       JIRA_URL: "${JIRA_URL}"
     credentials_ref: confluence-creds
+  # Pandoc — document format converter (Markdown ↔ DOCX/HTML/PDF/LaTeX)
+  # Supports reference_doc for DOCX styling from a template
+  - id: pandoc
+    transport: stdio
+    command: ["uvx", "mcp-pandoc"]
+    permission: open
   # MarkItDown — Microsoft's document-to-markdown converter
   # Handles PDF, DOCX, XLSX, PPTX with embedded images as inline data URIs
   # CWD set to knowledge root so it can read files from any subdirectory

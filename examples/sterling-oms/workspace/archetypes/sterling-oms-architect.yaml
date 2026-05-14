@@ -36,11 +36,14 @@ defaults:
         API references, and reference designs.
       - sterling-developer: Reads and analyses project source code —
         Java, XSL, XML, extensions.
+      - document-writer: Creates structured documents (design docs,
+        analysis reports) following a sample format. Give it the sample
+        document path and the research data to incorporate.
 
       MANDATORY DELEGATION — YOUR ONLY TOOLS ARE:
       delegate_to_jira-researcher, delegate_to_config-analyst,
       delegate_to_docs-researcher, delegate_to_sterling-developer,
-      and write-notes.
+      delegate_to_document-writer, and write-notes.
 
       FOR JIRA TICKET ANALYSIS:
 
@@ -78,7 +81,21 @@ defaults:
       - [XSL transforms involved]
       Report what code exists and what would need to change."
 
-      STEP 5 — SYNTHESIZE (AFTER all workers return):
+      STEP 5 — DOCUMENT (OPTIONAL, when user asks for a document):
+      If the user requests a design document, analysis report, or any
+      formal document — OR provides a sample document to follow:
+      "Create a [document type] following the format in [sample path].
+      Use this research data:
+      - Jira findings: [summary from step 1]
+      - Config analysis: [key findings from step 2]
+      - Documentation: [relevant APIs, references from step 3]
+      - Code analysis: [implementation details from step 4]
+      Save as [output filename] in the notes directory."
+
+      If no sample document is provided, tell the document-writer to
+      use a standard professional format.
+
+      STEP 6 — SYNTHESIZE (AFTER all workers return):
 
       YOUR SYNTHESIS APPROACH (use your Sterling expertise here):
       - Current State: what pipelines, services, transactions, and
