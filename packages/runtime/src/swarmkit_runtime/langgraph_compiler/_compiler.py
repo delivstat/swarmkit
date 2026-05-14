@@ -488,7 +488,7 @@ async def _run_tool_loop(
     return _extract_text(synthesis_response) or "(analysis incomplete — tool limit reached)"
 
 
-async def _dispatch_response(  # noqa: PLR0912
+async def _dispatch_response(  # noqa: PLR0912, PLR0915
     response: CompletionResponse,
     agent: ResolvedAgent,
     agent_id: str,
@@ -539,6 +539,33 @@ async def _dispatch_response(  # noqa: PLR0912
                     },
                     "messages": merged_messages,
                 }
+
+        invalid_delegations = _find_invalid_delegations(response, agent)
+        if invalid_delegations:
+            invalid_names = ", ".join(invalid_delegations)
+            valid_names = ", ".join(f"delegate_to_{c.id}" for c in agent.children)
+            if verbose:
+                print(
+                    f"  [invalid delegation: {invalid_names}]",
+                    file=sys.stderr,
+                )
+            messages = [
+                *messages,
+                Message(role="assistant", content=list(response.content)),
+                Message(
+                    role="user",
+                    content=(
+                        f"Invalid tool call: {invalid_names}. "
+                        f"You cannot delegate to yourself or to agents that are not your workers. "
+                        f"Your valid delegation tools are: {valid_names}. "
+                        f"If you have gathered enough information, write your analysis now "
+                        f"without calling any tools."
+                    ),
+                ),
+            ]
+            request = _build_completion_request(model_name, messages, system_prompt, tools, agent)
+            response = await model_provider.complete(request)
+            continue
 
         delegations = _extract_delegation(response, agent)
         if delegations:
@@ -771,6 +798,9 @@ def _build_agent_node(
         tools = _build_tools(agent, mcp_manager=mcp_manager)
         agent_results = state.get("agent_results", {})
         completed_children = _get_completed_children(agent, agent_results)
+        all_children_done = len(completed_children) == len(agent.children) and agent.children
+        if all_children_done:
+            tools = [t for t in tools if not t.name.startswith("delegate_to_")]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
         system_prompt = _build_system_prompt(agent, tools)
@@ -1336,6 +1366,23 @@ async def _run_dag(
 
 
 # ---- response parsing ---------------------------------------------------
+
+
+def _find_invalid_delegations(
+    response: CompletionResponse,
+    agent: ResolvedAgent,
+) -> list[str]:
+    """Find delegate_to_X tool calls where X is not a valid child."""
+    child_ids = {c.id for c in agent.children}
+    invalid: list[str] = []
+    for block in response.content:
+        if block.type != "tool_use" or not block.tool_name:
+            continue
+        if block.tool_name.startswith("delegate_to_"):
+            target = block.tool_name[len("delegate_to_") :]
+            if target not in child_ids:
+                invalid.append(block.tool_name)
+    return invalid
 
 
 def _extract_delegation(
