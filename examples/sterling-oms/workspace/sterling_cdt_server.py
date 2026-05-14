@@ -72,7 +72,7 @@ def _find_service(name: str) -> dict | None:
     return None
 
 
-def _format_service(svc: dict) -> str:
+def _format_service(svc: dict) -> str:  # noqa: PLR0912
     lines = [
         f"# Service: {svc['name']}",
         f"**Flow Key:** {svc.get('flow_key', '')}",
@@ -115,6 +115,21 @@ def _format_service(svc: dict) -> str:
                 if link.get("schedule_trigger") == "Y":
                     lines.append(f"  Schedule: every {link.get('schedule_interval', '')}s")
         lines.append("")
+
+    if svc.get("flow_conditions"):
+        lines.append("## Flow Conditions (Decision Points)")
+        lines.append("")
+        for fc in svc["flow_conditions"]:
+            cn = fc.get("condition_name", "")
+            tb = fc.get("true_branch", "")
+            fb = fc.get("false_branch", "")
+            lines.append(f"- **{cn}**")
+            if tb:
+                lines.append(f"  - True → {tb}")
+            if fb:
+                lines.append(f"  - False → {fb}")
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -327,10 +342,24 @@ def get_pipeline(pipeline_id: str) -> str:  # noqa: PLR0912, PLR0915
         "",
     ]
     for defn in sorted(pipe.get("definitions", []), key=lambda x: x.get("drop_status", "")):
-        status = defn.get("drop_status", "")
-        name = status_names.get(status, "")
-        tran = defn.get("transaction_key", "")
-        lines.append(f"- **{status}** {name} (transaction: {tran})")
+        status_label = defn.get("status_label", defn.get("drop_status", ""))
+        tran_name = defn.get("transaction_name", defn.get("transaction_key", ""))
+        lines.append(f"- **{status_label}** → {tran_name}")
+
+    if pipe.get("flow_conditions"):
+        lines += ["", "## Flow Conditions (Decision Points)", ""]
+        lines.append("Condition diamonds in the pipeline that determine routing:\n")
+        for fc in pipe["flow_conditions"]:
+            cn = fc.get("condition_name", "")
+            cr = fc.get("condition_rule", "")
+            tb = fc.get("true_branch", "")
+            fb = fc.get("false_branch", "")
+            rule_str = f" — `{cr}`" if cr else ""
+            lines.append(f"- **{cn}**{rule_str}")
+            if tb:
+                lines.append(f"  - True → {tb}")
+            if fb:
+                lines.append(f"  - False → {fb}")
 
     if pipe.get("hub_rules"):
         lines += ["", "## Hub Rules (Pipeline Selection Conditions)", ""]
@@ -353,6 +382,11 @@ def get_pipeline(pipeline_id: str) -> str:  # noqa: PLR0912, PLR0915
             cid = cond.get("condition_id", "")
             rule_str = f" — `{cv}`" if cv else ""
             lines.append(f"- [P{pri}] {ent}: **{cn}** ({cid}){rule_str}")
+
+    if pipe.get("transitions"):
+        lines += ["", "## Status Transitions (from → via transaction → to)", ""]
+        for t in pipe["transitions"]:
+            lines.append(f"- **{t['from']}** →[{t['via']}]→ **{t['to']}**")
 
     if pipe.get("pickup_transactions"):
         lines += ["", "## Pickup Transactions", ""]
@@ -386,10 +420,10 @@ def get_pipeline(pipeline_id: str) -> str:  # noqa: PLR0912, PLR0915
             src_pt = ln.get(
                 "listening_to_process_type_name", ln.get("listening_to_process_type", "")
             )
-            src_status = ln.get("listening_to_status", "")
-            tran = ln.get("transaction_key", "")
-            drop = ln.get("drop_status", "")
-            drop_str = f" → drop to {drop} {status_names.get(drop, '')}" if drop else ""
+            src_status = ln.get("listening_to_status_label", ln.get("listening_to_status", ""))
+            tran = ln.get("transaction_name", ln.get("transaction_key", ""))
+            drop = ln.get("drop_status_label", ln.get("drop_status", ""))
+            drop_str = f" → drop to {drop}" if drop else ""
             lines.append(
                 f"- Listens to **{src_pt}** status {src_status} → triggers {tran}{drop_str}"
             )

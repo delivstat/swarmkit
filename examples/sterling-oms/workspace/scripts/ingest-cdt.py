@@ -49,6 +49,10 @@ def _decode_config_xml(encoded: str) -> ET.Element | None:
         return None
     try:
         decoded = html.unescape(encoded)
+        # Fix bare <br> tags that Sterling puts in Text attributes
+        import re  # noqa: PLC0415
+
+        decoded = re.sub(r"<br>", " / ", decoded)
         return ET.fromstring(decoded)
     except ET.ParseError:
         return None
@@ -143,7 +147,93 @@ def _build_services(cdt_dir: Path) -> dict:
             if flow_key in services:
                 services[flow_key]["sub_flows"].append(sub_flow)
 
+    # Extract flow conditions from YFS_GRAPH_UI
+    graph_ui_path = cdt_dir / "YFS_GRAPH_UI.cdt.xml"
+    if graph_ui_path.exists():
+        _extract_flow_conditions_from_graph(graph_ui_path, services)
+
     return services
+
+
+def _extract_flow_conditions_from_graph(  # noqa: PLR0912
+    graph_ui_path: Path, services: dict
+) -> None:
+    """Extract condition decision points from YFS_GRAPH_UI Flow graphs.
+
+    Flow graphs have Type=350 nodes (condition diamonds). Unlike pipeline
+    conditions which reference YFS_CONDITION, flow conditions have their
+    name in the Text attribute. The links show True/False branches.
+    """
+    tree = ET.parse(graph_ui_path)
+    root = tree.getroot()
+
+    gui_key_to_flow: dict[str, str] = {}
+    for fk, svc in services.items():
+        guik = svc.get("graph_ui_key", "")
+        if guik:
+            gui_key_to_flow[guik] = fk
+
+    for child in root:
+        if child.get("GraphType") != "Flow":
+            continue
+        gui_key = child.get("GraphUIKey", "")
+        ref_key = child.get("GraphRefKey", "")
+        flow_key = gui_key_to_flow.get(gui_key) or gui_key_to_flow.get(ref_key)
+        if not flow_key or flow_key not in services:
+            if ref_key in services:
+                flow_key = ref_key
+            else:
+                continue
+
+        graph_xml = child.get("GraphXml", "")
+        graph_el = _decode_config_xml(graph_xml)
+        if graph_el is None:
+            continue
+
+        nodes = graph_el.findall(".//Node")
+        links = graph_el.findall(".//Link")
+
+        node_by_uindex: dict[str, dict[str, str]] = {}
+        for n in nodes:
+            uindex = n.get("UIndex", "")
+            if uindex:
+                node_by_uindex[uindex] = {
+                    "key": n.get("Key", ""),
+                    "text": n.get("Text", ""),
+                    "type": n.get("Type", ""),
+                }
+
+        flow_conditions: list[dict[str, str]] = []
+        for n in nodes:
+            if n.get("Type") != "350":
+                continue
+            uindex = n.get("UIndex", "")
+            cond_text = n.get("Text", "")
+
+            true_targets: list[str] = []
+            false_targets: list[str] = []
+            for link in links:
+                if link.get("From") != uindex:
+                    continue
+                branch = (link.get("Text", "") or "").strip()
+                to_idx = link.get("To", "")
+                to_node = node_by_uindex.get(to_idx, {})
+                to_text = to_node.get("text", to_idx)
+                if branch.lower() == "true":
+                    true_targets.append(to_text)
+                elif branch.lower() == "false":
+                    false_targets.append(to_text)
+
+            flow_conditions.append(
+                {
+                    "condition_name": cond_text,
+                    "true_branch": ", ".join(true_targets) if true_targets else "",
+                    "false_branch": ", ".join(false_targets) if false_targets else "",
+                }
+            )
+
+        if flow_conditions:
+            services[flow_key]["flow_conditions"] = flow_conditions
 
 
 def _build_org_lookup(cdt_dir: Path) -> dict[str, str]:
@@ -310,7 +400,93 @@ def _build_pipelines(cdt_dir: Path) -> dict:  # noqa: PLR0912, PLR0915
                     }
                 )
 
+    # Extract condition decision points from YFS_GRAPH_UI Pipeline graphs
+    graph_ui_path = cdt_dir / "YFS_GRAPH_UI.cdt.xml"
+    conditions_lookup = _build_condition_lookup(cdt_dir)
+    if graph_ui_path.exists():
+        _extract_pipeline_conditions_from_graph(graph_ui_path, pipelines, conditions_lookup)
+
     return pipelines
+
+
+def _extract_pipeline_conditions_from_graph(  # noqa: PLR0912
+    graph_ui_path: Path,
+    pipelines: dict,
+    conditions_lookup: dict,
+) -> None:
+    """Extract condition decision points from YFS_GRAPH_UI Pipeline graphs.
+
+    Pipeline graphs have Type=40 nodes (condition diamonds) that link to
+    YFS_CONDITION entries. The links show True/False branches with the
+    transaction text on each branch.
+    """
+    tree = ET.parse(graph_ui_path)
+    root = tree.getroot()
+
+    for child in root:
+        if child.get("GraphType") != "Pipeline":
+            continue
+        ref_key = child.get("GraphRefKey", "")
+        if ref_key not in pipelines:
+            continue
+
+        graph_xml = child.get("GraphXml", "")
+        graph_el = _decode_config_xml(graph_xml)
+        if graph_el is None:
+            continue
+
+        nodes = graph_el.findall(".//Node")
+        links = graph_el.findall(".//Link")
+
+        node_by_uindex: dict[str, dict[str, str]] = {}
+        for n in nodes:
+            uindex = n.get("UIndex", "")
+            if uindex:
+                node_by_uindex[uindex] = {
+                    "key": n.get("Key", ""),
+                    "text": n.get("Text", ""),
+                    "type": n.get("Type", ""),
+                }
+
+        flow_conditions: list[dict[str, str]] = []
+        for n in nodes:
+            if n.get("Type") != "40":
+                continue
+            cond_key = n.get("Key", "")
+            uindex = n.get("UIndex", "")
+            cond_text = n.get("Text", "")
+
+            cond_detail = conditions_lookup.get(cond_key, {})
+            cond_name = cond_detail.get("condition_name", cond_text)
+            cond_rule = cond_detail.get("condition_value", "")
+
+            true_targets: list[str] = []
+            false_targets: list[str] = []
+            for link in links:
+                if link.get("From") != uindex:
+                    continue
+                branch_text = (link.get("Text", "") or "").strip()
+                to_uindex = link.get("To", "")
+                to_node = node_by_uindex.get(to_uindex, {})
+                to_text = to_node.get("text", to_uindex)
+
+                if branch_text.lower() == "true":
+                    true_targets.append(to_text)
+                elif branch_text.lower() == "false":
+                    false_targets.append(to_text)
+
+            flow_conditions.append(
+                {
+                    "condition_name": cond_name,
+                    "condition_rule": cond_rule,
+                    "condition_key": cond_key,
+                    "true_branch": ", ".join(true_targets) if true_targets else "",
+                    "false_branch": ", ".join(false_targets) if false_targets else "",
+                }
+            )
+
+        if flow_conditions:
+            pipelines[ref_key]["flow_conditions"] = flow_conditions
 
 
 def _build_transactions(cdt_dir: Path) -> dict:  # noqa: PLR0912
@@ -549,6 +725,87 @@ def _build_condition_lookup(cdt_dir: Path) -> dict[str, dict]:
     return conditions
 
 
+def _resolve_tran_name(transactions: dict, tran_key: str) -> str:
+    """Resolve a transaction key to a human-readable name."""
+    t = transactions.get(tran_key, {})
+    tid = t.get("transaction_id", "")
+    tname = t.get("transaction_name", "")
+    if tname:
+        return f"{tid} ({tname})" if tid and tid != tname else tname
+    return tid or tran_key
+
+
+def _resolve_status_label(statuses: dict, process_type: str, status: str, owner: str = "") -> str:
+    """Resolve a status code to 'code — Name'."""
+    for s in statuses.get(process_type, []):
+        if s.get("status") == status and owner and s.get("owner", "") == owner:
+            return f"{status} — {s.get('status_name', '')}"
+    for s in statuses.get(process_type, []):
+        if s.get("status") == status:
+            return f"{status} — {s.get('status_name', '')}"
+    return status
+
+
+def _enrich_pipelines(  # noqa: PLR0912
+    pipelines: dict, transactions: dict, statuses: dict
+) -> None:
+    """Resolve raw transaction keys and status codes to human-readable names."""
+    for pipe in pipelines.values():
+        pt = pipe.get("process_type", "")
+        owner = pipe.get("owner", "")
+
+        for defn in pipe.get("definitions", []):
+            tk = defn.get("transaction_key", "")
+            if tk:
+                defn["transaction_name"] = _resolve_tran_name(transactions, tk)
+            ds = defn.get("drop_status", "")
+            if ds:
+                defn["status_label"] = _resolve_status_label(statuses, pt, ds, owner)
+
+        for ln in pipe.get("listeners", []):
+            tk = ln.get("transaction_key", "")
+            if tk:
+                ln["transaction_name"] = _resolve_tran_name(transactions, tk)
+            ls = ln.get("listening_to_status", "")
+            lpt = ln.get("listening_to_process_type", "")
+            if ls and lpt:
+                ln["listening_to_status_label"] = _resolve_status_label(statuses, lpt, ls)
+            ds = ln.get("drop_status", "")
+            if ds:
+                ln["drop_status_label"] = _resolve_status_label(statuses, pt, ds, owner)
+
+        for pt_entry in pipe.get("pickup_transactions", []):
+            tk = pt_entry.get("transaction_key", "")
+            if tk:
+                pt_entry["transaction_name"] = _resolve_tran_name(transactions, tk)
+            st = pt_entry.get("status", "")
+            if st:
+                pt_entry["status_label"] = _resolve_status_label(statuses, pt, st, owner)
+
+        defn_by_tran: dict[str, str] = {}
+        for d in pipe.get("definitions", []):
+            tk = d.get("transaction_key", "")
+            ds = d.get("status_label", d.get("drop_status", ""))
+            if tk:
+                defn_by_tran[tk] = ds
+
+        transitions: list[dict[str, str]] = []
+        for pt_entry in pipe.get("pickup_transactions", []):
+            from_status = pt_entry.get("status_label", pt_entry.get("status", ""))
+            tran_key = pt_entry.get("transaction_key", "")
+            tran_name = pt_entry.get("transaction_name", tran_key)
+            to_status = defn_by_tran.get(tran_key, "")
+            transitions.append(
+                {
+                    "from": from_status,
+                    "via": tran_name,
+                    "to": to_status,
+                }
+            )
+        if transitions:
+            pipe["transitions"] = sorted(transitions, key=lambda t: t.get("from", ""))
+
+
 def main() -> None:  # noqa: PLR0915
     parser = argparse.ArgumentParser(description="Ingest Sterling CDT XMLs")
     parser.add_argument("cdt_dir", type=Path, help="Directory containing *.cdt.xml files")
@@ -661,6 +918,10 @@ def main() -> None:  # noqa: PLR0915
             for r in rows
         ]
         print(f"    {len(hold_types)} hold types")
+
+    # Enrich pipelines with resolved transaction and status names
+    print("  Enriching pipelines with resolved names...")
+    _enrich_pipelines(pipelines, transactions, statuses)
 
     # Write structured indexes
     (output_dir / "services.json").write_text(json.dumps(services, indent=2))
