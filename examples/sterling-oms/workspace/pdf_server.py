@@ -195,7 +195,7 @@ def describe_pdf_page(path: str, page_number: int) -> str:
 
 
 @server.tool()
-def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: PLR0911
+def download_confluence_pdf(page_id: str, filename: str = "") -> str:  # noqa: PLR0911, PLR0915
     """Export a Confluence page as PDF and save to review-docs.
 
     Fetches rendered HTML via REST API, converts to PDF locally with
