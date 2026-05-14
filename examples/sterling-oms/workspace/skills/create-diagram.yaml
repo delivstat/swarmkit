@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: create-diagram
+  name: Create Diagram
+  description: >
+    Create a draw.io diagram from XML, CSV, or Mermaid syntax.
+    Use for pipeline flow diagrams, architecture diagrams, and
+    system design. Can export to PNG, SVG, PDF, or .drawio format.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: drawio
+  tool: create_diagram
