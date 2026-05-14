@@ -206,12 +206,45 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
 
     mcp_manager._cache_misses += 1
 
-    try:
-        result = await mcp_manager.call_tool(server_id, tool_name, arguments)
-    except LookupError as exc:
-        return f"[skill:{skill.id}] {exc}"
-    except Exception as exc:
-        return f"[skill:{skill.id}] MCP call failed: {exc}"
+    import asyncio as _asyncio  # noqa: PLC0415
+
+    _timeout = int(_os.environ.get("SWARMKIT_MCP_TIMEOUT", "180"))
+    _max_retries = int(_os.environ.get("SWARMKIT_MCP_RETRIES", "2"))
+
+    result = None
+    for _attempt in range(_max_retries + 1):
+        try:
+            result = await _asyncio.wait_for(
+                mcp_manager.call_tool(server_id, tool_name, arguments),
+                timeout=_timeout,
+            )
+            break
+        except TimeoutError:
+            if _os.environ.get("SWARMKIT_VERBOSE"):
+                import sys as _sys  # noqa: PLC0415
+
+                print(
+                    f"  [timeout: {tool_name} attempt {_attempt + 1}/{_max_retries + 1}]",
+                    file=_sys.stderr,
+                )
+            if _attempt == _max_retries:
+                total = _max_retries + 1
+                return f"[skill:{skill.id}] MCP call timed out after {_timeout}s x {total} attempts"
+        except LookupError as exc:
+            return f"[skill:{skill.id}] {exc}"
+        except Exception as exc:
+            if _attempt == _max_retries:
+                return f"[skill:{skill.id}] MCP call failed: {exc}"
+            if _os.environ.get("SWARMKIT_VERBOSE"):
+                import sys as _sys  # noqa: PLC0415
+
+                print(
+                    f"  [retry: {tool_name} attempt {_attempt + 1} failed: {exc}]",
+                    file=_sys.stderr,
+                )
+
+    if result is None:
+        return f"[skill:{skill.id}] MCP call failed after {_max_retries + 1} attempts"
 
     text_parts: list[str] = []
     image_blocks: list[ContentBlock] = []
