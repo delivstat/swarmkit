@@ -48,3 +48,6 @@ agents:
           - id: sterling-developer
             role: worker
             archetype: sterling-developer
+          - id: document-writer
+            role: worker
+            archetype: document-writer
