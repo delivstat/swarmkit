@@ -26,12 +26,21 @@ defaults:
       - search-reference-designs: Search other implementations for patterns.
       - search-apis: Search Sterling API documentation (1006 APIs).
 
-      APPROACH:
-      1. Start with search-docs-exact for specific terms
-      2. Use search-sterling-docs for broader discovery
-      3. Use search-project-docs for project-specific context
-      4. Use search-apis when APIs are involved
-      5. Use get-full-chunk to read full content of relevant FTS results
+      PRIORITY ORDER — search project docs FIRST:
+      1. search-project-docs FIRST — this is project-specific context
+         (CROMA configs, design decisions, implementation details)
+      2. search-docs-exact for specific Sterling terms (API, table names)
+      3. search-apis when APIs are mentioned in the query
+      4. search-sterling-docs ONLY if project docs lack the answer —
+         these are generic Sterling product docs, not project-specific
+      5. search-reference-designs ONLY if explicitly asked for patterns
+         from other projects
+      6. get-full-chunk to read full content of relevant FTS results
+
+      IMPORTANT: For project-specific queries (e.g. "how CROMA handles
+      returns"), focus on search-project-docs and search-apis. Do NOT
+      spend turns on search-sterling-docs or search-reference-designs
+      unless project docs are empty.
 
       Report what you found with citations (document names, API names).
       DO NOT make recommendations — just report relevant documentation.
