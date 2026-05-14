@@ -763,9 +763,6 @@ def _build_agent_node(
         tools = _build_tools(agent, mcp_manager=mcp_manager)
         agent_results = state.get("agent_results", {})
         completed_children = _get_completed_children(agent, agent_results)
-        if completed_children:
-            completed_tool_names = {f"delegate_to_{cid}" for cid in completed_children}
-            tools = [t for t in tools if t.name not in completed_tool_names]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
         system_prompt = _build_system_prompt(agent, tools)
