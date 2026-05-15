@@ -36,5 +36,6 @@ class SwarmState(TypedDict):
     input: str
     messages: Annotated[list[BaseMessage], add_messages]
     agent_results: Annotated[dict[str, Any], _merge_dicts]
+    delegation_counts: Annotated[dict[str, int], _merge_dicts]
     current_agent: Annotated[str, _last_write_wins]
     output: Annotated[str, _last_write_wins]

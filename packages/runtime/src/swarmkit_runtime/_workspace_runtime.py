@@ -238,6 +238,7 @@ class WorkspaceRuntime:
                     "input": user_input,
                     "messages": [],
                     "agent_results": {},
+                    "delegation_counts": {},
                     "current_agent": "",
                     "output": "",
                 },

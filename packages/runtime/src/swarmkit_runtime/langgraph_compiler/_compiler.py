@@ -531,6 +531,7 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
     mcp_manager: Any,
     governance: GovernanceProvider,
     verbose: str,
+    state: SwarmState | None = None,
     all_agents: dict[str, ResolvedAgent] | None = None,
     provider_registry: ProviderRegistry | None = None,
 ) -> dict[str, Any] | tuple[CompletionResponse, list[Message]]:
@@ -604,8 +605,11 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                 child_id, task_text = delegations[0]
                 _task_preview = (task_text or "")[:120].replace("\n", " ")
                 _progress(f"[{agent_id}] -> delegating to {child_id}: {_task_preview}")
+                _prev_counts: dict[str, int] = state.get("delegation_counts", {}) if state else {}
+                _new_counts = {**_prev_counts, child_id: _prev_counts.get(child_id, 0) + 1}
                 return {
                     "current_agent": child_id,
+                    "delegation_counts": _new_counts,
                     "agent_results": {
                         agent_id: f"__delegated__:{child_id}",
                     },
@@ -633,6 +637,7 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                     "input": task,
                     "messages": [HumanMessage(content=task, name=agent_id)],
                     "agent_results": {},
+                    "delegation_counts": {},
                     "current_agent": cid,
                     "output": "",
                 }
@@ -677,8 +682,13 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                     AIMessage(content=result, name=cid),
                 )
 
+            _par_prev: dict[str, int] = state.get("delegation_counts", {}) if state else {}
+            _par_counts = {**_par_prev}
+            for cid, _ in delegations:
+                _par_counts[cid] = _par_counts.get(cid, 0) + 1
             return {
                 "current_agent": agent_id,
+                "delegation_counts": _par_counts,
                 "agent_results": {
                     agent_id: "__delegated_parallel__",
                     **merged_results,
@@ -833,8 +843,25 @@ def _build_agent_node(  # noqa: PLR0915
         agent_results = state.get("agent_results", {})
         completed_children = _get_completed_children(agent, agent_results)
         all_children_done = len(completed_children) == len(agent.children) and agent.children
+        _max_delegations = int(os.environ.get("SWARMKIT_MAX_DELEGATIONS_PER_CHILD", "2"))
         if all_children_done:
             tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+        elif completed_children and _max_delegations > 0:
+            delegation_counts: dict[str, int] = state.get("delegation_counts", {})
+            exhausted = {
+                cid
+                for cid in completed_children
+                if delegation_counts.get(cid, 0) >= _max_delegations
+            }
+            if exhausted:
+                tools = [
+                    t
+                    for t in tools
+                    if not (
+                        t.name.startswith("delegate_to_")
+                        and t.name[len("delegate_to_") :] in exhausted
+                    )
+                ]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
         system_prompt = _build_system_prompt(agent, tools)
@@ -879,6 +906,7 @@ def _build_agent_node(  # noqa: PLR0915
             mcp_manager,
             governance,
             _verbose,
+            state=state,
             all_agents=all_agents,
             provider_registry=provider_registry,
         )
@@ -1451,6 +1479,7 @@ async def _run_dag(
                 "input": child_input,
                 "messages": [HumanMessage(content=child_input, name=agent_id)],
                 "agent_results": {},
+                "delegation_counts": {},
                 "current_agent": child.id,
                 "output": "",
             }
