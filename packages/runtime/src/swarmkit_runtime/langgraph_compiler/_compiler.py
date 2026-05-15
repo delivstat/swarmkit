@@ -609,20 +609,20 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             }
 
         if block.tool_name == "update-task-plan":
-            errors: list[str] = []
+            upd_errors: list[str] = []
             if args.get("add"):
-                errors.extend(plan.add_tasks(args["add"]))
+                upd_errors.extend(plan.add_tasks(args["add"]))
                 valid_agents = {c.id for c in agent.children}
-                errors.extend(plan.validate_agents(valid_agents))
+                upd_errors.extend(plan.validate_agents(valid_agents))
             if args.get("remove"):
-                errors.extend(plan.remove_tasks(args["remove"]))
+                upd_errors.extend(plan.remove_tasks(args["remove"]))
             if args.get("update"):
-                errors.extend(plan.update_tasks(args["update"]))
-            errors.extend(plan.validate_dependencies())
+                upd_errors.extend(plan.update_tasks(args["update"]))
+            upd_errors.extend(plan.validate_dependencies())
 
             _progress(f"[{agent_id}] updated task plan")
-            if errors:
-                _progress(f"  warnings: {'; '.join(errors)}")
+            if upd_errors:
+                _progress(f"  warnings: {'; '.join(upd_errors)}")
 
             if args.get("complete"):
                 return {
@@ -651,14 +651,14 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
 
         if block.tool_name == "read-task-result":
             task_id = args.get("task_id", "")
-            task = plan.get_task(task_id)
-            if not task:
+            read_task = plan.get_task(task_id)
+            if not read_task:
                 continue
-            if task.status != "completed" or not task.result_path:
+            if read_task.status != "completed" or not read_task.result_path:
                 continue
             from pathlib import Path as _Path  # noqa: PLC0415
 
-            result_path = _Path(task.result_path)
+            result_path = _Path(read_task.result_path)
             if result_path.exists():
                 content = result_path.read_text(encoding="utf-8")
                 _progress(f"[{agent_id}] reading full result for task '{task_id}'")
@@ -1660,6 +1660,7 @@ async def _run_dag(
                 "messages": [HumanMessage(content=child_input, name=agent_id)],
                 "agent_results": {},
                 "delegation_counts": {},
+                "task_plan": {},
                 "current_agent": child.id,
                 "output": "",
             }
