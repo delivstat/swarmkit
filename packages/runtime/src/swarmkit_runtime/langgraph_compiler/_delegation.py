@@ -298,10 +298,43 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
             )
             return _make_result(agent_id, synth_text)
 
-        # Model returned text -- retry if agent has many skill tools
-        # (indicating it should be researching, not just talking).
-        # Agents with only write-notes or 1-2 utility tools should NOT
-        # be nudged — they're coordinators that synthesize via text.
+        # Model returned text -- retry if the response is empty and
+        # the agent has delegation or planning tools it should use.
+        _resp_text = _extract_text(response)
+        _is_empty = _resp_text in ("(no response)", "") or not _resp_text.strip()
+        _has_delegation = any(
+            t.name.startswith("delegate_to_") or t.name == "create-task-plan" for t in tools
+        )
+        if _is_empty and _has_delegation and _attempt < _max_retries:
+            if verbose:
+                print(
+                    f"  [retry {_attempt + 1}: empty response, nudging to delegate]",
+                    file=sys.stderr,
+                )
+            messages = [
+                *messages,
+                Message(role="assistant", content=_resp_text),
+                Message(
+                    role="user",
+                    content=(
+                        "You returned an empty response. You MUST use your tools. "
+                        "Call delegate_to or create-task-plan now."
+                    ),
+                ),
+            ]
+            request = _build_completion_request(
+                model_name,
+                messages,
+                system_prompt,
+                tools,
+                agent,
+            )
+            response = await model_provider.complete(request)
+            if verbose:
+                _log_verbose_response(response)
+            continue
+
+        # Retry if agent has many skill tools it should be using.
         skill_tools = [
             t
             for t in tools
