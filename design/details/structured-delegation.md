@@ -23,231 +23,350 @@ The current delegation model is text-based and fragile:
 
 ## Design
 
-### Core concept: task tracker as persistent, structured state
+### Core concept: planner-driven task execution
 
-Replace the current `agent_results: dict[str, str]` (free text) with a structured task tracker that:
-- Lives on disk at `.swarmkit/run-state/<run-id>/tasks.json`
-- Updates after every child agent completion
-- Provides summaries to the coordinator (not full results)
-- Persists full results as separate files for human inspection
+Replace ad-hoc `delegate_to_*` calls with a structured plan-execute-review loop. The coordinator (any agent with 2+ children) creates an explicit task plan, the compiler executes it, and the coordinator reviews results at checkpoints.
 
-### Architecture
+### Execution model
 
 ```
-Coordinator (architect)
-    │
-    ├── reads tasks.json on every re-entry
-    │   → knows what's done, what's pending, what failed
-    │
-    ├── delegates to child
-    │   → child runs, writes progress to disk after each tool call
-    │   → child completes → compiler updates tasks.json
-    │   → full result → .swarmkit/run-state/<run-id>/<child-id>.md
-    │   → summary (3-5 bullets) → coordinator's context
-    │
-    └── synthesizes when all tasks done
-        → reads summaries from tasks.json
-        → reads full results from disk only if needed
+User input
+    ↓
+Coordinator: create-task-plan (one LLM call)
+    → produces ordered task list with dependencies
+    ↓
+Compiler: execute task batch (independent tasks run in parallel)
+    → each task: child agent runs, result persisted to disk
+    → compiler updates tasks.json with status + key_findings
+    ↓
+Coordinator: review checkpoint (one LLM call)
+    → reads task summaries (not full 50KB results)
+    → calls update-task-plan to:
+        - add new tasks discovered from results
+        - remove pending tasks that are no longer needed
+        - modify instructions for pending tasks with new context
+        - assign self-tasks for synthesis/document structure
+    ↓
+Compiler: execute next task batch
+    ↓
+... repeat until no pending tasks ...
+    ↓
+Coordinator: final synthesis (one LLM call)
+    → reads all key_findings + full results if needed
+    → produces final output
 ```
 
-### Task object schema
+### Tool injection rules
+
+The compiler injects planning tools automatically based on child count:
+
+| Children | Tools injected | Rationale |
+|----------|---------------|-----------|
+| 0 | None (worker) | Workers execute, they don't plan |
+| 1 | `delegate_to_<child>` (v1 behavior) | No planning overhead for pass-through |
+| 2+ | `create-task-plan` + `update-task-plan` | Orchestration benefits from structured planning |
+
+No skill or archetype changes needed. The tools are compiler-injected, same as `delegate_to_*` today. The coordinator's system prompt is auto-generated:
+
+```
+YOUR WORKFLOW:
+1. Call create-task-plan to define tasks for your workers
+2. The compiler will execute tasks and report back with summaries
+3. Review results and call update-task-plan to adjust the plan
+4. When all tasks are complete, synthesize the final answer
+
+You can assign tasks to your workers or to yourself (agent: "self").
+Self-tasks give you access to your own tools (write-notes, create-diagram, etc.)
+```
+
+### Task plan schema
 
 ```json
 {
-  "run_id": "3d1c3d0a-51ff-48d7-b9fb-e0cc75d06b73",
-  "topology": "sterling-assistant",
-  "started_at": "2026-05-15T04:14:04Z",
   "tasks": [
     {
       "id": "jira-research",
       "agent": "jira-researcher",
-      "delegated_by": "sterling-architect",
-      "status": "completed",
-      "delegation_count": 1,
-      "started_at": "2026-05-15T04:14:30Z",
-      "completed_at": "2026-05-15T04:19:30Z",
-      "duration_s": 300,
-      "tool_calls": 50,
-      "input_summary": "Search for RETN, RITN, Store and DC Returns in Jira and Confluence",
-      "key_findings": [
-        "Found 15 Jira tickets related to CROMA returns (RETN, RITN)",
-        "3 Confluence pages: OMS Return Processes, Return Creation, CROMA Returns",
-        "Key ticket RT-727: Return Order Processing redesign",
-        "Store returns use RETN fulfillment type, DC returns use RITN",
-        "Return pipeline: CROMA_PH2_RETURN_PIPELINE"
-      ],
-      "result_path": ".swarmkit/run-state/3d1c3d0a/jira-researcher.md"
+      "instruction": "Search for RETN, RITN, Store and DC Returns in Jira and Confluence",
+      "depends_on": []
     },
     {
       "id": "config-lookup",
       "agent": "config-analyst",
-      "delegated_by": "sterling-architect",
-      "status": "completed",
-      "delegation_count": 1,
-      "key_findings": [
-        "8 return-related pipelines found",
-        "CROMA_PH2_RETURN_PIPELINE: 12 transactions, 5 hub rules",
-        "Return services: RETURN_MONITOR, DCS_RETURN_RCPT_UPLOAD, etc."
-      ],
-      "result_path": ".swarmkit/run-state/3d1c3d0a/config-analyst.md"
+      "instruction": "Get all return-related pipelines, services, and transactions",
+      "depends_on": []
     },
     {
-      "id": "doc-generation",
+      "id": "docs-search",
+      "agent": "docs-researcher",
+      "instruction": "Find return order API docs and project docs",
+      "depends_on": ["jira-research"]
+    },
+    {
+      "id": "code-review",
+      "agent": "sterling-developer",
+      "instruction": "Check return order implementation code",
+      "depends_on": ["config-lookup", "docs-search"]
+    },
+    {
+      "id": "synthesize",
+      "agent": "self",
+      "instruction": "Create document structure with pipeline diagrams from all findings",
+      "depends_on": ["code-review"]
+    },
+    {
+      "id": "write-doc",
       "agent": "document-writer",
-      "delegated_by": "sterling-architect",
-      "status": "failed",
-      "error": "deepseek/deepseek-v3-0324 is not a valid model ID",
-      "delegation_count": 1
+      "instruction": "Write DOCX following the structure from synthesis",
+      "depends_on": ["synthesize"]
     }
   ]
 }
 ```
 
-### Five implementation features
+Key properties:
+- **`agent: "self"`** — coordinator executes this task itself using its own skills (write-notes, create-diagram, etc.)
+- **`depends_on`** — tasks without dependencies run in parallel. The compiler handles ordering.
+- **IDs are user-readable** — the coordinator names them, not the compiler. This helps with the review checkpoint.
 
-#### 1. Task tracker in SwarmState
+### `create-task-plan` tool
 
-Add `task_tracker: dict[str, Any]` to `SwarmState` alongside existing `agent_results`. The compiler maintains this automatically — agents don't manage it.
-
-```python
-# SwarmState extension
-task_tracker: Annotated[dict[str, Any], _merge_dicts]
+```json
+{
+  "name": "create-task-plan",
+  "description": "Create an execution plan for your workers. Each task is assigned to a child agent or to yourself (agent: 'self'). Tasks with no depends_on run in parallel. The compiler executes the plan and reports results at each checkpoint.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "tasks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {"type": "string", "description": "Unique task identifier (e.g. 'jira-research')"},
+            "agent": {"type": "string", "description": "Child agent ID or 'self' for coordinator tasks"},
+            "instruction": {"type": "string", "description": "What the agent should do"},
+            "depends_on": {"type": "array", "items": {"type": "string"}, "description": "Task IDs that must complete first"}
+          },
+          "required": ["id", "agent", "instruction"]
+        }
+      }
+    },
+    "required": ["tasks"]
+  }
+}
 ```
 
-The compiler populates `task_tracker` when:
-- A delegation starts → add task with `status: "in_progress"`
-- A child completes → update to `status: "completed"`, add `key_findings`
-- A child fails → update to `status: "failed"`, add `error`
+### `update-task-plan` tool
 
-#### 2. Persistent run state on disk
+Called at checkpoints when the coordinator reviews results:
 
-After every task status change, write `tasks.json` to disk:
+```json
+{
+  "name": "update-task-plan",
+  "description": "Modify the execution plan after reviewing results. Add new tasks, remove pending tasks, or update instructions for pending tasks. Cannot modify completed or in-progress tasks.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "add": {
+        "type": "array",
+        "items": {"$ref": "#task-object"},
+        "description": "New tasks to add to the plan"
+      },
+      "remove": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Task IDs to remove (must be pending, not completed/in-progress)"
+      },
+      "update": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {"type": "string"},
+            "instruction": {"type": "string", "description": "Updated instruction"},
+            "depends_on": {"type": "array", "items": {"type": "string"}, "description": "Updated dependencies"}
+          },
+          "required": ["id"]
+        },
+        "description": "Updates to pending tasks (instruction, dependencies)"
+      },
+      "complete": {
+        "type": "boolean",
+        "description": "Set to true to end planning and synthesize final answer"
+      }
+    }
+  }
+}
+```
+
+### How the coordinator reviews results
+
+At each checkpoint, the coordinator receives a structured summary:
+
+```
+TASK PLAN STATUS:
+
+✅ jira-research (jira-researcher) — 300s, 50 tool calls
+   Findings:
+   - Found 15 Jira tickets related to CROMA returns (RETN, RITN)
+   - 3 Confluence pages with return process documentation
+   - Key ticket RT-727: Return Order Processing redesign
+   Full results: .swarmkit/run-state/3d1c3d0a/jira-researcher.md
+
+✅ config-lookup (config-analyst) — 140s, 25 tool calls
+   Findings:
+   - 8 return-related pipelines found
+   - CROMA_PH2_RETURN_PIPELINE: 12 transactions, 5 hub rules
+   Full results: .swarmkit/run-state/3d1c3d0a/config-analyst.md
+
+⏳ docs-search (docs-researcher) — pending (depends on: jira-research ✅)
+⏳ code-review (sterling-developer) — pending (depends on: config-lookup ✅, docs-search ⏳)
+⏳ synthesize (self) — pending (depends on: code-review ⏳)
+⏳ write-doc (document-writer) — pending (depends on: synthesize ⏳)
+
+Call update-task-plan to adjust the plan, or wait for pending tasks.
+```
+
+The coordinator can then:
+- **See jira found data** → keep the plan as-is
+- **See jira found nothing** → remove code-review, synthesize, write-doc; add a simple "report no data" self-task
+- **Update docs-search instruction** → "Focus on these specific APIs found in Jira: createReturn, processReturn"
+
+### Recursive planning
+
+Every agent with 2+ children is a planner at its level:
+
+```
+Sterling topology:
+  root (1 child → delegate_to only, no planning)
+    └── architect (5 children → creates task plan)
+          ├── jira-researcher (0 children → worker)
+          ├── config-analyst (0 children → worker)
+          ├── docs-researcher (0 children → worker)
+          ├── developer (0 children → worker)
+          └── document-writer (0 children → worker)
+
+Code review topology:
+  root (3 children → creates task plan)
+    ├── engineering-leader (3 children → creates sub-plan)
+    │     ├── code-reader (worker)
+    │     ├── code-reviewer (worker)
+    │     └── security-reviewer (worker)
+    ├── qa-leader (2 children → creates sub-plan)
+    │     ├── test-analyst (worker)
+    │     └── qa-judge (worker)
+    └── ops-leader (1 child → delegate_to only)
+          └── deploy-reviewer (worker)
+```
+
+Each planner is independent — the root creates a plan across leaders, each leader creates a sub-plan across its workers. Plans don't nest; they're flat at each level.
+
+### Persistent state on disk
+
+After every task status change, the compiler writes to disk:
 
 ```
 .swarmkit/run-state/<run-id>/
-├── tasks.json              # task tracker (updated after each child)
+├── tasks.json              # task plan with status (updated after each task)
 ├── jira-researcher.md      # full result from jira-researcher
 ├── config-analyst.md       # full result from config-analyst
 ├── docs-researcher.md      # full result from docs-researcher
-└── sterling-developer.md   # full result from developer
+├── sterling-developer.md   # full result from developer
+└── synthesize.md           # full result from self-task
 ```
 
-This serves three purposes:
+This serves four purposes:
 - **Crash recovery:** if the process dies, results on disk survive
-- **Human inspection:** user can read findings during a run
-- **Resume:** `--resume` reads tasks.json to know what completed
+- **Human inspection:** user can read findings during a run (`cat .swarmkit/run-state/*/jira-researcher.md`)
+- **Resume:** `--resume` reads tasks.json to know what completed and what's pending
+- **Coordinator context:** summaries from tasks.json, full results via `read-context` skill
 
-#### 3. Summary-first child results
+### Summary-first child results
 
 When a child completes, the compiler:
 1. Writes the full result to `.swarmkit/run-state/<run-id>/<child-id>.md`
-2. Asks the model to generate 3-5 bullet key findings (one LLM call)
+2. Generates 3-5 bullet key findings (one LLM call, cheap model)
 3. Stores findings in `tasks.json`
-4. Passes only the findings to the coordinator's context
+4. Passes only the findings to the coordinator at the next checkpoint
 
-This replaces the current approach of dumping 50KB of raw text into the coordinator's messages. The coordinator sees:
-
-```
-Workers completed:
-[jira-researcher]: 
-  - Found 15 Jira tickets related to CROMA returns (RETN, RITN)
-  - 3 Confluence pages with return process documentation
-  - Key ticket RT-727: Return Order Processing redesign
-  Full results: .swarmkit/run-state/3d1c3d0a/jira-researcher.md
-
-Workers pending: config-analyst, docs-researcher, sterling-developer
-```
+**Cost of summarization:** one additional LLM call per child completion using a cheap model (DeepSeek V4 Flash at $0.14/M). For a 5-child topology, that's 5 extra calls — negligible vs the 200+ tool calls in a typical run, and saves massive context window space.
 
 If the coordinator needs detail, it can call `read-context` with the result path.
-
-**Cost of summarization:** one additional LLM call per child completion. For a 5-child topology, that's 5 extra calls — negligible vs the 200+ tool calls in a typical run, and saves massive context window space.
-
-#### 4. Status-aware delegation
-
-Replace the blunt `delegation_counts` cap with proper status tracking:
-
-| Task status | Delegation tool available? | Behavior |
-|---|---|---|
-| `pending` | Yes | Normal delegation |
-| `in_progress` | No | Child is running |
-| `completed` | Only as `follow_up_<child>` | Must provide new question referencing previous findings |
-| `failed` | Yes (for retry) | Coordinator can retry with different parameters |
-
-The `follow_up_<child>` tool name signals to the model that this is a follow-up, not a fresh delegation. The tool description includes the previous findings so the model knows what was already found.
-
-This replaces `SWARMKIT_MAX_DELEGATIONS_PER_CHILD` with a smarter mechanism:
-- First delegation: free
-- Follow-up: requires a new question (enforced by tool description showing previous findings)
-- After 2 follow-ups: tool removed (hard cap preserved as safety net)
-
-#### 5. Init-read pattern
-
-When the coordinator re-enters (after a child returns or on resume), it reads `tasks.json` first:
-
-```python
-# In _build_prompt_messages, before building the message list:
-task_file = run_state_dir / "tasks.json"
-if task_file.exists():
-    tasks = json.loads(task_file.read_text())
-    # Build context from task summaries, not raw agent_results
-```
-
-This mirrors the Anthropic article's "session initialization sequence" — the coordinator always has a structured view of what happened, regardless of context window state.
-
-On `--resume`, this is critical: the coordinator's LLM context is empty (fresh start), but the task tracker tells it exactly what was found and what remains.
 
 ### Interaction with existing systems
 
 | System | Change |
 |---|---|
-| `SwarmState` | Add `task_tracker` field |
-| `_build_prompt_messages` | Read from task tracker instead of raw `agent_results` |
-| `_dispatch_response` | Write task status on delegation start/completion |
-| `_run_tool_loop` | Optionally write per-turn progress to disk |
-| `_workspace_runtime.py` | Create run-state directory on run start |
-| `--resume` | Read tasks.json to rebuild coordinator context |
-| `swarmkit trace` | Show task status alongside call graph |
+| `SwarmState` | Add `task_plan` field (replaces `delegation_counts`) |
+| `_build_tools` | Inject `create-task-plan` / `update-task-plan` for agents with 2+ children |
+| `_build_prompt_messages` | Build context from task plan summaries |
+| `_dispatch_response` | Handle `create-task-plan` / `update-task-plan` tool calls |
+| `_build_agent_node` | Execute self-tasks with coordinator's own skills |
+| `_workspace_runtime.py` | Create run-state directory, persist tasks.json |
+| `--resume` | Read tasks.json to rebuild plan state |
+| `swarmkit trace` | Show task plan alongside call graph |
 | `swarmkit checkpoints` | Show task completion status |
+| Agent with 1 child | Unchanged — uses `delegate_to_*` (v1 behavior) |
 
 ### What this does NOT change
 
-- **Agent prompts** — agents don't know about the task tracker. The compiler manages it transparently.
-- **Skill execution** — tools work the same way. Only the coordinator's context changes.
-- **LangGraph graph structure** — nodes, edges, routing all stay the same.
-- **Checkpointing** — LangGraph checkpoints continue as before. The disk-based task tracker is additive.
+- **Worker agents** — workers don't know about task plans. They receive instructions and execute.
+- **Skill execution** — tools work the same way. Only the coordinator's delegation model changes.
+- **LangGraph graph structure** — nodes, edges, routing stay the same. Task execution uses the existing graph.
+- **Checkpointing** — LangGraph checkpoints continue as before. Disk-based task state is additive.
+- **Topology YAML** — no new fields needed. The compiler detects planners by child count.
+
+### What this replaces
+
+| v1 (current) | v2 (this design) |
+|---|---|
+| `delegate_to_*` tools (for 2+ children) | `create-task-plan` + `update-task-plan` |
+| `delegation_counts` in SwarmState | `task_plan` in SwarmState |
+| Partial child results message | Structured checkpoint summary |
+| Prompt-based "do NOT re-delegate" | Plan-driven execution (no ad-hoc delegation) |
+| `SWARMKIT_MAX_DELEGATIONS_PER_CHILD` | Plan updates at checkpoints (follow-up = add new task) |
 
 ## Migration
 
-The task tracker is additive — existing workspaces work unchanged. When `task_tracker` is empty (old runs), the compiler falls back to the current `agent_results` behavior.
+- **Agents with 0-1 children:** no change. `delegate_to_*` works as before.
+- **Agents with 2+ children:** automatically get planning tools. Old `delegate_to_*` tools are not injected. If a workspace has hand-written prompts referencing `delegate_to_*`, they'll need updating. But the auto-generated prompt section handles this.
+- **Existing `delegation_counts`:** removed from SwarmState. Replaced by task plan status tracking.
+- **Backward compatibility:** the compiler checks for `task_plan` in state. If absent (old checkpoints), falls back to v1 behavior.
 
 ## Non-goals
 
-- **Per-turn persistence within an agent.** Writing to disk after every tool call adds I/O overhead and complexity. The task tracker updates at agent boundaries (start/complete/fail), not at tool-call granularity. If mid-agent persistence is needed later, it's a separate feature.
-- **Cross-run learning.** The task tracker is per-run. Learning from previous runs (e.g. "last time you searched for X and found nothing") is a Rynko feature.
-- **Task dependencies.** The task tracker records what happened, not what should happen next. DAG dependencies are still handled by the topology's `depends_on` field.
+- **Per-turn persistence within an agent.** Writing to disk after every tool call adds I/O overhead and complexity. The task plan updates at agent boundaries (start/complete/fail). Mid-agent persistence is a separate future feature.
+- **Cross-run learning.** The task plan is per-run. Learning from previous runs is a Rynko feature.
+- **Topology-level task plans.** Plans are created at runtime by coordinators, not declared in topology YAML. The topology's `depends_on` field is for agent-level DAGs, not task-level.
 
 ## Implementation plan
 
-| PR | Feature | Files |
-|----|---------|-------|
-| 1 | Task tracker in SwarmState + disk persistence | `_state.py`, `_compiler.py`, `_workspace_runtime.py` |
-| 2 | Summary-first child results (summarization LLM call) | `_compiler.py` |
-| 3 | Status-aware delegation (follow_up tool) | `_compiler.py`, `_build_tools` |
-| 4 | Init-read pattern + resume from tasks.json | `_build_prompt_messages`, `_workspace_runtime.py` |
-| 5 | CLI integration (trace, checkpoints show task status) | `cli/__init__.py` |
+| PR | Feature | Files | Dependencies |
+|----|---------|-------|-------------|
+| 1 | `create-task-plan` tool + task plan in SwarmState + disk persistence | `_state.py`, `_compiler.py`, `_workspace_runtime.py` | None |
+| 2 | Task execution engine (parallel batches, self-tasks) | `_compiler.py` | PR 1 |
+| 3 | `update-task-plan` tool + checkpoint review loop | `_compiler.py` | PR 2 |
+| 4 | Summary-first child results (summarization LLM call) | `_compiler.py` | PR 2 |
+| 5 | Init-read pattern + resume from tasks.json | `_build_prompt_messages`, `_workspace_runtime.py` | PR 3 |
+| 6 | CLI integration (trace, checkpoints show task status) | `cli/__init__.py` | PR 5 |
+| 7 | Remove v1 delegation artifacts (`delegation_counts`, partial results) | `_state.py`, `_compiler.py` | PR 6 |
 
 ## References
 
 - Anthropic: [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) — JSON task tracking, progress files, init sequences
 - Port.io: [Engineering team skills library](https://thenewstack.io/engineering-team-skills-library/) — self-healing feedback loops
 - SwarmKit design §14.3 — compiler architecture
-- SwarmKit v1.1.15 — partial child results (predecessor)
-- SwarmKit v1.1.17 — delegation count cap (to be replaced by status-aware delegation)
+- SwarmKit design `design/details/dag-dependency-graph.md` — DAG execution (reused for task dependencies)
+- SwarmKit v1.1.15 — partial child results (predecessor, to be replaced)
+- SwarmKit v1.1.17 — delegation count cap (predecessor, to be replaced)
 
 ## Open questions
 
-| Question | Impact |
-|---|---|
-| Should the summarization LLM call use the same model as the child or a cheap model? | Cost vs quality. A cheap model (DeepSeek V4 Flash) can summarize 50KB of text into 5 bullets. |
-| Should the task tracker be a new MCP server (read-task-status, update-task) or compiler-internal? | If MCP, agents can read their own progress. If compiler-internal, it's simpler but agents are unaware. |
-| Should `follow_up_<child>` show the previous findings in the tool description, or as a system message? | Tool description is more visible to the model but adds to tool token count. |
+| Question | Options | Recommendation |
+|---|---|---|
+| Summarization model | Same as child / cheap model / fixed model | Cheap model (DeepSeek V4 Flash) — summarization doesn't need strong reasoning |
+| Plan validation | Strict (reject invalid agent IDs) / lenient (warn) | Strict — fail fast on typos in agent IDs |
+| Max tasks per plan | Unlimited / capped | Cap at 20 — more than that suggests the topology needs restructuring |
+| Self-task tool access | All coordinator skills / subset | All coordinator skills — the coordinator knows what tools it needs |
+| Checkpoint frequency | After every task / after every batch | After every task — maximizes crash recovery |
