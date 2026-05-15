@@ -7,6 +7,7 @@ requests for each agent's model call.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -15,6 +16,18 @@ from swarmkit_runtime.model_providers import CompletionRequest, Message, ToolSpe
 from swarmkit_runtime.resolver import ResolvedAgent
 
 from ._state import SwarmState
+
+
+def _find_tasks_json() -> Path | None:
+    """Find tasks.json on disk for resume scenarios."""
+    candidates = [
+        Path(".swarmkit/run-state/current/tasks.json"),
+        Path(".swarmkit") / "run-state" / "current" / "tasks.json",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
 
 
 def _build_completion_request(
@@ -149,51 +162,58 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
     agent_result = agent_results.get(agent.id, "")
     _is_task_plan_state = isinstance(agent_result, str) and agent_result.startswith("__task_plan_")
     if _is_task_plan_state:
-        plan_data = state.get("task_plan", {})
-        if plan_data and plan_data.get("tasks"):
-            from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
-                get_plan_from_state,
+        from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
+            get_plan_from_state,
+        )
+
+        plan = get_plan_from_state(state)
+        if plan is None:
+            from swarmkit_runtime.langgraph_compiler._task_plan import (  # noqa: PLC0415
+                TaskPlan,
             )
 
-            plan = get_plan_from_state(state)
-            if plan:
-                status = plan.render_status()
-                if plan.all_done():
-                    messages.append(
-                        Message(
-                            role="user",
-                            content=(
-                                f"Original request: {state.get('input', '')}\n\n"
-                                f"{status}\n\n"
-                                f"All tasks are complete. Synthesize the "
-                                f"findings into a comprehensive final answer. "
-                                f"Use read-task-result to access full details "
-                                f"from any task if the summaries aren't "
-                                f"enough.\n\nDo NOT create a new task plan. "
-                                f"Write the final response now."
-                            ),
-                        )
+            _disk_path = _find_tasks_json()
+            if _disk_path:
+                plan = TaskPlan.load(_disk_path)
+
+        if plan:
+            status = plan.render_status()
+            if plan.all_done():
+                messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            f"Original request: {state.get('input', '')}\n\n"
+                            f"{status}\n\n"
+                            f"All tasks are complete. Synthesize the "
+                            f"findings into a comprehensive final answer. "
+                            f"Use read-task-result to access full details "
+                            f"from any task if the summaries aren't "
+                            f"enough.\n\nDo NOT create a new task plan. "
+                            f"Write the final response now."
+                        ),
                     )
-                else:
-                    messages.append(
-                        Message(
-                            role="user",
-                            content=(
-                                f"Original request: {state.get('input', '')}\n\n"
-                                f"{status}\n\n"
-                                f"Review the results above. You can:\n"
-                                f"- Call update-task-plan to add new tasks, "
-                                f"remove pending tasks, or modify instructions\n"
-                                f"- Call read-task-result to see full details "
-                                f"from a completed task\n"
-                                f"- Wait for pending tasks to complete "
-                                f"(they will run automatically)\n\n"
-                                f"If no changes needed, the pending tasks "
-                                f"will execute next."
-                            ),
-                        )
+                )
+            else:
+                messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            f"Original request: {state.get('input', '')}\n\n"
+                            f"{status}\n\n"
+                            f"Review the results above. You can:\n"
+                            f"- Call update-task-plan to add new tasks, "
+                            f"remove pending tasks, or modify instructions\n"
+                            f"- Call read-task-result to see full details "
+                            f"from a completed task\n"
+                            f"- Wait for pending tasks to complete "
+                            f"(they will run automatically)\n\n"
+                            f"If no changes needed, the pending tasks "
+                            f"will execute next."
+                        ),
                     )
-                return messages
+                )
+            return messages
 
     child_results = {
         cid: agent_results[cid]
