@@ -16,12 +16,56 @@ from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.resolver import ResolvedAgent
 
 from ._helpers import ToolCallResult, _extract_text, _progress, _truncate_result
-from ._prompts import _build_completion_request, _looks_incomplete
+from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomplete
 
 _MAX_TOOL_CALLS_PER_TURN = int(os.environ.get("SWARMKIT_MAX_TOOLS", "10"))
 
 
-async def _handle_skill_tool_calls(
+def _handle_read_task_result(block: Any, agent_id: str) -> str:  # noqa: PLR0911
+    """Handle read-task-result as a tool call, not a state change."""
+    import json as _json  # noqa: PLC0415
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    args = block.tool_input
+    if isinstance(args, str):
+        try:
+            args = _json.loads(args)
+        except (ValueError, TypeError):
+            args = {}
+    if not isinstance(args, dict):
+        args = {}
+
+    task_id = args.get("task_id", "")
+    if not task_id:
+        return "Error: task_id required"
+
+    tasks_path = _find_tasks_json()
+    if not tasks_path:
+        return f"No task plan found for task '{task_id}'"
+
+    from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan  # noqa: PLC0415
+
+    plan = TaskPlan.load(tasks_path)
+    task = plan.get_task(task_id)
+    if not task:
+        return f"Task '{task_id}' not found in plan"
+    if task.status != "completed":
+        return f"Task '{task_id}' is {task.status}, not completed"
+    if not task.result_path:
+        return f"Task '{task_id}' has no result file"
+
+    result_path = _Path(task.result_path)
+    if not result_path.exists():
+        return f"Result file not found: {task.result_path}"
+
+    content = result_path.read_text(encoding="utf-8")
+    _progress(f"  [{agent_id}] read task result '{task_id}' ({len(content)} chars)")
+    if len(content) > 50_000:
+        content = content[:50_000] + "\n\n(truncated)"
+    return content
+
+
+async def _handle_skill_tool_calls(  # noqa: PLR0912
     response: CompletionResponse,
     agent: ResolvedAgent,
     model_provider: ModelProviderProtocol,
@@ -53,6 +97,22 @@ async def _handle_skill_tool_calls(
         if block.type != "tool_use" or not block.tool_name:
             continue
         if block.tool_name.startswith("delegate_to_"):
+            continue
+        if block.tool_name in (
+            "create-task-plan",
+            "update-task-plan",
+        ):
+            continue
+        if block.tool_name == "read-task-result":
+            result_text = _handle_read_task_result(block, agent.id)
+            results.append(
+                ToolCallResult(
+                    tool_use_id=block.tool_use_id or f"call_{len(results)}",
+                    tool_name=block.tool_name,
+                    result=result_text,
+                    image_blocks=[],
+                )
+            )
             continue
         skill = skill_map.get(block.tool_name)
         if skill is None:

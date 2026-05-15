@@ -150,30 +150,6 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             }
 
         if block.tool_name == "read-task-result":
-            task_id = args.get("task_id", "")
-            read_task = plan.get_task(task_id)
-            if not read_task:
-                continue
-            if read_task.status != "completed" or not read_task.result_path:
-                continue
-            from pathlib import Path as _Path  # noqa: PLC0415
-
-            result_path = _Path(read_task.result_path)
-            if result_path.exists():
-                content = result_path.read_text(encoding="utf-8")
-                _progress(f"[{agent_id}] reading full result for task '{task_id}'")
-            else:
-                content = f"(result file not found: {read_task.result_path})"
-            return {
-                "current_agent": agent_id,
-                "task_plan": plan.to_dict(),
-                "agent_results": {agent_id: content},
-                "messages": [
-                    AIMessage(
-                        content=f"[{agent_id}] Full result for '{task_id}':\n{content}",
-                        name=agent_id,
-                    ),
-                ],
-            }
+            pass
 
     return None
