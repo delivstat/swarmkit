@@ -293,12 +293,15 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         Message(
             role="user",
             content=(
-                "STOP. Do NOT call any more tools. You have gathered enough information. "
-                "Write your complete, detailed analysis NOW based on everything you found. "
-                "This is your final response — synthesize all findings into a coherent answer. "
-                "Start your response with: '## Analysis (tool limit reached)' so the "
-                "coordinator knows this is a complete best-effort answer and should NOT "
-                "re-delegate this task."
+                "STOP. Do NOT call any more tools. Do NOT describe what you "
+                "planned to do next. Do NOT write 'Let me...' or 'I need to...' "
+                "or any planning language.\n\n"
+                "Write ONLY what you actually found from the tools you already "
+                "called. Summarize the RESULTS you received — specific data, "
+                "names, numbers, timestamps, and findings.\n\n"
+                "If you found nothing useful, say 'No relevant data found.' "
+                "Do NOT fabricate or speculate.\n\n"
+                "Start your response with: '## Analysis'"
             ),
         ),
     )
