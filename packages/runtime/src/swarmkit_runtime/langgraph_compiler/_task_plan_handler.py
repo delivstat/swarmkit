@@ -83,10 +83,13 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             errors = plan.add_tasks(raw_tasks)
             valid_agents = {c.id for c in agent.children}
             errors.extend(plan.validate_agents(valid_agents))
+            fixes = plan.auto_fix_dependencies()
             errors.extend(plan.validate_dependencies())
 
             task_count = len(plan.tasks)
             _progress(f"[{agent_id}] created task plan: {task_count} tasks")
+            for fix in fixes:
+                _progress(f"  {fix}")
             for task in plan.tasks:
                 deps = f" (after: {', '.join(task.depends_on)})" if task.depends_on else ""
                 _progress(f"  - {task.id} -> {task.agent}{deps}")
