@@ -178,6 +178,7 @@ class WorkspaceRuntime:
             governance=self._governance,
             mcp_manager=self._mcp_manager,
             checkpointer=self._get_checkpointer(),
+            workspace_root=self._workspace_root,
         )
 
     async def start_session(self) -> None:

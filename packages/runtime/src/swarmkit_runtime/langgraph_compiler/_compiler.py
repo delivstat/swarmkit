@@ -58,6 +58,7 @@ def compile_topology(
     governance: GovernanceProvider,
     mcp_manager: Any = None,
     checkpointer: Any = None,
+    workspace_root: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -71,6 +72,7 @@ def compile_topology(
     ``model_provider`` as a shortcut when all agents share one provider.
     Pass ``mcp_manager`` for MCP tool execution.
     Pass ``checkpointer`` for state persistence (resume after HITL defer).
+    Pass ``workspace_root`` for task plan disk persistence.
     """
     graph: StateGraph[Any] = StateGraph(SwarmState)
     agents = _collect_agents(topology.root)
@@ -84,6 +86,7 @@ def compile_topology(
             agents,
             mcp_manager,
             provider_registry,
+            workspace_root=workspace_root,
         )
         graph.add_node(agent.id, node_fn)
 
@@ -142,6 +145,7 @@ def _build_agent_node(  # noqa: PLR0915
     all_agents: dict[str, ResolvedAgent],
     mcp_manager: Any = None,
     provider_registry: ProviderRegistry | None = None,
+    workspace_root: Any = None,
 ) -> Any:
     """Build an async node function for one agent."""
     drift_observer = _create_drift_observer(agent)
@@ -185,7 +189,6 @@ def _build_agent_node(  # noqa: PLR0915
             if plan:
                 runnable = plan.get_runnable_tasks()
                 if runnable:
-                    ws_root = getattr(governance, "_workspace_root", None)
                     batch_result = await execute_task_batch(
                         plan,
                         agent,
@@ -195,7 +198,7 @@ def _build_agent_node(  # noqa: PLR0915
                         all_agents or {},
                         mcp_manager,
                         provider_registry,
-                        workspace_root=ws_root,
+                        workspace_root=workspace_root,
                     )
                     # If more tasks remain, let coordinator review
                     # by falling through to LLM call on next re-entry
