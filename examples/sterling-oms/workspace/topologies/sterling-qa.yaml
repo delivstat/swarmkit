@@ -9,7 +9,7 @@ agents:
     role: root
     model:
       provider: openrouter
-      name: qwen/qwen3-235b-a22b
+      name: meta-llama/llama-3.3-70b-instruct
       temperature: 0.2
     prompt:
       system: |
