@@ -64,7 +64,7 @@ The compiler injects planning tools automatically based on child count:
 |----------|---------------|-----------|
 | 0 | None (worker) | Workers execute, they don't plan |
 | 1 | `delegate_to_<child>` (v1 behavior) | No planning overhead for pass-through |
-| 2+ | `create-task-plan` + `update-task-plan` | Orchestration benefits from structured planning |
+| 2+ | `create-task-plan` + `update-task-plan` + `read-task-result` | Orchestration benefits from structured planning |
 
 No skill or archetype changes needed. The tools are compiler-injected, same as `delegate_to_*` today.
 
@@ -220,6 +220,56 @@ Called at checkpoints when the coordinator reviews results:
 }
 ```
 
+### `read-task-result` tool
+
+The coordinator needs access to full child results when summaries aren't enough. Rather than giving it filesystem access, the compiler injects a `read-task-result` tool that reads from the run-state directory:
+
+```json
+{
+  "name": "read-task-result",
+  "description": "Read the full result from a completed task. Use when the key_findings summary isn't enough detail. Returns the complete output that the agent produced.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "task_id": {
+        "type": "string",
+        "description": "Task ID from the plan (e.g. 'jira-research', 'config-lookup'). Must be a completed task."
+      }
+    },
+    "required": ["task_id"]
+  }
+}
+```
+
+**How it works:**
+- The compiler handles this tool internally — no MCP server or filesystem skill needed
+- It reads from `.swarmkit/run-state/<run-id>/<agent-id>.md` and returns the content
+- Only completed tasks can be read (pending/failed tasks return an error message)
+- The coordinator never touches the filesystem directly
+
+### Result access model
+
+Two layers — summaries by default, full results on demand:
+
+```
+Layer 1: Automatic (no tool call needed)
+  Checkpoint status message includes 3-5 bullet key_findings per task.
+  The coordinator sees these every time it runs.
+
+Layer 2: On demand (read-task-result tool call)
+  Coordinator calls read-task-result(task_id="config-lookup")
+  → compiler reads .swarmkit/run-state/<run-id>/config-analyst.md
+  → returns full content to coordinator's context
+
+Example flow:
+  Coordinator sees: "✅ config-lookup: 8 return pipelines found"
+  Thinks: "I need the specific pipeline names for the document"
+  Calls: read-task-result(task_id="config-lookup")
+  Gets: Full 10KB config-analyst output with all pipeline details
+```
+
+This keeps the coordinator's default context small (summaries ≈ 500 bytes per task) while giving it access to full results (10-50KB each) only when needed. For a 5-child topology, that's ~2.5KB of summaries vs ~250KB if all results were dumped into context.
+
 ### How the coordinator reviews results
 
 At each checkpoint, the coordinator receives a structured summary:
@@ -300,7 +350,7 @@ This serves four purposes:
 - **Crash recovery:** if the process dies, results on disk survive
 - **Human inspection:** user can read findings during a run (`cat .swarmkit/run-state/*/jira-researcher.md`)
 - **Resume:** `--resume` reads tasks.json to know what completed and what's pending
-- **Coordinator context:** summaries from tasks.json, full results via `read-context` skill
+- **Coordinator context:** summaries from tasks.json, full results via `read-task-result` tool
 
 ### Summary-first child results
 
@@ -319,9 +369,9 @@ If the coordinator needs detail, it can call `read-context` with the result path
 | System | Change |
 |---|---|
 | `SwarmState` | Add `task_plan` field (replaces `delegation_counts`) |
-| `_build_tools` | Inject `create-task-plan` / `update-task-plan` for agents with 2+ children |
-| `_build_prompt_messages` | Build context from task plan summaries |
-| `_dispatch_response` | Handle `create-task-plan` / `update-task-plan` tool calls |
+| `_build_tools` | Inject `create-task-plan` / `update-task-plan` / `read-task-result` for agents with 2+ children |
+| `_build_prompt_messages` | Build context from task plan summaries (automatic, no tool call) |
+| `_dispatch_response` | Handle `create-task-plan` / `update-task-plan` / `read-task-result` tool calls |
 | `_build_agent_node` | Execute self-tasks with coordinator's own skills |
 | `_workspace_runtime.py` | Create run-state directory, persist tasks.json |
 | `--resume` | Read tasks.json to rebuild plan state |
@@ -341,7 +391,7 @@ If the coordinator needs detail, it can call `read-context` with the result path
 
 | v1 (current) | v2 (this design) |
 |---|---|
-| `delegate_to_*` tools (for 2+ children) | `create-task-plan` + `update-task-plan` |
+| `delegate_to_*` tools (for 2+ children) | `create-task-plan` + `update-task-plan` + `read-task-result` |
 | `delegation_counts` in SwarmState | `task_plan` in SwarmState |
 | Partial child results message | Structured checkpoint summary |
 | Prompt-based "do NOT re-delegate" | Plan-driven execution (no ad-hoc delegation) |
@@ -367,7 +417,7 @@ If the coordinator needs detail, it can call `read-context` with the result path
 | 1 | `create-task-plan` tool + task plan in SwarmState + disk persistence | `_state.py`, `_compiler.py`, `_workspace_runtime.py` | None |
 | 2 | Task execution engine (parallel batches, self-tasks) | `_compiler.py` | PR 1 |
 | 3 | `update-task-plan` tool + checkpoint review loop | `_compiler.py` | PR 2 |
-| 4 | Summary-first child results (summarization LLM call) | `_compiler.py` | PR 2 |
+| 4 | Summary-first child results (summarization LLM call) + `read-task-result` tool | `_compiler.py` | PR 2 |
 | 5 | Init-read pattern + resume from tasks.json | `_build_prompt_messages`, `_workspace_runtime.py` | PR 3 |
 | 6 | CLI integration (trace, checkpoints show task status) | `cli/__init__.py` | PR 5 |
 | 7 | Remove v1 delegation artifacts (`delegation_counts`, partial results) | `_state.py`, `_compiler.py` | PR 6 |
