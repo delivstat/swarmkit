@@ -267,6 +267,8 @@ class WorkspaceRuntime:
         trace.save(self._workspace_root)
         set_active_trace(None)
 
+        _archive_run_state(self._workspace_root, run_thread)
+
         events = _extract_events(self._governance)
 
         await self._persist_events_to_audit(events, topology_name)
@@ -613,6 +615,24 @@ def find_missing_mcp_servers(
         if server_id and server_id not in mcp_configs:
             missing.append((skill_id, server_id))
     return missing
+
+
+def _archive_run_state(workspace_root: Path, run_id: str) -> None:
+    """Move current run-state to a run-specific directory for history."""
+    import shutil  # noqa: PLC0415
+
+    current = workspace_root / ".swarmkit" / "run-state" / "current"
+    if not current.is_dir():
+        return
+    tasks_file = current / "tasks.json"
+    if not tasks_file.is_file():
+        return
+
+    short_id = run_id[:12]
+    archive = workspace_root / ".swarmkit" / "run-state" / short_id
+    if archive.exists():
+        shutil.rmtree(archive)
+    shutil.move(str(current), str(archive))
 
 
 def _compute_recursion_limit(topology: Any) -> int:
