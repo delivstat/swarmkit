@@ -192,6 +192,11 @@ async def _execute_child_task(
         provider_registry,
     )
 
+    import swarmkit_runtime.langgraph_compiler._compiler as _comp  # noqa: PLC0415
+
+    _prev_parent = _comp._current_parent_agent
+    _comp._current_parent_agent = parent_id
+
     child_state: SwarmState = {
         "input": task.instruction,
         "messages": [
@@ -208,6 +213,7 @@ async def _execute_child_task(
     }
 
     result_state = await child_fn(child_state)
+    _comp._current_parent_agent = _prev_parent
     return str(result_state.get("output", "(no response)"))
 
 
