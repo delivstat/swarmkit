@@ -231,19 +231,17 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
             if _turn < _max_tool_turns - 1 and _looks_incomplete(text):
                 if verbose:
                     print(
-                        "  [nudge: response looks incomplete, prompting to continue]",
+                        "  [nudge: stripping planning text, prompting to use tools]",
                         file=sys.stderr,
                     )
-                loop_messages.append(
-                    Message(role="assistant", content=text),
-                )
+                _progress(f"  [{agent.id}] stripped planning text: {text[:80]}")
                 loop_messages.append(
                     Message(
                         role="user",
                         content=(
                             "You described what you plan to do but "
-                            "didn't do it. Call the tools now — use "
-                            "read-file-lines to read the actual code."
+                            "didn't do it. Call the tools now. "
+                            "Do NOT describe your next step — execute it."
                         ),
                     ),
                 )
