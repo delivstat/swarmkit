@@ -1,8 +1,9 @@
 # Sterling OMS Project Workspace
 
 A multi-swarm workspace for an IBM Sterling OMS implementation project.
-Five topologies, five archetypes, nineteen skills, backed by CDT config
-access, structured API javadocs, and vector-search RAG over product documentation.
+Six topologies, eleven archetypes, 70+ skills, backed by CDT config
+access, structured API javadocs, vector-search RAG over product documentation,
+Atlassian integration (Jira + Confluence), log analysis, and document generation.
 
 ## What this gives you
 
@@ -12,7 +13,36 @@ access, structured API javadocs, and vector-search RAG over product documentatio
 | `sterling-qa` | Quick Sterling questions — searches docs + queries live config |
 | `code-review` | Review extension code — Sterling patterns + quality + architecture |
 | `coding-assistant` | Write extension code — developer + architect guidance |
-| `sterling-assistant` | General-purpose — routes to architect or developer, cross-consults |
+| `sterling-assistant` | General-purpose with task planning — architect creates a plan, delegates to 6 focused workers, synthesizes results |
+
+## Sterling Assistant Architecture (v3.0)
+
+The `sterling-assistant` topology uses structured delegation with task planning:
+
+```
+root (llama-3.3-70b) → routes all queries to architect
+  └── architect (kimi-k2.5) → creates task plan, reviews at checkpoints
+        ├── jira-researcher (deepseek-v4-flash) — Jira + Confluence search
+        ├── config-analyst (deepseek-v4-flash) — CDT pipelines, services, transactions
+        ├── docs-researcher (deepseek-v4-flash) — product docs, project docs, APIs
+        ├── sterling-developer (kimi-k2.5) — code analysis, extensions, user exits
+        ├── log-analyst (kimi-k2.5) — log4j performance analysis, SQL debugging
+        └── document-writer (deepseek-chat-v3) — DOCX/PDF generation via pandoc
+```
+
+**How it works:**
+1. Architect calls `create-task-plan` with tasks and dependencies
+2. Compiler auto-fixes missing dependencies (synthesis/doc tasks depend on research)
+3. Independent tasks run in parallel, dependent tasks wait
+4. After each batch: architect reviews findings, can add/remove/modify tasks
+5. Self-tasks: architect synthesizes, creates diagrams, cross-validates
+6. Results persisted to `.swarmkit/run-state/` — survives crashes
+
+**Model strategy:**
+- Architect + Developer + Log-analyst: Kimi K2.5 ($0.40/$1.90) — needs reasoning
+- Workers (jira, config, docs): DeepSeek V4 Flash ($0.14/$0.28) — focused tool calling
+- Document writer: DeepSeek Chat V3 ($0.32/$0.89) — writing quality
+- Root: Llama 3.3 70B ($0.10/$0.30) — simple routing
 
 ## Prerequisites
 
@@ -275,7 +305,7 @@ uvx --from graphifyy graphify update $STERLING_PROJECT_CODE_DIR
 
 ```bash
 swarmkit validate examples/sterling-oms/workspace --tree
-# Should see: 5 topologies, 19 skills, 12 archetypes
+# Should see: 6 topologies, 70+ skills, 11 archetypes
 
 swarmkit chat . sterling-qa
 ```
@@ -425,12 +455,20 @@ curl -X POST http://localhost:8000/run/sterling-qa \
 
 ## Model configuration
 
-Default setup uses OpenRouter:
-- Root (router): `meta-llama/llama-3.3-70b-instruct` ($0.10/M)
-- Workers: `deepseek/deepseek-chat` ($0.32/M)
-- Validator: `deepseek/deepseek-chat` ($0.32/M)
+Default setup uses OpenRouter with per-agent model selection:
 
-Estimated cost: ~$0.05 per run. ~$30/month at active usage.
+| Agent | Model | Cost (in/out $/M) | Role |
+|-------|-------|-------------------|------|
+| Root | llama-3.3-70b-instruct | $0.10/$0.30 | Simple routing |
+| Architect | kimi-k2.5 | $0.40/$1.90 | Orchestration + synthesis |
+| Developer | kimi-k2.5 | $0.40/$1.90 | Code analysis |
+| Log analyst | kimi-k2.5 | $0.40/$1.90 | Log performance analysis |
+| Jira researcher | deepseek-v4-flash | $0.14/$0.28 | Jira + Confluence search |
+| Config analyst | deepseek-v4-flash | $0.14/$0.28 | CDT config lookup |
+| Docs researcher | deepseek-v4-flash | $0.14/$0.28 | Documentation search |
+| Document writer | deepseek-chat-v3 | $0.32/$0.89 | Document generation |
+
+Estimated cost: ~$0.10-0.50 per run depending on complexity.
 
 Override per-run or dynamically in chat:
 ```bash
