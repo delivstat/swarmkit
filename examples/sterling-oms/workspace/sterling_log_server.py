@@ -3,8 +3,9 @@
 # ///
 """Sterling OMS log analyser MCP server.
 
-Parses Sterling log4j FLAT format logs and provides structured query
-tools for performance analysis, call tracing, and SQL debugging.
+Parses Sterling log4j FLAT format logs into a SQLite index for fast
+querying. Handles 500MB+ logs by streaming the file and storing only
+metadata in the index — full message text is read on demand via seek.
 
 Supported log levels:
   VERBOSE — full logging with everything
@@ -21,8 +22,8 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
 from collections import defaultdict
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from mcp.server import Server
@@ -32,6 +33,10 @@ from mcp.types import TextContent, Tool
 server = Server("sterling-log-analyser")
 
 LOG_DIR = os.environ.get("STERLING_LOG_DIR", ".")
+INDEX_DIR = os.environ.get(
+    "STERLING_LOG_INDEX_DIR",
+    os.path.join(LOG_DIR, ".swarmkit", "log-index"),
+)
 
 LOG_PATTERN = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})"
@@ -39,176 +44,265 @@ LOG_PATTERN = re.compile(
     r":([^:]+)"
     r":\s*(.*)"
 )
-
 TIMER_BEGIN = re.compile(r"^(.+?)::(.+?)\s*-\s*Begin")
-
 TIMER_END = re.compile(r"^(.+?)::(.+?)\s*-\s*End\s*-\s*\[(\d+)\]")
-
 METADATA_PATTERN = re.compile(r"\[([^\]]*)\]:\s*\[([^\]]*)\]:\s*\[([^\]]*)\]:\s*(\S+)\s*$")
+SQL_PATTERN = re.compile(r"(SELECT|INSERT|UPDATE|DELETE|MERGE)\s+", re.IGNORECASE)
 
-SQL_PATTERN = re.compile(
-    r"(SELECT|INSERT|UPDATE|DELETE|MERGE)\s+",
-    re.IGNORECASE,
-)
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS log_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    line_start INTEGER,
+    line_end INTEGER,
+    byte_offset INTEGER,
+    byte_end INTEGER,
+    timestamp TEXT,
+    level TEXT,
+    thread TEXT,
+    correlation_id TEXT,
+    enterprise TEXT,
+    class_name TEXT,
+    api_name TEXT,
+    message_preview TEXT,
+    is_timer_begin INTEGER DEFAULT 0,
+    is_timer_end INTEGER DEFAULT 0,
+    duration_ms INTEGER,
+    has_sql INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_corr ON log_entries(correlation_id);
+CREATE INDEX IF NOT EXISTS idx_level ON log_entries(level);
+CREATE INDEX IF NOT EXISTS idx_ts ON log_entries(timestamp);
+CREATE INDEX IF NOT EXISTS idx_api ON log_entries(api_name);
+CREATE INDEX IF NOT EXISTS idx_dur ON log_entries(duration_ms);
+CREATE INDEX IF NOT EXISTS idx_thread ON log_entries(thread);
 
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+"""
 
-@dataclass
-class LogEntry:
-    timestamp: str
-    level: str
-    thread: str
-    message: str
-    user: str = ""
-    correlation_id: str = ""
-    enterprise: str = ""
-    class_name: str = ""
-    line_no: int = 0
-
-
-@dataclass
-class TimerCall:
-    method: str
-    class_name: str
-    duration_ms: int = 0
-    correlation_id: str = ""
-    thread: str = ""
-    timestamp_begin: str = ""
-    timestamp_end: str = ""
-
-
-@dataclass
-class ParsedLog:
-    entries: list[LogEntry] = field(default_factory=list)
-    timer_calls: list[TimerCall] = field(default_factory=list)
-    sql_calls: list[LogEntry] = field(default_factory=list)
-    correlation_ids: set[str] = field(default_factory=set)
-    file_path: str = ""
+_MAX_RESPONSE_CHARS = 50_000
 
 
-_cache: dict[str, ParsedLog] = {}
+def _resolve_path(file_path: str) -> Path | None:
+    p = Path(LOG_DIR) / file_path
+    if p.exists():
+        return p
+    p = Path(file_path)
+    if p.exists():
+        return p
+    return None
 
 
-def _parse_log(file_path: str) -> ParsedLog:  # noqa: PLR0912, PLR0915
-    if file_path in _cache:
-        return _cache[file_path]
+def _db_path(file_path: str) -> Path:
+    idx = Path(INDEX_DIR)
+    idx.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^a-zA-Z0-9._-]", "_", Path(file_path).name)
+    return idx / f"{safe}.db"
 
-    path = Path(LOG_DIR) / file_path
-    if not path.exists():
-        path = Path(file_path)
-    if not path.exists():
-        return ParsedLog(file_path=file_path)
 
-    entries: list[LogEntry] = []
-    timer_stack: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
-    timer_calls: list[TimerCall] = []
-    sql_calls: list[LogEntry] = []
-    correlation_ids: set[str] = set()
+def _needs_reindex(db: Path, log: Path) -> bool:
+    if not db.exists():
+        return True
+    try:
+        conn = sqlite3.connect(str(db))
+        row = conn.execute("SELECT value FROM meta WHERE key='mtime'").fetchone()
+        conn.close()
+        if row and float(row[0]) >= log.stat().st_mtime:
+            return False
+    except Exception:
+        pass
+    return True
 
-    current_entry: LogEntry | None = None
-    multiline_buffer: list[str] = []
 
-    for line_no, raw_line in enumerate(
-        path.read_text(encoding="utf-8", errors="replace").splitlines(),
-        start=1,
-    ):
-        m = LOG_PATTERN.match(raw_line)
-        if m:
-            if current_entry and multiline_buffer:
-                current_entry.message += "\n" + "\n".join(multiline_buffer)
-                multiline_buffer = []
+def _index_log(file_path: str) -> sqlite3.Connection:  # noqa: PLR0912, PLR0915
+    """Stream-parse a log file into SQLite index."""
+    log_path = _resolve_path(file_path)
+    if not log_path:
+        conn = sqlite3.connect(":memory:")
+        conn.executescript(_SCHEMA)
+        return conn
 
-            timestamp = m.group(1)
-            level = m.group(2).strip()
-            thread = m.group(3).strip()
-            rest = m.group(4)
+    db = _db_path(file_path)
+    if not _needs_reindex(db, log_path):
+        return sqlite3.connect(str(db))
 
-            user = ""
-            corr_id = ""
-            enterprise = ""
-            cls = ""
-            meta = METADATA_PATTERN.search(rest)
-            if meta:
-                user = meta.group(1)
-                corr_id = meta.group(2)
-                enterprise = meta.group(3)
-                cls = meta.group(4)
-                msg = rest[: meta.start()].strip()
-            else:
-                msg = rest.strip()
+    if db.exists():
+        db.unlink()
+    conn = sqlite3.connect(str(db))
+    conn.executescript(_SCHEMA)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=OFF")
 
-            entry = LogEntry(
-                timestamp=timestamp,
-                level=level,
-                thread=thread,
-                message=msg,
-                user=user,
-                correlation_id=corr_id,
-                enterprise=enterprise,
-                class_name=cls,
-                line_no=line_no,
-            )
-            entries.append(entry)
-            current_entry = entry
+    batch: list[tuple] = []  # type: ignore[type-arg]
+    line_no = 0
+    byte_pos = 0
+    current_entry: dict | None = None  # type: ignore[type-arg]
+    timer_stack: dict[str, list[str]] = defaultdict(list)
 
-            if corr_id:
-                correlation_ids.add(corr_id)
+    with log_path.open("r", encoding="utf-8", errors="replace") as fh:
+        for raw_line in fh:
+            line_no += 1
+            line_bytes = len(raw_line.encode("utf-8", errors="replace"))
 
-            if level == "TIMER":
-                begin = TIMER_BEGIN.match(msg)
-                end = TIMER_END.match(msg)
-                if begin:
-                    key = f"{thread}:{begin.group(1)}::{begin.group(2)}"
-                    timer_stack[key].append((timestamp, corr_id, thread))
-                elif end:
-                    key = f"{thread}:{end.group(1)}::{end.group(2)}"
-                    dur = int(end.group(3))
-                    stack = timer_stack.get(key, [])
-                    begin_ts = ""
-                    begin_corr = corr_id
-                    if stack:
-                        begin_ts, begin_corr, _ = stack.pop()
-                    timer_calls.append(
-                        TimerCall(
-                            method=end.group(1),
-                            class_name=end.group(2),
-                            duration_ms=dur,
-                            correlation_id=begin_corr or corr_id,
-                            thread=thread,
-                            timestamp_begin=begin_ts,
-                            timestamp_end=timestamp,
-                        )
-                    )
+            m = LOG_PATTERN.match(raw_line)
+            if m:
+                if current_entry:
+                    current_entry["line_end"] = line_no - 1
+                    current_entry["byte_end"] = byte_pos
+                    batch.append(_entry_tuple(current_entry))
+                    if len(batch) >= 10_000:
+                        _insert_batch(conn, batch)
+                        batch = []
 
-            if SQL_PATTERN.search(msg):
-                sql_calls.append(entry)
-        else:
-            multiline_buffer.append(raw_line)
+                timestamp = m.group(1)
+                level = m.group(2).strip()
+                thread = m.group(3).strip()
+                rest = m.group(4)
 
-    parsed = ParsedLog(
-        entries=entries,
-        timer_calls=timer_calls,
-        sql_calls=sql_calls,
-        correlation_ids=correlation_ids,
-        file_path=file_path,
+                corr_id = ""
+                enterprise = ""
+                cls = ""
+                api = ""
+                meta = METADATA_PATTERN.search(rest)
+                if meta:
+                    corr_id = meta.group(2)
+                    enterprise = meta.group(3)
+                    cls = meta.group(4)
+                    msg = rest[: meta.start()].strip()
+                else:
+                    msg = rest.strip()
+
+                is_begin = 0
+                is_end = 0
+                duration = None
+                has_sql = 1 if SQL_PATTERN.search(msg) else 0
+
+                if level == "TIMER":
+                    bm = TIMER_BEGIN.match(msg)
+                    em = TIMER_END.match(msg)
+                    if bm:
+                        is_begin = 1
+                        api = bm.group(1)
+                        cls = bm.group(2) or cls
+                        key = f"{thread}:{api}::{cls}"
+                        timer_stack[key].append(timestamp)
+                    elif em:
+                        is_end = 1
+                        api = em.group(1)
+                        cls = em.group(2) or cls
+                        duration = int(em.group(3))
+                        key = f"{thread}:{api}::{cls}"
+                        if timer_stack.get(key):
+                            timer_stack[key].pop()
+                else:
+                    bm2 = TIMER_BEGIN.match(msg)
+                    if bm2:
+                        api = bm2.group(1)
+                    elif "::" in msg[:80]:
+                        parts = msg.split("::", 1)
+                        api = parts[0].strip()[:60]
+
+                preview = msg[:150]
+
+                current_entry = {
+                    "line_start": line_no,
+                    "line_end": line_no,
+                    "byte_offset": byte_pos,
+                    "byte_end": byte_pos + line_bytes,
+                    "timestamp": timestamp,
+                    "level": level,
+                    "thread": thread,
+                    "correlation_id": corr_id,
+                    "enterprise": enterprise,
+                    "class_name": cls,
+                    "api_name": api,
+                    "message_preview": preview,
+                    "is_timer_begin": is_begin,
+                    "is_timer_end": is_end,
+                    "duration_ms": duration,
+                    "has_sql": has_sql,
+                }
+            byte_pos += line_bytes
+
+    if current_entry:
+        current_entry["line_end"] = line_no
+        current_entry["byte_end"] = byte_pos
+        batch.append(_entry_tuple(current_entry))
+    if batch:
+        _insert_batch(conn, batch)
+
+    conn.execute(
+        "INSERT OR REPLACE INTO meta VALUES ('mtime', ?)",
+        (str(log_path.stat().st_mtime),),
     )
-    _cache[file_path] = parsed
-    return parsed
+    conn.execute(
+        "INSERT OR REPLACE INTO meta VALUES ('entries', ?)",
+        (str(line_no),),
+    )
+    conn.commit()
+    return conn
 
 
-def _format_timer_table(calls: list[TimerCall], limit: int = 50) -> str:
-    if not calls:
-        return "No timer calls found."
-    lines = [
-        f"{'Duration':>10s}  {'Method':<40s}  {'Class':<30s}  {'Correlation ID':<38s}",
-        "-" * 130,
-    ]
-    for tc in sorted(calls, key=lambda c: -c.duration_ms)[:limit]:
-        lines.append(
-            f"{tc.duration_ms:>8d}ms  {tc.method:<40s}  "
-            f"{tc.class_name:<30s}  {tc.correlation_id:<38s}"
-        )
-    return "\n".join(lines)
+def _entry_tuple(e: dict) -> tuple:  # type: ignore[type-arg]
+    return (
+        e["line_start"],
+        e["line_end"],
+        e["byte_offset"],
+        e["byte_end"],
+        e["timestamp"],
+        e["level"],
+        e["thread"],
+        e["correlation_id"],
+        e["enterprise"],
+        e["class_name"],
+        e["api_name"],
+        e["message_preview"],
+        e["is_timer_begin"],
+        e["is_timer_end"],
+        e["duration_ms"],
+        e["has_sql"],
+    )
 
+
+def _insert_batch(
+    conn: sqlite3.Connection,
+    batch: list[tuple],  # type: ignore[type-arg]
+) -> None:
+    conn.executemany(
+        "INSERT INTO log_entries "
+        "(line_start, line_end, byte_offset, byte_end, "
+        "timestamp, level, thread, correlation_id, enterprise, "
+        "class_name, api_name, message_preview, "
+        "is_timer_begin, is_timer_end, duration_ms, has_sql) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        batch,
+    )
+    conn.commit()
+
+
+def _read_lines(file_path: str, byte_offset: int, byte_end: int) -> str:
+    """Read a section of the log file by byte offset."""
+    log_path = _resolve_path(file_path)
+    if not log_path:
+        return "(file not found)"
+    with log_path.open("r", encoding="utf-8", errors="replace") as fh:
+        fh.seek(byte_offset)
+        return fh.read(byte_end - byte_offset)
+
+
+def _get_conn(file_path: str) -> sqlite3.Connection:
+    return _index_log(file_path)
+
+
+def _truncate(text: str) -> str:
+    if len(text) > _MAX_RESPONSE_CHARS:
+        return text[:_MAX_RESPONSE_CHARS] + f"\n\n... truncated ({len(text)} total chars)"
+    return text
+
+
+# ---- tool definitions -------------------------------------------------------
 
 TOOLS = [
     Tool(
@@ -225,18 +319,35 @@ TOOLS = [
         },
     ),
     Tool(
-        name="get_slow_calls",
+        name="get_log_summary",
         description=(
-            "Find the slowest API/function calls from TIMER logs. "
-            "Returns calls sorted by duration (slowest first). "
-            "Use to identify performance bottlenecks."
+            "Get a high-level summary of a log file: total entries, "
+            "entries per level, unique correlation IDs, slowest "
+            "calls, and time range. Triggers indexing on first call."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "file": {
                     "type": "string",
-                    "description": "Log file path (relative to log dir)",
+                    "description": "Log file path",
+                },
+            },
+            "required": ["file"],
+        },
+    ),
+    Tool(
+        name="get_slow_calls",
+        description=(
+            "Find the slowest API/function calls from TIMER logs. "
+            "Returns calls sorted by duration (slowest first)."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "description": "Log file path",
                 },
                 "min_duration_ms": {
                     "type": "integer",
@@ -254,8 +365,7 @@ TOOLS = [
         name="get_call_trace",
         description=(
             "Get the complete call trace for a correlation ID. "
-            "Shows the execution path with timing for a single "
-            "request. Use to trace a specific slow transaction."
+            "Shows all entries for a single request."
         ),
         inputSchema={
             "type": "object",
@@ -270,7 +380,11 @@ TOOLS = [
                 },
                 "level": {
                     "type": "string",
-                    "description": "Filter level: TIMER, DEBUG, VERBOSE, ALL (default: TIMER)",
+                    "description": "Filter: TIMER, DEBUG, VERBOSE, ALL (default: TIMER)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max entries (default: 100)",
                 },
             },
             "required": ["file", "correlation_id"],
@@ -278,11 +392,7 @@ TOOLS = [
     ),
     Tool(
         name="get_sql_calls",
-        description=(
-            "Extract SQL statements from SQLDEBUG logs. "
-            "Shows SQL queries with their execution context. "
-            "Use to identify slow or repeated database queries."
-        ),
+        description=("Extract SQL statements from logs. Shows queries with execution context."),
         inputSchema={
             "type": "object",
             "properties": {
@@ -304,10 +414,7 @@ TOOLS = [
     ),
     Tool(
         name="search_logs",
-        description=(
-            "Search log entries by keyword, level, class, or "
-            "correlation ID. Returns matching entries with context."
-        ),
+        description=("Search log entries by keyword, level, class, or correlation ID."),
         inputSchema={
             "type": "object",
             "properties": {
@@ -317,15 +424,15 @@ TOOLS = [
                 },
                 "keyword": {
                     "type": "string",
-                    "description": "Search term in message text",
+                    "description": "Search in message preview",
                 },
                 "level": {
                     "type": "string",
-                    "description": "Filter by level: TIMER, DEBUG, VERBOSE",
+                    "description": "Filter by level",
                 },
                 "class_name": {
                     "type": "string",
-                    "description": "Filter by class name",
+                    "description": "Filter by class",
                 },
                 "correlation_id": {
                     "type": "string",
@@ -340,29 +447,9 @@ TOOLS = [
         },
     ),
     Tool(
-        name="get_log_summary",
-        description=(
-            "Get a high-level summary of a log file: total entries, "
-            "entries per level, unique correlation IDs, slowest "
-            "calls, and time range."
-        ),
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "file": {
-                    "type": "string",
-                    "description": "Log file path",
-                },
-            },
-            "required": ["file"],
-        },
-    ),
-    Tool(
         name="get_api_stats",
         description=(
-            "Get timing statistics per API/method from TIMER logs. "
-            "Shows count, min, max, avg, total duration for each "
-            "method. Use to find which APIs consume most time."
+            "Timing statistics per API/method. Shows count, min, max, avg, total duration."
         ),
         inputSchema={
             "type": "object",
@@ -383,49 +470,56 @@ TOOLS = [
         name="get_timer_detail",
         description=(
             "Drill into a slow TIMER call to see WHY it was slow. "
-            "Finds the Begin/End of the specified method, then shows "
-            "ALL entries (DEBUG, VERBOSE, SQL) that occurred between "
-            "them for the same correlation ID and thread. Works on "
-            "a single log file — the file must have DEBUG/VERBOSE "
-            "level entries, not just TIMER. If you only have a "
-            "TIMER-filtered file, pass the full log file instead."
+            "Shows ALL entries between Begin and End for the same "
+            "correlation ID and thread. Pass the full log file."
         ),
         inputSchema={
             "type": "object",
             "properties": {
                 "file": {
                     "type": "string",
-                    "description": (
-                        "Log file with full detail (DEBUG/VERBOSE). "
-                        "Use the unfiltered log, not a TIMER-only file."
-                    ),
+                    "description": "Log file (full detail, not timer-only)",
                 },
                 "method": {
                     "type": "string",
-                    "description": (
-                        "Method name from timer (e.g. "
-                        "'createReturnOrder'). If multiple matches, "
-                        "uses the slowest."
-                    ),
+                    "description": "Method name (uses slowest match)",
                 },
                 "correlation_id": {
                     "type": "string",
-                    "description": (
-                        "Correlation ID to narrow the search. "
-                        "Optional — if omitted, uses the slowest "
-                        "match for the method."
-                    ),
+                    "description": "Correlation ID (optional)",
                 },
                 "class_name": {
                     "type": "string",
-                    "description": ("Class name filter (optional, narrows match)"),
+                    "description": "Class filter (optional)",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max entries to return (default: 200)",
+                    "description": "Max entries (default: 200)",
                 },
             },
             "required": ["file", "method"],
+        },
+    ),
+    Tool(
+        name="read_log_entry",
+        description=(
+            "Read the full text of a specific log entry including "
+            "multiline XML payloads. Pass the line number from "
+            "other tool results."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "description": "Log file path",
+                },
+                "line_start": {
+                    "type": "integer",
+                    "description": "Start line number",
+                },
+            },
+            "required": ["file", "line_start"],
         },
     ),
 ]
@@ -445,7 +539,7 @@ async def call_tool(
         result = _dispatch(name, arguments)
     except Exception as exc:
         result = f"Error: {exc}"
-    return [TextContent(type="text", text=result)]
+    return [TextContent(type="text", text=_truncate(result))]
 
 
 def _dispatch(  # noqa: PLR0911, PLR0912, PLR0915
@@ -472,192 +566,314 @@ def _dispatch(  # noqa: PLR0911, PLR0912, PLR0915
             lines.append(f"  {f.name}  ({sz})")
         return "\n".join(lines)
 
+    if name == "get_log_summary":
+        conn = _get_conn(args["file"])
+        total = conn.execute("SELECT COUNT(*) FROM log_entries").fetchone()[0]
+        if total == 0:
+            return f"No entries in {args['file']}"
+        levels = conn.execute(
+            "SELECT level, COUNT(*) FROM log_entries GROUP BY level ORDER BY COUNT(*) DESC"
+        ).fetchall()
+        corr_count = conn.execute(
+            "SELECT COUNT(DISTINCT correlation_id) FROM log_entries WHERE correlation_id != ''"
+        ).fetchone()[0]
+        ts_range = conn.execute("SELECT MIN(timestamp), MAX(timestamp) FROM log_entries").fetchone()
+        timer_count = conn.execute(
+            "SELECT COUNT(*) FROM log_entries WHERE is_timer_end=1"
+        ).fetchone()[0]
+        sql_count = conn.execute("SELECT COUNT(*) FROM log_entries WHERE has_sql=1").fetchone()[0]
+        top_slow = conn.execute(
+            "SELECT duration_ms, api_name, class_name, correlation_id "
+            "FROM log_entries WHERE is_timer_end=1 "
+            "ORDER BY duration_ms DESC LIMIT 10"
+        ).fetchall()
+
+        lines = [
+            f"Log summary: {args['file']}\n",
+            f"  Time range: {ts_range[0]} → {ts_range[1]}",
+            f"  Total entries: {total:,}",
+            f"  Levels: {dict(levels)}",
+            f"  Unique correlation IDs: {corr_count:,}",
+            f"  Timer calls: {timer_count:,}",
+            f"  SQL statements: {sql_count:,}",
+        ]
+        if top_slow:
+            lines.append("\n  Top 10 slowest calls:")
+            for dur, api, cls, cid in top_slow:
+                lines.append(f"    {dur:>8d}ms  {api}::{cls}  [{cid[:16]}]")
+        conn.close()
+        return "\n".join(lines)
+
     if name == "get_slow_calls":
-        parsed = _parse_log(args["file"])
+        conn = _get_conn(args["file"])
         min_dur = args.get("min_duration_ms", 100)
         limit = args.get("limit", 30)
-        slow = [c for c in parsed.timer_calls if c.duration_ms >= min_dur]
-        if not slow:
-            return (
-                f"No calls >= {min_dur}ms in {args['file']}. "
-                f"Total timer calls: {len(parsed.timer_calls)}"
-            )
-        return _format_timer_table(slow, limit=limit)
+        rows = conn.execute(
+            "SELECT duration_ms, api_name, class_name, "
+            "correlation_id, thread, timestamp "
+            "FROM log_entries WHERE is_timer_end=1 "
+            "AND duration_ms >= ? "
+            "ORDER BY duration_ms DESC LIMIT ?",
+            (min_dur, limit),
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return f"No calls >= {min_dur}ms"
+        lines = [
+            f"{'Duration':>10s}  {'Method':<40s}  {'Class':<25s}  {'Correlation ID':<38s}",
+            "-" * 120,
+        ]
+        for dur, api, cls, cid, _thr, _ts in rows:
+            lines.append(f"{dur:>8d}ms  {api:<40s}  {cls:<25s}  {cid:<38s}")
+        return "\n".join(lines)
 
     if name == "get_call_trace":
-        parsed = _parse_log(args["file"])
-        corr_id = args["correlation_id"]
+        conn = _get_conn(args["file"])
+        cid = args["correlation_id"]
         level = args.get("level", "TIMER").upper()
-        entries = [
-            e for e in parsed.entries if e.correlation_id == corr_id and (level in ("ALL", e.level))
-        ]
-        if not entries:
-            return f"No entries for correlation ID {corr_id}"
-        lines = [f"Call trace for {corr_id} ({len(entries)} entries, level={level}):\n"]
-        for e in entries:
-            msg = e.message[:120]
-            lines.append(f"  {e.timestamp}  {e.level:7s}  {e.class_name:30s}  {msg}")
-        timers = [c for c in parsed.timer_calls if c.correlation_id == corr_id]
-        if timers:
-            lines.append(f"\nTimer breakdown ({len(timers)} calls):")
-            lines.append(_format_timer_table(timers, limit=50))
+        limit = args.get("limit", 100)
+        where = "correlation_id = ?"
+        params: list = [cid]  # type: ignore[type-arg]
+        if level != "ALL":
+            where += " AND level = ?"
+            params.append(level)
+        rows = conn.execute(
+            f"SELECT line_start, timestamp, level, class_name, "
+            f"api_name, message_preview, duration_ms, "
+            f"is_timer_begin, is_timer_end "
+            f"FROM log_entries WHERE {where} "
+            f"ORDER BY line_start LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        conn.close()
+        if not rows:
+            return f"No entries for {cid} (level={level})"
+        lines = [f"Call trace: {cid} ({len(rows)} entries):\n"]
+        for (
+            ln,
+            ts,
+            lev,
+            cls,
+            _api,
+            preview,
+            dur,
+            is_b,
+            is_e,
+        ) in rows:
+            marker = ""
+            if is_b:
+                marker = " → BEGIN"
+            elif is_e:
+                marker = f" ← END [{dur}ms]"
+            lines.append(f"  L{ln:>7d}  {ts}  {lev:7s}  {cls:25s}  {preview[:80]}{marker}")
         return "\n".join(lines)
 
     if name == "get_sql_calls":
-        parsed = _parse_log(args["file"])
-        corr_id = args.get("correlation_id")
+        conn = _get_conn(args["file"])
+        cid = args.get("correlation_id")
         limit = args.get("limit", 50)
-        sqls = parsed.sql_calls
-        if corr_id:
-            sqls = [s for s in sqls if s.correlation_id == corr_id]
-        if not sqls:
+        if cid:
+            rows = conn.execute(
+                "SELECT line_start, timestamp, class_name, "
+                "message_preview FROM log_entries "
+                "WHERE has_sql=1 AND correlation_id=? "
+                "ORDER BY line_start LIMIT ?",
+                (cid, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT line_start, timestamp, class_name, "
+                "message_preview FROM log_entries "
+                "WHERE has_sql=1 ORDER BY line_start LIMIT ?",
+                (limit,),
+            ).fetchall()
+        conn.close()
+        if not rows:
             return "No SQL statements found."
-        lines = [f"SQL calls ({len(sqls)} total):\n"]
-        for s in sqls[:limit]:
-            msg = s.message[:200]
-            lines.append(f"  {s.timestamp}  {s.class_name:30s}  {msg}")
+        lines = [f"SQL calls ({len(rows)}):\n"]
+        for ln, ts, cls, preview in rows:
+            lines.append(f"  L{ln:>7d}  {ts}  {cls:25s}  {preview[:120]}")
         return "\n".join(lines)
 
     if name == "search_logs":
-        parsed = _parse_log(args["file"])
-        keyword = args.get("keyword", "")
-        level = args.get("level", "")
-        cls = args.get("class_name", "")
-        corr_id = args.get("correlation_id", "")
+        conn = _get_conn(args["file"])
+        where_parts = ["1=1"]
+        params = []  # type: ignore[type-arg]
+        if args.get("keyword"):
+            where_parts.append("message_preview LIKE ?")
+            params.append(f"%{args['keyword']}%")
+        if args.get("level"):
+            where_parts.append("level = ?")
+            params.append(args["level"].upper())
+        if args.get("class_name"):
+            where_parts.append("class_name LIKE ?")
+            params.append(f"%{args['class_name']}%")
+        if args.get("correlation_id"):
+            where_parts.append("correlation_id = ?")
+            params.append(args["correlation_id"])
         limit = args.get("limit", 50)
-        matches = []
-        for e in parsed.entries:
-            if level and e.level != level.upper():
-                continue
-            if cls and cls.lower() not in e.class_name.lower():
-                continue
-            if corr_id and e.correlation_id != corr_id:
-                continue
-            if keyword and keyword.lower() not in e.message.lower():
-                continue
-            matches.append(e)
-        if not matches:
+        where = " AND ".join(where_parts)
+        rows = conn.execute(
+            f"SELECT line_start, timestamp, level, class_name, "
+            f"message_preview FROM log_entries "
+            f"WHERE {where} ORDER BY line_start LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        conn.close()
+        if not rows:
             return "No matching entries."
-        lines = [f"Found {len(matches)} entries:\n"]
-        for e in matches[:limit]:
-            msg = e.message[:150]
-            lines.append(
-                f"  L{e.line_no:>6d}  {e.timestamp}  {e.level:7s}  {e.class_name:25s}  {msg}"
-            )
-        return "\n".join(lines)
-
-    if name == "get_log_summary":
-        parsed = _parse_log(args["file"])
-        if not parsed.entries:
-            return f"No entries parsed from {args['file']}"
-        levels: dict[str, int] = defaultdict(int)
-        for e in parsed.entries:
-            levels[e.level] += 1
-        ts_first = parsed.entries[0].timestamp
-        ts_last = parsed.entries[-1].timestamp
-        lines = [
-            f"Log summary: {args['file']}\n",
-            f"  Time range: {ts_first} → {ts_last}",
-            f"  Total entries: {len(parsed.entries)}",
-            f"  Levels: {dict(levels)}",
-            f"  Unique correlation IDs: {len(parsed.correlation_ids)}",
-            f"  Timer calls: {len(parsed.timer_calls)}",
-            f"  SQL calls: {len(parsed.sql_calls)}",
-        ]
-        if parsed.timer_calls:
-            top = sorted(parsed.timer_calls, key=lambda c: -c.duration_ms)[:5]
-            lines.append("\n  Top 5 slowest calls:")
-            for tc in top:
-                lines.append(f"    {tc.duration_ms:>6d}ms  {tc.method}::{tc.class_name}")
+        lines = [f"Found {len(rows)} entries:\n"]
+        for ln, ts, lev, cls, preview in rows:
+            lines.append(f"  L{ln:>7d}  {ts}  {lev:7s}  {cls:25s}  {preview[:100]}")
         return "\n".join(lines)
 
     if name == "get_api_stats":
-        parsed = _parse_log(args["file"])
-        corr_id = args.get("correlation_id")
-        calls = parsed.timer_calls
-        if corr_id:
-            calls = [c for c in calls if c.correlation_id == corr_id]
-        if not calls:
+        conn = _get_conn(args["file"])
+        cid = args.get("correlation_id")
+        if cid:
+            rows = conn.execute(
+                "SELECT api_name, class_name, "
+                "COUNT(*) as cnt, "
+                "MIN(duration_ms), MAX(duration_ms), "
+                "AVG(duration_ms), SUM(duration_ms) "
+                "FROM log_entries WHERE is_timer_end=1 "
+                "AND correlation_id=? "
+                "GROUP BY api_name, class_name "
+                "ORDER BY SUM(duration_ms) DESC",
+                (cid,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT api_name, class_name, "
+                "COUNT(*) as cnt, "
+                "MIN(duration_ms), MAX(duration_ms), "
+                "AVG(duration_ms), SUM(duration_ms) "
+                "FROM log_entries WHERE is_timer_end=1 "
+                "GROUP BY api_name, class_name "
+                "ORDER BY SUM(duration_ms) DESC",
+            ).fetchall()
+        conn.close()
+        if not rows:
             return "No timer calls found."
-        stats: dict[str, list[int]] = defaultdict(list)
-        for c in calls:
-            key = f"{c.method}::{c.class_name}"
-            stats[key].append(c.duration_ms)
         lines = [
-            f"{'Count':>6s}  {'Min':>8s}  {'Max':>8s}  {'Avg':>8s}  {'Total':>8s}  {'Method':<50s}",
-            "-" * 100,
+            f"{'Count':>6s}  {'Min':>8s}  {'Max':>8s}  {'Avg':>8s}  {'Total':>8s}  Method",
+            "-" * 90,
         ]
-        for key in sorted(stats, key=lambda k: -sum(stats[k])):
-            durations = stats[key]
-            cnt = len(durations)
-            mn = min(durations)
-            mx = max(durations)
-            avg = sum(durations) // cnt
-            total = sum(durations)
+        for api, cls, cnt, mn, mx, avg, total in rows:
             lines.append(
-                f"{cnt:>6d}  {mn:>6d}ms  {mx:>6d}ms  {avg:>6d}ms  {total:>6d}ms  {key:<50s}"
+                f"{cnt:>6d}  {mn:>6d}ms  {mx:>6d}ms  {int(avg):>6d}ms  {total:>6d}ms  {api}::{cls}"
             )
         return "\n".join(lines)
 
     if name == "get_timer_detail":
-        parsed = _parse_log(args["file"])
+        conn = _get_conn(args["file"])
         method = args.get("method", "")
-        corr_id = args.get("correlation_id", "")
+        cid = args.get("correlation_id", "")
         cls_filter = args.get("class_name", "")
         limit = args.get("limit", 200)
 
-        candidates = [
-            c
-            for c in parsed.timer_calls
-            if (not method or method.lower() in c.method.lower())
-            and (not corr_id or c.correlation_id == corr_id)
-            and (not cls_filter or cls_filter.lower() in c.class_name.lower())
-        ]
-        if not candidates:
-            return (
-                f"No timer call found for method='{method}' corr_id='{corr_id}' in {args['file']}"
-            )
+        where_parts = ["is_timer_end=1"]
+        params = []  # type: ignore[type-arg]
+        if method:
+            where_parts.append("api_name LIKE ?")
+            params.append(f"%{method}%")
+        if cid:
+            where_parts.append("correlation_id = ?")
+            params.append(cid)
+        if cls_filter:
+            where_parts.append("class_name LIKE ?")
+            params.append(f"%{cls_filter}%")
+        where = " AND ".join(where_parts)
 
-        target = max(candidates, key=lambda c: c.duration_ms)
+        target = conn.execute(
+            f"SELECT id, duration_ms, api_name, class_name, "
+            f"correlation_id, thread, timestamp "
+            f"FROM log_entries WHERE {where} "
+            f"ORDER BY duration_ms DESC LIMIT 1",
+            params,
+        ).fetchone()
+        if not target:
+            conn.close()
+            return f"No timer call found for method='{method}'"
 
-        between = [
-            e
-            for e in parsed.entries
-            if e.correlation_id == target.correlation_id
-            and e.thread == target.thread
-            and target.timestamp_begin <= e.timestamp <= target.timestamp_end
-        ]
+        tid, dur, t_api, t_cls, t_cid, t_thread, t_ts = target
+
+        begin_row = conn.execute(
+            "SELECT timestamp FROM log_entries "
+            "WHERE is_timer_begin=1 AND api_name=? "
+            "AND class_name=? AND correlation_id=? "
+            "AND thread=? AND timestamp <= ? "
+            "ORDER BY timestamp DESC LIMIT 1",
+            (t_api, t_cls, t_cid, t_thread, t_ts),
+        ).fetchone()
+        begin_ts = begin_row[0] if begin_row else ""
+
+        between = conn.execute(
+            "SELECT line_start, timestamp, level, class_name, "
+            "api_name, message_preview, duration_ms, "
+            "is_timer_begin, is_timer_end "
+            "FROM log_entries "
+            "WHERE correlation_id=? AND thread=? "
+            "AND timestamp >= ? AND timestamp <= ? "
+            "ORDER BY line_start LIMIT ?",
+            (t_cid, t_thread, begin_ts, t_ts, limit),
+        ).fetchall()
+
+        sub_timers = conn.execute(
+            "SELECT duration_ms, api_name, class_name "
+            "FROM log_entries "
+            "WHERE is_timer_end=1 AND correlation_id=? "
+            "AND thread=? AND timestamp >= ? "
+            "AND timestamp <= ? AND id != ? "
+            "ORDER BY duration_ms DESC LIMIT 20",
+            (t_cid, t_thread, begin_ts, t_ts, tid),
+        ).fetchall()
+        conn.close()
 
         lines = [
-            f"Timer detail: {target.method}::{target.class_name}",
-            f"  Duration: {target.duration_ms}ms",
-            f"  Correlation: {target.correlation_id}",
-            f"  Thread: {target.thread}",
-            f"  Begin: {target.timestamp_begin}",
-            f"  End:   {target.timestamp_end}",
+            f"Timer detail: {t_api}::{t_cls}",
+            f"  Duration: {dur}ms",
+            f"  Correlation: {t_cid}",
+            f"  Thread: {t_thread}",
+            f"  Begin: {begin_ts}",
+            f"  End:   {t_ts}",
             f"  Entries between: {len(between)}",
             "",
         ]
-        for e in between[:limit]:
-            msg = e.message[:200]
-            lines.append(f"  {e.timestamp}  {e.level:7s}  {e.class_name:25s}  {msg}")
-        if len(between) > limit:
-            lines.append(f"\n  ... {len(between) - limit} more entries truncated")
-
-        sub_timers = [
-            c
-            for c in parsed.timer_calls
-            if c.correlation_id == target.correlation_id
-            and c.thread == target.thread
-            and target.timestamp_begin <= c.timestamp_begin
-            and c.timestamp_end <= target.timestamp_end
-            and c != target
-        ]
+        for (
+            ln,
+            ts,
+            lev,
+            cls,
+            _api,
+            preview,
+            d,
+            is_b,
+            is_e,
+        ) in between:
+            marker = ""
+            if is_b:
+                marker = " → BEGIN"
+            elif is_e and d:
+                marker = f" ← [{d}ms]"
+            lines.append(f"  L{ln:>7d}  {ts}  {lev:7s}  {cls:25s}  {preview[:80]}{marker}")
         if sub_timers:
             lines.append(f"\nSub-calls ({len(sub_timers)}):")
-            lines.append(_format_timer_table(sub_timers, limit=30))
-
+            for d, api, cls in sub_timers:
+                lines.append(f"  {d:>8d}ms  {api}::{cls}")
         return "\n".join(lines)
+
+    if name == "read_log_entry":
+        conn = _get_conn(args["file"])
+        ln = args["line_start"]
+        row = conn.execute(
+            "SELECT byte_offset, byte_end FROM log_entries WHERE line_start = ?",
+            (ln,),
+        ).fetchone()
+        conn.close()
+        if not row:
+            return f"No entry at line {ln}"
+        return _read_lines(args["file"], row[0], row[1])
 
     return f"Unknown tool: {name}"
 

@@ -129,6 +129,7 @@ defaults:
     - search-logs
     - get-api-stats
     - get-timer-detail
+    - read-log-entry
   iam:
     base_scope: [knowledge:read, repo:read, sterling:read]
 provenance:
