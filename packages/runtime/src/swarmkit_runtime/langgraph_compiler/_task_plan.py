@@ -101,6 +101,47 @@ class TaskPlan:
                     )
         return errors
 
+    def auto_fix_dependencies(self) -> list[str]:
+        """Fix missing dependencies for synthesis and output tasks.
+
+        If self-tasks or document-writer tasks have no depends_on,
+        automatically make them depend on all other tasks. This
+        prevents them from running in parallel with research tasks.
+        """
+        fixes: list[str] = []
+        _synthesis_agents = {"self", "document-writer"}
+        all_ids = [t.id for t in self.tasks]
+
+        for task in self.tasks:
+            if task.agent not in _synthesis_agents:
+                continue
+            if task.depends_on:
+                continue
+            other_ids = [tid for tid in all_ids if tid != task.id]
+            if not other_ids:
+                continue
+            # Self depends on all non-self/non-doc tasks
+            research_ids = [
+                t.id for t in self.tasks if t.id != task.id and t.agent not in _synthesis_agents
+            ]
+            if not research_ids:
+                research_ids = other_ids
+            task.depends_on = research_ids
+            fixes.append(
+                f"Auto-fixed: task '{task.id}' ({task.agent}) now "
+                f"depends on [{', '.join(research_ids)}]"
+            )
+
+        # Also fix document-writer to depend on self if both exist
+        self_tasks = [t for t in self.tasks if t.agent == "self"]
+        doc_tasks = [t for t in self.tasks if t.agent == "document-writer"]
+        for dt in doc_tasks:
+            for st in self_tasks:
+                if st.id not in dt.depends_on:
+                    dt.depends_on.append(st.id)
+                    fixes.append(f"Auto-fixed: '{dt.id}' now depends on '{st.id}' (self-task)")
+        return fixes
+
     def get_runnable_tasks(self) -> list[Task]:
         completed_ids = {t.id for t in self.tasks if t.status == "completed"}
         runnable = []
