@@ -11,7 +11,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: anthropic/claude-sonnet-4-6
+    name: moonshotai/kimi-k2.5
     temperature: 0.2
   prompt:
     system: |
