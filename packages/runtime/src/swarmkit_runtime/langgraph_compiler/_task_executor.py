@@ -1,0 +1,360 @@
+"""Task execution engine for structured delegation.
+
+Executes runnable tasks from a TaskPlan — delegates to child agents
+for child tasks, runs tools inline for self-tasks.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from typing import Any
+
+from langchain_core.messages import AIMessage, HumanMessage
+
+from swarmkit_runtime.langgraph_compiler._helpers import _progress
+from swarmkit_runtime.langgraph_compiler._task_plan import Task, TaskPlan
+from swarmkit_runtime.model_providers._registry import (
+    ModelProviderProtocol,
+    ProviderRegistry,
+)
+from swarmkit_runtime.resolver import ResolvedAgent
+
+from ._state import SwarmState
+
+
+def get_plan_from_state(state: SwarmState) -> TaskPlan | None:
+    """Reconstruct a TaskPlan from SwarmState if one exists."""
+    plan_data = state.get("task_plan", {})
+    if not plan_data or not plan_data.get("tasks"):
+        return None
+    plan = TaskPlan(
+        run_id=plan_data.get("run_id", ""),
+        topology=plan_data.get("topology", ""),
+        created_at=plan_data.get("created_at", 0.0),
+    )
+    for raw in plan_data.get("tasks", []):
+        plan.tasks.append(
+            Task(
+                id=raw["id"],
+                agent=raw["agent"],
+                instruction=raw.get("instruction", ""),
+                depends_on=raw.get("depends_on", []),
+                status=raw.get("status", "pending"),
+                started_at=raw.get("started_at"),
+                completed_at=raw.get("completed_at"),
+                duration_s=raw.get("duration_s"),
+                tool_calls=raw.get("tool_calls", 0),
+                key_findings=raw.get("key_findings", []),
+                result_path=raw.get("result_path"),
+                error=raw.get("error"),
+                delegation_count=raw.get("delegation_count", 0),
+            )
+        )
+    return plan
+
+
+async def execute_task_batch(
+    plan: TaskPlan,
+    agent: ResolvedAgent,
+    agent_id: str,
+    model_provider: ModelProviderProtocol,
+    governance: Any,
+    all_agents: dict[str, ResolvedAgent],
+    mcp_manager: Any,
+    provider_registry: ProviderRegistry | None,
+    workspace_root: Path | None = None,
+) -> dict[str, Any]:
+    """Execute the next batch of runnable tasks from the plan.
+
+    Returns a state dict with updated task_plan, agent_results,
+    and messages from completed tasks.
+    """
+    runnable = plan.get_runnable_tasks()
+    if not runnable:
+        if plan.all_done():
+            return _plan_complete_state(plan, agent_id)
+        return _plan_blocked_state(plan, agent_id)
+
+    child_map = {c.id: c for c in agent.children}
+    names = [t.id for t in runnable]
+    _progress(f"[{agent_id}] executing task batch: {', '.join(names)}")
+
+    async def _run_one(task: Task) -> tuple[str, str]:
+        plan.mark_started(task.id)
+        _persist_plan(plan, workspace_root, agent_id)
+        try:
+            if task.agent == "self":
+                result = await _execute_self_task(
+                    task,
+                    agent,
+                    agent_id,
+                    model_provider,
+                    mcp_manager,
+                    governance,
+                )
+            else:
+                result = await _execute_child_task(
+                    task,
+                    child_map.get(task.agent),
+                    agent_id,
+                    model_provider,
+                    governance,
+                    all_agents,
+                    mcp_manager,
+                    provider_registry,
+                )
+            plan.mark_completed(
+                task.id,
+                result_path=_save_result(
+                    task.id,
+                    result,
+                    workspace_root,
+                    agent_id,
+                ),
+            )
+            _progress(f"  task '{task.id}' completed")
+        except Exception as exc:
+            result = f"Error: {exc}"
+            plan.mark_failed(task.id, str(exc))
+            _progress(f"  task '{task.id}' failed: {exc}")
+
+        _persist_plan(plan, workspace_root, agent_id)
+        return (task.id, result)
+
+    tasks_coros = [_run_one(t) for t in runnable]
+    results = await asyncio.gather(*tasks_coros)
+
+    merged_results: dict[str, str] = {}
+    messages = []
+    for tid, result_text in results:
+        merged_results[tid] = result_text
+        messages.append(AIMessage(content=result_text, name=tid))
+
+    more_runnable = plan.get_runnable_tasks()
+    if more_runnable or not plan.all_done():
+        return {
+            "current_agent": agent_id,
+            "task_plan": plan.to_dict(),
+            "agent_results": {
+                agent_id: "__task_plan_executing__",
+                **merged_results,
+            },
+            "messages": messages,
+        }
+
+    return _plan_complete_state(plan, agent_id, merged_results, messages)
+
+
+async def _execute_child_task(
+    task: Task,
+    child: ResolvedAgent | None,
+    parent_id: str,
+    model_provider: ModelProviderProtocol,
+    governance: Any,
+    all_agents: dict[str, ResolvedAgent],
+    mcp_manager: Any,
+    provider_registry: ProviderRegistry | None,
+) -> str:
+    """Execute a task by running a child agent."""
+    if child is None:
+        return f"Error: agent '{task.agent}' not found"
+
+    from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
+        _build_agent_node,
+        _resolve_agent_provider,
+    )
+
+    child_provider = _resolve_agent_provider(
+        child,
+        provider_registry,
+        model_provider,
+    )
+    child_fn = _build_agent_node(
+        child,
+        child_provider,
+        governance,
+        all_agents,
+        mcp_manager,
+        provider_registry,
+    )
+
+    child_state: SwarmState = {
+        "input": task.instruction,
+        "messages": [
+            HumanMessage(
+                content=task.instruction,
+                name=parent_id,
+            )
+        ],
+        "agent_results": {},
+        "delegation_counts": {},
+        "task_plan": {},
+        "current_agent": child.id,
+        "output": "",
+    }
+
+    result_state = await child_fn(child_state)
+    return str(result_state.get("output", "(no response)"))
+
+
+async def _execute_self_task(
+    task: Task,
+    agent: ResolvedAgent,
+    agent_id: str,
+    model_provider: ModelProviderProtocol,
+    mcp_manager: Any,
+    governance: Any,
+) -> str:
+    """Execute a self-task — the coordinator does this work itself."""
+    import os  # noqa: PLC0415
+
+    from swarmkit_runtime.langgraph_compiler._prompts import (  # noqa: PLC0415
+        _build_completion_request,
+        _build_system_prompt,
+        _build_tools,
+    )
+    from swarmkit_runtime.langgraph_compiler._tool_loop import (  # noqa: PLC0415
+        _handle_skill_tool_calls,
+        _run_tool_loop,
+    )
+    from swarmkit_runtime.model_providers import Message  # noqa: PLC0415
+
+    tools = _build_tools(agent, mcp_manager=mcp_manager)
+    # Only keep skill tools for self-tasks, not planning tools
+    tools = [
+        t
+        for t in tools
+        if t.name
+        not in (
+            "create-task-plan",
+            "update-task-plan",
+            "read-task-result",
+        )
+    ]
+
+    model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
+    system_prompt = _build_system_prompt(agent, tools)
+    messages = [
+        Message(role="user", content=task.instruction),
+    ]
+
+    request = _build_completion_request(
+        model_name,
+        messages,
+        system_prompt,
+        tools,
+        agent,
+    )
+    _progress(f"  [{agent_id}] self-task: {task.id}")
+    response = await model_provider.complete(request)
+
+    tool_results = await _handle_skill_tool_calls(
+        response,
+        agent,
+        model_provider,
+        model_name,
+        mcp_manager,
+        governance,
+    )
+    if tool_results is not None:
+        verbose = os.environ.get("SWARMKIT_VERBOSE", "")
+        text = await _run_tool_loop(
+            response,
+            agent,
+            messages,
+            tools,
+            model_name,
+            system_prompt,
+            model_provider,
+            mcp_manager,
+            governance,
+            tool_results,
+            verbose,
+        )
+        return text
+
+    from swarmkit_runtime.langgraph_compiler._helpers import (  # noqa: PLC0415
+        _extract_text,
+    )
+
+    return _extract_text(response) or "(no output)"
+
+
+def _save_result(
+    task_id: str,
+    result: str,
+    workspace_root: Path | None,
+    agent_id: str,
+) -> str | None:
+    """Save task result to disk. Returns the file path."""
+    if not workspace_root:
+        return None
+    run_state = workspace_root / ".swarmkit" / "run-state" / "current"
+    run_state.mkdir(parents=True, exist_ok=True)
+    path = run_state / f"{task_id}.md"
+    path.write_text(result, encoding="utf-8")
+    return str(path)
+
+
+def _persist_plan(
+    plan: TaskPlan,
+    workspace_root: Path | None,
+    agent_id: str,
+) -> None:
+    """Write tasks.json to disk."""
+    if not workspace_root:
+        return
+    run_state = workspace_root / ".swarmkit" / "run-state" / "current"
+    plan.save(run_state)
+
+
+def _plan_complete_state(
+    plan: TaskPlan,
+    agent_id: str,
+    merged_results: dict[str, str] | None = None,
+    messages: list[Any] | None = None,
+) -> dict[str, Any]:
+    """Build state dict when all tasks are done."""
+    status = plan.render_status()
+    return {
+        "current_agent": agent_id,
+        "task_plan": plan.to_dict(),
+        "agent_results": {
+            agent_id: "__task_plan_complete__",
+            **(merged_results or {}),
+        },
+        "messages": (messages or [])
+        + [
+            AIMessage(
+                content=f"All tasks complete.\n\n{status}",
+                name=agent_id,
+            ),
+        ],
+    }
+
+
+def _plan_blocked_state(
+    plan: TaskPlan,
+    agent_id: str,
+) -> dict[str, Any]:
+    """Build state for when no tasks are runnable but plan isn't done."""
+    status = plan.render_status()
+    return {
+        "current_agent": agent_id,
+        "task_plan": plan.to_dict(),
+        "agent_results": {
+            agent_id: "__task_plan_blocked__",
+        },
+        "messages": [
+            AIMessage(
+                content=(
+                    f"Task plan blocked — no runnable tasks.\n\n"
+                    f"{status}\n\n"
+                    f"Call update-task-plan to adjust dependencies "
+                    f"or remove blocked tasks."
+                ),
+                name=agent_id,
+            ),
+        ],
+    }
