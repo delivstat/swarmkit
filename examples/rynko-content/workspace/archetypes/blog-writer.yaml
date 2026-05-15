@@ -8,7 +8,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: qwen/qwen3-235b-a22b
+    name: eva-unit-01/eva-qwen-2.5-72b
     temperature: 0.5
   prompt:
     system: |

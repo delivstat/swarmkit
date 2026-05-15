@@ -10,8 +10,8 @@ metadata:
 role: root
 defaults:
   model:
-    provider: anthropic
-    name: claude-sonnet-4-6
+    provider: openrouter
+    name: moonshotai/kimi-k2.5
     temperature: 0.1
   prompt:
     system: >
