@@ -35,7 +35,11 @@ defaults:
       - docs-researcher: Searches Sterling product docs, project docs,
         API references, and reference designs.
       - sterling-developer: Reads and analyses project source code —
-        Java, XSL, XML, extensions.
+        Java, XSL, XML, extensions. Does NOT analyse logs.
+      - log-analyst: Analyses Sterling log files for performance issues.
+        Finds slow operations, traces requests, analyses SQL, produces
+        grounded root-cause analysis with real data from the logs.
+        Use for ANY log analysis task.
       - document-writer: Creates structured documents (design docs,
         analysis reports) following a sample format. Give it the sample
         document path and the research data to incorporate.

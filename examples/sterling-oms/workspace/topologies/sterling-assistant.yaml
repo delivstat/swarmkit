@@ -4,10 +4,9 @@ metadata:
   name: sterling-assistant
   description: >
     General-purpose Sterling assistant with sub-agent architecture.
-    The architect coordinates four focused workers (Jira, config,
-    docs, developer). Developer sits under the architect so it
-    receives full analysis context before checking code.
-  version: 2.1.0
+    The architect coordinates six focused workers (Jira, config,
+    docs, developer, log-analyst, document-writer).
+  version: 3.0.0
 agents:
   root:
     id: root
@@ -48,6 +47,9 @@ agents:
           - id: sterling-developer
             role: worker
             archetype: sterling-developer
+          - id: log-analyst
+            role: worker
+            archetype: log-analyst
           - id: document-writer
             role: worker
             archetype: document-writer
