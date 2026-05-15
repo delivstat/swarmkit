@@ -239,6 +239,7 @@ class WorkspaceRuntime:
                     "messages": [],
                     "agent_results": {},
                     "delegation_counts": {},
+                    "task_plan": {},
                     "current_agent": "",
                     "output": "",
                 },

@@ -519,6 +519,166 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
     return _extract_text(synthesis_response) or "(analysis incomplete — tool limit reached)"
 
 
+def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
+    response: CompletionResponse,
+    agent: ResolvedAgent,
+    agent_id: str,
+    state: Any,
+) -> dict[str, Any] | None:
+    """Handle create-task-plan, update-task-plan, read-task-result tool calls.
+
+    Returns a state dict if a task plan tool was called, None otherwise.
+    """
+    from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan  # noqa: PLC0415
+
+    _TASK_PLAN_TOOLS = {"create-task-plan", "update-task-plan", "read-task-result"}
+
+    for block in response.content:
+        if not hasattr(block, "tool_name") or not block.tool_name:
+            continue
+        if block.tool_name not in _TASK_PLAN_TOOLS:
+            continue
+
+        args = block.tool_input
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except (json.JSONDecodeError, TypeError):
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+
+        existing_plan_data = (state or {}).get("task_plan", {})
+        if existing_plan_data and existing_plan_data.get("tasks"):
+            plan = TaskPlan(
+                run_id=existing_plan_data.get("run_id", ""),
+                topology=existing_plan_data.get("topology", ""),
+                created_at=existing_plan_data.get("created_at", 0.0),
+            )
+            for raw in existing_plan_data.get("tasks", []):
+                from swarmkit_runtime.langgraph_compiler._task_plan import Task  # noqa: PLC0415
+
+                plan.tasks.append(
+                    Task(
+                        id=raw["id"],
+                        agent=raw["agent"],
+                        instruction=raw.get("instruction", ""),
+                        depends_on=raw.get("depends_on", []),
+                        status=raw.get("status", "pending"),
+                        key_findings=raw.get("key_findings", []),
+                        result_path=raw.get("result_path"),
+                        error=raw.get("error"),
+                        delegation_count=raw.get("delegation_count", 0),
+                    )
+                )
+        else:
+            plan = TaskPlan()
+
+        if block.tool_name == "create-task-plan":
+            raw_tasks = args.get("tasks", [])
+            if not raw_tasks:
+                continue
+
+            import time as _time  # noqa: PLC0415
+
+            plan.run_id = (state or {}).get("input", "")[:50]
+            plan.created_at = _time.time()
+            errors = plan.add_tasks(raw_tasks)
+            valid_agents = {c.id for c in agent.children}
+            errors.extend(plan.validate_agents(valid_agents))
+            errors.extend(plan.validate_dependencies())
+
+            task_count = len(plan.tasks)
+            _progress(f"[{agent_id}] created task plan: {task_count} tasks")
+            for task in plan.tasks:
+                deps = f" (after: {', '.join(task.depends_on)})" if task.depends_on else ""
+                _progress(f"  - {task.id} -> {task.agent}{deps}")
+            if errors:
+                _progress(f"  warnings: {'; '.join(errors)}")
+
+            return {
+                "current_agent": agent_id,
+                "task_plan": plan.to_dict(),
+                "agent_results": {agent_id: "__task_plan_created__"},
+                "messages": [
+                    AIMessage(
+                        content=f"[{agent_id}] Task plan created with {task_count} tasks.",
+                        name=agent_id,
+                    ),
+                ],
+            }
+
+        if block.tool_name == "update-task-plan":
+            upd_errors: list[str] = []
+            if args.get("add"):
+                upd_errors.extend(plan.add_tasks(args["add"]))
+                valid_agents = {c.id for c in agent.children}
+                upd_errors.extend(plan.validate_agents(valid_agents))
+            if args.get("remove"):
+                upd_errors.extend(plan.remove_tasks(args["remove"]))
+            if args.get("update"):
+                upd_errors.extend(plan.update_tasks(args["update"]))
+            upd_errors.extend(plan.validate_dependencies())
+
+            _progress(f"[{agent_id}] updated task plan")
+            if upd_errors:
+                _progress(f"  warnings: {'; '.join(upd_errors)}")
+
+            if args.get("complete"):
+                return {
+                    "current_agent": agent_id,
+                    "task_plan": plan.to_dict(),
+                    "agent_results": {agent_id: "__task_plan_complete__"},
+                    "messages": [
+                        AIMessage(
+                            content=f"[{agent_id}] Task plan marked complete. Synthesizing.",
+                            name=agent_id,
+                        ),
+                    ],
+                }
+
+            return {
+                "current_agent": agent_id,
+                "task_plan": plan.to_dict(),
+                "agent_results": {agent_id: "__task_plan_updated__"},
+                "messages": [
+                    AIMessage(
+                        content=f"[{agent_id}] Task plan updated.",
+                        name=agent_id,
+                    ),
+                ],
+            }
+
+        if block.tool_name == "read-task-result":
+            task_id = args.get("task_id", "")
+            read_task = plan.get_task(task_id)
+            if not read_task:
+                continue
+            if read_task.status != "completed" or not read_task.result_path:
+                continue
+            from pathlib import Path as _Path  # noqa: PLC0415
+
+            result_path = _Path(read_task.result_path)
+            if result_path.exists():
+                content = result_path.read_text(encoding="utf-8")
+                _progress(f"[{agent_id}] reading full result for task '{task_id}'")
+            else:
+                content = f"(result file not found: {task.result_path})"
+            return {
+                "current_agent": agent_id,
+                "task_plan": plan.to_dict(),
+                "agent_results": {agent_id: content},
+                "messages": [
+                    AIMessage(
+                        content=f"[{agent_id}] Full result for '{task_id}':\n{content}",
+                        name=agent_id,
+                    ),
+                ],
+            }
+
+    return None
+
+
 async def _dispatch_response(  # noqa: PLR0912, PLR0915
     response: CompletionResponse,
     agent: ResolvedAgent,
@@ -599,6 +759,10 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
             response = await model_provider.complete(request)
             continue
 
+        task_plan_result = _handle_task_plan_tools(response, agent, agent_id, state)
+        if task_plan_result is not None:
+            return task_plan_result
+
         delegations = _extract_delegation(response, agent)
         if delegations:
             if len(delegations) == 1:
@@ -638,6 +802,7 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                     "messages": [HumanMessage(content=task, name=agent_id)],
                     "agent_results": {},
                     "delegation_counts": {},
+                    "task_plan": {},
                     "current_agent": cid,
                     "output": "",
                 }
@@ -1316,20 +1481,35 @@ def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec
                 input_schema = mcp_manager.get_tool_input_schema(server_id, tool_name)
             tools.append(ToolSpec(name=skill.id, description=desc, input_schema=input_schema))
 
-    for child in agent.children:
-        tools.append(
-            ToolSpec(
-                name=f"delegate_to_{child.id}",
-                description=f"Delegate a task to {child.id} (role={child.role})",
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "task": {"type": "string", "description": "The task to delegate"}
-                    },
-                    "required": ["task"],
-                },
-            )
+    _use_task_plan = len(agent.children) >= 2 and not _has_dag_deps(agent)
+    if _use_task_plan:
+        from swarmkit_runtime.langgraph_compiler._task_plan import (  # noqa: PLC0415
+            build_create_task_plan_tool,
+            build_read_task_result_tool,
+            build_update_task_plan_tool,
         )
+
+        tools.append(build_create_task_plan_tool(agent))
+        tools.append(build_update_task_plan_tool())
+        tools.append(build_read_task_result_tool())
+    else:
+        for child in agent.children:
+            tools.append(
+                ToolSpec(
+                    name=f"delegate_to_{child.id}",
+                    description=f"Delegate a task to {child.id} (role={child.role})",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "task": {
+                                "type": "string",
+                                "description": "The task to delegate",
+                            }
+                        },
+                        "required": ["task"],
+                    },
+                )
+            )
 
     return tools
 
@@ -1480,6 +1660,7 @@ async def _run_dag(
                 "messages": [HumanMessage(content=child_input, name=agent_id)],
                 "agent_results": {},
                 "delegation_counts": {},
+                "task_plan": {},
                 "current_agent": child.id,
                 "output": "",
             }
