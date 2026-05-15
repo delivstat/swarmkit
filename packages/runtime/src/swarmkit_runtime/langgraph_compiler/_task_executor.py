@@ -104,16 +104,29 @@ async def execute_task_batch(
                     mcp_manager,
                     provider_registry,
                 )
+            result_path = _save_result(
+                task.id,
+                result,
+                workspace_root,
+                agent_id,
+            )
+            import os as _os  # noqa: PLC0415
+
+            _coord_model = _os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get(
+                "name", "mock"
+            )
+            findings = await _summarize_result(
+                task.id,
+                result,
+                model_provider,
+                coordinator_model=_coord_model,
+            )
             plan.mark_completed(
                 task.id,
-                result_path=_save_result(
-                    task.id,
-                    result,
-                    workspace_root,
-                    agent_id,
-                ),
+                key_findings=findings,
+                result_path=result_path,
             )
-            _progress(f"  task '{task.id}' completed")
+            _progress(f"  task '{task.id}' completed ({len(findings)} findings)")
         except Exception as exc:
             result = f"Error: {exc}"
             plan.mark_failed(task.id, str(exc))
@@ -279,6 +292,72 @@ async def _execute_self_task(
     )
 
     return _extract_text(response) or "(no output)"
+
+
+async def _summarize_result(
+    task_id: str,
+    result: str,
+    model_provider: ModelProviderProtocol,
+    coordinator_model: str = "",
+) -> list[str]:
+    """Generate 3-5 bullet key findings from a task result.
+
+    Uses the coordinator's model for summarization quality. If the
+    result is short enough (<500 chars), skip summarization.
+    """
+    if len(result) < 500:
+        return [result.strip()] if result.strip() else []
+
+    if len(result) > 50000:
+        result = result[:50000] + "\n\n(truncated)"
+
+    from swarmkit_runtime.model_providers import (  # noqa: PLC0415
+        CompletionRequest,
+        Message,
+    )
+
+    model_name = coordinator_model or "mock"
+    try:
+        summary_request = CompletionRequest(
+            model=model_name,
+            messages=(
+                Message(
+                    role="user",
+                    content=(
+                        "Summarize the following research findings into "
+                        "3-5 bullet points. Each bullet should be one "
+                        "concise sentence capturing a key finding. "
+                        "Focus on specific names, IDs, and data — not "
+                        "generic descriptions.\n\n"
+                        f"--- FINDINGS ---\n{result}\n--- END ---\n\n"
+                        "Return ONLY the bullet points, one per line, "
+                        "starting with '- '."
+                    ),
+                ),
+            ),
+            system=None,
+            tools=None,
+        )
+        _progress(f"  [{task_id}] summarizing results...")
+        summary_response = await model_provider.complete(summary_request)
+
+        from swarmkit_runtime.langgraph_compiler._helpers import (  # noqa: PLC0415
+            _extract_text,
+        )
+
+        raw = _extract_text(summary_response)
+        if raw:
+            findings = [
+                line.lstrip("- ").strip()
+                for line in raw.strip().split("\n")
+                if line.strip() and line.strip().startswith("-")
+            ]
+            return findings[:5] if findings else [raw[:200]]
+    except Exception:
+        pass
+
+    first_line = result.strip().split("\n")[0][:200]
+    return [first_line] if first_line else []
 
 
 def _save_result(
