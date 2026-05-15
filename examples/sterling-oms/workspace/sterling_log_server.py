@@ -44,8 +44,8 @@ LOG_PATTERN = re.compile(
     r":([^:]+)"
     r":\s*(.*)"
 )
-TIMER_BEGIN = re.compile(r"^(.+?)::(.+?)\s*-\s*Begin")
-TIMER_END = re.compile(r"^(.+?)::(.+?)\s*-\s*End\s*-\s*\[(\d+)\]")
+TIMER_BEGIN = re.compile(r"^(.+?)\s*-\s*Begin\s*$")
+TIMER_END = re.compile(r"^(.+?)\s*-\s*End\s*-\s*\[(\d+)\]")
 METADATA_PATTERN = re.compile(r"\[([^\]]*)\]:\s*\[([^\]]*)\]:\s*\[([^\]]*)\]:\s*(\S+)\s*$")
 SQL_PATTERN = re.compile(r"(SELECT|INSERT|UPDATE|DELETE|MERGE)\s+", re.IGNORECASE)
 
@@ -116,6 +116,29 @@ def _needs_reindex(db: Path, log: Path) -> bool:
     return True
 
 
+def _parse_timer_name(raw: str, default_cls: str) -> tuple[str, str]:
+    """Extract api_name and class_name from timer entry name.
+
+    Handles three formats:
+      method::ClassName           → (method, ClassName)
+      com.package.Class.method    → (method, com.package.Class)
+      methodName                  → (methodName, default_cls)
+      method : description        → (method, default_cls)
+    """
+    colon_desc = raw.split(" : ", 1)
+    name = colon_desc[0].strip()
+
+    if "::" in name:
+        parts = name.split("::", 1)
+        return parts[0].strip(), parts[1].strip() or default_cls
+
+    if "." in name and not name.startswith("("):
+        last_dot = name.rfind(".")
+        return name[last_dot + 1 :], name[:last_dot]
+
+    return name, default_cls
+
+
 def _index_log(file_path: str) -> sqlite3.Connection:  # noqa: PLR0912, PLR0915
     """Stream-parse a log file into SQLite index."""
     log_path = _resolve_path(file_path)
@@ -184,25 +207,21 @@ def _index_log(file_path: str) -> sqlite3.Connection:  # noqa: PLR0912, PLR0915
                     em = TIMER_END.match(msg)
                     if bm:
                         is_begin = 1
-                        api = bm.group(1)
-                        cls = bm.group(2) or cls
-                        key = f"{thread}:{api}::{cls}"
+                        raw_name = bm.group(1).strip()
+                        api, cls = _parse_timer_name(raw_name, cls)
+                        key = f"{thread}:{raw_name}"
                         timer_stack[key].append(timestamp)
                     elif em:
                         is_end = 1
-                        api = em.group(1)
-                        cls = em.group(2) or cls
-                        duration = int(em.group(3))
-                        key = f"{thread}:{api}::{cls}"
+                        raw_name = em.group(1).strip()
+                        api, cls = _parse_timer_name(raw_name, cls)
+                        duration = int(em.group(2))
+                        key = f"{thread}:{raw_name}"
                         if timer_stack.get(key):
                             timer_stack[key].pop()
-                else:
-                    bm2 = TIMER_BEGIN.match(msg)
-                    if bm2:
-                        api = bm2.group(1)
-                    elif "::" in msg[:80]:
-                        parts = msg.split("::", 1)
-                        api = parts[0].strip()[:60]
+                elif "::" in msg[:80]:
+                    parts = msg.split("::", 1)
+                    api = parts[0].strip()[:60]
 
                 preview = msg[:150]
 
