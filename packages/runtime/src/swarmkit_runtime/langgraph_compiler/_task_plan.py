@@ -132,6 +132,27 @@ class TaskPlan:
                 f"depends on [{', '.join(research_ids)}]"
             )
 
+        # Auto-add synthesis task if no self-tasks exist
+        has_self = any(t.agent == "self" for t in self.tasks)
+        research_ids = [t.id for t in self.tasks if t.agent not in _synthesis_agents]
+        if not has_self and research_ids:
+            self.tasks.append(
+                Task(
+                    id="__auto_synthesize__",
+                    agent="self",
+                    instruction=(
+                        "Synthesize all findings from completed tasks. "
+                        "Cross-validate data across sources. Write "
+                        "the final comprehensive answer."
+                    ),
+                    depends_on=research_ids,
+                )
+            )
+            fixes.append(
+                f"Auto-added: synthesis task '__auto_synthesize__' "
+                f"depends on [{', '.join(research_ids)}]"
+            )
+
         # Also fix document-writer to depend on self if both exist
         self_tasks = [t for t in self.tasks if t.agent == "self"]
         doc_tasks = [t for t in self.tasks if t.agent == "document-writer"]
