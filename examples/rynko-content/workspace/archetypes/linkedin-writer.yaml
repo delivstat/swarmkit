@@ -8,7 +8,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: qwen/qwen3-235b-a22b
+    name: mistralai/mistral-small-creative
     temperature: 0.6
   prompt:
     system: |
