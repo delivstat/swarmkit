@@ -605,7 +605,7 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                 child_id, task_text = delegations[0]
                 _task_preview = (task_text or "")[:120].replace("\n", " ")
                 _progress(f"[{agent_id}] -> delegating to {child_id}: {_task_preview}")
-                _prev_counts: dict[str, int] = (state or {}).get("delegation_counts", {})
+                _prev_counts: dict[str, int] = state.get("delegation_counts", {}) if state else {}
                 _new_counts = {**_prev_counts, child_id: _prev_counts.get(child_id, 0) + 1}
                 return {
                     "current_agent": child_id,
@@ -682,8 +682,8 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                     AIMessage(content=result, name=cid),
                 )
 
-            _prev_counts = (state or {}).get("delegation_counts", {})
-            _par_counts = {**_prev_counts}
+            _par_prev: dict[str, int] = state.get("delegation_counts", {}) if state else {}
+            _par_counts = {**_par_prev}
             for cid, _ in delegations:
                 _par_counts[cid] = _par_counts.get(cid, 0) + 1
             return {
