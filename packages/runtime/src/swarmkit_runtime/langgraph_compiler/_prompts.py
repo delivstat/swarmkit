@@ -96,8 +96,13 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
     if not tools:
         return base or None
 
+    planning_tools = [
+        t for t in tools if t.name in ("create-task-plan", "update-task-plan", "read-task-result")
+    ]
     delegation_tools = [t for t in tools if t.name.startswith("delegate_to_")]
-    skill_tools = [t for t in tools if not t.name.startswith("delegate_to_")]
+    skill_tools = [
+        t for t in tools if not t.name.startswith("delegate_to_") and t not in planning_tools
+    ]
 
     parts = [base.rstrip()] if base else []
     parts.append(
@@ -105,7 +110,16 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
         "Use them to act - do not describe what you would do."
     )
 
-    if delegation_tools:
+    if planning_tools:
+        names = ", ".join(f"`{t.name}`" for t in planning_tools)
+        parts.append(
+            "\nTASK PLANNING: Call `create-task-plan` to define tasks "
+            "for your workers and yourself. The compiler will execute "
+            "tasks and report back with summaries. Call `update-task-plan` "
+            "to adjust the plan at checkpoints. Use `read-task-result` "
+            "to read full results from completed tasks."
+        )
+    elif delegation_tools:
         names = ", ".join(f"`{t.name}`" for t in delegation_tools)
         parts.append(
             f"DELEGATION (MANDATORY for root agents): You MUST delegate by calling "
@@ -119,18 +133,67 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
     return "\n".join(parts)
 
 
-def _build_prompt_messages(  # noqa: PLR0912
+def _build_prompt_messages(  # noqa: PLR0912, PLR0915
     agent: ResolvedAgent,
     state: SwarmState,
 ) -> list[Message]:
     """Build the message list for an agent's model call.
 
-    If child agents have produced results (delegation completed), the
-    prompt includes those results so the agent can synthesise a final
-    answer instead of re-delegating.
+    For v2 (task plan): builds context from task plan status.
+    For v1 (delegation): builds from child agent_results.
     """
     messages: list[Message] = []
     agent_results = state.get("agent_results", {})
+
+    # ---- v2: task plan context ----------------------------------------
+    agent_result = agent_results.get(agent.id, "")
+    _is_task_plan_state = isinstance(agent_result, str) and agent_result.startswith("__task_plan_")
+    if _is_task_plan_state:
+        plan_data = state.get("task_plan", {})
+        if plan_data and plan_data.get("tasks"):
+            from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
+                get_plan_from_state,
+            )
+
+            plan = get_plan_from_state(state)
+            if plan:
+                status = plan.render_status()
+                if plan.all_done():
+                    messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                f"Original request: {state.get('input', '')}\n\n"
+                                f"{status}\n\n"
+                                f"All tasks are complete. Synthesize the "
+                                f"findings into a comprehensive final answer. "
+                                f"Use read-task-result to access full details "
+                                f"from any task if the summaries aren't "
+                                f"enough.\n\nDo NOT create a new task plan. "
+                                f"Write the final response now."
+                            ),
+                        )
+                    )
+                else:
+                    messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                f"Original request: {state.get('input', '')}\n\n"
+                                f"{status}\n\n"
+                                f"Review the results above. You can:\n"
+                                f"- Call update-task-plan to add new tasks, "
+                                f"remove pending tasks, or modify instructions\n"
+                                f"- Call read-task-result to see full details "
+                                f"from a completed task\n"
+                                f"- Wait for pending tasks to complete "
+                                f"(they will run automatically)\n\n"
+                                f"If no changes needed, the pending tasks "
+                                f"will execute next."
+                            ),
+                        )
+                    )
+                return messages
 
     child_results = {
         cid: agent_results[cid]
