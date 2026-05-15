@@ -110,10 +110,16 @@ async def execute_task_batch(
                 workspace_root,
                 agent_id,
             )
+            import os as _os  # noqa: PLC0415
+
+            _coord_model = _os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get(
+                "name", "mock"
+            )
             findings = await _summarize_result(
                 task.id,
                 result,
                 model_provider,
+                coordinator_model=_coord_model,
             )
             plan.mark_completed(
                 task.id,
@@ -292,11 +298,12 @@ async def _summarize_result(
     task_id: str,
     result: str,
     model_provider: ModelProviderProtocol,
+    coordinator_model: str = "",
 ) -> list[str]:
     """Generate 3-5 bullet key findings from a task result.
 
-    Uses one LLM call with the same provider. If the result is short
-    enough (<500 chars), skip summarization and use it directly.
+    Uses the coordinator's model for summarization quality. If the
+    result is short enough (<500 chars), skip summarization.
     """
     if len(result) < 500:
         return [result.strip()] if result.strip() else []
@@ -304,14 +311,12 @@ async def _summarize_result(
     if len(result) > 50000:
         result = result[:50000] + "\n\n(truncated)"
 
-    import os  # noqa: PLC0415
-
     from swarmkit_runtime.model_providers import (  # noqa: PLC0415
         CompletionRequest,
         Message,
     )
 
-    model_name = os.environ.get("SWARMKIT_MODEL") or "mock"
+    model_name = coordinator_model or "mock"
     try:
         summary_request = CompletionRequest(
             model=model_name,
