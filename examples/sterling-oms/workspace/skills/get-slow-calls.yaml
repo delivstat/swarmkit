@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-slow-calls
+  name: Get Slow Calls
+  description: >
+    Find slowest API/function calls from Sterling TIMER logs. Returns
+    calls sorted by duration to identify performance bottlenecks.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: get_slow_calls

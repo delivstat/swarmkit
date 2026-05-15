@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: list-log-files
+  name: List Log Files
+  description: List available Sterling log files in the log directory with sizes.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: list_log_files

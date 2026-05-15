@@ -121,6 +121,13 @@ defaults:
     - read-context
     - github-repo-read
     - github-pr-read
+    - list-log-files
+    - get-log-summary
+    - get-slow-calls
+    - get-call-trace
+    - get-sql-calls
+    - search-logs
+    - get-api-stats
   iam:
     base_scope: [knowledge:read, repo:read, sterling:read]
 provenance:
