@@ -721,7 +721,7 @@ def _check_previous_plan(workspace_path: Path) -> dict | None:  # type: ignore[t
             run_state = workspace_path.resolve() / ".swarmkit" / "run-state" / "current"
             shutil.rmtree(run_state, ignore_errors=True)
             return None
-    return plan_data
+    return dict(plan_data)
 
 
 def _execute_run(
