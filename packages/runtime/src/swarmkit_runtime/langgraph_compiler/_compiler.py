@@ -168,6 +168,34 @@ def _build_agent_node(  # noqa: PLR0915
         if denial is not None:
             return denial
 
+        # ---- task plan execution (structured delegation v2) -----------
+        _agent_result = state.get("agent_results", {}).get(agent_id, "")
+        if (
+            isinstance(_agent_result, str)
+            and _agent_result.startswith("__task_plan_")
+            and _agent_result != "__task_plan_complete__"
+        ):
+            from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
+                execute_task_batch,
+                get_plan_from_state,
+            )
+
+            plan = get_plan_from_state(state)
+            if plan and not plan.all_done():
+                ws_root = getattr(governance, "_workspace_root", None)
+                batch_result = await execute_task_batch(
+                    plan,
+                    agent,
+                    agent_id,
+                    model_provider,
+                    governance,
+                    all_agents or {},
+                    mcp_manager,
+                    provider_registry,
+                    workspace_root=ws_root,
+                )
+                return batch_result
+
         # ---- message + tool construction -----------------------------
         messages = _build_prompt_messages(agent, state)
         tools = _build_tools(agent, mcp_manager=mcp_manager)
@@ -344,6 +372,9 @@ def _add_routing_edges(
                     return target
 
             if agent_result == "__delegated_parallel__":
+                return _agent_id
+
+            if isinstance(agent_result, str) and agent_result.startswith("__task_plan_"):
                 return _agent_id
 
             return "__done__"
