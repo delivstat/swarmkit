@@ -2,15 +2,15 @@
 
 > An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
 
-**Status:** M0-M8 complete. CLI, HTTP server, 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support across all providers, sub-agent architecture with sequential delegation, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, 2 reference topologies, 20 skills, 16 archetypes, 550+ tests. Next: M9 (reference topologies).
+**Status:** v1.2.8. M0-M9 complete. Structured delegation v2 compiler with planner-driven task execution, parallel/sequential dependency ordering, crash-resilient task plans, auto-fix, and summary-first results. CLI, HTTP server, 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support across all providers, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, 2 reference topologies, 20 skills, 16 archetypes, 566 tests. Next: M9 reference topologies, Phase 3 continuation.
 
 ## Start here
 
 - [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, what works today, milestone progress.
 - [CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/CLAUDE.md): repo-wide invariants, feature-delivery workflow, release checklist.
 - [SwarmKit Design v0.6](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md): the authoritative architecture. §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §14 (Runtime), §18 (MCP Integration).
-- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): 4 phases — Phase 1 (Foundation) complete, Phase 2 (Runtime Completion) current.
-- [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): v1.0 release notes.
+- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): 4 phases — Phase 1 (Foundation) complete, Phase 2 (Runtime Completion) complete, Phase 3 (MCP + Delegation) in progress.
+- [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): release notes through v1.2.8.
 
 ## CLI commands
 
@@ -34,6 +34,27 @@ Production-quality topologies, archetypes, and skills under `reference/`:
 - [Skill Authoring Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/skill-authoring.yaml): 6 specialist agents.
 - [20 reference skills](https://github.com/delivstat/swarmkit/tree/main/reference/skills): GitHub MCP, decision, knowledge, coordination, persistence.
 - [16 archetypes](https://github.com/delivstat/swarmkit/tree/main/reference/archetypes): leaders, code review workers, authoring agents.
+
+## Structured delegation (v1.2.0+)
+
+Planner-driven task execution replaces simple sequential delegation. Coordinators call `create-task-plan` to generate a dependency-ordered task plan; the compiler executes tasks in parallel when independent, sequentially when dependent. Key tools:
+
+- `create-task-plan`: coordinator produces a structured plan with tasks, dependencies, and assignments
+- `update-task-plan`: modify an in-flight plan (add tasks, change assignments)
+- `read-task-result`: retrieve completed task results (summary-first: 3-5 bullet key_findings, full results on disk)
+
+Self-tasks let the coordinator do its own work (synthesis, diagrams). Plans are crash-resilient via `tasks.json` on disk — the CLI detects previous plans on fresh runs. Auto-fix adds missing dependencies and synthesis tasks. The compiler is split into 8 modules (was 1,854 lines in a single file, now all under 500 each).
+
+## Sterling workspace (reference implementation)
+
+Production-grade workspace under `examples/sterling-oms/` demonstrating enterprise-scale agent orchestration:
+
+- 6 topologies, 11 archetypes, 70+ skills
+- Sub-agent architecture: root coordinator delegates to architect, which delegates to 6 focused workers (jira, config, docs, developer, log-analyst, document-writer)
+- Atlassian wrapper MCP: structured JQL/CQL queries so models never write raw query syntax
+- Log analyser MCP: SQLite-indexed log analysis handling 500MB+ log files, 9 tools including `get-timer-detail` drill-down
+- Document writer with pandoc MCP for DOCX/PDF generation
+- Per-agent model selection: Kimi K2.5 for reasoning, DeepSeek V4 Flash for workers, DeepSeek Chat V3 for writing
 
 ## Design notes
 
