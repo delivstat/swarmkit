@@ -1501,6 +1501,15 @@ def _load_events_for_why(workspace_path: Path, run_id: str) -> str:
                 )
             return "\n".join(lines)
 
+    traces_dir = ws_root / ".swarmkit" / "traces"
+    if traces_dir.is_dir():
+        matches = list(traces_dir.glob(f"{run_id}*.json"))
+        if matches:
+            from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
+
+            trace = RunTrace.load(matches[0])
+            return trace.render_text()
+
     log_dir = ws_root / ".swarmkit" / "logs"
     if log_dir.is_dir():
         matches = [
@@ -1510,6 +1519,10 @@ def _load_events_for_why(workspace_path: Path, run_id: str) -> str:
         ]
         if matches:
             return sorted(matches, reverse=True)[0].read_text(encoding="utf-8").strip()
+
+    task_plan = ws_root / ".swarmkit" / "run-state" / "current" / "tasks.json"
+    if task_plan.is_file():
+        return task_plan.read_text(encoding="utf-8").strip()
 
     return ""
 
