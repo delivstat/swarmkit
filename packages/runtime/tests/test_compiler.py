@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
-from swarmkit_runtime.langgraph_compiler._compiler import _validate_and_correct
+from swarmkit_runtime.langgraph_compiler._output_gov import _validate_and_correct
 from swarmkit_runtime.model_providers import (
     CompletionRequest,
     CompletionResponse,
