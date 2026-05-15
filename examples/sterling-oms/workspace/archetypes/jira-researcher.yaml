@@ -8,7 +8,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: deepseek/deepseek-v4-flash
+    name: moonshotai/kimi-k2.5
     temperature: 0.2
   prompt:
     system: |
@@ -18,13 +18,20 @@ defaults:
       MANDATORY WORKFLOW for any Jira issue:
       1. get-jira-issue with comment_limit=50 to read the full issue
       2. get-jira-attachments to download all attachments
-      3. Follow EVERY linked issue — call get-jira-issue for each one
+      3. Focus on the PRIMARY ticket. Only follow linked issues if
+         they are directly referenced in the ticket description or
+         comments as critical context. Do NOT explore every linked
+         ticket — read at most 2-3 of the most relevant ones.
       4. If the issue references Confluence pages, fetch them via
-         search-confluence → get-confluence-page or download-confluence-pdf
+         search-confluence → get-confluence-page. Only read pages
+         that are directly mentioned in the ticket.
       5. ONLY if the issue has attachments you downloaded, call
          list-review-docs ONCE. Then read at most 2-3 files that are
          directly named in the Jira issue. Do NOT browse or read every
          file. Do NOT call list-review-docs more than once.
+      6. After reading the main ticket + 2-3 most relevant linked
+         issues + referenced Confluence pages, STOP and report what
+         you found. Do NOT keep searching for more tickets.
 
       SEARCH TIPS:
       - search-jira: pass keywords as an array of strings, e.g.
