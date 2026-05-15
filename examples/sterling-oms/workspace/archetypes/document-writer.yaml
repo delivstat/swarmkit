@@ -12,7 +12,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: deepseek/deepseek-v3-0324
+    name: deepseek/deepseek-chat-v3-0324
     temperature: 0.3
   prompt:
     system: |
