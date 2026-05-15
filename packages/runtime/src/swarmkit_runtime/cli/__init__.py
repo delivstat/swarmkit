@@ -697,7 +697,9 @@ def _execute_run(
             _stderr(f"  1. Approve: swarmkit review approve <id> {workspace_path}")
             _stderr(f"  2. Resume:  swarmkit run {workspace_path} {topology_name} --resume")
             raise typer.Exit(0) from None
-        _stderr(f"error: execution failed: {exc}")
+        _stderr(f"\nerror: execution failed: {exc}")
+        _stderr("\n⏸ State may be checkpointed. Try resuming:")
+        _stderr(f"  swarmkit run {workspace_path} {topology_name} --resume")
         raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
 
 
@@ -1787,6 +1789,53 @@ def trace(
 
     trace_data = RunTrace.load(matches[0])
     typer.echo(trace_data.render_text())
+
+
+@app.command()
+def checkpoints(
+    workspace_path: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", help="Workspace root directory."),
+    ] = Path("."),
+) -> None:
+    """List checkpointed runs that can be resumed.
+
+    Shows the last thread ID and any available checkpoint state.
+    Resume a run with: swarmkit run <workspace> <topology> --resume
+    """
+    ws_root = workspace_path.resolve()
+    thread_file = ws_root / ".swarmkit" / "state" / "last_thread.txt"
+    db_path = ws_root / ".swarmkit" / "state" / "checkpoints.db"
+
+    if not thread_file.is_file():
+        typer.echo("No checkpointed runs found.")
+        return
+
+    thread_id = thread_file.read_text(encoding="utf-8").strip()
+    typer.echo(f"Last checkpointed run: {thread_id}")
+
+    if db_path.is_file():
+        import sqlite3  # noqa: PLC0415
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT thread_id, COUNT(*) as steps "
+                "FROM checkpoints GROUP BY thread_id ORDER BY rowid DESC LIMIT 10"
+            ).fetchall()
+            if rows:
+                typer.echo(f"\nCheckpointed threads ({len(rows)}):")
+                for tid, steps in rows:
+                    marker = " ← resumable" if tid == thread_id else ""
+                    typer.echo(f"  {tid[:16]}...  {steps} steps{marker}")
+        except sqlite3.OperationalError:
+            typer.echo("  (checkpoint database exists but no data)")
+        finally:
+            conn.close()
+    else:
+        typer.echo("  (no checkpoint database found)")
+
+    typer.echo(f"\nResume: swarmkit run {workspace_path} <topology> --resume")
 
 
 # ---- stubs for later milestones ------------------------------------------
