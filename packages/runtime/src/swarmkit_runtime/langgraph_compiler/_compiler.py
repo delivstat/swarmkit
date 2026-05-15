@@ -170,10 +170,11 @@ def _build_agent_node(  # noqa: PLR0915
 
         # ---- task plan execution (structured delegation v2) -----------
         _agent_result = state.get("agent_results", {}).get(agent_id, "")
-        if (
-            isinstance(_agent_result, str)
-            and _agent_result.startswith("__task_plan_")
-            and _agent_result != "__task_plan_complete__"
+        _is_task_plan = isinstance(_agent_result, str) and _agent_result.startswith("__task_plan_")
+        if _is_task_plan and _agent_result in (
+            "__task_plan_created__",
+            "__task_plan_updated__",
+            "__task_plan_executing__",
         ):
             from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
                 execute_task_batch,
@@ -181,20 +182,24 @@ def _build_agent_node(  # noqa: PLR0915
             )
 
             plan = get_plan_from_state(state)
-            if plan and not plan.all_done():
-                ws_root = getattr(governance, "_workspace_root", None)
-                batch_result = await execute_task_batch(
-                    plan,
-                    agent,
-                    agent_id,
-                    model_provider,
-                    governance,
-                    all_agents or {},
-                    mcp_manager,
-                    provider_registry,
-                    workspace_root=ws_root,
-                )
-                return batch_result
+            if plan:
+                runnable = plan.get_runnable_tasks()
+                if runnable:
+                    ws_root = getattr(governance, "_workspace_root", None)
+                    batch_result = await execute_task_batch(
+                        plan,
+                        agent,
+                        agent_id,
+                        model_provider,
+                        governance,
+                        all_agents or {},
+                        mcp_manager,
+                        provider_registry,
+                        workspace_root=ws_root,
+                    )
+                    # If more tasks remain, let coordinator review
+                    # by falling through to LLM call on next re-entry
+                    return batch_result
 
         # ---- message + tool construction -----------------------------
         messages = _build_prompt_messages(agent, state)
