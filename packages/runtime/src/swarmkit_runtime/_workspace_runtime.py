@@ -204,6 +204,7 @@ class WorkspaceRuntime:
         *,
         max_steps: int = 50,
         thread_id: str | None = None,
+        previous_plan: dict | None = None,  # type: ignore[type-arg]
     ) -> RunResult:
         """Execute a topology end-to-end and return the result.
 
@@ -213,6 +214,8 @@ class WorkspaceRuntime:
 
         Pass ``thread_id`` to enable checkpoint-based resume. The same
         thread_id is used to resume a deferred run later.
+        Pass ``previous_plan`` to seed the run with a task plan from
+        a previous crashed run.
         """
         from uuid import uuid4  # noqa: PLC0415
 
@@ -234,13 +237,20 @@ class WorkspaceRuntime:
             required = collect_required_servers(topology)
             await self._mcp_manager.start_required(required)
         try:
+            initial_task_plan: dict = previous_plan if previous_plan else {}  # type: ignore[type-arg]
+            initial_agent_results: dict = {}  # type: ignore[type-arg]
+            if previous_plan:
+                leader_ids = [c.id for c in topology.root.children]
+                if leader_ids:
+                    initial_agent_results[leader_ids[0]] = "__task_plan_executing__"
+
             result = await graph.ainvoke(
                 {
                     "input": user_input,
                     "messages": [],
-                    "agent_results": {},
+                    "agent_results": initial_agent_results,
                     "delegation_counts": {},
-                    "task_plan": {},
+                    "task_plan": initial_task_plan,
                     "current_agent": "",
                     "output": "",
                 },

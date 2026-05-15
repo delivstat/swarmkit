@@ -577,7 +577,7 @@ def edit(
 
 
 @app.command()
-def run(
+def run(  # noqa: PLR0912
     workspace_path: Annotated[
         Path,
         typer.Argument(
@@ -657,7 +657,18 @@ def run(
             user_input = sys.stdin.read().strip()
         if not user_input:
             user_input = "hello"
-        result = _execute_run(runtime, topology_name, user_input, workspace_path)
+
+        prev_plan = _check_previous_plan(workspace_path)
+        if prev_plan:
+            result = _execute_run(
+                runtime,
+                topology_name,
+                user_input,
+                workspace_path,
+                previous_plan=prev_plan,
+            )
+        else:
+            result = _execute_run(runtime, topology_name, user_input, workspace_path)
 
     if result.output:
         typer.echo(result.output)
@@ -668,11 +679,57 @@ def run(
         _print_run_summary(result)
 
 
+def _check_previous_plan(workspace_path: Path) -> dict | None:  # type: ignore[type-arg]
+    """Check for a previous task plan from a crashed run."""
+    import json  # noqa: PLC0415
+
+    tasks_file = workspace_path.resolve() / ".swarmkit" / "run-state" / "current" / "tasks.json"
+    if not tasks_file.exists():
+        return None
+
+    try:
+        plan_data = json.loads(tasks_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    tasks = plan_data.get("tasks", [])
+    if not tasks:
+        return None
+
+    completed = [t for t in tasks if t.get("status") == "completed"]
+    pending = [t for t in tasks if t.get("status") == "pending"]
+    failed = [t for t in tasks if t.get("status") == "failed"]
+
+    if not completed:
+        return None
+
+    _stderr(f"\nFound previous run with {len(completed)}/{len(tasks)} tasks completed:")
+    for t in completed:
+        findings = t.get("key_findings", [])
+        summary = findings[0][:80] if findings else "no summary"
+        _stderr(f"  completed: {t['id']} ({t['agent']}) — {summary}")
+    for t in pending:
+        _stderr(f"  pending: {t['id']} ({t['agent']})")
+    for t in failed:
+        _stderr(f"  failed: {t['id']} ({t['agent']}) — {t.get('error', '')[:60]}")
+
+    if sys.stdin.isatty():
+        response = input("\nResume from previous plan? [Y/n] ").strip().lower()
+        if response in ("n", "no"):
+            import shutil  # noqa: PLC0415
+
+            run_state = workspace_path.resolve() / ".swarmkit" / "run-state" / "current"
+            shutil.rmtree(run_state, ignore_errors=True)
+            return None
+    return plan_data
+
+
 def _execute_run(
     runtime: WorkspaceRuntime,
     topology_name: str,
     user_input: str,
     workspace_path: Path,
+    previous_plan: dict | None = None,  # type: ignore[type-arg]
 ) -> RunResult:
     """Execute a topology run with HITL and interrupt handling."""
     from uuid import uuid4  # noqa: PLC0415
@@ -681,7 +738,14 @@ def _execute_run(
     _save_thread_id(workspace_path, thread_id)
 
     try:
-        return asyncio.run(runtime.run(topology_name, user_input, thread_id=thread_id))
+        return asyncio.run(
+            runtime.run(
+                topology_name,
+                user_input,
+                thread_id=thread_id,
+                previous_plan=previous_plan,
+            )
+        )
     except KeyError as exc:
         _stderr(str(exc).strip("'\""))
         raise typer.Exit(_EXIT_USAGE) from exc
