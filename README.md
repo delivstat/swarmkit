@@ -12,7 +12,7 @@
   <a href="https://pypi.org/project/swarmkit-runtime/"><img src="https://img.shields.io/pypi/v/swarmkit-runtime.svg" alt="PyPI" /></a>
   <a href="https://github.com/delivstat/swarmkit/actions"><img src="https://img.shields.io/github/actions/workflow/status/delivstat/swarmkit/ci.yml?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+" />
-  <img src="https://img.shields.io/badge/tests-500+-green.svg" alt="500+ tests" />
+  <img src="https://img.shields.io/badge/tests-566-green.svg" alt="566 tests" />
 </p>
 
 <!-- TODO: Record the demo GIF with: vhs scripts/demo.tape -->
@@ -210,6 +210,10 @@ swarmkit trace -w .            # list recent runs with token counts
 swarmkit trace <run-id> -w .   # show full call graph for a run
 ```
 
+### Structured delegation (M9 — shipped)
+
+Planner-driven task execution. Coordinators call `create-task-plan` to produce a dependency-ordered plan; the compiler executes independent tasks in parallel and dependent tasks sequentially. Plans are crash-resilient (`tasks.json` on disk) — the CLI detects previous plans on fresh runs. Results are summary-first (3-5 bullet key_findings, full results on disk). Auto-fix adds missing dependencies and synthesis tasks.
+
 ### Sub-agent architecture (M8 — shipped)
 
 Agents can delegate to focused sub-agents instead of handling everything with one overloaded tool set. A coordinator with 40+ tools becomes a coordinator with 4 delegate tools orchestrating focused researchers — each with 10-12 tools and their own 25-turn tool budget.
@@ -242,7 +246,7 @@ swarmkit author skill my-workspace/ --thorough
 
 ## Real-world example
 
-The [`examples/sterling-oms/`](./examples/sterling-oms/) workspace demonstrates reasoning over 1,000+ API javadocs with multiple MCP servers (ChromaDB vector search, FTS5 keyword search, CDT config server) — a production-grade setup for enterprise domain knowledge.
+The [`examples/sterling-oms/`](./examples/sterling-oms/) workspace demonstrates enterprise-scale agent orchestration: 6 topologies, 11 archetypes, 70+ skills. A root coordinator delegates to an architect, which delegates to 6 focused workers (jira, config, docs, developer, log-analyst, document-writer). Includes an Atlassian wrapper MCP (structured JQL/CQL), a log analyser MCP (SQLite-indexed, 500MB+ logs, 9 tools), and a document writer with pandoc MCP for DOCX/PDF generation. Per-agent model selection: Kimi K2.5 for reasoning, DeepSeek V4 Flash for workers, DeepSeek Chat V3 for writing.
 
 ## Install from source
 
@@ -255,7 +259,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and build
 git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
 just install          # uv sync + pnpm install
-just test             # 500+ tests across Python + TypeScript
+just test             # 566 tests across Python + TypeScript
 just lint             # ruff + biome
 just typecheck        # mypy + tsc
 ```
@@ -286,7 +290,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M0-M8 complete. Current focus: M9 (reference topologies).
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M0-M9 complete (v1.2.8). Phase 3 in progress.
 
 ## Contributing
 

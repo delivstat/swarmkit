@@ -36,8 +36,8 @@ status: active
 | 2 | M6 | Observability + human interaction | ✅ | AuditProvider, OTel, ring buffer, circuit breakers, notifications, CLI rewrite, redaction |
 | 2 | M6.5 | Workspace env configuration | ✅ | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
 | 2 | M7 | Intent drift detection | ✅ | IntentObserver, schema extension, compiler wiring, authoring integration |
-| 3 | M8 | Knowledge + skills ecosystem (enhance) | 🟡 | Skill registry CLI + user knowledge server + knowledge curator topology |
-| 3 | M9 | Reference topologies (enhance) | 🟡 | Code review + skill authoring swarms runnable end-to-end |
+| 3 | M8 | MCP integration layer | ✅ | Lazy startup, permission tiers, multimodal, document reader, MarkItDown |
+| 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, Sterling log analyser ✅, reference topologies remaining |
 | 4 | M10 | Eject + execution modes | — | `swarmkit eject` + `swarmkit serve` + canary deployments |
 | 4 | M11 | Launch prep | — | `pip install swarmkit` → working swarm in <15 min |
 
@@ -381,28 +381,38 @@ A reference topology demonstrating DAG execution, HITL approval gates, governanc
 
 **Exit demo:** `swarmkit run examples/logistics-control-tower/ control-tower --input "Process today's exceptions"` — detects exceptions → scores couriers → resolves (some auto-execute, some escalate to HITL) → sends customer notifications. Drift detection flags if the resolution agent drifts from its mandate.
 
-#### Structured delegation model (v2 compiler)
+#### Structured delegation model (v2 compiler) ✅
 
-Replace free-text delegation with JSON task objects and persistent state. Inspired by Anthropic's [effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) — their key finding: models respect structured JSON data more than prose instructions, and persistent progress files survive context loss.
+Replaced free-text `delegate_to_*` with planner-driven task execution. See `design/details/structured-delegation.md`.
 
-**Problem:** current text-based delegation breaks with smaller models (hy3-preview, Reka Flash) — they re-delegate to completed children, lose track of progress when context compacts, and the architect's context window fills with 50KB+ of raw child output.
+**Shipped (v1.2.0 – v1.2.8):**
 
-**Design:**
+- [x] **`create-task-plan` + `update-task-plan` + `read-task-result`** — compiler-injected tools for agents with 2+ children (PR #176)
+- [x] **Task execution engine** — parallel batch execution, self-tasks, dependency ordering (PR #178)
+- [x] **Checkpoint review loop** — coordinator reviews findings, modifies plan at checkpoints (PR #179)
+- [x] **Summary-first child results** — 3-5 bullet key_findings via LLM, full results on disk (PR #180)
+- [x] **Init-read + resume from disk** — tasks.json survives crashes, CLI detects previous plans (PR #181)
+- [x] **Auto-fix dependencies** — self/document-writer tasks auto-depend on research tasks (PR #183)
+- [x] **Auto-add synthesis** — compiler adds synthesis task when model omits it (PR #184)
+- [x] **read-task-result in tool loop** — no longer causes re-delegation loop (PR #187)
+- [x] **Compiler split** — 1854-line file split into 8 modules under 500 lines each (PR #177)
+- [x] **Sterling workspace v3.0** — 6 workers (jira, config, docs, developer, log-analyst, document-writer)
 
-- [ ] **JSON task tracker** — compiler maintains a structured task object per delegation:
-  ```json
-  {"id": "jira-research", "agent": "jira-researcher", "status": "completed",
-   "key_findings": ["5 RETN tickets", "RT-727 main issue"],
-   "full_result_path": ".swarmkit/run-state/jira-research.md"}
-  ```
-- [ ] **Persistent run state** — task tracker written to `.swarmkit/run-state/<run-id>.json` after each child completes. Survives forced synthesis and context compaction.
-- [ ] **Summary-first child results** — pass `key_findings` (3-5 bullets) to the coordinator, not the full 50KB output. Full results persisted to disk, available via `read-context` skill if the coordinator needs detail.
-- [ ] **Status-aware tool filtering** — delegation tools for `"status": "completed"` children hidden from the model unless the coordinator explicitly requests a follow-up (new tool: `re_delegate_to_<child>`).
-- [ ] **Init-read pattern** — when a coordinator re-enters (after child returns), it reads the task tracker first to rebuild context. Mirrors the article's "session initialization sequence."
+**Sterling-specific features shipped:**
 
-**Dependencies:** M8 ✅ (MCP skills for write-notes/read-context), partial child results (v1.1.15).
+- [x] **Atlassian wrapper MCP** — structured input, no JQL/CQL syntax needed (PR #169)
+- [x] **Log analyser MCP** — SQLite-indexed, 500MB+ support, 9 tools, TIMER/SQLDEBUG parsing (PR #186)
+- [x] **Log-analyst archetype** — dedicated agent with 8-step mandatory workflow (PR #189)
+- [x] **Document writer** — pandoc MCP for DOCX/PDF generation (PR #156)
 
-**Exit demo:** Sterling assistant with hy3-preview — no blind re-delegation, coordinator context stays under 10K tokens even with 5 children, full research preserved on disk.
+**Exit demo:** Sterling assistant creates task plan → log-analyst produces grounded 200+ line analysis with real SQL, call trees, timestamps → architect synthesizes → document-writer formats. All persisted to disk, resumable on crash.
+
+#### Reference topologies — remaining
+
+- [ ] **Code Review Swarm** — wire to real GitHub MCP, HITL gate, e2e test
+- [ ] **Skill Authoring Swarm** — multi-agent authoring flow, provenance tagging
+- [ ] **Knowledge Curator** — topology + wiki-fs MCP server
+- [ ] **Logistics Control Tower** — DAG + HITL + drift demo topology
 
 ---
 
@@ -535,6 +545,8 @@ Every design note under `design/details/` and where it appears in this plan:
 | `user-knowledge-server.md` | M8 |
 | `workspace-env-config.md` | M6.5 |
 | `workspace-schema-v1.md` | M0 ✅ |
+| `structured-delegation.md` | M9 ✅ |
+| `document-writer-pattern.md` | M8 ✅ |
 
 ## Open questions
 
