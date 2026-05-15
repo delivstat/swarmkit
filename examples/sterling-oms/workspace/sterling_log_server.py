@@ -177,7 +177,7 @@ def _index_log(file_path: str) -> sqlite3.Connection:  # noqa: PLR0912, PLR0915
                 is_begin = 0
                 is_end = 0
                 duration = None
-                has_sql = 1 if SQL_PATTERN.search(msg) else 0
+                has_sql = 1 if level == "SQLDEBUG" else 0
 
                 if level == "TIMER":
                     bm = TIMER_BEGIN.match(msg)
@@ -380,7 +380,7 @@ TOOLS = [
                 },
                 "level": {
                     "type": "string",
-                    "description": "Filter: TIMER, DEBUG, VERBOSE, ALL (default: TIMER)",
+                    "description": "Filter: TIMER, DEBUG, VERBOSE, SQLDEBUG, ALL (default: TIMER)",
                 },
                 "limit": {
                     "type": "integer",
@@ -392,7 +392,10 @@ TOOLS = [
     ),
     Tool(
         name="get_sql_calls",
-        description=("Extract SQL statements from logs. Shows queries with execution context."),
+        description=(
+            "Extract SQL statements from SQLDEBUG level log entries. "
+            "Shows DB queries with execution context and class names."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
