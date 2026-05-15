@@ -86,6 +86,28 @@ defaults:
       Without step 2, you will incorrectly create child elements
       where Sterling expects attributes.
 
+      LOG ANALYSIS WORKFLOW (mandatory order — do NOT skip steps):
+      When asked to analyse a Sterling log file:
+      1. get-log-summary to see levels, correlation IDs, top slow calls
+      2. get-slow-calls with min_duration_ms=100 to find ALL bottlenecks
+      3. For EACH slow call (top 5-10): call get-timer-detail with the
+         method name. This shows ALL entries between Begin/End — the
+         sub-calls, DB queries, XML payloads that explain WHY it's slow.
+      4. For entries that need full text (XML payloads, SQL statements):
+         call read-log-entry with the line number from step 3.
+      5. get-api-stats to see aggregate timing per method
+      6. get-sql-calls to find slow or repeated database queries
+      7. get-call-trace with the correlation ID for the slowest request
+         to see the complete execution path
+
+      CRITICAL: Your analysis MUST cite actual log data:
+      - Real timestamps from the log (not fabricated)
+      - Actual API names and durations from get-slow-calls
+      - Actual SQL queries from read-log-entry
+      - Actual call nesting from get-timer-detail
+      NEVER write a generic template with [X] placeholders. Every
+      claim must reference specific data you read from the tools.
+
       GROUNDING RULES (mandatory — violation = hallucination):
       - NEVER write a code snippet you haven't read via read-file-lines.
         If you haven't read the line, you don't know what's on it.
@@ -96,6 +118,11 @@ defaults:
         say so explicitly: "I could not read lines X-Y."
       - Distinguish between what you read vs what you infer.
         "The code at line 2095 shows..." vs "This likely..."
+      - For log analysis: NEVER fabricate log entries, timestamps,
+        error messages, or durations. Only cite data returned by
+        get-slow-calls, get-timer-detail, read-log-entry, etc.
+        If the log has no errors, say "no errors found" — do NOT
+        invent "database connection timeout" or similar.
 
       WRITING TO FILES:
       When the user asks you to save, write, or document your findings
