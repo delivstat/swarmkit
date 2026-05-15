@@ -128,6 +128,7 @@ defaults:
     - get-sql-calls
     - search-logs
     - get-api-stats
+    - get-timer-detail
   iam:
     base_scope: [knowledge:read, repo:read, sterling:read]
 provenance:

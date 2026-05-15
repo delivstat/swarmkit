@@ -379,6 +379,55 @@ TOOLS = [
             "required": ["file"],
         },
     ),
+    Tool(
+        name="get_timer_detail",
+        description=(
+            "Drill into a slow TIMER call to see WHY it was slow. "
+            "Finds the Begin/End of the specified method, then shows "
+            "ALL entries (DEBUG, VERBOSE, SQL) that occurred between "
+            "them for the same correlation ID and thread. Works on "
+            "a single log file — the file must have DEBUG/VERBOSE "
+            "level entries, not just TIMER. If you only have a "
+            "TIMER-filtered file, pass the full log file instead."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string",
+                    "description": (
+                        "Log file with full detail (DEBUG/VERBOSE). "
+                        "Use the unfiltered log, not a TIMER-only file."
+                    ),
+                },
+                "method": {
+                    "type": "string",
+                    "description": (
+                        "Method name from timer (e.g. "
+                        "'createReturnOrder'). If multiple matches, "
+                        "uses the slowest."
+                    ),
+                },
+                "correlation_id": {
+                    "type": "string",
+                    "description": (
+                        "Correlation ID to narrow the search. "
+                        "Optional — if omitted, uses the slowest "
+                        "match for the method."
+                    ),
+                },
+                "class_name": {
+                    "type": "string",
+                    "description": ("Class name filter (optional, narrows match)"),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max entries to return (default: 200)",
+                },
+            },
+            "required": ["file", "method"],
+        },
+    ),
 ]
 
 
@@ -548,6 +597,66 @@ def _dispatch(  # noqa: PLR0911, PLR0912, PLR0915
             lines.append(
                 f"{cnt:>6d}  {mn:>6d}ms  {mx:>6d}ms  {avg:>6d}ms  {total:>6d}ms  {key:<50s}"
             )
+        return "\n".join(lines)
+
+    if name == "get_timer_detail":
+        parsed = _parse_log(args["file"])
+        method = args.get("method", "")
+        corr_id = args.get("correlation_id", "")
+        cls_filter = args.get("class_name", "")
+        limit = args.get("limit", 200)
+
+        candidates = [
+            c
+            for c in parsed.timer_calls
+            if (not method or method.lower() in c.method.lower())
+            and (not corr_id or c.correlation_id == corr_id)
+            and (not cls_filter or cls_filter.lower() in c.class_name.lower())
+        ]
+        if not candidates:
+            return (
+                f"No timer call found for method='{method}' corr_id='{corr_id}' in {args['file']}"
+            )
+
+        target = max(candidates, key=lambda c: c.duration_ms)
+
+        between = [
+            e
+            for e in parsed.entries
+            if e.correlation_id == target.correlation_id
+            and e.thread == target.thread
+            and target.timestamp_begin <= e.timestamp <= target.timestamp_end
+        ]
+
+        lines = [
+            f"Timer detail: {target.method}::{target.class_name}",
+            f"  Duration: {target.duration_ms}ms",
+            f"  Correlation: {target.correlation_id}",
+            f"  Thread: {target.thread}",
+            f"  Begin: {target.timestamp_begin}",
+            f"  End:   {target.timestamp_end}",
+            f"  Entries between: {len(between)}",
+            "",
+        ]
+        for e in between[:limit]:
+            msg = e.message[:200]
+            lines.append(f"  {e.timestamp}  {e.level:7s}  {e.class_name:25s}  {msg}")
+        if len(between) > limit:
+            lines.append(f"\n  ... {len(between) - limit} more entries truncated")
+
+        sub_timers = [
+            c
+            for c in parsed.timer_calls
+            if c.correlation_id == target.correlation_id
+            and c.thread == target.thread
+            and target.timestamp_begin <= c.timestamp_begin
+            and c.timestamp_end <= target.timestamp_end
+            and c != target
+        ]
+        if sub_timers:
+            lines.append(f"\nSub-calls ({len(sub_timers)}):")
+            lines.append(_format_timer_table(sub_timers, limit=30))
+
         return "\n".join(lines)
 
     return f"Unknown tool: {name}"
