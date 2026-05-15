@@ -83,12 +83,22 @@ class TaskPlan:
     def validate_dependencies(self) -> list[str]:
         errors: list[str] = []
         task_ids = {t.id for t in self.tasks}
+        _synthesis_agents = {"self", "document-writer"}
         for task in self.tasks:
             for dep in task.depends_on:
                 if dep not in task_ids:
                     errors.append(f"Task '{task.id}' depends on '{dep}' which doesn't exist")
             if task.id in task.depends_on:
                 errors.append(f"Task '{task.id}' depends on itself")
+            if task.agent in _synthesis_agents and not task.depends_on:
+                other_tasks = [t.id for t in self.tasks if t.id != task.id]
+                if other_tasks:
+                    errors.append(
+                        f"Task '{task.id}' (agent={task.agent}) has no "
+                        f"depends_on but should depend on research tasks. "
+                        f"Without dependencies it runs in parallel and "
+                        f"won't have data to work with."
+                    )
         return errors
 
     def get_runnable_tasks(self) -> list[Task]:
@@ -260,9 +270,17 @@ def build_create_task_plan_tool(agent: ResolvedAgent) -> ToolSpec:
         description=(
             "Create an execution plan for your workers and yourself. "
             "Each task is assigned to an available agent or to 'self' "
-            "for tasks you handle. Tasks with no depends_on run in parallel. "
-            "The compiler executes the plan and reports results at each "
-            "checkpoint.\n\n"
+            "for tasks you handle.\n\n"
+            "IMPORTANT: Use depends_on to set execution order. Tasks "
+            "with NO depends_on run in parallel. Tasks that need "
+            "results from other tasks MUST list those task IDs in "
+            "depends_on. Self-tasks (synthesis, document writing) "
+            "should ALWAYS depend on the research tasks.\n\n"
+            "Example ordering:\n"
+            '  {"id":"research","agent":"jira-researcher","depends_on":[]}\n'
+            '  {"id":"config","agent":"config-analyst","depends_on":["research"]}\n'
+            '  {"id":"synthesize","agent":"self","depends_on":["config"]}\n'
+            '  {"id":"write-doc","agent":"document-writer","depends_on":["synthesize"]}\n\n'
             f"Available agents:\n{agent_list}"
         ),
         input_schema={
