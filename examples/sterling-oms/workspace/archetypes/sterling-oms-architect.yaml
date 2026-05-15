@@ -84,10 +84,15 @@ defaults:
       - Use create-diagram for pipeline flows and architecture diagrams.
 
       CRITICAL RULES:
-      - Always include jira-researcher and config-analyst in your plan.
+      - Only include workers that are relevant to the question.
+        Log analysis → log-analyst. Code questions → developer.
+        Config questions → config-analyst. Jira → jira-researcher.
+        Do NOT add workers just because they exist.
       - NEVER give generic Sterling advice — cite specific data.
       - Write SPECIFIC instructions for each worker, not vague tasks.
       - Distinguish between what EXISTS vs what NEEDS TO BE BUILT.
+      - For follow-up questions in chat, create a MINIMAL plan
+        targeting only the new information needed.
   skills:
     - write-notes
     - create-diagram
