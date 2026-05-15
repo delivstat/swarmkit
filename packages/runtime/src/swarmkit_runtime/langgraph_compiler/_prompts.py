@@ -89,13 +89,24 @@ _INCOMPLETE_MARKERS = [
     "to investigate",
     "to read",
     "to check",
+    "let me now",
+    "let me search",
+    "let me look",
+    "i noticed",
+    "i want to",
+    "i'm going to",
+    "let's look",
+    "let's check",
+    "let's search",
 ]
 
 
 def _looks_incomplete(text: str) -> bool:
     """Check if a response contains planning language without actual results."""
     lower = text.lower().strip()
-    return len(lower) < 200 and any(m in lower for m in _INCOMPLETE_MARKERS)
+    if not lower or lower == "(no response)":
+        return True
+    return len(lower) < 500 and any(m in lower for m in _INCOMPLETE_MARKERS)
 
 
 def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | None:

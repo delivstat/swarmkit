@@ -214,7 +214,16 @@ async def _execute_child_task(
 
     result_state = await child_fn(child_state)
     _comp._current_parent_agent = _prev_parent
-    return str(result_state.get("output", "(no response)"))
+    output = str(result_state.get("output", "(no response)"))
+
+    from swarmkit_runtime.langgraph_compiler._prompts import (  # noqa: PLC0415
+        _looks_incomplete,
+    )
+
+    if _looks_incomplete(output):
+        _progress(f"  [{parent_id}] child '{task.agent}' returned planning text, not findings")
+        output = f"(agent returned planning text instead of findings: {output[:100]})"
+    return output
 
 
 async def _execute_self_task(
