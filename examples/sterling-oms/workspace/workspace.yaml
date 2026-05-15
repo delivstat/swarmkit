@@ -105,6 +105,14 @@ mcp_servers:
     env:
       STERLING_CODE_GRAPH: "${STERLING_CODE_GRAPH}"
       STERLING_PROJECT_CODE_DIR: "${STERLING_PROJECT_CODE_DIR}"
+  # Sterling log analyser — parses log4j FLAT format, TIMER/SQL analysis
+  # Supports VERBOSE, DEBUG, TIMER, SQLDEBUG log levels
+  - id: sterling-logs
+    transport: stdio
+    command: ["uv", "run", "sterling_log_server.py"]
+    env:
+      STERLING_LOG_DIR: "${STERLING_PROJECT_CODE_DIR}"
+    permission: readonly
   # Atlassian wrapper — structured-input tools that build valid JQL/CQL
   # internally, then proxy to mcp-atlassian. Models never write query syntax.
   # Requires: CONFLUENCE_URL, JIRA_URL, ATLASSIAN_USERNAME, ATLASSIAN_API_TOKEN

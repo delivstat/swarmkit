@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-timer-detail
+  name: Get Timer Detail
+  description: >
+    Drill into a slow TIMER call to see WHY it was slow. Shows all
+    DEBUG/VERBOSE/SQL entries that occurred between the Begin and End
+    of a specific method call. Also shows sub-calls with their timing.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: get_timer_detail

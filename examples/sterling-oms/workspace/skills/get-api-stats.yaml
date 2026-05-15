@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-api-stats
+  name: Get API Stats
+  description: >
+    Get timing statistics per API/method from Sterling TIMER logs.
+    Shows count, min, max, avg, total duration for each method.
+    Use to find which APIs consume the most time.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: get_api_stats
