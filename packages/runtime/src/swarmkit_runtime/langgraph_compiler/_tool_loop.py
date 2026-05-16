@@ -21,6 +21,45 @@ from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomp
 _MAX_TOOL_CALLS_PER_TURN = int(os.environ.get("SWARMKIT_MAX_TOOLS", "10"))
 
 
+def _handle_freeze_scope(block: Any, agent_id: str) -> str:
+    """Handle freeze-scope tool call — write scope.json and return confirmation."""
+    import json as _json  # noqa: PLC0415
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    args = block.tool_input
+    if isinstance(args, str):
+        try:
+            args = _json.loads(args)
+        except (ValueError, TypeError):
+            args = {}
+    if not isinstance(args, dict):
+        args = {}
+
+    scope_data = {
+        "source": args.get("source", ""),
+        "requirements": args.get("requirements", []),
+        "constraints": args.get("constraints", []),
+        "authoritative_sources": args.get("authoritative_sources", []),
+        "excluded": args.get("excluded", []),
+        "decisions": args.get("decisions", []),
+        "related": args.get("related", []),
+    }
+
+    run_state = _Path(".swarmkit") / "run-state" / "current"
+    run_state.mkdir(parents=True, exist_ok=True)
+    scope_path = run_state / "scope.json"
+    scope_path.write_text(_json.dumps(scope_data, indent=2), encoding="utf-8")
+
+    reqs = len(scope_data["requirements"])
+    constraints = len(scope_data["constraints"])
+    _progress(f"[{agent_id}] scope frozen: {reqs} requirements, {constraints} constraints")
+    return (
+        f"Scope frozen successfully. {reqs} requirements, "
+        f"{constraints} constraints. The spec-conformance skill "
+        f"will validate your synthesis against this scope."
+    )
+
+
 def _handle_read_task_result(block: Any, agent_id: str) -> str:  # noqa: PLR0911
     """Handle read-task-result as a tool call, not a state change."""
     import json as _json  # noqa: PLC0415
@@ -101,8 +140,18 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
         if block.tool_name in (
             "create-task-plan",
             "update-task-plan",
-            "freeze-scope",
         ):
+            continue
+        if block.tool_name == "freeze-scope":
+            result_text = _handle_freeze_scope(block, agent.id)
+            results.append(
+                ToolCallResult(
+                    tool_use_id=block.tool_use_id or f"call_{len(results)}",
+                    tool_name=block.tool_name,
+                    result=result_text,
+                    image_blocks=[],
+                )
+            )
             continue
         if block.tool_name == "read-task-result":
             result_text = _handle_read_task_result(block, agent.id)
