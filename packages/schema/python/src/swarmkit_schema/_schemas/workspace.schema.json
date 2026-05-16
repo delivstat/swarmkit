@@ -92,6 +92,11 @@
               "description": "Maximum estimated LLM cost (USD) per run before abort."
             }
           }
+        },
+        "decision_skills": {
+          "type": "array",
+          "description": "Mandatory decision skills that fire at specified trigger points. Topologies inherit these and can override by id.",
+          "items": { "$ref": "#/$defs/decision_skill_binding" }
         }
       }
     },
@@ -249,6 +254,36 @@
           "properties": {
             "default_backend": { "enum": ["sqlite", "postgres"] }
           }
+        }
+      }
+    },
+    "decision_skill_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trigger"],
+      "description": "Binds a decision skill to a trigger point. Workspace bindings are inherited by all topologies; topology bindings can override by id.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Decision skill ID. Must exist in workspace skill registry."
+        },
+        "trigger": {
+          "enum": ["post_output", "checkpoint", "pre_synthesis"],
+          "description": "When the skill fires: post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis)."
+        },
+        "scope": {
+          "type": "string",
+          "description": "Comma-separated agent IDs this binding applies to. Default '*' = all agents in the topology."
+        },
+        "required": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true, output is rejected when this skill returns a failing verdict. Set false to disable an inherited workspace binding."
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Skill-specific configuration (confidence thresholds, retry limits, etc)."
         }
       }
     }
