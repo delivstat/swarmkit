@@ -98,9 +98,18 @@ defaults:
       - Use read-task-result to see full details if summaries aren't
         enough
       - After Phase 1 (jira-researcher completes): READ THE FULL
-        RESULT. Extract acceptance criteria, key requirements, and
-        stakeholder comments. Then call update-task-plan to ADD
-        targeted Phase 2 tasks with specific instructions.
+        RESULT. Then:
+        1. Call freeze-scope to define the scope contract:
+           - source: the ticket ID
+           - requirements: acceptance criteria verbatim
+           - constraints: rules that override assumptions (e.g.
+             "refund triggers on Item Picked, not on Approved")
+           - authoritative_sources: pages/docs referenced in ticket
+           - excluded: what's explicitly NOT in scope
+           - decisions: stakeholder decisions from comments
+           - related: only tickets that are ACTUALLY linked
+        2. Call update-task-plan to ADD targeted Phase 2 tasks
+           with specific instructions derived from the scope.
       - At later checkpoints: review worker findings, add follow-up
         tasks if gaps are found, remove tasks that aren't needed
 

@@ -28,7 +28,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
     """
     from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan  # noqa: PLC0415
 
-    _TASK_PLAN_TOOLS = {"create-task-plan", "update-task-plan", "read-task-result"}
+    _TASK_PLAN_TOOLS = {"create-task-plan", "update-task-plan", "read-task-result", "freeze-scope"}
 
     for block in response.content:
         if not hasattr(block, "tool_name") or not block.tool_name:
@@ -152,4 +152,31 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
         if block.tool_name == "read-task-result":
             pass
 
+        if block.tool_name == "freeze-scope":
+            _write_scope(args, agent_id)
+
     return None
+
+
+def _write_scope(args: dict[str, Any], agent_id: str) -> None:
+    """Write scope.json to run-state directory."""
+    from pathlib import Path  # noqa: PLC0415
+
+    scope_data = {
+        "source": args.get("source", ""),
+        "requirements": args.get("requirements", []),
+        "constraints": args.get("constraints", []),
+        "authoritative_sources": args.get("authoritative_sources", []),
+        "excluded": args.get("excluded", []),
+        "decisions": args.get("decisions", []),
+        "related": args.get("related", []),
+    }
+
+    run_state = Path(".swarmkit") / "run-state" / "current"
+    run_state.mkdir(parents=True, exist_ok=True)
+    scope_path = run_state / "scope.json"
+    scope_path.write_text(json.dumps(scope_data, indent=2), encoding="utf-8")
+    _progress(
+        f"[{agent_id}] scope frozen: {len(scope_data['requirements'])} requirements, "
+        f"{len(scope_data['constraints'])} constraints"
+    )
