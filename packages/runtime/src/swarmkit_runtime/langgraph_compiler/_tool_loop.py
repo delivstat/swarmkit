@@ -21,6 +21,44 @@ from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomp
 _MAX_TOOL_CALLS_PER_TURN = int(os.environ.get("SWARMKIT_MAX_TOOLS", "10"))
 
 
+def _check_for_state_change(
+    response: CompletionResponse,
+    agent: ResolvedAgent,
+    agent_id: str,
+    state: Any,
+) -> dict[str, Any] | None:
+    """Check if model response contains state-changing tools (update-task-plan).
+
+    If found, processes all tools via _handle_task_plan_tools and returns
+    the state dict. This causes the tool loop to terminate and return
+    the state change to the compiler.
+    """
+    has_state_tool = any(
+        hasattr(b, "tool_name") and b.tool_name in ("create-task-plan", "update-task-plan")
+        for b in response.content
+    )
+    if not has_state_tool:
+        return None
+
+    from ._task_plan_handler import _handle_task_plan_tools  # noqa: PLC0415
+
+    disk_state = _load_state_from_disk()
+    return _handle_task_plan_tools(response, agent, agent_id, disk_state)
+
+
+def _load_state_from_disk() -> dict[str, Any]:
+    """Load task plan state from disk for tool-loop state changes."""
+
+    tasks_path = _find_tasks_json()
+    if not tasks_path:
+        return {}
+
+    from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan  # noqa: PLC0415
+
+    plan = TaskPlan.load(tasks_path)
+    return {"task_plan": plan.to_dict()}
+
+
 def _handle_freeze_scope(block: Any, agent_id: str) -> str:
     """Handle freeze-scope tool call — write scope.json and return confirmation."""
     import json as _json  # noqa: PLC0415
@@ -215,7 +253,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
     governance: GovernanceProvider,
     tool_results: list[ToolCallResult],
     verbose: str,
-) -> str:
+) -> str | dict[str, Any]:
     """Run the multi-turn tool loop until final text or turn limit.
 
     Keeps calling the model with tool results until it produces a final
@@ -265,6 +303,10 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
                 file=sys.stderr,
             )
         current_response = await model_provider.complete(follow_up)
+
+        state_change = _check_for_state_change(current_response, agent, agent.id, None)
+        if state_change is not None:
+            return state_change
 
         next_results = await _handle_skill_tool_calls(
             current_response,
