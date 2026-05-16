@@ -456,3 +456,63 @@ def build_read_task_result_tool() -> ToolSpec:
             "required": ["task_id"],
         },
     )
+
+
+def build_freeze_scope_tool() -> ToolSpec:
+    return ToolSpec(
+        name="freeze-scope",
+        description=(
+            "Define the scope contract for this run. Call after reading "
+            "the source material (ticket, brief, requirements doc) to "
+            "freeze what must be satisfied, what's excluded, and what "
+            "constraints apply. The spec-conformance skill validates "
+            "output against this frozen scope."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "description": "Where this scope comes from (ticket ID, doc path, brief)",
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "What must be satisfied — acceptance criteria, deliverables",
+                },
+                "constraints": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Non-negotiable rules that override default assumptions",
+                },
+                "authoritative_sources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Documents/pages that are the source of truth",
+                },
+                "excluded": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Explicitly out of scope — prevents scope inflation",
+                },
+                "decisions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "by": {"type": "string"},
+                            "date": {"type": "string"},
+                            "decision": {"type": "string"},
+                        },
+                    },
+                    "description": "Stakeholder decisions that constrain the design",
+                },
+                "related": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Related items — only explicitly linked, not inferred",
+                },
+            },
+            "required": ["source", "requirements"],
+        },
+    )

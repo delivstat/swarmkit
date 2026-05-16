@@ -77,28 +77,33 @@ it contradict the spec? Does it introduce claims outside scope?
 
 ## Scope freeze: how it's produced
 
-The architect's self-task at the Phase 1 checkpoint:
+The compiler auto-injects `freeze-scope` as a platform tool for
+any agent with task planning tools. The architect calls it after
+reading source material:
 
 ```
-After reading the jira-researcher result:
-1. Extract all acceptance criteria verbatim from the ticket
-2. List linked tickets (from Jira links, NOT from search results)
-3. Identify parent epic from the issue hierarchy
-4. Extract key stakeholder comments with dates and decisions
-5. Identify authoritative source documents (referenced in ticket)
-6. Define what is explicitly OUT of scope
-7. Note any constraints that override default assumptions
-
-Write this to scope.json. All subsequent task instructions MUST
-reference items from this scope. The synthesis MUST satisfy every
-AC. The spec-conformance skill will validate against this scope.
+freeze-scope({
+  source: "RT-727",
+  requirements: ["OMS must support return for replacement orders", ...],
+  constraints: ["Refund triggers on Item Picked (3700.104)"],
+  authoritative_sources: ["Returns V2 spec pages"],
+  excluded: ["Non-replacement returns", "Marketplace channel"],
+  decisions: [{"by": "gopu", "date": "2026-04-29", "decision": "RTO sub-scenario"}],
+  related: ["RT-726"]
+})
 ```
+
+The tool validates the schema and writes `scope.json` to disk.
+All subsequent task instructions MUST reference items from this
+scope. The spec-conformance skill validates against it.
 
 ## Scope freeze: where it lives
 
 - **Runtime path:** `.swarmkit/run-state/current/scope.json`
-- **Written by:** architect self-task (Phase 1 checkpoint)
+- **Written by:** `freeze-scope` platform tool (called by architect)
 - **Read by:** spec-conformance decision skill (pre_synthesis)
+- **Injected:** auto-injected alongside task planning tools for
+  any coordinator with 2+ children
 - **Passed to workers:** key items embedded in task instructions
   (workers don't read scope.json directly — the architect
   translates scope into specific instructions per worker)

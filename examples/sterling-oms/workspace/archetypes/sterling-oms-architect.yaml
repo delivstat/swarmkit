@@ -99,14 +99,15 @@ defaults:
         enough
       - After Phase 1 (jira-researcher completes): READ THE FULL
         RESULT. Then:
-        1. Write scope.json using write-notes with path
-           ".swarmkit/run-state/current/scope.json" containing:
-           {"ticket_id": "...", "acceptance_criteria": [...],
-            "linked_tickets": [...], "parent_epic": "...",
-            "stakeholder_inputs": [{"author","date","key_point"}],
-            "authoritative_sources": [...],
-            "excluded_from_scope": [...],
-            "key_constraints": [...]}
+        1. Call freeze-scope to define the scope contract:
+           - source: the ticket ID
+           - requirements: acceptance criteria verbatim
+           - constraints: rules that override assumptions (e.g.
+             "refund triggers on Item Picked, not on Approved")
+           - authoritative_sources: pages/docs referenced in ticket
+           - excluded: what's explicitly NOT in scope
+           - decisions: stakeholder decisions from comments
+           - related: only tickets that are ACTUALLY linked
         2. Call update-task-plan to ADD targeted Phase 2 tasks
            with specific instructions derived from the scope.
       - At later checkpoints: review worker findings, add follow-up

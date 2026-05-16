@@ -101,6 +101,7 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
         if block.tool_name in (
             "create-task-plan",
             "update-task-plan",
+            "freeze-scope",
         ):
             continue
         if block.tool_name == "read-task-result":
