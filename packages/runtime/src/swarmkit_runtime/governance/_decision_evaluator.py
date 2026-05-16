@@ -56,13 +56,26 @@ def _build_input(
     parts = [
         f"Trigger: {trigger}",
         f"Agent: {agent_id}",
-        "",
-        "--- CONTENT TO EVALUATE ---",
-        content,
-        "--- END CONTENT ---",
     ]
-    if context:
-        parts.append(f"\nContext: {json.dumps(context, default=str)}")
+
+    if context and "scope" in context:
+        scope_data = context["scope"]
+        parts.append("")
+        parts.append("--- FROZEN SCOPE (from Jira ticket) ---")
+        if isinstance(scope_data, dict):
+            parts.append(json.dumps(scope_data, indent=2, default=str))
+        else:
+            parts.append(str(scope_data))
+        parts.append("--- END SCOPE ---")
+
+    parts.append("")
+    parts.append("--- CONTENT TO EVALUATE ---")
+    parts.append(content)
+    parts.append("--- END CONTENT ---")
+
+    remaining_context = {k: v for k, v in (context or {}).items() if k != "scope"}
+    if remaining_context:
+        parts.append(f"\nContext: {json.dumps(remaining_context, default=str)}")
     return "\n".join(parts)
 
 

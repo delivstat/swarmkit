@@ -16,6 +16,9 @@ governance:
       scope: "jira-researcher,docs-researcher,config-analyst,log-analyst"
     - id: contradiction-detector
       trigger: pre_synthesis
+    - id: spec-conformance
+      trigger: pre_synthesis
+      scope: "sterling-oms-architect"
 credentials:
   github-pat:
     source: env

@@ -155,11 +155,13 @@ async def evaluate_pre_synthesis(
     original_input: str,
     bindings: list[DecisionSkillBinding],
     governance: GovernanceProvider,
+    workspace_root: Any = None,
 ) -> list[DecisionSkillResult]:
     """Evaluate pre_synthesis decision skills before coordinator synthesizes.
 
-    Returns list of results. Failed results are injected into the
-    synthesis prompt as known issues.
+    Reads scope.json from run state (if present) and passes it as
+    context to the decision skill. This enables spec-conformance
+    checking against the frozen scope from the Jira ticket.
     """
     applicable = [b for b in bindings if b.trigger == "pre_synthesis" and b.applies_to(agent_id)]
     if not applicable:
@@ -168,6 +170,14 @@ async def evaluate_pre_synthesis(
     combined = f"Original request: {original_input}\n\n"
     combined += "\n\n".join(f"[{tid}]:\n{text}" for tid, text in task_results.items())
 
+    scope = _read_scope(workspace_root)
+    context: dict[str, Any] = {
+        "task_ids": list(task_results.keys()),
+        "original_input": original_input,
+    }
+    if scope:
+        context["scope"] = scope
+
     results: list[DecisionSkillResult] = []
     for binding in applicable:
         result = await governance.evaluate_decision_skill(
@@ -175,10 +185,7 @@ async def evaluate_pre_synthesis(
             trigger="pre_synthesis",
             agent_id=agent_id,
             content=combined,
-            context={
-                "task_ids": list(task_results.keys()),
-                "original_input": original_input,
-            },
+            context=context,
         )
         results.append(result)
         if result.verdict == "fail":
@@ -187,6 +194,23 @@ async def evaluate_pre_synthesis(
             )
 
     return results
+
+
+def _read_scope(workspace_root: Any) -> dict[str, Any] | None:
+    """Read scope.json from run state if it exists."""
+    if workspace_root is None:
+        return None
+    from pathlib import Path  # noqa: PLC0415
+
+    scope_path = Path(workspace_root) / ".swarmkit" / "run-state" / "current" / "scope.json"
+    if not scope_path.exists():
+        return None
+    try:
+        import json as _json  # noqa: PLC0415
+
+        return _json.loads(scope_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    except (OSError, ValueError):
+        return None
 
 
 def format_gate_feedback(results: list[DecisionSkillResult]) -> str:

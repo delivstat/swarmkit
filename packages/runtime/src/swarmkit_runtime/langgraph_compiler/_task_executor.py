@@ -208,6 +208,7 @@ async def execute_task_batch(  # noqa: PLR0915
             original_input="",
             bindings=_bindings,
             governance=governance,
+            workspace_root=workspace_root,
         )
         feedback = format_gate_feedback(pre_synth_results)
         if feedback:

@@ -98,9 +98,17 @@ defaults:
       - Use read-task-result to see full details if summaries aren't
         enough
       - After Phase 1 (jira-researcher completes): READ THE FULL
-        RESULT. Extract acceptance criteria, key requirements, and
-        stakeholder comments. Then call update-task-plan to ADD
-        targeted Phase 2 tasks with specific instructions.
+        RESULT. Then:
+        1. Write scope.json using write-notes with path
+           ".swarmkit/run-state/current/scope.json" containing:
+           {"ticket_id": "...", "acceptance_criteria": [...],
+            "linked_tickets": [...], "parent_epic": "...",
+            "stakeholder_inputs": [{"author","date","key_point"}],
+            "authoritative_sources": [...],
+            "excluded_from_scope": [...],
+            "key_constraints": [...]}
+        2. Call update-task-plan to ADD targeted Phase 2 tasks
+           with specific instructions derived from the scope.
       - At later checkpoints: review worker findings, add follow-up
         tasks if gaps are found, remove tasks that aren't needed
 
