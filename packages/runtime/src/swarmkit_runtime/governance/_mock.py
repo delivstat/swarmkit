@@ -5,9 +5,12 @@ See ``design/details/governance-provider-interface.md`` §MockGovernanceProvider
 
 from __future__ import annotations
 
+from typing import Any
+
 from . import (
     AgentCredential,
     AuditEvent,
+    DecisionSkillResult,
     GovernanceProvider,
     IdentityVerification,
     PolicyDecision,
@@ -32,10 +35,12 @@ class MockGovernanceProvider(GovernanceProvider):
         allowed_scopes: frozenset[str] = frozenset(),
         allow_all: bool = False,
         trust_scores: dict[str, float] | None = None,
+        decision_skill_verdicts: dict[str, DecisionSkillResult] | None = None,
     ) -> None:
         self._allowed_scopes = allowed_scopes
         self._allow_all = allow_all
         self._trust_scores = trust_scores or {}
+        self._decision_skill_verdicts = decision_skill_verdicts or {}
         self._events: list[AuditEvent] = []
 
     # -- GovernanceProvider implementation --------------------------------
@@ -149,6 +154,24 @@ class MockGovernanceProvider(GovernanceProvider):
         score = self._trust_scores.get(agent_id, _DEFAULT_TRUST)
         tier = _DEFAULT_TIER if score >= 0.8 else "degraded"
         return TrustScore(score=score, tier=tier)
+
+    async def evaluate_decision_skill(
+        self,
+        *,
+        skill_id: str,
+        trigger: str,
+        agent_id: str,
+        content: str,
+        context: dict[str, Any] | None = None,
+    ) -> DecisionSkillResult:
+        if self._decision_skill_verdicts and skill_id in self._decision_skill_verdicts:
+            return self._decision_skill_verdicts[skill_id]
+        return DecisionSkillResult(
+            skill_id=skill_id,
+            verdict="pass",
+            confidence=1.0,
+            reasoning=f"mock: decision skill '{skill_id}' auto-passed",
+        )
 
     # -- test helpers (read-only) -----------------------------------------
 
