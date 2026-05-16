@@ -194,7 +194,28 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
 
         if plan:
             status = plan.render_status()
-            if plan.all_done():
+            _has_self_task = any(t.agent == "self" for t in plan.tasks)
+            if plan.all_done() and not _has_self_task:
+                messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            f"Original request: {state.get('input', '')}\n\n"
+                            f"{status}\n\n"
+                            f"Research phase complete. You MUST now:\n"
+                            f"1. Call read-task-result to read the full "
+                            f"findings\n"
+                            f"2. Call freeze-scope to define requirements, "
+                            f"constraints, and exclusions from what you "
+                            f"learned\n"
+                            f"3. Call update-task-plan to add targeted "
+                            f"Phase 2 tasks (config, docs, code analysis) "
+                            f"OR write the final response if this was a "
+                            f"simple query that needs no further research."
+                        ),
+                    )
+                )
+            elif plan.all_done():
                 messages.append(
                     Message(
                         role="user",
