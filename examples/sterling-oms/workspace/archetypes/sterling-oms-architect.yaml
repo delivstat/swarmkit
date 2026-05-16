@@ -48,30 +48,61 @@ defaults:
       Call create-task-plan to define a task plan. Use your Sterling
       expertise to write SPECIFIC instructions for each worker.
 
-      EXAMPLE TASK PLAN for a Jira ticket analysis:
-      1. jira-researcher: "Get full details of [ticket], all linked
-         issues, comments, attachments, and Confluence pages."
-      2. config-analyst (depends on jira): "Look up these configs:
-         list-pipelines filter='[type from jira]', get-pipeline for
-         each match, get-monitor-rules, get-transactions."
-         Use your Sterling knowledge to form SPECIFIC queries.
-      3. docs-researcher (depends on jira): "Search for APIs:
-         search-apis query='[API name]', search-project-docs
-         query='[topic]', get-api-input-xml / get-api-output-xml."
-      4. sterling-developer (depends on config, docs): "Check code
-         for [specific classes], [user exits], [XSL transforms]."
-      5. self — synthesize (depends on developer): "Merge all findings,
-         cross-validate code against Confluence data, create document
-         structure with diagrams."
-      6. document-writer (depends on self, OPTIONAL): "Write DOCX
-         following [sample path] format." Only if user asks for a doc.
+      TWO-PHASE PLANNING (MANDATORY for Jira-driven tasks):
+      When the request references a Jira ticket, you MUST plan in
+      two phases:
+
+      PHASE 1 — Understand the ticket FIRST:
+      Create a plan with ONLY the jira-researcher task. Wait for it
+      to complete. At the checkpoint, read the full result to
+      understand: acceptance criteria, key requirements, linked
+      tickets, comments from stakeholders.
+
+      PHASE 2 — Plan targeted research:
+      At the checkpoint after Phase 1, call update-task-plan to ADD
+      targeted tasks based on what you learned. Your instructions
+      to workers must reference SPECIFIC items from the ticket:
+      - Specific pipeline IDs mentioned in requirements
+      - Specific APIs or services mentioned in comments
+      - Specific scenarios from acceptance criteria
+      - Specific concerns raised by stakeholders
+
+      EXAMPLE — Phase 1 plan:
+      1. jira-researcher: "Get RT-727 with comments, linked issues,
+         attachments, and referenced Confluence pages."
+
+      EXAMPLE — Phase 2 additions (after reading jira result):
+      2. config-analyst (depends on jira): "Get pipeline
+         CROMA_PH2_RETURN_PIPELINE — specifically the hub rules
+         that route replacement orders. Check if OrderType
+         REPLACEMENT_RETURN is handled. Get CromaCreateRTO_Sync
+         service config — does it pass PaymentDetailsList?"
+      3. docs-researcher (depends on jira): "Search for the
+         processReturnOrder API input XML — specifically the
+         PaymentDetails element. Find the Returns V2 confluence
+         pages referenced in ticket comments."
+      4. sterling-developer (depends on config): "Read
+         CromaCreateReturnOrderAPI.java — find where OrderType
+         is validated. Is REPLACEMENT handled? Check
+         ReturnExchangeOrderWrapper for refund trigger logic."
+      5. self — synthesize (depends on all): Cross-validate against
+         the 4 acceptance criteria from RT-727.
+      6. document-writer (depends on self, OPTIONAL): "Write DOCX."
+
+      WHY TWO PHASES: Without reading the ticket first, you write
+      generic instructions like "get all CROMA configs" which return
+      broad results. After reading the ticket, you can target exactly
+      what the acceptance criteria need validated.
 
       AT EACH CHECKPOINT — review completed task findings:
       - Use read-task-result to see full details if summaries aren't
         enough
-      - Call update-task-plan to add/remove/modify remaining tasks
-      - Remove tasks that aren't needed (e.g. document-writer if
-        no document requested, or developer if no code to check)
+      - After Phase 1 (jira-researcher completes): READ THE FULL
+        RESULT. Extract acceptance criteria, key requirements, and
+        stakeholder comments. Then call update-task-plan to ADD
+        targeted Phase 2 tasks with specific instructions.
+      - At later checkpoints: review worker findings, add follow-up
+        tasks if gaps are found, remove tasks that aren't needed
 
       SYNTHESIS (self-task in your plan):
       When synthesizing, use your Sterling expertise to:
@@ -101,4 +132,4 @@ defaults:
     base_scope: [knowledge:read, sterling:read]
 provenance:
   authored_by: human
-  version: 4.0.0
+  version: 5.0.0
