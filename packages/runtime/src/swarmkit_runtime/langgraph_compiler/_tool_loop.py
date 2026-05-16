@@ -21,56 +21,6 @@ from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomp
 _MAX_TOOL_CALLS_PER_TURN = int(os.environ.get("SWARMKIT_MAX_TOOLS", "10"))
 
 
-def _handle_update_task_plan(block: Any, agent_id: str) -> str:
-    """Handle update-task-plan in the tool loop — updates plan on disk."""
-    import json as _json  # noqa: PLC0415
-    from pathlib import Path as _Path  # noqa: PLC0415
-
-    from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan  # noqa: PLC0415
-
-    args = block.tool_input
-    if isinstance(args, str):
-        try:
-            args = _json.loads(args)
-        except (ValueError, TypeError):
-            args = {}
-    if not isinstance(args, dict):
-        args = {}
-
-    plan_path = _Path(".swarmkit") / "run-state" / "current" / "tasks.json"
-    if not plan_path.exists():
-        return "Error: no task plan found on disk to update."
-
-    plan = TaskPlan.load(plan_path)
-
-    messages: list[str] = []
-    if args.get("add"):
-        errors = plan.add_tasks(args["add"])
-        added = len(args["add"]) - len(errors)
-        messages.append(f"Added {added} tasks")
-        if errors:
-            messages.append(f"Errors: {'; '.join(errors)}")
-    if args.get("remove"):
-        errors = plan.remove_tasks(args["remove"])
-        if errors:
-            messages.append(f"Remove errors: {'; '.join(errors)}")
-    if args.get("update"):
-        errors = plan.update_tasks(args["update"])
-        if errors:
-            messages.append(f"Update errors: {'; '.join(errors)}")
-
-    plan.auto_fix_dependencies()
-    plan.save(plan_path.parent)
-
-    task_count = len(plan.tasks)
-    pending = sum(1 for t in plan.tasks if t.status == "pending")
-    _progress(f"[{agent_id}] updated task plan: {task_count} total, {pending} pending")
-    return (
-        f"Task plan updated. {task_count} total tasks, {pending} pending. "
-        f"{'; '.join(messages) if messages else 'No errors.'}"
-    )
-
-
 def _handle_freeze_scope(block: Any, agent_id: str) -> str:
     """Handle freeze-scope tool call — write scope.json and return confirmation."""
     import json as _json  # noqa: PLC0415
@@ -105,12 +55,8 @@ def _handle_freeze_scope(block: Any, agent_id: str) -> str:
     _progress(f"[{agent_id}] scope frozen: {reqs} requirements, {constraints} constraints")
     return (
         f"Scope frozen successfully. {reqs} requirements, "
-        f"{constraints} constraints.\n\n"
-        f"NOW call update-task-plan to add Phase 2 tasks. "
-        f"Based on the scope you just froze, add targeted tasks "
-        f"for config-analyst, docs-researcher, and/or "
-        f"sterling-developer with SPECIFIC instructions derived "
-        f"from the requirements and constraints above."
+        f"{constraints} constraints. The spec-conformance skill "
+        f"will validate your synthesis against this scope."
     )
 
 
@@ -191,18 +137,10 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
             continue
         if block.tool_name.startswith("delegate_to_"):
             continue
-        if block.tool_name == "create-task-plan":
-            continue
-        if block.tool_name == "update-task-plan":
-            result_text = _handle_update_task_plan(block, agent.id)
-            results.append(
-                ToolCallResult(
-                    tool_use_id=block.tool_use_id or f"call_{len(results)}",
-                    tool_name=block.tool_name,
-                    result=result_text,
-                    image_blocks=[],
-                )
-            )
+        if block.tool_name in (
+            "create-task-plan",
+            "update-task-plan",
+        ):
             continue
         if block.tool_name == "freeze-scope":
             result_text = _handle_freeze_scope(block, agent.id)
