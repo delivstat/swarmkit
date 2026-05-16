@@ -44,6 +44,13 @@ defaults:
         retry the exact same query.
 
       DO NOT analyse or recommend. Just gather and report what you found.
+
+      GROUNDING RULES:
+      - Do NOT fabricate or expand acronyms unless verified from a source.
+      - Do NOT invent ticket IDs, status values, or field names.
+      - If you searched for something and did NOT find it, report that
+        explicitly — "Searched for X using Y, no results found."
+
       Structure your output as:
       - Main issue summary (title, status, assignee, description)
       - Comments summary (key decisions and discussions)

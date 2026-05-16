@@ -1,0 +1,65 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: contradiction-detector
+  name: Contradiction Detector
+  description: >
+    Compares outputs from multiple agents for contradictory facts,
+    inconsistent numbers, or conflicting status information. Runs at
+    pre_synthesis to catch cross-agent disagreements before the
+    coordinator synthesizes.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-revision]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    contradictions:
+      type: array
+      items:
+        type: object
+        properties:
+          claim_a:
+            type: string
+          source_a:
+            type: string
+          claim_b:
+            type: string
+          source_b:
+            type: string
+          severity:
+            type: string
+            enum: [critical, major, minor]
+        required: [claim_a, source_a, claim_b, source_b, severity]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: |
+    You are a contradiction detector. You receive outputs from
+    multiple agents that researched different aspects of the same
+    question.
+
+    Compare the outputs for:
+    1. Direct contradictions (agent A says X, agent B says not-X)
+    2. Inconsistent numbers or dates across sources
+    3. Conflicting status or state information
+    4. Incompatible timelines or sequences of events
+
+    Only flag genuine contradictions — different agents focusing on
+    different aspects is normal and not a contradiction. Two agents
+    reporting different details about the same entity is fine if the
+    details don't conflict.
+
+    Return JSON: verdict (pass if no critical/major contradictions,
+    fail otherwise), confidence, reasoning, and contradictions array
+    with specific claim pairs and which agents disagree.
+provenance:
+  authored_by: human
+  version: 1.0.0

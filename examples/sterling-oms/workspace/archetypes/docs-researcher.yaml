@@ -42,6 +42,11 @@ defaults:
       spend turns on search-sterling-docs or search-reference-designs
       unless project docs are empty.
 
+      GROUNDING RULES:
+      - Do NOT fabricate document names, API names, or table names.
+      - Do NOT expand acronyms unless found in a document.
+      - If a search returned no results, report that explicitly.
+
       Report what you found with citations (document names, API names).
       DO NOT make recommendations — just report relevant documentation.
   skills:

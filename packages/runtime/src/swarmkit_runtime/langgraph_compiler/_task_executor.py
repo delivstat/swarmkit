@@ -152,11 +152,15 @@ async def execute_task_batch(  # noqa: PLR0915
 
             task_obj = plan.get_task(tid)
             _task_agent = task_obj.agent if task_obj else agent_id
+            _task_instruction = task_obj.instruction if task_obj else ""
+
+            retry_fn = _make_retry_fn(_task_instruction, raw_text, model_provider, agent)
             checked_text, _ = await evaluate_post_output(
                 agent_id=_task_agent,
                 output=raw_text,
                 bindings=_bindings,
                 governance=governance,
+                retry_fn=retry_fn,
             )
         merged_results[tid] = checked_text
         messages.append(AIMessage(content=checked_text, name=tid))
@@ -454,6 +458,58 @@ def _persist_plan(
         return
     run_state = workspace_root / ".swarmkit" / "run-state" / "current"
     plan.save(run_state)
+
+
+def _make_retry_fn(
+    task_instruction: str,
+    original_output: str,
+    model_provider: ModelProviderProtocol,
+    agent: ResolvedAgent,
+) -> Any:
+    """Create a retry function for governance post_output retries.
+
+    The retry function re-prompts the coordinator's model with:
+    - Original task instruction (context)
+    - Agent's previous output (what it produced)
+    - Governance feedback (what to fix)
+
+    The agent doesn't re-run tools — it revises using data it already has.
+    """
+    import os  # noqa: PLC0415
+
+    from swarmkit_runtime.model_providers import CompletionRequest, Message  # noqa: PLC0415
+
+    model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
+
+    async def _retry(feedback: str) -> str:
+        request = CompletionRequest(
+            model=model_name,
+            messages=(
+                Message(
+                    role="user",
+                    content=(
+                        f"You previously produced this output for the task:\n"
+                        f"TASK: {task_instruction}\n\n"
+                        f"YOUR PREVIOUS OUTPUT:\n{original_output}\n\n"
+                        f"GOVERNANCE FEEDBACK:\n{feedback}"
+                    ),
+                ),
+            ),
+            system=(
+                "You are revising your previous output based on governance "
+                "feedback. Fix the specific issues flagged. Write the "
+                "COMPLETE revised response."
+            ),
+            tools=None,
+        )
+        response = await model_provider.complete(request)
+        from swarmkit_runtime.langgraph_compiler._helpers import (  # noqa: PLC0415
+            _extract_text,
+        )
+
+        return _extract_text(response) or original_output
+
+    return _retry
 
 
 def _plan_complete_state(

@@ -133,6 +133,27 @@ class WorkspaceRuntime:
 
         governance = build_governance(workspace, ws_root)
 
+        decision_skills = {
+            sid: skill
+            for sid, skill in workspace.skills.items()
+            if getattr(skill.raw, "category", None) == "decision"
+        }
+        if decision_skills:
+            import os  # noqa: PLC0415
+
+            from swarmkit_runtime.governance._skill_backed import (  # noqa: PLC0415
+                SkillBackedGovernanceProvider,
+            )
+
+            _model = os.environ.get("SWARMKIT_JUDGE_MODEL", "")
+            _default_provider = registry.get("openrouter") or registry.get("default")
+            governance = SkillBackedGovernanceProvider(
+                base=governance,
+                skills=decision_skills,
+                model_provider=_default_provider or governance,  # type: ignore[arg-type]
+                model_name=_model,
+            )
+
         mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None))
         mcp_manager = MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
 
