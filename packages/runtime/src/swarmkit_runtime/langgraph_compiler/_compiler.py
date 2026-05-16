@@ -345,11 +345,17 @@ def _build_agent_node(  # noqa: PLR0915
             await _handle_drift_result(drift_result, drift_observer, governance, agent_id, messages)
 
         if _ds_bindings:
+            from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
+                _make_retry_fn,
+            )
+
+            _retry = _make_retry_fn(state.get("input", ""), result_text, model_provider, agent)
             result_text, _ = await evaluate_post_output(
                 agent_id=agent_id,
                 output=result_text,
                 bindings=_ds_bindings,
                 governance=governance,
+                retry_fn=_retry,
             )
 
         return _make_result(agent_id, result_text)

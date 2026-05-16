@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from swarmkit_runtime.governance import DecisionSkillBinding, DecisionSkillResult
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
@@ -109,6 +111,85 @@ class TestPostOutput:
         )
         assert output == "some output"
         assert results == []
+
+
+class TestRetry:
+    @pytest.mark.asyncio
+    async def test_retry_fixes_output(
+        self,
+        failing_gov: MockGovernanceProvider,
+        bindings: list[DecisionSkillBinding],
+    ) -> None:
+        call_count = 0
+
+        async def mock_retry(feedback: str) -> str:
+            nonlocal call_count
+            call_count += 1
+            return "Revised output without fabricated names"
+
+        # Override governance to pass on second attempt
+        original_eval = failing_gov.evaluate_decision_skill
+
+        attempt = 0
+
+        async def eval_pass_on_second(**kwargs: Any) -> DecisionSkillResult:
+            nonlocal attempt
+            attempt += 1
+            if attempt >= 2:
+                return DecisionSkillResult(
+                    skill_id="grounding-verifier",
+                    verdict="pass",
+                    confidence=0.9,
+                    reasoning="All claims now grounded",
+                )
+            return await original_eval(**kwargs)
+
+        failing_gov.evaluate_decision_skill = eval_pass_on_second  # type: ignore[assignment]
+
+        output, _results = await evaluate_post_output(
+            agent_id="test-agent",
+            output="Bad output with fabricated OrderService",
+            bindings=bindings,
+            governance=failing_gov,
+            retry_fn=mock_retry,
+        )
+        assert call_count == 1
+        assert "GOVERNANCE FLAGS" not in output
+        assert output == "Revised output without fabricated names"
+
+    @pytest.mark.asyncio
+    async def test_retries_exhausted_passes_with_flags(
+        self,
+        failing_gov: MockGovernanceProvider,
+        bindings: list[DecisionSkillBinding],
+    ) -> None:
+        async def mock_retry(feedback: str) -> str:
+            return "Still bad output"
+
+        output, _results = await evaluate_post_output(
+            agent_id="test-agent",
+            output="Bad output",
+            bindings=bindings,
+            governance=failing_gov,
+            retry_fn=mock_retry,
+            max_retries=2,
+        )
+        assert "GOVERNANCE FLAGS" in output
+
+    @pytest.mark.asyncio
+    async def test_no_retry_without_retry_fn(
+        self,
+        failing_gov: MockGovernanceProvider,
+        bindings: list[DecisionSkillBinding],
+    ) -> None:
+        output, _results = await evaluate_post_output(
+            agent_id="test-agent",
+            output="Bad output",
+            bindings=bindings,
+            governance=failing_gov,
+            retry_fn=None,
+        )
+        assert "GOVERNANCE FLAGS" in output
 
 
 class TestCheckpoint:

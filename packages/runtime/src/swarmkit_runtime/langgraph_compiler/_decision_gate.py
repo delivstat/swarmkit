@@ -9,6 +9,7 @@ See ``design/details/governance-decision-skills.md``.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from swarmkit_runtime.governance import (
@@ -19,7 +20,9 @@ from swarmkit_runtime.governance import (
 
 from ._helpers import _progress
 
-_MAX_RETRIES = 2
+_DEFAULT_MAX_RETRIES = 4
+
+RetryFn = Callable[[str], Awaitable[str]]
 
 
 async def evaluate_post_output(
@@ -29,33 +32,58 @@ async def evaluate_post_output(
     bindings: list[DecisionSkillBinding],
     governance: GovernanceProvider,
     context: dict[str, Any] | None = None,
+    retry_fn: RetryFn | None = None,
+    max_retries: int = _DEFAULT_MAX_RETRIES,
 ) -> tuple[str, list[DecisionSkillResult]]:
     """Evaluate post_output decision skills against agent output.
 
-    Returns (possibly revised output, list of all results).
-    If any binding returns fail, the output is annotated with
-    flagged items for the coordinator to see.
+    If a retry_fn is provided and evaluation fails, the agent is
+    asked to revise its output using the governance feedback. The
+    agent already has its research context — it just needs to fix
+    citations, remove fabricated names, etc. Retries up to
+    max_retries times before annotating and passing through.
+
+    Returns (final output, list of all results from last evaluation).
     """
     applicable = [b for b in bindings if b.trigger == "post_output" and b.applies_to(agent_id)]
     if not applicable:
         return output, []
 
-    results: list[DecisionSkillResult] = []
-    for binding in applicable:
-        result = await governance.evaluate_decision_skill(
-            skill_id=binding.id,
-            trigger="post_output",
-            agent_id=agent_id,
-            content=output,
-            context=context,
-        )
-        results.append(result)
-        if result.verdict == "fail":
-            _progress(
-                f"  [{agent_id}] decision skill '{binding.id}' failed: {result.reasoning[:80]}"
-            )
+    current_output = output
+    last_results: list[DecisionSkillResult] = []
 
-    failed = [r for r in results if r.verdict == "fail"]
+    for attempt in range(max_retries + 1):
+        last_results = []
+        for binding in applicable:
+            result = await governance.evaluate_decision_skill(
+                skill_id=binding.id,
+                trigger="post_output",
+                agent_id=agent_id,
+                content=current_output,
+                context=context,
+            )
+            last_results.append(result)
+
+        failed = [r for r in last_results if r.verdict == "fail"]
+        if not failed:
+            return current_output, last_results
+
+        if attempt < max_retries and retry_fn is not None:
+            feedback = _build_retry_feedback(failed)
+            _progress(
+                f"  [{agent_id}] governance retry {attempt + 1}/{max_retries}: "
+                f"{len(failed)} issue(s)"
+            )
+            current_output = await retry_fn(feedback)
+        else:
+            if attempt == max_retries:
+                _progress(
+                    f"  [{agent_id}] governance retries exhausted "
+                    f"({max_retries}), passing with flags"
+                )
+            break
+
+    failed = [r for r in last_results if r.verdict == "fail"]
     if failed:
         flags = []
         for r in failed:
@@ -63,9 +91,25 @@ async def evaluate_post_output(
             for item in r.flagged_items:
                 flags.append(f"  - {item}")
         annotation = "\n\n---\nGOVERNANCE FLAGS:\n" + "\n".join(flags)
-        return output + annotation, results
+        return current_output + annotation, last_results
 
-    return output, results
+    return current_output, last_results
+
+
+def _build_retry_feedback(failed: list[DecisionSkillResult]) -> str:
+    """Build feedback from decision skill results for the agent to revise.
+
+    Passes through the skill's own reasoning and flagged items — the
+    gate doesn't inject domain-specific instructions since only the
+    skill knows what kind of issue it found.
+    """
+    lines = ["Revise your output to address the following issues:\n"]
+    for r in failed:
+        lines.append(f"[{r.skill_id}]: {r.reasoning}")
+        for item in r.flagged_items:
+            lines.append(f"  - {item}")
+    lines.append("\nRewrite your COMPLETE response with these issues fixed.")
+    return "\n".join(lines)
 
 
 async def evaluate_checkpoint(
