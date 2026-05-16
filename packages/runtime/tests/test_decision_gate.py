@@ -144,7 +144,7 @@ class TestRetry:
                 )
             return await original_eval(**kwargs)
 
-        failing_gov.evaluate_decision_skill = eval_pass_on_second  # type: ignore[assignment]
+        failing_gov.evaluate_decision_skill = eval_pass_on_second  # type: ignore[method-assign]
 
         output, _results = await evaluate_post_output(
             agent_id="test-agent",
