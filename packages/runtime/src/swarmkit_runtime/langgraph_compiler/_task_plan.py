@@ -132,10 +132,12 @@ class TaskPlan:
                 f"depends on [{', '.join(research_ids)}]"
             )
 
-        # Auto-add synthesis task if no self-tasks exist
+        # Auto-add synthesis task if no self-tasks exist.
+        # Skip when there's only 1 research task — that's likely Phase 1
+        # of a two-phase plan where the architect will add tasks at checkpoint.
         has_self = any(t.agent == "self" for t in self.tasks)
         research_ids = [t.id for t in self.tasks if t.agent not in _synthesis_agents]
-        if not has_self and research_ids:
+        if not has_self and len(research_ids) >= 2:
             self.tasks.append(
                 Task(
                     id="__auto_synthesize__",
