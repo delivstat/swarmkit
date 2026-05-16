@@ -346,7 +346,7 @@ async def _execute_self_task(
     )
     if tool_results is not None:
         verbose = os.environ.get("SWARMKIT_VERBOSE", "")
-        text = await _run_tool_loop(
+        loop_result = await _run_tool_loop(
             response,
             agent,
             messages,
@@ -359,7 +359,9 @@ async def _execute_self_task(
             tool_results,
             verbose,
         )
-        return text
+        if isinstance(loop_result, dict):
+            return "(state change during self-task)"
+        return loop_result
 
     from swarmkit_runtime.langgraph_compiler._helpers import (  # noqa: PLC0415
         _extract_text,
