@@ -39,6 +39,11 @@ export type Source = "env" | "file" | "hashicorp-vault" | "aws-secrets-manager" 
 export interface Governance {
     config?: { [key: string]: any };
     /**
+     * Mandatory decision skills that fire at specified trigger points. Topologies inherit these
+     * and can override by id.
+     */
+    decision_skills?: DecisionSkillElement[];
+    /**
      * Circuit breaker thresholds. Prevents runaway execution and cost overruns.
      */
     limits?: Limits;
@@ -51,6 +56,42 @@ export interface Governance {
      */
     provider: GovernanceProvider;
 }
+
+/**
+ * Binds a decision skill to a trigger point. Workspace bindings are inherited by all
+ * topologies; topology bindings can override by id.
+ */
+export interface DecisionSkillElement {
+    /**
+     * Skill-specific configuration (confidence thresholds, retry limits, etc).
+     */
+    config?: { [key: string]: any };
+    /**
+     * Decision skill ID. Must exist in workspace skill registry.
+     */
+    id: string;
+    /**
+     * If true, output is rejected when this skill returns a failing verdict. Set false to
+     * disable an inherited workspace binding.
+     */
+    required?: boolean;
+    /**
+     * Comma-separated agent IDs this binding applies to. Default '*' = all agents in the
+     * topology.
+     */
+    scope?: string;
+    /**
+     * When the skill fires: post_output (after agent output), checkpoint (between task
+     * batches), pre_synthesis (before final synthesis).
+     */
+    trigger: Trigger;
+}
+
+/**
+ * When the skill fires: post_output (after agent output), checkpoint (between task
+ * batches), pre_synthesis (before final synthesis).
+ */
+export type Trigger = "post_output" | "checkpoint" | "pre_synthesis";
 
 /**
  * Circuit breaker thresholds. Prevents runaway execution and cost overruns.

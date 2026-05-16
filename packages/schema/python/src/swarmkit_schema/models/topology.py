@@ -188,6 +188,53 @@ class IntentMonitoring(BaseModel):
     )
 
 
+class Trigger(Enum):
+    """
+    When the skill fires.
+    """
+
+    post_output = "post_output"
+    checkpoint = "checkpoint"
+    pre_synthesis = "pre_synthesis"
+
+
+class DecisionSkillBinding(BaseModel):
+    """
+    Binds a decision skill to a trigger point.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: str = Field(..., description="Decision skill ID.", pattern="^[a-z][a-z0-9-]*$")
+    trigger: Trigger = Field(..., description="When the skill fires.")
+    scope: str | None = Field(
+        None, description="Comma-separated agent IDs. Default '*' = all agents."
+    )
+    required: bool | None = Field(
+        True, description="Set false to disable an inherited workspace binding."
+    )
+    config: dict[str, Any] | None = Field(
+        None, description="Skill-specific configuration."
+    )
+
+
+class Governance(BaseModel):
+    """
+    Topology-level governance overrides. Inherits from workspace governance; entries here override or extend by id.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    decision_skills: list[DecisionSkillBinding] | None = Field(
+        None,
+        description="Decision skill bindings that override or extend workspace-level bindings. Same id = override, new id = extend, required: false = disable inherited.",
+    )
+
+
 class SwarmKitTopology(BaseModel):
     """
     A complete swarm definition. See design §10 and design/details/topology-schema-v1.md.
@@ -206,6 +253,7 @@ class SwarmKitTopology(BaseModel):
     agents: Agents
     artifacts: Artifacts | None = None
     intent_monitoring: IntentMonitoring | None = None
+    governance: Governance | None = None
 
 
 class Agents(BaseModel):

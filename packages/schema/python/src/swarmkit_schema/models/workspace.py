@@ -82,24 +82,6 @@ class Limits(BaseModel):
     )
 
 
-class Governance(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    provider: Provider = Field(
-        ..., description="GovernanceProvider implementation (design §8.5)."
-    )
-    policy_language: PolicyLanguage | None = Field(
-        None, description="§21 open question — default yaml for v1.0."
-    )
-    config: dict[str, Any] | None = None
-    limits: Limits | None = Field(
-        None,
-        description="Circuit breaker thresholds. Prevents runaway execution and cost overruns.",
-    )
-
-
 class Provider1(Enum):
     """
     Human-identity provider (design §16.1).
@@ -275,6 +257,70 @@ class Storage(BaseModel):
     checkpoints: Checkpoints | None = None
     audit: Audit | None = None
     knowledge_bases: KnowledgeBases | None = None
+
+
+class Trigger(Enum):
+    """
+    When the skill fires: post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).
+    """
+
+    post_output = "post_output"
+    checkpoint = "checkpoint"
+    pre_synthesis = "pre_synthesis"
+
+
+class DecisionSkillBinding(BaseModel):
+    """
+    Binds a decision skill to a trigger point. Workspace bindings are inherited by all topologies; topology bindings can override by id.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: str = Field(
+        ...,
+        description="Decision skill ID. Must exist in workspace skill registry.",
+        pattern="^[a-z][a-z0-9-]*$",
+    )
+    trigger: Trigger = Field(
+        ...,
+        description="When the skill fires: post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).",
+    )
+    scope: str | None = Field(
+        None,
+        description="Comma-separated agent IDs this binding applies to. Default '*' = all agents in the topology.",
+    )
+    required: bool | None = Field(
+        True,
+        description="If true, output is rejected when this skill returns a failing verdict. Set false to disable an inherited workspace binding.",
+    )
+    config: dict[str, Any] | None = Field(
+        None,
+        description="Skill-specific configuration (confidence thresholds, retry limits, etc).",
+    )
+
+
+class Governance(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    provider: Provider = Field(
+        ..., description="GovernanceProvider implementation (design §8.5)."
+    )
+    policy_language: PolicyLanguage | None = Field(
+        None, description="§21 open question — default yaml for v1.0."
+    )
+    config: dict[str, Any] | None = None
+    limits: Limits | None = Field(
+        None,
+        description="Circuit breaker thresholds. Prevents runaway execution and cost overruns.",
+    )
+    decision_skills: list[DecisionSkillBinding] | None = Field(
+        None,
+        description="Mandatory decision skills that fire at specified trigger points. Topologies inherit these and can override by id.",
+    )
 
 
 class SwarmKitWorkspace(BaseModel):
