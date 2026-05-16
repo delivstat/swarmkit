@@ -16,7 +16,8 @@
     "runtime": { "$ref": "#/$defs/runtime" },
     "agents": { "$ref": "#/$defs/agents" },
     "artifacts": { "$ref": "#/$defs/artifacts" },
-    "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" }
+    "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" },
+    "governance": { "$ref": "#/$defs/governance" }
   },
   "$defs": {
     "identifier": {
@@ -199,6 +200,48 @@
         "on_drift": {
           "enum": ["log", "warn", "nudge"],
           "description": "Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject refocus message."
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Topology-level governance overrides. Inherits from workspace governance; entries here override or extend by id.",
+      "properties": {
+        "decision_skills": {
+          "type": "array",
+          "description": "Decision skill bindings that override or extend workspace-level bindings. Same id = override, new id = extend, required: false = disable inherited.",
+          "items": { "$ref": "#/$defs/decision_skill_binding" }
+        }
+      }
+    },
+    "decision_skill_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trigger"],
+      "description": "Binds a decision skill to a trigger point.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Decision skill ID."
+        },
+        "trigger": {
+          "enum": ["post_output", "checkpoint", "pre_synthesis"],
+          "description": "When the skill fires."
+        },
+        "scope": {
+          "type": "string",
+          "description": "Comma-separated agent IDs. Default '*' = all agents."
+        },
+        "required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set false to disable an inherited workspace binding."
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Skill-specific configuration."
         }
       }
     }

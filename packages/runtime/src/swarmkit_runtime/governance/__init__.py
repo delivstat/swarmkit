@@ -220,6 +220,58 @@ class TrustScore:
     tier: str
 
 
+@dataclass(frozen=True)
+class DecisionSkillResult:
+    """Result of a mandatory decision skill evaluation."""
+
+    skill_id: str
+    verdict: Literal["pass", "fail", "needs-revision"]
+    confidence: float
+    reasoning: str
+    flagged_items: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class DecisionSkillBinding:
+    """Binds a decision skill to a trigger point."""
+
+    id: str
+    trigger: Literal["post_output", "checkpoint", "pre_synthesis"]
+    scope: str = "*"
+    required: bool = True
+    config: dict[str, Any] = field(default_factory=dict)
+
+    def applies_to(self, agent_id: str) -> bool:
+        if self.scope == "*":
+            return True
+        return agent_id in {s.strip() for s in self.scope.split(",")}
+
+
+def merge_decision_skills(
+    workspace: list[dict[str, Any]],
+    topology: list[dict[str, Any]],
+) -> list[DecisionSkillBinding]:
+    """Merge workspace and topology decision skill bindings.
+
+    Topology entries override workspace entries with the same id.
+    Bindings with required=False are excluded from the result.
+    """
+    merged: dict[str, dict[str, Any]] = {s["id"]: s for s in workspace}
+    for s in topology:
+        merged[s["id"]] = s
+    return [
+        DecisionSkillBinding(
+            id=raw["id"],
+            trigger=raw["trigger"],
+            scope=raw.get("scope", "*"),
+            required=raw.get("required", True),
+            config=raw.get("config", {}),
+        )
+        for raw in merged.values()
+        if raw.get("required", True)
+    ]
+
+
 # ---- ABC ----------------------------------------------------------------
 
 
@@ -260,12 +312,35 @@ class GovernanceProvider(ABC):
     async def get_trust_score(self, *, agent_id: str) -> TrustScore:
         """Return the current trust score for the agent."""
 
+    async def evaluate_decision_skill(
+        self,
+        *,
+        skill_id: str,
+        trigger: str,
+        agent_id: str,
+        content: str,
+        context: dict[str, Any] | None = None,
+    ) -> DecisionSkillResult:
+        """Evaluate a mandatory decision skill against agent output.
+
+        Default implementation returns pass — override in providers
+        that support decision skill evaluation.
+        """
+        return DecisionSkillResult(
+            skill_id=skill_id,
+            verdict="pass",
+            confidence=1.0,
+            reasoning="No decision skill evaluator configured.",
+        )
+
 
 __all__ = [
     "AgentCredential",
     "AuditEvent",
     "CircuitBreakerError",
     "CircuitBreakerTracker",
+    "DecisionSkillBinding",
+    "DecisionSkillResult",
     "GovernanceLimits",
     "GovernanceProvider",
     "IdentityVerification",
@@ -273,6 +348,7 @@ __all__ = [
     "TrustScore",
     "hitl_requested_event",
     "hitl_resolved_event",
+    "merge_decision_skills",
     "redact_json_pointers",
     "run_ended_event",
     "run_started_event",

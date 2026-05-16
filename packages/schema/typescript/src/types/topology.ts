@@ -12,6 +12,7 @@ export interface SwarmKitTopology {
      */
     apiVersion:         APIVersion;
     artifacts?:         Artifacts;
+    governance?:        Governance;
     intent_monitoring?: IntentMonitoring;
     kind:               Kind;
     metadata:           Metadata;
@@ -27,7 +28,7 @@ export interface Root {
     /**
      * Nested agents. Tree structure, one parent per agent (design §5.2).
      */
-    children?:          ChildAgent[];
+    children?:          ChildElement[];
     iam?:               Iam;
     id:                 string;
     intent_monitoring?: IntentMonitoring;
@@ -44,12 +45,12 @@ export interface Root {
     skills_additional?: string[];
 }
 
-export interface ChildAgent {
+export interface ChildElement {
     archetype?: string;
     /**
      * Nested agents. Tree structure, one parent per agent (design §5.2).
      */
-    children?:          ChildAgent[];
+    children?:          ChildElement[];
     iam?:               Iam;
     id:                 string;
     intent_monitoring?: IntentMonitoring;
@@ -148,6 +149,49 @@ export interface SkillGapLogging {
     enabled?:           boolean;
     surface_threshold?: number;
 }
+
+/**
+ * Topology-level governance overrides. Inherits from workspace governance; entries here
+ * override or extend by id.
+ */
+export interface Governance {
+    /**
+     * Decision skill bindings that override or extend workspace-level bindings. Same id =
+     * override, new id = extend, required: false = disable inherited.
+     */
+    decision_skills?: DecisionSkillElement[];
+}
+
+/**
+ * Binds a decision skill to a trigger point.
+ */
+export interface DecisionSkillElement {
+    /**
+     * Skill-specific configuration.
+     */
+    config?: { [key: string]: any };
+    /**
+     * Decision skill ID.
+     */
+    id: string;
+    /**
+     * Set false to disable an inherited workspace binding.
+     */
+    required?: boolean;
+    /**
+     * Comma-separated agent IDs. Default '*' = all agents.
+     */
+    scope?: string;
+    /**
+     * When the skill fires.
+     */
+    trigger: Trigger;
+}
+
+/**
+ * When the skill fires.
+ */
+export type Trigger = "post_output" | "checkpoint" | "pre_synthesis";
 
 export type Kind = "Topology";
 
