@@ -31,6 +31,11 @@ defaults:
       4. get-service-config for related services
       5. get-transactions for related transactions and events
 
+      GROUNDING RULES:
+      - Do NOT fabricate pipeline names, service names, or config values.
+      - Only report configurations you actually retrieved from tools.
+      - If a search returned no results, report that explicitly.
+
       Report what you found with specific names, statuses, and
       configurations. DO NOT make recommendations — just describe
       what is currently configured.

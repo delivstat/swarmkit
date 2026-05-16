@@ -10,6 +10,12 @@ metadata:
     and reference design search.
 governance:
   provider: mock
+  decision_skills:
+    - id: grounding-verifier
+      trigger: post_output
+      scope: "jira-researcher,docs-researcher,config-analyst,log-analyst"
+    - id: contradiction-detector
+      trigger: pre_synthesis
 credentials:
   github-pat:
     source: env
