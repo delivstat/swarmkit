@@ -22,54 +22,55 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
     agent_id: str,
     state: Any,
 ) -> dict[str, Any] | None:
-    """Handle create-task-plan, update-task-plan, read-task-result tool calls.
+    """Handle planning tools in a model response (two-pass).
 
-    Returns a state dict if a task plan tool was called, None otherwise.
+    Pass 1: execute side-effect-only tools (read-task-result, freeze-scope).
+    Pass 2: execute state-changing tools (create-task-plan, update-task-plan).
+
+    Returns a state dict if a state-changing tool was called, None otherwise.
+    Side-effect tools always run regardless of whether a state change follows.
     """
-    from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan  # noqa: PLC0415
 
-    _TASK_PLAN_TOOLS = {"create-task-plan", "update-task-plan", "read-task-result", "freeze-scope"}
+    _STATE_TOOLS = {"create-task-plan", "update-task-plan"}
+    _SIDE_EFFECT_TOOLS = {"read-task-result", "freeze-scope"}
+
+    has_state_tool = any(
+        hasattr(b, "tool_name") and b.tool_name in _STATE_TOOLS for b in response.content
+    )
+    if not has_state_tool:
+        has_side_effect = any(
+            hasattr(b, "tool_name") and b.tool_name in _SIDE_EFFECT_TOOLS for b in response.content
+        )
+        if not has_side_effect:
+            return None
+
+    # Pass 1: side-effect tools (run before state changes)
+    for block in response.content:
+        if not hasattr(block, "tool_name") or not block.tool_name:
+            continue
+        if block.tool_name not in _SIDE_EFFECT_TOOLS:
+            continue
+
+        args = _parse_args(block)
+
+        if block.tool_name == "freeze-scope":
+            _write_scope(args, agent_id)
+
+    # If no state-changing tools, return None (tool loop will handle the rest)
+    if not has_state_tool:
+        return None
+
+    # Pass 2: state-changing tools
+    existing_plan_data = (state or {}).get("task_plan", {})
+    plan = _load_plan(existing_plan_data)
 
     for block in response.content:
         if not hasattr(block, "tool_name") or not block.tool_name:
             continue
-        if block.tool_name not in _TASK_PLAN_TOOLS:
+        if block.tool_name not in _STATE_TOOLS:
             continue
 
-        args = block.tool_input
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except (json.JSONDecodeError, TypeError):
-                args = {}
-        if not isinstance(args, dict):
-            args = {}
-
-        existing_plan_data = (state or {}).get("task_plan", {})
-        if existing_plan_data and existing_plan_data.get("tasks"):
-            plan = TaskPlan(
-                run_id=existing_plan_data.get("run_id", ""),
-                topology=existing_plan_data.get("topology", ""),
-                created_at=existing_plan_data.get("created_at", 0.0),
-            )
-            for raw in existing_plan_data.get("tasks", []):
-                from swarmkit_runtime.langgraph_compiler._task_plan import Task  # noqa: PLC0415
-
-                plan.tasks.append(
-                    Task(
-                        id=raw["id"],
-                        agent=raw["agent"],
-                        instruction=raw.get("instruction", ""),
-                        depends_on=raw.get("depends_on", []),
-                        status=raw.get("status", "pending"),
-                        key_findings=raw.get("key_findings", []),
-                        result_path=raw.get("result_path"),
-                        error=raw.get("error"),
-                        delegation_count=raw.get("delegation_count", 0),
-                    )
-                )
-        else:
-            plan = TaskPlan()
+        args = _parse_args(block)
 
         if block.tool_name == "create-task-plan":
             raw_tasks = args.get("tasks", [])
@@ -118,9 +119,13 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
                 upd_errors.extend(plan.remove_tasks(args["remove"]))
             if args.get("update"):
                 upd_errors.extend(plan.update_tasks(args["update"]))
+            fixes = plan.auto_fix_dependencies()
             upd_errors.extend(plan.validate_dependencies())
 
-            _progress(f"[{agent_id}] updated task plan")
+            pending = sum(1 for t in plan.tasks if t.status == "pending")
+            _progress(f"[{agent_id}] updated task plan: {len(plan.tasks)} total, {pending} pending")
+            for fix in fixes:
+                _progress(f"  {fix}")
             if upd_errors:
                 _progress(f"  warnings: {'; '.join(upd_errors)}")
 
@@ -143,19 +148,54 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
                 "agent_results": {agent_id: "__task_plan_updated__"},
                 "messages": [
                     AIMessage(
-                        content=f"[{agent_id}] Task plan updated.",
+                        content=f"[{agent_id}] Task plan updated. {pending} tasks pending.",
                         name=agent_id,
                     ),
                 ],
             }
 
-        if block.tool_name == "read-task-result":
-            pass
-
-        if block.tool_name == "freeze-scope":
-            _write_scope(args, agent_id)
-
     return None
+
+
+def _parse_args(block: Any) -> dict[str, Any]:
+    """Extract args dict from a tool call block."""
+    args = block.tool_input
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+    if not isinstance(args, dict):
+        args = {}
+    return args
+
+
+def _load_plan(plan_data: dict[str, Any]) -> Any:
+    """Load a TaskPlan from state data."""
+    from swarmkit_runtime.langgraph_compiler._task_plan import Task, TaskPlan  # noqa: PLC0415
+
+    if plan_data and plan_data.get("tasks"):
+        plan = TaskPlan(
+            run_id=plan_data.get("run_id", ""),
+            topology=plan_data.get("topology", ""),
+            created_at=plan_data.get("created_at", 0.0),
+        )
+        for raw in plan_data.get("tasks", []):
+            plan.tasks.append(
+                Task(
+                    id=raw["id"],
+                    agent=raw["agent"],
+                    instruction=raw.get("instruction", ""),
+                    depends_on=raw.get("depends_on", []),
+                    status=raw.get("status", "pending"),
+                    key_findings=raw.get("key_findings", []),
+                    result_path=raw.get("result_path"),
+                    error=raw.get("error"),
+                    delegation_count=raw.get("delegation_count", 0),
+                )
+            )
+        return plan
+    return TaskPlan()
 
 
 def _write_scope(args: dict[str, Any], agent_id: str) -> None:
