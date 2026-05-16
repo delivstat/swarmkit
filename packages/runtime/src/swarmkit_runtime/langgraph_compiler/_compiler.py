@@ -12,13 +12,14 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from swarmkit_runtime.governance import AuditEvent, GovernanceProvider
+from swarmkit_runtime.governance import AuditEvent, DecisionSkillBinding, GovernanceProvider
 from swarmkit_runtime.model_providers import MockModelProvider
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
 from swarmkit_runtime.trace import AgentStep, RunTrace
 
 from ._dag import _has_dag_deps, _run_dag  # noqa: F401
+from ._decision_gate import evaluate_post_output
 from ._delegation import _dispatch_response
 from ._drift import _create_drift_observer, _handle_drift_result
 from ._helpers import (
@@ -59,6 +60,7 @@ def compile_topology(
     mcp_manager: Any = None,
     checkpointer: Any = None,
     workspace_root: Any = None,
+    decision_skill_bindings: list[DecisionSkillBinding] | None = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -77,6 +79,7 @@ def compile_topology(
     graph: StateGraph[Any] = StateGraph(SwarmState)
     agents = _collect_agents(topology.root)
 
+    _bindings = decision_skill_bindings or []
     for agent in agents.values():
         agent_provider = _resolve_agent_provider(agent, provider_registry, model_provider)
         node_fn = _build_agent_node(
@@ -87,6 +90,7 @@ def compile_topology(
             mcp_manager,
             provider_registry,
             workspace_root=workspace_root,
+            decision_skill_bindings=_bindings,
         )
         graph.add_node(agent.id, node_fn)
 
@@ -146,9 +150,11 @@ def _build_agent_node(  # noqa: PLR0915
     mcp_manager: Any = None,
     provider_registry: ProviderRegistry | None = None,
     workspace_root: Any = None,
+    decision_skill_bindings: list[DecisionSkillBinding] | None = None,
 ) -> Any:
     """Build an async node function for one agent."""
     drift_observer = _create_drift_observer(agent)
+    _ds_bindings = decision_skill_bindings or []
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         global _current_parent_agent  # noqa: PLW0603
@@ -199,6 +205,7 @@ def _build_agent_node(  # noqa: PLR0915
                         mcp_manager,
                         provider_registry,
                         workspace_root=workspace_root,
+                        decision_skill_bindings=_ds_bindings,
                     )
                     # If more tasks remain, let coordinator review
                     # by falling through to LLM call on next re-entry
@@ -336,6 +343,14 @@ def _build_agent_node(  # noqa: PLR0915
                 step=len(drift_observer.history), output=result_text
             )
             await _handle_drift_result(drift_result, drift_observer, governance, agent_id, messages)
+
+        if _ds_bindings:
+            result_text, _ = await evaluate_post_output(
+                agent_id=agent_id,
+                output=result_text,
+                bindings=_ds_bindings,
+                governance=governance,
+            )
 
         return _make_result(agent_id, result_text)
 

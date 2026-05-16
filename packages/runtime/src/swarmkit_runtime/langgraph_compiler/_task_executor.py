@@ -54,7 +54,7 @@ def get_plan_from_state(state: SwarmState) -> TaskPlan | None:
     return plan
 
 
-async def execute_task_batch(
+async def execute_task_batch(  # noqa: PLR0915
     plan: TaskPlan,
     agent: ResolvedAgent,
     agent_id: str,
@@ -64,6 +64,7 @@ async def execute_task_batch(
     mcp_manager: Any,
     provider_registry: ProviderRegistry | None,
     workspace_root: Path | None = None,
+    decision_skill_bindings: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Execute the next batch of runnable tasks from the plan.
 
@@ -138,14 +139,46 @@ async def execute_task_batch(
     tasks_coros = [_run_one(t) for t in runnable]
     results = await asyncio.gather(*tasks_coros)
 
+    _bindings = decision_skill_bindings or []
+
     merged_results: dict[str, str] = {}
     messages = []
-    for tid, result_text in results:
-        merged_results[tid] = result_text
-        messages.append(AIMessage(content=result_text, name=tid))
+    for tid, raw_text in results:
+        checked_text = raw_text
+        if _bindings:
+            from swarmkit_runtime.langgraph_compiler._decision_gate import (  # noqa: PLC0415
+                evaluate_post_output,
+            )
+
+            task_obj = plan.get_task(tid)
+            _task_agent = task_obj.agent if task_obj else agent_id
+            checked_text, _ = await evaluate_post_output(
+                agent_id=_task_agent,
+                output=raw_text,
+                bindings=_bindings,
+                governance=governance,
+            )
+        merged_results[tid] = checked_text
+        messages.append(AIMessage(content=checked_text, name=tid))
 
     more_runnable = plan.get_runnable_tasks()
     if more_runnable or not plan.all_done():
+        if _bindings:
+            from swarmkit_runtime.langgraph_compiler._decision_gate import (  # noqa: PLC0415
+                evaluate_checkpoint,
+                format_gate_feedback,
+            )
+
+            checkpoint_results = await evaluate_checkpoint(
+                agent_id=agent_id,
+                task_results=merged_results,
+                bindings=_bindings,
+                governance=governance,
+            )
+            feedback = format_gate_feedback(checkpoint_results)
+            if feedback:
+                messages.append(AIMessage(content=feedback, name="governance"))
+
         return {
             "current_agent": agent_id,
             "task_plan": plan.to_dict(),
@@ -155,6 +188,26 @@ async def execute_task_batch(
             },
             "messages": messages,
         }
+
+    if _bindings:
+        from swarmkit_runtime.langgraph_compiler._decision_gate import (  # noqa: PLC0415
+            evaluate_pre_synthesis,
+            format_gate_feedback,
+        )
+
+        _all_results = {
+            t.id: merged_results.get(t.id, "") for t in plan.tasks if t.id in merged_results
+        }
+        pre_synth_results = await evaluate_pre_synthesis(
+            agent_id=agent_id,
+            task_results=_all_results,
+            original_input="",
+            bindings=_bindings,
+            governance=governance,
+        )
+        feedback = format_gate_feedback(pre_synth_results)
+        if feedback:
+            messages.append(AIMessage(content=feedback, name="governance"))
 
     return _plan_complete_state(plan, agent_id, merged_results, messages)
 

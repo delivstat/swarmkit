@@ -20,7 +20,11 @@ from typing import Any
 from langgraph.graph.state import CompiledStateGraph
 
 from swarmkit_runtime.audit import AuditProvider, SQLiteAuditProvider
-from swarmkit_runtime.governance import GovernanceProvider
+from swarmkit_runtime.governance import (
+    DecisionSkillBinding,
+    GovernanceProvider,
+    merge_decision_skills,
+)
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
 from swarmkit_runtime.mcp import (
@@ -172,6 +176,7 @@ class WorkspaceRuntime:
             )
 
         topology = self._workspace.topologies[topology_name]
+        decision_bindings = self._resolve_decision_bindings(topology_name)
         return compile_topology(
             topology,
             provider_registry=self._provider_registry,
@@ -179,7 +184,33 @@ class WorkspaceRuntime:
             mcp_manager=self._mcp_manager,
             checkpointer=self._get_checkpointer(),
             workspace_root=self._workspace_root,
+            decision_skill_bindings=decision_bindings,
         )
+
+    def _resolve_decision_bindings(self, topology_name: str) -> list[DecisionSkillBinding]:
+        """Merge workspace + topology decision skill bindings."""
+        ws_raw = getattr(self._workspace.raw, "governance", None)
+        ws_skills: list[dict[str, Any]] = []
+        if ws_raw:
+            ws_skills = getattr(ws_raw, "decision_skills", None) or []
+            if hasattr(ws_skills, "root"):
+                ws_skills = ws_skills.root if ws_skills.root else []
+
+        topo = self._workspace.topologies.get(topology_name)
+        topo_skills: list[dict[str, Any]] = []
+        if topo:
+            topo_gov = getattr(topo.raw, "governance", None)
+            if topo_gov:
+                topo_skills = getattr(topo_gov, "decision_skills", None) or []
+                if hasattr(topo_skills, "root"):
+                    topo_skills = topo_skills.root if topo_skills.root else []
+
+        if not ws_skills and not topo_skills:
+            return []
+
+        ws_dicts = [s if isinstance(s, dict) else s.model_dump() for s in ws_skills]
+        topo_dicts = [s if isinstance(s, dict) else s.model_dump() for s in topo_skills]
+        return merge_decision_skills(ws_dicts, topo_dicts)
 
     async def start_session(self) -> None:
         """Start MCP servers and keep them alive for multiple runs.
