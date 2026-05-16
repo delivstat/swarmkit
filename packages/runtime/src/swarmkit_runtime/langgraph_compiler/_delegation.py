@@ -78,7 +78,7 @@ def _extract_delegation(
     return delegations
 
 
-async def _dispatch_response(  # noqa: PLR0912, PLR0915
+async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
     response: CompletionResponse,
     agent: ResolvedAgent,
     agent_id: str,
@@ -283,7 +283,7 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                         },
                     )
                 )
-            synth_text = await _run_tool_loop(
+            loop_result = await _run_tool_loop(
                 response,
                 agent,
                 messages,
@@ -296,7 +296,9 @@ async def _dispatch_response(  # noqa: PLR0912, PLR0915
                 tool_results,
                 verbose,
             )
-            return _make_result(agent_id, synth_text)
+            if isinstance(loop_result, dict):
+                return loop_result
+            return _make_result(agent_id, loop_result)
 
         # Model returned text -- retry if the response is empty and
         # the agent has delegation or planning tools it should use.
