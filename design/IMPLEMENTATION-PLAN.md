@@ -332,7 +332,7 @@ Make swarms useful with real knowledge sources and a rich skill catalogue.
 - [x] `reference/topologies/code-review.yaml` — topology YAML (62 lines)
 - [x] `reference/topologies/skill-authoring.yaml` — topology YAML (30 lines)
 - [x] 16 archetypes under `reference/archetypes/` (engineering-leader, qa-leader, ops-leader, supervisor-leader, security-reviewer, code-analyst, github-reader, llm-judge, authoring-supervisor, schema-drafter, test-writer, test-analyst, artifact-validator, artifact-publisher, conversation-leader, knowledge-searcher)
-- [x] 20 skills under `reference/skills/` (code-quality-review, security-scan, github-pr-read, deploy-risk-review, qa-verdict, run-tests, lint-check, test-coverage-review, summarize-review, audit-log-write, etc.)
+- [x] 23 skills under `reference/skills/` (code-quality-review, security-scan, github-pr-read, deploy-risk-review, qa-verdict, run-tests, lint-check, test-coverage-review, summarize-review, audit-log-write, grounding-verifier, contradiction-detector, citation-checker, etc.)
 - [x] `design/details/topology-code-review.md` — design note
 - [x] `design/details/topology-skill-authoring.md` — design note
 - [x] `design/details/knowledge-curator-topology.md` — design note
@@ -406,6 +406,45 @@ Replaced free-text `delegate_to_*` with planner-driven task execution. See `desi
 - [x] **Document writer** — pandoc MCP for DOCX/PDF generation (PR #156)
 
 **Exit demo:** Sterling assistant creates task plan → log-analyst produces grounded 200+ line analysis with real SQL, call trees, timestamps → architect synthesizes → document-writer formats. All persisted to disk, resumable on crash.
+
+#### Governance decision skills (grounding) ✅
+
+Mandatory decision skills with workspace/topology merge semantics. See `design/details/governance-decision-skills.md`.
+
+**Shipped (v1.2.12 – v1.2.13):**
+
+- [x] **Schema + types + merge logic** — `decision_skills` in workspace governance + topology governance blocks (PR #201)
+- [x] **Compiler trigger points** — post_output, checkpoint, pre_synthesis hooks fire at correct moments (PR #204)
+- [x] **SkillBackedGovernanceProvider** — wraps base provider, invokes decision skills via llm_prompt (PR #205)
+- [x] **Retry loop** — failed post_output re-prompts agent with skill feedback, up to 4 attempts (PR #205)
+- [x] **Reference skills** — grounding-verifier, contradiction-detector, citation-checker (PR #201)
+- [x] **Sterling integration** — grounding-verifier + contradiction-detector wired, archetype grounding rules (PR #205)
+
+**Architecture:** governance layer enforces, compiler stays topology-agnostic. Rynko Flow validation gates use the same mechanism (governance decision skills with `mcp_tool` implementation type).
+
+**Exit demo:** Sterling researcher fabricates a name → grounding-verifier catches it → agent revises → clean output passes through.
+
+#### Structured inter-agent communication 🟡
+
+Replace prose between agents with structured JSON. Research-backed: 55-87% token reduction + 3-36% accuracy improvement. See `design/details/structured-inter-agent-communication.md`.
+
+**Architecture:** three layers — MCP provenance envelope (Phase A now, Phase B gateway in M10), default output_schema for workers, validation (Tier 1 deterministic + Tier 2 Rynko opt-in).
+
+**Wave 1 (next):**
+- [ ] **MCP provenance envelope** — wrap every tool response with ToolMetadata (source, args, timing). Phase A of gateway path.
+- [ ] **Default output_schema for workers** — all workers produce structured JSON by default. JSON mode from provider. Schema validation + retry.
+- [ ] **Auto-populate source from tool metadata** — citation is infrastructure, not prompt-dependent
+- [ ] **Skip summarizer for structured output** — structured data IS the summary
+
+**Wave 2:**
+- [ ] **Deterministic grounding (Tier 1)** — schema check replaces LLM judge for structured agents
+- [ ] **Rynko Flow validation (opt-in)** — business rules as governance decision skill
+
+**Wave 3:**
+- [ ] **Sterling workspace — structured researchers** — validate token savings vs prose
+- [ ] **Authoring skill — auto-suggest schemas** — new archetypes include output_schema
+
+**Future (M10/M11):** Full MCP gateway replaces Phase A proxy. See `mcp-discovery-pattern.md`.
 
 #### Reference topologies — remaining
 
@@ -546,6 +585,10 @@ Every design note under `design/details/` and where it appears in this plan:
 | `workspace-env-config.md` | M6.5 |
 | `workspace-schema-v1.md` | M0 ✅ |
 | `structured-delegation.md` | M9 ✅ |
+| `governance-decision-skills.md` | M9 ✅ |
+| `scope-freeze-and-spec-conformance.md` | M9 ✅ |
+| `two-phase-execution-flow.md` | M9 ✅ |
+| `structured-inter-agent-communication.md` | M9 🟡 |
 | `document-writer-pattern.md` | M8 ✅ |
 
 ## Open questions
