@@ -341,6 +341,9 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
                     model_name, loop_messages, system_prompt, tools, agent
                 )
                 current_response = await model_provider.complete(nudge_req)
+                state_change = _check_for_state_change(current_response, agent, agent.id, None)
+                if state_change is not None:
+                    return state_change
                 next_results = await _handle_skill_tool_calls(
                     current_response,
                     agent,
