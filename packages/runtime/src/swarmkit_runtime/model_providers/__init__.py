@@ -20,6 +20,7 @@ from ._types import (
     ToolSpec,
     Usage,
     image_block,
+    with_retry,
 )
 
 _LAZY_PROVIDERS: dict[str, tuple[str, str]] = {
@@ -62,4 +63,5 @@ __all__ = [
     "ToolSpec",
     "Usage",
     "image_block",
+    "with_retry",
 ]
