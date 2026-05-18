@@ -325,7 +325,12 @@ class WorkspaceRuntime:
                 leader_ids = [c.id for c in topology.root.children]
                 if leader_ids:
                     leader_id = leader_ids[0]
-                    initial_agent_results[leader_id] = "__task_plan_executing__"
+                    tasks = previous_plan.get("tasks", [])
+                    all_done = all(t.get("status") in ("completed", "failed") for t in tasks)
+                    if all_done:
+                        initial_agent_results[leader_id] = "__task_plan_complete__"
+                    else:
+                        initial_agent_results[leader_id] = "__task_plan_executing__"
                     initial_agent_results[topology.root.id] = f"__delegated__:{leader_id}"
                     initial_delegation_counts[leader_id] = 1
 

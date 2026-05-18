@@ -183,8 +183,25 @@ def _build_agent_node(  # noqa: PLR0915
         if denial is not None:
             return denial
 
-        # ---- task plan execution (structured delegation v2) -----------
+        # ---- already-delegated fast path (resume scenarios) ------------
         _agent_result = state.get("agent_results", {}).get(agent_id, "")
+        _child_has_task_plan = any(
+            isinstance(state.get("agent_results", {}).get(c.id, ""), str)
+            and state.get("agent_results", {}).get(c.id, "").startswith("__task_plan_")
+            for c in agent.children
+        )
+        if (
+            isinstance(_agent_result, str)
+            and _agent_result.startswith("__delegated__:")
+            and _child_has_task_plan
+        ):
+            return {
+                "current_agent": agent_id,
+                "agent_results": {agent_id: _agent_result},
+                "messages": [],
+            }
+
+        # ---- task plan execution (structured delegation v2) -----------
         _is_task_plan = isinstance(_agent_result, str) and _agent_result.startswith("__task_plan_")
         if _is_task_plan and _agent_result in (
             "__task_plan_created__",
