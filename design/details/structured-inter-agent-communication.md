@@ -2,7 +2,7 @@
 title: Structured inter-agent communication — output schemas for workers
 description: Replace prose between agents with structured JSON output. Research-backed (CodeAgents, OPTIMA): 55-87% token reduction + 3-36% accuracy improvement.
 tags: [compiler, performance, quality, tokens]
-status: in-progress
+status: waves-1-2-complete
 ---
 
 # Structured inter-agent communication
@@ -367,56 +367,48 @@ output_schema is separate — it's on the archetype, not the skill.
 
 ## Implementation plan
 
-### Wave 1: Provenance + structured output (implement now)
+### Wave 1: Provenance + structured output ✓ (v1.2.26–v1.2.29)
 
-#### PR 1: MCP provenance envelope
+#### PR 1: MCP provenance envelope ✓ (v1.2.27, PR #223)
 - `ToolMetadata` dataclass: source, args, timestamp, duration_ms, server_id
 - `ToolResponse` dataclass: data + metadata
 - Extend `MCPClientManager.call_tool` to wrap responses
-- Skill executor unpacks the envelope, passes metadata to agent context
-- This is Phase A of the gateway path (see `mcp-discovery-pattern.md`)
-- Tests: every tool call returns enriched response with provenance
+- Skill executor unpacks the envelope, appends `[source: ...]` tag
+- Phase A of the gateway path (see `mcp-discovery-pattern.md`)
 
-#### PR 2: Default output_schema for workers
-- Add `output_schema` to archetype schema (optional field)
+#### PR 2: Default output_schema for workers ✓ (v1.2.26, PR #222)
+- `output_schema` on archetype schema + topology agents (object|null)
 - Platform default schema applied to all `role: worker` agents
-  unless archetype sets `output_schema: null`
-- Compiler detects output_schema → requests JSON mode from provider
-- `response_format` parameter on CompletionRequest
-- Schema validation on response, one retry on invalid
-- Tests: structured output for workers, prose for leaders
+- Compiler: system prompt injection, JSON mode via `response_format`
+- `response_format` on CompletionRequest, wired through all providers
+- Schema validation + retry on invalid. Summarizer bypass for JSON.
 
-#### PR 3: Auto-populate source from tool metadata
-- Agent sees tool metadata in context → model references it
-- Runtime validates `source` fields match actual tool calls
-- When source is empty but tool metadata exists, auto-fill
-- Tests: source field matches tool call that produced the data
+#### PR 3: Auto-populate source from tool metadata ✓ (v1.2.28, PR #224)
+- Runtime scans messages for `[source: ...]` provenance tags
+- Validates finding sources against known tool calls
+- Auto-fills empty sources when unambiguous (single tool call)
 
-#### PR 4: Skip summarizer + structured checkpoint display
-- Valid JSON output_schema results skip `_summarize_result()` call
-- `render_status()` shows structured findings directly
-- Tests: no summarizer call, checkpoint shows structured data
+#### PR 4: Skip summarizer (landed in PR 2)
+- Structured JSON with `findings` array → extract directly, skip LLM
 
-#### PR 4.5: Structured checkpoint instructions (compiler → agent)
-- Replace prose checkpoint prompts with JSON action specs
-- Checkpoint message becomes structured data:
+#### PR 4.5: Structured checkpoint instructions ✓ (v1.2.29, PR #225)
+- Checkpoint prompts replaced with JSON action specs:
   `{phase, plan_status, required_actions, scope_status}`
-- Agent receives machine-parseable instructions, not English prose
-- Same principle as output_schema: structured data for agents
-- Tests: checkpoint prompt is valid JSON, model calls correct tools
+- All 4 structured communication surfaces now complete
 
-### Wave 2: Governance integration (after Wave 1)
+### Wave 2: Governance integration ✓ (v1.2.30–v1.2.31)
 
-#### PR 5: Deterministic grounding (Tier 1)
-- output_schema with required `source` → deterministic check
-- Skip grounding-verifier LLM call for structured agents
-- Tests: missing source → fail without LLM call
+#### PR 5: Deterministic grounding (Tier 1) ✓ (v1.2.30, PR #227)
+- `check_grounding()` — deterministic source check, no LLM needed
+- Every finding must have non-empty `source` field
+- Audit event `grounding.checked` with `deterministic: true`
+- Replaces LLM-based grounding-verifier for structured agents
 
-#### PR 6: Rynko Flow integration (opt-in)
-- Wire Rynko as governance decision skill for business validation
-- `rynko-output-validator` skill with `mcp_tool` implementation
-- Only fires when explicitly configured in workspace governance
-- Tests: Rynko gate validates domain-specific rules
+#### PR 6: MCP-backed decision skills ✓ (v1.2.31, PR #228)
+- `mcp_manager` threaded through governance → decision evaluator
+- Any MCP server can be a governance decision skill (not just Rynko)
+- `_parse_result` strips provenance tags from MCP responses
+- Reference skill YAML in `docs/examples/rynko-output-validator.yaml`
 
 ### Wave 3: Sterling + authoring (after Wave 2)
 
