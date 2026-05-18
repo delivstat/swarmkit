@@ -80,7 +80,7 @@ def _to_openai_kwargs(request: CompletionRequest) -> dict[str, Any]:
     return kwargs
 
 
-def _build_openai_messages(request: CompletionRequest) -> list[dict[str, Any]]:
+def _build_openai_messages(request: CompletionRequest) -> list[dict[str, Any]]:  # noqa: PLR0912
     messages: list[dict[str, Any]] = []
     if request.system:
         messages.append({"role": "system", "content": request.system})
@@ -89,41 +89,43 @@ def _build_openai_messages(request: CompletionRequest) -> list[dict[str, Any]]:
             messages.append({"role": msg.role, "content": msg.content})
         else:
             parts: list[dict[str, Any]] = []
+            tool_calls: list[dict[str, Any]] = []
+            tool_results: list[dict[str, Any]] = []
             for block in msg.content:
                 if block.type == "text":
                     parts.append({"type": "text", "text": block.text or ""})
                 elif block.type == "tool_use":
-                    messages.append(
+                    tool_calls.append(
                         {
-                            "role": "assistant",
-                            "tool_calls": [
-                                {
-                                    "id": block.tool_use_id or "",
-                                    "type": "function",
-                                    "function": {
-                                        "name": block.tool_name or "",
-                                        "arguments": str(block.tool_input or {}),
-                                    },
-                                }
-                            ],
+                            "id": block.tool_use_id or "",
+                            "type": "function",
+                            "function": {
+                                "name": block.tool_name or "",
+                                "arguments": str(block.tool_input or {}),
+                            },
                         }
                     )
-                    continue
                 elif block.type == "tool_result":
-                    messages.append(
+                    tool_results.append(
                         {
                             "role": "tool",
                             "tool_call_id": block.tool_use_id or "",
                             "content": str(block.tool_result) if block.tool_result else "",
                         }
                     )
-                    continue
                 elif block.type == "image" and block.image_data:
                     mt = block.image_media_type or "image/png"
                     data_url = f"data:{mt};base64,{block.image_data}"
                     parts.append({"type": "image_url", "image_url": {"url": data_url}})
-            if parts:
+            if tool_calls:
+                assistant_msg: dict[str, Any] = {"role": "assistant", "tool_calls": tool_calls}
+                if parts:
+                    assistant_msg["content"] = parts
+                messages.append(assistant_msg)
+            elif parts:
                 messages.append({"role": msg.role, "content": parts})
+            for tr in tool_results:
+                messages.append(tr)
     return messages
 
 
