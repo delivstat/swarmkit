@@ -133,6 +133,11 @@ class WorkspaceRuntime:
 
         governance = build_governance(workspace, ws_root)
 
+        mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None))
+        mcp_manager = MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
+
+        missing = find_missing_mcp_servers(workspace, mcp_configs)
+
         decision_skills = {
             sid: skill
             for sid, skill in workspace.skills.items()
@@ -152,12 +157,8 @@ class WorkspaceRuntime:
                 skills=decision_skills,
                 model_provider=_default_provider or governance,  # type: ignore[arg-type]
                 model_name=_model,
+                mcp_manager=mcp_manager,
             )
-
-        mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None))
-        mcp_manager = MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
-
-        missing = find_missing_mcp_servers(workspace, mcp_configs)
         if missing:
             raise MissingMCPServerError(missing)
 
