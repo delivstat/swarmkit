@@ -44,7 +44,8 @@ class OllamaModelProvider:
             resp.raise_for_status()
             return _from_ollama_response(resp.json())
 
-        return await with_retry(_call, label=f"ollama:{request.model}")
+        result: CompletionResponse = await with_retry(_call, label=f"ollama:{request.model}")
+        return result
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:
         payload = _to_ollama_payload(request)
