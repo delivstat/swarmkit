@@ -18,6 +18,11 @@ from swarmkit_runtime.resolver import ResolvedAgent
 from ._state import SwarmState
 
 
+def _check_scope_exists() -> bool:
+    """Check if scope.json exists in run state."""
+    return Path(".swarmkit/run-state/current/scope.json").exists()
+
+
 def _find_tasks_json() -> Path | None:
     """Find tasks.json on disk for resume scenarios."""
     candidates = [
@@ -171,12 +176,16 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
 def _build_prompt_messages(  # noqa: PLR0912, PLR0915
     agent: ResolvedAgent,
     state: SwarmState,
+    planning_config: Any = None,
 ) -> list[Message]:
     """Build the message list for an agent's model call.
 
     For v2 (task plan): builds context from task plan status.
     For v1 (delegation): builds from child agent_results.
     """
+    from ._state import PlanningConfig  # noqa: PLC0415
+
+    _planning = planning_config or PlanningConfig()
     messages: list[Message] = []
     agent_results = state.get("agent_results", {})
 
@@ -201,7 +210,11 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
         if plan:
             status = plan.render_status()
             _has_self_task = any(t.agent == "self" for t in plan.tasks)
-            if plan.all_done() and not _has_self_task:
+            _is_phase1_done = plan.all_done() and not _has_self_task
+            _needs_scope = _planning.two_phase or _is_phase1_done
+            _scope_exists = _check_scope_exists()
+
+            if plan.all_done() and _needs_scope and not _scope_exists:
                 messages.append(
                     Message(
                         role="user",
@@ -215,13 +228,32 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
                             f"constraints, and exclusions from what you "
                             f"learned\n"
                             f"3. Call update-task-plan to add targeted "
-                            f"Phase 2 tasks (config, docs, code analysis) "
-                            f"OR write the final response if this was a "
-                            f"simple query that needs no further research."
+                            f"Phase 2 tasks OR write the final response "
+                            f"if no further research is needed."
+                        ),
+                    )
+                )
+            elif plan.all_done() and _planning.scope_required and not _scope_exists:
+                messages.append(
+                    Message(
+                        role="user",
+                        content=(
+                            f"Original request: {state.get('input', '')}\n\n"
+                            f"{status}\n\n"
+                            f"All tasks are complete but scope is required. "
+                            f"Call create-scope to define requirements and "
+                            f"constraints before synthesizing. Then write "
+                            f"the final response."
                         ),
                     )
                 )
             elif plan.all_done():
+                _scope_hint = ""
+                if _scope_exists:
+                    _scope_hint = (
+                        " Call read-scope to review the scope contract "
+                        "and ensure your response satisfies all requirements."
+                    )
                 messages.append(
                     Message(
                         role="user",
@@ -232,8 +264,8 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
                             f"findings into a comprehensive final answer. "
                             f"Use read-task-result to access full details "
                             f"from any task if the summaries aren't "
-                            f"enough.\n\nDo NOT create a new task plan. "
-                            f"Write the final response now."
+                            f"enough.{_scope_hint}\n\nDo NOT create a new "
+                            f"task plan. Write the final response now."
                         ),
                     )
                 )

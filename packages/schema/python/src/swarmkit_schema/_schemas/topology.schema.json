@@ -49,6 +49,7 @@
         },
         "max_concurrent_tasks": { "type": "integer", "minimum": 1 },
         "task_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "planning": { "$ref": "#/$defs/planning" },
         "checkpointing": {
           "type": "object",
           "additionalProperties": true,
@@ -212,6 +213,23 @@
           "type": "array",
           "description": "Decision skill bindings that override or extend workspace-level bindings. Same id = override, new id = extend, required: false = disable inherited.",
           "items": { "$ref": "#/$defs/decision_skill_binding" }
+        }
+      }
+    },
+    "planning": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Controls task planning and scope behavior for leader agents. When set, the compiler enforces structured planning instead of relying on prompt instructions.",
+      "properties": {
+        "scope_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Leaders must call create-scope before synthesis. Blocks synthesis if no scope exists."
+        },
+        "two_phase": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enforce two-phase planning: Phase 1 (research) → create-scope → Phase 2 (targeted tasks). The compiler auto-injects checkpoint prompts."
         }
       }
     },

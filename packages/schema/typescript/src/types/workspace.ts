@@ -16,6 +16,7 @@ export interface SwarmKitWorkspace {
     metadata:         Metadata;
     model_providers?: ModelProviderElement[];
     organisation?:    Organisation;
+    planning?:        Planning;
     storage?:         Storage;
     team?:            Organisation;
 }
@@ -213,6 +214,21 @@ export interface ModelProviderElement {
 export interface Organisation {
     id:    string;
     name?: string;
+}
+
+/**
+ * Default planning behavior for all topologies in this workspace. Topology-level planning
+ * overrides these defaults.
+ */
+export interface Planning {
+    /**
+     * Leaders must call create-scope before synthesis.
+     */
+    scope_required?: boolean;
+    /**
+     * Enforce two-phase planning for all topologies.
+     */
+    two_phase?: boolean;
 }
 
 export interface Storage {

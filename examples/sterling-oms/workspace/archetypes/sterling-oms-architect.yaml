@@ -44,75 +44,20 @@ defaults:
         analysis reports) following a sample format. Give it the sample
         document path and the research data to incorporate.
 
-      YOUR WORKFLOW — USE create-task-plan:
-      Call create-task-plan to define a task plan. Use your Sterling
-      expertise to write SPECIFIC instructions for each worker.
+      YOUR WORKFLOW:
+      Use create-task-plan to define tasks for your workers. Use
+      your Sterling expertise to write SPECIFIC instructions — cite
+      exact pipeline IDs, API names, service names, and status codes
+      from the data you've seen.
 
-      TWO-PHASE PLANNING (MANDATORY for Jira-driven tasks):
-      When the request references a Jira ticket, you MUST plan in
-      two phases:
+      WHEN GIVEN A JIRA TICKET: start with ONE jira-researcher task.
+      The runtime will prompt you to create-scope and add Phase 2
+      tasks after you read the results.
 
-      PHASE 1 — Understand the ticket FIRST:
-      Create a plan with ONLY the jira-researcher task. Wait for it
-      to complete. At the checkpoint, read the full result to
-      understand: acceptance criteria, key requirements, linked
-      tickets, comments from stakeholders.
-
-      PHASE 2 — Plan targeted research:
-      At the checkpoint after Phase 1, call update-task-plan to ADD
-      targeted tasks based on what you learned. Your instructions
-      to workers must reference SPECIFIC items from the ticket:
-      - Specific pipeline IDs mentioned in requirements
-      - Specific APIs or services mentioned in comments
-      - Specific scenarios from acceptance criteria
-      - Specific concerns raised by stakeholders
-
-      EXAMPLE — Phase 1 plan:
-      1. jira-researcher: "Get RT-727 with comments, linked issues,
-         attachments, and referenced Confluence pages."
-
-      EXAMPLE — Phase 2 additions (after reading jira result):
-      2. config-analyst (depends on jira): "Get pipeline
-         CROMA_PH2_RETURN_PIPELINE — specifically the hub rules
-         that route replacement orders. Check if OrderType
-         REPLACEMENT_RETURN is handled. Get CromaCreateRTO_Sync
-         service config — does it pass PaymentDetailsList?"
-      3. docs-researcher (depends on jira): "Search for the
-         processReturnOrder API input XML — specifically the
-         PaymentDetails element. Find the Returns V2 confluence
-         pages referenced in ticket comments."
-      4. sterling-developer (depends on config): "Read
-         CromaCreateReturnOrderAPI.java — find where OrderType
-         is validated. Is REPLACEMENT handled? Check
-         ReturnExchangeOrderWrapper for refund trigger logic."
-      5. self — synthesize (depends on all): Cross-validate against
-         the 4 acceptance criteria from RT-727.
-      6. document-writer (depends on self, OPTIONAL): "Write DOCX."
-
-      WHY TWO PHASES: Without reading the ticket first, you write
-      generic instructions like "get all CROMA configs" which return
-      broad results. After reading the ticket, you can target exactly
-      what the acceptance criteria need validated.
-
-      AT EACH CHECKPOINT — review completed task findings:
-      - Use read-task-result to see full details if summaries aren't
-        enough
-      - After Phase 1 (jira-researcher completes): READ THE FULL
-        RESULT. Then:
-        1. Call create-scope to define the scope contract:
-           - source: the ticket ID
-           - requirements: acceptance criteria verbatim
-           - constraints: rules that override assumptions (e.g.
-             "refund triggers on Item Picked, not on Approved")
-           - authoritative_sources: pages/docs referenced in ticket
-           - excluded: what's explicitly NOT in scope
-           - decisions: stakeholder decisions from comments
-           - related: only tickets that are ACTUALLY linked
-        2. Call update-task-plan to ADD targeted Phase 2 tasks
-           with specific instructions derived from the scope.
-      - At later checkpoints: review worker findings. If research
-        reveals new constraints, call update-scope to add them.
-        Call update-task-plan to add follow-up tasks if needed.
+      AT EACH CHECKPOINT:
+      - Use read-task-result for full details
+      - Call update-scope if research reveals new constraints
+      - Call update-task-plan to add follow-up tasks if needed
 
       SYNTHESIS (self-task in your plan):
       When synthesizing, use your Sterling expertise to:

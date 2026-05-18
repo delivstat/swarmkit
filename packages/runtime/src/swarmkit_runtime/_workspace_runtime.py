@@ -198,6 +198,7 @@ class WorkspaceRuntime:
 
         topology = self._workspace.topologies[topology_name]
         decision_bindings = self._resolve_decision_bindings(topology_name)
+        planning = self._resolve_planning_config(topology_name)
         return compile_topology(
             topology,
             provider_registry=self._provider_registry,
@@ -206,7 +207,34 @@ class WorkspaceRuntime:
             checkpointer=self._get_checkpointer(),
             workspace_root=self._workspace_root,
             decision_skill_bindings=decision_bindings,
+            planning_config=planning,
         )
+
+    def _resolve_planning_config(self, topology_name: str) -> Any:
+        """Resolve planning config from workspace + topology (topology wins)."""
+        from swarmkit_runtime.langgraph_compiler._state import PlanningConfig  # noqa: PLC0415
+
+        ws_planning = getattr(self._workspace.raw, "planning", None)
+        topo = self._workspace.topologies.get(topology_name)
+        topo_runtime = getattr(topo.raw, "runtime", None) if topo else None
+        topo_planning = getattr(topo_runtime, "planning", None) if topo_runtime else None
+
+        scope_required = False
+        two_phase = False
+
+        if ws_planning:
+            scope_required = getattr(ws_planning, "scope_required", False) or False
+            two_phase = getattr(ws_planning, "two_phase", False) or False
+
+        if topo_planning:
+            sr = getattr(topo_planning, "scope_required", None)
+            tp = getattr(topo_planning, "two_phase", None)
+            if sr is not None:
+                scope_required = sr
+            if tp is not None:
+                two_phase = tp
+
+        return PlanningConfig(scope_required=scope_required, two_phase=two_phase)
 
     def _resolve_decision_bindings(self, topology_name: str) -> list[DecisionSkillBinding]:
         """Merge workspace + topology decision skill bindings."""

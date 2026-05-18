@@ -39,7 +39,7 @@ from ._prompts import (
     _build_tools,
     _get_completed_children,
 )
-from ._state import SwarmState
+from ._state import PlanningConfig, SwarmState
 
 _active_trace: RunTrace | None = None
 _current_parent_agent: str | None = None
@@ -61,6 +61,7 @@ def compile_topology(
     checkpointer: Any = None,
     workspace_root: Any = None,
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
+    planning_config: PlanningConfig | None = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -80,6 +81,7 @@ def compile_topology(
     agents = _collect_agents(topology.root)
 
     _bindings = decision_skill_bindings or []
+    _planning = planning_config or PlanningConfig()
     for agent in agents.values():
         agent_provider = _resolve_agent_provider(agent, provider_registry, model_provider)
         node_fn = _build_agent_node(
@@ -91,6 +93,7 @@ def compile_topology(
             provider_registry,
             workspace_root=workspace_root,
             decision_skill_bindings=_bindings,
+            planning_config=_planning,
         )
         graph.add_node(agent.id, node_fn)
 
@@ -151,10 +154,12 @@ def _build_agent_node(  # noqa: PLR0915
     provider_registry: ProviderRegistry | None = None,
     workspace_root: Any = None,
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
+    planning_config: PlanningConfig | None = None,
 ) -> Any:
     """Build an async node function for one agent."""
     drift_observer = _create_drift_observer(agent)
     _ds_bindings = decision_skill_bindings or []
+    _planning = planning_config or PlanningConfig()
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         global _current_parent_agent  # noqa: PLW0603
@@ -212,7 +217,7 @@ def _build_agent_node(  # noqa: PLR0915
                     return batch_result
 
         # ---- message + tool construction -----------------------------
-        messages = _build_prompt_messages(agent, state)
+        messages = _build_prompt_messages(agent, state, planning_config=_planning)
         tools = _build_tools(agent, mcp_manager=mcp_manager)
         agent_results = state.get("agent_results", {})
         completed_children = _get_completed_children(agent, agent_results)

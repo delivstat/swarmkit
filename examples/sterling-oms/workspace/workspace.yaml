@@ -8,6 +8,9 @@ metadata:
     Four topologies: solution review, Q&A, code review, coding assistant.
     Backed by live Sterling API access, product documentation RAG,
     and reference design search.
+planning:
+  scope_required: true
+  two_phase: true
 governance:
   provider: mock
   decision_skills:

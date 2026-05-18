@@ -259,6 +259,23 @@ class Storage(BaseModel):
     knowledge_bases: KnowledgeBases | None = None
 
 
+class Planning(BaseModel):
+    """
+    Default planning behavior for all topologies in this workspace. Topology-level planning overrides these defaults.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    scope_required: bool | None = Field(
+        False, description="Leaders must call create-scope before synthesis."
+    )
+    two_phase: bool | None = Field(
+        False, description="Enforce two-phase planning for all topologies."
+    )
+
+
 class Trigger(Enum):
     """
     When the skill fires: post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).
@@ -343,3 +360,4 @@ class SwarmKitWorkspace(BaseModel):
     credentials: dict[str, CredentialRef] | None = None
     mcp_servers: list[McpServer] | None = None
     storage: Storage | None = None
+    planning: Planning | None = None
