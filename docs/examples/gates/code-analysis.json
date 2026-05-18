@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Code Analysis Findings",
+  "description": "Validates structured output from code analysis workers. Each finding must reference a file path and line range.",
+  "type": "object",
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fact", "source", "file_path"],
+        "properties": {
+          "fact": {
+            "type": "string",
+            "minLength": 5
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file_path": {
+            "type": "string",
+            "pattern": "\\.",
+            "description": "Source file path (must contain a dot for extension)."
+          },
+          "line_range": {
+            "type": "string",
+            "pattern": "^\\d+(-\\d+)?$",
+            "description": "Line number or range, e.g. '42' or '10-25'."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["observed", "inferred"]
+          }
+        }
+      }
+    }
+  }
+}

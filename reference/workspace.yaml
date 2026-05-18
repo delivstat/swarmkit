@@ -22,6 +22,9 @@ mcp_servers:
   - id: swarmkit-knowledge
     transport: stdio
     command: ["uv", "run", "python", "-m", "swarmkit_runtime.knowledge"]
+  - id: gate-validator
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.gate_validator"]
 storage:
   checkpoints:
     backend: sqlite
