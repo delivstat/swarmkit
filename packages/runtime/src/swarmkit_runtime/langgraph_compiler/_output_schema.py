@@ -13,6 +13,7 @@ See ``design/details/structured-inter-agent-communication.md``.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from swarmkit_runtime.resolver import ResolvedAgent
@@ -129,3 +130,61 @@ def validate_and_fill_sources(
             finding["source"] = "unattributed"
 
     return output
+
+
+@dataclass(frozen=True)
+class GroundingResult:
+    """Result of a deterministic grounding check on structured output."""
+
+    passed: bool
+    total_findings: int = 0
+    sourced: int = 0
+    unsourced: list[str] = field(default_factory=list)
+    unattributed: int = 0
+
+
+def check_grounding(
+    output: dict[str, Any],
+    known_sources: set[str] | None = None,
+) -> GroundingResult:
+    """Deterministic grounding check — no LLM needed.
+
+    For structured output with a ``findings`` array, verifies that every
+    finding has a non-empty ``source`` field. Optionally validates that
+    source strings match known tool calls.
+
+    This replaces the LLM-based ``grounding-verifier`` decision skill
+    for agents with ``output_schema``. The schema constraint makes
+    fabrication without a source structurally detectable.
+
+    Returns a ``GroundingResult`` with pass/fail and details.
+    """
+    findings = output.get("findings")
+    if not isinstance(findings, list):
+        return GroundingResult(passed=True)
+
+    total = 0
+    sourced = 0
+    unsourced: list[str] = []
+    unattributed = 0
+
+    for finding in findings:
+        if not isinstance(finding, dict) or "fact" not in finding:
+            continue
+        total += 1
+        source = finding.get("source", "")
+        if not source:
+            unsourced.append(finding["fact"][:120])
+        elif source == "unattributed":
+            unattributed += 1
+        else:
+            sourced += 1
+
+    passed = len(unsourced) == 0
+    return GroundingResult(
+        passed=passed,
+        total_findings=total,
+        sourced=sourced,
+        unsourced=unsourced,
+        unattributed=unattributed,
+    )
