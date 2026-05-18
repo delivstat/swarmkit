@@ -6,6 +6,7 @@ requests for each agent's model call.
 
 from __future__ import annotations
 
+import json as _json
 import os
 from pathlib import Path
 from typing import Any
@@ -204,6 +205,32 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
     return "\n".join(parts)
 
 
+def _build_checkpoint_spec(
+    *,
+    phase: str,
+    plan_status: str,
+    required_actions: list[dict[str, str]],
+    scope_status: str = "not_created",
+    original_request: str = "",
+) -> str:
+    """Build a JSON checkpoint instruction for the coordinator.
+
+    Replaces prose checkpoint prompts with structured action specs.
+    The coordinator receives machine-parseable instructions instead of
+    English paragraphs — same principle as output_schema for workers.
+    """
+    spec: dict[str, Any] = {
+        "checkpoint": {
+            "phase": phase,
+            "plan_status": plan_status,
+            "scope_status": scope_status,
+            "required_actions": required_actions,
+        },
+        "original_request": original_request,
+    }
+    return _json.dumps(spec, indent=2)
+
+
 def _build_prompt_messages(  # noqa: PLR0912, PLR0915
     agent: ResolvedAgent,
     state: SwarmState,
@@ -245,79 +272,75 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
             _needs_scope = _planning.two_phase or _is_phase1_done
             _scope_exists = _check_scope_exists()
 
+            _input = state.get("input", "")
+            _scope_str = "exists" if _scope_exists else "not_created"
+
             if plan.all_done() and _needs_scope and not _scope_exists:
+                spec = _build_checkpoint_spec(
+                    phase="research_complete",
+                    plan_status="all_done",
+                    scope_status=_scope_str,
+                    original_request=_input,
+                    required_actions=[
+                        {"tool": "read-task-result", "reason": "read full findings"},
+                        {"tool": "create-scope", "reason": "define requirements and constraints"},
+                        {
+                            "tool": "update-task-plan",
+                            "reason": "add Phase 2 tasks or write final response",
+                        },
+                    ],
+                )
                 messages.append(
-                    Message(
-                        role="user",
-                        content=(
-                            f"Original request: {state.get('input', '')}\n\n"
-                            f"{status}\n\n"
-                            f"Research phase complete. You MUST now:\n"
-                            f"1. Call read-task-result to read the full "
-                            f"findings\n"
-                            f"2. Call create-scope to define requirements, "
-                            f"constraints, and exclusions from what you "
-                            f"learned\n"
-                            f"3. Call update-task-plan to add targeted "
-                            f"Phase 2 tasks OR write the final response "
-                            f"if no further research is needed."
-                        ),
-                    )
+                    Message(role="user", content=f"{status}\n\n{spec}"),
                 )
             elif plan.all_done() and _planning.scope_required and not _scope_exists:
+                spec = _build_checkpoint_spec(
+                    phase="scope_required",
+                    plan_status="all_done",
+                    scope_status=_scope_str,
+                    original_request=_input,
+                    required_actions=[
+                        {"tool": "create-scope", "reason": "scope required before synthesis"},
+                        {"tool": "write_response", "reason": "synthesize final answer"},
+                    ],
+                )
                 messages.append(
-                    Message(
-                        role="user",
-                        content=(
-                            f"Original request: {state.get('input', '')}\n\n"
-                            f"{status}\n\n"
-                            f"All tasks are complete but scope is required. "
-                            f"Call create-scope to define requirements and "
-                            f"constraints before synthesizing. Then write "
-                            f"the final response."
-                        ),
-                    )
+                    Message(role="user", content=f"{status}\n\n{spec}"),
                 )
             elif plan.all_done():
-                _scope_hint = ""
+                actions: list[dict[str, str]] = [
+                    {"tool": "read-task-result", "reason": "access full task details if needed"},
+                    {"tool": "write_response", "reason": "synthesize final answer"},
+                ]
                 if _scope_exists:
-                    _scope_hint = (
-                        " Call read-scope to review the scope contract "
-                        "and ensure your response satisfies all requirements."
+                    actions.insert(
+                        0,
+                        {"tool": "read-scope", "reason": "verify response satisfies scope"},
                     )
+                spec = _build_checkpoint_spec(
+                    phase="synthesis",
+                    plan_status="all_done",
+                    scope_status=_scope_str,
+                    original_request=_input,
+                    required_actions=actions,
+                )
                 messages.append(
-                    Message(
-                        role="user",
-                        content=(
-                            f"Original request: {state.get('input', '')}\n\n"
-                            f"{status}\n\n"
-                            f"All tasks are complete. Synthesize the "
-                            f"findings into a comprehensive final answer. "
-                            f"Use read-task-result to access full details "
-                            f"from any task if the summaries aren't "
-                            f"enough.{_scope_hint}\n\nDo NOT create a new "
-                            f"task plan. Write the final response now."
-                        ),
-                    )
+                    Message(role="user", content=f"{status}\n\n{spec}"),
                 )
             else:
+                spec = _build_checkpoint_spec(
+                    phase="in_progress",
+                    plan_status="tasks_remaining",
+                    scope_status=_scope_str,
+                    original_request=_input,
+                    required_actions=[
+                        {"tool": "update-task-plan", "reason": "add, remove, or modify tasks"},
+                        {"tool": "read-task-result", "reason": "read completed task details"},
+                        {"tool": "wait", "reason": "pending tasks execute automatically"},
+                    ],
+                )
                 messages.append(
-                    Message(
-                        role="user",
-                        content=(
-                            f"Original request: {state.get('input', '')}\n\n"
-                            f"{status}\n\n"
-                            f"Review the results above. You can:\n"
-                            f"- Call update-task-plan to add new tasks, "
-                            f"remove pending tasks, or modify instructions\n"
-                            f"- Call read-task-result to see full details "
-                            f"from a completed task\n"
-                            f"- Wait for pending tasks to complete "
-                            f"(they will run automatically)\n\n"
-                            f"If no changes needed, the pending tasks "
-                            f"will execute next."
-                        ),
-                    )
+                    Message(role="user", content=f"{status}\n\n{spec}"),
                 )
             return messages
 
