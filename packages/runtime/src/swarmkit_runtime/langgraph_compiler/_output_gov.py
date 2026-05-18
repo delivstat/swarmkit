@@ -170,6 +170,9 @@ async def _finalize_text_result(
             agent_id=agent_id,
         )
         result_text = _auto_fill_sources(result_text, messages)
+        result_text = await _check_deterministic_grounding(
+            result_text, messages, agent_id, governance
+        )
 
     if result_text == "(no response)" and completed_children:
         child_texts = [
@@ -218,3 +221,57 @@ def _extract_sources_from_messages(messages: list[Message]) -> set[str]:
                     for match in _SOURCE_TAG_RE.finditer(text):
                         sources.add(match.group(1).strip())
     return sources
+
+
+async def _check_deterministic_grounding(
+    result_text: str,
+    messages: list[Message],
+    agent_id: str,
+    governance: GovernanceProvider,
+) -> str:
+    """Run deterministic grounding check on structured output.
+
+    Replaces the LLM-based grounding-verifier for agents with output_schema.
+    Every finding must have a non-empty source field — this is a for loop,
+    not an LLM call.
+
+    If grounding fails, unsourced claims are flagged in the audit log and
+    annotated on the output (same pattern as decision skill failures).
+    """
+    from ._output_schema import check_grounding  # noqa: PLC0415
+
+    try:
+        parsed = json.loads(result_text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return result_text
+
+    if not isinstance(parsed, dict) or "findings" not in parsed:
+        return result_text
+
+    known_sources = _extract_sources_from_messages(messages)
+    grounding = check_grounding(parsed, known_sources)
+
+    await governance.record_event(
+        AuditEvent(
+            event_type="grounding.checked",
+            agent_id=agent_id,
+            timestamp=datetime.now(tz=UTC),
+            payload={
+                "passed": grounding.passed,
+                "total_findings": grounding.total_findings,
+                "sourced": grounding.sourced,
+                "unsourced_count": len(grounding.unsourced),
+                "unattributed": grounding.unattributed,
+                "deterministic": True,
+            },
+        )
+    )
+
+    if not grounding.passed:
+        flags = [f"Unsourced claim: {fact}" for fact in grounding.unsourced]
+        annotation = "\n\n---\nGROUNDING FLAGS (deterministic):\n" + "\n".join(
+            f"- {f}" for f in flags
+        )
+        return result_text + annotation
+
+    return result_text
