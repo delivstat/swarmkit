@@ -12,7 +12,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: moonshotai/kimi-k2.5
+    name: qwen/qwen3-235b-a22b
     temperature: 0.2
   prompt:
     system: |
