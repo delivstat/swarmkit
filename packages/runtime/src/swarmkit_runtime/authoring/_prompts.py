@@ -406,8 +406,17 @@ Ask about:
 - System prompt (what the agent's persona is)
 - Default skills
 - IAM scopes (what the agent is allowed to do)
+- Whether it produces prose artifacts (set output_schema: null) or \
+  structured findings (default — workers automatically get structured output)
 
-Example archetype:
+STRUCTURED OUTPUT (output_schema):
+- Workers automatically produce structured JSON output \
+  ({findings: [{fact, source}]}) by default. No config needed.
+- If the worker creates prose artifacts (documents, reports, articles), \
+  set `output_schema: null` to opt out.
+- Root and leader agents produce prose (human-facing) — no output_schema.
+
+Example archetype (research worker — gets structured output by default):
 ```yaml
 apiVersion: swarmkit/v1
 kind: Archetype
@@ -427,6 +436,30 @@ defaults:
     - code-quality-review
   iam:
     base_scope: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Example archetype (document writer — opts out of structured output):
+```yaml
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: report-writer
+  name: Report Writer
+  description: Creates formatted documents from research findings.
+role: worker
+defaults:
+  output_schema: null
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-chat-v3-0324
+    temperature: 0.3
+  prompt:
+    system: You create professional documents from research data.
+  skills:
+    - write-document
 provenance:
   authored_by: human
   version: 1.0.0

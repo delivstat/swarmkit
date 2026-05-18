@@ -10,6 +10,7 @@ metadata:
     to DOCX/PDF via pandoc with the sample as a style reference.
 role: worker
 defaults:
+  output_schema: null
   model:
     provider: openrouter
     name: deepseek/deepseek-chat-v3-0324
