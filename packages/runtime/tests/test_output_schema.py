@@ -139,10 +139,12 @@ class TestLooksIncomplete:
         assert _looks_incomplete('{"findings": []}') is False
 
     def test_structured_findings_not_incomplete(self) -> None:
-        result = json.dumps({
-            "findings": [{"fact": "X exists", "source": "grep"}],
-            "not_found": [],
-        })
+        result = json.dumps(
+            {
+                "findings": [{"fact": "X exists", "source": "grep"}],
+                "not_found": [],
+            }
+        )
         assert _looks_incomplete(result) is False
 
     def test_planning_text_is_incomplete(self) -> None:
@@ -159,13 +161,15 @@ class TestLooksIncomplete:
 class TestSummarizerBypass:
     @pytest.mark.asyncio
     async def test_structured_json_skips_llm(self) -> None:
-        result = json.dumps({
-            "findings": [
-                {"fact": "Config has max_retries=3", "source": "cdt:search-config"},
-                {"fact": "Pipeline timeout is 30s", "source": "cdt:search-config"},
-            ],
-            "not_found": ["error handling policy"],
-        })
+        result = json.dumps(
+            {
+                "findings": [
+                    {"fact": "Config has max_retries=3", "source": "cdt:search-config"},
+                    {"fact": "Pipeline timeout is 30s", "source": "cdt:search-config"},
+                ],
+                "not_found": ["error handling policy"],
+            }
+        )
         mock_provider = AsyncMock()
         findings = await _summarize_result("task-1", result, mock_provider)
         mock_provider.complete.assert_not_called()
@@ -180,9 +184,7 @@ class TestSummarizerBypass:
         mock_provider.complete.return_value = AsyncMock(
             content=[AsyncMock(type="text", text="- Finding 1\n- Finding 2")],
         )
-        await _summarize_result(
-            "task-1", result, mock_provider, coordinator_model="mock"
-        )
+        await _summarize_result("task-1", result, mock_provider, coordinator_model="mock")
         mock_provider.complete.assert_called_once()
 
     @pytest.mark.asyncio
@@ -195,9 +197,11 @@ class TestSummarizerBypass:
 
     @pytest.mark.asyncio
     async def test_findings_without_source(self) -> None:
-        result = json.dumps({
-            "findings": [{"fact": "Something found", "source": ""}],
-        })
+        result = json.dumps(
+            {
+                "findings": [{"fact": "Something found", "source": ""}],
+            }
+        )
         mock_provider = AsyncMock()
         findings = await _summarize_result("task-1", result, mock_provider)
         mock_provider.complete.assert_not_called()
