@@ -19,8 +19,10 @@ import logging
 import os
 import re
 import shutil
+import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -52,6 +54,35 @@ class MCPServerConfig:
     sandbox_image: str = ""
     permission: PermissionTier = "cautious"
     permission_overrides: dict[str, PermissionTier] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ToolMetadata:
+    """Provenance metadata attached to every MCP tool call response.
+
+    Phase A of the MCP gateway path — lightweight envelope that tracks
+    which server/tool produced a result, with timing and arguments.
+    See ``design/details/structured-inter-agent-communication.md`` Layer 1.
+    """
+
+    source: str
+    args: dict[str, Any] | None = None
+    timestamp: str = ""
+    duration_ms: int = 0
+    server_id: str = ""
+
+
+@dataclass(frozen=True)
+class ToolResponse:
+    """MCP tool result with provenance envelope.
+
+    ``data`` is the original ``CallToolResult`` from the MCP SDK.
+    ``metadata`` provides source attribution for downstream consumers
+    (structured output ``source`` field, audit logs, observability).
+    """
+
+    data: CallToolResult
+    metadata: ToolMetadata
 
 
 class MCPClientManager:
@@ -248,10 +279,25 @@ class MCPClientManager:
         server_id: str,
         tool_name: str,
         arguments: dict[str, Any] | None = None,
-    ) -> CallToolResult:
-        """Call a tool on the named MCP server."""
+    ) -> ToolResponse:
+        """Call a tool on the named MCP server.
+
+        Returns a ``ToolResponse`` with the raw ``CallToolResult`` plus
+        provenance metadata (source, timing, server_id). Every MCP call
+        passes through this method — provenance is automatic.
+        """
         session = await self.get_session(server_id)
-        return await session.call_tool(tool_name, arguments)
+        start = time.monotonic()
+        result = await session.call_tool(tool_name, arguments)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        metadata = ToolMetadata(
+            source=f"{server_id}:{tool_name}",
+            args=arguments,
+            timestamp=datetime.now(tz=UTC).isoformat(),
+            duration_ms=elapsed_ms,
+            server_id=server_id,
+        )
+        return ToolResponse(data=result, metadata=metadata)
 
     async def list_tools(self, server_id: str) -> list[dict[str, Any]]:
         """List available tools on a server."""
