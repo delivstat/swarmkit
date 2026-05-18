@@ -26,9 +26,14 @@ async def evaluate_skill(
     content: str,
     model_provider: ModelProviderProtocol,
     model_name: str,
+    mcp_manager: Any = None,
     context: dict[str, Any] | None = None,
 ) -> DecisionSkillResult:
-    """Invoke a decision skill and parse the result."""
+    """Invoke a decision skill and parse the result.
+
+    Supports both ``llm_prompt`` and ``mcp_tool`` decision skills.
+    MCP-backed skills (e.g. Rynko Flow) require ``mcp_manager``.
+    """
     from swarmkit_runtime.langgraph_compiler._skill_executor import (  # noqa: PLC0415
         execute_skill as run_skill,
     )
@@ -40,6 +45,8 @@ async def evaluate_skill(
         input_text=input_text,
         model_provider=model_provider,
         model_name=model_name,
+        mcp_manager=mcp_manager,
+        agent_id=agent_id,
     )
 
     result_text = raw_result if isinstance(raw_result, str) else raw_result[0]
@@ -79,7 +86,7 @@ def _build_input(
     return "\n".join(parts)
 
 
-def _parse_result(skill_id: str, raw: str) -> DecisionSkillResult:
+def _parse_result(skill_id: str, raw: str) -> DecisionSkillResult:  # noqa: PLR0912
     """Parse JSON result from a decision skill into DecisionSkillResult."""
     try:
         cleaned = raw.strip()
@@ -87,6 +94,20 @@ def _parse_result(skill_id: str, raw: str) -> DecisionSkillResult:
             cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0].strip()
         elif "```" in cleaned:
             cleaned = cleaned.split("```", 1)[1].split("```", 1)[0].strip()
+
+        # Strip trailing provenance tags from MCP tool responses
+        if "\n[source:" in cleaned:
+            cleaned = cleaned[: cleaned.rindex("\n[source:")].strip()
+
+        # Extract JSON object if surrounded by non-JSON text
+        if cleaned and cleaned[0] != "{":
+            start = cleaned.find("{")
+            if start >= 0:
+                cleaned = cleaned[start:]
+        if cleaned and cleaned[-1] != "}":
+            end = cleaned.rfind("}")
+            if end >= 0:
+                cleaned = cleaned[: end + 1]
 
         data = json.loads(cleaned)
         verdict = data.get("verdict", "pass")

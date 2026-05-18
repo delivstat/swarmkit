@@ -37,11 +37,13 @@ class SkillBackedGovernanceProvider(GovernanceProvider):
         skills: dict[str, ResolvedSkill],
         model_provider: ModelProviderProtocol,
         model_name: str = "",
+        mcp_manager: Any = None,
     ) -> None:
         self._base = base
         self._skills = skills
         self._model_provider = model_provider
         self._model_name = model_name
+        self._mcp_manager = mcp_manager
 
     async def evaluate_action(
         self,
@@ -104,5 +106,6 @@ class SkillBackedGovernanceProvider(GovernanceProvider):
             content=content,
             model_provider=self._model_provider,
             model_name=self._model_name,
+            mcp_manager=self._mcp_manager,
             context=context,
         )
