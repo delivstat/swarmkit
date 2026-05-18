@@ -34,12 +34,18 @@ class OllamaModelProvider:
         self._client = httpx.AsyncClient(base_url=self._base_url, timeout=120.0)
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
+        from ._types import with_retry  # noqa: PLC0415
+
         payload = _to_ollama_payload(request)
         payload["stream"] = False
-        resp = await self._client.post("/api/chat", json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        return _from_ollama_response(data)
+
+        async def _call() -> CompletionResponse:
+            resp = await self._client.post("/api/chat", json=payload)
+            resp.raise_for_status()
+            return _from_ollama_response(resp.json())
+
+        result: CompletionResponse = await with_retry(_call, label=f"ollama:{request.model}")
+        return result
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:
         payload = _to_ollama_payload(request)

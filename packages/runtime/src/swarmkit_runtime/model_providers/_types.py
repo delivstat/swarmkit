@@ -9,6 +9,7 @@ See ``design/details/model-provider-abstraction.md``.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -88,6 +89,71 @@ class CompletionResponse:
         """Extract joined text from all text blocks."""
         parts = [b.text for b in self.content if b.type == "text" and b.text]
         return "\n".join(parts)
+
+
+_MODEL_TIMEOUT = int(os.environ.get("SWARMKIT_MODEL_TIMEOUT", "300"))
+_MODEL_RETRIES = int(os.environ.get("SWARMKIT_MODEL_RETRIES", "3"))
+
+
+async def with_retry(
+    coro_fn: Any,
+    *,
+    timeout: int = 0,
+    max_retries: int = 0,
+    label: str = "model call",
+) -> Any:
+    """Wrap an async call with timeout + exponential backoff + jitter.
+
+    Retries on timeout, connection, and transient HTTP errors. Raises
+    on non-retryable errors (auth, validation, etc.).
+
+    Configurable via env:
+    - ``SWARMKIT_MODEL_TIMEOUT`` — per-call timeout in seconds (default 300)
+    - ``SWARMKIT_MODEL_RETRIES`` — max retries (default 3)
+    """
+    import asyncio  # noqa: PLC0415
+    import random  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    _timeout = timeout or _MODEL_TIMEOUT
+    _retries = max_retries or _MODEL_RETRIES
+    _verbose = os.environ.get("SWARMKIT_VERBOSE", "")
+
+    for attempt in range(_retries + 1):
+        try:
+            return await asyncio.wait_for(coro_fn(), timeout=_timeout)
+        except TimeoutError:
+            if attempt == _retries:
+                raise
+            wait = (2**attempt) + random.uniform(0, 1)
+            if _verbose:
+                print(
+                    f"  [timeout: {label} attempt {attempt + 1}/{_retries + 1}, "
+                    f"retrying in {wait:.1f}s]",
+                    file=sys.stderr,
+                )
+            await asyncio.sleep(wait)
+        except Exception as exc:
+            exc_name = type(exc).__name__
+            is_retryable = any(
+                s in exc_name.lower()
+                for s in ("timeout", "connection", "server", "rate", "502", "503", "529")
+            ) or any(
+                s in str(exc).lower()
+                for s in ("timeout", "connection reset", "server error", "rate limit", "overloaded")
+            )
+            if not is_retryable or attempt == _retries:
+                raise
+            wait = (2**attempt) + random.uniform(0, 1)
+            if _verbose:
+                print(
+                    f"  [error: {label} attempt {attempt + 1}/{_retries + 1}: "
+                    f"{exc_name}, retrying in {wait:.1f}s]",
+                    file=sys.stderr,
+                )
+            await asyncio.sleep(wait)
+
+    raise RuntimeError(f"{label} failed after {_retries + 1} attempts")
 
 
 _MEDIA_TYPES: dict[str, str] = {

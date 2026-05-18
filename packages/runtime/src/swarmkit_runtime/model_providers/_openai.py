@@ -30,8 +30,13 @@ class OpenAIModelProvider:
         self._client = openai.AsyncOpenAI(api_key=api_key, **kwargs)
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
+        from ._types import with_retry  # noqa: PLC0415
+
         kwargs = _to_openai_kwargs(request)
-        raw = await self._client.chat.completions.create(**kwargs)
+        raw = await with_retry(
+            lambda: self._client.chat.completions.create(**kwargs),
+            label=f"openai:{request.model}",
+        )
         return _from_openai_response(raw)
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:

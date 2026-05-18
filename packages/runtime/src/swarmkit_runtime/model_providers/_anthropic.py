@@ -30,6 +30,8 @@ class AnthropicModelProvider:
         self._client = anthropic.AsyncAnthropic(api_key=api_key, **kwargs)
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
+        from ._types import with_retry  # noqa: PLC0415
+
         messages = _to_anthropic_messages(request)
         kwargs: dict[str, Any] = {
             "model": request.model,
@@ -52,7 +54,10 @@ class AnthropicModelProvider:
         if request.extra:
             kwargs.update(request.extra)
 
-        raw = await self._client.messages.create(**kwargs)
+        raw = await with_retry(
+            lambda: self._client.messages.create(**kwargs),
+            label=f"anthropic:{request.model}",
+        )
         return _from_anthropic_response(raw)
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:

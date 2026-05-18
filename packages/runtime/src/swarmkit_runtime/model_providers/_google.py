@@ -31,13 +31,18 @@ class GoogleModelProvider:
         self._client = genai.Client(api_key=api_key, **kwargs)
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
+        from ._types import with_retry  # noqa: PLC0415
+
         contents = _to_google_contents(request)
         config = _to_google_config(request)
 
-        raw = await self._client.aio.models.generate_content(
-            model=request.model,
-            contents=contents,
-            config=config,
+        raw = await with_retry(
+            lambda: self._client.aio.models.generate_content(
+                model=request.model,
+                contents=contents,
+                config=config,
+            ),
+            label=f"google:{request.model}",
         )
         return _from_google_response(raw)
 
