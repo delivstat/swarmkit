@@ -27,7 +27,17 @@ _MAX_OUTPUT_RETRIES = 2
 
 
 def _get_outputs_schema(agent: ResolvedAgent) -> dict[str, Any] | None:
-    """Return the JSON Schema for the agent's first skill with outputs, or None."""
+    """Return the JSON Schema for output validation.
+
+    Priority: agent-level output_schema (archetype/platform default)
+    then skill-level outputs.
+    """
+    from ._output_schema import get_effective_output_schema  # noqa: PLC0415
+
+    effective = get_effective_output_schema(agent)
+    if effective is not None:
+        return effective
+
     for skill in agent.skills:
         outputs = getattr(skill.raw, "outputs", None)
         if outputs is not None:

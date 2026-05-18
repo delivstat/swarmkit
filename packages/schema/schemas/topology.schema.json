@@ -93,6 +93,19 @@
           "description": "Skills merged onto the archetype defaults (design §6.6)."
         },
         "iam": { "$ref": "#/$defs/iam" },
+        "output_schema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "JSON Schema for structured output. Overrides archetype default.",
+              "additionalProperties": true
+            },
+            {
+              "type": "null",
+              "description": "Opt out of output schema for this agent."
+            }
+          ]
+        },
         "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" },
         "children": {
           "type": "array",

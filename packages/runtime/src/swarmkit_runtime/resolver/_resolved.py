@@ -38,6 +38,8 @@ class ResolvedAgent:
     prompt: Mapping[str, Any] | None
     skills: tuple[ResolvedSkill, ...]
     iam: Mapping[str, Any] | None
+    output_schema: Mapping[str, Any] | None = None
+    output_schema_disabled: bool = False
     children: tuple[ResolvedAgent, ...] = field(default_factory=tuple)
     depends_on: tuple[str, ...] = field(default_factory=tuple)
     source_archetype: str | None = None

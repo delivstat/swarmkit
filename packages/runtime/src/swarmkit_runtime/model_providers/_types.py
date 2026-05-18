@@ -70,6 +70,7 @@ class CompletionRequest:
     temperature: float | None = None
     max_tokens: int | None = None
     tools: Sequence[ToolSpec] | None = None
+    response_format: dict[str, Any] | None = None
     extra: dict[str, Any] | None = None
 
 

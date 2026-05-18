@@ -310,6 +310,7 @@ class Agent(BaseModel):
         None, description="Skills merged onto the archetype defaults (design §6.6)."
     )
     iam: Iam | None = None
+    output_schema: dict[str, Any] | None = None
     intent_monitoring: IntentMonitoring | None = None
     children: list[ChildAgent] | None = Field(
         None,

@@ -46,7 +46,20 @@
           "type": "array",
           "items": { "$ref": "#/$defs/skill_entry" }
         },
-        "iam": { "$ref": "#/$defs/iam" }
+        "iam": { "$ref": "#/$defs/iam" },
+        "output_schema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "JSON Schema for structured inter-agent output. When set, the agent produces JSON instead of prose, and the compiler requests JSON mode from the model provider.",
+              "additionalProperties": true
+            },
+            {
+              "type": "null",
+              "description": "Explicitly opt out of the platform default output schema."
+            }
+          ]
+        }
       }
     },
     "model": {

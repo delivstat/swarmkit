@@ -68,6 +68,8 @@ def _to_openai_kwargs(request: CompletionRequest) -> dict[str, Any]:
             }
             for t in request.tools
         ]
+    if request.response_format is not None:
+        kwargs["response_format"] = request.response_format
     if request.extra:
         kwargs.update(request.extra)
     return kwargs

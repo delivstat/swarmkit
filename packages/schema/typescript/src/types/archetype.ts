@@ -20,10 +20,11 @@ export interface SwarmKitArchetype {
 export type APIVersion = "swarmkit/v1";
 
 export interface Defaults {
-    iam?:    Iam;
-    model?:  Model;
-    prompt?: Prompt;
-    skills?: SkillElement[];
+    iam?:           Iam;
+    model?:         Model;
+    output_schema?: { [key: string]: any } | null;
+    prompt?:        Prompt;
+    skills?:        SkillElement[];
 }
 
 export interface Iam {

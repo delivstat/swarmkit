@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
@@ -122,6 +122,7 @@ class Defaults(BaseModel):
     prompt: Prompt | None = None
     skills: list[Identifier | SkillEntry1] | None = None
     iam: Iam | None = None
+    output_schema: dict[str, Any] | None = None
 
 
 class SwarmKitArchetype(BaseModel):

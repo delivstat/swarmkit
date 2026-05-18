@@ -187,6 +187,7 @@ def _resolve_agent(
     model = _merge_model(archetype, raw_agent)
     prompt = _merge_prompt(archetype, raw_agent)
     iam = _merge_iam(archetype, raw_agent)
+    output_schema, output_schema_disabled = _merge_output_schema(archetype, raw_agent)
     skills_resolved, skill_errors = _merge_and_resolve_skills(
         archetype,
         raw_agent,
@@ -228,6 +229,8 @@ def _resolve_agent(
             prompt=prompt,
             skills=skills_resolved,
             iam=iam,
+            output_schema=output_schema,
+            output_schema_disabled=output_schema_disabled,
             children=tuple(resolved_children),
             depends_on=depends_on,
             source_archetype=str(archetype_id) if archetype_id else None,
@@ -264,6 +267,35 @@ def _merge_iam(
         _archetype_default(archetype, "iam"),
         raw_agent.get("iam"),
     )
+
+
+def _merge_output_schema(
+    archetype: ResolvedArchetype | None,
+    raw_agent: Mapping[str, Any],
+) -> tuple[Mapping[str, Any] | None, bool]:
+    """Merge output_schema from archetype + agent-level override.
+
+    Returns ``(schema, disabled)``. Agent-level wins over archetype.
+    Explicit ``null`` in YAML means opt-out (``disabled=True``).
+    """
+    if "output_schema" in raw_agent:
+        val = raw_agent["output_schema"]
+        if val is None:
+            return None, True
+        if isinstance(val, dict):
+            return val, False
+
+    if archetype is not None:
+        defaults = archetype.raw.defaults
+        raw_defaults = defaults.model_dump(mode="json", exclude_none=False)
+        if "output_schema" in raw_defaults:
+            arch_val = raw_defaults["output_schema"]
+            if arch_val is None:
+                return None, True
+            if isinstance(arch_val, dict):
+                return arch_val, False
+
+    return None, False
 
 
 def _archetype_default(

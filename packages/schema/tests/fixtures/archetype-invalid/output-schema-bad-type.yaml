@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: bad-output-schema
+  name: Bad Output Schema
+  description: Invalid archetype — output_schema must be object or null, not string.
+role: worker
+defaults:
+  output_schema: "not-an-object"
+provenance:
+  authored_by: human
+  version: 0.1.0
