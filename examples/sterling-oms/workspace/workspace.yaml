@@ -17,6 +17,11 @@ governance:
     - id: grounding-verifier
       trigger: post_output
       scope: "jira-researcher,docs-researcher,config-analyst,log-analyst"
+      required: false
+    - id: gate-validator
+      trigger: post_output
+      config:
+        gate_id: "sterling-findings"
     - id: contradiction-detector
       trigger: pre_synthesis
     - id: spec-conformance
@@ -158,6 +163,11 @@ mcp_servers:
     transport: stdio
     command: ["swarmkit", "docs-reader"]
     permission: open
+  # Gate validator — file-based schema validation gates
+  # Drop JSON Schema files into gates/ to create validation rules
+  - id: gate-validator
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.gate_validator"]
   # GitHub for code access (PRs, remote repos)
   - id: github
     transport: stdio

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sterling Code Analysis Findings",
+  "description": "Validates output from sterling-developer and sterling-code-reviewer. Each finding must reference a specific file path.",
+  "type": "object",
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["fact", "source", "file_path"],
+        "properties": {
+          "fact": {
+            "type": "string",
+            "minLength": 10,
+            "description": "One code-level claim — must reference specific classes, methods, or config."
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "file_path": {
+            "type": "string",
+            "minLength": 3,
+            "description": "Source file path where this was found."
+          },
+          "line_range": {
+            "type": "string",
+            "pattern": "^\\d+(-\\d+)?$",
+            "description": "Line number or range, e.g. '42' or '100-150'."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["observed", "inferred"]
+          }
+        }
+      }
+    },
+    "not_found": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

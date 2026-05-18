@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sterling Research Findings",
+  "description": "Validates structured output from Sterling research workers. Every finding must reference a real source, and pipeline-related facts must include a pipeline ID.",
+  "type": "object",
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["fact", "source"],
+        "properties": {
+          "fact": {
+            "type": "string",
+            "minLength": 10,
+            "description": "One atomic claim — must be specific, not generic."
+          },
+          "source": {
+            "type": "string",
+            "minLength": 3,
+            "description": "Tool or source that produced this data. Cannot be empty."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["observed", "inferred"]
+          }
+        }
+      }
+    },
+    "not_found": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "raw_data": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
