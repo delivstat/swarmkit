@@ -320,17 +320,21 @@ class WorkspaceRuntime:
         try:
             initial_task_plan: dict = previous_plan if previous_plan else {}  # type: ignore[type-arg]
             initial_agent_results: dict = {}  # type: ignore[type-arg]
+            initial_delegation_counts: dict = {}  # type: ignore[type-arg]
             if previous_plan:
                 leader_ids = [c.id for c in topology.root.children]
                 if leader_ids:
-                    initial_agent_results[leader_ids[0]] = "__task_plan_executing__"
+                    leader_id = leader_ids[0]
+                    initial_agent_results[leader_id] = "__task_plan_executing__"
+                    initial_agent_results[topology.root.id] = f"__delegated__:{leader_id}"
+                    initial_delegation_counts[leader_id] = 1
 
             result = await graph.ainvoke(
                 {
                     "input": user_input,
                     "messages": [],
                     "agent_results": initial_agent_results,
-                    "delegation_counts": {},
+                    "delegation_counts": initial_delegation_counts,
                     "task_plan": initial_task_plan,
                     "current_agent": "",
                     "output": "",
