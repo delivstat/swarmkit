@@ -211,10 +211,10 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
     _timeout = int(_os.environ.get("SWARMKIT_MCP_TIMEOUT", "180"))
     _max_retries = int(_os.environ.get("SWARMKIT_MCP_RETRIES", "2"))
 
-    result = None
+    tool_response = None
     for _attempt in range(_max_retries + 1):
         try:
-            result = await _asyncio.wait_for(
+            tool_response = await _asyncio.wait_for(
                 mcp_manager.call_tool(server_id, tool_name, arguments),
                 timeout=_timeout,
             )
@@ -243,8 +243,11 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
                     file=_sys.stderr,
                 )
 
-    if result is None:
+    if tool_response is None:
         return f"[skill:{skill.id}] MCP call failed after {_max_retries + 1} attempts"
+
+    result = tool_response.data
+    metadata = tool_response.metadata
 
     text_parts: list[str] = []
     image_blocks: list[ContentBlock] = []
@@ -265,6 +268,10 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
     output = (
         "\n".join(text_parts) or str(result.content) if result.content else "(no response from MCP)"
     )
+
+    provenance = f"\n[source: {metadata.source} | {metadata.duration_ms}ms]"
+    if output and output != "(no response from MCP)":
+        output = output + provenance
 
     if (
         cacheable
