@@ -56,7 +56,7 @@ def _load_gate(gate_id: str) -> dict[str, Any] | None:
         path = gates_dir / f"{gate_id}{ext}"
         if path.exists():
             text = path.read_text(encoding="utf-8")
-            schema = json.loads(text) if ext == ".json" else yaml.safe_load(text)
+            schema: dict[str, Any] = json.loads(text) if ext == ".json" else yaml.safe_load(text)
             _gate_cache[gate_id] = schema
             return schema
     return None
