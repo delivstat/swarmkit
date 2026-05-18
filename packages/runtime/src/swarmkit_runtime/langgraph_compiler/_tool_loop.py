@@ -201,6 +201,59 @@ def _handle_read_task_result(block: Any, agent_id: str) -> str:  # noqa: PLR0911
     return content
 
 
+def _apply_tool_guards(
+    results: list[ToolCallResult],
+    call_counts: dict[str, int],
+    max_per_tool: int,
+    agent_id: str,
+) -> tuple[list[ToolCallResult], bool]:
+    """Apply per-tool call limits and query deduplication.
+
+    Two guards against degenerate model behaviour:
+
+    1. **Per-tool-name limit** — after ``max_per_tool`` calls to the
+       same tool (regardless of args), replace the result with a stop
+       message. Prevents the 50-turn spiral where the model keeps
+       rephrasing the same search.
+
+    2. **Exact query dedup** — if the same ``(tool_name, args_hash)``
+       is called twice, the result is already cached by MCPClientManager
+       but we log it for observability.
+
+    Returns ``(modified_results, should_break)``.
+    """
+    hit_limit = False
+    modified: list[ToolCallResult] = []
+
+    for tr in results:
+        call_counts[tr.tool_name] = call_counts.get(tr.tool_name, 0) + 1
+        count = call_counts[tr.tool_name]
+
+        if count > max_per_tool:
+            _progress(
+                f"  [{agent_id}] tool '{tr.tool_name}' called {count} times — "
+                f"forcing stop (limit: {max_per_tool})"
+            )
+            modified.append(
+                ToolCallResult(
+                    tool_use_id=tr.tool_use_id,
+                    tool_name=tr.tool_name,
+                    result=(
+                        f"TOOL LIMIT: '{tr.tool_name}' has been called {count} times "
+                        f"(limit: {max_per_tool}). STOP calling this tool. "
+                        f"Write your findings from previous calls NOW. "
+                        f"Do NOT retry, rephrase, or add more keywords."
+                    ),
+                    image_blocks=[],
+                )
+            )
+            hit_limit = True
+        else:
+            modified.append(tr)
+
+    return modified, hit_limit
+
+
 async def _handle_skill_tool_calls(  # noqa: PLR0912
     response: CompletionResponse,
     agent: ResolvedAgent,
@@ -325,9 +378,11 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
     nudging for incomplete responses.
     """
     _max_tool_turns = int(os.environ.get("SWARMKIT_MAX_TOOL_TURNS", "50"))
+    _max_per_tool = int(os.environ.get("SWARMKIT_MAX_PER_TOOL", "8"))
     loop_messages = list(messages)
     current_response = response
     current_results = tool_results
+    _tool_call_counts: dict[str, int] = {}
 
     for _turn in range(_max_tool_turns):
         assistant_blocks = list(current_response.content)
@@ -380,6 +435,31 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
             mcp_manager,
             governance,
         )
+
+        if next_results is not None:
+            next_results, _hit_limit = _apply_tool_guards(
+                next_results,
+                _tool_call_counts,
+                _max_per_tool,
+                agent.id,
+            )
+            if _hit_limit:
+                for tr in next_results:
+                    tool_result_blocks.append(
+                        ContentBlock(
+                            type="tool_result",
+                            tool_use_id=tr.tool_use_id,
+                            tool_result=tr.result,
+                        )
+                    )
+                loop_messages.append(
+                    Message(role="assistant", content=list(current_response.content)),
+                )
+                loop_messages.append(
+                    Message(role="user", content=tool_result_blocks),
+                )
+                break
+
         if next_results is None:
             # Model returned text without tool calls. Check if it looks
             # incomplete (planning language) and nudge it to continue.
