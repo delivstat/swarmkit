@@ -87,6 +87,10 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
         options["num_predict"] = request.max_tokens
     if options:
         payload["options"] = options
+    if request.response_format is not None:
+        rf_type = request.response_format.get("type", "")
+        if rf_type in ("json_object", "json_schema"):
+            payload["format"] = "json"
     if request.tools:
         payload["tools"] = [
             {

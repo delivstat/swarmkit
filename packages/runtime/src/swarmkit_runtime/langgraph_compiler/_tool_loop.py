@@ -448,22 +448,43 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
             Message(role="user", content=last_result_blocks),
         )
 
-    loop_messages.append(
-        Message(
-            role="user",
-            content=(
-                "STOP. Do NOT call any more tools. Do NOT describe what you "
-                "planned to do next. Do NOT write 'Let me...' or 'I need to...' "
-                "or any planning language.\n\n"
-                "Write ONLY what you actually found from the tools you already "
-                "called. Summarize the RESULTS you received — specific data, "
-                "names, numbers, timestamps, and findings.\n\n"
-                "If you found nothing useful, say 'No relevant data found.' "
-                "Do NOT fabricate or speculate.\n\n"
-                "Start your response with: '## Analysis'"
+    from ._output_schema import get_effective_output_schema  # noqa: PLC0415
+
+    effective_schema = get_effective_output_schema(agent)
+    if effective_schema:
+        import json as _json  # noqa: PLC0415
+
+        schema_str = _json.dumps(effective_schema, indent=2)
+        loop_messages.append(
+            Message(
+                role="user",
+                content=(
+                    "STOP. Do NOT call any more tools.\n\n"
+                    "Produce your final output as valid JSON matching this schema:\n"
+                    f"```json\n{schema_str}\n```\n"
+                    "Include ONLY facts from the tools you already called. "
+                    "If you found nothing useful, return "
+                    '{"findings": [], "not_found": ["<what you searched for>"]}.'
+                ),
             ),
-        ),
-    )
+        )
+    else:
+        loop_messages.append(
+            Message(
+                role="user",
+                content=(
+                    "STOP. Do NOT call any more tools. Do NOT describe what you "
+                    "planned to do next. Do NOT write 'Let me...' or 'I need to...' "
+                    "or any planning language.\n\n"
+                    "Write ONLY what you actually found from the tools you already "
+                    "called. Summarize the RESULTS you received — specific data, "
+                    "names, numbers, timestamps, and findings.\n\n"
+                    "If you found nothing useful, say 'No relevant data found.' "
+                    "Do NOT fabricate or speculate.\n\n"
+                    "Start your response with: '## Analysis'"
+                ),
+            ),
+        )
     synthesis_req = _build_completion_request(model_name, loop_messages, system_prompt, [], agent)
     synthesis_response = await model_provider.complete(synthesis_req)
     return _extract_text(synthesis_response) or "(analysis incomplete — tool limit reached)"

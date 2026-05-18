@@ -1,0 +1,28 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: structured-researcher
+  name: Structured Researcher
+  description: Worker archetype with explicit output_schema for structured findings.
+role: worker
+defaults:
+  output_schema:
+    type: object
+    required:
+      - findings
+    properties:
+      findings:
+        type: array
+        items:
+          type: object
+          required:
+            - fact
+            - source
+          properties:
+            fact:
+              type: string
+            source:
+              type: string
+provenance:
+  authored_by: human
+  version: 0.1.0

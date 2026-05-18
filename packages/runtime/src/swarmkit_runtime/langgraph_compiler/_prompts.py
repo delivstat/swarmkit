@@ -43,12 +43,18 @@ def _build_completion_request(
     agent: ResolvedAgent,
 ) -> CompletionRequest:
     """Build a CompletionRequest -- single source for the repeated construction."""
+    from ._output_schema import get_effective_output_schema  # noqa: PLC0415
+
+    effective_schema = get_effective_output_schema(agent)
+    response_format = {"type": "json_object"} if effective_schema else None
+
     return CompletionRequest(
         model=model_name,
         messages=tuple(messages),
         system=system_prompt,
         tools=tuple(tools) if tools else None,
         temperature=(agent.model or {}).get("temperature"),
+        response_format=response_format,
     )
 
 
@@ -111,6 +117,13 @@ def _looks_incomplete(text: str) -> bool:
     lower = text.lower().strip()
     if not lower or lower == "(no response)":
         return True
+    import json as _json  # noqa: PLC0415
+
+    try:
+        _json.loads(text)
+        return False
+    except (ValueError, TypeError):
+        pass
     return len(lower) < 500 and any(m in lower for m in _INCOMPLETE_MARKERS)
 
 
@@ -122,7 +135,10 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
     to call them instead of describing what it would do in text.
     """
     base = (agent.prompt or {}).get("system", "") or ""
-    if not tools:
+    from ._output_schema import get_effective_output_schema  # noqa: PLC0415
+
+    effective_schema = get_effective_output_schema(agent)
+    if not tools and not effective_schema:
         return base or None
 
     _PLANNING_TOOL_NAMES = {
@@ -140,10 +156,11 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
     ]
 
     parts = [base.rstrip()] if base else []
-    parts.append(
-        "\nYou have the following tools available. "
-        "Use them to act - do not describe what you would do."
-    )
+    if tools:
+        parts.append(
+            "\nYou have the following tools available. "
+            "Use them to act - do not describe what you would do."
+        )
 
     if planning_tools:
         names = ", ".join(f"`{t.name}`" for t in planning_tools)
@@ -169,6 +186,20 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
     if skill_tools:
         names = ", ".join(f"`{t.name}`" for t in skill_tools)
         parts.append(f"Skills available: {names}")
+
+    if effective_schema:
+        import json as _json  # noqa: PLC0415
+
+        schema_json = _json.dumps(effective_schema, indent=2)
+        parts.append(
+            "\n\nSTRUCTURED OUTPUT: You MUST respond with valid JSON matching "
+            "this schema:\n"
+            f"```json\n{schema_json}\n```\n"
+            "Return ONLY the JSON object. No markdown, no explanation, no "
+            "preamble. Every finding must have a 'fact' and 'source' field. "
+            'If you found nothing relevant, return {"findings": [], '
+            '"not_found": ["<what you searched for>"]}.'
+        )
 
     return "\n".join(parts)
 

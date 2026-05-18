@@ -2,7 +2,7 @@
 title: Structured inter-agent communication — output schemas for workers
 description: Replace prose between agents with structured JSON output. Research-backed (CodeAgents, OPTIMA): 55-87% token reduction + 3-36% accuracy improvement.
 tags: [compiler, performance, quality, tokens]
-status: proposed
+status: in-progress
 ---
 
 # Structured inter-agent communication

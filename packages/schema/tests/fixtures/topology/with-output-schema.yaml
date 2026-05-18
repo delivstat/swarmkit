@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: with-output-schema
+  version: 0.1.0
+agents:
+  root:
+    id: coordinator
+    role: root
+    children:
+      - id: researcher
+        role: worker
+        output_schema:
+          type: object
+          required:
+            - findings
+          properties:
+            findings:
+              type: array
+      - id: writer
+        role: worker
+        output_schema: null

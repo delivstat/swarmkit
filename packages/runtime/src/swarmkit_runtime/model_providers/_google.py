@@ -152,6 +152,12 @@ def _to_google_config(
         kwargs["max_output_tokens"] = request.max_tokens
     if request.system:
         kwargs["system_instruction"] = request.system
+    if request.response_format is not None:
+        rf_type = request.response_format.get("type", "")
+        if rf_type in ("json_object", "json_schema"):
+            kwargs["response_mime_type"] = "application/json"
+        if rf_type == "json_schema" and "json_schema" in request.response_format:
+            kwargs["response_schema"] = request.response_format["json_schema"].get("schema")
     if request.tools:
         kwargs["tools"] = _to_google_tools(request)
         mode = gtypes.FunctionCallingConfigMode.AUTO

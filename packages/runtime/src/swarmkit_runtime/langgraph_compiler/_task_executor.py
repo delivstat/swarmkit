@@ -380,9 +380,33 @@ async def _summarize_result(
 ) -> list[str]:
     """Generate 3-5 bullet key findings from a task result.
 
-    Uses the coordinator's model for summarization quality. If the
-    result is short enough (<500 chars), skip summarization.
+    If the result is valid structured JSON with a ``findings`` array,
+    extract findings directly without an LLM call. Otherwise uses
+    the coordinator's model for summarization.
     """
+    import json as _json  # noqa: PLC0415
+
+    try:
+        parsed = _json.loads(result)
+        if isinstance(parsed, dict) and "findings" in parsed:
+            findings = parsed["findings"]
+            if isinstance(findings, list):
+                extracted: list[str] = []
+                for f in findings:
+                    if isinstance(f, dict) and "fact" in f:
+                        fact = f["fact"]
+                        source = f.get("source", "")
+                        extracted.append(f"{fact} [{source}]" if source else fact)
+                if extracted:
+                    _progress(
+                        f"  [{task_id}] structured output: "
+                        f"{len(extracted)} findings (no summarizer needed)"
+                    )
+                    return extracted[:10]
+                return []
+    except (ValueError, TypeError):
+        pass
+
     if len(result) < 500:
         return [result.strip()] if result.strip() else []
 

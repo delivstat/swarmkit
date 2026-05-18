@@ -33,6 +33,7 @@ export interface Root {
     id:                 string;
     intent_monitoring?: IntentMonitoring;
     model?:             Model;
+    output_schema?:     { [key: string]: any } | null;
     prompt?:            Prompt;
     role:               RootRole;
     /**
@@ -55,6 +56,7 @@ export interface ChildElement {
     id:                 string;
     intent_monitoring?: IntentMonitoring;
     model?:             Model;
+    output_schema?:     { [key: string]: any } | null;
     prompt?:            Prompt;
     role:               ChildRole;
     /**
