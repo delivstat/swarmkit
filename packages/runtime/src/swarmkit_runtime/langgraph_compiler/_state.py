@@ -5,6 +5,7 @@ See ``design/details/langgraph-compiler.md`` §State schema.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Any, TypedDict
 
 from langchain_core.messages import BaseMessage
@@ -19,6 +20,14 @@ def _merge_dicts(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
 
 def _last_write_wins(left: str, right: str) -> str:
     return right
+
+
+@dataclass(frozen=True)
+class PlanningConfig:
+    """Controls task planning and scope behavior for leader agents."""
+
+    scope_required: bool = False
+    two_phase: bool = False
 
 
 class SwarmState(TypedDict):

@@ -58,17 +58,6 @@ class Checkpointing(BaseModel):
     storage: Storage | None = None
 
 
-class Runtime(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    mode: Mode | None = Field(None, description="Execution mode (design §14.1).")
-    max_concurrent_tasks: int | None = Field(None, ge=1)
-    task_timeout_seconds: int | None = Field(None, ge=1)
-    checkpointing: Checkpointing | None = None
-
-
 class Role(Enum):
     root = "root"
     leader = "leader"
@@ -188,6 +177,25 @@ class IntentMonitoring(BaseModel):
     )
 
 
+class Planning(BaseModel):
+    """
+    Controls task planning and scope behavior for leader agents. When set, the compiler enforces structured planning instead of relying on prompt instructions.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    scope_required: bool | None = Field(
+        False,
+        description="Leaders must call create-scope before synthesis. Blocks synthesis if no scope exists.",
+    )
+    two_phase: bool | None = Field(
+        False,
+        description="Enforce two-phase planning: Phase 1 (research) → create-scope → Phase 2 (targeted tasks). The compiler auto-injects checkpoint prompts.",
+    )
+
+
 class Trigger(Enum):
     """
     When the skill fires.
@@ -218,6 +226,18 @@ class DecisionSkillBinding(BaseModel):
     config: dict[str, Any] | None = Field(
         None, description="Skill-specific configuration."
     )
+
+
+class Runtime(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    mode: Mode | None = Field(None, description="Execution mode (design §14.1).")
+    max_concurrent_tasks: int | None = Field(None, ge=1)
+    task_timeout_seconds: int | None = Field(None, ge=1)
+    planning: Planning | None = None
+    checkpointing: Checkpointing | None = None
 
 
 class Governance(BaseModel):

@@ -26,7 +26,8 @@
       "type": "array",
       "items": { "$ref": "#/$defs/mcp_server" }
     },
-    "storage": { "$ref": "#/$defs/storage" }
+    "storage": { "$ref": "#/$defs/storage" },
+    "planning": { "$ref": "#/$defs/planning" }
   },
   "$defs": {
     "identifier": {
@@ -254,6 +255,23 @@
           "properties": {
             "default_backend": { "enum": ["sqlite", "postgres"] }
           }
+        }
+      }
+    },
+    "planning": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Default planning behavior for all topologies in this workspace. Topology-level planning overrides these defaults.",
+      "properties": {
+        "scope_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Leaders must call create-scope before synthesis."
+        },
+        "two_phase": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enforce two-phase planning for all topologies."
         }
       }
     },

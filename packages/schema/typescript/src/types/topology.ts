@@ -208,6 +208,7 @@ export interface Runtime {
      * Execution mode (design §14.1).
      */
     mode?:                 Mode;
+    planning?:             Planning;
     task_timeout_seconds?: number;
 }
 
@@ -220,4 +221,20 @@ export interface Checkpointing {
  * Execution mode (design §14.1).
  */
 export type Mode = "one-shot" | "persistent" | "scheduled";
+
+/**
+ * Controls task planning and scope behavior for leader agents. When set, the compiler
+ * enforces structured planning instead of relying on prompt instructions.
+ */
+export interface Planning {
+    /**
+     * Leaders must call create-scope before synthesis. Blocks synthesis if no scope exists.
+     */
+    scope_required?: boolean;
+    /**
+     * Enforce two-phase planning: Phase 1 (research) → create-scope → Phase 2 (targeted tasks).
+     * The compiler auto-injects checkpoint prompts.
+     */
+    two_phase?: boolean;
+}
 
