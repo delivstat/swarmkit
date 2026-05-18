@@ -316,7 +316,9 @@ async def _execute_self_task(
             "create-task-plan",
             "update-task-plan",
             "read-task-result",
-            "freeze-scope",
+            "create-scope",
+            "update-scope",
+            "read-scope",
         )
     ]
 

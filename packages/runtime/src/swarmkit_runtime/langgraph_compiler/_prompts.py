@@ -120,11 +120,15 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
     if not tools:
         return base or None
 
-    planning_tools = [
-        t
-        for t in tools
-        if t.name in ("create-task-plan", "update-task-plan", "read-task-result", "freeze-scope")
-    ]
+    _PLANNING_TOOL_NAMES = {
+        "create-task-plan",
+        "update-task-plan",
+        "read-task-result",
+        "create-scope",
+        "update-scope",
+        "read-scope",
+    }
+    planning_tools = [t for t in tools if t.name in _PLANNING_TOOL_NAMES]
     delegation_tools = [t for t in tools if t.name.startswith("delegate_to_")]
     skill_tools = [
         t for t in tools if not t.name.startswith("delegate_to_") and t not in planning_tools
@@ -143,10 +147,12 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
             "for your workers and yourself. The compiler will execute "
             "tasks and report back with summaries. Call `update-task-plan` "
             "to adjust the plan at checkpoints. Use `read-task-result` "
-            "to read full results from completed tasks. Call `freeze-scope` "
-            "after reading source material to define the scope contract "
-            "(requirements, constraints, exclusions) — the governance "
-            "layer validates output against it."
+            "to read full results from completed tasks.\n\n"
+            "SCOPE: Call `create-scope` after reading source material "
+            "to define requirements, constraints, and exclusions. Call "
+            "`update-scope` when research reveals new constraints. Call "
+            "`read-scope` to review the current scope before synthesis. "
+            "The governance layer validates output against the scope."
         )
     elif delegation_tools:
         names = ", ".join(f"`{t.name}`" for t in delegation_tools)
@@ -205,7 +211,7 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
                             f"Research phase complete. You MUST now:\n"
                             f"1. Call read-task-result to read the full "
                             f"findings\n"
-                            f"2. Call freeze-scope to define requirements, "
+                            f"2. Call create-scope to define requirements, "
                             f"constraints, and exclusions from what you "
                             f"learned\n"
                             f"3. Call update-task-plan to add targeted "
@@ -383,16 +389,20 @@ def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec
     _use_task_plan = len(agent.children) >= 2 and not _has_dag_deps(agent)
     if _use_task_plan:
         from swarmkit_runtime.langgraph_compiler._task_plan import (  # noqa: PLC0415
+            build_create_scope_tool,
             build_create_task_plan_tool,
-            build_freeze_scope_tool,
+            build_read_scope_tool,
             build_read_task_result_tool,
+            build_update_scope_tool,
             build_update_task_plan_tool,
         )
 
         tools.append(build_create_task_plan_tool(agent))
         tools.append(build_update_task_plan_tool())
         tools.append(build_read_task_result_tool())
-        tools.append(build_freeze_scope_tool())
+        tools.append(build_create_scope_tool())
+        tools.append(build_update_scope_tool())
+        tools.append(build_read_scope_tool())
     else:
         for child in agent.children:
             tools.append(
