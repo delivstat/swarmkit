@@ -20,7 +20,7 @@ from swarmkit_runtime.resolver._resolved import ResolvedAgent
 def _make_coordinator() -> ResolvedAgent:
     return ResolvedAgent(
         id="coordinator",
-        role="root",  # type: ignore[arg-type]
+        role="root",
         model={"name": "mock"},
         prompt={"system": "You are a coordinator."},
         skills=(),
@@ -28,7 +28,7 @@ def _make_coordinator() -> ResolvedAgent:
         children=(
             ResolvedAgent(
                 id="researcher",
-                role="worker",  # type: ignore[arg-type]
+                role="worker",
                 model={"name": "mock"},
                 prompt=None,
                 skills=(),
@@ -36,7 +36,7 @@ def _make_coordinator() -> ResolvedAgent:
             ),
             ResolvedAgent(
                 id="analyst",
-                role="worker",  # type: ignore[arg-type]
+                role="worker",
                 model={"name": "mock"},
                 prompt=None,
                 skills=(),
