@@ -2,7 +2,7 @@
 title: Structured inter-agent communication — output schemas for workers
 description: Replace prose between agents with structured JSON output. Research-backed (CodeAgents, OPTIMA): 55-87% token reduction + 3-36% accuracy improvement.
 tags: [compiler, performance, quality, tokens]
-status: waves-1-2-complete
+status: complete
 ---
 
 # Structured inter-agent communication
@@ -410,18 +410,20 @@ output_schema is separate — it's on the archetype, not the skill.
 - `_parse_result` strips provenance tags from MCP responses
 - Reference skill YAML in `docs/examples/rynko-output-validator.yaml`
 
-### Wave 3: Sterling + authoring (after Wave 2)
+### Wave 3: Sterling + authoring + gate-validator ✓ (v1.2.32, PRs #230–#231)
 
-#### PR 7: Sterling workspace — structured researchers
-- All research workers get output_schema (default applies)
-- document-writer sets `output_schema: null`
-- Validate token savings vs prose baseline
-- E2E test: RT-727 analysis with structured agents
+#### PR 7+8: Sterling structured researchers + authoring ✓ (v1.2.32, PR #230)
+- Sterling document-writer opts out with `output_schema: null`
+- All research workers get structured output by default (no changes needed)
+- Authoring prompt explains output_schema, shows both patterns (research vs creator)
 
-#### PR 8: Authoring skill — auto-suggest schemas
-- `swarmkit author archetype` includes output_schema by default
-- `swarmkit author skill` suggests response schemas for MCP tools
-- Tests: authored archetype has output_schema
+#### Gate-validator MCP server ✓ (v1.2.32, PR #231)
+- New MCP server: `python -m swarmkit_runtime.gate_validator`
+- Drop JSON Schema files into `gates/` → validation gates for agent output
+- `list_gates` + `validate_gate` tools, returns decision skill result format
+- Sterling workspace wired: 3 domain-specific gate schemas (findings, code, config)
+- LLM-based grounding-verifier disabled in favour of deterministic gate validation
+- Any MCP-backed decision skill works (not just Rynko) — generic infrastructure
 
 ### Future: Full MCP Gateway (M10/M11)
 
