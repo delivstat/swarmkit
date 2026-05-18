@@ -59,10 +59,16 @@ def _load_state_from_disk() -> dict[str, Any]:
     return {"task_plan": plan.to_dict()}
 
 
-def _handle_freeze_scope(block: Any, agent_id: str) -> str:
-    """Handle freeze-scope tool call — write scope.json and return confirmation."""
-    import json as _json  # noqa: PLC0415
+def _scope_path() -> Any:
     from pathlib import Path as _Path  # noqa: PLC0415
+
+    run_state = _Path(".swarmkit") / "run-state" / "current"
+    run_state.mkdir(parents=True, exist_ok=True)
+    return run_state / "scope.json"
+
+
+def _parse_tool_args(block: Any) -> dict[str, Any]:
+    import json as _json  # noqa: PLC0415
 
     args = block.tool_input
     if isinstance(args, str):
@@ -72,7 +78,14 @@ def _handle_freeze_scope(block: Any, agent_id: str) -> str:
             args = {}
     if not isinstance(args, dict):
         args = {}
+    return args
 
+
+def _handle_create_scope(block: Any, agent_id: str) -> str:
+    """Create the scope contract — called once after reading source material."""
+    import json as _json  # noqa: PLC0415
+
+    args = _parse_tool_args(block)
     scope_data = {
         "source": args.get("source", ""),
         "requirements": args.get("requirements", []),
@@ -83,19 +96,65 @@ def _handle_freeze_scope(block: Any, agent_id: str) -> str:
         "related": args.get("related", []),
     }
 
-    run_state = _Path(".swarmkit") / "run-state" / "current"
-    run_state.mkdir(parents=True, exist_ok=True)
-    scope_path = run_state / "scope.json"
-    scope_path.write_text(_json.dumps(scope_data, indent=2), encoding="utf-8")
+    _scope_path().write_text(_json.dumps(scope_data, indent=2), encoding="utf-8")
 
     reqs = len(scope_data["requirements"])
     constraints = len(scope_data["constraints"])
-    _progress(f"[{agent_id}] scope frozen: {reqs} requirements, {constraints} constraints")
+    _progress(f"[{agent_id}] scope created: {reqs} requirements, {constraints} constraints")
     return (
-        f"Scope frozen successfully. {reqs} requirements, "
-        f"{constraints} constraints. The spec-conformance skill "
-        f"will validate your synthesis against this scope."
+        f"Scope created. {reqs} requirements, {constraints} constraints. "
+        f"Call update-scope if research reveals new constraints."
     )
+
+
+def _handle_update_scope(block: Any, agent_id: str) -> str:
+    """Update the scope with new findings — additive only."""
+    import json as _json  # noqa: PLC0415
+
+    path = _scope_path()
+    if not path.exists():
+        return "Error: no scope exists. Call create-scope first."
+
+    scope_data = _json.loads(path.read_text(encoding="utf-8"))
+    args = _parse_tool_args(block)
+
+    added: list[str] = []
+    for field, key in [
+        ("add_requirements", "requirements"),
+        ("add_constraints", "constraints"),
+        ("add_authoritative_sources", "authoritative_sources"),
+        ("add_excluded", "excluded"),
+        ("add_decisions", "decisions"),
+        ("add_related", "related"),
+    ]:
+        items = args.get(field, [])
+        if items:
+            existing = scope_data.get(key, [])
+            scope_data[key] = existing + items
+            added.append(f"{len(items)} {key}")
+
+    path.write_text(_json.dumps(scope_data, indent=2), encoding="utf-8")
+
+    reqs = len(scope_data.get("requirements", []))
+    constraints = len(scope_data.get("constraints", []))
+    _progress(f"[{agent_id}] scope updated: +{', '.join(added) if added else 'nothing'}")
+    return (
+        f"Scope updated. Now {reqs} requirements, {constraints} constraints. "
+        f"Added: {', '.join(added) if added else 'nothing new'}."
+    )
+
+
+def _handle_read_scope(block: Any, agent_id: str) -> str:
+    """Read the current scope contract."""
+    import json as _json  # noqa: PLC0415
+
+    path = _scope_path()
+    if not path.exists():
+        return "No scope exists yet. Call create-scope first."
+
+    scope_data = _json.loads(path.read_text(encoding="utf-8"))
+    _progress(f"[{agent_id}] read scope")
+    return _json.dumps(scope_data, indent=2)
 
 
 def _handle_read_task_result(block: Any, agent_id: str) -> str:  # noqa: PLR0911
@@ -180,8 +239,13 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
             "update-task-plan",
         ):
             continue
-        if block.tool_name == "freeze-scope":
-            result_text = _handle_freeze_scope(block, agent.id)
+        _SCOPE_TOOLS = {
+            "create-scope": _handle_create_scope,
+            "update-scope": _handle_update_scope,
+            "read-scope": _handle_read_scope,
+        }
+        if block.tool_name in _SCOPE_TOOLS:
+            result_text = _SCOPE_TOOLS[block.tool_name](block, agent.id)
             results.append(
                 ToolCallResult(
                     tool_use_id=block.tool_use_id or f"call_{len(results)}",

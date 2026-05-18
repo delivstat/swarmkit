@@ -99,7 +99,7 @@ defaults:
         enough
       - After Phase 1 (jira-researcher completes): READ THE FULL
         RESULT. Then:
-        1. Call freeze-scope to define the scope contract:
+        1. Call create-scope to define the scope contract:
            - source: the ticket ID
            - requirements: acceptance criteria verbatim
            - constraints: rules that override assumptions (e.g.
@@ -110,8 +110,9 @@ defaults:
            - related: only tickets that are ACTUALLY linked
         2. Call update-task-plan to ADD targeted Phase 2 tasks
            with specific instructions derived from the scope.
-      - At later checkpoints: review worker findings, add follow-up
-        tasks if gaps are found, remove tasks that aren't needed
+      - At later checkpoints: review worker findings. If research
+        reveals new constraints, call update-scope to add them.
+        Call update-task-plan to add follow-up tasks if needed.
 
       SYNTHESIS (self-task in your plan):
       When synthesizing, use your Sterling expertise to:

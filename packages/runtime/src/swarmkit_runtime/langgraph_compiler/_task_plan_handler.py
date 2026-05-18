@@ -24,7 +24,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
 ) -> dict[str, Any] | None:
     """Handle planning tools in a model response (two-pass).
 
-    Pass 1: execute side-effect-only tools (read-task-result, freeze-scope).
+    Pass 1: execute side-effect-only tools (read-task-result, create-scope, update-scope).
     Pass 2: execute state-changing tools (create-task-plan, update-task-plan).
 
     Returns a state dict if a state-changing tool was called, None otherwise.
@@ -32,7 +32,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
     """
 
     _STATE_TOOLS = {"create-task-plan", "update-task-plan"}
-    _SIDE_EFFECT_TOOLS = {"read-task-result", "freeze-scope"}
+    _SIDE_EFFECT_TOOLS = {"read-task-result", "create-scope", "update-scope", "read-scope"}
 
     has_state_tool = any(
         hasattr(b, "tool_name") and b.tool_name in _STATE_TOOLS for b in response.content
@@ -53,8 +53,10 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
 
         args = _parse_args(block)
 
-        if block.tool_name == "freeze-scope":
+        if block.tool_name == "create-scope":
             _write_scope(args, agent_id)
+        elif block.tool_name == "update-scope":
+            _update_scope(args, agent_id)
 
     # If no state-changing tools, return None (tool loop will handle the rest)
     if not has_state_tool:
@@ -198,10 +200,17 @@ def _load_plan(plan_data: dict[str, Any]) -> Any:
     return TaskPlan()
 
 
-def _write_scope(args: dict[str, Any], agent_id: str) -> None:
-    """Write scope.json to run-state directory."""
+def _scope_file_path() -> Any:
+    """Get the scope.json path."""
     from pathlib import Path  # noqa: PLC0415
 
+    run_state = Path(".swarmkit") / "run-state" / "current"
+    run_state.mkdir(parents=True, exist_ok=True)
+    return run_state / "scope.json"
+
+
+def _write_scope(args: dict[str, Any], agent_id: str) -> None:
+    """Write scope.json to run-state directory (create-scope)."""
     scope_data = {
         "source": args.get("source", ""),
         "requirements": args.get("requirements", []),
@@ -212,11 +221,35 @@ def _write_scope(args: dict[str, Any], agent_id: str) -> None:
         "related": args.get("related", []),
     }
 
-    run_state = Path(".swarmkit") / "run-state" / "current"
-    run_state.mkdir(parents=True, exist_ok=True)
-    scope_path = run_state / "scope.json"
-    scope_path.write_text(json.dumps(scope_data, indent=2), encoding="utf-8")
+    _scope_file_path().write_text(json.dumps(scope_data, indent=2), encoding="utf-8")
     _progress(
-        f"[{agent_id}] scope frozen: {len(scope_data['requirements'])} requirements, "
+        f"[{agent_id}] scope created: {len(scope_data['requirements'])} requirements, "
         f"{len(scope_data['constraints'])} constraints"
+    )
+
+
+def _update_scope(args: dict[str, Any], agent_id: str) -> None:
+    """Update scope.json with additive changes (update-scope)."""
+    path = _scope_file_path()
+    if not path.exists():
+        _progress(f"[{agent_id}] update-scope called but no scope exists")
+        return
+
+    scope_data = json.loads(path.read_text(encoding="utf-8"))
+    for field, key in [
+        ("add_requirements", "requirements"),
+        ("add_constraints", "constraints"),
+        ("add_authoritative_sources", "authoritative_sources"),
+        ("add_excluded", "excluded"),
+        ("add_decisions", "decisions"),
+        ("add_related", "related"),
+    ]:
+        items = args.get(field, [])
+        if items:
+            scope_data[key] = scope_data.get(key, []) + items
+
+    path.write_text(json.dumps(scope_data, indent=2), encoding="utf-8")
+    _progress(
+        f"[{agent_id}] scope updated: {len(scope_data.get('requirements', []))} requirements, "
+        f"{len(scope_data.get('constraints', []))} constraints"
     )

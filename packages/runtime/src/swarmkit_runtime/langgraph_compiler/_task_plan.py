@@ -460,44 +460,103 @@ def build_read_task_result_tool() -> ToolSpec:
     )
 
 
-def build_freeze_scope_tool() -> ToolSpec:
+_SCOPE_PROPERTIES: dict[str, Any] = {
+    "source": {
+        "type": "string",
+        "description": "Where this scope comes from (ticket ID, doc path, brief)",
+    },
+    "requirements": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "What must be satisfied — acceptance criteria, deliverables",
+    },
+    "constraints": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Non-negotiable rules that override default assumptions",
+    },
+    "authoritative_sources": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Documents/pages that are the source of truth",
+    },
+    "excluded": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Explicitly out of scope — prevents scope inflation",
+    },
+    "decisions": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "by": {"type": "string"},
+                "date": {"type": "string"},
+                "decision": {"type": "string"},
+            },
+        },
+        "description": "Stakeholder decisions that constrain the design",
+    },
+    "related": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Related items — only explicitly linked, not inferred",
+    },
+}
+
+
+def build_create_scope_tool() -> ToolSpec:
     return ToolSpec(
-        name="freeze-scope",
+        name="create-scope",
         description=(
             "Define the scope contract for this run. Call after reading "
             "the source material (ticket, brief, requirements doc) to "
-            "freeze what must be satisfied, what's excluded, and what "
+            "establish what must be satisfied, what's excluded, and what "
             "constraints apply. The spec-conformance skill validates "
-            "output against this frozen scope."
+            "output against this scope."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": _SCOPE_PROPERTIES,
+            "required": ["source", "requirements"],
+        },
+    )
+
+
+def build_update_scope_tool() -> ToolSpec:
+    return ToolSpec(
+        name="update-scope",
+        description=(
+            "Update the scope with new information from research. Use "
+            "when Phase 2 tasks reveal constraints, requirements, or "
+            "sources not in the original ticket. Can ADD requirements, "
+            "constraints, sources, and exclusions. Cannot remove existing "
+            "requirements or loosen existing constraints."
         ),
         input_schema={
             "type": "object",
             "properties": {
-                "source": {
-                    "type": "string",
-                    "description": "Where this scope comes from (ticket ID, doc path, brief)",
-                },
-                "requirements": {
+                "add_requirements": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "What must be satisfied — acceptance criteria, deliverables",
+                    "description": "New requirements discovered during research",
                 },
-                "constraints": {
+                "add_constraints": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Non-negotiable rules that override default assumptions",
+                    "description": "New constraints discovered during research",
                 },
-                "authoritative_sources": {
+                "add_authoritative_sources": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Documents/pages that are the source of truth",
+                    "description": "New authoritative sources found",
                 },
-                "excluded": {
+                "add_excluded": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Explicitly out of scope — prevents scope inflation",
+                    "description": "New exclusions identified",
                 },
-                "decisions": {
+                "add_decisions": {
                     "type": "array",
                     "items": {
                         "type": "object",
@@ -507,14 +566,28 @@ def build_freeze_scope_tool() -> ToolSpec:
                             "decision": {"type": "string"},
                         },
                     },
-                    "description": "Stakeholder decisions that constrain the design",
+                    "description": "New stakeholder decisions found",
                 },
-                "related": {
+                "add_related": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Related items — only explicitly linked, not inferred",
+                    "description": "New related items discovered",
                 },
             },
-            "required": ["source", "requirements"],
+        },
+    )
+
+
+def build_read_scope_tool() -> ToolSpec:
+    return ToolSpec(
+        name="read-scope",
+        description=(
+            "Read the current scope contract. Use before synthesis to "
+            "review all requirements, constraints, and exclusions that "
+            "the output must satisfy."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {},
         },
     )
