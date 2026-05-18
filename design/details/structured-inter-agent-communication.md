@@ -38,6 +38,21 @@ applicable to SwarmKit's API-based architecture.
 
 ## Design
 
+### Four structured communication surfaces
+
+The framework has four places where information flows between
+components. ALL should be structured, not prose:
+
+| Surface | Current | Structured |
+|---|---|---|
+| Worker → coordinator | Prose findings | JSON output_schema |
+| MCP tool → agent | Raw text | Provenance envelope |
+| Compiler → agent (checkpoints) | English instructions | JSON action spec |
+| Agent → compiler (scope/plan) | Already structured | Already structured |
+
+Surface 4 is already done (create-scope, create-task-plan are
+structured tool calls). Surfaces 1-3 are the implementation work.
+
 ### Three layers working together
 
 ```
@@ -381,6 +396,14 @@ output_schema is separate — it's on the archetype, not the skill.
 - Valid JSON output_schema results skip `_summarize_result()` call
 - `render_status()` shows structured findings directly
 - Tests: no summarizer call, checkpoint shows structured data
+
+#### PR 4.5: Structured checkpoint instructions (compiler → agent)
+- Replace prose checkpoint prompts with JSON action specs
+- Checkpoint message becomes structured data:
+  `{phase, plan_status, required_actions, scope_status}`
+- Agent receives machine-parseable instructions, not English prose
+- Same principle as output_schema: structured data for agents
+- Tests: checkpoint prompt is valid JSON, model calls correct tools
 
 ### Wave 2: Governance integration (after Wave 1)
 
