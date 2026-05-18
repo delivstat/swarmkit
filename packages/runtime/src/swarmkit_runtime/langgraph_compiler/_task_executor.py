@@ -279,9 +279,70 @@ async def _execute_child_task(
     )
 
     if _looks_incomplete(output):
-        _progress(f"  [{parent_id}] child '{task.agent}' returned planning text, not findings")
-        output = f"(agent returned planning text instead of findings: {output[:100]})"
+        _progress(
+            f"  [{parent_id}] child '{task.agent}' returned incomplete, "
+            f"extracting from tool results"
+        )
+        extracted = _extract_findings_from_messages(child_state.get("messages", []))
+        if extracted:
+            _progress(f"  [{parent_id}] extracted {len(extracted)} findings from tool results")
+            output = extracted
+        else:
+            output = f"(agent returned planning text instead of findings: {output[:100]})"
     return output
+
+
+def _extract_findings_from_messages(messages: list[Any]) -> str:  # noqa: PLR0912
+    """Extract findings from tool result messages when synthesis fails.
+
+    Scans messages for tool_result content blocks with provenance tags
+    and builds a minimal structured output from the raw tool data.
+    This salvages useful data from agents that hit the turn limit
+    without producing a final synthesis.
+    """
+    import json as _json  # noqa: PLC0415
+
+    from swarmkit_runtime.langgraph_compiler._output_schema import (  # noqa: PLC0415
+        _SOURCE_TAG_RE,
+    )
+
+    findings: list[dict[str, str]] = []
+    for msg in messages:
+        content = getattr(msg, "content", None)
+        if content is None:
+            continue
+        if isinstance(content, str):
+            for match in _SOURCE_TAG_RE.finditer(content):
+                source = match.group(1).strip()
+                text_before = content[: match.start()].strip()
+                if text_before and len(text_before) > 20:
+                    last_line = text_before.split("\n")[-1].strip()[:200]
+                    if last_line:
+                        findings.append({"fact": last_line, "source": source})
+            continue
+        if not isinstance(content, (list, tuple)):
+            continue
+        for block in content:
+            text = getattr(block, "tool_result", None)
+            if not isinstance(text, str) or len(text) < 30:
+                continue
+            for match in _SOURCE_TAG_RE.finditer(text):
+                source = match.group(1).strip()
+                text_before = text[: match.start()].strip()
+                lines = [ln.strip() for ln in text_before.split("\n") if ln.strip()]
+                for line in lines[-3:]:
+                    if len(line) > 20:
+                        findings.append({"fact": line[:200], "source": source})
+
+    if not findings:
+        return ""
+
+    findings = findings[:20]
+    result: dict[str, Any] = {
+        "findings": findings,
+        "not_found": ["synthesis failed — extracted from raw tool results"],
+    }
+    return _json.dumps(result)
 
 
 async def _execute_self_task(
