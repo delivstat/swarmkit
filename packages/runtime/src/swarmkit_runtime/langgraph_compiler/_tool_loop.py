@@ -504,7 +504,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         current_results = next_results
 
     text = _extract_text(current_response)
-    if text:
+    if text and text != "(no response)" and not _looks_incomplete(text):
         return text
 
     _progress(f"  [{agent.id}] tool limit reached — synthesizing final answer...")
