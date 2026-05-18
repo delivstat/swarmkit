@@ -169,6 +169,7 @@ async def _finalize_text_result(
             governance=governance,
             agent_id=agent_id,
         )
+        result_text = _auto_fill_sources(result_text, messages)
 
     if result_text == "(no response)" and completed_children:
         child_texts = [
@@ -177,3 +178,43 @@ async def _finalize_text_result(
         result_text = "\n\n".join(child_texts)
 
     return result_text
+
+
+def _auto_fill_sources(result_text: str, messages: list[Message]) -> str:
+    """Auto-fill empty source fields from tool call provenance in messages."""
+    from ._output_schema import (  # noqa: PLC0415
+        validate_and_fill_sources,
+    )
+
+    try:
+        parsed = json.loads(result_text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return result_text
+
+    if not isinstance(parsed, dict) or "findings" not in parsed:
+        return result_text
+
+    known_sources = _extract_sources_from_messages(messages)
+    if not known_sources:
+        return result_text
+
+    validate_and_fill_sources(parsed, known_sources)
+    return json.dumps(parsed)
+
+
+def _extract_sources_from_messages(messages: list[Message]) -> set[str]:
+    """Scan conversation messages for provenance source tags."""
+    from ._output_schema import _SOURCE_TAG_RE  # noqa: PLC0415
+
+    sources: set[str] = set()
+    for msg in messages:
+        if isinstance(msg.content, str):
+            for match in _SOURCE_TAG_RE.finditer(msg.content):
+                sources.add(match.group(1).strip())
+        else:
+            for block in msg.content:
+                text = getattr(block, "tool_result", None) or getattr(block, "text", None)
+                if isinstance(text, str):
+                    for match in _SOURCE_TAG_RE.finditer(text):
+                        sources.add(match.group(1).strip())
+    return sources
