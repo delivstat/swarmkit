@@ -567,4 +567,38 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         )
     synthesis_req = _build_completion_request(model_name, loop_messages, system_prompt, [], agent)
     synthesis_response = await model_provider.complete(synthesis_req)
-    return _extract_text(synthesis_response) or "(analysis incomplete — tool limit reached)"
+    text = _extract_text(synthesis_response)
+
+    if text and not _looks_incomplete(text):
+        return text
+
+    _progress(f"  [{agent.id}] first synthesis attempt failed, retrying with minimal prompt...")
+    minimal_messages = loop_messages[-6:]
+    if effective_schema:
+        import json as _json2  # noqa: PLC0415
+
+        minimal_messages.append(
+            Message(
+                role="user",
+                content=(
+                    "Your previous response was empty or incomplete. "
+                    "Return valid JSON with your findings NOW. "
+                    "Even partial findings are better than nothing.\n"
+                    f"Schema: {_json2.dumps(effective_schema)}"
+                ),
+            ),
+        )
+    else:
+        minimal_messages.append(
+            Message(
+                role="user",
+                content=(
+                    "Your previous response was empty. Write a summary "
+                    "of what you found. Even partial results are useful. "
+                    "Start with the most important finding."
+                ),
+            ),
+        )
+    retry_req = _build_completion_request(model_name, minimal_messages, system_prompt, [], agent)
+    retry_response = await model_provider.complete(retry_req)
+    return _extract_text(retry_response) or "(analysis incomplete — tool limit reached)"
