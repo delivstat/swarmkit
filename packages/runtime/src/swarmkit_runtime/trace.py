@@ -141,7 +141,13 @@ class RunTrace:
             parent = step.parent_agent or "__root__"
             parent_map.setdefault(parent, []).append(step)
 
+        _visited: set[tuple[str, int]] = set()
+
         def _render_agent(agent_id: str, indent: int) -> None:
+            key = (agent_id, indent)
+            if key in _visited or indent > 20:
+                return
+            _visited.add(key)
             children = parent_map.get(agent_id, [])
             for step in children:
                 prefix = "  " * indent + ("└─→ " if indent > 0 else "")

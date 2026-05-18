@@ -201,24 +201,66 @@ def _handle_read_task_result(block: Any, agent_id: str) -> str:  # noqa: PLR0911
     return content
 
 
+_DEFAULT_READ_PREFIXES = "read-,get-,list-,download-,describe-,explain-,render-"
+
+
+def _read_prefixes() -> tuple[str, ...]:
+    """Return read-tool prefixes, configurable via SWARMKIT_READ_TOOL_PREFIXES."""
+    raw = os.environ.get("SWARMKIT_READ_TOOL_PREFIXES", _DEFAULT_READ_PREFIXES)
+    return tuple(p.strip() for p in raw.split(",") if p.strip())
+
+
+def _explicit_read_tools() -> frozenset[str]:
+    """Return explicitly named read tools via SWARMKIT_READ_TOOLS."""
+    raw = os.environ.get("SWARMKIT_READ_TOOLS", "")
+    if not raw:
+        return frozenset()
+    return frozenset(t.strip() for t in raw.split(",") if t.strip())
+
+
+def _is_read_tool(tool_name: str) -> bool:
+    """Check if a tool is read-only (fetch/read/list) vs search/write.
+
+    Read-only tools get a higher per-tool limit because code analysis
+    legitimately reads many files. Search tools keep the lower limit
+    to prevent degenerate query spirals.
+
+    Configurable via:
+    - ``SWARMKIT_READ_TOOL_PREFIXES`` — prefix-based (default:
+      ``read-,get-,list-,download-,describe-,explain-,render-``)
+    - ``SWARMKIT_READ_TOOLS`` — explicit tool names (comma-separated,
+      e.g. ``fetch-data,view-image,my-custom-reader``)
+    """
+    if tool_name in _explicit_read_tools():
+        return True
+    return tool_name.startswith(_read_prefixes())
+
+
+def _get_tool_limit(tool_name: str, default_limit: int) -> int:
+    """Return the per-tool call limit, higher for read-only tools.
+
+    Configurable via:
+    - ``SWARMKIT_MAX_PER_TOOL`` — limit for search/write tools (default 8)
+    - ``SWARMKIT_MAX_PER_READ_TOOL`` — limit for read-only tools (default 50)
+    - ``SWARMKIT_READ_TOOL_PREFIXES`` — which prefixes count as read-only
+    """
+    read_limit = int(os.environ.get("SWARMKIT_MAX_PER_READ_TOOL", "50"))
+    if _is_read_tool(tool_name):
+        return read_limit
+    return default_limit
+
+
 def _apply_tool_guards(
     results: list[ToolCallResult],
     call_counts: dict[str, int],
     max_per_tool: int,
     agent_id: str,
 ) -> tuple[list[ToolCallResult], bool]:
-    """Apply per-tool call limits and query deduplication.
+    """Apply per-tool call limits.
 
-    Two guards against degenerate model behaviour:
-
-    1. **Per-tool-name limit** — after ``max_per_tool`` calls to the
-       same tool (regardless of args), replace the result with a stop
-       message. Prevents the 50-turn spiral where the model keeps
-       rephrasing the same search.
-
-    2. **Exact query dedup** — if the same ``(tool_name, args_hash)``
-       is called twice, the result is already cached by MCPClientManager
-       but we log it for observability.
+    Read-only tools (get-*, read-*) get a higher limit (default 50)
+    since code analysis legitimately reads many files. Search tools
+    keep the lower limit (default 8) to prevent degenerate spirals.
 
     Returns ``(modified_results, should_break)``.
     """
@@ -228,11 +270,12 @@ def _apply_tool_guards(
     for tr in results:
         call_counts[tr.tool_name] = call_counts.get(tr.tool_name, 0) + 1
         count = call_counts[tr.tool_name]
+        limit = _get_tool_limit(tr.tool_name, max_per_tool)
 
-        if count > max_per_tool:
+        if count > limit:
             _progress(
                 f"  [{agent_id}] tool '{tr.tool_name}' called {count} times — "
-                f"forcing stop (limit: {max_per_tool})"
+                f"forcing stop (limit: {limit})"
             )
             modified.append(
                 ToolCallResult(
@@ -240,7 +283,7 @@ def _apply_tool_guards(
                     tool_name=tr.tool_name,
                     result=(
                         f"TOOL LIMIT: '{tr.tool_name}' has been called {count} times "
-                        f"(limit: {max_per_tool}). STOP calling this tool. "
+                        f"(limit: {limit}). STOP calling this tool. "
                         f"Write your findings from previous calls NOW. "
                         f"Do NOT retry, rephrase, or add more keywords."
                     ),
