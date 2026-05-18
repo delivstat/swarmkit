@@ -85,3 +85,29 @@ class TestApplyToolGuards:
         modified, _ = _apply_tool_guards(results, counts, 8, "agent-1")
         assert "my-tool" in modified[0].result
         assert "11" in modified[0].result
+
+    def test_read_tool_gets_higher_limit(self) -> None:
+        counts: dict[str, int] = {"read-project-code": 9}
+        results = [_make_result("read-project-code", 0)]
+        modified, hit = _apply_tool_guards(results, counts, 8, "agent-1")
+        assert not hit
+        assert "TOOL LIMIT" not in modified[0].result
+
+    def test_read_tool_still_has_limit(self) -> None:
+        counts: dict[str, int] = {"read-project-code": 50}
+        results = [_make_result("read-project-code", 0)]
+        modified, hit = _apply_tool_guards(results, counts, 8, "agent-1")
+        assert hit
+        assert "TOOL LIMIT" in modified[0].result
+
+    def test_get_tool_gets_higher_limit(self) -> None:
+        counts: dict[str, int] = {"get-service-config": 20}
+        results = [_make_result("get-service-config", 0)]
+        _, hit = _apply_tool_guards(results, counts, 8, "agent-1")
+        assert not hit
+
+    def test_search_tool_keeps_low_limit(self) -> None:
+        counts: dict[str, int] = {"search-project-docs": 8}
+        results = [_make_result("search-project-docs", 0)]
+        _, hit = _apply_tool_guards(results, counts, 8, "agent-1")
+        assert hit
