@@ -249,17 +249,15 @@ class WorkspaceRuntime:
 
         provider = getattr(ws_raw, "provider", "") or ""
         model = getattr(ws_raw, "model", "") or ""
-        template = getattr(ws_raw, "template", "") or ""
 
         if isinstance(ws_raw, dict):
             provider = ws_raw.get("provider", "")
             model = ws_raw.get("model", "")
-            template = ws_raw.get("template", "")
 
         if not model:
             return None
 
-        return SynthesisConfig(provider=provider, model=model, template=template)
+        return SynthesisConfig(provider=provider, model=model)
 
     def _resolve_decision_bindings(self, topology_name: str) -> list[DecisionSkillBinding]:
         """Merge workspace + topology decision skill bindings."""

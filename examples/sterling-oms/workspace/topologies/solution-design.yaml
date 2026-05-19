@@ -1,0 +1,45 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: solution-design
+  description: >
+    Purpose-built topology for creating solution design documents.
+    Workers do parallel research, architect coordinates scope and
+    follow-up tasks, synthesizer generates the final document in
+    one large-context call. No hallucinated content — the synthesizer
+    only uses data from worker findings.
+  version: 1.0.0
+runtime:
+  planning:
+    scope_required: true
+    two_phase: true
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: meta-llama/llama-3.3-70b-instruct
+      temperature: 0.1
+    prompt:
+      system: |
+        You are the solution design coordinator. Delegate ALL requests
+        to the design-architect. NEVER answer yourself.
+        Pass through the architect's output AS-IS.
+    children:
+      - id: design-architect
+        role: leader
+        archetype: sterling-oms-architect
+        children:
+          - id: jira-researcher
+            role: worker
+            archetype: jira-researcher
+          - id: config-analyst
+            role: worker
+            archetype: config-analyst
+          - id: docs-researcher
+            role: worker
+            archetype: docs-researcher
+          - id: sterling-developer
+            role: worker
+            archetype: sterling-developer
