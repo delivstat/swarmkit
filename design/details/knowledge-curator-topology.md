@@ -57,7 +57,7 @@ Each wiki page is a markdown file with frontmatter:
 ---
 title: Sourcing Rules Management
 sources:
-  - chromadb:project-docs/Croma_Functional.docx
+  - chromadb:project-docs/OMS_Functional.docx
   - cdt:YFS_SOURCING_RULE_HDR
   - code:SourcingRuleFileUploadAgent.java
 last_updated: 2026-05-05
@@ -73,7 +73,7 @@ confidence: high
 Sourcing rules are loaded from SAP via the SourcingRuleFileUploadAgent...
 
 ## Data Flow
-SAP → OMS (JMS queue CROMAPH2_SEND_SOURCINGRULE_FILE_TO_IC_Q) → IC
+SAP → OMS (JMS queue PH2_SEND_SOURCINGRULE_FILE_TO_IC_Q) → IC
 
 ## Key Code
 At SourcingRuleFileUploadAgent.java:2095, the method builds the XML...

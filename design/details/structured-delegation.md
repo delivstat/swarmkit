@@ -104,7 +104,7 @@ yourself (synthesis, document structure, diagrams).
     {
       "id": "jira-research",
       "agent": "jira-researcher",
-      "instruction": "Search for RETN, RITN, Store and DC Returns in Jira and Confluence",
+      "instruction": "Search for return order types, store and DC returns in Jira and Confluence",
       "depends_on": []
     },
     {
@@ -279,15 +279,15 @@ TASK PLAN STATUS:
 
 ✅ jira-research (jira-researcher) — 300s, 50 tool calls
    Findings:
-   - Found 15 Jira tickets related to CROMA returns (RETN, RITN)
+   - Found 15 Jira tickets related to OMS returns
    - 3 Confluence pages with return process documentation
-   - Key ticket RT-727: Return Order Processing redesign
+   - Key ticket PROJ-100: Return Order Processing redesign
    Full results: .swarmkit/run-state/3d1c3d0a/jira-researcher.md
 
 ✅ config-lookup (config-analyst) — 140s, 25 tool calls
    Findings:
    - 8 return-related pipelines found
-   - CROMA_PH2_RETURN_PIPELINE: 12 transactions, 5 hub rules
+   - PH2_RETURN_PIPELINE: 12 transactions, 5 hub rules
    Full results: .swarmkit/run-state/3d1c3d0a/config-analyst.md
 
 ⏳ docs-search (docs-researcher) — pending (depends on: jira-research ✅)

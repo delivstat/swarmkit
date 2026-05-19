@@ -272,21 +272,21 @@ TASK PLAN STATUS:
 
 completed: jira-research (jira-researcher) — 12.3s, 6 tool calls
   FINDINGS:
-  - RT-727 requires return processing for replacement orders [get-jira-issue(RT-727)]
-  - Linked to RT-726 (cancellation of replacements) [get-jira-issue(RT-727).links]
-  - Gopu comment 2026-04-29: RTO sub-scenario needed [get-jira-issue(RT-727).comments]
-  - SAP must accept allocation feed with PaymentDetailsList [get-jira-issue(RT-727).description]
+  - PROJ-100 requires return processing for replacement orders [get-jira-issue(PROJ-100)]
+  - Linked to PROJ-99 (cancellation of replacements) [get-jira-issue(PROJ-100).links]
+  - Gopu comment 2026-04-29: RTO sub-scenario needed [get-jira-issue(PROJ-100).comments]
+  - SAP must accept allocation feed with PaymentDetailsList [get-jira-issue(PROJ-100).description]
   NOT FOUND:
-  - No confluence pages specifically about RT-727 return flow
+  - No confluence pages specifically about PROJ-100 return flow
   - No attachments on the ticket
 ```
 
 vs current:
 ```
 completed: jira-research (jira-researcher) — 12.3s, 6 tool calls
-  - RT-727 is a CAI ticket about return of replacement orders
+  - PROJ-100 is a CAI ticket about return of replacement orders
   - The ticket has 4 acceptance criteria related to SAP feeds
-  - Related ticket RT-726 handles cancellation
+  - Related ticket PROJ-99 handles cancellation
   - Gopu commented about RTO scenario
 ```
 

@@ -6,7 +6,7 @@
 #
 # Usage:
 #   # Download as PDF (default — preserves images)
-#   ./scripts/download-confluence-page.sh "https://tatacroma.atlassian.net/wiki/spaces/CSO/pages/2236875064"
+#   ./scripts/download-confluence-page.sh "https://your-org.atlassian.net/wiki/spaces/CSO/pages/2236875064"
 #
 #   # Download as markdown (for RAG ingestion)
 #   ./scripts/download-confluence-page.sh 2236875064 --md

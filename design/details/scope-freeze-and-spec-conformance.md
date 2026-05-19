@@ -14,7 +14,7 @@ interpolates from training priors rather than strictly deriving from
 the spec. This produces output that reads as competent but contains:
 
 1. **Fabrication-of-relationship** — real entity IDs connected by
-   invented relationships (RT-728 "related to" RT-727)
+   invented relationships (PROJ-101 "related to" PROJ-100)
 2. **Wrong source selection** — keyword-dense pages surfaced over
    canonically correct pages (BORIS overview vs Returns V2 spec)
 3. **Plausibility-from-priors** — model picks the "typical" answer
@@ -43,7 +43,7 @@ it contradict the spec? Does it introduce claims outside scope?
 ```yaml
 # Written by architect to .swarmkit/run-state/current/scope.json
 {
-  "ticket_id": "RT-727",
+  "ticket_id": "PROJ-100",
   "acceptance_criteria": [
     "OMS must support return process for replacement orders",
     "Send Return Initiated feed to SAP with PaymentDetailsList",
@@ -51,7 +51,7 @@ it contradict the spec? Does it introduce claims outside scope?
     "Initiate refund and send refund feed to SAP",
     "Return Invoice sent per existing triggers"
   ],
-  "linked_tickets": ["RT-726"],
+  "linked_tickets": ["PROJ-99"],
   "parent_epic": "EPICS-9865",
   "stakeholder_inputs": [
     {
@@ -61,7 +61,7 @@ it contradict the spec? Does it introduce claims outside scope?
     }
   ],
   "authoritative_sources": [
-    "Confluence page 3820945422 (Croma OMS Implementation)",
+    "Confluence page 3820945422 (OMS Implementation Overview)",
     "Returns V2 specification pages"
   ],
   "excluded_from_scope": [
@@ -83,13 +83,13 @@ reading source material:
 
 ```
 freeze-scope({
-  source: "RT-727",
+  source: "PROJ-100",
   requirements: ["OMS must support return for replacement orders", ...],
   constraints: ["Refund triggers on Item Picked (3700.104)"],
   authoritative_sources: ["Returns V2 spec pages"],
   excluded: ["Non-replacement returns", "Marketplace channel"],
   decisions: [{"by": "gopu", "date": "2026-04-29", "decision": "RTO sub-scenario"}],
-  related: ["RT-726"]
+  related: ["PROJ-99"]
 })
 ```
 
@@ -291,7 +291,7 @@ defects; it's catching the 80% that are structurally detectable.
 ### PR 4: Sterling workspace integration
 - Wire spec-conformance + updated grounding-verifier
 - Update architect archetype to produce scope.json
-- E2E test: RT-727 re-run with scope freeze
+- E2E test: PROJ-100 re-run with scope freeze
 
 ## Open questions
 
