@@ -12,8 +12,8 @@ planning:
   scope_required: true
   two_phase: true
 synthesis:
-  provider: google
-  model: gemini-2.5-flash
+  provider: openrouter
+  model: google/gemini-2.5-flash
 governance:
   provider: mock
   decision_skills:
