@@ -42,6 +42,13 @@ from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 from swarmkit_runtime.skills import impl_get
 
 
+def _get_field(obj: Any, name: str) -> str:
+    """Extract a string field from a dict or pydantic/dataclass object."""
+    if isinstance(obj, dict):
+        return obj.get(name, "") or ""
+    return getattr(obj, name, "") or ""
+
+
 @dataclass(frozen=True)
 class RunEvent:
     """A single event from a topology execution."""
@@ -240,24 +247,37 @@ class WorkspaceRuntime:
         return PlanningConfig(scope_required=scope_required, two_phase=two_phase)
 
     def _resolve_synthesis_config(self, topology_name: str) -> Any:
-        """Resolve synthesis config from workspace."""
+        """Resolve synthesis config from workspace + topology (topology wins)."""
         from swarmkit_runtime.langgraph_compiler._state import SynthesisConfig  # noqa: PLC0415
 
+        provider = ""
+        model = ""
+        prompt = ""
+
         ws_raw = getattr(self._workspace.raw, "synthesis", None)
-        if ws_raw is None:
-            return None
+        if ws_raw is not None:
+            provider = _get_field(ws_raw, "provider")
+            model = _get_field(ws_raw, "model")
+            prompt = _get_field(ws_raw, "prompt")
 
-        provider = getattr(ws_raw, "provider", "") or ""
-        model = getattr(ws_raw, "model", "") or ""
-
-        if isinstance(ws_raw, dict):
-            provider = ws_raw.get("provider", "")
-            model = ws_raw.get("model", "")
+        topo = self._workspace.topologies.get(topology_name)
+        topo_runtime = getattr(topo.raw, "runtime", None) if topo else None
+        topo_synth = getattr(topo_runtime, "synthesis", None) if topo_runtime else None
+        if topo_synth is not None:
+            tp = _get_field(topo_synth, "provider")
+            tm = _get_field(topo_synth, "model")
+            tpr = _get_field(topo_synth, "prompt")
+            if tp:
+                provider = tp
+            if tm:
+                model = tm
+            if tpr:
+                prompt = tpr
 
         if not model:
             return None
 
-        return SynthesisConfig(provider=provider, model=model)
+        return SynthesisConfig(provider=provider, model=model, prompt=prompt)
 
     def _resolve_decision_bindings(self, topology_name: str) -> list[DecisionSkillBinding]:
         """Merge workspace + topology decision skill bindings."""
