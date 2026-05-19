@@ -39,6 +39,13 @@ async def run_synthesis(
     scope = _load_scope(run_state)
     template_path = _extract_path(original_input, "template")
     output_path = _extract_path(original_input, "output")
+    if template_path:
+        _progress(f"[synthesizer] template: {template_path}")
+    if output_path:
+        _progress(f"[synthesizer] output: {output_path}")
+    if not output_path:
+        output_path = str(run_state / "synthesis-output.md")
+        _progress(f"[synthesizer] no output path specified, writing to {output_path}")
     template = _load_file(template_path, root) if template_path else ""
 
     prompt_parts = []
@@ -147,15 +154,27 @@ def _extract_path(input_text: str, label: str) -> str:
     - Template: review-docs/HLD_Template.md
     - Output: output/RT-727_HLD.md
     - template=review-docs/HLD_Template.md
+    - in the format of review-docs/HLD_Template.md
+    - following review-docs/HLD_Template.md format
     """
+    _ext = r"\.(?:md|docx|txt|html)"
     patterns = [
-        rf"(?i){label}\s*[:=]\s*(\S+\.(?:md|docx|txt|html))",
+        rf"(?i){label}\s*[:=]\s*(\S+{_ext})",
         rf"(?i){label}\s*[:=]\s*[\"']([^\"']+)[\"']",
     ]
+    if label == "template":
+        _fmt = r"(?:in the |in |follow(?:ing)? (?:the )?)"
+        patterns.extend(
+            [
+                rf"(?i){_fmt}format (?:of |as )?(\S+{_ext})",
+                rf"(?i)(?:format|structure) (?:of|from|per) (\S+{_ext})",
+                rf"(?i)(?:based on|using|per) (\S+{_ext})",
+            ]
+        )
     for pattern in patterns:
         match = re.search(pattern, input_text)
         if match:
-            return match.group(1).strip()
+            return match.group(1).strip().rstrip(".")
     return ""
 
 
