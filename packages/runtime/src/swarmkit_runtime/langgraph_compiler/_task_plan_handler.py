@@ -92,7 +92,8 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             errors.extend(plan.validate_agents(valid_agents))
             fixes = plan.auto_fix_dependencies()
 
-            if synthesis_config is not None and getattr(synthesis_config, "model", ""):
+            _synth_model: str = getattr(synthesis_config, "model", "") if synthesis_config else ""
+            if _synth_model:
                 before = len(plan.tasks)
                 plan.tasks = [t for t in plan.tasks if t.id != "__auto_synthesize__"]
                 if len(plan.tasks) < before:
