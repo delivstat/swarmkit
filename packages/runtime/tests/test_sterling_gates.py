@@ -44,7 +44,7 @@ class TestSterlingGateSchemas:
         good = {
             "findings": [
                 {
-                    "fact": "Pipeline RETN_RETURN_ORDER has 5 conditions in hub rules",
+                    "fact": "Pipeline RETURN_ORDER has 5 conditions in hub rules",
                     "source": "sterling-config:get-pipeline",
                     "confidence": "observed",
                 }
@@ -57,7 +57,7 @@ class TestSterlingGateSchemas:
 
     def test_code_findings_requires_file_path(self) -> None:
         schema = json.loads((_GATES_DIR / "code-findings.json").read_text())
-        bad = {"findings": [{"fact": "Method processReturn handles RETN", "source": "grep"}]}
+        bad = {"findings": [{"fact": "Method processReturn handles return", "source": "grep"}]}
         validator = jsonschema.Draft202012Validator(schema)
         errors = list(validator.iter_errors(bad))
         assert len(errors) > 0
@@ -67,9 +67,9 @@ class TestSterlingGateSchemas:
         good = {
             "findings": [
                 {
-                    "fact": "Method processReturn handles RETN orders",
+                    "fact": "Method processReturn handles return orders",
                     "source": "project-code:read-file",
-                    "file_path": "src/com/croma/ReturnProcessor.java",
+                    "file_path": "src/com/acme/ReturnProcessor.java",
                     "line_range": "42-68",
                 }
             ]

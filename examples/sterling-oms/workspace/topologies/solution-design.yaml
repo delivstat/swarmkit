@@ -54,12 +54,12 @@ runtime:
       MERMAID SYNTAX RULES (strict — invalid syntax won't render):
       - Node IDs must be alphanumeric with underscores only. No spaces,
         no parentheses, no special characters in IDs.
-        WRONG: `CROMA OMS (Sterling)` RIGHT: `CROMA_OMS[CROMA OMS]`
+        WRONG: `My App (v2)` RIGHT: `My_App[My App v2]`
       - Do NOT use `style` on subgraph names — mermaid cannot style
         subgraphs. Only style individual node IDs.
       - In `sequenceDiagram`: do NOT use `break`. Use `Note` instead.
         Keep participant aliases short (max 15 chars). Use `as` for
-        display names: `participant OMS as CROMA OMS`.
+        display names: `participant OMS as Sterling OMS`.
       - In `stateDiagram-v2`: avoid deeply nested states (max 1 level).
         Every node referenced in a transition must be defined.
         Do NOT use undefined nodes in transitions.

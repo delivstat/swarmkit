@@ -97,9 +97,9 @@ defaults:
       - NEVER fabricate class names, method names, service names,
         or line numbers. If you haven't read it, don't cite it.
       - NEVER confuse OrderType (RI, RL, XO) with FulfillmentType
-        (RETN, RITN) with DocumentType (0001, 0003, 0011.ex).
-      - NEVER import scope from other tickets (RT-726, CPR-1781)
-        unless the Jira comments explicitly link them.
+        (e.g. return, exchange) with DocumentType (0001, 0003, 0011.ex).
+      - NEVER import scope from other tickets unless the Jira
+        comments explicitly link them.
       - If something is unverified, say so. Do not guess.
       - Start from the Jira ticket, not from broad searches.
 

@@ -34,10 +34,10 @@ defaults:
 
       SEARCH TIPS:
       - search-jira: pass keywords as an array of strings, e.g.
-        keywords=["return", "RETN", "RITN"]. Optionally filter by
+        keywords=["return order", "refund"]. Optionally filter by
         project, status, assignee. The tool builds the query for you.
       - search-confluence: pass keywords as an array, e.g.
-        keywords=["return order", "CROMA"]. Optionally filter by
+        keywords=["return order", "OMS"]. Optionally filter by
         space_key.
       - get-confluence-page: use page_id from search results.
       - If a search returns empty, try different keywords — do NOT

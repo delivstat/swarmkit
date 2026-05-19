@@ -21,7 +21,7 @@ class TestExtractFindingsFromMessages:
         messages = [
             HumanMessage(content="search for returns"),
             AIMessage(
-                content="Found pipeline CROMA_RETURN_PIPELINE with 5 conditions\n"
+                content="Found pipeline ACME_RETURN_PIPELINE with 5 conditions\n"
                 "[source: sterling-config:get-pipeline | 42ms]"
             ),
         ]
@@ -40,7 +40,7 @@ class TestExtractFindingsFromMessages:
                         type="tool_result",
                         tool_use_id="call_1",
                         tool_result=(
-                            "Pipeline CROMA_PH2_RETURN_PIPELINE has status lifecycle "
+                            "Pipeline ACME_PH2_RETURN_PIPELINE has status lifecycle "
                             "1000→1100→1300→3200→3350→3700\n"
                             "[source: sterling-config:get-pipeline | 30ms]"
                         ),

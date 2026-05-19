@@ -190,7 +190,7 @@ def _extract_path(input_text: str, label: str) -> str:
 
     Looks for patterns like:
     - Template: review-docs/HLD_Template.md
-    - Output: output/RT-727_HLD.md
+    - Output: output/solution-design.md
     - template=review-docs/HLD_Template.md
     - in the format of review-docs/HLD_Template.md
     - following review-docs/HLD_Template.md format

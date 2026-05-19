@@ -4,7 +4,7 @@ metadata:
   id: get-jira-issue
   name: Get Jira Issue
   description: >
-    Get full details of a Jira issue by key (e.g. CROMA-1234). Returns
+    Get full details of a Jira issue by key (e.g. PROJ-1234). Returns
     summary, description, status, assignee, comments, and attachments.
 category: capability
 implementation:

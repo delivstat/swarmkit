@@ -202,7 +202,7 @@ lookups for the latest content.
 You can also download individual pages as PDF (preserves images):
 ```bash
 # Download by URL as PDF
-./scripts/download-confluence-page.sh "https://tatacroma.atlassian.net/wiki/spaces/CSO/pages/2236875064"
+./scripts/download-confluence-page.sh "https://your-org.atlassian.net/wiki/spaces/CSO/pages/2236875064"
 
 # Download as markdown instead (for RAG, no images)
 ./scripts/download-confluence-page.sh 2236875064 --md

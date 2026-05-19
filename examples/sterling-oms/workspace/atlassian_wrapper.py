@@ -107,13 +107,13 @@ TOOLS = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": (
-                        "Search terms (e.g. ['return', 'RETN', 'RITN']). "
+                        "Search terms (e.g. ['return order', 'refund']). "
                         "Each becomes a text ~ search joined with OR."
                     ),
                 },
                 "project": {
                     "type": "string",
-                    "description": "Jira project key (e.g. 'CROMA'). Optional.",
+                    "description": "Jira project key (e.g. 'PROJ'). Optional.",
                 },
                 "issue_type": {
                     "type": "string",
@@ -163,7 +163,7 @@ TOOLS = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": (
-                        "Search terms (e.g. ['return order', 'CROMA']). Joined for text search."
+                        "Search terms (e.g. ['return order', 'OMS']). Joined for text search."
                     ),
                 },
                 "space_key": {
@@ -214,7 +214,7 @@ TOOLS = [
     Tool(
         name="get_jira_issue",
         description=(
-            "Get full details of a Jira issue by key (e.g. 'RT-727'). "
+            "Get full details of a Jira issue by key (e.g. 'PROJ-123'). "
             "Returns summary, description, status, comments, and linked issues."
         ),
         inputSchema={
@@ -222,7 +222,7 @@ TOOLS = [
             "properties": {
                 "issue_key": {
                     "type": "string",
-                    "description": "Jira issue key (e.g. 'RT-727').",
+                    "description": "Jira issue key (e.g. 'PROJ-123').",
                 },
                 "comment_limit": {
                     "type": "integer",
@@ -241,7 +241,7 @@ TOOLS = [
             "properties": {
                 "issue_key": {
                     "type": "string",
-                    "description": "Jira issue key (e.g. 'RT-727').",
+                    "description": "Jira issue key (e.g. 'PROJ-123').",
                 },
             },
             "required": ["issue_key"],

@@ -10,7 +10,7 @@ In a multi-agent swarm, drift compounds. A coordinator delegates to 5 workers. E
 
 We saw this in production:
 - A developer agent asked to "check return order code" started reading unrelated order creation code by turn 15
-- A Jira researcher asked to "find tickets about RETN returns" expanded to searching all order types by turn 10
+- A Jira researcher asked to "find tickets about return orders" expanded to searching all order types by turn 10
 - An architect asked to "analyse log file slowness" created a plan including docs-researcher and config-analyst that weren't needed
 
 The common pattern: the agent's context grows with each tool result, and the most recent results influence the next action more than the original goal. The original instruction is buried under 50KB of tool outputs.
