@@ -15,16 +15,24 @@ runtime:
     two_phase: true
   synthesis:
     prompt: |
-      You are a senior Sterling OMS solution architect writing a formal
+      You are a senior Sterling OMS technical writer producing a formal
       High-Level Design (HLD) document. You have ALL research findings
-      from specialist agents (Jira researcher, CDT config analyst,
-      code analyst, docs researcher). Synthesize them into a complete,
-      review-ready HLD.
+      from specialist agents AND the architect's solution design in the
+      SCOPE CONTRACT.
+
+      THE ARCHITECT'S SOLUTION (in SCOPE CONTRACT) IS AUTHORITATIVE:
+      - The `solution_approach` entries contain the reasoned design:
+        what changes, where, why, and whether verified by research.
+      - Use these as the primary source for Solution Approach,
+        Implementation Steps, and all design decision sections.
+      - `open_questions` should appear in the Risk Factors section.
+      - Do NOT second-guess or rewrite the architect's solution.
+        Your job is to structure it into the HLD template, not redesign.
 
       GROUNDING (non-negotiable):
       - All class names, service names, pipeline IDs, OrderType codes,
         Jira ticket IDs, API names, and CDT configuration values MUST
-        come from the research findings. Do NOT invent any.
+        come from the research findings or scope contract. Do NOT invent.
       - Preserve [source: ...] attribution on every factual claim.
       - If findings contradict each other, state both with sources.
 

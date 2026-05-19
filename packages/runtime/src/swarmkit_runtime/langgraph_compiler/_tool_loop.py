@@ -94,6 +94,8 @@ def _handle_create_scope(block: Any, agent_id: str) -> str:
         "excluded": args.get("excluded", []),
         "decisions": args.get("decisions", []),
         "related": args.get("related", []),
+        "solution_approach": args.get("solution_approach", []),
+        "open_questions": args.get("open_questions", []),
     }
 
     _scope_path().write_text(_json.dumps(scope_data, indent=2), encoding="utf-8")
@@ -126,6 +128,8 @@ def _handle_update_scope(block: Any, agent_id: str) -> str:
         ("add_excluded", "excluded"),
         ("add_decisions", "decisions"),
         ("add_related", "related"),
+        ("add_solution_approach", "solution_approach"),
+        ("add_open_questions", "open_questions"),
     ]:
         items = args.get(field, [])
         if items:

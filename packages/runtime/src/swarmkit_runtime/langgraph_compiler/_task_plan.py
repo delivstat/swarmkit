@@ -502,6 +502,29 @@ _SCOPE_PROPERTIES: dict[str, Any] = {
         "items": {"type": "string"},
         "description": "Related items — only explicitly linked, not inferred",
     },
+    "solution_approach": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "component": {"type": "string"},
+                "change": {"type": "string"},
+                "rationale": {"type": "string"},
+                "verified": {"type": "boolean"},
+            },
+        },
+        "description": (
+            "The actual solution — what changes, where, and why. "
+            "Each entry is one component change with rationale "
+            "derived from research findings. This is the architect's "
+            "reasoned design, not a summary of findings."
+        ),
+    },
+    "open_questions": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Questions that research could not resolve — flagged for human review",
+    },
 }
 
 
@@ -509,16 +532,21 @@ def build_create_scope_tool() -> ToolSpec:
     return ToolSpec(
         name="create-scope",
         description=(
-            "Define the scope contract for this run. Call after reading "
-            "the source material (ticket, brief, requirements doc) to "
-            "establish what must be satisfied, what's excluded, and what "
-            "constraints apply. The spec-conformance skill validates "
-            "output against this scope."
+            "Define the scope contract AND solution approach for this run. "
+            "Call after reading ALL research results to establish: "
+            "(1) what must be satisfied (requirements), "
+            "(2) what constraints apply, "
+            "(3) YOUR SOLUTION — the specific changes to make, where, and why. "
+            "The solution_approach field is where you do your reasoning as "
+            "an architect. Each entry should name a component, describe the "
+            "change, explain why based on research findings, and flag if "
+            "verified. This becomes the authoritative design that the "
+            "synthesizer uses to write the document."
         ),
         input_schema={
             "type": "object",
             "properties": _SCOPE_PROPERTIES,
-            "required": ["source", "requirements"],
+            "required": ["source", "requirements", "solution_approach"],
         },
     )
 
@@ -572,6 +600,24 @@ def build_update_scope_tool() -> ToolSpec:
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "New related items discovered",
+                },
+                "add_solution_approach": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "component": {"type": "string"},
+                            "change": {"type": "string"},
+                            "rationale": {"type": "string"},
+                            "verified": {"type": "boolean"},
+                        },
+                    },
+                    "description": "New solution design entries from follow-up research",
+                },
+                "add_open_questions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Questions that research could not resolve",
                 },
             },
         },
