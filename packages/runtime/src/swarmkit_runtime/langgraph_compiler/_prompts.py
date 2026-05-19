@@ -553,7 +553,8 @@ def _build_tools(
 
     tools: list[ToolSpec] = []
 
-    if not _phase1 and not _has_synthesizer:
+    _is_single_agent = not agent.children
+    if not _phase1 and (not _has_synthesizer or _is_single_agent):
         _executable_types = {"llm_prompt", "mcp_tool"}
         for skill in agent.skills:
             impl = skill.raw.implementation
