@@ -11,7 +11,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: deepseek/deepseek-r1
+    name: qwen/qwen3-235b-a22b
     temperature: 0.2
   prompt:
     system: |
