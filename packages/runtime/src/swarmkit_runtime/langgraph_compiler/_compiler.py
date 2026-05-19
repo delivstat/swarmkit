@@ -235,7 +235,7 @@ def _build_agent_node(  # noqa: PLR0915
 
         # ---- message + tool construction -----------------------------
         messages = _build_prompt_messages(agent, state, planning_config=_planning)
-        tools = _build_tools(agent, mcp_manager=mcp_manager)
+        tools = _build_tools(agent, mcp_manager=mcp_manager, planning_config=_planning)
         agent_results = state.get("agent_results", {})
         completed_children = _get_completed_children(agent, agent_results)
         all_children_done = len(completed_children) == len(agent.children) and agent.children
@@ -260,7 +260,7 @@ def _build_agent_node(  # noqa: PLR0915
                 ]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
-        system_prompt = _build_system_prompt(agent, tools)
+        system_prompt = _build_system_prompt(agent, tools, planning_config=_planning)
         _verbose = os.environ.get("SWARMKIT_VERBOSE", "")
 
         _short_model = model_name.rsplit("/", 1)[-1] if "/" in model_name else model_name
@@ -304,6 +304,7 @@ def _build_agent_node(  # noqa: PLR0915
             state=state,
             all_agents=all_agents,
             provider_registry=provider_registry,
+            planning_config=_planning,
         )
         if isinstance(result, dict):
             _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()

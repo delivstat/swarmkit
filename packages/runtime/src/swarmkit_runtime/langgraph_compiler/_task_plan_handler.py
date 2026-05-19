@@ -21,6 +21,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
     agent: ResolvedAgent,
     agent_id: str,
     state: Any,
+    planning_config: Any = None,
 ) -> dict[str, Any] | None:
     """Handle planning tools in a model response (two-pass).
 
@@ -78,6 +79,8 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             raw_tasks = args.get("tasks", [])
             if not raw_tasks:
                 continue
+
+            raw_tasks = _enforce_two_phase(raw_tasks, planning_config, agent_id)
 
             import time as _time  # noqa: PLC0415
 
@@ -226,6 +229,51 @@ def _write_scope(args: dict[str, Any], agent_id: str) -> None:
         f"[{agent_id}] scope created: {len(scope_data['requirements'])} requirements, "
         f"{len(scope_data['constraints'])} constraints"
     )
+
+
+def _enforce_two_phase(
+    raw_tasks: list[dict[str, Any]],
+    planning_config: Any,
+    agent_id: str,
+) -> list[dict[str, Any]]:
+    """Enforce two-phase planning when scope_required or two_phase is set.
+
+    When scope doesn't exist yet, strip non-research tasks from the plan.
+    Research tasks = tasks with no dependencies and agent != 'self' and
+    agent != 'document-writer'. This forces the model to do research
+    first, create scope, then add Phase 2 tasks via update-task-plan.
+
+    This is a compiler enforcement — the model can't bypass it regardless
+    of what the prompt says.
+    """
+    from ._state import PlanningConfig  # noqa: PLC0415
+
+    config = planning_config or PlanningConfig()
+    if not config.scope_required and not config.two_phase:
+        return raw_tasks
+
+    scope_path = _scope_file_path()
+    if scope_path.exists():
+        return raw_tasks
+
+    research_tasks = []
+    stripped = []
+    for task in raw_tasks:
+        agent = task.get("agent", "")
+        deps = task.get("depends_on", [])
+        if agent in ("self", "document-writer") or deps:
+            stripped.append(task.get("id", "unknown"))
+        else:
+            research_tasks.append(task)
+
+    if stripped:
+        _progress(
+            f"  [{agent_id}] scope required — stripped {len(stripped)} non-research "
+            f"tasks from initial plan: {', '.join(stripped)}. "
+            f"Create scope first, then add Phase 2 tasks via update-task-plan."
+        )
+
+    return research_tasks
 
 
 def _update_scope(args: dict[str, Any], agent_id: str) -> None:
