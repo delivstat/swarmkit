@@ -132,6 +132,7 @@ def _build_system_prompt(
     agent: ResolvedAgent,
     tools: list[ToolSpec],
     planning_config: Any = None,
+    synthesis_config: Any = None,
 ) -> str | None:
     """Build the system prompt, injecting tool-use instructions when needed.
 
@@ -168,7 +169,7 @@ def _build_system_prompt(
         )
 
     if planning_tools:
-        from ._state import PlanningConfig  # noqa: PLC0415
+        from ._state import PlanningConfig, SynthesisConfig  # noqa: PLC0415
 
         _config = planning_config or PlanningConfig()
         _needs_scope = _config.scope_required or _config.two_phase
@@ -196,15 +197,35 @@ def _build_system_prompt(
             _scope_context = ""
             if _needs_scope and _scope_exists:
                 _scope_context = _read_scope_for_prompt()
-            parts.append(
-                "\nPHASE 2 — EXECUTION:\n"
-                "Scope is defined. Complete every requirement in the scope.\n\n"
-                f"{_scope_context}"
-                "Call `update-task-plan` to add targeted follow-up tasks. "
-                "Use `read-task-result` to read full worker results. "
-                "Call `read-scope` to review the scope contract. "
-                "The governance layer validates output against the scope."
+
+            _has_synth = isinstance(synthesis_config, SynthesisConfig) and bool(
+                synthesis_config.model
             )
+
+            if _has_synth:
+                parts.append(
+                    "\nPHASE 2 — TARGETED RESEARCH:\n"
+                    "Scope is defined. Your job is to add follow-up research "
+                    "tasks that address every requirement in the scope.\n\n"
+                    f"{_scope_context}"
+                    "Call `update-task-plan` to add targeted follow-up tasks "
+                    "for your workers. Use `read-task-result` to review "
+                    "completed findings and identify gaps.\n\n"
+                    "Do NOT write the document yourself. A synthesizer will "
+                    "automatically generate the document from all research "
+                    "findings after your tasks complete. Your job is ONLY "
+                    "to ensure thorough, complete research coverage."
+                )
+            else:
+                parts.append(
+                    "\nPHASE 2 — EXECUTION:\n"
+                    "Scope is defined. Complete every requirement in the scope.\n\n"
+                    f"{_scope_context}"
+                    "Call `update-task-plan` to add targeted follow-up tasks. "
+                    "Use `read-task-result` to read full worker results. "
+                    "Call `read-scope` to review the scope contract. "
+                    "The governance layer validates output against the scope."
+                )
     elif delegation_tools:
         names = ", ".join(f"`{t.name}`" for t in delegation_tools)
         parts.append(
@@ -497,27 +518,31 @@ def _build_tools(
     agent: ResolvedAgent,
     mcp_manager: Any = None,
     planning_config: Any = None,
+    synthesis_config: Any = None,
 ) -> list[ToolSpec]:
     """Map an agent's executable skills + children to ToolSpec objects.
 
     When ``two_phase`` or ``scope_required`` is set and scope doesn't
     exist yet, only Phase 1 tools are returned (research + scope
     creation). Skill tools (write-notes, create-diagram, etc.) and
-    ``update-task-plan`` are withheld until scope exists. This is
-    compiler enforcement — the model cannot access Phase 2 tools
-    until it completes scope creation.
+    ``update-task-plan`` are withheld until scope exists.
+
+    When ``synthesis_config`` is set, skill tools are NEVER given to
+    the leader agent — the synthesizer handles all document generation.
+    The leader only gets task planning and scope tools.
     """
     from ._dag import _has_dag_deps  # noqa: PLC0415
-    from ._state import PlanningConfig  # noqa: PLC0415
+    from ._state import PlanningConfig, SynthesisConfig  # noqa: PLC0415
 
     _config = planning_config or PlanningConfig()
     _needs_scope = _config.scope_required or _config.two_phase
     _scope_exists = _check_scope_exists() if _needs_scope else True
     _phase1 = _needs_scope and not _scope_exists
+    _has_synthesizer = isinstance(synthesis_config, SynthesisConfig) and synthesis_config.model
 
     tools: list[ToolSpec] = []
 
-    if not _phase1:
+    if not _phase1 and not _has_synthesizer:
         _executable_types = {"llm_prompt", "mcp_tool"}
         for skill in agent.skills:
             impl = skill.raw.implementation
