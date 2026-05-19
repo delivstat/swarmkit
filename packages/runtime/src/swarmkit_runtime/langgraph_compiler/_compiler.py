@@ -304,6 +304,7 @@ def _build_agent_node(  # noqa: PLR0915
             state=state,
             all_agents=all_agents,
             provider_registry=provider_registry,
+            planning_config=_planning,
         )
         if isinstance(result, dict):
             _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()
