@@ -128,7 +128,11 @@ def _looks_incomplete(text: str) -> bool:
     return len(lower) < 500 and any(m in lower for m in _INCOMPLETE_MARKERS)
 
 
-def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | None:
+def _build_system_prompt(
+    agent: ResolvedAgent,
+    tools: list[ToolSpec],
+    planning_config: Any = None,
+) -> str | None:
     """Build the system prompt, injecting tool-use instructions when needed.
 
     The topology author's system prompt is preserved. The compiler appends
@@ -164,19 +168,43 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
         )
 
     if planning_tools:
-        names = ", ".join(f"`{t.name}`" for t in planning_tools)
-        parts.append(
-            "\nTASK PLANNING: Call `create-task-plan` to define tasks "
-            "for your workers and yourself. The compiler will execute "
-            "tasks and report back with summaries. Call `update-task-plan` "
-            "to adjust the plan at checkpoints. Use `read-task-result` "
-            "to read full results from completed tasks.\n\n"
-            "SCOPE: Call `create-scope` after reading source material "
-            "to define requirements, constraints, and exclusions. Call "
-            "`update-scope` when research reveals new constraints. Call "
-            "`read-scope` to review the current scope before synthesis. "
-            "The governance layer validates output against the scope."
-        )
+        from ._state import PlanningConfig  # noqa: PLC0415
+
+        _config = planning_config or PlanningConfig()
+        _needs_scope = _config.scope_required or _config.two_phase
+        _scope_exists = _check_scope_exists() if _needs_scope else True
+        _phase1 = _needs_scope and not _scope_exists
+
+        if _phase1:
+            parts.append(
+                "\nPHASE 1 — RESEARCH & SCOPE CREATION:\n"
+                "You are in the research phase. Your ONLY goal is to "
+                "gather information and define the scope.\n\n"
+                "1. Call `create-task-plan` with research tasks for your "
+                "workers. Only research tasks are allowed — no synthesis, "
+                "no document writing.\n"
+                "2. After workers complete, call `read-task-result` to "
+                "read the FULL findings from each worker.\n"
+                "3. Call `create-scope` to define requirements, constraints, "
+                "and exclusions based on what you learned.\n\n"
+                "Do NOT write the solution yet. Do NOT create diagrams. "
+                "Do NOT add synthesis or document-writing tasks. "
+                "Phase 2 tools will become available after you create the scope."
+            )
+        else:
+            names = ", ".join(f"`{t.name}`" for t in planning_tools)
+            _scope_context = ""
+            if _needs_scope and _scope_exists:
+                _scope_context = _read_scope_for_prompt()
+            parts.append(
+                "\nPHASE 2 — EXECUTION:\n"
+                "Scope is defined. Complete every requirement in the scope.\n\n"
+                f"{_scope_context}"
+                "Call `update-task-plan` to add targeted follow-up tasks. "
+                "Use `read-task-result` to read full worker results. "
+                "Call `read-scope` to review the scope contract. "
+                "The governance layer validates output against the scope."
+            )
     elif delegation_tools:
         names = ", ".join(f"`{t.name}`" for t in delegation_tools)
         parts.append(
@@ -203,6 +231,30 @@ def _build_system_prompt(agent: ResolvedAgent, tools: list[ToolSpec]) -> str | N
         )
 
     return "\n".join(parts)
+
+
+def _read_scope_for_prompt() -> str:
+    """Read scope.json and format it for injection into Phase 2 prompt."""
+    scope_path = Path(".swarmkit/run-state/current/scope.json")
+    if not scope_path.exists():
+        return ""
+    try:
+        data = _json.loads(scope_path.read_text(encoding="utf-8"))
+        reqs = data.get("requirements", [])
+        constraints = data.get("constraints", [])
+        parts = ["SCOPE CONTRACT:\n"]
+        if reqs:
+            parts.append("Requirements:")
+            for r in reqs:
+                parts.append(f"  - {r}")
+        if constraints:
+            parts.append("Constraints:")
+            for c in constraints:
+                parts.append(f"  - {c}")
+        parts.append("")
+        return "\n".join(parts) + "\n"
+    except (OSError, ValueError):
+        return ""
 
 
 def _build_checkpoint_spec(
@@ -441,36 +493,49 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
     return messages
 
 
-def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec]:
+def _build_tools(
+    agent: ResolvedAgent,
+    mcp_manager: Any = None,
+    planning_config: Any = None,
+) -> list[ToolSpec]:
     """Map an agent's executable skills + children to ToolSpec objects.
 
-    ``llm_prompt`` and ``mcp_tool`` skills are included. ``composed``
-    skills are excluded (panel aggregation is invoked differently).
-
-    For ``mcp_tool`` skills the ``inputSchema`` published by the MCP
-    server is forwarded as the tool's ``input_schema`` so the LLM sees
-    the correct parameter names rather than inventing its own.
+    When ``two_phase`` or ``scope_required`` is set and scope doesn't
+    exist yet, only Phase 1 tools are returned (research + scope
+    creation). Skill tools (write-notes, create-diagram, etc.) and
+    ``update-task-plan`` are withheld until scope exists. This is
+    compiler enforcement — the model cannot access Phase 2 tools
+    until it completes scope creation.
     """
     from ._dag import _has_dag_deps  # noqa: PLC0415
+    from ._state import PlanningConfig  # noqa: PLC0415
+
+    _config = planning_config or PlanningConfig()
+    _needs_scope = _config.scope_required or _config.two_phase
+    _scope_exists = _check_scope_exists() if _needs_scope else True
+    _phase1 = _needs_scope and not _scope_exists
 
     tools: list[ToolSpec] = []
 
-    _executable_types = {"llm_prompt", "mcp_tool"}
-    for skill in agent.skills:
-        impl = skill.raw.implementation
-        impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
-        if impl_type in _executable_types:
-            desc = getattr(skill, "description", "") or skill.id
-            input_schema: dict[str, Any] = {}
-            if impl_type == "mcp_tool" and mcp_manager is not None:
-                server_id = (
-                    impl.get("server") if isinstance(impl, dict) else getattr(impl, "server", "")
-                )
-                tool_name = (
-                    impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
-                )
-                input_schema = mcp_manager.get_tool_input_schema(server_id, tool_name)
-            tools.append(ToolSpec(name=skill.id, description=desc, input_schema=input_schema))
+    if not _phase1:
+        _executable_types = {"llm_prompt", "mcp_tool"}
+        for skill in agent.skills:
+            impl = skill.raw.implementation
+            impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
+            if impl_type in _executable_types:
+                desc = getattr(skill, "description", "") or skill.id
+                input_schema: dict[str, Any] = {}
+                if impl_type == "mcp_tool" and mcp_manager is not None:
+                    server_id = (
+                        impl.get("server")
+                        if isinstance(impl, dict)
+                        else getattr(impl, "server", "")
+                    )
+                    tool_name = (
+                        impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
+                    )
+                    input_schema = mcp_manager.get_tool_input_schema(server_id, tool_name)
+                tools.append(ToolSpec(name=skill.id, description=desc, input_schema=input_schema))
 
     _use_task_plan = len(agent.children) >= 2 and not _has_dag_deps(agent)
     if _use_task_plan:
@@ -484,10 +549,12 @@ def _build_tools(agent: ResolvedAgent, mcp_manager: Any = None) -> list[ToolSpec
         )
 
         tools.append(build_create_task_plan_tool(agent))
-        tools.append(build_update_task_plan_tool())
+        if not _phase1:
+            tools.append(build_update_task_plan_tool())
         tools.append(build_read_task_result_tool())
         tools.append(build_create_scope_tool())
-        tools.append(build_update_scope_tool())
+        if not _phase1:
+            tools.append(build_update_scope_tool())
         tools.append(build_read_scope_tool())
     else:
         for child in agent.children:
