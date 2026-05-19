@@ -276,6 +276,23 @@ class Planning(BaseModel):
     )
 
 
+class Synthesis(BaseModel):
+    """
+    Automatic synthesis config. When set, the compiler invokes a large-context model directly with all research results instead of having the architect write the document.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    provider: str = Field(
+        ..., description="Model provider ID (e.g. google, openrouter, anthropic)."
+    )
+    model: str = Field(
+        ..., description="Model name for synthesis (e.g. gemini-2.5-flash)."
+    )
+
+
 class Trigger(Enum):
     """
     When the skill fires: post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).
@@ -361,3 +378,4 @@ class SwarmKitWorkspace(BaseModel):
     mcp_servers: list[McpServer] | None = None
     storage: Storage | None = None
     planning: Planning | None = None
+    synthesis: Synthesis | None = None
