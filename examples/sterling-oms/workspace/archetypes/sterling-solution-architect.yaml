@@ -110,9 +110,58 @@ defaults:
       - Max 1 level nesting in stateDiagram. Max ~20 nodes per diagram.
       - No CSS colors. Every referenced node must be defined.
   skills:
+    # Jira + Confluence
+    - get-jira-issue
+    - search-jira
+    - get-jira-attachments
+    - search-confluence
+    - get-confluence-page
+    - get-confluence-attachments
+    - download-confluence-pdf
+    # CDT config
+    - get-pipeline
+    - list-pipelines
+    - render-pipeline-graph
+    - get-service-config
+    - render-service-graph
+    - list-services
+    - get-transactions
+    - get-events
+    - get-hold-types
+    - get-common-codes
+    - get-monitor-rules
+    - search-configs
+    # Project code
+    - query-code-graph
+    - explain-code-entity
+    - explain-code-path
+    - grep-project-code
+    - list-project-files
+    - search-project-code
+    - read-project-code
+    - read-file-lines
+    - verify-code-citations
+    # API docs
+    - get-api-input-xml
+    - get-api-output-xml
+    - get-api-samples
+    - get-user-exits
+    - search-apis
+    # Product + project docs
+    - search-project-docs
+    - search-sterling-docs
+    # Review docs + PDF
+    - read-review-doc
+    - list-review-docs
+    - read-pdf
+    - read-document
+    # Output
     - write-notes
+    - convert-document
     - create-diagram
     - search-shapes
+    # Context
+    - read-context
   iam:
     base_scope: [knowledge:read, knowledge:write, sterling:read]
 provenance:
