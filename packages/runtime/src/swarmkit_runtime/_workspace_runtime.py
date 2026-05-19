@@ -200,6 +200,7 @@ class WorkspaceRuntime:
         topology = self._workspace.topologies[topology_name]
         decision_bindings = self._resolve_decision_bindings(topology_name)
         planning = self._resolve_planning_config(topology_name)
+        synthesis = self._resolve_synthesis_config(topology_name)
         return compile_topology(
             topology,
             provider_registry=self._provider_registry,
@@ -209,6 +210,7 @@ class WorkspaceRuntime:
             workspace_root=self._workspace_root,
             decision_skill_bindings=decision_bindings,
             planning_config=planning,
+            synthesis_config=synthesis,
         )
 
     def _resolve_planning_config(self, topology_name: str) -> Any:
@@ -236,6 +238,26 @@ class WorkspaceRuntime:
                 two_phase = tp
 
         return PlanningConfig(scope_required=scope_required, two_phase=two_phase)
+
+    def _resolve_synthesis_config(self, topology_name: str) -> Any:
+        """Resolve synthesis config from workspace."""
+        from swarmkit_runtime.langgraph_compiler._state import SynthesisConfig  # noqa: PLC0415
+
+        ws_raw = getattr(self._workspace.raw, "synthesis", None)
+        if ws_raw is None:
+            return None
+
+        provider = getattr(ws_raw, "provider", "") or ""
+        model = getattr(ws_raw, "model", "") or ""
+
+        if isinstance(ws_raw, dict):
+            provider = ws_raw.get("provider", "")
+            model = ws_raw.get("model", "")
+
+        if not model:
+            return None
+
+        return SynthesisConfig(provider=provider, model=model)
 
     def _resolve_decision_bindings(self, topology_name: str) -> list[DecisionSkillBinding]:
         """Merge workspace + topology decision skill bindings."""

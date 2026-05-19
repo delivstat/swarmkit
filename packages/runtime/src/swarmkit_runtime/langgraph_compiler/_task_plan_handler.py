@@ -22,6 +22,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
     agent_id: str,
     state: Any,
     planning_config: Any = None,
+    synthesis_config: Any = None,
 ) -> dict[str, Any] | None:
     """Handle planning tools in a model response (two-pass).
 
@@ -90,6 +91,17 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             valid_agents = {c.id for c in agent.children}
             errors.extend(plan.validate_agents(valid_agents))
             fixes = plan.auto_fix_dependencies()
+
+            _synth_model: str = getattr(synthesis_config, "model", "") if synthesis_config else ""
+            if _synth_model:
+                before = len(plan.tasks)
+                plan.tasks = [t for t in plan.tasks if t.id != "__auto_synthesize__"]
+                if len(plan.tasks) < before:
+                    fixes.append(
+                        "Removed __auto_synthesize__: synthesis config will "
+                        "handle document generation automatically"
+                    )
+
             errors.extend(plan.validate_dependencies())
 
             task_count = len(plan.tasks)
