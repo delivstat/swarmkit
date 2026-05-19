@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: single-agent-design
+  description: >
+    Single-agent topology for solution design. One architect agent
+    with direct access to all MCP tools. No delegation, no multi-agent
+    coordination, no information loss. The agent does all research,
+    reasoning, and writing in one context window — like Claude Code
+    but with Sterling workspace tools.
+  version: 1.0.0
+agents:
+  root:
+    id: architect
+    role: root
+    archetype: sterling-solution-architect
