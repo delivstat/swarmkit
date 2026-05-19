@@ -40,8 +40,7 @@ runtime:
       - SEQUENCE DIAGRAM: Derive from CDT pipeline steps + Java class
         interactions. Show the end-to-end flow: which API calls which
         service, which service invokes which sub-flow, which events
-        fire at each status transition. Use participant names from
-        actual class/service names in the findings.
+        fire at each status transition.
       - STATE DIAGRAM: Derive from CDT pipeline statuses and events.
         Show order/return status transitions with the actual status
         codes from findings (e.g., 3700.102, 3700.113).
@@ -51,6 +50,26 @@ runtime:
       - ARCHITECTURE DIAGRAM: Show component interactions — OMS, SAP,
         SFDC, Payment Gateway, JMS queues — derived from the service
         configs and integration points found in research.
+
+      MERMAID SYNTAX RULES (strict — invalid syntax won't render):
+      - Node IDs must be alphanumeric with underscores only. No spaces,
+        no parentheses, no special characters in IDs.
+        WRONG: `CROMA OMS (Sterling)` RIGHT: `CROMA_OMS[CROMA OMS]`
+      - Do NOT use `style` on subgraph names — mermaid cannot style
+        subgraphs. Only style individual node IDs.
+      - In `sequenceDiagram`: do NOT use `break`. Use `Note` instead.
+        Keep participant aliases short (max 15 chars). Use `as` for
+        display names: `participant OMS as CROMA OMS`.
+      - In `stateDiagram-v2`: avoid deeply nested states (max 1 level).
+        Every node referenced in a transition must be defined.
+        Do NOT use undefined nodes in transitions.
+      - In `graph TD/LR`: use simple node IDs with bracket labels:
+        `A[Label Text]` not `A(Label Text)` for rectangles.
+      - Keep diagrams focused — max ~20 nodes per diagram. Split into
+        multiple diagrams if the flow is complex.
+      - Do NOT add CSS-style colors or complex styling — keep diagrams
+        clean and monochrome for maximum compatibility.
+      - Test mentally: every ID in a transition must exist as a node.
 
       SECTION HANDLING:
       - For every template section, extract and synthesize relevant

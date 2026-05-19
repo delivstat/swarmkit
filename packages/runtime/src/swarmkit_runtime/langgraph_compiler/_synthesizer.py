@@ -53,6 +53,17 @@ what you can from the findings and note gaps explicitly.
 - Only write 'To be determined during detailed design' when the \
 findings provide absolutely zero relevant data for a section.
 
+MERMAID SYNTAX (strict — invalid syntax won't render):
+- Node IDs: alphanumeric + underscores only. No spaces or parens. \
+Use bracket labels: `A[Label Text]` not `A(Label Text)`.
+- Do NOT use `style` on subgraph names. Only style node IDs.
+- sequenceDiagram: no `break` keyword. Use `Note` instead. Keep \
+participant aliases short, use `as` for display names.
+- stateDiagram-v2: max 1 level of nesting. Every node in a \
+transition must be defined. No undefined references.
+- Max ~20 nodes per diagram. Split complex flows into multiple \
+diagrams. No CSS colors or complex styling — keep clean.
+
 QUALITY RULES:
 - Every section should add value. Prefer a derived diagram or \
 inferred flow over a blank section.
