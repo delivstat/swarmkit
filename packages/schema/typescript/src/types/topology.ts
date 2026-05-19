@@ -211,6 +211,7 @@ export interface Runtime {
      */
     mode?:                 Mode;
     planning?:             Planning;
+    synthesis?:            Synthesis;
     task_timeout_seconds?: number;
 }
 
@@ -238,5 +239,25 @@ export interface Planning {
      * The compiler auto-injects checkpoint prompts.
      */
     two_phase?: boolean;
+}
+
+/**
+ * Topology-level synthesis config. Overrides workspace-level synthesis. When set, the
+ * compiler invokes a large-context model with all research results instead of having the
+ * architect write the document.
+ */
+export interface Synthesis {
+    /**
+     * Model name. Overrides workspace synthesis model.
+     */
+    model?: string;
+    /**
+     * Custom system prompt for the synthesizer. Overrides workspace-level prompt.
+     */
+    prompt?: string;
+    /**
+     * Model provider ID. Overrides workspace synthesis provider.
+     */
+    provider?: string;
 }
 

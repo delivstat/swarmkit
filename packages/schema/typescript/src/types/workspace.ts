@@ -268,6 +268,12 @@ export interface Synthesis {
      */
     model: string;
     /**
+     * Custom system prompt for the synthesizer. Overrides the platform default. Use this to
+     * control document style, diagram generation (mermaid), grounding rules, and section
+     * handling.
+     */
+    prompt?: string;
+    /**
      * Model provider ID (e.g. google, openrouter, anthropic).
      */
     provider: string;

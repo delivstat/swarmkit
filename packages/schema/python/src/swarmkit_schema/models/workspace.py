@@ -291,6 +291,10 @@ class Synthesis(BaseModel):
     model: str = Field(
         ..., description="Model name for synthesis (e.g. gemini-2.5-flash)."
     )
+    prompt: str | None = Field(
+        None,
+        description="Custom system prompt for the synthesizer. Overrides the platform default. Use this to control document style, diagram generation (mermaid), grounding rules, and section handling.",
+    )
 
 
 class Trigger(Enum):
