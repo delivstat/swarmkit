@@ -44,6 +44,7 @@ class SynthesisConfig:
 
     provider: str = ""
     model: str = ""
+    prompt: str = ""
 
 
 class SwarmState(TypedDict):

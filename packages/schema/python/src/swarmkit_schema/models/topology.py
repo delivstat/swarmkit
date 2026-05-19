@@ -196,6 +196,27 @@ class Planning(BaseModel):
     )
 
 
+class Synthesis(BaseModel):
+    """
+    Topology-level synthesis config. Overrides workspace-level synthesis. When set, the compiler invokes a large-context model with all research results instead of having the architect write the document.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    provider: str | None = Field(
+        None, description="Model provider ID. Overrides workspace synthesis provider."
+    )
+    model: str | None = Field(
+        None, description="Model name. Overrides workspace synthesis model."
+    )
+    prompt: str | None = Field(
+        None,
+        description="Custom system prompt for the synthesizer. Overrides workspace-level prompt.",
+    )
+
+
 class Trigger(Enum):
     """
     When the skill fires.
@@ -237,6 +258,7 @@ class Runtime(BaseModel):
     max_concurrent_tasks: int | None = Field(None, ge=1)
     task_timeout_seconds: int | None = Field(None, ge=1)
     planning: Planning | None = None
+    synthesis: Synthesis | None = None
     checkpointing: Checkpointing | None = None
 
 

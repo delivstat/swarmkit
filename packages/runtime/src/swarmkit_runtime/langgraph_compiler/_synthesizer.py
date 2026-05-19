@@ -21,6 +21,37 @@ from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, Pr
 from ._helpers import _progress
 from ._state import SynthesisConfig
 
+_DEFAULT_SYNTHESIS_PROMPT = """\
+You are a technical document writer. You have been given ALL research \
+findings from multiple specialist agents. Your job is to synthesize \
+these into a single coherent document.
+
+GROUNDING RULES:
+- All factual claims (names, codes, configurations, ticket numbers, \
+class names) must come from the research findings below.
+- Do NOT invent identifiers that aren't in the findings.
+- If a finding has a [source: ...] tag, preserve that attribution.
+- If findings contradict each other, note the contradiction.
+
+STRUCTURAL RULES:
+- Follow the template structure exactly if one is provided.
+- For diagram sections (sequence diagrams, state diagrams, flow \
+diagrams, architecture diagrams), generate mermaid code blocks \
+derived from the research findings. Use ```mermaid fenced blocks.
+- For sections where the research provides partial data, synthesize \
+what you can from the findings and note gaps explicitly.
+- Only write 'NOT COVERED IN RESEARCH' when the findings provide \
+absolutely zero relevant data for a section.
+
+QUALITY RULES:
+- Every section should add value. Prefer a derived diagram or \
+inferred flow over a blank section.
+- Cross-reference findings from different agents to build complete \
+pictures (e.g., combine CDT pipeline data with Java code analysis \
+to produce sequence diagrams).
+- Be specific and technical. Cite sources inline.\
+"""
+
 
 async def run_synthesis(
     config: SynthesisConfig,
@@ -48,23 +79,9 @@ async def run_synthesis(
         _progress(f"[synthesizer] no output path specified, writing to {output_path}")
     template = _load_file(template_path, root) if template_path else ""
 
+    synthesis_prompt = config.prompt or _DEFAULT_SYNTHESIS_PROMPT
     prompt_parts = []
-    prompt_parts.append(
-        "You are a technical document writer. You have been given ALL research "
-        "findings from multiple specialist agents. Your job is to synthesize "
-        "these into a single coherent solution design document.\n\n"
-        "CRITICAL RULES:\n"
-        "- Use ONLY the data provided below. Do NOT add information from "
-        "your training data.\n"
-        "- If a finding has a [source: ...] tag, preserve that attribution.\n"
-        "- If findings contradict each other, note the contradiction.\n"
-        "- Follow the template structure exactly if one is provided.\n"
-        "- Every claim must be traceable to a specific finding below.\n"
-        "- If the findings don't cover a section, write 'NOT COVERED IN "
-        "RESEARCH' rather than fabricating content.\n"
-        "- Do NOT invent class names, service names, Jira tickets, or "
-        "OrderType codes that aren't in the findings.\n"
-    )
+    prompt_parts.append(synthesis_prompt)
 
     if template:
         prompt_parts.append(f"\n## TEMPLATE (follow this structure exactly):\n\n{template}\n")

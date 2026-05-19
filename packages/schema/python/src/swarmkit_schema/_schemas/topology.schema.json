@@ -50,6 +50,7 @@
         "max_concurrent_tasks": { "type": "integer", "minimum": 1 },
         "task_timeout_seconds": { "type": "integer", "minimum": 1 },
         "planning": { "$ref": "#/$defs/planning" },
+        "synthesis": { "$ref": "#/$defs/synthesis" },
         "checkpointing": {
           "type": "object",
           "additionalProperties": true,
@@ -243,6 +244,25 @@
           "type": "boolean",
           "default": false,
           "description": "Enforce two-phase planning: Phase 1 (research) → create-scope → Phase 2 (targeted tasks). The compiler auto-injects checkpoint prompts."
+        }
+      }
+    },
+    "synthesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Topology-level synthesis config. Overrides workspace-level synthesis. When set, the compiler invokes a large-context model with all research results instead of having the architect write the document.",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Model provider ID. Overrides workspace synthesis provider."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name. Overrides workspace synthesis model."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Custom system prompt for the synthesizer. Overrides workspace-level prompt."
         }
       }
     },
