@@ -18,6 +18,7 @@ export interface SwarmKitWorkspace {
     organisation?:    Organisation;
     planning?:        Planning;
     storage?:         Storage;
+    synthesis?:       Synthesis;
     team?:            Organisation;
 }
 
@@ -255,5 +256,20 @@ export type DefaultBackendEnum = "sqlite" | "postgres";
 
 export interface KnowledgeBases {
     default_backend?: DefaultBackendEnum;
+}
+
+/**
+ * Automatic synthesis config. When set, the compiler invokes a large-context model directly
+ * with all research results instead of having the architect write the document.
+ */
+export interface Synthesis {
+    /**
+     * Model name for synthesis (e.g. gemini-2.5-flash).
+     */
+    model: string;
+    /**
+     * Model provider ID (e.g. google, openrouter, anthropic).
+     */
+    provider: string;
 }
 

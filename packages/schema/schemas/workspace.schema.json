@@ -27,7 +27,8 @@
       "items": { "$ref": "#/$defs/mcp_server" }
     },
     "storage": { "$ref": "#/$defs/storage" },
-    "planning": { "$ref": "#/$defs/planning" }
+    "planning": { "$ref": "#/$defs/planning" },
+    "synthesis": { "$ref": "#/$defs/synthesis" }
   },
   "$defs": {
     "identifier": {
@@ -274,6 +275,22 @@
           "description": "Enforce two-phase planning for all topologies."
         }
       }
+    },
+    "synthesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Automatic synthesis config. When set, the compiler invokes a large-context model directly with all research results instead of having the architect write the document.",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Model provider ID (e.g. google, openrouter, anthropic)."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name for synthesis (e.g. gemini-2.5-flash)."
+        }
+      },
+      "required": ["provider", "model"]
     },
     "decision_skill_binding": {
       "type": "object",
