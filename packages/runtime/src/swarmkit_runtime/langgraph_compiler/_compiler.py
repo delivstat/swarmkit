@@ -62,6 +62,7 @@ def compile_topology(
     workspace_root: Any = None,
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
     planning_config: PlanningConfig | None = None,
+    synthesis_config: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -94,6 +95,7 @@ def compile_topology(
             workspace_root=workspace_root,
             decision_skill_bindings=_bindings,
             planning_config=_planning,
+            synthesis_config=synthesis_config,
         )
         graph.add_node(agent.id, node_fn)
 
@@ -155,11 +157,13 @@ def _build_agent_node(  # noqa: PLR0915
     workspace_root: Any = None,
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
     planning_config: PlanningConfig | None = None,
+    synthesis_config: Any = None,
 ) -> Any:
     """Build an async node function for one agent."""
     drift_observer = _create_drift_observer(agent)
     _ds_bindings = decision_skill_bindings or []
     _planning = planning_config or PlanningConfig()
+    _synthesis = synthesis_config
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
         global _current_parent_agent  # noqa: PLW0603
@@ -228,6 +232,8 @@ def _build_agent_node(  # noqa: PLR0915
                         provider_registry,
                         workspace_root=workspace_root,
                         decision_skill_bindings=_ds_bindings,
+                        synthesis_config=_synthesis,
+                        original_input=state.get("input", ""),
                     )
                     # If more tasks remain, let coordinator review
                     # by falling through to LLM call on next re-entry
@@ -305,6 +311,7 @@ def _build_agent_node(  # noqa: PLR0915
             all_agents=all_agents,
             provider_registry=provider_registry,
             planning_config=_planning,
+            synthesis_config=_synthesis,
         )
         if isinstance(result, dict):
             _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()

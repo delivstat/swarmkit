@@ -65,6 +65,8 @@ async def execute_task_batch(  # noqa: PLR0915
     provider_registry: ProviderRegistry | None,
     workspace_root: Path | None = None,
     decision_skill_bindings: list[Any] | None = None,
+    synthesis_config: Any = None,
+    original_input: str = "",
 ) -> dict[str, Any]:
     """Execute the next batch of runnable tasks from the plan.
 
@@ -74,6 +76,16 @@ async def execute_task_batch(  # noqa: PLR0915
     runnable = plan.get_runnable_tasks()
     if not runnable:
         if plan.all_done():
+            result = await _maybe_synthesize(
+                synthesis_config,
+                workspace_root,
+                original_input,
+                provider_registry,
+                plan,
+                agent_id,
+            )
+            if result is not None:
+                return result
             return _plan_complete_state(plan, agent_id)
         return _plan_blocked_state(plan, agent_id)
 
@@ -214,6 +226,16 @@ async def execute_task_batch(  # noqa: PLR0915
         if feedback:
             messages.append(AIMessage(content=feedback, name="governance"))
 
+    result = await _maybe_synthesize(
+        synthesis_config,
+        workspace_root,
+        original_input,
+        provider_registry,
+        plan,
+        agent_id,
+    )
+    if result is not None:
+        return result
     return _plan_complete_state(plan, agent_id, merged_results, messages)
 
 
@@ -601,6 +623,48 @@ def _make_retry_fn(
         return _extract_text(response) or original_output
 
     return _retry
+
+
+async def _maybe_synthesize(
+    synthesis_config: Any,
+    workspace_root: Path | None,
+    original_input: str,
+    provider_registry: ProviderRegistry | None,
+    plan: TaskPlan,
+    agent_id: str,
+) -> dict[str, Any] | None:
+    """Invoke the synthesizer if configured and scope exists.
+
+    Returns a final state dict with the synthesized document as output,
+    or None if synthesis is not configured or scope doesn't exist.
+    """
+    from ._state import SynthesisConfig  # noqa: PLC0415
+
+    if not isinstance(synthesis_config, SynthesisConfig) or not synthesis_config.model:
+        return None
+
+    scope_path = Path(".swarmkit/run-state/current/scope.json")
+    if not scope_path.exists():
+        return None
+
+    from ._synthesizer import run_synthesis  # noqa: PLC0415
+
+    output = await run_synthesis(
+        config=synthesis_config,
+        workspace_root=workspace_root,
+        original_input=original_input,
+        provider_registry=provider_registry,
+    )
+
+    return {
+        "current_agent": agent_id,
+        "task_plan": plan.to_dict(),
+        "agent_results": {agent_id: output},
+        "messages": [
+            AIMessage(content=output, name=agent_id),
+        ],
+        "output": output,
+    }
 
 
 def _plan_complete_state(

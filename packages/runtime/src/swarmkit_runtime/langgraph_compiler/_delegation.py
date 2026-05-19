@@ -94,6 +94,7 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
     all_agents: dict[str, ResolvedAgent] | None = None,
     provider_registry: ProviderRegistry | None = None,
     planning_config: Any = None,
+    synthesis_config: Any = None,
 ) -> dict[str, Any] | tuple[CompletionResponse, list[Message]]:
     """Run the retry loop: delegation, tool-loop, or text-with-retry.
 
@@ -163,7 +164,12 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
             continue
 
         task_plan_result = _handle_task_plan_tools(
-            response, agent, agent_id, state, planning_config=planning_config
+            response,
+            agent,
+            agent_id,
+            state,
+            planning_config=planning_config,
+            synthesis_config=synthesis_config,
         )
         if task_plan_result is not None:
             return task_plan_result

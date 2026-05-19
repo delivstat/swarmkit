@@ -30,6 +30,20 @@ class PlanningConfig:
     two_phase: bool = False
 
 
+@dataclass(frozen=True)
+class SynthesisConfig:
+    """Controls automatic synthesis when all tasks complete.
+
+    When configured, the compiler bypasses the architect for the final
+    document and invokes a large-context model directly with all raw
+    results, scope, and template.
+    """
+
+    provider: str = ""
+    model: str = ""
+    template: str = ""
+
+
 class SwarmState(TypedDict):
     """State flowing through the compiled swarm graph.
 
