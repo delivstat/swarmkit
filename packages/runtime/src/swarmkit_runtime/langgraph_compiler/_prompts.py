@@ -546,14 +546,14 @@ def _build_tools(
     from ._state import PlanningConfig, SynthesisConfig  # noqa: PLC0415
 
     _config = planning_config or PlanningConfig()
+    _is_single_agent = not agent.children
     _needs_scope = _config.scope_required or _config.two_phase
     _scope_exists = _check_scope_exists() if _needs_scope else True
-    _phase1 = _needs_scope and not _scope_exists
+    _phase1 = _needs_scope and not _scope_exists and not _is_single_agent
     _has_synthesizer = isinstance(synthesis_config, SynthesisConfig) and synthesis_config.model
 
     tools: list[ToolSpec] = []
 
-    _is_single_agent = not agent.children
     if not _phase1 and (not _has_synthesizer or _is_single_agent):
         _executable_types = {"llm_prompt", "mcp_tool"}
         for skill in agent.skills:
