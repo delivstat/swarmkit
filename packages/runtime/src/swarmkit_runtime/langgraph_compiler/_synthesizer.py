@@ -79,6 +79,9 @@ async def run_synthesis(
         f"Calling {config.model}..."
     )
 
+    import time  # noqa: PLC0415
+
+    _start = time.time()
     provider = _resolve_provider(config, provider_registry)
     response = await provider.complete(
         CompletionRequest(
@@ -87,8 +90,17 @@ async def run_synthesis(
             system=None,
         )
     )
+    _elapsed = time.time() - _start
 
     text = response.text or "(synthesis produced no output)"
+
+    _record_trace(
+        model=config.model,
+        usage=response.usage,
+        start_time=_start,
+        elapsed=_elapsed,
+        result_length=len(text),
+    )
 
     if output_path:
         _write_output(output_path, text, root)
@@ -162,6 +174,45 @@ def _write_output(path_str: str, content: str, root: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     _progress(f"[synthesizer] wrote document to {path}")
+
+
+def _record_trace(
+    model: str,
+    usage: Any,
+    start_time: float,
+    elapsed: float,
+    result_length: int,
+) -> None:
+    """Record synthesizer call in the active run trace."""
+
+    from swarmkit_runtime.langgraph_compiler._compiler import _active_trace  # noqa: PLC0415
+    from swarmkit_runtime.trace import AgentStep  # noqa: PLC0415
+
+    if _active_trace is None:
+        return
+
+    input_tokens = getattr(usage, "input_tokens", 0) or 0
+    output_tokens = getattr(usage, "output_tokens", 0) or 0
+
+    step = AgentStep(
+        agent_id="__synthesizer__",
+        model=model,
+        parent_agent=None,
+        role="synthesizer",
+        start_time=start_time,
+        end_time=start_time + elapsed,
+        duration_ms=int(elapsed * 1000),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        result_length=result_length,
+    )
+    _active_trace.add_step(step)
+
+    _progress(
+        f"[synthesizer] tokens: {input_tokens:,} in / {output_tokens:,} out / "
+        f"{input_tokens + output_tokens:,} total ({elapsed:.1f}s)"
+    )
 
 
 def _resolve_provider(
