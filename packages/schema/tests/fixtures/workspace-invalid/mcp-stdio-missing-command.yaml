@@ -1,0 +1,9 @@
+# transport=stdio requires a `command` array.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+mcp_servers:
+  - id: incomplete-stdio
+    transport: stdio

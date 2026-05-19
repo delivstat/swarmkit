@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: concrete-worker
+  name: Concrete Worker
+  description: Worker archetype that references the audit-log-write skill directly.
+role: worker
+defaults:
+  skills:
+    - audit-log-write
+provenance:
+  authored_by: human
+  version: 0.1.0

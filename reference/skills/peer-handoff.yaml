@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: peer-handoff
+  name: Peer Handoff
+  description: >
+    Coordinates handoff of work between peer agents or leaders.
+    Packages context, results, and instructions for the receiving
+    agent. The canonical coordination skill for A2A communication.
+category: coordination
+implementation:
+  type: llm_prompt
+  prompt: >
+    Package the current work context for handoff to the next agent.
+    Include: what was done, what the results are, what the receiving
+    agent should do next, and any constraints or context they need.
+    Return a structured handoff package.
+provenance:
+  authored_by: human
+  version: 1.0.0

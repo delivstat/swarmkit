@@ -1,0 +1,9 @@
+# Target IDs must match the lowercase-kebab identifier pattern.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: broken
+  name: Broken
+type: manual
+targets:
+  - Hello_Swarm     # wrong — uppercase + underscore

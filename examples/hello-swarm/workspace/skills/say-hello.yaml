@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: say-hello
+  name: Say Hello
+  description: Emits a greeting string for a given audience.
+category: capability
+implementation:
+  type: mcp_tool
+  server: hello-world
+  tool: greet
+provenance:
+  authored_by: human
+  version: 1.0.0

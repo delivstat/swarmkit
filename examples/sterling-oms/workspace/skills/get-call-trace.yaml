@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-call-trace
+  name: Get Call Trace
+  description: >
+    Get the complete execution trace for a correlation ID. Shows the
+    full call path with timing for a single request. Use to trace
+    a specific slow transaction.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: get_call_trace

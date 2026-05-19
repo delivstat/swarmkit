@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-shapes
+  name: Search Diagram Shapes
+  description: >
+    Search 10,000+ draw.io shapes by keyword for architecture
+    diagrams. Returns style strings for use in diagram XML.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: drawio
+  tool: search_shapes

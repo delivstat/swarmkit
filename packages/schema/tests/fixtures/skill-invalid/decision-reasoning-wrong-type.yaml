@@ -1,0 +1,27 @@
+# `reasoning` must be type `string` on decision skills — a structured
+# field can be present under a different name but `reasoning` itself is
+# the plain-language summary.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken-judge-typed
+  name: Broken Judge — Wrong Reasoning Type
+  description: Reasoning must be string for audit-readability — this uses array.
+category: decision
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail]
+  confidence:
+    type: number
+    range: [0, 1]
+  reasoning:
+    type: array
+    items:
+      type: string
+implementation:
+  type: llm_prompt
+  prompt: Ignored.
+provenance:
+  authored_by: human
+  version: 0.1.0

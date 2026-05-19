@@ -1,0 +1,43 @@
+# Adapted from the design doc §10.2 — the code-review-worker definition embedded
+# in a minimal containing topology. Exercises the full agent-field surface:
+# model, prompt, skills, skills_additional, iam (base + elevated).
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: code-review-excerpt
+  version: 0.1.0
+runtime:
+  mode: persistent
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root
+    children:
+      - id: engineering-leader
+        role: leader
+        archetype: judge-and-handoff-leader
+        children:
+          - id: code-review-worker
+            role: worker
+            archetype: code-analyst-worker
+            model:
+              provider: anthropic
+              name: claude-sonnet-4-6
+              temperature: 0.2
+            prompt:
+              system: |
+                You are a senior code reviewer specialising in Python
+                and TypeScript.
+            skills:
+              - github-repo-read
+              - eslint-analyse
+              - code-quality-review
+              - peer-handoff-qa
+              - llm-judge-self
+              - audit-log-write
+            skills_additional:
+              - security-specific-review
+            iam:
+              base_scope: [repo:read]
+              elevated_scopes: []

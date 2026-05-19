@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: list-pipelines
+  name: List Pipelines
+  description: Sterling CDT config — list-pipelines
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-config
+  tool: list_pipelines
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

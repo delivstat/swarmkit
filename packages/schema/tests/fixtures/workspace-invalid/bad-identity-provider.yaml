@@ -1,0 +1,8 @@
+# identity.provider must be one of the six supported values.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+identity:
+  provider: ldap

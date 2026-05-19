@@ -1,0 +1,110 @@
+# SwarmKit
+
+> An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
+
+**Status:** v1.2.8. M0-M9 complete. Structured delegation v2 compiler with planner-driven task execution, parallel/sequential dependency ordering, crash-resilient task plans, auto-fix, and summary-first results. CLI, HTTP server, 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support across all providers, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, 2 reference topologies, 20 skills, 16 archetypes, 566 tests. Next: M9 reference topologies, Phase 3 continuation.
+
+## Start here
+
+- [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, what works today, milestone progress.
+- [CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/CLAUDE.md): repo-wide invariants, feature-delivery workflow, release checklist.
+- [SwarmKit Design v0.6](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md): the authoritative architecture. §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §14 (Runtime), §18 (MCP Integration).
+- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): 4 phases — Phase 1 (Foundation) complete, Phase 2 (Runtime Completion) complete, Phase 3 (MCP + Delegation) in progress.
+- [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): release notes through v1.2.8.
+
+## CLI commands
+
+`validate`, `run` (with `--verbose`, `--dry-run`), `chat` (multi-turn with `--resume`), `conversations` (with `--pick`), `init`, `author` (with `--thorough`), `edit`, `serve`, `status` (reads from SQLite audit store), `logs` (with `--run-id`, `--agent`, `--format markdown`), `why` (LLM analysis from audit store), `ask` (with `--run` scoping), `debug` (query local prompt ring buffer: `--span-id`, `--run-id`, `--agent`), `stop` (planned), `knowledge-pack`, `knowledge-server`, `review list/show/approve/reject`, `gaps`.
+
+## Schemas
+
+Five canonical artifact schemas (JSON Schema 2020-12):
+
+- [topology.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/topology.schema.json)
+- [skill.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/skill.schema.json)
+- [archetype.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/archetype.schema.json)
+- [workspace.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/workspace.schema.json)
+- [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json)
+
+## Reference workspace
+
+Production-quality topologies, archetypes, and skills under `reference/`:
+
+- [Code Review Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/code-review.yaml): 3 leaders (Engineering, QA, Ops), 10 agents.
+- [Skill Authoring Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/skill-authoring.yaml): 6 specialist agents.
+- [20 reference skills](https://github.com/delivstat/swarmkit/tree/main/reference/skills): GitHub MCP, decision, knowledge, coordination, persistence.
+- [16 archetypes](https://github.com/delivstat/swarmkit/tree/main/reference/archetypes): leaders, code review workers, authoring agents.
+
+## Structured delegation (v1.2.0+)
+
+Planner-driven task execution replaces simple sequential delegation. Coordinators call `create-task-plan` to generate a dependency-ordered task plan; the compiler executes tasks in parallel when independent, sequentially when dependent. Key tools:
+
+- `create-task-plan`: coordinator produces a structured plan with tasks, dependencies, and assignments
+- `update-task-plan`: modify an in-flight plan (add tasks, change assignments)
+- `read-task-result`: retrieve completed task results (summary-first: 3-5 bullet key_findings, full results on disk)
+
+Self-tasks let the coordinator do its own work (synthesis, diagrams). Plans are crash-resilient via `tasks.json` on disk — the CLI detects previous plans on fresh runs. Auto-fix adds missing dependencies and synthesis tasks. The compiler is split into 8 modules (was 1,854 lines in a single file, now all under 500 each).
+
+## Sterling workspace (reference implementation)
+
+Production-grade workspace under `examples/sterling-oms/` demonstrating enterprise-scale agent orchestration:
+
+- 6 topologies, 11 archetypes, 70+ skills
+- Sub-agent architecture: root coordinator delegates to architect, which delegates to 6 focused workers (jira, config, docs, developer, log-analyst, document-writer)
+- Atlassian wrapper MCP: structured JQL/CQL queries so models never write raw query syntax
+- Log analyser MCP: SQLite-indexed log analysis handling 500MB+ log files, 9 tools including `get-timer-detail` drill-down
+- Document writer with pandoc MCP for DOCX/PDF generation
+- Per-agent model selection: Kimi K2.5 for reasoning, DeepSeek V4 Flash for workers, DeepSeek Chat V3 for writing
+
+## Design notes
+
+Per-feature design notes under `design/details/`:
+
+- [MCP client](https://github.com/delivstat/swarmkit/blob/main/design/details/mcp-client.md): stdio + HTTP transports, workspace config, governance gating, inputSchema forwarding.
+- [Knowledge MCP Server](https://github.com/delivstat/swarmkit/blob/main/design/details/knowledge-mcp-server.md): 11 tools for live docs search.
+- [User Knowledge Server](https://github.com/delivstat/swarmkit/blob/main/design/details/user-knowledge-server.md): bootstrap-time knowledge wiring for user codebases.
+- [Code Review Swarm](https://github.com/delivstat/swarmkit/blob/main/design/details/topology-code-review.md): agent tree, skill map, HITL gates.
+- [Skill Authoring Swarm](https://github.com/delivstat/swarmkit/blob/main/design/details/topology-skill-authoring.md): multi-agent authoring + edit mode.
+- [Governance provider](https://github.com/delivstat/swarmkit/blob/main/design/details/governance-provider-interface.md): AGT integration, policy evaluation, audit.
+- [Model provider](https://github.com/delivstat/swarmkit/blob/main/design/details/model-provider-abstraction.md): 7 built-in providers, per-agent model selection.
+- [Conversational authoring](https://github.com/delivstat/swarmkit/blob/main/design/details/conversational-authoring.md): swarmkit init/author/edit.
+- [Structured output](https://github.com/delivstat/swarmkit/blob/main/design/details/structured-output-governance.md): schema-constrained generation + auto-correction.
+- [LangGraph compiler](https://github.com/delivstat/swarmkit/blob/main/design/details/langgraph-compiler.md): topology → StateGraph translation, approval gate checkpointing.
+- [DAG dependency graph](https://github.com/delivstat/swarmkit/blob/main/design/details/dag-dependency-graph.md): `depends_on` for parallel-with-dependencies execution.
+- [Decision skills](https://github.com/delivstat/swarmkit/blob/main/design/details/decision-skills.md): LLM judge verdicts, confidence scores, multi-persona panels.
+- [Human interaction model](https://github.com/delivstat/swarmkit/blob/main/design/details/human-interaction-model.md): audit event schema, CLI primitives, notification plugins.
+- [Skill registry](https://github.com/delivstat/swarmkit/blob/main/design/details/skill-registry.md): community skill import from SKILL.md repos and MCP catalogues.
+- [Knowledge Curator topology](https://github.com/delivstat/swarmkit/blob/main/design/details/knowledge-curator-topology.md): persistent wiki maintained by LLM agents.
+
+## Product architecture & observability (design, not yet implemented)
+
+- [Product architecture](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture.md): open-source runtime + Rynko as the commercial ops platform. Deployment models, revenue model, brand separation.
+- [Product architecture refinements](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture-refinements.md): local ring buffer for prompt privacy, LangGraph checkpointer for approval gates, usage-based pricing, OTLP/HTTP transport.
+- [OpenTelemetry observability](https://github.com/delivstat/swarmkit/blob/main/design/details/opentelemetry-observability.md): OTel as the telemetry standard. Trace-per-run, span-per-agent-step, `swarmkit.*` semantic attributes, console + OTLP exporters.
+- [Intent drift detection](https://github.com/delivstat/swarmkit/blob/main/design/details/intent-drift-detection.md): optional per-agent intent monitoring via embedding similarity. Log/warn/nudge strategies.
+- [Market analysis and risk mitigations](https://github.com/delivstat/swarmkit/blob/main/design/details/market-analysis-and-risk-mitigations.md): competitive landscape (Prefect, LangSmith, CrewAI, AgentField), canary deployments, governance circuit breakers.
+
+## Guides
+
+- [Sterling OMS workspace](https://github.com/delivstat/swarmkit/blob/main/docs/guides/sterling-oms-workspace.md): building domain-specific agent workspaces with knowledge bases.
+- [Model selection](https://github.com/delivstat/swarmkit/blob/main/docs/guides/model-selection.md): pricing comparison, per-agent config, env vars.
+
+## Fixtures (valid artifact examples)
+
+- [Topology fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/topology)
+- [Skill fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/skill)
+- [Archetype fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/archetype)
+- [Workspace fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/workspace)
+- [Trigger fixtures](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/trigger)
+
+## Cross-cutting notes
+
+- [Schema change discipline](https://github.com/delivstat/swarmkit/blob/main/docs/notes/schema-change-discipline.md)
+- [Usability-first](https://github.com/delivstat/swarmkit/blob/main/docs/notes/usability-first.md)
+- [LLM-friendly knowledge](https://github.com/delivstat/swarmkit/blob/main/docs/notes/llm-friendly-knowledge.md)
+- [Observability discipline](https://github.com/delivstat/swarmkit/blob/main/docs/notes/observability.md)
+
+## Package docs
+
+- [packages/runtime CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/packages/runtime/CLAUDE.md): Python runtime invariants.
+- [packages/schema CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/packages/schema/CLAUDE.md): schema package invariants.

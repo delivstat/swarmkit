@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: publish-devto
+  name: Publish to Dev.to
+  description: Cross-post a blog article to dev.to with canonical URL pointing to blog.rynko.dev.
+category: capability
+implementation:
+  type: mcp_tool
+  server: blog-publisher
+  tool: publish_devto
+iam:
+  required_scopes: [content:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

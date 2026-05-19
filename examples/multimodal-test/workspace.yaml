@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: multimodal-test
+  name: Multimodal Test
+
+governance:
+  provider: mock
+
+mcp_servers:
+  - id: markitdown
+    transport: stdio
+    command: ["uvx", "markitdown-mcp"]
+    permission: open
+  - id: docs-reader
+    transport: stdio
+    command: ["swarmkit", "docs-reader"]
+    permission: open

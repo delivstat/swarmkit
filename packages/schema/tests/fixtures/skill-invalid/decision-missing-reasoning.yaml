@@ -1,0 +1,24 @@
+# Decision skills must emit a `reasoning: string` output so audits and
+# reviews have a rationale. This skill declares only verdict + confidence
+# and must therefore fail validation.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken-judge
+  name: Broken Judge
+  description: Returns a verdict but refuses to explain itself — audit-unfriendly.
+category: decision
+outputs:
+  verdict:
+    type: enum
+    values: [pass, fail]
+  confidence:
+    type: number
+    range: [0, 1]
+implementation:
+  type: llm_prompt
+  prompt: |
+    Return only {"verdict": ..., "confidence": ...}.
+provenance:
+  authored_by: human
+  version: 0.1.0

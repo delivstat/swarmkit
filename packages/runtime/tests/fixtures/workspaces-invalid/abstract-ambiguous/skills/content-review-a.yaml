@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: content-review-strict
+  name: Content Review — Strict
+  description: One of two decision skills matching capability=content-review.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict: { type: string }
+    reasoning: { type: string }
+  required: [verdict, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: Evaluate strictly.
+provenance:
+  authored_by: human
+  version: 0.1.0

@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-logs
+  name: Search Logs
+  description: >
+    Search Sterling log entries by keyword, level, class, or
+    correlation ID. Returns matching entries with line numbers.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: search_logs

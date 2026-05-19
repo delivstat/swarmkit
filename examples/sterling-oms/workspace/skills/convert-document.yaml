@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: convert-document
+  name: Convert Document
+  description: >
+    Convert content between document formats (Markdown, DOCX, HTML, PDF,
+    LaTeX, RST, EPUB). Supports reference_doc for DOCX styling — pass
+    a sample DOCX to preserve fonts, headers, and page layout in output.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: pandoc
+  tool: convert-contents

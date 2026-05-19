@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: supervisor-root
+  name: Supervisor Root
+  description: Root supervisor archetype.
+role: root
+defaults:
+  model:
+    provider: anthropic
+    name: claude-opus-4-7
+    temperature: 0.1
+provenance:
+  authored_by: human
+  version: 1.0.0

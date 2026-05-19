@@ -1,0 +1,11 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: same-archetype
+  name: Same Archetype (second)
+  description: Second archetype with the same id — registry must reject.
+role: worker
+defaults: {}
+provenance:
+  authored_by: human
+  version: 0.1.0

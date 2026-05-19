@@ -1,0 +1,14 @@
+# category is required.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken
+  name: Broken
+  description: Missing the category discriminator.
+implementation:
+  type: mcp_tool
+  server: foo
+  tool: bar
+provenance:
+  authored_by: human
+  version: 1.0.0

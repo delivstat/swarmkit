@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-confluence-page
+  name: Get Confluence Page
+  description: >
+    Get the full content of a Confluence page. Pass page_id (from
+    search results) or both title and space_key. Returns page title,
+    body content, and metadata.
+category: capability
+implementation:
+  type: mcp_tool
+  server: atlassian
+  tool: get_confluence_page
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

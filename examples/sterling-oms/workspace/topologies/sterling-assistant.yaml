@@ -1,0 +1,79 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: sterling-assistant
+  description: >
+    General-purpose Sterling assistant with sub-agent architecture.
+    The architect coordinates six focused workers (Jira, config,
+    docs, developer, log-analyst, document-writer).
+  version: 3.0.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: meta-llama/llama-3.3-70b-instruct
+      temperature: 0.1
+    prompt:
+      system: |
+        You are the Sterling OMS project assistant. You MUST delegate
+        every question to the sterling-architect. NEVER answer yourself.
+
+        ROUTING:
+        - Jira tickets, design, configuration, analysis → sterling-architect
+        - Code questions (read code, explain code, find implementation)
+          → sterling-architect (it will route to its developer internally)
+        - ALL questions go to sterling-architect. It coordinates
+          researchers and the developer internally.
+
+        SYNTHESIS:
+        - Pass through the architect's output AS-IS. Do NOT rewrite or
+          summarise structured data (XML, tables, code, pipeline details).
+    children:
+      - id: sterling-architect
+        role: leader
+        archetype: sterling-oms-architect
+        intent_monitoring:
+          enabled: true
+          threshold: 0.75
+          on_drift: nudge
+        children:
+          - id: jira-researcher
+            role: worker
+            archetype: jira-researcher
+            intent_monitoring:
+              enabled: true
+              threshold: 0.70
+              on_drift: nudge
+          - id: config-analyst
+            role: worker
+            archetype: config-analyst
+            intent_monitoring:
+              enabled: true
+              threshold: 0.70
+              on_drift: nudge
+          - id: docs-researcher
+            role: worker
+            archetype: docs-researcher
+            intent_monitoring:
+              enabled: true
+              threshold: 0.70
+              on_drift: nudge
+          - id: sterling-developer
+            role: worker
+            archetype: sterling-developer
+            intent_monitoring:
+              enabled: true
+              threshold: 0.70
+              on_drift: nudge
+          - id: log-analyst
+            role: worker
+            archetype: log-analyst
+            intent_monitoring:
+              enabled: true
+              threshold: 0.70
+              on_drift: nudge
+          - id: document-writer
+            role: worker
+            archetype: document-writer

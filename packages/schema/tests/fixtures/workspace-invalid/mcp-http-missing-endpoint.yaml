@@ -1,0 +1,9 @@
+# transport=http requires an `endpoint` string.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+mcp_servers:
+  - id: incomplete-http
+    transport: http

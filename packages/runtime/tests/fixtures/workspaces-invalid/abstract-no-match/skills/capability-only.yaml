@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: some-capability
+  name: Some Capability
+  description: A capability skill; no decision skill exists in this workspace.
+category: capability
+implementation:
+  type: mcp_tool
+  server: x
+  tool: y
+provenance:
+  authored_by: human
+  version: 0.1.0

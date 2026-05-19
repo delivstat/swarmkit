@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: decision-worker
+  name: Decision Worker
+  description: Requires a decision skill — but none is defined.
+role: worker
+defaults:
+  skills:
+    - abstract:
+        category: decision
+        capability: content_review
+provenance:
+  authored_by: human
+  version: 0.1.0

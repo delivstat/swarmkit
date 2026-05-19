@@ -1,0 +1,16 @@
+# A skill entry must be either a string (concrete skill ID) or an object
+# with `abstract: {...}`. An arbitrary object is invalid.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: broken
+  name: Broken
+  description: Skill entry is neither a string nor an object with `abstract`.
+role: worker
+defaults:
+  skills:
+    - id: code-quality-review       # wrong — should just be the string "code-quality-review"
+      version: 1.0.0
+provenance:
+  authored_by: human
+  version: 0.1.0

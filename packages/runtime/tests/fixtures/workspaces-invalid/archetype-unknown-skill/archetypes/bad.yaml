@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: bad-worker
+  name: Bad Worker
+  description: References a skill that no file in the workspace defines.
+role: worker
+defaults:
+  skills:
+    - not-a-real-skill
+provenance:
+  authored_by: human
+  version: 0.1.0

@@ -1,0 +1,300 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/topology.schema.json",
+  "title": "SwarmKit Topology",
+  "description": "A complete swarm definition. See design §10 and design/details/topology-schema-v1.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "agents"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "const": "swarmkit/v1",
+      "description": "Schema version. Breaking changes bump this major."
+    },
+    "kind": { "const": "Topology" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "agents": { "$ref": "#/$defs/agents" },
+    "artifacts": { "$ref": "#/$defs/artifacts" },
+    "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" },
+    "governance": { "$ref": "#/$defs/governance" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Lowercase kebab. Must start with a letter."
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "$ref": "#/$defs/identifier" },
+        "version": { "$ref": "#/$defs/semver" },
+        "description": { "type": "string" }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": ["one-shot", "persistent", "scheduled"],
+          "description": "Execution mode (design §14.1)."
+        },
+        "max_concurrent_tasks": { "type": "integer", "minimum": 1 },
+        "task_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "planning": { "$ref": "#/$defs/planning" },
+        "synthesis": { "$ref": "#/$defs/synthesis" },
+        "checkpointing": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "storage": { "enum": ["sqlite", "postgres"] }
+          }
+        }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root"],
+      "properties": {
+        "root": {
+          "allOf": [
+            { "$ref": "#/$defs/agent" },
+            { "properties": { "role": { "const": "root" } } }
+          ]
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "role": { "enum": ["root", "leader", "worker"] },
+        "archetype": { "$ref": "#/$defs/identifier" },
+        "model": { "$ref": "#/$defs/model" },
+        "prompt": { "$ref": "#/$defs/prompt" },
+        "skills": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" },
+          "description": "Skill IDs (design §6.1). Replaces the archetype's skill list when present."
+        },
+        "skills_additional": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" },
+          "description": "Skills merged onto the archetype defaults (design §6.6)."
+        },
+        "iam": { "$ref": "#/$defs/iam" },
+        "output_schema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "JSON Schema for structured output. Overrides archetype default.",
+              "additionalProperties": true
+            },
+            {
+              "type": "null",
+              "description": "Opt out of output schema for this agent."
+            }
+          ]
+        },
+        "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/child_agent" },
+          "description": "Nested agents. Tree structure, one parent per agent (design §5.2)."
+        }
+      }
+    },
+    "child_agent": {
+      "allOf": [
+        { "$ref": "#/$defs/agent" },
+        {
+          "properties": {
+            "role": { "enum": ["leader", "worker"] },
+            "depends_on": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Agent IDs that must complete before this agent runs. Enables DAG-based execution ordering."
+            }
+          }
+        }
+      ]
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Typically anthropic | openai | google | azure | local | custom."
+        },
+        "name": { "type": "string" },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "max_tokens": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "prompt": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "system": { "type": "string" },
+        "persona": { "type": "string" }
+      }
+    },
+    "iam": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_scope": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "elevated_scopes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "knowledge_bases": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "review_queues": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "enum": ["minimal", "standard", "detailed"] },
+            "storage": { "enum": ["sqlite", "postgres"] },
+            "retention_days": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "skill_gap_logging": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "See design §12.1.",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "surface_threshold": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "intent_monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional intent drift detection. Monitors semantic drift from the original goal. See design/details/intent-drift-detection.md.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable drift detection for this topology."
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Drift score above which action is taken. Default: 0.75. Range guide: 0.5=aggressive, 0.75=balanced, 0.9=permissive."
+        },
+        "on_drift": {
+          "enum": ["log", "warn", "nudge"],
+          "description": "Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject refocus message."
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Topology-level governance overrides. Inherits from workspace governance; entries here override or extend by id.",
+      "properties": {
+        "decision_skills": {
+          "type": "array",
+          "description": "Decision skill bindings that override or extend workspace-level bindings. Same id = override, new id = extend, required: false = disable inherited.",
+          "items": { "$ref": "#/$defs/decision_skill_binding" }
+        }
+      }
+    },
+    "planning": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Controls task planning and scope behavior for leader agents. When set, the compiler enforces structured planning instead of relying on prompt instructions.",
+      "properties": {
+        "scope_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Leaders must call create-scope before synthesis. Blocks synthesis if no scope exists."
+        },
+        "two_phase": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enforce two-phase planning: Phase 1 (research) → create-scope → Phase 2 (targeted tasks). The compiler auto-injects checkpoint prompts."
+        }
+      }
+    },
+    "synthesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Topology-level synthesis config. Overrides workspace-level synthesis. When set, the compiler invokes a large-context model with all research results instead of having the architect write the document.",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Model provider ID. Overrides workspace synthesis provider."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name. Overrides workspace synthesis model."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Custom system prompt for the synthesizer. Overrides workspace-level prompt."
+        }
+      }
+    },
+    "decision_skill_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "trigger"],
+      "description": "Binds a decision skill to a trigger point.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Decision skill ID."
+        },
+        "trigger": {
+          "enum": ["post_output", "checkpoint", "pre_synthesis"],
+          "description": "When the skill fires."
+        },
+        "scope": {
+          "type": "string",
+          "description": "Comma-separated agent IDs. Default '*' = all agents."
+        },
+        "required": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set false to disable an inherited workspace binding."
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Skill-specific configuration."
+        }
+      }
+    }
+  }
+}

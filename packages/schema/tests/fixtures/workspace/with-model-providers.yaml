@@ -1,0 +1,26 @@
+# Exercises custom ModelProvider registration (design/details/model-provider-abstraction.md).
+# Built-in providers auto-register; this block is for org-internal providers.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: acme-with-internal-llm
+  name: Acme Internal LLM Workspace
+governance:
+  provider: agt
+identity:
+  provider: builtin
+credentials:
+  acme_llm_token:
+    source: env
+    config:
+      env: ACME_LLM_TOKEN
+model_providers:
+  - class: acme_internal_llm.InternalModelProvider
+    provider_id: acme-internal
+    config:
+      base_url: https://llm.acme.internal
+      auth_token_env: ACME_LLM_TOKEN
+  - class: third_party_plugin.OpenRouterProvider
+    provider_id: openrouter
+    config:
+      default_model: meta-llama/llama-3-70b-instruct

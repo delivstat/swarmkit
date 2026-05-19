@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: github-mcp-test
+  name: GitHub MCP Test Workspace
+  description: >
+    Test fixture exercising the GitHub MCP server integration.
+    Skills reference the official @modelcontextprotocol/server-github.
+credentials:
+  github-pat:
+    source: env
+    config:
+      env: GITHUB_TOKEN
+mcp_servers:
+  - id: github
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+    credentials_ref: github-pat

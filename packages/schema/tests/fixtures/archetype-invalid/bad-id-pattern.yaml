@@ -1,0 +1,12 @@
+# id must match ^[a-z][a-z0-9-]*$ — uppercase rejected.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: CodeReviewWorker
+  name: Code Review Worker
+  description: Uppercase in id violates the lowercase-kebab pattern.
+role: worker
+defaults: {}
+provenance:
+  authored_by: human
+  version: 0.1.0

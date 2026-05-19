@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-api-samples
+  name: Get API Input/Output Samples
+  description: Get sample input or output XML and JSON for a Sterling API.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-api-javadocs
+  tool: get_api_input_sample
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

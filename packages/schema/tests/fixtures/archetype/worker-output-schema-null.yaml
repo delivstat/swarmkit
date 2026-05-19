@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: document-writer
+  name: Document Writer
+  description: Worker that produces prose artifacts — opts out of structured output.
+role: worker
+defaults:
+  output_schema: null
+provenance:
+  authored_by: human
+  version: 0.1.0

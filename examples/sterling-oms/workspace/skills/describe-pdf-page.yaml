@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: describe-pdf-page
+  name: Describe PDF Page (Vision)
+  description: >
+    Describe a PDF page visually using a vision model (Gemini Flash).
+    Use for pages with diagrams, flowcharts, architecture images, or
+    screenshots that have no extractable text. Returns a detailed
+    description of the visual content. Pass the full file path and
+    page number.
+category: capability
+implementation:
+  type: mcp_tool
+  server: pdf-reader
+  tool: describe_pdf_page
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

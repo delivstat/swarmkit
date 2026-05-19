@@ -1,0 +1,13 @@
+# Smallest valid archetype — empty defaults, non-idiomatic but schema-valid.
+# Useful as a "typed tag" (see design note open question).
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: minimal-worker
+  name: Minimal Worker
+  description: Typed placeholder worker — used for testing the schema's lower bound.
+role: worker
+defaults: {}
+provenance:
+  authored_by: human
+  version: 0.1.0

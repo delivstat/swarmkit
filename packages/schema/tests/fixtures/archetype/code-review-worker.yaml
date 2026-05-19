@@ -1,0 +1,32 @@
+# Adapted verbatim from design §6.6 — the canonical archetype example.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: code-review-worker
+  name: Code Review Worker
+  description: |
+    A worker specialised in evaluating code diffs against quality rubrics.
+    Defaults to Claude Sonnet, inherits repo:read. Used across Code Review
+    Swarm and any derived review topology.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    temperature: 0.2
+  prompt:
+    system: |
+      You are a senior code reviewer specialising in Python and TypeScript.
+      Focus on correctness and maintainability.
+  skills:
+    - github-repo-read
+    - eslint-analyse
+    - code-quality-review
+    - audit-log-write
+  iam:
+    base_scope: [repo:read]
+    elevated_scopes: []
+provenance:
+  authored_by: human
+  authored_date: "2026-04-15"
+  version: 1.2.0

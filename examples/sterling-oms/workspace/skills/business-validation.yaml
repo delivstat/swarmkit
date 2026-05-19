@@ -1,0 +1,33 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: business-validation
+  name: Business Requirements Validation
+  description: Validate a technical proposal against retail business requirements and customer experience.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [aligned, needs-adjustment, misaligned]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    customer_impact:
+      type: string
+    operational_impact:
+      type: string
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Evaluate the proposed change from a retail business perspective.
+    Consider customer experience, operational impact, industry best practices,
+    and seasonal considerations.
+provenance:
+  authored_by: human
+  version: 1.0.0

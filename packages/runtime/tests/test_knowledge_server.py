@@ -1,0 +1,272 @@
+"""Tests for the Knowledge MCP Server (M5, task #25).
+
+Tests run against the real repo files — no mocks. The corpus is
+committed, so the tests verify real search results.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from swarmkit_runtime.knowledge._server import (
+    _set_repo_root,
+    get_design_note,
+    get_error_reference,
+    get_schema,
+    list_design_notes,
+    list_reference_skills,
+    list_schemas,
+    read_workspace_file,
+    run_pytest,
+    search_docs,
+    validate_workspace,
+    write_workspace_file,
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+EXAMPLE_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace"
+BROKEN_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace-broken"
+
+
+@pytest.fixture(autouse=True)
+def _set_root() -> None:
+    _set_repo_root(REPO_ROOT)
+
+
+# ---- search_docs --------------------------------------------------------
+
+
+def test_search_governance_returns_results() -> None:
+    results = search_docs("governance provider")
+    assert len(results) > 0
+    assert any(
+        "governance" in r["snippet"].lower() or "governance" in r["heading"].lower()
+        for r in results
+    )
+
+
+def test_search_empty_query_returns_empty() -> None:
+    assert search_docs("") == []
+    assert search_docs("   ") == []
+
+
+def test_search_max_results_respected() -> None:
+    results = search_docs("skill", max_results=2)
+    assert len(results) <= 2
+
+
+# ---- get_schema ---------------------------------------------------------
+
+
+def test_get_schema_returns_valid_json_schema() -> None:
+    schema = get_schema("skill")
+    assert "$schema" in schema
+    assert schema["title"] == "SwarmKit Skill"
+
+
+def test_get_schema_unknown_type_returns_error() -> None:
+    result = get_schema("nonexistent")
+    assert "error" in result
+
+
+# ---- list_schemas -------------------------------------------------------
+
+
+def test_list_schemas_returns_five_types() -> None:
+    schemas = list_schemas()
+    assert set(schemas) >= {"topology", "skill", "archetype", "workspace", "trigger"}
+
+
+# ---- get_design_note / list_design_notes --------------------------------
+
+
+def test_get_design_note_returns_content() -> None:
+    note = get_design_note("mcp-client")
+    assert "content" in note
+    assert "frontmatter" in note
+    assert "MCP" in note["content"]
+
+
+def test_get_design_note_unknown_slug_returns_error() -> None:
+    result = get_design_note("nonexistent-slug")
+    assert "error" in result
+
+
+def test_list_design_notes_returns_entries() -> None:
+    notes = list_design_notes()
+    assert len(notes) > 5
+    slugs = {n["slug"] for n in notes}
+    assert "mcp-client" in slugs
+    assert "governance-provider-interface" in slugs
+
+
+def test_list_design_notes_filters_by_tag() -> None:
+    all_notes = list_design_notes()
+    mcp_notes = list_design_notes(tag="mcp")
+    assert len(mcp_notes) < len(all_notes)
+    assert all("mcp" in n["tags"] for n in mcp_notes)
+
+
+# ---- list_reference_skills ----------------------------------------------
+
+
+def test_list_reference_skills_returns_github_skills() -> None:
+    skills = list_reference_skills()
+    ids = {s["id"] for s in skills}
+    assert "github-repo-read" in ids
+    assert "github-pr-read" in ids
+
+
+def test_reference_skills_have_server_and_tool() -> None:
+    skills = list_reference_skills()
+    for skill in skills:
+        if skill["id"].startswith("github-"):
+            assert skill["server"] == "github"
+            assert skill["tool"] != ""
+
+
+# ---- validate_workspace ------------------------------------------------
+
+
+def test_validate_valid_workspace() -> None:
+    result = validate_workspace(str(EXAMPLE_WS))
+    assert result["valid"] is True
+    assert "hello" in result["topologies"]
+
+
+def test_validate_broken_workspace() -> None:
+    result = validate_workspace(str(BROKEN_WS))
+    assert result["valid"] is False
+    assert len(result["errors"]) > 0
+
+
+def test_validate_nonexistent_path() -> None:
+    result = validate_workspace("/tmp/nonexistent-workspace-xyz")
+    assert "error" in result
+
+
+# ---- get_error_reference ------------------------------------------------
+
+
+def test_get_error_reference_known_code() -> None:
+    result = get_error_reference("agent.unknown-archetype")
+    assert result["code"] == "agent.unknown-archetype"
+
+
+def test_get_error_reference_unknown_code() -> None:
+    result = get_error_reference("nonexistent.error.code")
+    assert "not found" in result["description"]
+
+
+# ---- write_workspace_file / read_workspace_file -------------------------
+
+
+def test_write_workspace_file_creates_skill(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    content = "apiVersion: swarmkit/v1\nkind: Skill\nmetadata:\n  id: test\n"
+    result = write_workspace_file(str(ws), "skills/test.yaml", content)
+    assert "written" in result
+    assert (ws / "skills" / "test.yaml").read_text() == content
+
+
+def test_write_workspace_file_rejects_path_traversal(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "../../etc/passwd", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_rejects_disallowed_subdir(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "src/main.py", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_rejects_non_yaml(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "skills/test.py", "bad")
+    assert "error" in result
+
+
+def test_write_workspace_file_allows_workspace_yaml(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "workspace.yaml", "apiVersion: swarmkit/v1\n")
+    assert "written" in result
+
+
+def test_read_workspace_file_returns_content(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "workspace.yaml").write_text("test content")
+    result = read_workspace_file(str(ws), "workspace.yaml")
+    assert result["content"] == "test content"
+
+
+def test_read_workspace_file_rejects_traversal(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = read_workspace_file(str(ws), "../../etc/passwd")
+    assert "error" in result
+
+
+def test_write_allows_py_in_tests_subdir(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "tests/test_foo.py", "assert True")
+    assert "written" in result
+    assert (ws / "tests" / "test_foo.py").read_text() == "assert True"
+
+
+def test_write_rejects_py_in_skills_subdir(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = write_workspace_file(str(ws), "skills/hack.py", "import os")
+    assert "error" in result
+
+
+# ---- run_pytest ----------------------------------------------------------
+
+
+def test_run_pytest_passes_on_valid_test(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    test_file = ws / "test_ok.py"
+    test_file.write_text("def test_passes():\n    assert 1 + 1 == 2\n")
+    result = run_pytest(str(ws), "test_ok.py")
+    assert result["passed"] == "True"
+
+
+def test_run_pytest_fails_on_broken_test(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    test_file = ws / "test_fail.py"
+    test_file.write_text("def test_fails():\n    assert False\n")
+    result = run_pytest(str(ws), "test_fail.py")
+    assert result["passed"] == "False"
+
+
+def test_run_pytest_rejects_non_test_file(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "server.py").write_text("print('hi')")
+    result = run_pytest(str(ws), "server.py")
+    assert "error" in result
+
+
+def test_run_pytest_rejects_path_traversal(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = run_pytest(str(ws), "../../etc/passwd")
+    assert "error" in result
+
+
+def test_run_pytest_rejects_missing_file(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    result = run_pytest(str(ws), "test_nope.py")
+    assert "error" in result

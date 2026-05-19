@@ -1,0 +1,52 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: security-scan
+  name: Security Scan
+  description: >
+    Evaluates a code diff for security vulnerabilities, injection risks,
+    credential exposure, and OWASP top-10 patterns. Returns a structured
+    verdict with severity classification.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-review]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    findings:
+      type: array
+      items:
+        type: object
+        properties:
+          category:
+            type: string
+          severity:
+            type: string
+            enum: [critical, high, medium, low, info]
+          description:
+            type: string
+        required: [category, severity, description]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are a security reviewer. Evaluate the provided code diff for:
+    1. Injection vulnerabilities (SQL, command, XSS)
+    2. Authentication and authorization issues
+    3. Credential or secret exposure
+    4. OWASP top-10 patterns
+    5. Dependency security concerns
+
+    Return a JSON verdict with: verdict (pass/fail/needs-review),
+    confidence (0-1), reasoning, and findings (array with category,
+    severity, description).
+provenance:
+  authored_by: human
+  version: 1.0.0

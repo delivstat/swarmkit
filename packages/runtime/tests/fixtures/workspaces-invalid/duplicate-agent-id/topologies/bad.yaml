@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: bad
+  version: 0.1.0
+agents:
+  root:
+    id: reviewer
+    role: root
+    children:
+      - id: reviewer    # duplicate — every agent id must be unique within the topology
+        role: worker

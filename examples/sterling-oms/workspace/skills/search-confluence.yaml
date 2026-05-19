@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-confluence
+  name: Search Confluence
+  description: >
+    Search Confluence wiki pages using structured filters. Pass keywords
+    as an array of strings — the tool builds valid CQL internally.
+    Optionally filter by space_key, content_type, or label.
+category: capability
+implementation:
+  type: mcp_tool
+  server: atlassian
+  tool: search_confluence
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

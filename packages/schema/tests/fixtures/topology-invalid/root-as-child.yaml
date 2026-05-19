@@ -1,0 +1,13 @@
+# role: root is only allowed at agents.root, not as a child.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: broken
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    children:
+      - id: another-root
+        role: root

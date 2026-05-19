@@ -1,0 +1,35 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: qa-verdict
+  name: QA Verdict
+  description: >
+    Synthesises a QA assessment from test coverage analysis and code
+    quality context. Produces a final QA pass/fail with reasoning.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, conditional-pass]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are a QA lead. Given the test coverage analysis and code context,
+    produce a final QA verdict. Consider: are the tests sufficient for
+    the changes? Are there risks the tests don't cover? Would you be
+    confident shipping this?
+
+    Return a JSON verdict with: verdict (pass/fail/conditional-pass),
+    confidence (0-1), reasoning.
+provenance:
+  authored_by: human
+  version: 1.0.0

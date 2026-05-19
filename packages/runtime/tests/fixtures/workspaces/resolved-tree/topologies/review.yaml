@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: review
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root
+    model:
+      # Override the archetype's temperature. Other keys inherit.
+      temperature: 0.3
+    children:
+      - id: reviewer
+        role: worker
+        archetype: code-review-worker
+        # Adds another skill on top of the archetype's pair.
+        skills_additional:
+          - github-repo-read
+      - id: independent-worker
+        role: worker
+        # No archetype — model is declared inline.
+        model:
+          provider: openai
+          name: gpt-4o
+        prompt:
+          system: Direct worker, no archetype.
+        skills:
+          - code-quality-review

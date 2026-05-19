@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/trigger.schema.json",
+  "title": "SwarmKit Trigger",
+  "description": "Workspace-level schedule / webhook / file-watch / manual / plugin trigger. Unifies schedules and triggers under one kind. See design §5.4 and design/details/trigger-schema-v1.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "type", "targets"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "Trigger" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "type": {
+      "enum": ["cron", "webhook", "file_watch", "manual", "plugin"],
+      "description": "Discriminator; per-type config shape validated at runtime."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Default true. Disabled triggers load but do not fire."
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/identifier" },
+      "description": "Topology IDs this trigger fires. Fired in parallel."
+    },
+    "provider_id": {
+      "$ref": "#/$defs/identifier",
+      "description": "Required when type=plugin. Names a registered TriggerProvider."
+    },
+    "config": {
+      "type": "object",
+      "description": "Type-specific configuration. Runtime validates shape per type.",
+      "additionalProperties": true,
+      "properties": {
+        "auth": {
+          "$ref": "#/$defs/webhook_auth",
+          "description": "Only meaningful for type=webhook."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "type=plugin requires provider_id.",
+      "if": {
+        "properties": { "type": { "const": "plugin" } },
+        "required": ["type"]
+      },
+      "then": { "required": ["provider_id"] }
+    },
+    {
+      "$comment": "type=cron, type=webhook, type=file_watch, type=plugin require a config block (content is runtime-validated).",
+      "if": {
+        "properties": { "type": { "enum": ["cron", "webhook", "file_watch", "plugin"] } },
+        "required": ["type"]
+      },
+      "then": { "required": ["config"] }
+    }
+  ],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    },
+    "webhook_auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "credentials_ref"],
+      "properties": {
+        "method": { "enum": ["hmac", "bearer", "api_key"] },
+        "credentials_ref": {
+          "type": "string",
+          "description": "Name of a workspace `credentials` entry holding the secret."
+        },
+        "header": {
+          "type": "string",
+          "description": "HTTP header carrying the auth material (method-dependent default)."
+        }
+      }
+    }
+  }
+}

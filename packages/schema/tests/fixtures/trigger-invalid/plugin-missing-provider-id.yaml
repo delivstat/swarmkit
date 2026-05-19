@@ -1,0 +1,11 @@
+# type=plugin requires provider_id.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: broken
+  name: Broken
+type: plugin
+targets:
+  - hello-swarm
+config:
+  some: thing

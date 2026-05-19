@@ -1,0 +1,9 @@
+# apiVersion is required.
+kind: Topology
+metadata:
+  name: broken
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root

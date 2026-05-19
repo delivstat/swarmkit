@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-codebase
+  name: Search Codebase
+  description: >
+    Searches a project's codebase for relevant code, architecture docs,
+    and coding standards. In user workspaces, this skill should be
+    backed by a user knowledge MCP server (see design/details/
+    user-knowledge-server.md). The reference version uses llm_prompt
+    as a template — replace with mcp_tool when a knowledge server
+    is configured.
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: >
+    Search the provided codebase context for information relevant to
+    the query. Return file paths, code snippets, and relevant
+    documentation sections that match. If no codebase context is
+    available, state that a user knowledge server needs to be
+    configured.
+provenance:
+  authored_by: human
+  version: 1.0.0

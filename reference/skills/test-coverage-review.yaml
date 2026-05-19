@@ -1,0 +1,47 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: test-coverage-review
+  name: Test Coverage Review
+  description: >
+    Evaluates a code diff for test coverage gaps. Identifies untested
+    code paths, missing edge cases, and test quality concerns.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-tests]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    gaps:
+      type: array
+      items:
+        type: object
+        properties:
+          area:
+            type: string
+          description:
+            type: string
+        required: [area, description]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are a QA analyst. Evaluate the provided code diff for test coverage:
+    1. Are new code paths tested?
+    2. Are edge cases covered?
+    3. Are error paths tested?
+    4. Is the test quality adequate (not just happy-path)?
+
+    Return a JSON verdict with: verdict (pass/fail/needs-tests),
+    confidence (0-1), reasoning, and gaps (array of untested areas
+    with area and description).
+provenance:
+  authored_by: human
+  version: 1.0.0

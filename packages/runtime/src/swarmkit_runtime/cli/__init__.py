@@ -1,0 +1,1958 @@
+"""SwarmKit CLI — thin interface over WorkspaceRuntime (design §14.2).
+
+Argument parsing and output rendering only. Business logic lives in
+``WorkspaceRuntime`` (``_workspace_runtime.py``).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import sys
+from dataclasses import asdict
+from pathlib import Path
+from typing import Annotated, Any
+
+import typer
+
+from swarmkit_runtime._workspace_runtime import (
+    MissingMCPServerError,
+    RunResult,
+    WorkspaceRuntime,
+    resolve_authoring_provider,
+)
+from swarmkit_runtime.authoring import run_authoring_session
+from swarmkit_runtime.authoring._prompts import AuthoringMode
+from swarmkit_runtime.errors import ResolutionError, ResolutionErrors
+from swarmkit_runtime.gaps import SkillGapLog
+from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
+from swarmkit_runtime.review import FileReviewQueue
+
+from ._knowledge import build_pack, find_repo_root
+from ._render import render_errors, render_success, should_colour
+
+_BANNER = """\
+:'######::'##:::::'##::::'###::::'########::'##::::'##:'##:::'##:'####:'########:
+'##... ##: ##:'##: ##:::'## ##::: ##.... ##: ###::'###: ##::'##::. ##::... ##..::
+ ##:::..:: ##: ##: ##::'##:. ##:: ##:::: ##: ####'####: ##:'##:::: ##::::: ##::::
+. ######:: ##: ##: ##:'##:::. ##: ########:: ## ### ##: #####::::: ##::::: ##::::
+:..... ##: ##: ##: ##: #########: ##.. ##::: ##. #: ##: ##. ##:::: ##::::: ##::::
+'##::: ##: ##: ##: ##: ##.... ##: ##::. ##:: ##:.:: ##: ##:. ##::: ##::::: ##::::
+. ######::. ###. ###:: ##:::: ##: ##:::. ##: ##:::: ##: ##::. ##:'####:::: ##::::
+:......::::...::...:::..:::::..::..:::::..::..:::::..::..::::..::....:::::..:::::"""
+
+
+def _print_banner() -> None:
+    if sys.stdout.isatty() and os.environ.get("NO_COLOR") is None:
+        typer.echo(f"\033[1;36m{_BANNER.rstrip()}\033[0m")
+    else:
+        typer.echo(_BANNER.rstrip())
+
+
+def _suppress_noisy_logs() -> None:
+    """Suppress MCP SDK and third-party INFO messages unless SWARMKIT_VERBOSE is set."""
+    if os.environ.get("SWARMKIT_VERBOSE"):
+        return
+    import logging  # noqa: PLC0415
+
+    for name in ("mcp", "httpx", "httpcore", "sentence_transformers"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+app = typer.Typer(
+    name="swarmkit",
+    help="Compose, run, and grow multi-agent swarms.",
+    no_args_is_help=True,
+)
+
+
+# ---- exit codes -----------------------------------------------------------
+
+_EXIT_OK = 0
+_EXIT_RESOLUTION_ERROR = 1
+_EXIT_USAGE = 2
+_EXIT_NOT_IMPLEMENTED = _EXIT_USAGE
+
+
+def _not_implemented(command: str, *, milestone: str) -> None:
+    typer.echo(
+        f"swarmkit {command}: not yet implemented — planned for {milestone}. "
+        "See design/IMPLEMENTATION-PLAN.md for the roadmap.",
+        err=True,
+    )
+    raise typer.Exit(_EXIT_NOT_IMPLEMENTED)
+
+
+def _stderr(msg: str) -> None:
+    typer.echo(msg, err=True)
+
+
+# ---- validate -----------------------------------------------------------
+
+
+@app.command()
+def validate(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            help="Workspace root (directory containing workspace.yaml).",
+            show_default=False,
+        ),
+    ] = Path("."),
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSONL instead of human-formatted output."),
+    ] = False,
+    tree: Annotated[
+        bool,
+        typer.Option("--tree", help="On success, print the fully-expanded resolved agent tree."),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress the success summary; errors still print."),
+    ] = False,
+    color: Annotated[
+        bool | None,
+        typer.Option(
+            "--color/--no-color",
+            help=(
+                "Override TTY auto-detection for coloured output. "
+                "NO_COLOR env var always suppresses."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Validate a SwarmKit workspace and print a resolved tree or errors."""
+    use_colour = should_colour(sys.stdout.isatty(), color)
+    workspace_root = path.resolve()
+
+    try:
+        workspace = resolve_workspace(workspace_root)
+    except ResolutionErrors as exc:
+        _emit_errors(
+            list(exc.errors), json_mode=json_output, workspace_root=workspace_root, color=use_colour
+        )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    except FileNotFoundError as exc:
+        _stderr(f"error: {exc}")
+        raise typer.Exit(_EXIT_USAGE) from exc
+
+    if quiet:
+        return
+
+    _emit_success(workspace, json_mode=json_output, tree=tree, color=use_colour)
+
+
+def _emit_errors(
+    errors: list[ResolutionError],
+    *,
+    json_mode: bool,
+    workspace_root: Path,
+    color: bool,
+) -> None:
+    if json_mode:
+        for err in errors:
+            typer.echo(json.dumps(_error_to_json(err)))
+        n_files = len({err.artifact_path for err in errors})
+        typer.echo(
+            json.dumps(
+                {
+                    "event": "validate.summary",
+                    "status": "failed",
+                    "errors": len(errors),
+                    "files_affected": n_files,
+                }
+            )
+        )
+    else:
+        typer.echo(render_errors(errors, workspace_root=workspace_root, color=color), err=False)
+
+
+def _emit_success(
+    workspace: ResolvedWorkspace,
+    *,
+    json_mode: bool,
+    tree: bool,
+    color: bool,
+) -> None:
+    if json_mode:
+        typer.echo(
+            json.dumps(
+                {
+                    "event": "validate.ok",
+                    "workspace": _identifier(workspace.raw.metadata.id),
+                    "topologies": len(workspace.topologies),
+                    "skills": len(workspace.skills),
+                    "archetypes": len(workspace.archetypes),
+                    "triggers": len(workspace.triggers),
+                }
+            )
+        )
+        if tree:
+            for topology_id in sorted(workspace.topologies.keys()):
+                topology = workspace.topologies[topology_id]
+                typer.echo(
+                    json.dumps(
+                        {
+                            "event": "validate.topology",
+                            "id": topology_id,
+                            "root": _agent_to_json(topology.root),
+                        }
+                    )
+                )
+        return
+
+    typer.echo(render_success(workspace, tree=tree, color=color))
+
+
+def _error_to_json(err: ResolutionError) -> dict[str, object]:
+    data = asdict(err)
+    data["artifact_path"] = str(err.artifact_path)
+    data["related"] = [_error_to_json(r) for r in err.related]
+    data["event"] = "validate.error"
+    return data
+
+
+def _agent_to_json(agent: object) -> dict[str, object]:
+    return {
+        "id": getattr(agent, "id", None),
+        "role": getattr(agent, "role", None),
+        "archetype": getattr(agent, "source_archetype", None),
+        "model": dict(getattr(agent, "model", None) or {}),
+        "skills": [s.id for s in getattr(agent, "skills", ())],
+        "children": [_agent_to_json(c) for c in getattr(agent, "children", ())],
+    }
+
+
+def _identifier(value: object) -> str:
+    root = getattr(value, "root", value)
+    return str(root)
+
+
+# ---- knowledge-pack -----------------------------------------------------
+
+
+@app.command(name="knowledge-pack")
+def knowledge_pack(
+    workspace: Annotated[
+        Path | None,
+        typer.Argument(
+            help=(
+                "Optional workspace directory. If given, workspace YAML "
+                "and validation are appended."
+            ),
+            show_default=False,
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output", "-o", help="Write the pack to FILE instead of stdout.", show_default=False
+        ),
+    ] = None,
+    include_fixtures: Annotated[
+        bool,
+        typer.Option(
+            "--fixtures/--no-fixtures", help="Include schema fixtures (valid + invalid examples)."
+        ),
+    ] = True,
+) -> None:
+    """Bundle SwarmKit docs + schemas + workspace state into a paste-ready prompt."""
+    repo_root = find_repo_root()
+    if repo_root is None:
+        _stderr(
+            "swarmkit knowledge-pack: could not locate the SwarmKit repo on disk. "
+            "This command currently requires a source checkout (the corpus is not "
+            "yet bundled as package data — see design/details/knowledge-pack-cli.md)."
+        )
+        raise typer.Exit(_EXIT_USAGE)
+
+    if workspace is not None and not workspace.exists():
+        _stderr(f"swarmkit knowledge-pack: workspace path not found: {workspace}")
+        raise typer.Exit(_EXIT_USAGE)
+
+    pack = build_pack(
+        repo_root,
+        workspace=workspace.resolve() if workspace else None,
+        include_fixtures=include_fixtures,
+    )
+
+    if output is not None:
+        output.write_text(pack, encoding="utf-8")
+        return
+    typer.echo(pack, nl=False)
+
+
+# ---- review + gaps -------------------------------------------------------
+
+
+review_app = typer.Typer(help="Human-in-the-loop review queue.")
+app.add_typer(review_app, name="review")
+
+
+@review_app.command("list")
+def review_list(
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """List pending review items."""
+    queue = FileReviewQueue(workspace_path.resolve())
+    pending = queue.list_pending()
+    if not pending:
+        typer.echo("No pending reviews.")
+        return
+    for item in pending:
+        typer.echo(f"  {item.id[:8]}  {item.agent_id:<16} {item.skill_id:<24} {item.reason}")
+
+
+@review_app.command("show")
+def review_show(
+    item_id: str,
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Show full details of a review item."""
+    queue = FileReviewQueue(workspace_path.resolve())
+    for item in queue.list_all():
+        if item.id.startswith(item_id):
+            typer.echo(f"ID:       {item.id}")
+            typer.echo(f"Agent:    {item.agent_id}")
+            typer.echo(f"Skill:    {item.skill_id}")
+            typer.echo(f"Status:   {item.status}")
+            typer.echo(f"Reason:   {item.reason}")
+            typer.echo(f"Output:   {json.dumps(item.output, indent=2)}")
+            typer.echo(f"Verdict:  {json.dumps(item.verdict, indent=2)}")
+            return
+    _stderr(f"Review item '{item_id}' not found.")
+    raise typer.Exit(1)
+
+
+@review_app.command("approve")
+def review_approve(
+    item_id: str,
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Approve a pending review item."""
+    queue = FileReviewQueue(workspace_path.resolve())
+    for item in queue.list_all():
+        if item.id.startswith(item_id):
+            queue.resolve(item.id, "approved")
+            typer.echo(f"✓ Approved {item.id[:8]}")
+            return
+    _stderr(f"Review item '{item_id}' not found.")
+    raise typer.Exit(1)
+
+
+@review_app.command("reject")
+def review_reject(
+    item_id: str,
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Reject a pending review item."""
+    queue = FileReviewQueue(workspace_path.resolve())
+    for item in queue.list_all():
+        if item.id.startswith(item_id):
+            queue.resolve(item.id, "rejected")
+            typer.echo(f"✗ Rejected {item.id[:8]}")
+            return
+    _stderr(f"Review item '{item_id}' not found.")
+    raise typer.Exit(1)
+
+
+@app.command()
+def gaps(
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """List recorded skill gaps."""
+    log = SkillGapLog(workspace_path.resolve())
+    gap_list = log.list_gaps()
+    if not gap_list:
+        typer.echo("No skill gaps recorded.")
+        return
+    for gap in gap_list:
+        typer.echo(
+            f"  {gap.skill_id:<24} {gap.pattern:<40} ({gap.occurrences}x) → {gap.suggested_action}"
+        )
+
+
+# ---- authoring -----------------------------------------------------------
+
+
+@app.command()
+def init(
+    path: Annotated[
+        Path, typer.Argument(help="Directory to create the workspace in.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Create a new SwarmKit workspace through conversation."""
+    _print_banner()
+    _suppress_noisy_logs()
+    provider, model = resolve_authoring_provider()
+    run_authoring_session(
+        mode="init", model_provider=provider, model_name=model, workspace_path=path.resolve()
+    )
+
+
+author_app = typer.Typer(help="Conversational authoring for topologies, skills, archetypes.")
+app.add_typer(author_app, name="author")
+
+
+def _run_authoring(
+    mode: AuthoringMode,
+    workspace_path: Path,
+    thorough: bool,
+    input_text: str = "",
+) -> None:
+    """Route authoring to single-agent (quick) or swarm (thorough)."""
+    _print_banner()
+    _suppress_noisy_logs()
+    if thorough:
+        try:
+            runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+            prompt = f"Create a new {mode}. {input_text}".strip()
+            result = asyncio.run(runtime.run("skill-authoring", prompt))
+            if result.output:
+                typer.echo(result.output)
+        except KeyError:
+            _stderr(
+                "error: --thorough requires the skill-authoring topology in the workspace. "
+                "Add it from reference/topologies/skill-authoring.yaml."
+            )
+            raise typer.Exit(_EXIT_USAGE) from None
+        except Exception as exc:
+            _stderr(f"error: authoring failed: {exc}")
+            raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    else:
+        provider, model = resolve_authoring_provider()
+        run_authoring_session(
+            mode=mode,
+            model_provider=provider,
+            model_name=model,
+            workspace_path=workspace_path.resolve(),
+        )
+
+
+@author_app.command("topology")
+def author_topology(
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace directory.", show_default=False)
+    ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
+) -> None:
+    """Author a new topology through conversation."""
+    _run_authoring("topology", workspace_path, thorough)
+
+
+@author_app.command("skill")
+def author_skill(
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace directory.", show_default=False)
+    ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
+) -> None:
+    """Author a new skill through conversation."""
+    _run_authoring("skill", workspace_path, thorough)
+
+
+@author_app.command("archetype")
+def author_archetype(
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace directory.", show_default=False)
+    ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
+) -> None:
+    """Author a new archetype through conversation."""
+    _run_authoring("archetype", workspace_path, thorough)
+
+
+@author_app.command("mcp-server")
+def author_mcp_server(
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace directory.", show_default=False)
+    ] = Path("."),
+    thorough: Annotated[
+        bool,
+        typer.Option(
+            "--thorough", help="Use the multi-agent authoring swarm instead of single agent."
+        ),
+    ] = False,
+) -> None:
+    """Author a new MCP server through conversation."""
+    _run_authoring("mcp-server", workspace_path, thorough)
+
+
+# ---- edit (M7 — Skill Authoring Swarm in edit mode) ----------------------
+
+
+@app.command()
+def edit(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace to edit.", show_default=False),
+    ] = Path("."),
+    input_text: Annotated[
+        str | None,
+        typer.Option(
+            "--input",
+            "-i",
+            help="Describe the change (or omit for interactive conversation).",
+        ),
+    ] = None,
+    color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
+) -> None:
+    """Edit an existing workspace through conversation (M7 Skill Authoring Swarm).
+
+    Reads the current workspace state, understands the requested change,
+    drafts modifications, validates, and writes. The user never edits
+    YAML directly.
+    """
+    use_colour = should_colour(sys.stdout.isatty(), color)
+
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except ResolutionErrors as exc:
+        _emit_errors(
+            list(exc.errors),
+            json_mode=False,
+            workspace_root=workspace_path.resolve(),
+            color=use_colour,
+        )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    except MissingMCPServerError as exc:
+        for skill_id, server_id in exc.missing:
+            _stderr(
+                f"error: skill '{skill_id}' targets MCP server '{server_id}' "
+                f"but the workspace declares no such server."
+            )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    user_input = input_text or ""
+    if not user_input and not sys.stdin.isatty():
+        user_input = sys.stdin.read().strip()
+    if not user_input:
+        user_input = "What would you like to change in this workspace?"
+
+    try:
+        result = asyncio.run(runtime.run("skill-authoring", user_input))
+    except KeyError:
+        _stderr(
+            "error: the skill-authoring topology is not available in this workspace. "
+            "Add it from reference/topologies/skill-authoring.yaml, or use "
+            "`swarmkit author` for single-agent authoring."
+        )
+        raise typer.Exit(_EXIT_USAGE) from None
+    except Exception as exc:
+        _stderr(f"error: edit failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    if result.output:
+        typer.echo(result.output)
+
+
+# ---- run -----------------------------------------------------------------
+
+
+@app.command()
+def run(  # noqa: PLR0912
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Workspace root directory (containing workspace.yaml).",
+            show_default=False,
+        ),
+    ],
+    topology_name: Annotated[str, typer.Argument(help="Name of the topology to run.")],
+    input_text: Annotated[
+        str | None,
+        typer.Option(
+            "--input", "-i", help="User input to send to the swarm. Reads from stdin if omitted."
+        ),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Print per-agent execution summary after output."),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Show resolved agents and skills without executing.",
+        ),
+    ] = False,
+    resume: Annotated[
+        bool,
+        typer.Option(
+            "--resume",
+            help="Resume a previously interrupted run from checkpoint.",
+        ),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress progress output; only print final result."),
+    ] = False,
+    color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
+) -> None:
+    """One-shot execution of a topology (design §14.1)."""
+    _suppress_noisy_logs()
+    if quiet:
+        os.environ["SWARMKIT_QUIET"] = "1"
+    use_colour = should_colour(sys.stdout.isatty(), color)
+
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except ResolutionErrors as exc:
+        _emit_errors(
+            list(exc.errors),
+            json_mode=False,
+            workspace_root=workspace_path.resolve(),
+            color=use_colour,
+        )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    except MissingMCPServerError as exc:
+        for skill_id, server_id in exc.missing:
+            _stderr(
+                f"error: skill '{skill_id}' targets MCP server '{server_id}' "
+                f"but the workspace declares no such server. "
+                f"Add it under `mcp_servers:` in workspace.yaml, "
+                f"or change the skill's `implementation.server` to a configured server."
+            )
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    if dry_run:
+        _print_dry_run(runtime, topology_name)
+        return
+
+    if verbose:
+        os.environ["SWARMKIT_VERBOSE"] = "1"
+
+    if resume:
+        result = _execute_resume(runtime, topology_name, workspace_path)
+    else:
+        user_input = input_text or ""
+        if not user_input and not sys.stdin.isatty():
+            user_input = sys.stdin.read().strip()
+        if not user_input:
+            user_input = "hello"
+
+        prev_plan = _check_previous_plan(workspace_path)
+        if prev_plan:
+            result = _execute_run(
+                runtime,
+                topology_name,
+                user_input,
+                workspace_path,
+                previous_plan=prev_plan,
+            )
+        else:
+            result = _execute_run(runtime, topology_name, user_input, workspace_path)
+
+    if result.output:
+        typer.echo(result.output)
+
+    _save_run_log(workspace_path.resolve(), topology_name, result)
+
+    if verbose and result.events:
+        _print_run_summary(result)
+
+
+def _check_previous_plan(workspace_path: Path) -> dict | None:  # type: ignore[type-arg]
+    """Check for a previous task plan from a crashed run."""
+    import json  # noqa: PLC0415
+
+    tasks_file = workspace_path.resolve() / ".swarmkit" / "run-state" / "current" / "tasks.json"
+    if not tasks_file.exists():
+        return None
+
+    try:
+        plan_data = json.loads(tasks_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    tasks = plan_data.get("tasks", [])
+    if not tasks:
+        return None
+
+    completed = [t for t in tasks if t.get("status") == "completed"]
+    pending = [t for t in tasks if t.get("status") == "pending"]
+    failed = [t for t in tasks if t.get("status") == "failed"]
+
+    if not completed:
+        return None
+
+    _stderr(f"\nFound previous run with {len(completed)}/{len(tasks)} tasks completed:")
+    for t in completed:
+        findings = t.get("key_findings", [])
+        summary = findings[0][:80] if findings else "no summary"
+        _stderr(f"  completed: {t['id']} ({t['agent']}) — {summary}")
+    for t in pending:
+        _stderr(f"  pending: {t['id']} ({t['agent']})")
+    for t in failed:
+        _stderr(f"  failed: {t['id']} ({t['agent']}) — {t.get('error', '')[:60]}")
+
+    if sys.stdin.isatty():
+        response = input("\nResume from previous plan? [Y/n] ").strip().lower()
+        if response in ("n", "no"):
+            import shutil  # noqa: PLC0415
+
+            run_state = workspace_path.resolve() / ".swarmkit" / "run-state" / "current"
+            shutil.rmtree(run_state, ignore_errors=True)
+            return None
+    return dict(plan_data)
+
+
+def _execute_run(
+    runtime: WorkspaceRuntime,
+    topology_name: str,
+    user_input: str,
+    workspace_path: Path,
+    previous_plan: dict | None = None,  # type: ignore[type-arg]
+) -> RunResult:
+    """Execute a topology run with HITL and interrupt handling."""
+    from uuid import uuid4  # noqa: PLC0415
+
+    thread_id = str(uuid4())
+    _save_thread_id(workspace_path, thread_id)
+
+    try:
+        return asyncio.run(
+            runtime.run(
+                topology_name,
+                user_input,
+                thread_id=thread_id,
+                previous_plan=previous_plan,
+            )
+        )
+    except KeyError as exc:
+        _stderr(str(exc).strip("'\""))
+        raise typer.Exit(_EXIT_USAGE) from exc
+    except KeyboardInterrupt:
+        _stderr("\n⏸ Run interrupted. State checkpointed.")
+        _stderr(f"  Resume with: swarmkit run {workspace_path} {topology_name} --resume")
+        raise typer.Exit(0) from None
+    except Exception as exc:
+        from swarmkit_runtime.review._hitl import HITLDeferredError  # noqa: PLC0415
+
+        if isinstance(exc, HITLDeferredError):
+            _stderr(f"\n⏸ Review deferred: {exc.reason}")
+            _stderr(f"  1. Approve: swarmkit review approve <id> {workspace_path}")
+            _stderr(f"  2. Resume:  swarmkit run {workspace_path} {topology_name} --resume")
+            raise typer.Exit(0) from None
+        _stderr(f"\nerror: execution failed: {exc}")
+        _stderr("\n⏸ State may be checkpointed. Try resuming:")
+        _stderr(f"  swarmkit run {workspace_path} {topology_name} --resume")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+
+def _save_thread_id(workspace_path: Path, thread_id: str) -> None:
+    """Save the thread_id so --resume can find it."""
+    state_dir = workspace_path.resolve() / ".swarmkit" / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "last_thread.txt").write_text(thread_id, encoding="utf-8")
+
+
+def _execute_resume(
+    runtime: WorkspaceRuntime,
+    topology_name: str,
+    workspace_path: Path,
+) -> RunResult:
+    """Resume a previously checkpointed run."""
+    thread_file = workspace_path.resolve() / ".swarmkit" / "state" / "last_thread.txt"
+    if not thread_file.is_file():
+        _stderr("No checkpointed run found to resume.")
+        _stderr(f"Expected at: {thread_file}")
+        raise typer.Exit(_EXIT_USAGE)
+
+    thread_id = thread_file.read_text(encoding="utf-8").strip()
+    _stderr(f"Resuming from checkpoint: {thread_id}")
+
+    try:
+        return asyncio.run(runtime.resume(topology_name, thread_id))
+    except Exception as exc:
+        _stderr(f"error: resume failed: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+
+# ---- chat (multi-turn conversation) --------------------------------------
+
+
+@app.command()
+def chat(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ],
+    topology_name: Annotated[str, typer.Argument(help="Topology to converse with.")],
+    resume_id: Annotated[
+        str | None,
+        typer.Option("--resume", "-r", help="Resume a previous conversation by ID."),
+    ] = None,
+) -> None:
+    """Interactive multi-turn conversation with a topology.
+
+    Each turn runs the topology with accumulated conversation history.
+    The swarm sees the full context of what was discussed before.
+    Conversations are saved to .swarmkit/conversations/ and can be
+    resumed with --resume <id>.
+    """
+    from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+    _print_banner()
+    _suppress_noisy_logs()
+
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except (ResolutionErrors, MissingMCPServerError) as exc:
+        _stderr(f"error: {exc}")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    manager = ConversationManager(runtime, workspace_path.resolve())
+
+    if resume_id:
+        conv = manager.resume(resume_id)
+        if conv is None:
+            _stderr(f"Conversation '{resume_id}' not found.")
+            raise typer.Exit(_EXIT_USAGE)
+        _show_and_continue_conversation(conv, manager)
+    else:
+        conv = manager.create(topology_name)
+        typer.echo(f"New conversation {conv.id} with topology '{topology_name}'")
+        typer.echo("Type your message. Ctrl+C to exit.\n")
+        _conversation_loop(conv, manager)
+
+
+@app.command(name="conversations")
+def list_conversations(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+    last: Annotated[int, typer.Option("--last", "-n")] = 10,
+    pick: Annotated[
+        bool,
+        typer.Option("--pick", "-p", help="Select a conversation to resume."),
+    ] = False,
+) -> None:
+    """List saved conversations. Use --pick to resume one interactively."""
+    from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except Exception:
+        _stderr("Could not load workspace.")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from None
+
+    manager = ConversationManager(runtime, workspace_path.resolve())
+    convos = manager.list_conversations(last=last)
+
+    if not convos:
+        typer.echo("No conversations yet. Start one with: swarmkit chat <workspace> <topology>")
+        return
+
+    typer.echo("\nRecent conversations:\n")
+    for i, c in enumerate(convos, 1):
+        last_msg = c.get("last_message", "")
+        typer.echo(f"  {i}. [{c['id']}] {c['topology']} ({c['turns']} turns)")
+        if last_msg:
+            typer.echo(f'     "{last_msg}"')
+        typer.echo(f"     {c['updated']}")
+        typer.echo()
+
+    if not pick:
+        typer.echo("Resume with: swarmkit chat <workspace> <topology> --resume <id>")
+        typer.echo("Or use: swarmkit conversations <workspace> --pick")
+        return
+
+    try:
+        choice = input(f"Pick a conversation (1-{len(convos)}): ").strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    try:
+        idx = int(choice) - 1
+        if not 0 <= idx < len(convos):
+            raise ValueError
+    except ValueError:
+        _stderr(f"Invalid choice: {choice}")
+        raise typer.Exit(_EXIT_USAGE) from None
+
+    selected = convos[idx]
+    conv = manager.resume(selected["id"])
+    if conv is None:
+        _stderr("Could not load conversation.")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from None
+
+    _show_and_continue_conversation(conv, manager)
+
+
+def _show_and_continue_conversation(conv: Any, manager: Any) -> None:
+    """Print conversation history and start the interactive loop."""
+    typer.echo(f"\nResumed: {conv.id} ({len(conv.turns)} turns)\n")
+    for turn in conv.turns:
+        prefix = "You" if turn.role == "human" else "Swarm"
+        typer.echo(f"  {prefix}: {turn.content[:100]}{'...' if len(turn.content) > 100 else ''}")
+    typer.echo()
+    _conversation_loop(conv, manager)
+
+
+_EXIT_COMMANDS = {"exit", "quit", "bye", "/exit", "/quit"}
+
+
+def _build_chat_session() -> Any:
+    """Build a prompt_toolkit session with history and completion."""
+    from prompt_toolkit import PromptSession  # noqa: PLC0415
+    from prompt_toolkit.completion import WordCompleter  # noqa: PLC0415
+    from prompt_toolkit.history import FileHistory  # noqa: PLC0415
+
+    history_path = Path.home() / ".swarmkit" / "chat_history"
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+
+    commands = WordCompleter(
+        [
+            "/model",
+            "/model reset",
+            "/clear",
+            "exit",
+            "quit",
+            "bye",
+            "/exit",
+            "/quit",
+        ],
+        sentence=True,
+    )
+
+    return PromptSession(
+        history=FileHistory(str(history_path)),
+        completer=commands,
+        enable_history_search=True,
+    )
+
+
+def _conversation_loop(conv: Any, manager: Any) -> None:
+    """Interactive REPL for a conversation.
+
+    Starts MCP servers once and keeps them alive across turns.
+    """
+    asyncio.run(_async_conversation_loop(conv, manager))
+
+
+async def _async_conversation_loop(conv: Any, manager: Any) -> None:  # noqa: PLR0912, PLR0915
+    session = _build_chat_session()
+    await manager.start_session()
+    try:
+        while True:
+            try:
+                user_input = (await session.prompt_async("> ")).strip()
+            except (KeyboardInterrupt, EOFError):
+                user_input = "exit"
+
+            if not user_input:
+                continue
+            if user_input.lower() in _EXIT_COMMANDS:
+                typer.echo(f"\nConversation saved: {conv.id}")
+                typer.echo(f"Resume with: swarmkit chat ... --resume {conv.id}")
+                break
+
+            # /clear command — reset conversation context and tool cache
+            if user_input.strip() == "/clear":
+                conv.clear()
+                if hasattr(manager, "_runtime") and hasattr(manager._runtime, "_mcp_manager"):
+                    mcp = manager._runtime._mcp_manager
+                    if mcp:
+                        mcp.clear_cache()
+                typer.echo("Conversation cleared. Starting fresh (MCP servers still running).")
+                continue
+
+            # /model command — switch model dynamically
+            if user_input.startswith("/model"):
+                parts = user_input.split(maxsplit=1)
+                if len(parts) < 2:
+                    current = os.environ.get("SWARMKIT_MODEL", "(topology default)")
+                    provider = os.environ.get("SWARMKIT_PROVIDER", "(topology default)")
+                    typer.echo(f"Current model: {current} (provider: {provider})")
+                    typer.echo("Usage: /model <provider/model> or /model <model>")
+                    typer.echo("Example: /model deepseek/deepseek-chat")
+                    typer.echo("         /model qwen/qwen3-235b-a22b")
+                    typer.echo("         /model reset  (back to topology defaults)")
+                else:
+                    model_spec = parts[1].strip()
+                    if model_spec == "reset":
+                        os.environ.pop("SWARMKIT_MODEL", None)
+                        os.environ.pop("SWARMKIT_PROVIDER", None)
+                        typer.echo("Model reset to topology defaults.")
+                    elif "/" in model_spec:
+                        os.environ["SWARMKIT_PROVIDER"] = "openrouter"
+                        os.environ["SWARMKIT_MODEL"] = model_spec
+                        typer.echo(f"Switched to: {model_spec} (via openrouter)")
+                    else:
+                        os.environ["SWARMKIT_MODEL"] = model_spec
+                        typer.echo(f"Switched model to: {model_spec}")
+                continue
+
+            try:
+                result = await manager.send(conv, user_input)
+            except Exception as exc:
+                _stderr(f"error: {exc}")
+                continue
+            typer.echo(f"\n{result.output}\n")
+    finally:
+        await manager.end_session()
+
+
+# ---- dry run -------------------------------------------------------------
+
+
+def _print_dry_run(runtime: WorkspaceRuntime, topology_name: str) -> None:
+    """Show the resolved topology without executing — no LLM or MCP calls."""
+    ws = runtime.workspace
+    if topology_name not in ws.topologies:
+        available = sorted(ws.topologies.keys())
+        _stderr(f"Topology '{topology_name}' not found. Available: {available}")
+        raise typer.Exit(_EXIT_USAGE)
+
+    topology = ws.topologies[topology_name]
+    typer.echo(f"── dry run: {topology_name} ──\n")
+    typer.echo("Agents:")
+    _print_agent_tree(topology.root, indent=2)
+
+    mcp_ids = runtime.mcp_manager.server_ids if runtime.mcp_manager else []
+    if mcp_ids:
+        typer.echo(f"\nMCP servers: {', '.join(mcp_ids)}")
+
+    gov_type = type(runtime.governance).__name__
+    typer.echo(f"Governance: {gov_type}")
+    typer.echo("\nNo LLM or MCP calls made. Use without --dry-run to execute.")
+
+
+def _print_agent_tree(agent: object, indent: int = 0) -> None:
+    prefix = " " * indent
+    agent_id = getattr(agent, "id", "?")
+    role = getattr(agent, "role", "?")
+    model = getattr(agent, "model", None) or {}
+    provider = model.get("provider", "?") if isinstance(model, dict) else "?"
+    model_name = model.get("name", "?") if isinstance(model, dict) else "?"
+    skills = [s.id for s in getattr(agent, "skills", ())]
+
+    typer.echo(f"{prefix}{agent_id} ({role}) — {provider}/{model_name}")
+    if skills:
+        typer.echo(f"{prefix}  skills: {', '.join(skills)}")
+    for child in getattr(agent, "children", ()):
+        _print_agent_tree(child, indent + 4)
+
+
+# ---- run observability helpers -------------------------------------------
+
+
+def _print_run_summary(result: RunResult) -> None:
+    """Print a per-agent execution summary from run events."""
+    typer.echo("\n── run summary ──")
+    completed = [e for e in result.events if e.event_type == "agent.completed"]
+    denied = [e for e in result.events if e.event_type in ("policy.denied", "trust.denied")]
+    skills = [e for e in result.events if e.event_type == "skill.executed"]
+    validation_fails = [e for e in result.events if e.event_type == "output.validation_failed"]
+
+    for evt in completed:
+        duration = evt.payload.get("duration_ms", "?")
+        role = evt.payload.get("role", "")
+        typer.echo(f"  {evt.agent_id:<24} {role:<8} {duration:>6}ms")
+
+    if skills:
+        typer.echo(f"\n  skills called: {len(skills)}")
+    if denied:
+        typer.echo(f"  policy denials: {len(denied)}")
+        for d in denied:
+            typer.echo(f"    {d.agent_id}: {d.payload.get('reason', '')}")
+    if validation_fails:
+        typer.echo(f"  output validation failures: {len(validation_fails)}")
+        for v in validation_fails:
+            typer.echo(f"    {v.agent_id}: {v.payload.get('error', '')}")
+
+    typer.echo(f"  total events: {len(result.events)}")
+
+
+def _save_run_log(ws_root: Path, topology: str, result: RunResult) -> None:
+    """Save run events to .swarmkit/logs/ as JSONL for later analysis."""
+    if not result.events:
+        return
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    log_dir = ws_root / ".swarmkit" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%S")
+    log_file = log_dir / f"{topology}-{ts}.jsonl"
+    lines = []
+    for evt in result.events:
+        entry = {
+            "event_type": evt.event_type,
+            "agent_id": evt.agent_id,
+            "timestamp": evt.timestamp,
+            "skill_id": evt.skill_id,
+            **evt.payload,
+        }
+        lines.append(json.dumps(entry))
+    log_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# ---- logs ----------------------------------------------------------------
+
+
+@app.command()
+def logs(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+    last: Annotated[
+        int,
+        typer.Option("--last", "-n", help="Show last N runs."),
+    ] = 1,
+    topology: Annotated[
+        str | None,
+        typer.Option("--topology", "-t", help="Filter by topology name."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", "-r", help="Filter by run ID."),
+    ] = None,
+    agent: Annotated[
+        str | None,
+        typer.Option("--agent", "-a", help="Filter by agent ID."),
+    ] = None,
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format: text (default) or markdown."),
+    ] = "text",
+) -> None:
+    """Show events from recent topology runs.
+
+    Reads from the AuditProvider (SQLite). Falls back to JSONL logs
+    if the audit database has no events.
+    Use --format markdown for a compliance-ready audit report.
+    """
+    import asyncio  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
+
+    if audit_db.is_file():
+        provider = WorkspaceRuntime.audit_provider_for(workspace_path)
+        count = asyncio.get_event_loop().run_until_complete(provider.count())
+        if count > 0:
+            _logs_from_audit(provider, last=last, run_id=run_id, agent=agent, fmt=format)
+            provider.close_sync()
+            return
+        provider.close_sync()
+
+    _logs_from_jsonl(ws_root, last=last, topology=topology, fmt=format)
+
+
+def _logs_from_audit(
+    provider: Any,
+    *,
+    last: int,
+    run_id: str | None,
+    agent: str | None,
+    fmt: str,
+) -> None:
+    """Read logs from AuditProvider (SQLite)."""
+    from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+    assert isinstance(provider, SQLiteAuditProvider)
+
+    events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
+        _collect_audit_events(provider.query(run_id=run_id, agent_id=agent, limit=last * 50))
+    )
+
+    if not events:
+        typer.echo("No events found in audit store.")
+        return
+
+    event_dicts = []
+    for e in reversed(events):
+        event_dicts.append(
+            {
+                "event_type": e.event_type,
+                "agent_id": e.agent_id,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else "",
+                "skill_id": e.skill_id,
+                "duration_ms": e.duration_ms,
+                "role": e.agent_role,
+                "reason": e.policy_reason,
+                **(e.payload or {}),
+            }
+        )
+
+    if fmt == "markdown":
+        typer.echo(_format_log_markdown("audit-store", event_dicts))
+    else:
+        typer.echo("\n── audit store ──")
+        for evt in event_dicts:
+            typer.echo(_format_log_event(evt))
+
+
+async def _collect_audit_events(aiter: Any) -> list[Any]:
+    """Collect an async iterator of AuditEvents into a list."""
+    results: list[Any] = []
+    async for item in aiter:
+        results.append(item)
+    return results
+
+
+def _logs_from_jsonl(ws_root: Path, *, last: int, topology: str | None, fmt: str) -> None:
+    """Fallback: read logs from JSONL files."""
+    log_dir = ws_root / ".swarmkit" / "logs"
+    if not log_dir.is_dir():
+        typer.echo("No run logs found. Run a topology with `swarmkit run` first.")
+        return
+
+    log_files = sorted(log_dir.glob("*.jsonl"), reverse=True)
+    if topology:
+        log_files = [f for f in log_files if f.name.startswith(f"{topology}-")]
+    log_files = log_files[:last]
+
+    if not log_files:
+        typer.echo("No matching run logs found.")
+        return
+
+    for log_file in reversed(log_files):
+        events = [
+            json.loads(line)
+            for line in log_file.read_text(encoding="utf-8").strip().split("\n")
+            if line
+        ]
+        if fmt == "markdown":
+            typer.echo(_format_log_markdown(log_file.name, events))
+        else:
+            typer.echo(f"\n── {log_file.name} ──")
+            for evt in events:
+                typer.echo(_format_log_event(evt))
+
+
+def _format_log_markdown(filename: str, events: list[dict[str, object]]) -> str:
+    """Format a run log as a compliance-ready markdown audit report."""
+    completed = [e for e in events if e.get("event_type") == "agent.completed"]
+    denied = [e for e in events if "denied" in str(e.get("event_type", "")).lower()]
+    fails = [e for e in events if "failed" in str(e.get("event_type", "")).lower()]
+    skills = [e for e in events if e.get("event_type") == "skill.executed"]
+
+    lines = [
+        f"# Run Report: {filename}",
+        "",
+        "## Summary",
+        "",
+        "| Metric | Value |",
+        "|---|---|",
+        f"| Agents completed | {len(completed)} |",
+        f"| Skills called | {len(skills)} |",
+        f"| Policy denials | {len(denied)} |",
+        f"| Validation failures | {len(fails)} |",
+        f"| Total events | {len(events)} |",
+        "",
+    ]
+
+    if completed:
+        lines.extend(["## Agent Performance", "", "| Agent | Role | Duration |", "|---|---|---|"])
+        for e in completed:
+            lines.append(
+                f"| {e.get('agent_id', '')} | {e.get('role', '')} | {e.get('duration_ms', '?')}ms |"
+            )
+        lines.append("")
+
+    if denied:
+        lines.extend(["## Policy Denials", ""])
+        for e in denied:
+            lines.append(f"- **{e.get('agent_id', '')}**: {e.get('reason', '')}")
+        lines.append("")
+
+    if fails:
+        lines.extend(["## Validation Failures", ""])
+        for e in fails:
+            lines.append(f"- **{e.get('agent_id', '')}**: {e.get('error', '')}")
+        lines.append("")
+
+    lines.extend(["## Event Timeline", "", "| Timestamp | Agent | Event |", "|---|---|---|"])
+    for e in events:
+        ts = str(e.get("timestamp", ""))[:19]
+        lines.append(f"| {ts} | {e.get('agent_id', '')} | {e.get('event_type', '')} |")
+
+    return "\n".join(lines)
+
+
+def _format_log_event(evt: dict[str, object]) -> str:
+    agent = str(evt.get("agent_id", ""))
+    etype = str(evt.get("event_type", ""))
+    detail = {
+        "agent.started": f"started  ({evt.get('role', '')})",
+        "agent.completed": f"done     {evt.get('duration_ms', '?')}ms",
+        "skill.executed": f"skill    {evt.get('skill_id', '')}",
+        "policy.denied": f"DENIED   {evt.get('reason', '')}",
+        "trust.denied": f"DENIED   {evt.get('reason', '')}",
+        "output.validation_failed": f"FAIL     {evt.get('error', '')}",
+        "output.validated": "valid",
+    }.get(etype, etype)
+    return f"  {agent:<24} {detail}"
+
+
+# ---- status --------------------------------------------------------------
+
+
+@app.command()
+def status(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+    last: Annotated[
+        int,
+        typer.Option("--last", "-n", help="Show last N runs."),
+    ] = 5,
+) -> None:
+    """Show recent run status at a glance.
+
+    Reads from AuditProvider (SQLite) first, falls back to JSONL logs.
+    """
+    import asyncio  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
+
+    if audit_db.is_file():
+        provider = WorkspaceRuntime.audit_provider_for(workspace_path)
+        count = asyncio.get_event_loop().run_until_complete(provider.count())
+        if count > 0:
+            _status_from_audit(provider, last=last)
+            provider.close_sync()
+            return
+        provider.close_sync()
+
+    _status_from_jsonl(ws_root, last=last)
+
+
+def _status_from_audit(provider: Any, *, last: int) -> None:
+    """Show status from AuditProvider (SQLite)."""
+    from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+    assert isinstance(provider, SQLiteAuditProvider)
+
+    events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
+        _collect_audit_events(provider.query(limit=last * 50))
+    )
+
+    runs: dict[str, list[AuditEvent]] = {}
+    for e in events:
+        key = e.run_id or e.topology_id or "unknown"
+        runs.setdefault(key, []).append(e)
+
+    typer.echo(f"{'topology':<20} {'agents':<8} {'duration':<10} {'issues':<8} {'source'}")
+    typer.echo("-" * 65)
+    for idx, (run_key, run_events) in enumerate(runs.items()):
+        if idx >= last:
+            break
+        completed = [e for e in run_events if e.event_type == "agent.completed"]
+        denied = [e for e in run_events if "denied" in (e.event_type or "")]
+        fails = [e for e in run_events if "failed" in (e.event_type or "")]
+        total_ms = sum(e.duration_ms or 0 for e in completed)
+        issues = len(denied) + len(fails)
+        topo = run_events[0].topology_id or run_key
+        typer.echo(f"{topo:<20} {len(completed):<8} {total_ms:>6}ms   {issues:<8} {'audit'}")
+
+
+def _status_from_jsonl(ws_root: Path, *, last: int) -> None:
+    """Fallback: show status from JSONL files."""
+    log_dir = ws_root / ".swarmkit" / "logs"
+    if not log_dir.is_dir():
+        typer.echo("No runs recorded yet.")
+        return
+
+    log_files = sorted(log_dir.glob("*.jsonl"), reverse=True)[:last]
+    if not log_files:
+        typer.echo("No runs recorded yet.")
+        return
+
+    typer.echo(f"{'topology':<20} {'agents':<8} {'duration':<10} {'issues':<8} {'when'}")
+    typer.echo("-" * 65)
+    for lf in log_files:
+        events = [json.loads(line) for line in lf.read_text().strip().split("\n") if line]
+        topo = lf.stem.rsplit("-", 1)[0]
+        completed = [e for e in events if e.get("event_type") == "agent.completed"]
+        denied = [e for e in events if "denied" in str(e.get("event_type", "")).lower()]
+        fails = [e for e in events if "failed" in str(e.get("event_type", "")).lower()]
+        total_ms = sum(int(e.get("duration_ms", 0)) for e in completed)
+        issues = len(denied) + len(fails)
+        ts = lf.stem.rsplit("-", 1)[-1] if "-" in lf.stem else "?"
+        typer.echo(f"{topo:<20} {len(completed):<8} {total_ms:>6}ms   {issues:<8} {ts}")
+
+
+# ---- why -----------------------------------------------------------------
+
+
+@app.command()
+def why(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run log filename, prefix, or topology name."),
+    ],
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Explain what happened in a run using an LLM.
+
+    Reads events from the AuditProvider (SQLite) or JSONL logs, sends
+    them to the configured model provider, and returns an analysis.
+    """
+    events_text = _load_events_for_why(workspace_path, run_id)
+    if not events_text:
+        _stderr(f"No events found for '{run_id}'.")
+        raise typer.Exit(_EXIT_USAGE)
+
+    provider, model = resolve_authoring_provider()
+
+    from swarmkit_runtime.model_providers import CompletionRequest, Message  # noqa: PLC0415
+
+    prompt = (
+        f"Analyze this SwarmKit topology execution log and explain "
+        f"what happened.\n\n"
+        f"Run: {run_id}\n{events_text}"
+    )
+    system = (
+        "You are a SwarmKit run analyst. Given execution events, "
+        "provide a useful analysis covering:\n"
+        "1. FLOW: Which agents ran and in what order\n"
+        "2. TIMING: Which agents took the longest and why\n"
+        "3. SKILLS: What skills were called\n"
+        "4. ISSUES: Any policy denials, trust failures, or validation "
+        "failures — what went wrong and what to fix\n"
+        "5. INSIGHT: One actionable observation\n\n"
+        "Be specific with numbers (cite duration_ms). "
+        "Be concise — 5-8 sentences. Interpret, don't just describe."
+    )
+    result = asyncio.run(
+        provider.complete(
+            CompletionRequest(
+                model=model,
+                messages=(Message(role="user", content=prompt),),
+                system=system,
+            )
+        )
+    )
+    typer.echo(result.text or "(no analysis)")
+
+
+def _load_events_for_why(workspace_path: Path, run_id: str) -> str:
+    """Load events as text for the why command. Tries audit store first."""
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
+
+    if audit_db.is_file():
+        audit_provider = WorkspaceRuntime.audit_provider_for(workspace_path)
+        events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
+            _collect_audit_events(audit_provider.query(limit=200))
+        )
+        audit_provider.close_sync()
+
+        matching = [
+            e
+            for e in events
+            if (e.topology_id and run_id in e.topology_id) or (e.run_id and run_id in e.run_id)
+        ]
+        if matching:
+            lines = []
+            for e in matching:
+                lines.append(
+                    json.dumps(
+                        {
+                            "event_type": e.event_type,
+                            "agent_id": e.agent_id,
+                            "timestamp": e.timestamp.isoformat() if e.timestamp else "",
+                            "duration_ms": e.duration_ms,
+                            "role": e.agent_role,
+                            **(e.payload or {}),
+                        }
+                    )
+                )
+            return "\n".join(lines)
+
+    traces_dir = ws_root / ".swarmkit" / "traces"
+    if traces_dir.is_dir():
+        matches = list(traces_dir.glob(f"{run_id}*.json"))
+        if matches:
+            from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
+
+            trace = RunTrace.load(matches[0])
+            return trace.render_text()
+
+    log_dir = ws_root / ".swarmkit" / "logs"
+    if log_dir.is_dir():
+        matches = [
+            f
+            for f in log_dir.glob("*.jsonl")
+            if f.name.startswith(run_id) or f.stem.startswith(run_id)
+        ]
+        if matches:
+            return sorted(matches, reverse=True)[0].read_text(encoding="utf-8").strip()
+
+    task_plan = ws_root / ".swarmkit" / "run-state" / "current" / "tasks.json"
+    if task_plan.is_file():
+        return task_plan.read_text(encoding="utf-8").strip()
+
+    return ""
+
+
+# ---- stop ----------------------------------------------------------------
+
+
+@app.command()
+def stop(
+    run_id: Annotated[
+        str,
+        typer.Argument(help="Run ID to stop."),
+    ],
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+) -> None:
+    """Gracefully stop a running topology.
+
+    Requests the runtime to checkpoint state and abort the current run.
+    The run can be resumed later with `swarmkit run --resume`.
+    """
+    _not_implemented("stop", milestone="M6 (persistent mode integration)")
+
+
+# ---- debug ---------------------------------------------------------------
+
+
+@app.command()
+def debug(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root.", show_default=False),
+    ] = Path("."),
+    span_id: Annotated[
+        str | None,
+        typer.Option("--span-id", "-s", help="Retrieve prompt/response for a specific OTel span."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", "-r", help="Retrieve all prompts for a run."),
+    ] = None,
+    agent: Annotated[
+        str | None,
+        typer.Option("--agent", "-a", help="Retrieve recent prompts for an agent."),
+    ] = None,
+    last: Annotated[
+        int,
+        typer.Option("--last", "-n", help="Number of recent entries (with --agent)."),
+    ] = 5,
+) -> None:
+    """Retrieve LLM prompts and responses from the local ring buffer.
+
+    Prompts are stored locally in .swarmkit/prompts.sqlite and never
+    sent to the telemetry backend. Use span IDs from OTel traces to
+    correlate with the Rynko dashboard.
+    """
+    from swarmkit_runtime.telemetry import PromptRingBuffer  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+    db_path = ws_root / ".swarmkit" / "prompts.sqlite"
+
+    if not db_path.is_file():
+        typer.echo("No prompt ring buffer found. Run a topology first.")
+        return
+
+    buf = PromptRingBuffer(db_path=db_path)
+    _debug_query(buf, span_id=span_id, run_id=run_id, agent=agent, last=last)
+    buf.close()
+
+
+def _debug_query(
+    buf: Any,
+    *,
+    span_id: str | None,
+    run_id: str | None,
+    agent: str | None,
+    last: int,
+) -> None:
+    """Dispatch debug query to the ring buffer."""
+    if span_id:
+        result = buf.query_by_span_id(span_id)
+        if result is None:
+            typer.echo(f"No prompt found for span_id '{span_id}'.")
+        else:
+            _print_prompt_entry(result)
+        return
+    if run_id:
+        results = buf.query_by_run_id(run_id)
+        if not results:
+            typer.echo(f"No prompts found for run_id '{run_id}'.")
+        else:
+            for entry in results:
+                _print_prompt_entry(entry)
+                typer.echo("")
+        return
+    if agent:
+        results = buf.query_by_agent(agent, last_n=last)
+        if not results:
+            typer.echo(f"No prompts found for agent '{agent}'.")
+        else:
+            for entry in results:
+                _print_prompt_entry(entry)
+                typer.echo("")
+        return
+    typer.echo(f"Prompt ring buffer: {buf.count()} entries")
+    typer.echo("Use --span-id, --run-id, or --agent to query.")
+
+
+def _print_prompt_entry(entry: dict[str, Any]) -> None:
+    """Format and print a single prompt/response entry."""
+    typer.echo(f"  span:     {entry['span_id']}")
+    typer.echo(f"  run:      {entry['run_id']}")
+    typer.echo(f"  agent:    {entry['agent_id']}")
+    typer.echo(f"  step:     {entry['step']}")
+    typer.echo(f"  model:    {entry['model']}")
+    typer.echo(f"  time:     {entry['timestamp']}")
+    prompt_text = entry["prompt"][:200] + ("..." if len(entry["prompt"]) > 200 else "")
+    resp_text = entry["response"][:200] + ("..." if len(entry["response"]) > 200 else "")
+    typer.echo(f"  prompt:   {prompt_text}")
+    typer.echo(f"  response: {resp_text}")
+    if entry.get("metadata"):
+        typer.echo(f"  metadata: {json.dumps(entry['metadata'])}")
+
+
+# ---- ask -----------------------------------------------------------------
+
+
+@app.command()
+def ask(
+    question: Annotated[
+        str,
+        typer.Argument(help="Question about the workspace or recent runs."),
+    ],
+    workspace_path: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", help="Workspace root."),
+    ] = Path("."),
+    run: Annotated[
+        str | None,
+        typer.Option("--run", "-r", help="Scope to a specific run ID or topology."),
+    ] = None,
+) -> None:
+    """Ask a question about the workspace or recent runs.
+
+    Reads structured events from the AuditProvider (SQLite) and workspace
+    state, sends to an LLM for analysis. Use --run to scope to a specific
+    run. Falls back to JSONL logs if no audit events.
+    """
+    ws_root = workspace_path.resolve()
+    context_parts = _build_ask_context(ws_root, run_filter=run)
+
+    provider, model = resolve_authoring_provider()
+
+    from swarmkit_runtime.model_providers import CompletionRequest, Message  # noqa: PLC0415
+
+    prompt = (
+        f"Context about this SwarmKit workspace:\n\n"
+        f"{chr(10).join(context_parts)}\n\n"
+        f"Question: {question}"
+    )
+    result = asyncio.run(
+        provider.complete(
+            CompletionRequest(
+                model=model,
+                messages=(Message(role="user", content=prompt),),
+                system=(
+                    "You are a SwarmKit workspace assistant. You have access "
+                    "to the workspace configuration and structured audit events "
+                    "from recent runs.\n\n"
+                    "When answering:\n"
+                    "- Cite specific data: agent names, duration_ms, skill IDs\n"
+                    "- If asked about performance, compare agent timings\n"
+                    "- If asked about failures, explain what went wrong and "
+                    "what the user can do about it\n"
+                    "- If asked about configuration, reference the actual "
+                    "topology/skill/archetype names from the workspace\n"
+                    "- Be concise — 3-5 sentences unless the question needs more"
+                ),
+            )
+        )
+    )
+    typer.echo(result.text or "(no response)")
+
+
+def _build_ask_context(ws_root: Path, *, run_filter: str | None) -> list[str]:
+    """Build context for the ask command from workspace + audit events."""
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+    parts = ["# Workspace state"]
+    try:
+        workspace = resolve_workspace(ws_root)
+        parts.append(f"Workspace: {workspace.raw.metadata.id}")
+        parts.append(f"Topologies: {sorted(workspace.topologies.keys())}")
+        parts.append(f"Skills: {sorted(workspace.skills.keys())}")
+        parts.append(f"Archetypes: {sorted(workspace.archetypes.keys())}")
+    except Exception:
+        parts.append("(workspace could not be resolved)")
+
+    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
+    if audit_db.is_file():
+        audit_provider = WorkspaceRuntime.audit_provider_for(ws_root)
+        events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
+            _collect_audit_events(audit_provider.query(limit=200))
+        )
+        audit_provider.close_sync()
+
+        if run_filter:
+            events = [
+                e
+                for e in events
+                if (e.topology_id and run_filter in e.topology_id)
+                or (e.run_id and run_filter in e.run_id)
+            ]
+
+        if events:
+            parts.append("\n# Audit events (structured)")
+            for e in events:
+                parts.append(
+                    json.dumps(
+                        {
+                            "event_type": e.event_type,
+                            "agent_id": e.agent_id,
+                            "duration_ms": e.duration_ms,
+                            "role": e.agent_role,
+                            "topology": e.topology_id,
+                            "skill": e.skill_id,
+                            "policy": e.policy_decision,
+                        }
+                    )
+                )
+            return parts
+
+    log_dir = ws_root / ".swarmkit" / "logs"
+    if log_dir.is_dir():
+        recent = sorted(log_dir.glob("*.jsonl"), reverse=True)[:3]
+        if recent:
+            parts.append("\n# Recent run logs (JSONL fallback)")
+            for lf in recent:
+                parts.append(f"\n## {lf.name}")
+                parts.append(lf.read_text(encoding="utf-8").strip()[:3000])
+
+    return parts
+
+
+# ---- knowledge-server ----------------------------------------------------
+
+
+@app.command(name="knowledge-server")
+def knowledge_server(
+    repo: Annotated[
+        Path | None,
+        typer.Option(
+            "--repo",
+            help="Override the repo root (default: auto-detected).",
+            show_default=False,
+        ),
+    ] = None,
+) -> None:
+    """Launch the SwarmKit Knowledge MCP Server (stdio)."""
+    from swarmkit_runtime.knowledge._server import run_server  # noqa: PLC0415
+
+    run_server(repo_root=repo.resolve() if repo else None)
+
+
+# ---- docs-reader ---------------------------------------------------------
+
+
+@app.command(name="docs-reader")
+def docs_reader(
+    workspace: Annotated[
+        Path | None,
+        typer.Option(
+            "--workspace",
+            "-w",
+            help="Workspace root for resolving relative paths.",
+            show_default=False,
+        ),
+    ] = None,
+) -> None:
+    """Launch the Document Reader MCP Server (stdio).
+
+    Reads PDF, DOCX, Excel, CSV, draw.io, SVG, and text files.
+    Document parsing libraries are optional — install as needed.
+    """
+    from swarmkit_runtime.docs_reader._server import run_server  # noqa: PLC0415
+
+    run_server(workspace=workspace.resolve() if workspace else None)
+
+
+# ---- trace ---------------------------------------------------------------
+
+
+@app.command()
+def trace(
+    run_id: Annotated[
+        str | None,
+        typer.Argument(help="Run ID to display. Omit to list recent runs.", show_default=False),
+    ] = None,
+    workspace_path: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", help="Workspace root directory."),
+    ] = Path("."),
+    limit: Annotated[
+        int,
+        typer.Option("--limit", "-n", help="Number of recent runs to list."),
+    ] = 10,
+) -> None:
+    """Show the agent call graph and token usage for a run.
+
+    Without arguments, lists recent runs. With a run ID, shows the
+    full call graph including agent delegation, tool calls, and
+    token counts per agent and model.
+    """
+    from swarmkit_runtime.trace import RunTrace, list_traces  # noqa: PLC0415
+
+    ws_root = workspace_path.resolve()
+
+    if run_id is None:
+        traces = list_traces(ws_root, limit=limit)
+        if not traces:
+            typer.echo("No traces found. Run a topology first.")
+            return
+        typer.echo(f"Recent runs ({len(traces)}):\n")
+        for t in traces:
+            dur = t["duration_ms"] / 1000
+            tokens = t["total_tokens"]
+            typer.echo(
+                f"  {t['run_id'][:12]}  {t['topology']:25s}  "
+                f"{dur:6.1f}s  {tokens:>8,} tokens  ({t['agents']} agents)"
+            )
+        typer.echo(f"\nUse: swarmkit trace <run-id> -w {workspace_path}")
+        return
+
+    traces_dir = ws_root / ".swarmkit" / "traces"
+    matches = list(traces_dir.glob(f"{run_id}*.json")) if traces_dir.exists() else []
+    if not matches:
+        _stderr(f"Trace not found: {run_id}")
+        raise typer.Exit(1)
+
+    trace_data = RunTrace.load(matches[0])
+    typer.echo(trace_data.render_text())
+
+
+@app.command()
+def checkpoints(
+    workspace_path: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", help="Workspace root directory."),
+    ] = Path("."),
+) -> None:
+    """List checkpointed runs that can be resumed.
+
+    Shows the last thread ID and any available checkpoint state.
+    Resume a run with: swarmkit run <workspace> <topology> --resume
+    """
+    ws_root = workspace_path.resolve()
+    thread_file = ws_root / ".swarmkit" / "state" / "last_thread.txt"
+    db_path = ws_root / ".swarmkit" / "state" / "checkpoints.db"
+
+    if not thread_file.is_file():
+        typer.echo("No checkpointed runs found.")
+        return
+
+    thread_id = thread_file.read_text(encoding="utf-8").strip()
+    typer.echo(f"Last checkpointed run: {thread_id}")
+
+    if db_path.is_file():
+        import sqlite3  # noqa: PLC0415
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT thread_id, COUNT(*) as steps "
+                "FROM checkpoints GROUP BY thread_id ORDER BY rowid DESC LIMIT 10"
+            ).fetchall()
+            if rows:
+                typer.echo(f"\nCheckpointed threads ({len(rows)}):")
+                for tid, steps in rows:
+                    marker = " ← resumable" if tid == thread_id else ""
+                    typer.echo(f"  {tid[:16]}...  {steps} steps{marker}")
+        except sqlite3.OperationalError:
+            typer.echo("  (checkpoint database exists but no data)")
+        finally:
+            conn.close()
+    else:
+        typer.echo("  (no checkpoint database found)")
+
+    typer.echo(f"\nResume: swarmkit run {workspace_path} <topology> --resume")
+
+
+# ---- stubs for later milestones ------------------------------------------
+
+
+@app.command()
+def serve(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root directory.", show_default=False),
+    ] = Path("."),
+    port: Annotated[
+        int,
+        typer.Option("--port", "-p", help="Port to listen on."),
+    ] = 8000,
+    host: Annotated[
+        str,
+        typer.Option("--host", help="Host to bind to."),
+    ] = "0.0.0.0",
+) -> None:
+    """Start the SwarmKit HTTP server (design §14.1).
+
+    Loads the workspace and exposes topology execution via REST API.
+    Endpoints: GET /health, GET /topologies, GET /skills, POST /run/{topology}.
+    """
+    _print_banner()
+    _suppress_noisy_logs()
+    import uvicorn  # noqa: PLC0415
+
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    app_instance = create_app(workspace_path.resolve())
+    uvicorn.run(app_instance, host=host, port=port)
+
+
+@app.command()
+def eject(topology: str, output: str = "./generated/") -> None:
+    """Export the LangGraph code the runtime would execute (design §14.4)."""
+    _not_implemented("eject", milestone="M9 (eject)")
+
+
+if __name__ == "__main__":
+    app()

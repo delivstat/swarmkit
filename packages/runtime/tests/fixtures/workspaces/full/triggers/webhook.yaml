@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: hello-webhook
+  name: Hello Webhook
+type: webhook
+targets:
+  - hello
+config:
+  path: /webhook/hello

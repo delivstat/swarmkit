@@ -1,0 +1,186 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: sterling-oms
+  name: Sterling OMS Project Workspace
+  description: >
+    Multi-swarm workspace for an IBM Sterling OMS implementation.
+    Four topologies: solution review, Q&A, code review, coding assistant.
+    Backed by live Sterling API access, product documentation RAG,
+    and reference design search.
+planning:
+  scope_required: true
+  two_phase: true
+synthesis:
+  provider: openrouter
+  model: google/gemini-2.5-flash
+governance:
+  provider: mock
+  decision_skills:
+    - id: grounding-verifier
+      trigger: post_output
+      scope: "jira-researcher,docs-researcher,config-analyst,log-analyst"
+      required: false
+    - id: gate-validator
+      trigger: post_output
+      config:
+        gate_id: "sterling-findings"
+    - id: contradiction-detector
+      trigger: pre_synthesis
+    - id: spec-conformance
+      trigger: pre_synthesis
+      scope: "sterling-oms-architect"
+credentials:
+  github-pat:
+    source: env
+    config:
+      env: GITHUB_TOKEN
+  sterling-creds:
+    source: env
+    config:
+      env: STERLING_API_PASSWORD
+  confluence-creds:
+    source: env
+    config:
+      env: ATLASSIAN_API_TOKEN
+mcp_servers:
+  # Sterling CDT config — parsed config dump (services, pipelines, events, etc.)
+  # Ingest: python scripts/ingest-cdt.py /path/to/CDT/ --output $STERLING_CDT_INDEX
+  - id: sterling-config
+    transport: stdio
+    command: ["uv", "run", "sterling_cdt_server.py"]
+    env:
+      STERLING_CDT_INDEX: "${STERLING_CDT_INDEX}"
+  # Sterling product docs — 17K files, ingest once, never changes
+  # Product docs (markdown/HTML), Javadocs, ERD
+  # Ingest with: STERLING_DOCS_DIR=$STERLING_PRODUCT_DOCS_DIR uv run scripts/ingest-docs.py
+  - id: sterling-product-docs
+    transport: stdio
+    command: ["uv", "run", "chromadb_server.py"]
+    env:
+      CHROMADB_PATH: "${STERLING_PRODUCT_DOCS_DIR}/chromadb"
+  # Full-text search over product docs — fast exact keyword matching
+  - id: sterling-product-fts
+    transport: stdio
+    command: ["uv", "run", "fts_server.py"]
+    env:
+      FTS_DB_PATH: "${STERLING_PRODUCT_DOCS_DIR}/fts.db"
+  # Project-specific documentation — design docs, integration specs
+  # Code files (.java, .xsl, .xml) are NOT indexed here —
+  # the developer agent reads those directly from the filesystem
+  - id: sterling-project-docs
+    transport: stdio
+    command: ["uv", "run", "chromadb_server.py"]
+    env:
+      CHROMADB_PATH: "${STERLING_PROJECT_DOCS_DIR}/chromadb"
+  # Reference designs from other projects (separate index)
+  - id: reference-designs
+    transport: stdio
+    command: ["uv", "run", "chromadb_server.py"]
+    env:
+      CHROMADB_PATH: "${REFERENCE_DESIGNS_DIR}/chromadb"
+  # Sterling API Javadocs — structured API documentation (1006 APIs)
+  # Input/output XML, DTDs, user exits, events, samples
+  - id: sterling-api-javadocs
+    transport: stdio
+    command: ["uv", "run", "sterling_javadocs_server.py"]
+    env:
+      STERLING_JAVADOCS_DIR: "${STERLING_JAVADOCS_DIR}"
+  # Local project code — developer agent reads .java, .xsl, .xml directly
+  - id: project-code
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_PROJECT_CODE_DIR}"]
+    cwd: "${STERLING_PROJECT_CODE_DIR}"
+  # Notes/output directory — agents write analysis, docs, explanations here
+  - id: notes-dir
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_NOTES_DIR}"]
+    cwd: "${STERLING_NOTES_DIR}"
+  # Draw.io — create architecture diagrams, pipeline flows, system designs
+  # Supports XML, CSV, and Mermaid input. Exports to PNG, SVG, PDF, .drawio
+  - id: drawio
+    transport: stdio
+    command: ["npx", "-y", "@drawio/mcp"]
+    permission: open
+  # PDF reader — read any PDF, describe diagrams, download Confluence pages as PDF
+  - id: pdf-reader
+    transport: stdio
+    command: ["uv", "run", "pdf_server.py"]
+    env:
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      CONFLUENCE_URL: "${CONFLUENCE_URL}"
+      ATLASSIAN_USERNAME: "${ATLASSIAN_USERNAME}"
+      ATLASSIAN_API_TOKEN: "${ATLASSIAN_API_TOKEN}"
+      STERLING_REVIEW_DOCS_DIR: "${STERLING_REVIEW_DOCS_DIR}"
+  # Review docs — drop files here for agents to review designs, specs, etc.
+  - id: review-docs
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${STERLING_REVIEW_DOCS_DIR}"]
+    cwd: "${STERLING_REVIEW_DOCS_DIR}"
+  # Code knowledge graph — structural queries over project code (optional)
+  # Build graph first: cd $STERLING_PROJECT_CODE_DIR && uvx --from graphifyy graphify
+  - id: code-graph
+    transport: stdio
+    command: ["uv", "run", "graphify_server.py"]
+    env:
+      STERLING_CODE_GRAPH: "${STERLING_CODE_GRAPH}"
+      STERLING_PROJECT_CODE_DIR: "${STERLING_PROJECT_CODE_DIR}"
+  # Sterling log analyser — parses log4j FLAT format, TIMER/SQL analysis
+  # Supports VERBOSE, DEBUG, TIMER, SQLDEBUG log levels
+  - id: sterling-logs
+    transport: stdio
+    command: ["uv", "run", "sterling_log_server.py"]
+    env:
+      STERLING_LOG_DIR: "${STERLING_PROJECT_CODE_DIR}"
+    permission: readonly
+  # Atlassian wrapper — structured-input tools that build valid JQL/CQL
+  # internally, then proxy to mcp-atlassian. Models never write query syntax.
+  # Requires: CONFLUENCE_URL, JIRA_URL, ATLASSIAN_USERNAME, ATLASSIAN_API_TOKEN
+  - id: atlassian
+    transport: stdio
+    command: ["uv", "run", "atlassian_wrapper.py"]
+    env:
+      CONFLUENCE_URL: "${CONFLUENCE_URL}"
+      ATLASSIAN_USERNAME: "${ATLASSIAN_USERNAME}"
+      ATLASSIAN_API_TOKEN: "${ATLASSIAN_API_TOKEN}"
+      JIRA_URL: "${JIRA_URL}"
+    credentials_ref: confluence-creds
+  # Pandoc — document format converter (Markdown ↔ DOCX/HTML/PDF/LaTeX)
+  # Supports reference_doc for DOCX styling from a template
+  - id: pandoc
+    transport: stdio
+    command: ["uvx", "mcp-pandoc"]
+    permission: open
+  # MarkItDown — Microsoft's document-to-markdown converter
+  # Handles PDF, DOCX, XLSX, PPTX with embedded images as inline data URIs
+  # CWD set to knowledge root so it can read files from any subdirectory
+  # (review-docs, project-code, notes, etc.) via relative paths
+  - id: markitdown
+    transport: stdio
+    command: ["uvx", "markitdown-mcp"]
+    cwd: "${STERLING_KNOWLEDGE_DIR}"
+    permission: open
+  # SwarmKit docs-reader — visual image analysis + structured diagram parsing
+  # view_image returns raw ImageContent for multimodal models
+  - id: docs-reader
+    transport: stdio
+    command: ["swarmkit", "docs-reader"]
+    permission: open
+  # Gate validator — file-based schema validation gates
+  # Drop JSON Schema files into gates/ to create validation rules
+  - id: gate-validator
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.gate_validator"]
+  # GitHub for code access (PRs, remote repos)
+  - id: github
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+    credentials_ref: github-pat
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
+  audit:
+    backend: sqlite

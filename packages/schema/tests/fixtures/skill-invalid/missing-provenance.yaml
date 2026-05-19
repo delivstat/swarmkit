@@ -1,0 +1,12 @@
+# provenance is required (design §6.4).
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken
+  name: Broken
+  description: Missing the required provenance block.
+category: capability
+implementation:
+  type: mcp_tool
+  server: foo
+  tool: bar

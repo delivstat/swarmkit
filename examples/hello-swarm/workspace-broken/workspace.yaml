@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: hello-swarm-broken
+  name: Hello Swarm (broken)
+  description: |
+    Same as ../workspace/ but the topology references a misspelled
+    archetype id to demonstrate the validation error UX.

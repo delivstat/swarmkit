@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-monitor-rules
+  name: Get Monitoring Rules
+  description: >
+    Get Sterling monitoring rules for order/shipment status monitoring.
+    Shows alert/escalation timeouts, queues, conditions, and consolidation.
+    Filter by org, status, process type, or rule name.
+category: capability
+implementation:
+  type: mcp_tool
+  server: sterling-config
+  tool: get_monitor_rules
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

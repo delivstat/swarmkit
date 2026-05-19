@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" font-family="'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
+    </marker>
+    <marker id="arr-b" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#0ea5e9"/>
+    </marker>
+    <marker id="arr-g" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#10b981"/>
+    </marker>
+  </defs>
+  <rect width="900" height="520" fill="#f8fafc"/>
+
+  <text x="450" y="32" text-anchor="middle" fill="#0f172a" font-size="20" font-weight="600">Cross-Consultation Flow</text>
+
+  <!-- User -->
+  <rect x="325" y="50" width="250" height="40" rx="20" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="450" y="76" text-anchor="middle" fill="#334155" font-size="13">"How do sourcing rules work?"</text>
+
+  <line x1="450" y1="90" x2="450" y2="120" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Root -->
+  <rect x="325" y="120" width="250" height="55" rx="12" fill="#fffbeb" stroke="#f59e0b" stroke-width="2"/>
+  <text x="450" y="145" text-anchor="middle" fill="#92400e" font-size="15" font-weight="600">Root Agent</text>
+  <text x="450" y="163" text-anchor="middle" fill="#a16207" font-size="11">llama-3.3-70b · $0.10/M · routes only</text>
+
+  <!-- Parallel arrows -->
+  <line x1="370" y1="175" x2="230" y2="225" stroke="#0ea5e9" stroke-width="1.5" marker-end="url(#arr-b)"/>
+  <line x1="530" y1="175" x2="670" y2="225" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr-g)"/>
+  <text x="450" y="208" text-anchor="middle" fill="#94a3b8" font-size="11" font-style="italic">parallel execution</text>
+
+  <!-- Architect -->
+  <rect x="70" y="225" width="320" height="155" rx="12" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="2"/>
+  <text x="230" y="252" text-anchor="middle" fill="#0369a1" font-size="15" font-weight="600">Architect</text>
+  <text x="230" y="272" text-anchor="middle" fill="#0ea5e9" font-size="11">deepseek-chat · $0.32/M</text>
+  <rect x="90" y="286" width="115" height="24" rx="6" fill="#e0f2fe"/>
+  <text x="148" y="303" text-anchor="middle" fill="#0369a1" font-size="10">search-project-docs</text>
+  <rect x="215" y="286" width="85" height="24" rx="6" fill="#e0f2fe"/>
+  <text x="258" y="303" text-anchor="middle" fill="#0369a1" font-size="10">search-config</text>
+  <rect x="310" y="286" width="70" height="24" rx="6" fill="#e0f2fe"/>
+  <text x="345" y="303" text-anchor="middle" fill="#0369a1" font-size="10">search-apis</text>
+  <rect x="90" y="318" width="105" height="24" rx="6" fill="#e0f2fe"/>
+  <text x="143" y="335" text-anchor="middle" fill="#0369a1" font-size="10">search-confluence</text>
+  <rect x="205" y="318" width="80" height="24" rx="6" fill="#e0f2fe"/>
+  <text x="245" y="335" text-anchor="middle" fill="#0369a1" font-size="10">search-jira</text>
+  <text x="230" y="370" text-anchor="middle" fill="#64748b" font-size="10">design view + integration context</text>
+
+  <!-- Developer -->
+  <rect x="510" y="225" width="320" height="155" rx="12" fill="#f0fdf4" stroke="#10b981" stroke-width="2"/>
+  <text x="670" y="252" text-anchor="middle" fill="#166534" font-size="15" font-weight="600">Developer</text>
+  <text x="670" y="272" text-anchor="middle" fill="#10b981" font-size="11">deepseek-chat · $0.32/M</text>
+  <rect x="530" y="286" width="105" height="24" rx="6" fill="#dcfce7"/>
+  <text x="583" y="303" text-anchor="middle" fill="#166534" font-size="10">grep-project-code</text>
+  <rect x="645" y="286" width="90" height="24" rx="6" fill="#dcfce7"/>
+  <text x="690" y="303" text-anchor="middle" fill="#166534" font-size="10">read-file-lines</text>
+  <rect x="745" y="286" width="70" height="24" rx="6" fill="#dcfce7"/>
+  <text x="780" y="303" text-anchor="middle" fill="#166534" font-size="10">verify-cites</text>
+  <rect x="530" y="318" width="100" height="24" rx="6" fill="#dcfce7"/>
+  <text x="580" y="335" text-anchor="middle" fill="#166534" font-size="10">get-api-input-xml</text>
+  <rect x="640" y="318" width="95" height="24" rx="6" fill="#dcfce7"/>
+  <text x="688" y="335" text-anchor="middle" fill="#166534" font-size="10">search-jira</text>
+  <text x="670" y="370" text-anchor="middle" fill="#64748b" font-size="10">code analysis + line citations</text>
+
+  <!-- Merge back -->
+  <line x1="230" y1="380" x2="380" y2="415" stroke="#0ea5e9" stroke-width="1.5" marker-end="url(#arr-b)"/>
+  <line x1="670" y1="380" x2="520" y2="415" stroke="#10b981" stroke-width="1.5" marker-end="url(#arr-g)"/>
+
+  <!-- Synthesis -->
+  <rect x="325" y="410" width="250" height="45" rx="12" fill="#fffbeb" stroke="#f59e0b" stroke-width="2"/>
+  <text x="450" y="433" text-anchor="middle" fill="#92400e" font-size="13" font-weight="600">Root Synthesises</text>
+  <text x="450" y="448" text-anchor="middle" fill="#a16207" font-size="11">merges both perspectives</text>
+
+  <line x1="450" y1="455" x2="450" y2="480" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Output -->
+  <rect x="275" y="480" width="350" height="30" rx="8" fill="#f1f5f9" stroke="#334155" stroke-width="1"/>
+  <text x="450" y="500" text-anchor="middle" fill="#334155" font-size="12">Coherent answer with design + code citations</text>
+</svg>

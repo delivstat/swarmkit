@@ -1,0 +1,14 @@
+# Fires the Document Processing Swarm whenever a markdown file under docs/
+# is created or modified.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: docs-rebuild
+  name: Docs Rebuild
+type: file_watch
+targets:
+  - document-processing-swarm
+config:
+  root: ./docs
+  pattern: "**/*.md"
+  events: [created, modified]

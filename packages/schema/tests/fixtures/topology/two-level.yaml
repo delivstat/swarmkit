@@ -1,0 +1,19 @@
+# Root with one leader with one worker. Smallest multi-agent case.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: two-level
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root
+    children:
+      - id: analysis-leader
+        role: leader
+        archetype: supervisor-leader
+        children:
+          - id: code-analyst
+            role: worker
+            archetype: code-analyst-worker

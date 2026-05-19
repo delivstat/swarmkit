@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: hello-daily
+  name: Hello Daily
+type: cron
+targets:
+  - hello
+config:
+  expression: "0 9 * * *"

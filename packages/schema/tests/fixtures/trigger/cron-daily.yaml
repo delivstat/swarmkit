@@ -1,0 +1,15 @@
+# Basic weekday-morning cron. Conventionally lives under workspace/schedules/
+# (just directory convention — kind is still Trigger).
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: daily-code-review
+  name: Daily Code Review
+  description: |
+    Runs the Code Review Swarm every weekday morning against the current
+    main branch of the three core repos.
+type: cron
+targets:
+  - code-review-swarm
+config:
+  expression: "0 9 * * 1-5"

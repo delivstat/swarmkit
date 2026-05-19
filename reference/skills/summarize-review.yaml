@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: summarize-review
+  name: Summarize Review
+  description: >
+    Synthesises multiple review verdicts (engineering, QA, operations)
+    into a single executive summary with an overall recommendation.
+    Used by root supervisors to produce the final review output.
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: >
+    Given multiple review verdicts from different specialist leaders,
+    produce a concise executive summary. Include: overall verdict
+    (approve/request-changes/block), key findings from each leader,
+    any unresolved concerns, and a recommended action. Be direct —
+    the reader wants the bottom line first, details second.
+provenance:
+  authored_by: human
+  version: 1.0.0

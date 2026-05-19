@@ -1,0 +1,78 @@
+docs_dir: docs/site
+site_dir: _site
+site_name: SwarmKit
+site_description: An open-source framework for composing, running, and growing multi-agent AI swarms.
+site_url: https://delivstat.github.io/swarmkit/
+repo_url: https://github.com/delivstat/swarmkit
+repo_name: delivstat/swarmkit
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+  features:
+    - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting started:
+    - Installation: getting-started/install.md
+    - Hello Swarm: getting-started/hello-swarm.md
+  - Architecture:
+    - Design overview: architecture/design-overview.md
+    - Implementation plan: architecture/implementation-plan.md
+  - Design notes:
+    - Runtime:
+      - LangGraph compiler: design-notes/langgraph-compiler.md
+      - MCP client: design-notes/mcp-client.md
+      - MCP discovery pattern: design-notes/mcp-discovery-pattern.md
+      - Document reader MCP: design-notes/document-reader-mcp.md
+      - Governance provider: design-notes/governance-provider-interface.md
+      - Model provider: design-notes/model-provider-abstraction.md
+      - DAG dependency graph: design-notes/dag-dependency-graph.md
+      - Conversational authoring: design-notes/conversational-authoring.md
+      - Structured output: design-notes/structured-output-governance.md
+    - Observability (M6-M7):
+      - OpenTelemetry observability: design-notes/opentelemetry-observability.md
+      - Intent drift detection: design-notes/intent-drift-detection.md
+      - Human interaction model: design-notes/human-interaction-model.md
+    - Knowledge & skills:
+      - Knowledge MCP Server: design-notes/knowledge-mcp-server.md
+      - User Knowledge Server: design-notes/user-knowledge-server.md
+      - Knowledge Curator topology: design-notes/knowledge-curator-topology.md
+      - Skill registry: design-notes/skill-registry.md
+    - Reference topologies:
+      - Code Review Swarm: design-notes/topology-code-review.md
+      - Skill Authoring Swarm: design-notes/topology-skill-authoring.md
+    - Product & architecture:
+      - Product architecture: design-notes/product-architecture.md
+      - Product refinements: design-notes/product-architecture-refinements.md
+      - Market analysis: design-notes/market-analysis-and-risk-mitigations.md
+  - Reference:
+    - CLI commands: reference/cli.md
+    - Environment configuration: reference/env-config.md
+    - Telemetry configuration: reference/telemetry.md
+    - Intent drift detection: reference/intent-drift.md
+    - Notifications: reference/notifications.md
+    - Skills catalogue: reference/skills.md
+    - Archetypes catalogue: reference/archetypes.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - toc:
+      permalink: true

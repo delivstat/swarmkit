@@ -1,0 +1,51 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: rynko-content
+  name: Rynko Content Pipeline
+  description: >
+    Automated content creation for rynko.dev — researches trending
+    AI topics, writes SEO blog posts and LinkedIn posts with natural
+    Rynko tie-ins, publishes to Hashnode and dev.to.
+governance:
+  provider: mock
+credentials:
+  hashnode-token:
+    source: env
+    config:
+      env: HASHNODE_TOKEN
+  devto-token:
+    source: env
+    config:
+      env: DEVTO_API_KEY
+  brave-key:
+    source: env
+    config:
+      env: BRAVE_API_KEY
+mcp_servers:
+  # Web research — trending topics, SERP analysis, competitor content
+  - id: brave-search
+    transport: stdio
+    command: ["npx", "-y", "@anthropic/brave-search-mcp"]
+    env:
+      BRAVE_API_KEY: "${BRAVE_API_KEY}"
+  # Blog publishing — Hashnode (blog.rynko.dev) + dev.to cross-posting
+  - id: blog-publisher
+    transport: stdio
+    command: ["uv", "run", "blog_publisher_server.py"]
+    env:
+      HASHNODE_TOKEN: "${HASHNODE_TOKEN}"
+      HASHNODE_PUBLICATION_ID: "${HASHNODE_PUBLICATION_ID}"
+      DEVTO_API_KEY: "${DEVTO_API_KEY}"
+  # Rynko product knowledge — docs, features, positioning
+  - id: rynko-knowledge
+    transport: stdio
+    command: ["npx", "-y", "mcp-local-rag"]
+    env:
+      BASE_DIR: "${RYNKO_KNOWLEDGE_DIR}"
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
+  audit:
+    backend: sqlite

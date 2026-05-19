@@ -1,0 +1,10 @@
+# metadata.version must be semver (\d+\.\d+\.\d+).
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: broken
+  version: "1.0"
+agents:
+  root:
+    id: root
+    role: root

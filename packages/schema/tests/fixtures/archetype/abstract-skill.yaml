@@ -1,0 +1,30 @@
+# Exercises the abstract-skill placeholder pattern (design §6.6 edge case).
+# The archetype declares "this agent needs a decision skill with capability
+# content_review" without naming a concrete skill; the topology resolver
+# (M1) binds it to a concrete skill at load time.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: content-analyst-worker
+  name: Content Analyst Worker
+  description: |
+    Evaluates content submissions. Uses an abstract placeholder for the
+    concrete review skill so the same archetype works across topologies
+    that swap in different validation backends.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+  skills:
+    - audit-log-write                 # concrete
+    - abstract:
+        category: decision
+        capability: content_review    # resolved at topology-load time
+    - abstract:
+        category: persistence         # no capability — any persistence skill works
+  iam:
+    base_scope: [content:read]
+provenance:
+  authored_by: human
+  version: 0.3.0

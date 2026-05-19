@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-sql-calls
+  name: Get SQL Calls
+  description: >
+    Extract SQL statements from Sterling SQLDEBUG logs. Shows queries
+    with execution context to identify slow or repeated DB calls.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: get_sql_calls

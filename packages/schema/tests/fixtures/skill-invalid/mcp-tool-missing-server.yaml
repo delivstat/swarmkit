@@ -1,0 +1,14 @@
+# mcp_tool implementation requires both server and tool.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken
+  name: Broken
+  description: mcp_tool implementation missing the required `server` field.
+category: capability
+implementation:
+  type: mcp_tool
+  tool: bar
+provenance:
+  authored_by: human
+  version: 1.0.0

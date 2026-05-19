@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: github-issue-read
+  name: GitHub Issue Read
+  description: >
+    Reads issues from a GitHub repository. Wraps the official GitHub
+    MCP server's get_issue tool.
+category: capability
+implementation:
+  type: mcp_tool
+  server: github
+  tool: get_issue
+iam:
+  required_scopes: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

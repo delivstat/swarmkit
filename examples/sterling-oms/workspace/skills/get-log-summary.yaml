@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-log-summary
+  name: Get Log Summary
+  description: >
+    Get high-level summary of a Sterling log file: entry counts per
+    level, unique correlation IDs, top slowest calls, time range.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: get_log_summary

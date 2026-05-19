@@ -1,0 +1,42 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: config-review
+  name: Sterling Configuration Review
+  description: Review a proposed config change for operational safety, integration integrity, and best practices.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [approve, needs-changes, reject]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    risks:
+      type: array
+      items:
+        type: object
+        properties:
+          area:
+            type: string
+          severity:
+            type: string
+            enum: [critical, high, medium, low]
+          description:
+            type: string
+        required: [area, severity, description]
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Review the proposed Sterling OMS configuration change for operational safety,
+    integration integrity, extension safety, and version compatibility.
+    Search the knowledge base for relevant documentation before producing your verdict.
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,8 @@
+# type is required.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: broken
+  name: Broken
+targets:
+  - hello-swarm

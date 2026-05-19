@@ -1,0 +1,35 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: rynko-output-validator
+  name: Rynko Output Validator
+  description: >
+    Validates structured agent output against business rules via Rynko Flow.
+    Tier 2 validation: domain-specific checks beyond JSON Schema shape.
+    Example: every finding about a pipeline must reference a real pipeline ID.
+    Only fires when explicitly configured in workspace governance.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-revision]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+    flagged_items:
+      type: array
+      items:
+        type: string
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: mcp_tool
+  server: rynko-flow
+  tool: validate_gate
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" font-family="'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <marker id="a1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect width="900" height="380" fill="#f8fafc"/>
+
+  <text x="450" y="32" text-anchor="middle" fill="#0f172a" font-size="20" font-weight="600">Topology as Data — YAML in, LangGraph out</text>
+
+  <!-- YAML side -->
+  <rect x="40" y="55" width="340" height="285" rx="12" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="2"/>
+  <rect x="40" y="55" width="340" height="36" rx="12" fill="#0ea5e9"/>
+  <rect x="40" y="75" width="340" height="16" fill="#0ea5e9"/>
+  <text x="210" y="80" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="600">topology.yaml</text>
+
+  <text x="65" y="115" fill="#f59e0b" font-size="13" font-weight="600">agents:</text>
+  <text x="65" y="137" fill="#475569" font-size="13">  root:</text>
+  <text x="65" y="157" fill="#94a3b8" font-size="12">    role: root</text>
+  <text x="65" y="177" fill="#94a3b8" font-size="12">    model: llama-3.3-70b</text>
+  <text x="65" y="199" fill="#475569" font-size="13">    children:</text>
+  <text x="65" y="221" fill="#0ea5e9" font-size="13">      - id: architect</text>
+  <text x="65" y="241" fill="#94a3b8" font-size="12">        archetype: oms-architect</text>
+  <text x="65" y="263" fill="#10b981" font-size="13">      - id: developer</text>
+  <text x="65" y="283" fill="#94a3b8" font-size="12">        archetype: oms-developer</text>
+
+  <text x="210" y="325" text-anchor="middle" fill="#94a3b8" font-size="11">Edit this file to change the swarm</text>
+
+  <!-- Arrow -->
+  <line x1="395" y1="195" x2="485" y2="195" stroke="#f59e0b" stroke-width="2" marker-end="url(#a1)"/>
+  <text x="440" y="183" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="600">compile_topology()</text>
+
+  <!-- Graph side -->
+  <rect x="500" y="55" width="360" height="285" rx="12" fill="#faf5ff" stroke="#8b5cf6" stroke-width="2"/>
+  <rect x="500" y="55" width="360" height="36" rx="12" fill="#8b5cf6"/>
+  <rect x="500" y="75" width="360" height="16" fill="#8b5cf6"/>
+  <text x="680" y="80" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="600">LangGraph StateGraph</text>
+
+  <!-- START -->
+  <circle cx="680" cy="120" r="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="680" y="125" text-anchor="middle" fill="#64748b" font-size="9">START</text>
+
+  <!-- Root -->
+  <rect x="630" y="150" width="100" height="38" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="680" y="174" text-anchor="middle" fill="#92400e" font-size="12" font-weight="600">root</text>
+
+  <!-- Architect -->
+  <rect x="535" y="220" width="110" height="38" rx="8" fill="#f0f9ff" stroke="#0ea5e9" stroke-width="1.5"/>
+  <text x="590" y="244" text-anchor="middle" fill="#0369a1" font-size="12">architect</text>
+
+  <!-- Developer -->
+  <rect x="715" y="220" width="110" height="38" rx="8" fill="#f0fdf4" stroke="#10b981" stroke-width="1.5"/>
+  <text x="770" y="244" text-anchor="middle" fill="#166534" font-size="12">developer</text>
+
+  <!-- END -->
+  <circle cx="680" cy="305" r="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="680" y="310" text-anchor="middle" fill="#64748b" font-size="9">END</text>
+
+  <!-- Edges -->
+  <line x1="680" y1="134" x2="680" y2="150" stroke="#94a3b8" stroke-width="1.2"/>
+  <line x1="650" y1="188" x2="605" y2="220" stroke="#0ea5e9" stroke-width="1.2"/>
+  <line x1="710" y1="188" x2="755" y2="220" stroke="#10b981" stroke-width="1.2"/>
+  <line x1="590" y1="258" x2="665" y2="291" stroke="#0ea5e9" stroke-width="1" stroke-dasharray="4"/>
+  <line x1="770" y1="258" x2="695" y2="291" stroke="#10b981" stroke-width="1" stroke-dasharray="4"/>
+
+  <!-- Edge labels -->
+  <text x="562" y="208" fill="#94a3b8" font-size="9">delegate_to_</text>
+  <text x="745" y="208" fill="#94a3b8" font-size="9">delegate_to_</text>
+  <text x="600" y="280" fill="#94a3b8" font-size="9">return</text>
+  <text x="735" y="280" fill="#94a3b8" font-size="9">return</text>
+
+  <text x="680" y="338" text-anchor="middle" fill="#94a3b8" font-size="11">Nodes, edges, routing — all from YAML</text>
+</svg>

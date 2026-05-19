@@ -1,0 +1,33 @@
+# Exercises every artifact block.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: with-artifacts
+  version: 0.1.0
+  description: |
+    A topology exercising all artifact blocks defined in §5.4 and §10.1.
+runtime:
+  mode: persistent
+  max_concurrent_tasks: 5
+  task_timeout_seconds: 300
+  checkpointing:
+    storage: sqlite
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root
+artifacts:
+  knowledge_bases:
+    - id: content-analytics
+      storage: sqlite
+  review_queues:
+    - id: pending-deploys
+      storage: sqlite
+  audit:
+    level: detailed
+    storage: sqlite
+    retention_days: 90
+  skill_gap_logging:
+    enabled: true
+    surface_threshold: 5

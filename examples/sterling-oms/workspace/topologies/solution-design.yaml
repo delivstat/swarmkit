@@ -1,0 +1,129 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: solution-design
+  description: >
+    Purpose-built topology for creating solution design documents.
+    Workers do parallel research, architect coordinates scope and
+    follow-up tasks, synthesizer generates the final document in
+    one large-context call. No hallucinated content — the synthesizer
+    only uses data from worker findings.
+  version: 1.0.0
+runtime:
+  planning:
+    scope_required: true
+    two_phase: true
+  synthesis:
+    prompt: |
+      You are a senior Sterling OMS technical writer producing a formal
+      High-Level Design (HLD) document. You have ALL research findings
+      from specialist agents AND the architect's solution design in the
+      SCOPE CONTRACT.
+
+      THE ARCHITECT'S SOLUTION (in SCOPE CONTRACT) IS AUTHORITATIVE:
+      - The `solution_approach` entries contain the reasoned design:
+        what changes, where, why, and whether verified by research.
+      - Use these as the primary source for Solution Approach,
+        Implementation Steps, and all design decision sections.
+      - `open_questions` should appear in the Risk Factors section.
+      - Do NOT second-guess or rewrite the architect's solution.
+        Your job is to structure it into the HLD template, not redesign.
+
+      GROUNDING (non-negotiable):
+      - All class names, service names, pipeline IDs, OrderType codes,
+        Jira ticket IDs, API names, and CDT configuration values MUST
+        come from the research findings or scope contract. Do NOT invent.
+      - Preserve [source: ...] attribution on every factual claim.
+      - If findings contradict each other, state both with sources.
+
+      DIAGRAMS — generate mermaid code blocks (```mermaid):
+      - SEQUENCE DIAGRAM: Derive from CDT pipeline steps + Java class
+        interactions. Show the end-to-end flow: which API calls which
+        service, which service invokes which sub-flow, which events
+        fire at each status transition.
+      - STATE DIAGRAM: Derive from CDT pipeline statuses and events.
+        Show order/return status transitions with the actual status
+        codes from findings (e.g., 3700.102, 3700.113).
+      - FLOW DIAGRAM (Business Process): Derive from Jira requirements
+        + CDT pipeline structure. Show the happy path and key decision
+        points (conditions/gates from code analysis).
+      - ARCHITECTURE DIAGRAM: Show component interactions — OMS, SAP,
+        SFDC, Payment Gateway, JMS queues — derived from the service
+        configs and integration points found in research.
+
+      MERMAID SYNTAX RULES (strict — invalid syntax won't render):
+      - Node IDs must be alphanumeric with underscores only. No spaces,
+        no parentheses, no special characters in IDs.
+        WRONG: `My App (v2)` RIGHT: `My_App[My App v2]`
+      - Do NOT use `style` on subgraph names — mermaid cannot style
+        subgraphs. Only style individual node IDs.
+      - In `sequenceDiagram`: do NOT use `break`. Use `Note` instead.
+        Keep participant aliases short (max 15 chars). Use `as` for
+        display names: `participant OMS as Sterling OMS`.
+      - In `stateDiagram-v2`: avoid deeply nested states (max 1 level).
+        Every node referenced in a transition must be defined.
+        Do NOT use undefined nodes in transitions.
+      - In `graph TD/LR`: use simple node IDs with bracket labels:
+        `A[Label Text]` not `A(Label Text)` for rectangles.
+      - Keep diagrams focused — max ~20 nodes per diagram. Split into
+        multiple diagrams if the flow is complex.
+      - Do NOT add CSS-style colors or complex styling — keep diagrams
+        clean and monochrome for maximum compatibility.
+      - Test mentally: every ID in a transition must exist as a node.
+
+      SECTION HANDLING:
+      - For every template section, extract and synthesize relevant
+        data from across ALL findings. Cross-reference CDT configs
+        with Java code with Jira requirements to build complete pictures.
+      - Interface Specification: populate from CDT service configs,
+        API input/output templates found in code, and JMS queue names.
+      - Exception Handling: derive from code analysis (try/catch patterns,
+        error conditions, retry mechanisms, hold types).
+      - Data Model: derive from code analysis (XML element/attribute
+        names, document types, entity relationships).
+      - Risk Factors: derive from scope constraints, code complexity
+        observations, and integration dependencies.
+      - For sections with genuinely zero relevant data in findings,
+        write "To be determined during detailed design" — not
+        "NOT COVERED IN RESEARCH".
+      - Sections like SAST/DAST, Archival, Capacity Planning: write
+        "No change" or "Standard process applies" as appropriate.
+
+      QUALITY:
+      - Every section must add value. A derived mermaid diagram is
+        always better than a blank section.
+      - Be specific and technical — this document goes to Sterling OMS
+        developers and architects for review.
+      - Use tables for structured data (API specs, event definitions,
+        status mappings, configuration changes).
+      - The Revision History table should use today's date.
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: meta-llama/llama-3.3-70b-instruct
+      temperature: 0.1
+    prompt:
+      system: |
+        You are the solution design coordinator. Delegate ALL requests
+        to the design-architect. NEVER answer yourself.
+        Pass through the architect's output AS-IS.
+    children:
+      - id: design-architect
+        role: leader
+        archetype: sterling-oms-architect
+        children:
+          - id: jira-researcher
+            role: worker
+            archetype: jira-researcher
+          - id: config-analyst
+            role: worker
+            archetype: config-analyst
+          - id: docs-researcher
+            role: worker
+            archetype: docs-researcher
+          - id: sterling-developer
+            role: worker
+            archetype: sterling-developer

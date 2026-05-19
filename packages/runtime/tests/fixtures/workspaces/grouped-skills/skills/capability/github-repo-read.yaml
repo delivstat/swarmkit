@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: github-repo-read
+  name: GitHub Repo Read
+  description: Reads files + tree from a GitHub repo via the GitHub MCP server.
+category: capability
+implementation:
+  type: mcp_tool
+  server: github
+  tool: get_repo
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,10 @@
+# Smallest valid trigger — fired by `swarmkit trigger fire <id>` or the
+# "Run now" UI button. No config required.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: run-now
+  name: Run Now
+targets:
+  - hello-swarm
+type: manual

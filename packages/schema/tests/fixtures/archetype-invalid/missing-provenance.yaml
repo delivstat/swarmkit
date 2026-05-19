@@ -1,0 +1,9 @@
+# provenance is required on every archetype (design §13).
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: broken
+  name: Broken
+  description: Archetype without the required provenance block.
+role: worker
+defaults: {}

@@ -1,0 +1,86 @@
+[project]
+name = "swarmkit-workspace"
+version = "0.0.0"
+description = "SwarmKit monorepo root — not published. See packages/ for distributable projects."
+requires-python = ">=3.11"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "types-pyyaml",
+    "types-jsonschema",
+    # Pydantic model codegen from the canonical JSON Schemas. See
+    # docs/notes/schema-change-discipline.md — generated models live under
+    # packages/schema/python/src/swarmkit_schema/models/ and must be
+    # regenerated whenever a schema changes (`just schema-codegen`).
+    "datamodel-code-generator>=0.26",
+]
+
+[tool.uv.workspace]
+members = [
+    "packages/runtime",
+    "packages/schema/python",
+]
+
+[tool.uv.sources]
+swarmkit-runtime = { workspace = true }
+swarmkit-schema = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+    # Generated pydantic models — codegen'd from JSON Schemas. See
+    # design/details/pydantic-codegen.md.
+    "packages/schema/python/src/swarmkit_schema/models",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "PL",   # pylint
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "PLR0913",  # too many args — common in framework code
+    "PLR2004",  # magic values — noisy
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+
+# AGT v3.x (public preview) doesn't ship py.typed markers yet.
+[[tool.mypy.overrides]]
+module = ["agent_os.*", "agent_control_plane.*", "agentmesh.*", "agent_sre.*", "google.*", "langgraph.*", "langchain_core.*", "langsmith.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["packages/runtime/tests", "packages/schema/python/tests"]
+addopts = "-ra --strict-markers --strict-config -m 'not integration'"
+markers = [
+    "integration: tests that call live external APIs (deselected by default)",
+]

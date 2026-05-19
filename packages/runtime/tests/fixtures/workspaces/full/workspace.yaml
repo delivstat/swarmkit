@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: full-workspace
+  name: Full Workspace
+  description: |
+    Exercises every artifact kind the discovery layer handles — topologies,
+    archetypes, skills, triggers, and schedules.

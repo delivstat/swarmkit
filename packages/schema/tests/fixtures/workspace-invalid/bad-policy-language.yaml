@@ -1,0 +1,9 @@
+# policy_language must be yaml | rego | cedar.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+governance:
+  provider: agt
+  policy_language: json

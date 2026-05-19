@@ -1,0 +1,62 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: code-review
+  version: 1.0.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-leader
+    prompt:
+      system: >
+        You are the root supervisor of a code review swarm. You
+        coordinate three specialist leaders: engineering (code quality
+        + security), QA (test coverage), and operations (deploy risk).
+
+        When given a PR to review, delegate to engineering-leader first.
+        After engineering reports, delegate to qa-leader with the
+        engineering findings. After QA reports, delegate to ops-leader
+        with both engineering and QA findings. Finally, synthesise all
+        three leaders' verdicts into a comprehensive review summary.
+    children:
+      - id: engineering-leader
+        role: leader
+        archetype: engineering-leader
+        children:
+          - id: code-reader
+            role: worker
+            archetype: github-reader
+          - id: code-reviewer
+            role: worker
+            archetype: code-analyst
+          - id: security-reviewer
+            role: worker
+            archetype: security-reviewer
+      - id: qa-leader
+        role: leader
+        archetype: qa-leader
+        children:
+          - id: test-analyst
+            role: worker
+            archetype: test-analyst
+          - id: qa-judge
+            role: worker
+            archetype: llm-judge
+            skills:
+              - qa-verdict
+      - id: ops-leader
+        role: leader
+        archetype: ops-leader
+        children:
+          - id: deploy-reviewer
+            role: worker
+            archetype: llm-judge
+            prompt:
+              system: >
+                You are a deployment risk assessor. Evaluate the
+                change for breaking API changes, migration needs,
+                config changes, and rollback complexity. Set verdict
+                to needs-review when confidence is below 0.8.
+            skills:
+              - deploy-risk-review

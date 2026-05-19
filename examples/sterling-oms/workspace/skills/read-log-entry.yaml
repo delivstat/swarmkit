@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: read-log-entry
+  name: Read Log Entry
+  description: >
+    Read the full text of a specific log entry including multiline
+    XML payloads. Pass the line number from other tool results.
+    Use when message_preview isn't enough detail.
+category: capability
+provenance:
+  authored_by: human
+  version: 1.0.0
+implementation:
+  type: mcp_tool
+  server: sterling-logs
+  tool: read_log_entry

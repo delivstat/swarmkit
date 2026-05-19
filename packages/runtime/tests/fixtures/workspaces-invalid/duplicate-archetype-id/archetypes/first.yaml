@@ -1,0 +1,11 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: same-archetype
+  name: Same Archetype (first)
+  description: First archetype with this id.
+role: worker
+defaults: {}
+provenance:
+  authored_by: human
+  version: 0.1.0

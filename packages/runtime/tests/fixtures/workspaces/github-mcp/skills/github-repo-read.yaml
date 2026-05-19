@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: github-repo-read
+  name: GitHub Repository File Read
+  description: >
+    Reads file contents from a GitHub repository. Wraps the official
+    GitHub MCP server's get_file_contents tool.
+category: capability
+implementation:
+  type: mcp_tool
+  server: github
+  tool: get_file_contents
+iam:
+  required_scopes: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

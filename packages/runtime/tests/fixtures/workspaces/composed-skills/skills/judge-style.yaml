@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: judge-style
+  name: Judge — Style
+  description: Single-persona LLM judge focused on style.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: |
+    Evaluate style of the candidate output; return JSON.
+provenance:
+  authored_by: human
+  version: 0.1.0

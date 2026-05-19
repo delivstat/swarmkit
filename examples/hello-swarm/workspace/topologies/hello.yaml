@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: hello
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: anthropic
+      name: claude-opus-4-7
+      temperature: 0.1
+    prompt:
+      system: |
+        You are the root supervisor. Delegate greeting requests to the
+        greeter worker.
+    children:
+      - id: greeter
+        role: worker
+        archetype: greeter
