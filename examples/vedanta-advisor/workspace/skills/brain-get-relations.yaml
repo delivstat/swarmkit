@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: brain-get-relations
+  name: Brain Get Relations
+  description: >
+    Traverse GBrain graph edges from a wisdom block. Returns
+    related blocks by edge type: complements, tensions_with,
+    deepened_by, illustrated_by, same_verse_different_lens.
+category: capability
+implementation:
+  type: mcp_tool
+  server: gbrain
+  tool: get_relations
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: advisor
+  description: >
+    Phase 3: Conversational spiritual advisor. Single agent queries
+    the GBrain wisdom graph for relevant teachings, reasons over
+    connected wisdom blocks, and cites exact verses from ChromaDB.
+    Honest about gaps — says "I don't have guidance" when the graph
+    has no relevant blocks.
+  version: 1.0.0
+agents:
+  root:
+    id: advisor
+    role: root
+    archetype: wisdom-advisor

@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-scripture
+  name: Search Scripture
+  description: >
+    Search ChromaDB scripture collections by keyword, theme, or
+    text family. Returns matching verses with translations.
+category: capability
+implementation:
+  type: mcp_tool
+  server: scripture-search
+  tool: search_verses
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

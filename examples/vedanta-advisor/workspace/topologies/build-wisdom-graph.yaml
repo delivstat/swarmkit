@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: build-wisdom-graph
+  description: >
+    Phase 2: Single agent reads all ChromaDB collections and builds
+    the wisdom graph in GBrain. Must be single-agent — connecting
+    verses across texts by meaning requires one context window.
+  version: 1.0.0
+agents:
+  root:
+    id: graph-builder
+    role: root
+    archetype: graph-builder

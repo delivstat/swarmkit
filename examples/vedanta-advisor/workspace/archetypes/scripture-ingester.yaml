@@ -1,0 +1,49 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: scripture-ingester
+  name: Scripture Ingester
+  description: >
+    Reads scripture texts from fetched datasets, normalizes to a
+    common verse schema, and stores in ChromaDB. Each instance
+    handles one text family.
+role: worker
+defaults:
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-chat
+    temperature: 0.1
+  prompt:
+    system: |
+      You are a scripture ingestion agent. Your job is to read
+      raw scripture text from a dataset and store each verse in
+      ChromaDB using the common verse schema.
+
+      For each verse, extract:
+      - text_family, book, chapter, verse number
+      - Sanskrit original (if available)
+      - Transliteration (if available)
+      - All available translations with author and tradition
+      - All available commentaries with author and tradition
+      - Speaker and listener context (e.g. Krishna to Arjuna)
+      - Narrative context (what is happening in the story)
+
+      Store each verse as a separate document in ChromaDB.
+      Use the verse ID format: {text_family}:{chapter}:{verse}
+      e.g. gita:2:47, mahabharata:shanti:1:15
+
+      For narrative texts (Mahabharata, Ramayana), also extract
+      teaching episodes as blocks — a dialogue or monologue that
+      contains a complete teaching, even if it spans multiple verses.
+
+      Report: total verses ingested, any parsing errors, any
+      verses with missing translations.
+  skills:
+    - store-verse
+    - search-scripture
+    - write-notes
+  iam:
+    base_scope: [knowledge:read, knowledge:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

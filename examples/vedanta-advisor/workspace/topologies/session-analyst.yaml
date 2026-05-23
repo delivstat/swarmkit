@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: session-analyst
+  description: >
+    Phase 4: Offline analysis of completed conversation sessions.
+    Reviews advisor interactions to identify gaps, ineffective
+    answers, missing graph connections, and depth mismatches.
+    Proposes improvements for human review — never modifies
+    the graph directly.
+  version: 1.0.0
+agents:
+  root:
+    id: analyst
+    role: root
+    archetype: session-analyst

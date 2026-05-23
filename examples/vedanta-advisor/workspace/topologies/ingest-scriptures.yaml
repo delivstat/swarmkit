@@ -1,0 +1,72 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: ingest-scriptures
+  description: >
+    Phase 1: Parallel ingestion of Hindu scripture texts into ChromaDB.
+    Each worker handles one text family independently. Genuinely
+    parallel — no cross-source dependencies during ingestion.
+  version: 1.0.0
+agents:
+  root:
+    id: ingestion-coordinator
+    role: root
+    model:
+      provider: openrouter
+      name: meta-llama/llama-3.3-70b-instruct
+      temperature: 0.1
+    prompt:
+      system: |
+        You coordinate scripture ingestion. Delegate each text family
+        to its specialist worker. Each worker ingests independently.
+        Report completion status for each text family.
+    children:
+      - id: gita-ingester
+        role: worker
+        archetype: scripture-ingester
+        prompt:
+          system: |
+            You ingest Bhagavad Gita texts. Source: the fetched GitHub
+            dataset at $VEDANTA_DATASETS_DIR/bhagavad-gita.
+            Normalize all 700 verses to the common verse schema.
+            Store in the gita ChromaDB collection.
+            Include all available translations and commentaries.
+      - id: mahabharata-ingester
+        role: worker
+        archetype: scripture-ingester
+        prompt:
+          system: |
+            You ingest Mahabharata texts. Source: the fetched GitHub
+            dataset at $VEDANTA_DATASETS_DIR/DharmicData/Mahabharata.
+            Focus on teaching episodes: Bhishma Parva (Gita context),
+            Shanti Parva (Bhishma's teachings), Vana Parva (Yaksha
+            Prashna, Vidura Niti), Udyoga Parva (Krishna's counsel).
+            Store in the mahabharata ChromaDB collection.
+      - id: ramayana-ingester
+        role: worker
+        archetype: scripture-ingester
+        prompt:
+          system: |
+            You ingest Valmiki Ramayana texts. Source: the fetched
+            GitHub dataset at $VEDANTA_DATASETS_DIR/Valmiki_Ramayan_Dataset.
+            Focus on teaching episodes and dharma discussions.
+            Store in the ramayana ChromaDB collection.
+      - id: purana-ingester
+        role: worker
+        archetype: scripture-ingester
+        prompt:
+          system: |
+            You ingest Purana texts. Source: the fetched GitHub
+            dataset at $VEDANTA_DATASETS_DIR/Datasets (Bhagavata Purana)
+            and any scraped wisdomlib content.
+            Store in the puranas ChromaDB collection.
+      - id: niti-ingester
+        role: worker
+        archetype: scripture-ingester
+        prompt:
+          system: |
+            You ingest practical wisdom texts: Chanakya Niti, Vidura
+            Niti, Yoga Sutras, Arthashastra. Source: fetched datasets
+            at $VEDANTA_DATASETS_DIR/Datasets (Chanakya Niti) and
+            extracted PDFs from archive.org.
+            Store in the niti ChromaDB collection.

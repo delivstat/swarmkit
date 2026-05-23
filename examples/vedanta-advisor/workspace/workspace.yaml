@@ -1,0 +1,48 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: vedanta-advisor
+  name: Vedanta Advisor
+  description: >
+    Conversational spiritual advisor grounded in Hindu religious texts.
+    Provides life guidance with exact verse citations, multiple
+    philosophical perspectives, and honest acknowledgment of gaps.
+    Knowledge graph powered by GBrain; citation source via ChromaDB.
+governance:
+  provider: mock
+credentials:
+  openrouter-key:
+    source: env
+    config:
+      env: OPENROUTER_API_KEY
+mcp_servers:
+  # GBrain — wisdom graph (reasoning source)
+  # The semantic knowledge graph: wisdom blocks, cross-text connections,
+  # life-situation tags, emotional states, darshana perspectives.
+  # Init: cd $VEDANTA_BRAIN_DIR && npx gbrain init
+  - id: gbrain
+    transport: stdio
+    command: ["npx", "gbrain", "mcp-serve"]
+    env:
+      GBRAIN_PATH: "${VEDANTA_BRAIN_DIR}"
+
+  # Scripture search — ChromaDB verse lookup (citation source)
+  # Raw verses, translations, commentaries indexed per text family.
+  # Ingest: python scripts/ingest-to-chromadb.py
+  - id: scripture-search
+    transport: stdio
+    command: ["uv", "run", "scripture_search_server.py"]
+    env:
+      CHROMADB_PATH: "${VEDANTA_CHROMADB_DIR}"
+
+  # Notes directory — agents write output here
+  - id: notes
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${VEDANTA_NOTES_DIR}"]
+    cwd: "${VEDANTA_NOTES_DIR}"
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
+  audit:
+    backend: sqlite

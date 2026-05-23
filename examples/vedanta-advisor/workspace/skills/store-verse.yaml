@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: store-verse
+  name: Store Verse
+  description: >
+    Store a scripture verse in ChromaDB with translations,
+    commentaries, and context metadata.
+category: capability
+implementation:
+  type: mcp_tool
+  server: scripture-search
+  tool: store_verse
+iam:
+  required_scopes: [knowledge:write]
+provenance:
+  authored_by: human
+  version: 1.0.0
