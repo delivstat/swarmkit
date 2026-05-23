@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["chromadb>=0.5", "mcp>=1.0"]
+# ///
 """Scripture Search MCP Server — ChromaDB verse lookup for Vedanta Advisor.
 
 Citation source only. The conversational agent queries GBrain for meaning;
