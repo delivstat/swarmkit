@@ -10,6 +10,22 @@ metadata:
     Knowledge graph powered by GBrain; citation source via ChromaDB.
 governance:
   provider: mock
+  decision_skills:
+    # Structural validation — checks block schema before write
+    - id: gate-validator
+      trigger: post_output
+      scope: "graph-builder"
+      config:
+        gate_id: "wisdom-block"
+    - id: gate-validator
+      trigger: post_output
+      scope: "graph-builder"
+      config:
+        gate_id: "knowledge-block"
+    # Citation verification — checks verse references are accurate
+    - id: verify-citations
+      trigger: post_output
+      scope: "graph-builder,advisor"
 credentials:
   openrouter-key:
     source: env
@@ -34,6 +50,11 @@ mcp_servers:
     command: ["uv", "run", "scripture_search_server.py"]
     env:
       CHROMADB_PATH: "${VEDANTA_CHROMADB_DIR}"
+
+  # Gate validator — schema validation for wisdom/knowledge blocks
+  - id: gate-validator
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.gate_validator"]
 
   # Notes directory — agents write output here
   - id: notes

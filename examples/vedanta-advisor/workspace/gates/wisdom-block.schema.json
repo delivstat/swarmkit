@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Wisdom Block",
+  "description": "Schema for wisdom blocks written to GBrain. Validates that all required fields are present and correctly typed.",
+  "type": "object",
+  "required": ["title", "type", "core_teaching", "source_verses", "applicable_when", "depth_levels"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "description": "Theme name in kebab-case"
+    },
+    "type": {
+      "const": "wisdom",
+      "description": "Must be 'wisdom' for wisdom blocks"
+    },
+    "core_teaching": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Synthesized teaching from relevant verses"
+    },
+    "darshana_perspectives": {
+      "type": "object",
+      "properties": {
+        "karma_yoga": { "type": "string" },
+        "advaita": { "type": "string" },
+        "bhakti": { "type": "string" },
+        "vishishtadvaita": { "type": "string" },
+        "dvaita": { "type": "string" }
+      },
+      "minProperties": 1,
+      "description": "At least one darshana perspective required"
+    },
+    "applicable_when": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Life situations this teaching addresses"
+    },
+    "emotional_states": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Emotional states this teaching addresses"
+    },
+    "depth_levels": {
+      "type": "object",
+      "required": ["practical", "philosophical"],
+      "properties": {
+        "practical": { "type": "string", "minLength": 10 },
+        "philosophical": { "type": "string", "minLength": 10 },
+        "contemplative": { "type": "string" }
+      }
+    },
+    "source_verses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ref", "relevance"],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^[a-z]+:[0-9:]+$",
+            "description": "Verse ID in format text:chapter:verse"
+          },
+          "relevance": {
+            "enum": ["primary", "supporting", "cross-text"],
+            "description": "How central this verse is to the teaching"
+          },
+          "quote": { "type": "string" }
+        }
+      },
+      "minItems": 1,
+      "description": "At least one source verse required"
+    },
+    "teaching_story": {
+      "type": "string",
+      "minLength": 50,
+      "description": "Narrative that illustrates the teaching"
+    },
+    "counter_teaching": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "source": { "type": "string" }
+      }
+    },
+    "contradictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "source": { "type": "string" },
+          "resolution": { "type": "string" }
+        }
+      }
+    }
+  }
+}

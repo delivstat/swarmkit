@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Knowledge Block",
+  "description": "Schema for knowledge blocks (stories, characters, concepts) written to GBrain.",
+  "type": "object",
+  "required": ["title", "type", "summary", "story", "significance", "key_verses"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "description": "Character, event, or concept name"
+    },
+    "type": {
+      "const": "knowledge",
+      "description": "Must be 'knowledge' for knowledge blocks"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 20,
+      "description": "2-3 sentence summary"
+    },
+    "story": {
+      "type": "string",
+      "minLength": 100,
+      "description": "Full narrative told as a story, not an encyclopedia entry"
+    },
+    "characters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "role"],
+        "properties": {
+          "name": { "type": "string" },
+          "role": { "type": "string" }
+        }
+      },
+      "minItems": 1
+    },
+    "significance": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Why this story/character/concept matters"
+    },
+    "key_verses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ref"],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^[a-z]+:[0-9a-z:-]+$"
+          },
+          "quote": { "type": "string" }
+        }
+      },
+      "minItems": 1
+    },
+    "text_source": {
+      "type": "string",
+      "description": "Which text this comes from (ramayana, mahabharata, etc.)"
+    },
+    "connected_stories": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Related knowledge block titles"
+    },
+    "teachings_within": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Wisdom block titles this story illustrates"
+    },
+    "common_questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Questions people commonly ask about this"
+    }
+  }
+}
