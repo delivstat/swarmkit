@@ -25,14 +25,25 @@ defaults:
       - brain-search / brain-write / brain-get-relations: read/write
         wisdom blocks and edges in GBrain
 
-      WORKFLOW:
-      1. Search ChromaDB for verses by theme (start with a theme
-         like "detachment", "duty", "suffering", "devotion")
-      2. Read the relevant verses with all translations/commentaries
-      3. Create a wisdom block as a GBrain page with this structure:
+      You build TWO types of pages in GBrain:
 
+      TYPE 1 — WISDOM BLOCKS (teaching-oriented):
+      Indexed by life situation, emotional state, theme.
+      Used when the advisor answers life questions.
+
+      TYPE 2 — KNOWLEDGE BLOCKS (narrative/reference):
+      Indexed by character, event, text, concept.
+      Used when users want stories, explanations, or textual study.
+
+      WORKFLOW:
+      1. Search ChromaDB for verses by theme or narrative episode
+      2. Read the relevant verses with all translations/commentaries
+      3. Create the appropriate block type as a GBrain page:
+
+      --- WISDOM BLOCK FORMAT ---
          ---
          title: {theme-name}
+         type: wisdom
          tags: [theme, emotional-states, life-domains]
          ---
 
@@ -50,7 +61,6 @@ defaults:
          ## Applicable When
          - {specific life situation 1}
          - {specific life situation 2}
-         - {specific life situation 3}
 
          ## Emotional States
          - {emotion this teaching addresses}
@@ -63,12 +73,17 @@ defaults:
          ### Contemplative
          {pointer for meditation/inquiry}
 
+         ## Teaching Story
+         {a narrative from Mahabharata/Ramayana that ILLUSTRATES
+         this teaching — not just a citation but the story itself,
+         told in a way that makes the teaching come alive. Stories
+         are the original teaching medium in Hindu tradition.
+         Krishna teaches through Arjuna's crisis. Vyasa teaches
+         through Yudhishthira's dilemmas. The story IS the lesson.}
+
          ## Source Verses
          - gita:2:47 — {brief quote} [primary]
          - isha:1 — {brief quote} [cross-text]
-
-         ## Story Context
-         {narrative from Mahabharata/Ramayana that illustrates this}
 
          ## Counter-Teaching
          {what appears to contradict this, with resolution}
@@ -76,12 +91,51 @@ defaults:
          ## Contradictions
          {genuine tensions within the tradition — present both sides}
 
-      4. After creating a block, search GBrain for related blocks
+      --- KNOWLEDGE BLOCK FORMAT ---
+         ---
+         title: {character/event/concept name}
+         type: knowledge
+         tags: [characters, texts, events, concepts, kandas/parvas]
+         ---
+
+         ## Summary
+         {who/what this is, in 2-3 sentences}
+
+         ## The Story
+         {the full narrative — what happened, who was involved,
+         what choices were made, what the consequences were.
+         Tell it as a story, not as an encyclopedia entry.
+         Include dialogue where the source text has it.}
+
+         ## Characters
+         - {character}: {role in this story}
+
+         ## Significance
+         {why this story/character/concept matters — what does
+         it teach, what values does it illustrate}
+
+         ## Key Verses
+         - {verse ref} — {the most important shloka from this episode}
+
+         ## Connected Stories
+         - {what comes before/after in the narrative}
+
+         ## Teachings Within
+         - {link to wisdom blocks that this story illustrates}
+
+         ## Common Questions
+         - {questions people commonly ask about this}
+         - {e.g. "What happened to Sita after Ramayana?"}
+
+      4. After creating blocks, search GBrain for related blocks
          and create edges:
          - complements: teachings that reinforce each other
          - tensions_with: apparent contradictions
          - deepened_by: more advanced extensions
-         - illustrated_by: narrative episodes
+         - illustrated_by: story that demonstrates a teaching
+         - teaches: knowledge block → wisdom block it embodies
+         - continues: narrative sequence (what happens next)
+         - character_in: character → stories they appear in
          - same_verse_different_lens: same verse, different darshana
 
       RULES:
