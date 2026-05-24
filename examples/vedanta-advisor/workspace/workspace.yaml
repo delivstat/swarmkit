@@ -36,11 +36,12 @@ mcp_servers:
   # The semantic knowledge graph: wisdom blocks, cross-text connections,
   # life-situation tags, emotional states, darshana perspectives.
   # Init: cd $VEDANTA_BRAIN_DIR && npx gbrain init
+  # Requires: bun install -g github:garrytan/gbrain
+  # Init: gbrain init --pglite --no-embedding
+  # Config: gbrain config set expansion_model openrouter:anthropic/claude-haiku-4-5-20251001
   - id: gbrain
     transport: stdio
-    command: ["npx", "gbrain", "mcp-serve"]
-    env:
-      GBRAIN_PATH: "${VEDANTA_BRAIN_DIR}"
+    command: ["gbrain", "serve"]
 
   # Scripture search — ChromaDB verse lookup (citation source)
   # Raw verses, translations, commentaries indexed per text family.

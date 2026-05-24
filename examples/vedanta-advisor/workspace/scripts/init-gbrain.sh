@@ -2,33 +2,41 @@
 set -euo pipefail
 
 # Initialize GBrain for the Vedanta Advisor wisdom graph
-# Usage: ./scripts/init-gbrain.sh [brain_dir]
-
-BRAIN_DIR="${1:-${VEDANTA_BRAIN_DIR:-./knowledge/brain}}"
+# Requires: bun (curl -fsSL https://bun.sh/install | bash)
+#           gbrain (bun install -g github:garrytan/gbrain)
 
 echo "=== Initializing GBrain ==="
-echo "Brain directory: $BRAIN_DIR"
-echo ""
 
-if [ -d "$BRAIN_DIR/.git" ]; then
-  echo "GBrain already initialized at $BRAIN_DIR"
-  echo "To reset: rm -rf $BRAIN_DIR && ./scripts/init-gbrain.sh"
+# Check prerequisites
+if ! command -v bun &> /dev/null; then
+  echo "Bun not found. Install: curl -fsSL https://bun.sh/install | bash"
+  exit 1
+fi
+
+if ! command -v gbrain &> /dev/null; then
+  echo "GBrain not found. Install: bun install -g github:garrytan/gbrain"
+  exit 1
+fi
+
+# Check if already initialized
+if gbrain list &> /dev/null; then
+  echo "GBrain already initialized."
+  gbrain config show
   exit 0
 fi
 
-mkdir -p "$BRAIN_DIR"
-cd "$BRAIN_DIR"
+# Initialize with PGLite (local, no server needed)
+echo "Initializing with PGLite (local Postgres)..."
+gbrain init --pglite --no-embedding
 
-# Initialize GBrain
-npx gbrain init
+# Configure expansion model to use OpenRouter
+echo ""
+echo "Configuring expansion model..."
+gbrain config set expansion_model openrouter:anthropic/claude-haiku-4-5-20251001
 
 echo ""
-echo "=== GBrain initialized ==="
+echo "=== GBrain ready ==="
+gbrain config show
 echo ""
-echo "Next steps:"
-echo "  1. Run the ingestion topology to populate ChromaDB"
-echo "  2. Run the graph builder topology to create wisdom blocks"
-echo "  3. Test with: npx gbrain search 'detachment from outcomes'"
-echo ""
-echo "To start the MCP server:"
-echo "  GBRAIN_PATH=$BRAIN_DIR npx gbrain mcp-serve"
+echo "Next: run the graph builder topology to populate wisdom blocks"
+echo "  swarmkit run workspace build-wisdom-graph"
