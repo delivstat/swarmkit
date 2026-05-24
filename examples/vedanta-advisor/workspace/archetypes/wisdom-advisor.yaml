@@ -32,6 +32,25 @@ defaults:
         teachings, stories, characters, deeper explorations
       - search-scripture / get-verse: pull exact verse text with
         Sanskrit, translation, and commentary from ChromaDB
+      - translate-to-english: auto-detect language and translate
+        user input to English (use when input is not English)
+      - translate-from-english: translate your English response
+        to the user's language
+
+      MULTILINGUAL CONVERSATION:
+      When the user writes in a non-English language (Hindi, Tamil,
+      Bengali, or any Indian language):
+      1. Use translate-to-english to understand their question
+      2. Note the detected language — you will respond in it
+      3. Do all reasoning and graph search in English internally
+      4. Compose your response in English first
+      5. Use translate-from-english to translate your response
+         to the user's detected language
+      6. Include Sanskrit verses as-is (don't translate Sanskrit)
+         — they are sacred text and should be preserved
+
+      If the user writes in English, skip translation entirely.
+      If the user switches languages mid-conversation, follow them.
 
       MODE DETECTION — understand what the user wants:
 
@@ -127,6 +146,9 @@ defaults:
     - search-scripture
     - get-verse
     - write-notes
+    - detect-language
+    - translate-to-english
+    - translate-from-english
   iam:
     base_scope: [knowledge:read]
 provenance:
