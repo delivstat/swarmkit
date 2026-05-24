@@ -312,6 +312,64 @@ Fails on misattribution — citing Shankaracharya's words as Ramanujacharya's is
 
 ---
 
+## Multilingual Support
+
+The advisor speaks 23 languages. Ask in Hindi, get wisdom in Hindi — with Sanskrit verses preserved as-is.
+
+### Supported Languages
+
+English, Hindi, Bengali, Tamil, Telugu, Kannada, Malayalam, Marathi, Gujarati, Punjabi, Odia, Assamese, Urdu, Sanskrit, Kashmiri, Nepali, Konkani, Maithili, Dogri, Manipuri, Bodo, Santali, Sindhi.
+
+Also handles romanized variants — Hinglish, Tanglish, etc.
+
+### How It Works
+
+```
+User (Hindi): "मुझे डर लगता है कि मेरा बिज़नेस फेल हो जाएगा"
+  │
+  ▼
+IndicLID: detected hin_Deva (Hindi), confidence 0.97
+  │
+  ▼
+IndicTrans2: "I'm afraid my business will fail"
+  │
+  ▼
+Advisor: searches GBrain → detachment-from-outcome → Gita 2.47
+  │
+  ▼
+Advisor composes English response with verse citation
+  │
+  ▼
+IndicTrans2: translates response to Hindi
+  │
+  ▼
+User gets response in Hindi
+  Sanskrit verses preserved: कर्मण्येवाधिकारस्ते मा फलेषु कदाचन
+```
+
+The reasoning always happens in English internally — the wisdom graph and ChromaDB are in English. Translation is the user-facing layer. This means a Tamil user and a Gujarati user get the same quality of wisdom — no language is a second-class citizen.
+
+Sanskrit verses are never translated by the machine — they are sacred text and should be read in the original. The advisor quotes the Sanskrit, then provides the scholar translation from ChromaDB.
+
+### Translation Stack
+
+| Component | Model | Purpose |
+|---|---|---|
+| Language Detection | IndicLID (AI4Bharat) | Auto-detect user's language from input text |
+| Translation | IndicTrans2 1B (AI4Bharat) | Translate between English and 22 Indian languages |
+
+Both models are open-source from IIT Madras (AI4Bharat). Self-hosted, no API calls for translation. First run downloads models (~2GB), subsequent runs use cache.
+
+IndicTrans2 beats Google Translate by 4-8 BLEU points on English↔Indic pairs (IN22-Gen benchmark). It also supports Indic↔Indic translation (Hindi↔Tamil, Bengali↔Telugu) without going through English.
+
+### Why Not Sarvam AI?
+
+Sarvam's translation API is good for Hindi-English but explicitly weak for Sanskrit — "lower translation quality and occasional incomplete outputs." Since Sanskrit is central to this system, we use IndicTrans2 which covers all 22 languages including Sanskrit (with acknowledged limitations — LLM-based understanding via Claude is still better for Sanskrit philosophical nuance).
+
+Sarvam's TTS (Bulbul V3) and STT (Saarika V3) remain good options for a future voice interface — 30+ voices, 11 Indian languages, streaming support. Not integrated yet.
+
+---
+
 ## Tech Stack
 
 | Component | Technology | Purpose |
@@ -319,17 +377,19 @@ Fails on misattribution — citing Shankaracharya's words as Ramanujacharya's is
 | Agent Runtime | SwarmKit | Topology compiler, tool wiring, governance |
 | Knowledge Graph | GBrain (PGLite) | Wisdom blocks, semantic edges, hybrid search |
 | Citation Store | ChromaDB | 98K+ verses with translations and commentaries |
+| Translation | IndicLID + IndicTrans2 (AI4Bharat) | 23-language support, self-hosted |
 | LLM (Advisor) | Claude Sonnet 4 via OpenRouter | Conversational reasoning |
 | LLM (Graph Builder) | Claude Sonnet 4 via OpenRouter | Verse interpretation, cross-text connection |
 | LLM (Verifier) | DeepSeek Chat via OpenRouter | Citation accuracy checking |
 | LLM (Ingestion) | DeepSeek Chat via OpenRouter | Text normalization |
-| MCP Servers | scripture-search, gbrain serve | Tool access for agents |
+| MCP Servers | scripture-search, gbrain serve, translation | Tool access for agents |
 
 ### Why These Model Choices
 
 - **Sonnet 4 for advisor and graph builder** — these need strong reasoning to connect cross-text themes and provide nuanced life guidance. Cheaper models produce superficial connections.
 - **DeepSeek Chat for ingestion and verification** — mechanical tasks (normalize JSON, compare two texts). No deep reasoning needed, cost-effective.
-- **All via OpenRouter** — single API key, model flexibility, cost tracking.
+- **IndicTrans2 for translation** — best benchmarks for Indian languages (beats Google by 4-8 BLEU), open-source, self-hosted, no API costs.
+- **All LLMs via OpenRouter** — single API key, model flexibility, cost tracking.
 
 ---
 
