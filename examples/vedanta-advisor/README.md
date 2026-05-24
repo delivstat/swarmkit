@@ -623,13 +623,30 @@ I feel lost in life. I have a good job but I feel like I'm not doing
 what I'm supposed to do. How do I find my purpose?
 ```
 
-### Tool Calls (3 turns, 48.9 seconds)
+### Tool Calls (4 turns)
 
 | Turn | Tool | Result |
 |---|---|---|
-| 1 | `brain-search` ("purpose dharma duty lost") | Found `detachment-from-outcomes` wisdom block (175B) via GBrain hybrid search |
-| 2 | `search-scripture` ("purpose dharma svadharma") | Found Gita 3:35, 2:47 from ChromaDB (5KB + 4KB) |
-| 3 | `get-verse` (gita:3:35, gita:2:47) | Full Sanskrit + 21 commentaries (14KB + 19KB) |
+| 1 | `brain-search` (purpose, dharma) | Matched wisdom blocks from GBrain |
+| 2 | `brain-search` (confusion, direction) | Additional wisdom block matches |
+| 3 | `search-scripture` (svadharma, karma yoga) | Found Gita 3:35, 2:47 from ChromaDB (5KB + 4KB) |
+| 4 | `get-verse` (gita:3:35, gita:2:47, gita:2:48) detail=quote | Sanskrit + one translation only (188B + 188B + 169B) |
+
+### Token Optimization
+
+`get-verse` supports three detail levels to control response size:
+
+| Level | Size | When |
+|---|---|---|
+| `quote` | ~500B | GBrain already has the teaching, just need Sanskrit for citation |
+| `summary` | ~2KB | Need Shankara/Ramanuja/Sivananda perspectives |
+| `full` | ~15-20KB | User asks about commentary comparison |
+
+**Before optimization:** `get-verse` returned all 21 commentators per verse (14KB + 19KB = 33KB). Total run: ~50K input tokens.
+
+**After optimization:** `get-verse` with `detail=quote` returns Sanskrit + one translation (188B + 188B + 169B = 545B). Total run: ~15K input tokens.
+
+**98% reduction in verse data, ~70% reduction in total tokens.** Response quality unchanged — the teaching context comes from GBrain wisdom blocks, ChromaDB is only for exact citation.
 
 ### Response
 
@@ -668,7 +685,7 @@ what I'm supposed to do. How do I find my purpose?
 
 ### Cost
 
-~$0.05 at Kimi K2.6 pricing ($0.73/1M input). Three tool turns, ~50K input tokens including verse commentaries.
+~$0.01 at Kimi K2.6 pricing ($0.73/1M input). Four tool turns, ~15K input tokens with quote-level verse detail.
 
 ---
 
