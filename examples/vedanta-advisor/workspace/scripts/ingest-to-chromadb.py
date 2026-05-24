@@ -259,6 +259,183 @@ def ingest_chanakya(client: chromadb.ClientAPI, datasets_dir: Path) -> int:
     return count
 
 
+def ingest_vedas(client: chromadb.ClientAPI, datasets_dir: Path) -> int:
+    """Ingest Rig Veda, Yajur Veda, Atharva Veda from DharmicData."""
+    collection = client.get_or_create_collection("vedas")
+    count = 0
+
+    veda_dirs = {
+        "rigveda": ("Rigveda", "rigveda_mandala_*.json", "mandala"),
+        "atharvaveda": ("AtharvaVeda", "atharvaveda_kaanda_*.json", "kaanda"),
+        "yajurveda": ("Yajurveda", "vajasneyi_madhyadina_samhita.json", None),
+    }
+
+    for veda_id, (folder, pattern, unit_key) in veda_dirs.items():
+        veda_dir = datasets_dir / "DharmicData" / folder
+        if not veda_dir.exists():
+            print(f"  {folder} not found, skipping")
+            continue
+
+        for data_file in sorted(veda_dir.glob(pattern)):
+            with open(data_file, encoding="utf-8") as f:
+                verses = json.load(f)
+
+            if not isinstance(verses, list):
+                continue
+
+            for verse in verses:
+                mandala = verse.get("mandala", verse.get("kaanda", verse.get("chapter", 0)))
+                sukta = verse.get("sukta", verse.get("hymn", 0))
+                text = verse.get("text", "")
+                if not text.strip():
+                    continue
+
+                verse_id = f"{veda_id}:{mandala}:{sukta}:{count}"
+                collection.upsert(
+                    ids=[verse_id],
+                    documents=[f"Sanskrit: {text}"],
+                    metadatas=[{
+                        "verse_id": verse_id,
+                        "text_family": "vedas",
+                        "book": veda_id.replace("veda", " Veda").title(),
+                        "unit": str(mandala),
+                        "sukta": str(sukta),
+                    }],
+                )
+                count += 1
+
+    return count
+
+
+def ingest_upanishads(client: chromadb.ClientAPI, datasets_dir: Path) -> int:
+    """Ingest Upanishads from hrgupta/indian-scriptures CSV dataset."""
+    import csv
+
+    up_dir = datasets_dir / "indian-scriptures" / "data" / "processed" / "upanishads"
+    if not up_dir.exists():
+        print(f"  Upanishads dataset not found at {up_dir}")
+        return 0
+
+    collection = client.get_or_create_collection("upanishads")
+    count = 0
+
+    for csv_file in sorted(up_dir.glob("*.csv")):
+        upanishad_name = csv_file.stem.replace("_", " ").title()
+        upanishad_slug = csv_file.stem.split("_upanishad")[0]
+
+        with open(csv_file, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                mantra = row.get("mantra", "")
+                number = row.get("number", "").strip("।। ")
+                if not mantra.strip():
+                    continue
+
+                verse_id = f"upanishad:{upanishad_slug}:{number}" if number else f"upanishad:{upanishad_slug}:{count}"
+                collection.upsert(
+                    ids=[verse_id],
+                    documents=[f"Sanskrit: {mantra}"],
+                    metadatas=[{
+                        "verse_id": verse_id,
+                        "text_family": "upanishads",
+                        "book": upanishad_name,
+                        "verse_number": number,
+                    }],
+                )
+                count += 1
+
+    return count
+
+
+def ingest_itihasa_parallel(client: chromadb.ClientAPI, datasets_dir: Path) -> int:
+    """Ingest Mahabharata parallel corpus (Sanskrit-English) from itihasa."""
+    data_dir = datasets_dir / "itihasa" / "data"
+    if not data_dir.exists():
+        print(f"  Itihasa dataset not found at {data_dir}")
+        return 0
+
+    collection = client.get_or_create_collection("mahabharata_english")
+    count = 0
+
+    for split in ["train", "dev", "test"]:
+        en_file = data_dir / f"{split}.en"
+        sn_file = data_dir / f"{split}.sn"
+        if not en_file.exists():
+            continue
+
+        en_lines = en_file.read_text(encoding="utf-8").strip().split("\n")
+        sn_lines = sn_file.read_text(encoding="utf-8").strip().split("\n") if sn_file.exists() else []
+
+        for i, en_line in enumerate(en_lines):
+            if not en_line.strip():
+                continue
+
+            sn_line = sn_lines[i] if i < len(sn_lines) else ""
+            verse_id = f"mahabharata-en:{split}:{i}"
+
+            doc_parts = []
+            if sn_line:
+                doc_parts.append(f"Sanskrit: {sn_line}")
+            doc_parts.append(f"Translation: {en_line}")
+
+            collection.upsert(
+                ids=[verse_id],
+                documents=["\n".join(doc_parts)],
+                metadatas=[{
+                    "verse_id": verse_id,
+                    "text_family": "mahabharata_english",
+                    "book": "Mahabharata (Dutt)",
+                    "split": split,
+                    "line": str(i),
+                }],
+            )
+            count += 1
+
+    return count
+
+
+def ingest_yoga_sutras(client: chromadb.ClientAPI, datasets_dir: Path) -> int:
+    """Ingest Yoga Sutras from plain text (Johnston translation)."""
+    txt_file = datasets_dir / "yoga-sutras-of-patanjali-llm-rag" / "YogaSutrasOfPatanjali-pg2526.txt"
+    if not txt_file.exists():
+        print(f"  Yoga Sutras not found at {txt_file}")
+        return 0
+
+    collection = client.get_or_create_collection("niti")
+    content = txt_file.read_text(encoding="utf-8")
+
+    lines = content.split("\n")
+    count = 0
+    current_book = 0
+    current_sutra = 0
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("BOOK "):
+            current_book += 1
+            current_sutra = 0
+            continue
+        if len(line) > 20 and not line.startswith(("The Project", "This ebook", "Title:", "Author:", "Editor:", "Release", "Language", "Credits", "***")):
+            current_sutra += 1
+            verse_id = f"yoga-sutra:{current_book}:{current_sutra}"
+            collection.upsert(
+                ids=[verse_id],
+                documents=[f"Translation [Charles Johnston]: {line}"],
+                metadatas=[{
+                    "verse_id": verse_id,
+                    "text_family": "niti",
+                    "book": "Yoga Sutras of Patanjali",
+                    "chapter": str(current_book),
+                    "verse": str(current_sutra),
+                }],
+            )
+            count += 1
+
+    return count
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest scriptures into ChromaDB")
     parser.add_argument("--datasets-dir", default=DATASETS_DIR)
@@ -275,24 +452,40 @@ def main() -> None:
 
     client = chromadb.PersistentClient(path=str(chromadb_dir))
 
-    print("[1/4] Ingesting Bhagavad Gita...")
+    print("[1/8] Ingesting Bhagavad Gita...")
     gita_count = ingest_gita(client, datasets_dir)
     print(f"  {gita_count} verses ingested")
 
-    print("[2/4] Ingesting Valmiki Ramayana...")
+    print("[2/8] Ingesting Valmiki Ramayana...")
     ramayana_count = ingest_ramayana(client, datasets_dir)
     print(f"  {ramayana_count} shlokas ingested")
 
-    print("[3/4] Ingesting Mahabharata...")
+    print("[3/8] Ingesting Mahabharata (Sanskrit)...")
     mb_count = ingest_mahabharata(client, datasets_dir)
     print(f"  {mb_count} shlokas ingested")
 
-    print("[4/4] Ingesting Chanakya Niti...")
+    print("[4/8] Ingesting Chanakya Niti...")
     cn_count = ingest_chanakya(client, datasets_dir)
     print(f"  {cn_count} verses ingested")
 
+    print("[5/8] Ingesting Vedas (Rig, Yajur, Atharva)...")
+    veda_count = ingest_vedas(client, datasets_dir)
+    print(f"  {veda_count} hymns ingested")
+
+    print("[6/8] Ingesting Upanishads...")
+    upanishad_count = ingest_upanishads(client, datasets_dir)
+    print(f"  {upanishad_count} mantras ingested")
+
+    print("[7/8] Ingesting Mahabharata (English parallel)...")
+    itihasa_count = ingest_itihasa_parallel(client, datasets_dir)
+    print(f"  {itihasa_count} parallel verses ingested")
+
+    print("[8/8] Ingesting Yoga Sutras...")
+    yoga_count = ingest_yoga_sutras(client, datasets_dir)
+    print(f"  {yoga_count} sutras ingested")
+
     print()
-    total = gita_count + ramayana_count + mb_count + cn_count
+    total = gita_count + ramayana_count + mb_count + cn_count + veda_count + upanishad_count + itihasa_count + yoga_count
     print(f"=== Done: {total:,} total documents ingested ===")
     print()
     print("Collections:")
