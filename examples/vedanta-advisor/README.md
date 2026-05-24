@@ -539,6 +539,139 @@ The Gita says act with detachment. Some Upanishads say renounce action entirely.
 
 ---
 
+## GBrain Setup (Detailed)
+
+GBrain requires Bun (not Node.js) and uses PGLite (embedded Postgres) for local storage.
+
+### Installation
+
+```bash
+# Install Bun
+curl -fsSL https://bun.sh/install | bash
+
+# Install GBrain from GitHub (not npm)
+bun install -g github:garrytan/gbrain
+```
+
+### Initialize with Embeddings
+
+GBrain needs an embedding provider for semantic search. We use OpenAI embeddings proxied through OpenRouter (no separate OpenAI key needed).
+
+```bash
+# Initialize PGLite brain
+gbrain init --pglite --embedding-model openai:text-embedding-3-small --embedding-dimensions 1536
+
+# Set expansion model to use OpenRouter
+gbrain config set expansion_model openrouter:anthropic/claude-haiku-4-5-20251001
+
+# Verify config
+gbrain config show
+# Should show:
+#   embedding_model: openai:text-embedding-3-small
+#   embedding_dimensions: 1536
+#   expansion_model: openrouter:anthropic/claude-haiku-4-5-20251001
+```
+
+### Embedding via OpenRouter Proxy
+
+GBrain's `openai:text-embedding-3-small` model can use OpenRouter as a proxy. Set these env vars before running GBrain or the advisor:
+
+```bash
+export OPENAI_API_KEY=$OPENROUTER_API_KEY
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+```
+
+This routes embedding API calls through OpenRouter, which proxies to OpenAI. No separate OpenAI account needed.
+
+### Import Wisdom Blocks and Embed
+
+```bash
+# Write a wisdom block
+gbrain put "detachment-from-outcomes" < wisdom-block.md
+
+# Generate embeddings for all pages
+gbrain embed --all
+# Output: Embedded 23 chunks across 8 pages
+
+# Test search
+gbrain query "fear of failure"
+# Should return: detachment-from-outcomes (0.79), courage (0.44), duty-vs-desire (0.39)
+```
+
+### Config File Location
+
+`~/.gbrain/config.json` — if the CLI flags don't work, edit this directly:
+
+```json
+{
+  "engine": "pglite",
+  "database_path": "/home/user/.gbrain/brain.pglite",
+  "embedding_model": "openai:text-embedding-3-small",
+  "embedding_dimensions": 1536,
+  "expansion_model": "openrouter:anthropic/claude-haiku-4-5-20251001"
+}
+```
+
+---
+
+## Example Run
+
+### Input
+
+```
+I feel lost in life. I have a good job but I feel like I'm not doing
+what I'm supposed to do. How do I find my purpose?
+```
+
+### Tool Calls (3 turns, 48.9 seconds)
+
+| Turn | Tool | Result |
+|---|---|---|
+| 1 | `brain-search` ("purpose dharma duty lost") | Found `detachment-from-outcomes` wisdom block (175B) via GBrain hybrid search |
+| 2 | `search-scripture` ("purpose dharma svadharma") | Found Gita 3:35, 2:47 from ChromaDB (5KB + 4KB) |
+| 3 | `get-verse` (gita:3:35, gita:2:47) | Full Sanskrit + 21 commentaries (14KB + 19KB) |
+
+### Response
+
+> I hear you. That feeling — everything looks fine on paper, but something underneath says *this isn't it* — is one of the oldest human experiences. The texts don't dismiss it. They take it seriously.
+>
+> **Arjuna at Kurukshetra**
+>
+> Arjuna was not a failure. He was the finest archer of his age, beloved by his teachers, married to a princess, surrounded by family and friends. By every external measure, he had a "good job." And then the moment came when he had to step into his role as a warrior — and he froze.
+>
+> He looked across the battlefield and saw his own grandfather, his teacher, his cousins. His hands shook. His bow, the Gandiva, slipped from his fingers. He told Krishna: *"I don't want this. Let them have the kingdom. I'd rather beg than fight."*
+>
+> Krishna's response wasn't to give him a new career plan. It was to help him see something deeper about **svadharma** — one's own innate duty, the work that arises from who you are, not from what looks impressive or profitable.
+>
+> Krishna says:
+>
+> > **श्रेयान्स्वधर्मो विगुणः परधर्मात्स्वनुष्ठितात् ।**
+> > **स्वधर्मे निधनं श्रेयः परधर्मो भयावहः ॥३-३५॥**
+> >
+> > *"Better is one's own duty, though devoid of merit, than the duty of another well performed. Better is death in one's own duty; the duty of another is fraught with fear."*
+>
+> And:
+>
+> > **कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ।**
+> > **मा कर्मफलहेतुर्भूर्मा ते सङ्गोऽस्त्वकर्मणि ॥२-४७॥**
+> >
+> > *"Your right is to action alone, never to its fruits."*
+>
+> The "good job" you have — is it *your* dharma? Or is it someone else's dharma that you're performing well?
+>
+> **Questions to sit with:**
+> - What work makes you lose track of time — not because it's easy, but because it *fits*?
+> - If nobody was watching — no parents, no peers, no LinkedIn — what would you do differently?
+> - Is your current path *wrong*, or is it right but driven by the wrong motive?
+>
+> What resonates more with you right now — the feeling that your *role* is wrong, or that your *reason* for being in it has gone quiet?
+
+### Cost
+
+~$0.05 at Kimi K2.6 pricing ($0.73/1M input). Three tool turns, ~50K input tokens including verse commentaries.
+
+---
+
 ## Design Document
 
 For the full architecture — including the wisdom block schema, knowledge block schema, graph edge types, ingestion pipeline details, and design decisions with rationale — see:
