@@ -88,9 +88,12 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="get_verse",
             description=(
-                "Get a specific verse by ID (e.g. 'gita:2:47'). Returns "
-                "Sanskrit, transliteration, all translations, all commentaries, "
-                "and narrative context."
+                "Get a specific verse by ID (e.g. 'gita:2:47'). Use 'detail' "
+                "to control response size: 'quote' (~500B: Sanskrit + one "
+                "translation), 'summary' (~2KB: Sanskrit + 3 key commentators), "
+                "or 'full' (~15-20KB: all 21 commentators). Default: summary. "
+                "Use 'quote' when you already know the teaching from GBrain "
+                "and just need the exact text for citation."
             ),
             inputSchema={
                 "type": "object",
@@ -98,6 +101,11 @@ async def list_tools() -> list[Tool]:
                     "verse_id": {
                         "type": "string",
                         "description": "Verse ID (e.g. 'gita:2:47', 'isha:1')",
+                    },
+                    "detail": {
+                        "type": "string",
+                        "enum": ["quote", "summary", "full"],
+                        "description": "Level of detail: quote (~500B), summary (~2KB), full (~15KB). Default: summary.",
                     },
                 },
                 "required": ["verse_id"],
@@ -142,7 +150,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name == "store_verse":
         return _store_verse(arguments.get("verse_data", {}))
     elif name == "get_verse":
-        return _get_verse(arguments.get("verse_id", ""))
+        return _get_verse(arguments.get("verse_id", ""), arguments.get("detail", "summary"))
     elif name == "search_verses":
         return _search_verses(
             arguments.get("query", ""),
@@ -180,7 +188,13 @@ def _store_verse(verse_data: dict) -> list[TextContent]:
     return [TextContent(type="text", text=f"Stored verse {verse_id} in {text_family}")]
 
 
-def _get_verse(verse_id: str) -> list[TextContent]:
+KEY_COMMENTATOR_NAMES = {
+    "Shankaracharya", "Ramanujacharya", "Swami Gambirananda",
+    "Swami Sivananda", "A.C. Bhaktivedanta Swami Prabhupada",
+}
+
+
+def _get_verse(verse_id: str, detail: str = "summary") -> list[TextContent]:
     parts = verse_id.split(":")
     if not parts:
         return [TextContent(type="text", text=f"Invalid verse ID: {verse_id}")]
@@ -195,7 +209,34 @@ def _get_verse(verse_id: str) -> list[TextContent]:
     if not results["ids"]:
         return [TextContent(type="text", text=f"Verse '{verse_id}' not found")]
 
-    return [TextContent(type="text", text=results["documents"][0])]
+    full_text = results["documents"][0]
+
+    if detail == "full":
+        return [TextContent(type="text", text=full_text)]
+
+    lines = full_text.split("\n")
+
+    if detail == "quote":
+        quote_lines = []
+        has_translation = False
+        for line in lines:
+            if line.startswith(("Sanskrit:", "Transliteration:", "Speaker:")):
+                quote_lines.append(line)
+            elif line.startswith("Translation [") and not has_translation:
+                quote_lines.append(line)
+                has_translation = True
+        return [TextContent(type="text", text="\n".join(quote_lines))]
+
+    summary_lines = []
+    for line in lines:
+        if line.startswith(("Sanskrit:", "Transliteration:", "Speaker:",
+                            "Context:", "Listener:", "--- ")):
+            summary_lines.append(line)
+        elif line.startswith(("Translation [", "Commentary [")):
+            if any(name in line for name in KEY_COMMENTATOR_NAMES):
+                summary_lines.append(line)
+
+    return [TextContent(type="text", text="\n".join(summary_lines))]
 
 
 def _search_verses(query: str, text_family: str | None, limit: int) -> list[TextContent]:

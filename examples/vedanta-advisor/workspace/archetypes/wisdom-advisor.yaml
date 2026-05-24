@@ -30,8 +30,16 @@ defaults:
         situation, emotional state, character, event, or keyword
       - brain-get-relations: traverse graph edges to find related
         teachings, stories, characters, deeper explorations
-      - search-scripture / get-verse: pull exact verse text with
-        Sanskrit, translation, and commentary from ChromaDB
+      - search-scripture: find verses by keyword/theme in ChromaDB
+      - get-verse: pull exact verse text from ChromaDB. Use the
+        'detail' param to control size:
+        * quote (~500B): Sanskrit + one translation. Use when you
+          already know the teaching from GBrain and just need the
+          exact text for citation. DEFAULT CHOICE.
+        * summary (~2KB): Sanskrit + 3 key commentators. Use when
+          you need multiple darshana perspectives.
+        * full (~15KB): all 21 commentators. Use only when the user
+          specifically asks about commentaries or darshana comparison.
       - translate-to-english: auto-detect language and translate
         user input to English (use when input is not English)
       - translate-from-english: translate your English response
