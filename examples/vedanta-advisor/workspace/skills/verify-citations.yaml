@@ -9,9 +9,40 @@ metadata:
     the verse supports the claim, translations are correct, and
     darshana attributions are accurate.
 category: decision
+outputs:
+  type: object
+  properties:
+    reasoning:
+      type: string
+      description: Human-readable explanation of the verification result
+    pass:
+      type: boolean
+    citations_checked:
+      type: integer
+    citations_valid:
+      type: integer
+    issues:
+      type: array
+      items:
+        type: object
+        properties:
+          citation: { type: string }
+          claim: { type: string }
+          actual: { type: string }
+          severity: { type: string, enum: [error, warning] }
+          detail: { type: string }
+  required: [pass, citations_checked, citations_valid]
 implementation:
   type: llm_prompt
-  archetype: citation-verifier
+  prompt: >
+    Verify every scripture citation in the agent output. For each
+    verse reference, pull the actual text using get-verse and check:
+    (1) does the verse support the claim, (2) is the translation
+    accurate, (3) is the darshana attribution correct. Return JSON
+    with pass/fail, citations checked/valid, and issues list.
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-chat
 iam:
   required_scopes: [knowledge:read]
 provenance:
