@@ -67,7 +67,7 @@ mcp_servers:
   # Notes directory — agents write output here
   - id: notes
     transport: stdio
-    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "${VEDANTA_NOTES_DIR}"]
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."]
     cwd: "${VEDANTA_NOTES_DIR}"
 storage:
   checkpoints:
