@@ -25,7 +25,11 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
+
+# Force unbuffered output so background runs show progress
+print = partial(print, flush=True)
 
 import httpx
 
@@ -294,7 +298,15 @@ def fetch_verses(client: chromadb.ClientAPI, queries: list[str], refs: list[str]
         except Exception:
             continue
 
-    return "\n\n".join(parts[:15])
+    # Limit total context to ~3000 chars to avoid timeouts
+    result = []
+    total = 0
+    for p in parts:
+        if total + len(p) > 3000:
+            break
+        result.append(p)
+        total += len(p)
+    return "\n\n".join(result)
 
 
 def generate_block(spec: BlockSpec, verse_context: str, api_key: str, model: str) -> str:
@@ -417,12 +429,22 @@ RULES:
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3,
-            "max_tokens": 4000,
+            "max_tokens": 16000,
         },
-        timeout=120.0,
+        timeout=300.0,
     )
     response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    data = response.json()
+    content = data["choices"][0]["message"].get("content")
+    if content is None:
+        finish = data["choices"][0].get("finish_reason", "unknown")
+        print(f"  WARNING: null content, finish_reason={finish}")
+        # Check for thinking/reasoning models that put content elsewhere
+        reasoning = data["choices"][0]["message"].get("reasoning_content", "")
+        if reasoning:
+            return reasoning
+        return f"[Generation failed: finish_reason={finish}]"
+    return content
 
 
 def write_to_gbrain(slug: str, content: str, dry_run: bool = False) -> bool:
