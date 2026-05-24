@@ -351,6 +351,39 @@ The reasoning always happens in English internally — the wisdom graph and Chro
 
 Sanskrit verses are never translated by the machine — they are sacred text and should be read in the original. The advisor quotes the Sanskrit, then provides the scholar translation from ChromaDB.
 
+### Code-Mixing (Hinglish, Tanglish, etc.)
+
+Real conversations aren't in one language. People mix — "mujhe lagta hai my business fail ho jayega" is neither Hindi nor English. The advisor handles this naturally without forcing everything through translation.
+
+| Input Type | Example | What Happens |
+|---|---|---|
+| Pure native script | मुझे डर लगता है कि बिज़नेस फेल हो जाएगा | Translate → reason → translate back to Hindi |
+| Code-mixed / romanized | mujhe lagta hai my business fail ho jayega | LLM understands directly — no translation, respond in same mixed style |
+| English | I'm afraid my business will fail | No translation |
+| Explicit request | "reply in Tamil" | Translate output to requested language |
+
+The key insight: translating code-mixed input strips the tone. Someone writing casual Hinglish doesn't want a formal Hindi response — they want the same energy back.
+
+**Code-mixed response example:**
+```
+User: "mujhe lagta hai I should quit but dar lagta hai"
+
+Advisor: "Gita mein Krishna ne Arjuna ko exactly yahi bola —
+  कर्मण्येवाधिकारस्ते मा फलेषु कदाचन
+  Your right is to action alone, never to the fruits.
+
+  Arjuna bhi same situation mein tha — he wanted to drop
+  everything and walk away. Not because he was lazy, but because
+  consequences se dar lagta tha. Krishna ka point: the fear of
+  what MIGHT happen is the actual problem, not the outcome itself.
+
+  Ek practical question: what's the smallest step you could take
+  this week toward what you actually want — one that doesn't
+  require everything to work out?"
+```
+
+The advisor matches the user's register. Formal Hindi in, formal Hindi out. Casual Hinglish in, casual Hinglish out. The wisdom stays the same — the delivery adapts.
+
 ### Translation Stack
 
 | Component | Model | Purpose |
