@@ -299,9 +299,10 @@ class Synthesis(BaseModel):
 
 class Trigger(Enum):
     """
-    When the skill fires: post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).
+    When the skill fires: pre_input (before agent runs, validates user input), post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).
     """
 
+    pre_input = "pre_input"
     post_output = "post_output"
     checkpoint = "checkpoint"
     pre_synthesis = "pre_synthesis"
@@ -323,7 +324,7 @@ class DecisionSkillBinding(BaseModel):
     )
     trigger: Trigger = Field(
         ...,
-        description="When the skill fires: post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).",
+        description="When the skill fires: pre_input (before agent runs, validates user input), post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).",
     )
     scope: str | None = Field(
         None,

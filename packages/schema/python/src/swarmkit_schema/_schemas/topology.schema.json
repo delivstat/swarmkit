@@ -277,8 +277,8 @@
           "description": "Decision skill ID."
         },
         "trigger": {
-          "enum": ["post_output", "checkpoint", "pre_synthesis"],
-          "description": "When the skill fires."
+          "enum": ["pre_input", "post_output", "checkpoint", "pre_synthesis"],
+          "description": "When the skill fires: pre_input (before agent runs), post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis)."
         },
         "scope": {
           "type": "string",

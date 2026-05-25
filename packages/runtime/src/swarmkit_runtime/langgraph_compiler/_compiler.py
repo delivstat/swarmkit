@@ -187,6 +187,26 @@ def _build_agent_node(  # noqa: PLR0915
         if denial is not None:
             return denial
 
+        # ---- pre_input decision skills (relevance gate) ----------------
+        if _ds_bindings:
+            user_input = state.get("input", "")
+            if user_input:
+                from swarmkit_runtime.langgraph_compiler._decision_gate import (  # noqa: PLC0415
+                    evaluate_pre_input,
+                )
+
+                should_proceed, rejection, _ = await evaluate_pre_input(
+                    agent_id=agent_id,
+                    user_input=user_input,
+                    bindings=_ds_bindings,
+                    governance=governance,
+                )
+                if not should_proceed:
+                    return _make_result(
+                        agent_id,
+                        rejection or "I can only help with questions in my domain.",
+                    )
+
         # ---- already-delegated fast path (resume scenarios) ------------
         _agent_result = state.get("agent_results", {}).get(agent_id, "")
         _child_has_task_plan = any(
