@@ -30,6 +30,9 @@ governance:
     - id: spec-conformance
       trigger: pre_synthesis
       scope: "sterling-oms-architect"
+    - id: solution-critique
+      trigger: post_output
+      scope: "architect"
 credentials:
   github-pat:
     source: env

@@ -1,0 +1,71 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: solution-critique
+  name: Solution Design Critique
+  description: >
+    Reviews solution design documents for accuracy: does it address
+    the actual Jira ticket, are cited code files real, do CDT config
+    changes match code changes, any fabricated identifiers.
+category: decision
+outputs:
+  type: object
+  properties:
+    reasoning:
+      type: string
+      description: Detailed review of the solution design quality
+    pass:
+      type: boolean
+    score:
+      type: integer
+      description: Quality score 1-10
+    issues:
+      type: array
+      items:
+        type: object
+        properties:
+          category:
+            type: string
+            enum: [wrong-problem, fabricated-class, fabricated-service, wrong-scope, missing-impact, unverified-claim]
+          detail:
+            type: string
+          severity:
+            type: string
+            enum: [error, warning]
+  required: [reasoning, pass, score]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are a technical reviewer for Sterling OMS solution design
+    documents. Review the agent's output against the original request.
+
+    CHECK EACH:
+    1. PROBLEM STATEMENT: Does the solution address the actual problem
+       from the Jira ticket? Not a related problem, not a broader
+       problem — the exact issue described.
+    2. CODE CITATIONS: Are class names, method names, line numbers
+       real? Do they match what exists in the codebase? Flag any
+       that look fabricated (invented class names, generic method
+       names, round line numbers).
+    3. CONFIG CONSISTENCY: If the solution proposes a code change,
+       does it also address the matching CDT config change? Sterling
+       changes are often CDT sub-flow changes, not just Java code.
+    4. SCOPE ACCURACY: Is the solution scoped correctly to the ticket?
+       Does it import scope from other tickets or initiatives that
+       aren't linked?
+    5. IMPACT ANALYSIS: Does it identify all downstream systems affected
+       (SAP, SFDC, SMS, Azure events)? Missing downstream impact is
+       a common gap.
+    6. VERIFICATION: For every claim, is there evidence from a tool
+       call (Jira, code, CDT, Confluence)? Unverified claims should
+       be flagged.
+
+    Return JSON: {reasoning, pass (true if score >= 7), score (1-10), issues}
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-chat
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

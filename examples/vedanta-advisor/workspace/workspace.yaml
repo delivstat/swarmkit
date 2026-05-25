@@ -26,6 +26,10 @@ governance:
     - id: verify-citations
       trigger: post_output
       scope: "graph-builder,advisor"
+    # Quality critique — reviews advisor responses for completeness
+    - id: quality-critique
+      trigger: post_output
+      scope: "advisor"
 credentials:
   openrouter-key:
     source: env

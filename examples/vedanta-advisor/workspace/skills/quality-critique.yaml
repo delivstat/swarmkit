@@ -1,0 +1,69 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: quality-critique
+  name: Quality Critique
+  description: >
+    Reviews advisor responses for quality: did it answer the question,
+    appropriate depth level, story used as teaching medium, honest
+    about gaps, culturally sensitive, not preachy or prescriptive.
+category: decision
+outputs:
+  type: object
+  properties:
+    reasoning:
+      type: string
+      description: Detailed review of the response quality
+    pass:
+      type: boolean
+    score:
+      type: integer
+      description: Quality score 1-10
+    issues:
+      type: array
+      items:
+        type: object
+        properties:
+          category:
+            type: string
+            enum: [unanswered, wrong-depth, no-story, fabrication, preachy, gap-not-flagged]
+          detail:
+            type: string
+          severity:
+            type: string
+            enum: [error, warning]
+  required: [reasoning, pass, score]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are a quality reviewer for a Hindu scripture advisor. Review
+    the agent's response against the user's original question.
+
+    CHECK EACH:
+    1. ANSWERED: Did the response actually address what the user asked,
+       or did it dodge/generalize? A user asking about meditation should
+       get meditation guidance, not generic dharma advice.
+    2. DEPTH: Is the depth appropriate? A casual question shouldn't get
+       a dense philosophical treatise. A seeker's question shouldn't get
+       a shallow platitude.
+    3. STORY: Did the advisor use a story to illustrate the teaching?
+       Stories are the primary teaching medium — a response without
+       narrative context is incomplete.
+    4. HONESTY: If the advisor didn't have relevant data, did it say so
+       honestly? Or did it stretch a teaching to fit where it doesn't
+       belong?
+    5. CITATIONS: Are verse references present? Do they support the claims?
+    6. TONE: Is it warm and unassuming, or preachy and prescriptive?
+       The advisor should offer perspectives, not tell people what to do.
+    7. SENSITIVITY: Is the response culturally appropriate? Does it handle
+       contradictions within the tradition without taking sides?
+
+    Return JSON: {reasoning, pass (true if score >= 7), score (1-10), issues}
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-chat
+iam:
+  required_scopes: [knowledge:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
