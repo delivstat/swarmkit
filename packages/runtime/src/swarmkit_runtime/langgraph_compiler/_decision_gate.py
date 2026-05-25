@@ -1,8 +1,9 @@
 """Decision skill gate — fires mandatory decision skills at trigger points.
 
 Governance decision skills are evaluated by the GovernanceProvider at
-three points: post_output, checkpoint, and pre_synthesis. This module
-provides the hook functions called by the compiler and task executor.
+four points: pre_input, post_output, checkpoint, and pre_synthesis.
+This module provides the hook functions called by the compiler and task
+executor.
 
 See ``design/details/governance-decision-skills.md``.
 """
@@ -23,6 +24,58 @@ from ._helpers import _progress
 _DEFAULT_MAX_RETRIES = 4
 
 RetryFn = Callable[[str], Awaitable[str]]
+
+
+async def evaluate_pre_input(
+    *,
+    agent_id: str,
+    user_input: str,
+    bindings: list[DecisionSkillBinding],
+    governance: GovernanceProvider,
+) -> tuple[bool, str | None, list[DecisionSkillResult]]:
+    """Evaluate pre_input decision skills against user input before any LLM work.
+
+    Returns (should_proceed, rejection_message, results). If any binding
+    fails, the agent should return the rejection message instead of
+    proceeding with the LLM call — saving tokens on off-topic or
+    malicious queries.
+    """
+    applicable = [b for b in bindings if b.trigger == "pre_input" and b.applies_to(agent_id)]
+    if not applicable:
+        return True, None, []
+
+    results: list[DecisionSkillResult] = []
+    for binding in applicable:
+        result = await governance.evaluate_decision_skill(
+            skill_id=binding.id,
+            trigger="pre_input",
+            agent_id=agent_id,
+            content=user_input,
+        )
+        results.append(result)
+
+    failed = [r for r in results if r.verdict == "fail"]
+    if not failed:
+        return True, None, results
+
+    # Extract suggested_response from raw data if the skill provided one,
+    # otherwise fall back to the skill's reasoning.
+    for r in failed:
+        raw = getattr(r, "raw", None) or {}
+        suggested = raw.get("suggested_response") if isinstance(raw, dict) else None
+        if suggested:
+            _progress(
+                f"  [{agent_id}] pre_input skill '{r.skill_id}' rejected: {r.reasoning[:80]}"
+            )
+            return False, str(suggested), results
+
+    # No suggested_response found — use first failure's reasoning
+    first_fail = failed[0]
+    _progress(
+        f"  [{agent_id}] pre_input skill '{first_fail.skill_id}' rejected: "
+        f"{first_fail.reasoning[:80]}"
+    )
+    return False, first_fail.reasoning, results
 
 
 async def evaluate_post_output(

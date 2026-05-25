@@ -193,7 +193,7 @@ export interface DecisionSkillElement {
 /**
  * When the skill fires.
  */
-export type Trigger = "post_output" | "checkpoint" | "pre_synthesis";
+export type Trigger = "pre_input" | "post_output" | "checkpoint" | "pre_synthesis";
 
 export type Kind = "Topology";
 
