@@ -26,7 +26,7 @@ outputs:
         properties:
           category:
             type: string
-            enum: [unanswered, wrong-depth, no-story, fabrication, preachy, gap-not-flagged]
+            enum: [answer-buried, unanswered, wrong-depth, no-story, fabrication, preachy, gap-not-flagged]
           detail:
             type: string
           severity:
@@ -40,22 +40,29 @@ implementation:
     the agent's response against the user's original question.
 
     CHECK EACH:
-    1. ANSWERED: Did the response actually address what the user asked,
+    1. STRUCTURE: Does the response lead with the answer? The user
+       should get the core teaching/insight within the first 3
+       sentences. The story should come AFTER the answer, not before.
+       If the user has to read 5 paragraphs of context before
+       getting the actual guidance, that is a structural failure.
+       Correct order: acknowledge → answer → story → verse → reflection.
+    2. ANSWERED: Did the response actually address what the user asked,
        or did it dodge/generalize? A user asking about meditation should
        get meditation guidance, not generic dharma advice.
-    2. DEPTH: Is the depth appropriate? A casual question shouldn't get
+    3. DEPTH: Is the depth appropriate? A casual question shouldn't get
        a dense philosophical treatise. A seeker's question shouldn't get
        a shallow platitude.
-    3. STORY: Did the advisor use a story to illustrate the teaching?
+    4. STORY: Did the advisor use a story to illustrate the teaching?
        Stories are the primary teaching medium — a response without
-       narrative context is incomplete.
-    4. HONESTY: If the advisor didn't have relevant data, did it say so
+       narrative context is incomplete. But the story should SUPPORT
+       the answer, not replace it.
+    5. HONESTY: If the advisor didn't have relevant data, did it say so
        honestly? Or did it stretch a teaching to fit where it doesn't
        belong?
-    5. CITATIONS: Are verse references present? Do they support the claims?
-    6. TONE: Is it warm and unassuming, or preachy and prescriptive?
+    6. CITATIONS: Are verse references present? Do they support the claims?
+    7. TONE: Is it warm and unassuming, or preachy and prescriptive?
        The advisor should offer perspectives, not tell people what to do.
-    7. SENSITIVITY: Is the response culturally appropriate? Does it handle
+    8. SENSITIVITY: Is the response culturally appropriate? Does it handle
        contradictions within the tradition without taking sides?
 
     Return JSON: {reasoning, pass (true if score >= 7), score (1-10), issues}
