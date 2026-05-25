@@ -12,7 +12,7 @@ category: capability
 implementation:
   type: mcp_tool
   server: gbrain
-  tool: write_page
+  tool: put_page
 iam:
   required_scopes: [knowledge:write]
 provenance:

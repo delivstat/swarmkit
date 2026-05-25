@@ -22,12 +22,21 @@ governance:
       scope: "graph-builder"
       config:
         gate_id: "knowledge-block"
+    # Relevance gate — rejects off-topic queries and prompt injection
+    # before the agent does any LLM work (zero wasted tokens)
+    - id: relevance-gate
+      trigger: pre_input
+      scope: "advisor"
     # Citation verification — checks verse references are accurate
     - id: verify-citations
       trigger: post_output
       scope: "graph-builder,advisor"
     # Quality critique — reviews advisor responses for completeness
     - id: quality-critique
+      trigger: post_output
+      scope: "advisor"
+    # Output sanitizer — blocks leakage of keys, prompts, internal config
+    - id: output-sanitizer
       trigger: post_output
       scope: "advisor"
 credentials:
