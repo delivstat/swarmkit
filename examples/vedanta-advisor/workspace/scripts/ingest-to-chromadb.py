@@ -440,57 +440,77 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest scriptures into ChromaDB")
     parser.add_argument("--datasets-dir", default=DATASETS_DIR)
     parser.add_argument("--chromadb-dir", default=CHROMADB_DIR)
+    parser.add_argument("--new-only", action="store_true", help="Skip collections that already exist")
     args = parser.parse_args()
 
     datasets_dir = Path(args.datasets_dir)
     chromadb_dir = Path(args.chromadb_dir)
     chromadb_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Datasets: {datasets_dir}")
-    print(f"ChromaDB: {chromadb_dir}")
-    print()
+    print(f"Datasets: {datasets_dir}", flush=True)
+    print(f"ChromaDB: {chromadb_dir}", flush=True)
+    if args.new_only:
+        print("Mode: new collections only (skipping existing)", flush=True)
+    print(flush=True)
 
     client = chromadb.PersistentClient(path=str(chromadb_dir))
+    existing = {c.name for c in client.list_collections()}
+    if args.new_only:
+        print(f"Existing collections: {', '.join(sorted(existing))}", flush=True)
 
-    print("[1/8] Ingesting Bhagavad Gita...")
-    gita_count = ingest_gita(client, datasets_dir)
-    print(f"  {gita_count} verses ingested")
+    def should_skip(name: str) -> bool:
+        if args.new_only and name in existing:
+            print(f"  skipped (already exists with {client.get_collection(name).count()} docs)", flush=True)
+            return True
+        return False
 
-    print("[2/8] Ingesting Valmiki Ramayana...")
-    ramayana_count = ingest_ramayana(client, datasets_dir)
-    print(f"  {ramayana_count} shlokas ingested")
+    print("[1/8] Ingesting Bhagavad Gita...", flush=True)
+    gita_count = 0 if should_skip("gita") else ingest_gita(client, datasets_dir)
+    if gita_count:
+        print(f"  {gita_count} verses ingested", flush=True)
 
-    print("[3/8] Ingesting Mahabharata (Sanskrit)...")
-    mb_count = ingest_mahabharata(client, datasets_dir)
-    print(f"  {mb_count} shlokas ingested")
+    print("[2/8] Ingesting Valmiki Ramayana...", flush=True)
+    ramayana_count = 0 if should_skip("ramayana") else ingest_ramayana(client, datasets_dir)
+    if ramayana_count:
+        print(f"  {ramayana_count} shlokas ingested", flush=True)
 
-    print("[4/8] Ingesting Chanakya Niti...")
-    cn_count = ingest_chanakya(client, datasets_dir)
-    print(f"  {cn_count} verses ingested")
+    print("[3/8] Ingesting Mahabharata (Sanskrit)...", flush=True)
+    mb_count = 0 if should_skip("mahabharata") else ingest_mahabharata(client, datasets_dir)
+    if mb_count:
+        print(f"  {mb_count} shlokas ingested", flush=True)
 
-    print("[5/8] Ingesting Vedas (Rig, Yajur, Atharva)...")
-    veda_count = ingest_vedas(client, datasets_dir)
-    print(f"  {veda_count} hymns ingested")
+    print("[4/8] Ingesting Chanakya Niti...", flush=True)
+    cn_count = 0 if should_skip("niti") else ingest_chanakya(client, datasets_dir)
+    if cn_count:
+        print(f"  {cn_count} verses ingested", flush=True)
 
-    print("[6/8] Ingesting Upanishads...")
-    upanishad_count = ingest_upanishads(client, datasets_dir)
-    print(f"  {upanishad_count} mantras ingested")
+    print("[5/8] Ingesting Vedas (Rig, Yajur, Atharva)...", flush=True)
+    veda_count = 0 if should_skip("vedas") else ingest_vedas(client, datasets_dir)
+    if veda_count:
+        print(f"  {veda_count} hymns ingested", flush=True)
 
-    print("[7/8] Ingesting Mahabharata (English parallel)...")
-    itihasa_count = ingest_itihasa_parallel(client, datasets_dir)
-    print(f"  {itihasa_count} parallel verses ingested")
+    print("[6/8] Ingesting Upanishads...", flush=True)
+    upanishad_count = 0 if should_skip("upanishads") else ingest_upanishads(client, datasets_dir)
+    if upanishad_count:
+        print(f"  {upanishad_count} mantras ingested", flush=True)
 
-    print("[8/8] Ingesting Yoga Sutras...")
+    print("[7/8] Ingesting Mahabharata (English parallel)...", flush=True)
+    itihasa_count = 0 if should_skip("mahabharata_english") else ingest_itihasa_parallel(client, datasets_dir)
+    if itihasa_count:
+        print(f"  {itihasa_count} parallel verses ingested", flush=True)
+
+    print("[8/8] Ingesting Yoga Sutras...", flush=True)
     yoga_count = ingest_yoga_sutras(client, datasets_dir)
-    print(f"  {yoga_count} sutras ingested")
+    if yoga_count:
+        print(f"  {yoga_count} sutras ingested", flush=True)
 
-    print()
+    print(flush=True)
     total = gita_count + ramayana_count + mb_count + cn_count + veda_count + upanishad_count + itihasa_count + yoga_count
-    print(f"=== Done: {total:,} total documents ingested ===")
-    print()
-    print("Collections:")
+    print(f"=== Done: {total:,} total new documents ingested ===", flush=True)
+    print(flush=True)
+    print("Collections:", flush=True)
     for coll in client.list_collections():
-        print(f"  {coll.name}: {coll.count()} documents")
+        print(f"  {coll.name}: {coll.count()} documents", flush=True)
 
 
 if __name__ == "__main__":
