@@ -293,6 +293,30 @@ What it looks for:
 swarmkit run workspace session-analyst
 ```
 
+### Running the Advisor
+
+The advisor needs higher tool limits for deep philosophical questions. Recommended command:
+
+```bash
+cd examples/vedanta-advisor
+
+export PATH="$HOME/.bun/bin:$PATH"
+export VEDANTA_CHROMADB_DIR=$(pwd)/knowledge/chromadb
+export VEDANTA_NOTES_DIR=$(pwd)/knowledge/notes
+export OPENAI_API_KEY=$OPENROUTER_API_KEY
+export OPENAI_BASE_URL=https://openrouter.ai/api/v1
+
+SWARMKIT_MAX_TOOL_TURNS=200 \
+SWARMKIT_MAX_PER_TOOL=100 \
+SWARMKIT_MAX_PER_READ_TOOL=100 \
+SWARMKIT_PROVIDER=openrouter \
+SWARMKIT_MODEL=moonshotai/kimi-k2.6 \
+swarmkit run workspace advisor \
+  --input "your question here"
+```
+
+Default tool limits (8 per tool) cause the advisor to hit limits and produce analysis-format output instead of conversational responses. The higher limits give the model room to search GBrain, read wisdom blocks, fetch verses, and compose a proper response.
+
 ---
 
 ## Governance
