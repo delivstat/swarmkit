@@ -64,9 +64,7 @@ async def evaluate_pre_input(
         raw = getattr(r, "raw", None) or {}
         suggested = raw.get("suggested_response") if isinstance(raw, dict) else None
         if suggested:
-            _progress(
-                f"  [{agent_id}] pre_input skill '{r.skill_id}' rejected: {r.reasoning[:80]}"
-            )
+            _progress(f"  [{agent_id}] pre_input skill '{r.skill_id}' rejected: {r.reasoning[:80]}")
             return False, str(suggested), results
 
     # No suggested_response found — use first failure's reasoning
