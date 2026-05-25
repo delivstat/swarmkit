@@ -185,13 +185,15 @@ export interface DecisionSkillElement {
      */
     scope?: string;
     /**
-     * When the skill fires.
+     * When the skill fires: pre_input (before agent runs), post_output (after agent output),
+     * checkpoint (between task batches), pre_synthesis (before final synthesis).
      */
     trigger: Trigger;
 }
 
 /**
- * When the skill fires.
+ * When the skill fires: pre_input (before agent runs), post_output (after agent output),
+ * checkpoint (between task batches), pre_synthesis (before final synthesis).
  */
 export type Trigger = "pre_input" | "post_output" | "checkpoint" | "pre_synthesis";
 
