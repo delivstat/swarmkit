@@ -49,7 +49,7 @@ cd examples/vedanta-advisor
 # 1. Fetch scripture datasets from GitHub (~5 min)
 bash workspace/scripts/fetch-tier1-datasets.sh
 
-# 2. Ingest into ChromaDB (~10 min, 98K+ documents)
+# 2. Ingest into ChromaDB (~10 min, 196K+ documents)
 uv run workspace/scripts/ingest-to-chromadb.py
 
 # 3. Initialize GBrain knowledge graph
@@ -94,7 +94,7 @@ swarmkit chat workspace advisor
 │     GBrain        │  │        ChromaDB              │
 │  (Reasoning)      │  │      (Citation)              │
 │                   │  │                               │
-│  Wisdom Blocks    │  │  98,263 verses               │
+│  Wisdom Blocks    │  │  196,787 verses               │
 │  Knowledge Blocks │  │  21 commentators (Gita)      │
 │  Graph Edges      │  │  Sanskrit + translations     │
 │  Life situations  │  │  4 collections               │
@@ -152,8 +152,12 @@ Parallel agents ingest scripture texts from GitHub datasets into ChromaDB. Each 
 |---|---|---|
 | `gita` | 719 verses × 21 commentators | vedicscriptures/bhagavad-gita |
 | `ramayana` | 23,402 shlokas | AshuVj/Valmiki_Ramayan_Dataset |
-| `mahabharata` | 73,817 shlokas (18 parvas) | bhavykhatri/DharmicData |
-| `niti` | 321 verses | gita/Datasets (Chanakya Niti) |
+| `mahabharata` | 73,817 shlokas (Sanskrit) | bhavykhatri/DharmicData |
+| `mahabharata_english` | 93,030 parallel verses (Sanskrit + English) | rahular/itihasa |
+| `vedas` | 1,803 hymns (Rig + Yajur + Atharva) | bhavykhatri/DharmicData |
+| `upanishads` | 755 mantras (11 principal) | hrgupta/indian-scriptures |
+| `niti` | 3,261 verses (Chanakya Niti + Yoga Sutras) | gita/Datasets + Project Gutenberg |
+| **Total** | **196,787 documents** | |
 
 Each verse is stored with: Sanskrit original, transliteration, all available translations (with author and tradition), all available commentaries, speaker/listener context, and narrative context.
 
@@ -164,7 +168,7 @@ The Bhagavad Gita dataset is the richest — 21 commentators including Shankarac
 # Fetch datasets (clones 5 GitHub repos)
 bash workspace/scripts/fetch-tier1-datasets.sh
 
-# Ingest into ChromaDB (takes ~10 minutes for 98K documents)
+# Ingest into ChromaDB (takes ~10 minutes for 196K documents)
 uv run workspace/scripts/ingest-to-chromadb.py
 ```
 
@@ -409,7 +413,7 @@ Sarvam's TTS (Bulbul V3) and STT (Saarika V3) remain good options for a future v
 |---|---|---|
 | Agent Runtime | SwarmKit | Topology compiler, tool wiring, governance |
 | Knowledge Graph | GBrain (PGLite) | Wisdom blocks, semantic edges, hybrid search |
-| Citation Store | ChromaDB | 98K+ verses with translations and commentaries |
+| Citation Store | ChromaDB | 196K+ verses with translations and commentaries |
 | Translation | IndicLID + IndicTrans2 (AI4Bharat) | 23-language support, self-hosted |
 | LLM (Advisor) | Claude Sonnet 4 via OpenRouter | Conversational reasoning |
 | LLM (Graph Builder) | Claude Sonnet 4 via OpenRouter | Verse interpretation, cross-text connection |

@@ -9,6 +9,9 @@ metadata:
     Honest about gaps — says "I don't have guidance" when the graph
     has no relevant blocks.
   version: 1.0.0
+runtime:
+  max_concurrent_tasks: 1
+  task_timeout_seconds: 300
 agents:
   root:
     id: advisor
