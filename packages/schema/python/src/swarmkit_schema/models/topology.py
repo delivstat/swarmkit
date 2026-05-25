@@ -219,9 +219,10 @@ class Synthesis(BaseModel):
 
 class Trigger(Enum):
     """
-    When the skill fires.
+    When the skill fires: pre_input (before agent runs), post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).
     """
 
+    pre_input = "pre_input"
     post_output = "post_output"
     checkpoint = "checkpoint"
     pre_synthesis = "pre_synthesis"
@@ -237,7 +238,10 @@ class DecisionSkillBinding(BaseModel):
         populate_by_name=True,
     )
     id: str = Field(..., description="Decision skill ID.", pattern="^[a-z][a-z0-9-]*$")
-    trigger: Trigger = Field(..., description="When the skill fires.")
+    trigger: Trigger = Field(
+        ...,
+        description="When the skill fires: pre_input (before agent runs), post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).",
+    )
     scope: str | None = Field(
         None, description="Comma-separated agent IDs. Default '*' = all agents."
     )

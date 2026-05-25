@@ -165,7 +165,7 @@ def _build_agent_node(  # noqa: PLR0915
     _planning = planning_config or PlanningConfig()
     _synthesis = synthesis_config
 
-    async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0912, PLR0915
+    async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0911, PLR0912, PLR0915
         global _current_parent_agent  # noqa: PLW0603
         agent_id = agent.id
         _start = datetime.now(tz=UTC)
