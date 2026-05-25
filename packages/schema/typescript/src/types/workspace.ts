@@ -93,7 +93,7 @@ export interface DecisionSkillElement {
  * When the skill fires: post_output (after agent output), checkpoint (between task
  * batches), pre_synthesis (before final synthesis).
  */
-export type Trigger = "post_output" | "checkpoint" | "pre_synthesis";
+export type Trigger = "pre_input" | "post_output" | "checkpoint" | "pre_synthesis";
 
 /**
  * Circuit breaker thresholds. Prevents runaway execution and cost overruns.

@@ -229,6 +229,7 @@ class DecisionSkillResult:
     confidence: float
     reasoning: str
     flagged_items: list[str] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -236,7 +237,7 @@ class DecisionSkillBinding:
     """Binds a decision skill to a trigger point."""
 
     id: str
-    trigger: Literal["post_output", "checkpoint", "pre_synthesis"]
+    trigger: Literal["pre_input", "post_output", "checkpoint", "pre_synthesis"]
     scope: str = "*"
     required: bool = True
     config: dict[str, Any] = field(default_factory=dict)
