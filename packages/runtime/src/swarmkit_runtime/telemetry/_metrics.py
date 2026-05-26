@@ -23,6 +23,9 @@ _run_duration_ms: metrics.Histogram | None = None
 _tool_duration_ms: metrics.Histogram | None = None
 _approval_wait_ms: metrics.Histogram | None = None
 
+_drift_score: metrics.Histogram | None = None
+_drift_breaches_total: metrics.Counter | None = None
+
 
 def init_metrics(service_name: str = "swarmkit") -> None:
     """Initialize OTel metrics instruments. Call once at startup."""
@@ -30,6 +33,7 @@ def init_metrics(service_name: str = "swarmkit") -> None:
     global _runs_total, _agent_steps_total, _tool_calls_total  # noqa: PLW0603
     global _governance_decisions_total  # noqa: PLW0603
     global _run_duration_ms, _tool_duration_ms, _approval_wait_ms  # noqa: PLW0603
+    global _drift_score, _drift_breaches_total  # noqa: PLW0603
 
     _meter = metrics.get_meter(service_name)
 
@@ -70,6 +74,17 @@ def init_metrics(service_name: str = "swarmkit") -> None:
         unit="ms",
     )
 
+    _drift_score = _meter.create_histogram(
+        f"{_ATTR_PREFIX}.agent.drift.score",
+        description="Intent drift score per agent step (0 = on-track, 1 = fully drifted)",
+        unit="1",
+    )
+    _drift_breaches_total = _meter.create_counter(
+        f"{_ATTR_PREFIX}.agent.drift.breaches.total",
+        description="Total drift threshold breaches across all agents",
+        unit="1",
+    )
+
 
 def record_run_started(*, topology_id: str) -> None:
     """Increment run counter."""
@@ -107,3 +122,15 @@ def record_approval_wait(*, scope: str, wait_ms: int) -> None:
     """Record human approval wait time."""
     if _approval_wait_ms is not None:
         _approval_wait_ms.record(wait_ms, {"scope": scope})
+
+
+def record_drift_score(*, agent_id: str, score: float) -> None:
+    """Record a drift score observation."""
+    if _drift_score is not None:
+        _drift_score.record(score, {"agent_id": agent_id})
+
+
+def record_drift_breach(*, agent_id: str) -> None:
+    """Increment drift breach counter."""
+    if _drift_breaches_total is not None:
+        _drift_breaches_total.add(1, {"agent_id": agent_id})

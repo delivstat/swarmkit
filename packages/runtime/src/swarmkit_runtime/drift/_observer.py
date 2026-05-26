@@ -2,6 +2,12 @@
 
 Created per-agent per-run. The compiler calls observe() after each
 agent step and acts on the DriftResult based on the configured strategy.
+
+Important: only agent *reasoning* output should be passed to observe().
+Tool responses, error passthroughs (e.g. "Error: ...", "Tool error: ..."),
+and intermediate system messages are NOT suitable inputs — they do not
+represent the agent's reasoning trajectory and would distort the drift
+signal. The compiler enforces this by filtering before calling observe().
 """
 
 from __future__ import annotations
