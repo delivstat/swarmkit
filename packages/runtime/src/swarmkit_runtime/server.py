@@ -24,13 +24,15 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from swarmkit_runtime._workspace_runtime import (
     MissingMCPServerError,
     WorkspaceRuntime,
 )
+from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
+from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.errors import ResolutionErrors
 
 logger = logging.getLogger("swarmkit.server")
@@ -397,9 +399,11 @@ def create_app(
     workspace_path: Path,
     *,
     cors_origins: list[str] | None = None,
+    auth_provider: AuthProvider | None = None,
 ) -> FastAPI:
     """Build the FastAPI app for a given workspace."""
 
+    _auth = auth_provider or NoneAuthProvider()
     job_store = JobStore()
 
     @asynccontextmanager
@@ -455,6 +459,40 @@ def create_app(
             elapsed,
         )
         return response
+
+    @app.middleware("http")
+    async def auth_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
+        # Skip auth for health endpoint
+        if request.url.path == "/health":
+            return await call_next(request)
+
+        auth_req = AuthReq(
+            headers=dict(request.headers),
+            path=request.url.path,
+            method=request.method,
+            query_params=dict(request.query_params),
+            client_ip=request.client.host if request.client else None,
+        )
+        try:
+            identity = await _auth.authenticate(auth_req)
+            request.state.identity = identity
+            logger.debug(
+                "auth.success client_id=%s provider=%s",
+                identity.client_id,
+                identity.provider,
+            )
+        except AuthError as exc:
+            logger.warning(
+                "auth.denied path=%s reason=%s",
+                request.url.path,
+                str(exc),
+            )
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"error": str(exc)},
+            )
+
+        return await call_next(request)
 
     # Routes
     _register_introspection_routes(app)
