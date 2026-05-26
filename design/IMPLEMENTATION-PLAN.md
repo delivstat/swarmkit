@@ -37,7 +37,7 @@ status: active
 | 2 | M6.5 | Workspace env configuration | ✅ | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
 | 2 | M7 | Intent drift detection | ✅ | IntentObserver, OTel span events + metrics, tool error separation, authoring integration. PR #261. |
 | 3 | M8 | MCP integration layer | ✅ | Lazy startup, permission tiers, multimodal, document reader, MarkItDown |
-| 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, Sterling log analyser ✅, reference topologies remaining |
+| 3 | M9 | Reference topologies + structured delegation | ✅ | Structured delegation ✅, governance decision skills ✅, structured comms ✅, Sterling log analyser ✅. Reference topologies deferred to M11. |
 | 4 | M10 | Eject + execution modes | — | `swarmkit eject` + `swarmkit serve` + canary deployments |
 | 4 | M11 | Launch prep | — | `pip install swarmkit` → working swarm in <15 min |
 
@@ -321,7 +321,7 @@ Make swarms useful with real knowledge sources and a rich skill catalogue.
 
 **Exit demo:** `swarmkit run` with multimodal-test example — coordinator (llama-3.3) delegates to vision agent (claude-sonnet) which calls `view_image` via MCP skill and produces detailed architecture diagram analysis.
 
-### M9 — Reference topologies (enhance) 🟡
+### M9 — Reference topologies (enhance) ✅
 
 **Goal:** make existing reference topologies production-quality and runnable end-to-end with real MCP servers.
 
@@ -448,12 +448,12 @@ Replace prose between agents with structured JSON. Research-backed: 55-87% token
 
 **Future (M10/M11):** Full MCP gateway replaces Phase A proxy. See `mcp-discovery-pattern.md`.
 
-#### Reference topologies — remaining
+#### Reference topologies — deferred to M11
 
-- [ ] **Code Review Swarm** — wire to real GitHub MCP, HITL gate, e2e test
-- [ ] **Skill Authoring Swarm** — multi-agent authoring flow, provenance tagging
-- [ ] **Knowledge Curator** — topology + wiki-fs MCP server
-- [ ] **Logistics Control Tower** — DAG + HITL + drift demo topology
+- [ ] **Code Review Swarm** — wire to real GitHub MCP, HITL gate, e2e test *(deferred to M11)*
+- [ ] **Skill Authoring Swarm** — multi-agent authoring flow, provenance tagging *(deferred to M11)*
+- [ ] **Knowledge Curator** — topology + wiki-fs MCP server *(deferred to M11)*
+- [ ] **Logistics Control Tower** — DAG + HITL + drift demo topology *(deferred to M11)*
 
 ---
 
@@ -503,6 +503,7 @@ deployment:
 
 - [x] ~16 archetypes already in `reference/archetypes/`
 - [x] ~20 skills already in `reference/skills/`
+- [ ] **Reference topologies (from M9)** — Code Review Swarm, Skill Authoring Swarm, Knowledge Curator, Logistics Control Tower. Wire to real MCP servers, add HITL gates, e2e tests.
 - [ ] Review and polish existing catalogue — ensure all validate, have descriptions, and cover the §13.1 list
 - [ ] Documentation site (MkDocs or Docusaurus)
 - [ ] Docker image build + publish workflow
@@ -590,7 +591,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `governance-decision-skills.md` | M9 ✅ |
 | `scope-freeze-and-spec-conformance.md` | M9 ✅ |
 | `two-phase-execution-flow.md` | M9 ✅ |
-| `structured-inter-agent-communication.md` | M9 🟡 |
+| `structured-inter-agent-communication.md` | M9 ✅ |
 | `document-writer-pattern.md` | M8 ✅ |
 
 ## Open questions
