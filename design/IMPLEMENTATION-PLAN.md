@@ -33,9 +33,9 @@ status: active
 | 1 | M4 | Decision + persistence skills | ✅ | Structured output + LLM judge + review queue |
 | 1 | — | DAG dependency graph | ✅ | Agents execute in dependency order |
 | 1 | M5 | MCP integration | ✅ | MCP calls gated through governance, sandboxed execution |
-| 2 | M6 | Observability + human interaction | ✅ | AuditProvider, OTel, ring buffer, circuit breakers, notifications, CLI rewrite, redaction |
+| 2 | M6 | Observability + human interaction | 🟡 | Core done (OTel, ring buffer, circuit breakers, notifications, CLI). Remaining: `--follow`, `events`, cost extraction. |
 | 2 | M6.5 | Workspace env configuration | ✅ | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
-| 2 | M7 | Intent drift detection | ✅ | IntentObserver, schema extension, compiler wiring, authoring integration |
+| 2 | M7 | Intent drift detection | 🟡 | Core done (IntentObserver, strategies, authoring). Remaining: OTel span events, drift metrics, tool error separation. |
 | 3 | M8 | MCP integration layer | ✅ | Lazy startup, permission tiers, multimodal, document reader, MarkItDown |
 | 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, Sterling log analyser ✅, reference topologies remaining |
 | 4 | M10 | Eject + execution modes | — | `swarmkit eject` + `swarmkit serve` + canary deployments |
@@ -223,24 +223,24 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 **Features:**
 
-- [ ] **OpenTelemetry Phase 1** — `SwarmKitTelemetry` class, trace-per-run, span-per-agent-step, tool call + governance child spans. `swarmkit.*` semantic attribute namespace.
-- [ ] **OTel exporters** — `console` (human-readable to stderr), `otlp` (OTLP/HTTP async batching), `none` (default). Config via `~/.swarmkit/config.yaml` `telemetry:` block.
-- [ ] **Local ring buffer** — SQLite-backed prompt/response store, keyed by OTel span ID. Configurable retention (default: 7 days). Survives process restarts.
-- [ ] **`swarmkit debug`** — `--span-id`, `--run-id`, `--agent`, `--last N`. Retrieves prompts from local ring buffer.
-- [ ] **AuditProvider abstraction** — `record()`, `query()`, `count()` methods. Built-ins: mock, sqlite (default), postgres, agt, plugin. Workspace config: `storage.audit`.
-- [ ] **Per-skill audit redaction** — `audit:` block on skills with `log_inputs`, `log_outputs`, `redact` fields. Category-level defaults.
-- [ ] **CLI primitives** — `swarmkit status` (snapshot), `swarmkit logs <run-id> [--follow]` (event tail), `swarmkit events [--filter]` (cross-run stream), `swarmkit stop <run-id>` (graceful shutdown), `swarmkit why <run-id>` (decision chain).
-- [ ] **`swarmkit review`** — interactive TUI for pending HITL approvals (approve/reject/edit/skip).
-- [ ] **`swarmkit ask`** — conversational observer, LLM-backed. Parses question → loads audit events → answers.
-- [ ] **Notification plugin** — webhook-based, runs outside the SwarmKit runtime process. The runtime emits structured events; notification providers consume them via webhooks. Multiple providers can be configured in parallel. Built-ins: terminal (stdout, for local dev), slack (outgoing webhook), email (SMTP), generic webhook (configurable URL + payload template). Fires on: `hitl_requested`, `run_ended { status: error }`, `skill_gap_surfaced`. Workspace config specifies provider + endpoint + event filters.
-- [ ] **Governance circuit breakers** — `max_steps_per_agent`, `max_steps_per_run`. Sensible defaults ship out of the box (`max_steps_per_run: 500`). Enforced in governance engine. From `market-analysis-and-risk-mitigations.md` Risk 3. Cost-based limit (`max_cost_per_run_usd`) plumbing exists but is inactive until provider-level cost extraction lands.
-- [ ] **Provider-level cost extraction** — each `ModelProvider` implementation must be updated to extract and return `cost_usd` from the LLM provider's API response when supported. Investigate per-provider: Anthropic (usage.input_tokens × published rate), OpenAI (usage + model pricing), Google (usage_metadata), OpenRouter (response cost field or usage × model rate), Groq/Together (usage), Ollama (local, no cost). Once providers report cost, wire into `CircuitBreakerTracker.add_cost()` to activate `max_cost_per_run_usd`.
-- [ ] **OTel metrics** — counters: `swarmkit.runs.total`, `swarmkit.agent.steps.total`, `swarmkit.tool.calls.total`. Histograms: `swarmkit.runs.duration_ms`, `swarmkit.tool.duration_ms`.
-- [ ] **Execution detail API** — beyond high-level `swarmkit status`, users need root-cause access. `swarmkit logs <run-id> --follow` streams full execution detail (every agent step, tool call, governance decision). `swarmkit why <run-id>` traces the decision chain. `swarmkit debug --span-id <id>` retrieves actual prompts/responses from the local ring buffer. For HITL flows, the webhook payload includes the run ID + span ID so the reviewer can pull execution context via CLI or (in Rynko) via the dashboard trace view.
+- [x] **OpenTelemetry Phase 1** — `SwarmKitTelemetry` class, trace-per-run, span-per-agent-step, tool call + governance child spans. `swarmkit.*` semantic attribute namespace.
+- [x] **OTel exporters** — `console` (human-readable to stderr), `otlp` (OTLP/HTTP async batching), `none` (default). Config via `~/.swarmkit/config.yaml` `telemetry:` block.
+- [x] **Local ring buffer** — SQLite-backed prompt/response store, keyed by OTel span ID. Configurable retention (default: 7 days). Survives process restarts.
+- [x] **`swarmkit debug`** — `--span-id`, `--run-id`, `--agent`, `--last N`. Retrieves prompts from local ring buffer.
+- [x] **AuditProvider abstraction** — `record()`, `query()`, `count()` methods. Built-ins: mock, sqlite (default), postgres, agt, plugin. Workspace config: `storage.audit`.
+- [x] **Per-skill audit redaction** — `audit:` block on skills with `log_inputs`, `log_outputs`, `redact` fields. Category-level defaults.
+- [x] **CLI primitives** — `swarmkit status` (snapshot), `swarmkit logs <run-id>` (event tail), `swarmkit why <run-id>` (decision chain). Remaining: `swarmkit logs --follow` (streaming), `swarmkit events [--filter]` (cross-run stream), `swarmkit stop <run-id>` (stubbed, needs persistent mode).
+- [x] **`swarmkit review`** — interactive TUI for pending HITL approvals (approve/reject/edit/skip).
+- [x] **`swarmkit ask`** — conversational observer, LLM-backed. Parses question → loads audit events → answers.
+- [x] **Notification plugin** — webhook-based, runs outside the SwarmKit runtime process. The runtime emits structured events; notification providers consume them via webhooks. Multiple providers can be configured in parallel. Built-ins: terminal (stdout, for local dev), slack (outgoing webhook), discord, telegram, generic webhook (configurable URL + payload template). Fires on: `hitl_requested`, `run_ended { status: error }`, `skill_gap_surfaced`. Workspace config specifies provider + endpoint + event filters.
+- [x] **Governance circuit breakers** — `max_steps_per_agent`, `max_steps_per_run`. Sensible defaults ship out of the box (`max_steps_per_run: 500`). Enforced in governance engine. From `market-analysis-and-risk-mitigations.md` Risk 3. Cost-based limit (`max_cost_per_run_usd`) plumbing exists but is inactive until provider-level cost extraction lands.
+- [ ] **Provider-level cost extraction** — each `ModelProvider` implementation must be updated to extract and return `cost_usd` from the LLM provider's API response when supported. Plumbing exists in `CircuitBreakerTracker.add_cost()` and `SwarmKitTelemetry.record_model_usage()` but `CompletionResponse` does not carry `cost_usd` yet. No provider extracts cost data.
+- [x] **OTel metrics** — counters: `swarmkit.runs.total`, `swarmkit.agent.steps.total`, `swarmkit.tool.calls.total`, `swarmkit.governance.decisions.total`. Histograms: `swarmkit.runs.duration_ms`, `swarmkit.tool.duration_ms`, `swarmkit.approval.wait_ms`.
+- [x] **Execution detail API** — `swarmkit logs <run-id>` shows execution detail. `swarmkit why <run-id>` traces the decision chain. `swarmkit debug --span-id <id>` retrieves actual prompts/responses from the local ring buffer. Remaining: `--follow` streaming mode for `swarmkit logs`.
 
 **Exit demo:** run a topology with `telemetry.exporter: console` — span output in terminal showing agent steps, tool calls, governance decisions. `swarmkit logs` tails the same run. `swarmkit debug --run-id xyz` retrieves prompt/response pairs from local SQLite. `swarmkit ask "what went wrong?"` answers from audit context. Optional: spin up local Jaeger, see the full trace.
 
-### M6.5 — Workspace environment configuration (NEW)
+### M6.5 — Workspace environment configuration ✅
 
 **Goal:** separate environment-specific values (URLs, credentials, feature flags) from structural workspace config. Single interpolation point.
 
@@ -250,16 +250,16 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 **Features:**
 
-- [ ] **Property resolution engine** — two-phase: load `workspace.env.yaml`, then resolve `${ENV_VAR}` in property values
-- [ ] **Env file loading** — `workspace.env.yaml` (default) + `workspace.env.{SWARMKIT_ENV}.yaml` (per-environment override)
-- [ ] **Resolver integration** — load env file before resolving workspace, merge properties into config
-- [ ] **`swarmkit init` update** — generates template `workspace.env.yaml` + adds `workspace.env*.yaml` to `.gitignore`
-- [ ] **`swarmkit validate` update** — warns on unresolved `${property}` references
-- [ ] **Backward compatibility** — existing workspaces with inline values work unchanged
+- [x] **Property resolution engine** — two-phase: load `workspace.env.yaml`, then resolve `${ENV_VAR}` in property values
+- [x] **Env file loading** — `workspace.env.yaml` (default) + `workspace.env.{SWARMKIT_ENV}.yaml` (per-environment override)
+- [x] **Resolver integration** — load env file before resolving workspace, merge properties into config
+- [x] **`swarmkit init` update** — generates template `workspace.env.yaml` + adds `workspace.env*.yaml` to `.gitignore`
+- [x] **`swarmkit validate` update** — warns on unresolved `${property}` references
+- [x] **Backward compatibility** — existing workspaces with inline values work unchanged
 
 **Exit demo:** same workspace runs against dev and prod with `SWARMKIT_ENV=dev` vs `SWARMKIT_ENV=prod`, each picking up different notification URLs and model providers from their env file.
 
-### M7 — Intent drift detection (NEW)
+### M7 — Intent drift detection ✅
 
 **Goal:** detect semantic drift from original intent during multi-step execution; optionally nudge agents back on track.
 
@@ -269,16 +269,16 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 **Features:**
 
-- [ ] **Schema extension** — `intent_monitoring:` block on agents and topology level. Fields: `enabled`, `threshold`, `on_drift` (log/warn/nudge).
-- [ ] **IntentObserver** — `set_anchor(goal)`, `observe(step, output)` → `DriftResult`. Drift = `1 - cosine_similarity(anchor, output)`.
-- [ ] **Embedding backend** — sentence-transformers default (local, no API keys). Pluggable via ModelProvider for API-based embeddings.
-- [ ] **Drift strategies** — `log` (audit only), `warn` (log + emit warning event), `nudge` (inject system message reminding agent of original goal).
+- [x] **Schema extension** — `intent_monitoring:` block on agents and topology level. Fields: `enabled`, `threshold`, `on_drift` (log/warn/nudge).
+- [x] **IntentObserver** — `set_anchor(goal)`, `observe(step, output)` → `DriftResult`. Drift = `1 - cosine_similarity(anchor, output)`.
+- [x] **Embedding backend** — sentence-transformers default (all-MiniLM-L6-v2 ONNX, local, no API keys). TF-IDF fallback for zero-dep environments.
+- [x] **Drift strategies** — `log` (audit only), `warn` (log + emit warning event), `nudge` (inject system message reminding agent of original goal).
 - [ ] **Tool error separation** — only score `agent_reasoning` events for drift. `tool_error` and `tool_response` excluded.
-- [ ] **Audit integration** — drift scores as structured fields in audit events: `intent_drift: { score, threshold, action_taken }`.
+- [x] **Audit integration** — drift scores as structured fields in audit events: `intent_drift: { score, threshold, action_taken }`.
 - [ ] **OTel integration** — drift scores as span events with `swarmkit.drift.*` attributes.
 - [ ] **OTel drift metrics** — histogram: `swarmkit.agent.drift.score`. Counter: drift threshold breaches.
 
-- [ ] **Authoring integration** — `swarmkit init` and `swarmkit author topology` ask if the user wants intent monitoring. If yes, add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: log }`. If no, add as a commented-out block so users discover the feature.
+- [x] **Authoring integration** — `swarmkit init` and `swarmkit author topology` ask if the user wants intent monitoring. If yes, add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: log }`. If no, add as a commented-out block so users discover the feature.
 
 **Not in scope:** `threshold: auto` self-learning mode. Needs feedback signal design, cold-start strategy, and run history storage (Rynko). See open questions in design note.
 
@@ -430,10 +430,10 @@ Replace prose between agents with structured JSON. Research-backed: 55-87% token
 
 **Architecture:** three layers — MCP provenance envelope (Phase A now, Phase B gateway in M10), default output_schema for workers, validation (Tier 1 deterministic + Tier 2 Rynko opt-in).
 
-**Wave 1 (next):**
-- [ ] **MCP provenance envelope** — wrap every tool response with ToolMetadata (source, args, timing). Phase A of gateway path.
-- [ ] **Default output_schema for workers** — all workers produce structured JSON by default. JSON mode from provider. Schema validation + retry.
-- [ ] **Auto-populate source from tool metadata** — citation is infrastructure, not prompt-dependent
+**Wave 1:**
+- [x] **MCP provenance envelope** — ToolMetadata (source, args, timing, duration_ms, server_id) wraps every MCP tool response. Phase A of gateway path.
+- [x] **Default output_schema for workers** — all workers produce structured JSON `{findings: [{fact, source}], not_found, raw_data}` by default. JSON mode from provider. Schema validation + retry.
+- [ ] **Auto-populate source from tool metadata** — citation is infrastructure, not prompt-dependent. Source field validated but not yet auto-filled from provenance.
 - [ ] **Skip summarizer for structured output** — structured data IS the summary
 
 **Wave 2:**
