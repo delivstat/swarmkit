@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.2.54"
+version = "1.2.56"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -70,6 +70,7 @@ dependencies = [
 [project.optional-dependencies]
 serve = [
     "mcp>=1.0",
+    "PyJWT[crypto]>=2.8",
 ]
 dev = [
     "pytest>=8.0",
