@@ -1,12 +1,13 @@
 """Tests for the SwarmKit HTTP server (M9).
 
-Uses FastAPI's TestClient — no real HTTP server started. Tests
-workspace loading, introspection endpoints, and run execution with
-mock providers.
+Uses FastAPI's TestClient and httpx AsyncClient — no real HTTP server
+started. Tests workspace loading, introspection endpoints, async job
+execution, webhooks, and run execution with mock providers.
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -40,7 +41,7 @@ def reference_client() -> TestClient:  # type: ignore[misc]
         yield client
 
 
-# ---- health --------------------------------------------------------------
+# ---- health ------------------------------------------------------------------
 
 
 def test_health(hello_client: TestClient) -> None:
@@ -51,7 +52,7 @@ def test_health(hello_client: TestClient) -> None:
     assert "hello-swarm" in data["workspace"]
 
 
-# ---- introspection -------------------------------------------------------
+# ---- introspection -----------------------------------------------------------
 
 
 def test_list_topologies(hello_client: TestClient) -> None:
@@ -81,14 +82,16 @@ def test_validate(hello_client: TestClient) -> None:
     assert data["valid"] is True
 
 
-# ---- run -----------------------------------------------------------------
+# ---- async job execution -----------------------------------------------------
 
 
-def test_run_topology(hello_client: TestClient) -> None:
+def test_run_topology_returns_job(hello_client: TestClient) -> None:
+    """POST /run/{topology} now returns a job_id instead of blocking."""
     resp = hello_client.post("/run/hello", json={"input": "Greet engineers"})
     assert resp.status_code == 200
     data = resp.json()
-    assert "output" in data
+    assert "job_id" in data
+    assert data["status"] == "running"
 
 
 def test_run_unknown_topology_returns_404(hello_client: TestClient) -> None:
@@ -97,7 +100,91 @@ def test_run_unknown_topology_returns_404(hello_client: TestClient) -> None:
     assert "not found" in resp.json()["detail"].lower()
 
 
-# ---- reference workspace -------------------------------------------------
+def test_get_job(hello_client: TestClient) -> None:
+    """Submit a job, then poll it."""
+    resp = hello_client.post("/run/hello", json={"input": "test"})
+    job_id = resp.json()["job_id"]
+
+    # Poll until done (with timeout)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        poll = hello_client.get(f"/jobs/{job_id}")
+        assert poll.status_code == 200
+        data = poll.json()
+        if data["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.2)
+
+    assert data["status"] in ("completed", "failed")
+    assert data["job_id"] == job_id
+
+
+def test_get_nonexistent_job(hello_client: TestClient) -> None:
+    resp = hello_client.get("/jobs/doesnotexist")
+    assert resp.status_code == 404
+
+
+def test_list_jobs(hello_client: TestClient) -> None:
+    # Create a job first
+    hello_client.post("/run/hello", json={"input": "list test"})
+
+    resp = hello_client.get("/jobs")
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) >= 1
+    assert "job_id" in jobs[0]
+    assert "topology" in jobs[0]
+    assert "status" in jobs[0]
+
+
+# ---- webhook endpoint --------------------------------------------------------
+
+
+def test_webhook_trigger(hello_client: TestClient) -> None:
+    resp = hello_client.post("/hooks/hello", json={"input": "webhook test"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "job_id" in data
+    assert data["status"] == "running"
+
+
+def test_webhook_unknown_topology(hello_client: TestClient) -> None:
+    resp = hello_client.post("/hooks/nonexistent", json={"input": "test"})
+    assert resp.status_code == 404
+
+
+# ---- SSE streaming -----------------------------------------------------------
+
+
+def test_job_stream(hello_client: TestClient) -> None:
+    """Test that SSE endpoint streams events for a job."""
+    # Create a job
+    resp = hello_client.post("/run/hello", json={"input": "stream test"})
+    assert resp.status_code == 200
+    job_id = resp.json()["job_id"]
+
+    # Wait for job to complete
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        poll = hello_client.get(f"/jobs/{job_id}")
+        if poll.json()["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.2)
+
+    # Now stream — job is done so SSE should return events immediately
+    with hello_client.stream("GET", f"/jobs/{job_id}/stream") as stream:
+        events: list[str] = []
+        for line in stream.iter_lines():
+            if line.startswith("data: "):
+                events.append(line[6:])
+                if "[done]" in line:
+                    break
+
+    assert len(events) >= 1
+    assert any("[done]" in e for e in events)
+
+
+# ---- reference workspace -----------------------------------------------------
 
 
 def test_reference_lists_both_topologies(reference_client: TestClient) -> None:

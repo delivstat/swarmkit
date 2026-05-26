@@ -12,7 +12,10 @@ import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
+
+if TYPE_CHECKING:
+    from swarmkit_runtime.auth import AuthProvider
 
 import typer
 
@@ -1915,6 +1918,35 @@ def checkpoints(
     typer.echo(f"\nResume: swarmkit run {workspace_path} <topology> --resume")
 
 
+# ---- auth helper ---------------------------------------------------------
+
+
+def _build_auth_provider(workspace_path: Path) -> AuthProvider:
+    """Build auth provider from workspace.yaml ``server.auth`` config."""
+    from swarmkit_runtime.auth import (  # noqa: PLC0415
+        APIKeyAuthProvider,
+        NoneAuthProvider,
+    )
+
+    ws_yaml_path = workspace_path / "workspace.yaml"
+    if not ws_yaml_path.exists():
+        return NoneAuthProvider()
+
+    import yaml  # noqa: PLC0415
+
+    ws_data = yaml.safe_load(ws_yaml_path.read_text()) or {}
+    server_config = ws_data.get("server", {}) or {}
+    auth_config = server_config.get("auth", {}) or {}
+    provider_name = auth_config.get("provider", "none")
+
+    if provider_name == "api_key":
+        config = auth_config.get("config", {}) or {}
+        return APIKeyAuthProvider(keys=config.get("keys", []))
+
+    # Default: open access
+    return NoneAuthProvider()
+
+
 # ---- stubs for later milestones ------------------------------------------
 
 
@@ -1944,7 +1976,8 @@ def serve(
 
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
-    app_instance = create_app(workspace_path.resolve())
+    auth_provider = _build_auth_provider(workspace_path.resolve())
+    app_instance = create_app(workspace_path.resolve(), auth_provider=auth_provider)
     uvicorn.run(app_instance, host=host, port=port)
 
 
