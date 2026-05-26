@@ -2787,7 +2787,7 @@ wheels = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.0.36"
+version = "1.2.52"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -2824,6 +2824,9 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
+serve = [
+    { name = "mcp" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2838,6 +2841,7 @@ requires-dist = [
     { name = "langchain-core", specifier = ">=0.3" },
     { name = "langgraph", specifier = ">=0.2" },
     { name = "mcp", specifier = ">=1.0" },
+    { name = "mcp", marker = "extra == 'serve'", specifier = ">=1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "openai", specifier = ">=1.50" },
     { name = "opentelemetry-api", specifier = ">=1.20" },
@@ -2857,11 +2861,11 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["serve", "dev"]
 
 [[package]]
 name = "swarmkit-schema"
-version = "1.0.36"
+version = "1.2.6"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },
