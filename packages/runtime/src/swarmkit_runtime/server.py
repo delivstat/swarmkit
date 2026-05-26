@@ -63,7 +63,11 @@ def _parse_server_config(workspace: Any) -> ServerCfg:
     return ServerCfg(
         max_concurrent=(getattr(jobs, "max_concurrent", None) or _DEFAULT_MAX_CONCURRENT),
         timeout_seconds=(getattr(jobs, "timeout_seconds", None) or _DEFAULT_TIMEOUT_SECONDS),
-        mcp_enabled=bool(getattr(mcp, "enabled", _DEFAULT_MCP_ENABLED)) if mcp is not None else _DEFAULT_MCP_ENABLED,
+        mcp_enabled=(
+            bool(getattr(mcp, "enabled", _DEFAULT_MCP_ENABLED))
+            if mcp is not None
+            else _DEFAULT_MCP_ENABLED
+        ),
     )
 
 
