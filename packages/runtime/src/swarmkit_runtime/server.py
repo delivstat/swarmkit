@@ -37,6 +37,40 @@ from swarmkit_runtime.errors import ResolutionErrors
 
 logger = logging.getLogger("swarmkit.server")
 
+# ---- server config -----------------------------------------------------------
+
+_DEFAULT_MAX_CONCURRENT = 5
+_DEFAULT_TIMEOUT_SECONDS = 300
+_DEFAULT_MCP_ENABLED = True
+
+
+@dataclass(frozen=True)
+class ServerCfg:
+    """Parsed ``server:`` block from workspace.yaml."""
+
+    max_concurrent: int = _DEFAULT_MAX_CONCURRENT
+    timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS
+    mcp_enabled: bool = _DEFAULT_MCP_ENABLED
+
+
+def _parse_server_config(workspace: Any) -> ServerCfg:
+    """Extract server config from the resolved workspace's raw model."""
+    server_raw = getattr(workspace.raw, "server", None)
+    if server_raw is None:
+        return ServerCfg()
+    jobs = getattr(server_raw, "jobs", None)
+    mcp = getattr(server_raw, "mcp", None)
+    return ServerCfg(
+        max_concurrent=(getattr(jobs, "max_concurrent", None) or _DEFAULT_MAX_CONCURRENT),
+        timeout_seconds=(getattr(jobs, "timeout_seconds", None) or _DEFAULT_TIMEOUT_SECONDS),
+        mcp_enabled=(
+            bool(getattr(mcp, "enabled", _DEFAULT_MCP_ENABLED))
+            if mcp is not None
+            else _DEFAULT_MCP_ENABLED
+        ),
+    )
+
+
 # ---- MCP optional import ---------------------------------------------------
 
 _mcp_available = importlib.util.find_spec("mcp") is not None
@@ -133,30 +167,71 @@ class JobListItem(BaseModel):
 # ---- job execution ----------------------------------------------------------
 
 
-async def execute_job(job: Job, rt: WorkspaceRuntime, max_steps: int) -> None:
-    """Run topology in background, updating job state."""
+async def execute_job(
+    job: Job,
+    rt: WorkspaceRuntime,
+    max_steps: int,
+    *,
+    timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
+    semaphore: asyncio.Semaphore | None = None,
+) -> None:
+    """Run topology in background, updating job state.
+
+    When a *semaphore* is provided the slot is held for the duration
+    of execution so ``_register_job_routes`` can reject new requests
+    with 429 when all slots are occupied.
+    """
     job.status = "running"
     job.events.append(f"Job started for topology '{job.topology}'")
     try:
-        result = await rt.run(
-            job.topology,
-            job.input,
-            max_steps=max_steps,
-        )
-        job.output = result.output
-        job.status = "completed"
-        job.events.append("Job completed successfully")
-    except Exception as exc:
-        job.error = str(exc)
-        job.status = "failed"
-        job.events.append(f"Job failed: {exc}")
+        if semaphore is not None:
+            await semaphore.acquire()
+        try:
+            result = await asyncio.wait_for(
+                rt.run(
+                    job.topology,
+                    job.input,
+                    max_steps=max_steps,
+                ),
+                timeout=timeout_seconds,
+            )
+            job.output = result.output
+            job.status = "completed"
+            job.events.append("Job completed successfully")
+        except TimeoutError:
+            job.error = f"Job timed out after {timeout_seconds}s"
+            job.status = "failed"
+            job.events.append(f"Job timed out after {timeout_seconds}s")
+        except Exception as exc:
+            job.error = str(exc)
+            job.status = "failed"
+            job.events.append(f"Job failed: {exc}")
+        finally:
+            if semaphore is not None:
+                semaphore.release()
     finally:
         job.completed_at = datetime.now(UTC).isoformat()
 
 
-def _start_job(job_store: JobStore, job: Job, rt: WorkspaceRuntime, max_steps: int) -> None:
+def _start_job(
+    job_store: JobStore,
+    job: Job,
+    rt: WorkspaceRuntime,
+    max_steps: int,
+    *,
+    timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
+    semaphore: asyncio.Semaphore | None = None,
+) -> None:
     """Create a background task for a job and track it."""
-    task = asyncio.create_task(execute_job(job, rt, max_steps))
+    task = asyncio.create_task(
+        execute_job(
+            job,
+            rt,
+            max_steps,
+            timeout_seconds=timeout_seconds,
+            semaphore=semaphore,
+        )
+    )
     job_store.track_task(task)
 
 
@@ -215,8 +290,22 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
                 status_code=404,
                 detail=f"Topology '{topology_name}' not found. Available: {available}",
             )
+        semaphore: asyncio.Semaphore | None = getattr(request.app.state, "job_semaphore", None)
+        if semaphore is not None and semaphore.locked():
+            raise HTTPException(
+                status_code=429,
+                detail="Max concurrent jobs reached. Try again later.",
+            )
+        cfg: ServerCfg = getattr(request.app.state, "server_config", ServerCfg())
         job = await job_store.create(topology_name, body.input)
-        _start_job(job_store, job, rt, body.max_steps)
+        _start_job(
+            job_store,
+            job,
+            rt,
+            body.max_steps,
+            timeout_seconds=cfg.timeout_seconds,
+            semaphore=semaphore,
+        )
         return JobResponse(job_id=job.id, status="running")
 
     @app.get("/jobs")
@@ -281,10 +370,24 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
                 status_code=404,
                 detail=f"Topology '{topology_name}' not found. Available: {available}",
             )
+        semaphore: asyncio.Semaphore | None = getattr(request.app.state, "job_semaphore", None)
+        if semaphore is not None and semaphore.locked():
+            raise HTTPException(
+                status_code=429,
+                detail="Max concurrent jobs reached. Try again later.",
+            )
+        cfg: ServerCfg = getattr(request.app.state, "server_config", ServerCfg())
         body = await request.json()
         user_input = body.get("input", str(body)) if isinstance(body, dict) else str(body)
         job = await job_store.create(topology_name, user_input)
-        _start_job(job_store, job, rt, max_steps=10)
+        _start_job(
+            job_store,
+            job,
+            rt,
+            max_steps=10,
+            timeout_seconds=cfg.timeout_seconds,
+            semaphore=semaphore,
+        )
         return JobResponse(job_id=job.id, status="running")
 
 
@@ -418,14 +521,29 @@ def create_app(
 
         app.state.runtime = runtime
 
-        try:
-            await runtime.start_session()
-            logger.info("MCP servers started at boot")
-        except Exception:
-            logger.warning(
-                "MCP server boot failed; runs will manage per-invocation",
-                exc_info=True,
-            )
+        # Parse server config from workspace.yaml
+        cfg = _parse_server_config(runtime.workspace)
+        app.state.server_config = cfg
+        app.state.job_semaphore = asyncio.Semaphore(cfg.max_concurrent)
+        logger.info(
+            "Server config: max_concurrent=%d, timeout=%ds, mcp_enabled=%s",
+            cfg.max_concurrent,
+            cfg.timeout_seconds,
+            cfg.mcp_enabled,
+        )
+
+        # Start MCP servers at boot (kept alive across all requests)
+        if cfg.mcp_enabled:
+            try:
+                await runtime.start_session()
+                logger.info("MCP servers started at boot")
+            except Exception:
+                logger.warning(
+                    "MCP server boot failed; runs will manage per-invocation",
+                    exc_info=True,
+                )
+        else:
+            logger.info("MCP server boot disabled by server.mcp.enabled=false")
 
         yield
         await runtime.close()

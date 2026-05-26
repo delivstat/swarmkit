@@ -340,6 +340,42 @@ class DecisionSkillBinding(BaseModel):
     )
 
 
+class Jobs(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_concurrent: int | None = Field(
+        5, description="Maximum number of concurrent topology executions.", ge=1
+    )
+    timeout_seconds: int | None = Field(
+        300, description="Per-job execution timeout in seconds.", ge=1
+    )
+
+
+class Mcp(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    enabled: bool | None = Field(
+        True, description="Whether to start MCP servers at boot in serve mode."
+    )
+
+
+class ServerConfig(BaseModel):
+    """
+    Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server lifecycle.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    jobs: Jobs | None = None
+    mcp: Mcp | None = None
+
+
 class Governance(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -384,3 +420,4 @@ class SwarmKitWorkspace(BaseModel):
     storage: Storage | None = None
     planning: Planning | None = None
     synthesis: Synthesis | None = None
+    server: ServerConfig | None = None

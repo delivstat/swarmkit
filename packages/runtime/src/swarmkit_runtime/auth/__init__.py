@@ -8,9 +8,11 @@ Built-in providers:
 
 - ``NoneAuthProvider`` — open access (default, local dev)
 - ``APIKeyAuthProvider`` — bearer-token auth with static key registry
+- ``JWTAuthProvider`` — JWT bearer tokens with JWKS auto-discovery
 """
 
 from swarmkit_runtime.auth._api_key import APIKeyAuthProvider
+from swarmkit_runtime.auth._jwt import JWTAuthProvider
 from swarmkit_runtime.auth._none import NoneAuthProvider
 from swarmkit_runtime.auth._provider import (
     AuthError,
@@ -27,6 +29,7 @@ __all__ = [
     "AuthProvider",
     "AuthProviderRegistry",
     "AuthRequest",
+    "JWTAuthProvider",
     "NoneAuthProvider",
     "default_registry",
 ]
