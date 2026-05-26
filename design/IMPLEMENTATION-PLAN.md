@@ -424,25 +424,27 @@ Mandatory decision skills with workspace/topology merge semantics. See `design/d
 
 **Exit demo:** Sterling researcher fabricates a name → grounding-verifier catches it → agent revises → clean output passes through.
 
-#### Structured inter-agent communication 🟡
+#### Structured inter-agent communication ✅
 
 Replace prose between agents with structured JSON. Research-backed: 55-87% token reduction + 3-36% accuracy improvement. See `design/details/structured-inter-agent-communication.md`.
 
 **Architecture:** three layers — MCP provenance envelope (Phase A now, Phase B gateway in M10), default output_schema for workers, validation (Tier 1 deterministic + Tier 2 Rynko opt-in).
 
-**Wave 1:**
-- [x] **MCP provenance envelope** — ToolMetadata (source, args, timing, duration_ms, server_id) wraps every MCP tool response. Phase A of gateway path.
-- [x] **Default output_schema for workers** — all workers produce structured JSON `{findings: [{fact, source}], not_found, raw_data}` by default. JSON mode from provider. Schema validation + retry.
-- [ ] **Auto-populate source from tool metadata** — citation is infrastructure, not prompt-dependent. Source field validated but not yet auto-filled from provenance.
-- [ ] **Skip summarizer for structured output** — structured data IS the summary
+**Wave 1 (v1.2.26–v1.2.29):**
+- [x] **MCP provenance envelope** — ToolMetadata wraps every MCP tool response. PR #223.
+- [x] **Default output_schema for workers** — structured JSON by default, JSON mode from provider, schema validation + retry. PR #222.
+- [x] **Auto-populate source from tool metadata** — runtime scans for `[source: ...]` tags, auto-fills when unambiguous. PR #224.
+- [x] **Skip summarizer for structured output** — structured JSON extracted directly. Landed in PR #222.
+- [x] **Structured checkpoint instructions** — JSON action specs replace English instructions. PR #225.
 
-**Wave 2:**
-- [ ] **Deterministic grounding (Tier 1)** — schema check replaces LLM judge for structured agents
-- [ ] **Rynko Flow validation (opt-in)** — business rules as governance decision skill
+**Wave 2 (v1.2.30–v1.2.31):**
+- [x] **Deterministic grounding (Tier 1)** — `check_grounding()` replaces LLM judge for structured agents. PR #227.
+- [x] **MCP-backed decision skills** — any MCP server can be a governance decision skill (Rynko or otherwise). PR #228.
 
-**Wave 3:**
-- [ ] **Sterling workspace — structured researchers** — validate token savings vs prose
-- [ ] **Authoring skill — auto-suggest schemas** — new archetypes include output_schema
+**Wave 3 (v1.2.32):**
+- [x] **Sterling workspace — structured researchers** — all research workers get structured output by default. PR #230.
+- [x] **Authoring skill — auto-suggest schemas** — new archetypes include output_schema, explains both patterns. PR #230.
+- [x] **Gate-validator MCP server** — JSON Schema gates in `gates/` dir, `list_gates` + `validate_gate` tools. PR #231.
 
 **Future (M10/M11):** Full MCP gateway replaces Phase A proxy. See `mcp-discovery-pattern.md`.
 
