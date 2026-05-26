@@ -35,7 +35,7 @@ status: active
 | 1 | M5 | MCP integration | ✅ | MCP calls gated through governance, sandboxed execution |
 | 2 | M6 | Observability + human interaction | 🟡 | Core done (OTel, ring buffer, circuit breakers, notifications, CLI). Remaining: `--follow`, `events`, cost extraction. |
 | 2 | M6.5 | Workspace env configuration | ✅ | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
-| 2 | M7 | Intent drift detection | 🟡 | Core done (IntentObserver, strategies, authoring). Remaining: OTel span events, drift metrics, tool error separation. |
+| 2 | M7 | Intent drift detection | ✅ | IntentObserver, OTel span events + metrics, tool error separation, authoring integration. PR #261. |
 | 3 | M8 | MCP integration layer | ✅ | Lazy startup, permission tiers, multimodal, document reader, MarkItDown |
 | 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, Sterling log analyser ✅, reference topologies remaining |
 | 4 | M10 | Eject + execution modes | — | `swarmkit eject` + `swarmkit serve` + canary deployments |
@@ -273,10 +273,10 @@ Add observability, intent drift detection, and operational tooling. Everything h
 - [x] **IntentObserver** — `set_anchor(goal)`, `observe(step, output)` → `DriftResult`. Drift = `1 - cosine_similarity(anchor, output)`.
 - [x] **Embedding backend** — sentence-transformers default (all-MiniLM-L6-v2 ONNX, local, no API keys). TF-IDF fallback for zero-dep environments.
 - [x] **Drift strategies** — `log` (audit only), `warn` (log + emit warning event), `nudge` (inject system message reminding agent of original goal).
-- [ ] **Tool error separation** — only score `agent_reasoning` events for drift. `tool_error` and `tool_response` excluded.
+- [x] **Tool error separation** — error passthroughs (`Error:`, `Tool error:`) excluded from drift scoring. PR #261.
 - [x] **Audit integration** — drift scores as structured fields in audit events: `intent_drift: { score, threshold, action_taken }`.
-- [ ] **OTel integration** — drift scores as span events with `swarmkit.drift.*` attributes.
-- [ ] **OTel drift metrics** — histogram: `swarmkit.agent.drift.score`. Counter: drift threshold breaches.
+- [x] **OTel integration** — drift scores as span events with `swarmkit.drift.*` attributes. PR #261.
+- [x] **OTel drift metrics** — histogram: `swarmkit.agent.drift.score`. Counter: `swarmkit.agent.drift.breaches.total`. PR #261.
 
 - [x] **Authoring integration** — `swarmkit init` and `swarmkit author topology` ask if the user wants intent monitoring. If yes, add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: log }`. If no, add as a commented-out block so users discover the feature.
 
