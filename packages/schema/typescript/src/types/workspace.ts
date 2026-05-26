@@ -17,9 +17,31 @@ export interface SwarmKitWorkspace {
     model_providers?: ModelProviderElement[];
     organisation?:    Organisation;
     planning?:        Planning;
+    server?:          ServerConfig;
     storage?:         Storage;
     synthesis?:       Synthesis;
     team?:            Organisation;
+}
+
+/**
+ * Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP
+ * server lifecycle.
+ */
+export interface ServerConfig {
+    jobs?: ServerJobsConfig;
+    mcp?:  ServerMcpConfig;
+}
+
+export interface ServerJobsConfig {
+    /** Maximum number of concurrent topology executions. */
+    max_concurrent?:  number;
+    /** Per-job execution timeout in seconds. */
+    timeout_seconds?: number;
+}
+
+export interface ServerMcpConfig {
+    /** Whether to start MCP servers at boot in serve mode. */
+    enabled?: boolean;
 }
 
 export type APIVersion = "swarmkit/v1";

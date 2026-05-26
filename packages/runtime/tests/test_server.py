@@ -202,3 +202,49 @@ def test_reference_lists_all_skills(reference_client: TestClient) -> None:
     assert "github-repo-read" in ids
     assert "code-quality-review" in ids
     assert "run-tests" in ids
+
+
+# ---- concurrent job limiting -------------------------------------------------
+
+
+def test_concurrent_job_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the semaphore is fully acquired, POST /run returns 429."""
+    import asyncio  # noqa: PLC0415
+
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    monkeypatch.setenv("SWARMKIT_PROVIDER", "mock")
+
+    app = create_app(EXAMPLE_WS)
+
+    with TestClient(app) as client:
+        # The semaphore is stored on app.state by the lifespan.
+        # Manually exhaust it to simulate max concurrent jobs.
+        sem: asyncio.Semaphore = app.state.job_semaphore
+        # Acquire all slots (default 5, but just drain whatever is there)
+        acquired = 0
+        while not sem.locked():
+            sem._value -= 1
+            acquired += 1
+        assert sem.locked()
+
+        # Now a new job should be rejected with 429
+        resp = client.post("/run/hello", json={"input": "should be rejected"})
+        assert resp.status_code == 429
+        assert "Max concurrent jobs" in resp.json()["detail"]
+
+        # Restore semaphore state
+        sem._value += acquired
+
+
+# ---- server config parsing ---------------------------------------------------
+
+
+def test_server_config_defaults() -> None:
+    """ServerCfg defaults are applied when workspace has no server block."""
+    from swarmkit_runtime.server import ServerCfg  # noqa: PLC0415
+
+    cfg = ServerCfg()
+    assert cfg.max_concurrent == 5
+    assert cfg.timeout_seconds == 300
+    assert cfg.mcp_enabled is True

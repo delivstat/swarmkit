@@ -362,6 +362,45 @@ class Governance(BaseModel):
     )
 
 
+class ServerJobsConfig(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_concurrent: int | None = Field(
+        None,
+        description="Maximum number of concurrent topology executions.",
+    )
+    timeout_seconds: int | None = Field(
+        None,
+        description="Per-job execution timeout in seconds.",
+    )
+
+
+class ServerMcpConfig(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    enabled: bool | None = Field(
+        None,
+        description="Whether to start MCP servers at boot in serve mode.",
+    )
+
+
+class ServerConfig(BaseModel):
+    """
+    Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server lifecycle.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    jobs: ServerJobsConfig | None = None
+    mcp: ServerMcpConfig | None = None
+
+
 class SwarmKitWorkspace(BaseModel):
     """
     Deployment-level config: identity, governance, model providers, MCP registry, storage. See design §9.3 and design/details/workspace-schema-v1.md.
@@ -384,3 +423,4 @@ class SwarmKitWorkspace(BaseModel):
     storage: Storage | None = None
     planning: Planning | None = None
     synthesis: Synthesis | None = None
+    server: ServerConfig | None = None
