@@ -340,6 +340,42 @@ class DecisionSkillBinding(BaseModel):
     )
 
 
+class Jobs(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_concurrent: int | None = Field(
+        5, description="Maximum number of concurrent topology executions.", ge=1
+    )
+    timeout_seconds: int | None = Field(
+        300, description="Per-job execution timeout in seconds.", ge=1
+    )
+
+
+class Mcp(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    enabled: bool | None = Field(
+        True, description="Whether to start MCP servers at boot in serve mode."
+    )
+
+
+class ServerConfig(BaseModel):
+    """
+    Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server lifecycle.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    jobs: Jobs | None = None
+    mcp: Mcp | None = None
+
+
 class Governance(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -360,45 +396,6 @@ class Governance(BaseModel):
         None,
         description="Mandatory decision skills that fire at specified trigger points. Topologies inherit these and can override by id.",
     )
-
-
-class ServerJobsConfig(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    max_concurrent: int | None = Field(
-        None,
-        description="Maximum number of concurrent topology executions.",
-    )
-    timeout_seconds: int | None = Field(
-        None,
-        description="Per-job execution timeout in seconds.",
-    )
-
-
-class ServerMcpConfig(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    enabled: bool | None = Field(
-        None,
-        description="Whether to start MCP servers at boot in serve mode.",
-    )
-
-
-class ServerConfig(BaseModel):
-    """
-    Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server lifecycle.
-    """
-
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    jobs: ServerJobsConfig | None = None
-    mcp: ServerMcpConfig | None = None
 
 
 class SwarmKitWorkspace(BaseModel):
