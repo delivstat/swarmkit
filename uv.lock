@@ -2787,7 +2787,7 @@ wheels = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.2.53"
+version = "1.2.55"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -2826,6 +2826,7 @@ dev = [
 ]
 serve = [
     { name = "mcp" },
+    { name = "pyjwt", extra = ["crypto"] },
 ]
 
 [package.metadata]
@@ -2849,6 +2850,7 @@ requires-dist = [
     { name = "opentelemetry-sdk", specifier = ">=1.20" },
     { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "pydantic", specifier = ">=2.8" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'serve'", specifier = ">=2.8" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },

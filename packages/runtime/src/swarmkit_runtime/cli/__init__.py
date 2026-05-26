@@ -1925,6 +1925,7 @@ def _build_auth_provider(workspace_path: Path) -> AuthProvider:
     """Build auth provider from workspace.yaml ``server.auth`` config."""
     from swarmkit_runtime.auth import (  # noqa: PLC0415
         APIKeyAuthProvider,
+        JWTAuthProvider,
         NoneAuthProvider,
     )
 
@@ -1942,6 +1943,15 @@ def _build_auth_provider(workspace_path: Path) -> AuthProvider:
     if provider_name == "api_key":
         config = auth_config.get("config", {}) or {}
         return APIKeyAuthProvider(keys=config.get("keys", []))
+
+    if provider_name == "jwt":
+        config = auth_config.get("config", {}) or {}
+        return JWTAuthProvider(
+            issuer=config["issuer"],
+            audience=config.get("audience", "swarmkit"),
+            jwks_url=config.get("jwks_url"),
+            scopes_claim=config.get("scopes_claim", "scope"),
+        )
 
     # Default: open access
     return NoneAuthProvider()
