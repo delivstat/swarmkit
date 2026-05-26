@@ -12,7 +12,7 @@
   <a href="https://pypi.org/project/swarmkit-runtime/"><img src="https://img.shields.io/pypi/v/swarmkit-runtime.svg" alt="PyPI" /></a>
   <a href="https://github.com/delivstat/swarmkit/actions"><img src="https://img.shields.io/github/actions/workflow/status/delivstat/swarmkit/ci.yml?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+" />
-  <img src="https://img.shields.io/badge/tests-566-green.svg" alt="566 tests" />
+  <img src="https://img.shields.io/badge/tests-566+-green.svg" alt="566+ tests" />
 </p>
 
 <!-- TODO: Record the demo GIF with: vhs scripts/demo.tape -->
@@ -199,6 +199,8 @@ audit:
 
 OTel traces to any backend: `SWARMKIT_OTEL_EXPORTER=console swarmkit run ...`
 
+OTel drift metrics and tool error separation (M6 — shipped): intent drift events emit as OTel metrics. Tool errors are tracked separately from agent errors in spans and counters.
+
 Intent drift detection (M7 — shipped): detects when agents wander from the original goal. Add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }` to your topology.
 
 ### Run trace (M8 — shipped)
@@ -213,6 +215,18 @@ swarmkit trace <run-id> -w .   # show full call graph for a run
 ### Structured delegation (M9 — shipped)
 
 Planner-driven task execution. Coordinators call `create-task-plan` to produce a dependency-ordered plan; the compiler executes independent tasks in parallel and dependent tasks sequentially. Plans are crash-resilient (`tasks.json` on disk) — the CLI detects previous plans on fresh runs. Results are summary-first (3-5 bullet key_findings, full results on disk). Auto-fix adds missing dependencies and synthesis tasks.
+
+### Structured inter-agent communication (M9 — shipped)
+
+Agents communicate via typed JSON/YAML schemas instead of free-form prose. 55-87% token reduction with improved accuracy. Three waves: schema definitions, compiler integration, and runtime enforcement.
+
+### Decision skill `pre_input` trigger (M9 — shipped)
+
+Governance decision skills can validate user input before any LLM work begins. The `pre_input` trigger runs deterministic checks (e.g., gate-validator via Rynko Flow) at request time, rejecting invalid inputs early.
+
+### Gate-validator MCP server (M9 — shipped)
+
+Deterministic output validation via external schema gates. Integrates with Rynko Flow for field-level structured output checking — eliminates shape-level hallucination before any LLM judge runs.
 
 ### Sub-agent architecture (M8 — shipped)
 
@@ -290,7 +304,16 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M0-M9 complete (v1.2.8). Phase 3 in progress.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap.
+
+| Phase | Milestones | Status |
+|---|---|---|
+| Phase 1 — Foundation | M0-M5 (Schema, Runtime, Compiler, MCP, Governance, CLI) | Complete |
+| Phase 2 — Runtime Completion | M6 (Observability), M6.5 (Env config), M7 (Intent drift) | Complete |
+| Phase 3 — Knowledge + Skills | M8 (MCP integration layer), M9 (Reference topologies, structured delegation, structured comms) | Complete |
+| Phase 4 — Launch | M10 (Eject + execution modes), M11 (Launch prep) | Next |
+
+Current runtime version: **v1.2.51**.
 
 ## Contributing
 

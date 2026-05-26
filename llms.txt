@@ -2,15 +2,15 @@
 
 > An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
 
-**Status:** v1.2.8. M0-M9 complete. Structured delegation v2 compiler with planner-driven task execution, parallel/sequential dependency ordering, crash-resilient task plans, auto-fix, and summary-first results. CLI, HTTP server, 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support across all providers, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, 2 reference topologies, 20 skills, 16 archetypes, 566 tests. Next: M9 reference topologies, Phase 3 continuation.
+**Status:** v1.2.51. Phases 1-3 complete (M0-M9). Phase 4 next (M10 Eject + execution modes, M11 Launch prep). Structured delegation v2 compiler with planner-driven task execution, parallel/sequential dependency ordering, crash-resilient task plans, auto-fix, and summary-first results. Structured inter-agent communication (typed JSON/YAML schemas, 55-87% token reduction). Decision skill `pre_input` trigger for input validation before LLM work. Gate-validator MCP server for deterministic output validation via Rynko Flow. Complete OTel drift metrics and tool error separation. CLI, HTTP server, 7 model providers (Anthropic, OpenAI, Google, Ollama, OpenRouter, Groq, Together), MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support across all providers, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, 2 reference topologies, 20 skills, 16 archetypes, 566+ tests.
 
 ## Start here
 
 - [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, what works today, milestone progress.
 - [CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/CLAUDE.md): repo-wide invariants, feature-delivery workflow, release checklist.
 - [SwarmKit Design v0.6](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md): the authoritative architecture. §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §14 (Runtime), §18 (MCP Integration).
-- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): 4 phases — Phase 1 (Foundation) complete, Phase 2 (Runtime Completion) complete, Phase 3 (MCP + Delegation) in progress.
-- [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): release notes through v1.2.8.
+- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): 4 phases — Phase 1 (Foundation) complete, Phase 2 (Runtime Completion) complete, Phase 3 (Knowledge + Skills) complete. Phase 4 (Eject + Launch) next.
+- [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): release notes through v1.2.51.
 
 ## CLI commands
 
@@ -76,7 +76,7 @@ Per-feature design notes under `design/details/`:
 - [Skill registry](https://github.com/delivstat/swarmkit/blob/main/design/details/skill-registry.md): community skill import from SKILL.md repos and MCP catalogues.
 - [Knowledge Curator topology](https://github.com/delivstat/swarmkit/blob/main/design/details/knowledge-curator-topology.md): persistent wiki maintained by LLM agents.
 
-## Product architecture & observability (design, not yet implemented)
+## Product architecture & observability design notes
 
 - [Product architecture](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture.md): open-source runtime + Rynko as the commercial ops platform. Deployment models, revenue model, brand separation.
 - [Product architecture refinements](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture-refinements.md): local ring buffer for prompt privacy, LangGraph checkpointer for approval gates, usage-based pricing, OTLP/HTTP transport.
