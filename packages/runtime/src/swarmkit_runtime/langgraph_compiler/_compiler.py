@@ -21,7 +21,7 @@ from swarmkit_runtime.trace import AgentStep, RunTrace
 from ._dag import _has_dag_deps, _run_dag  # noqa: F401
 from ._decision_gate import evaluate_post_output
 from ._delegation import _dispatch_response
-from ._drift import _create_drift_observer, _handle_drift_result
+from ._drift import _create_drift_observer, _handle_drift_result, _is_error_passthrough
 from ._helpers import (
     _check_governance,
     _check_trust,
@@ -399,10 +399,15 @@ def _build_agent_node(  # noqa: PLR0915
         if drift_observer and drift_observer.config.enabled:
             if not drift_observer.anchor_text:
                 drift_observer.set_anchor(state.get("input", ""))
-            drift_result = drift_observer.observe(
-                step=len(drift_observer.history), output=result_text
-            )
-            await _handle_drift_result(drift_result, drift_observer, governance, agent_id, messages)
+            # Skip drift scoring for error passthroughs — they are not
+            # agent reasoning and would distort the drift signal.
+            if not _is_error_passthrough(result_text):
+                drift_result = drift_observer.observe(
+                    step=len(drift_observer.history), output=result_text
+                )
+                await _handle_drift_result(
+                    drift_result, drift_observer, governance, agent_id, messages
+                )
 
         if _ds_bindings:
             from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
