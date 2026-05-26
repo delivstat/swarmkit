@@ -17,6 +17,7 @@ export interface SwarmKitWorkspace {
     model_providers?: ModelProviderElement[];
     organisation?:    Organisation;
     planning?:        Planning;
+    server?:          Server;
     storage?:         Storage;
     synthesis?:       Synthesis;
     team?:            Organisation;
@@ -232,6 +233,33 @@ export interface Planning {
      * Enforce two-phase planning for all topologies.
      */
     two_phase?: boolean;
+}
+
+/**
+ * Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server
+ * lifecycle.
+ */
+export interface Server {
+    jobs?: Jobs;
+    mcp?:  MCP;
+}
+
+export interface Jobs {
+    /**
+     * Maximum number of concurrent topology executions.
+     */
+    max_concurrent?: number;
+    /**
+     * Per-job execution timeout in seconds.
+     */
+    timeout_seconds?: number;
+}
+
+export interface MCP {
+    /**
+     * Whether to start MCP servers at boot in serve mode.
+     */
+    enabled?: boolean;
 }
 
 export interface Storage {

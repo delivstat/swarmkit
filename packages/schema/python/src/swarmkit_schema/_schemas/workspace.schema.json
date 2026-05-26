@@ -28,7 +28,8 @@
     },
     "storage": { "$ref": "#/$defs/storage" },
     "planning": { "$ref": "#/$defs/planning" },
-    "synthesis": { "$ref": "#/$defs/synthesis" }
+    "synthesis": { "$ref": "#/$defs/synthesis" },
+    "server": { "$ref": "#/$defs/server_config" }
   },
   "$defs": {
     "identifier": {
@@ -323,6 +324,42 @@
           "type": "object",
           "additionalProperties": true,
           "description": "Skill-specific configuration (confidence thresholds, retry limits, etc)."
+        }
+      }
+    },
+    "server_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server lifecycle.",
+      "properties": {
+        "jobs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_concurrent": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5,
+              "description": "Maximum number of concurrent topology executions."
+            },
+            "timeout_seconds": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 300,
+              "description": "Per-job execution timeout in seconds."
+            }
+          }
+        },
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether to start MCP servers at boot in serve mode."
+            }
+          }
         }
       }
     }
