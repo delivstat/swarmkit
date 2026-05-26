@@ -340,7 +340,7 @@ def _mount_mcp(app: FastAPI) -> None:
 
     Called only when the ``mcp`` package is importable.
     """
-    from mcp.server.fastmcp import FastMCP  # type: ignore[import-untyped]  # noqa: PLC0415
+    from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
 
     mcp_server = FastMCP("swarmkit")
     _tools_registered = False
