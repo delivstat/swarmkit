@@ -54,5 +54,5 @@ Honest about limits: "the texts I have access to don't have the detailed Mahabha
 
 ## Issues Found
 1. **IndicTrans2 not loaded**: `Could not import module 'AutoModelForSeq2SeqLM'` — needs `transformers` package or model download
-2. **SWARMKIT_MODEL not respected in chat mode**: used claude-sonnet-4 instead of kimi-k2.6
+2. ~~**SWARMKIT_MODEL not respected in chat mode**~~: false alarm — was a test setup issue (`VAR=x cmd1 | cmd2` only sets var for cmd1). The runtime reads `SWARMKIT_MODEL` correctly; use `export` before piping.
 3. **GBrain search gaps**: knowledge blocks exist but search queries in turn 2 didn't match well
