@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 from swarmkit_runtime.drift import DriftResult, IntentMonitoringConfig, IntentObserver
 from swarmkit_runtime.drift._embeddings import cosine_similarity
+from swarmkit_runtime.langgraph_compiler._drift import _handle_drift_result, _is_error_passthrough
+from swarmkit_runtime.telemetry._metrics import record_drift_breach, record_drift_score
 
 
 class TestIntentMonitoringConfig:
@@ -137,3 +141,65 @@ class TestIntentObserver:
 
 
 import pytest  # noqa: E402
+
+
+class TestDriftMetrics:
+    def test_record_drift_score_callable(self) -> None:
+        """record_drift_score should be callable without error (no-op when metrics not init'd)."""
+        record_drift_score(agent_id="test-agent", score=0.42)
+
+    def test_record_drift_breach_callable(self) -> None:
+        """record_drift_breach should be callable without error (no-op when metrics not init'd)."""
+        record_drift_breach(agent_id="test-agent")
+
+
+class TestToolErrorSkipped:
+    def test_error_prefix_detected(self) -> None:
+        assert _is_error_passthrough("Error: connection refused") is True
+
+    def test_tool_error_prefix_detected(self) -> None:
+        assert _is_error_passthrough("Tool error: invalid argument") is True
+
+    def test_tool_error_with_leading_whitespace(self) -> None:
+        assert _is_error_passthrough("  Error: something broke") is True
+
+    def test_normal_output_not_detected(self) -> None:
+        assert _is_error_passthrough("The code review found 3 issues") is False
+
+    def test_error_in_middle_not_detected(self) -> None:
+        assert _is_error_passthrough("I found an Error: in the logs") is False
+
+    def test_empty_string(self) -> None:
+        assert _is_error_passthrough("") is False
+
+
+class TestOtelSpanEventOnDrift:
+    @pytest.mark.asyncio
+    async def test_span_event_added_on_drift(self) -> None:
+        """Verify _handle_drift_result adds an OTel span event with drift attributes."""
+        mock_span = MagicMock()
+        mock_governance = MagicMock()
+
+        async def _noop_record(*a: object, **kw: object) -> None:
+            pass
+
+        mock_governance.record_event = _noop_record
+
+        drift_result = DriftResult(score=0.85, threshold=0.75, exceeded=True, action_taken="warn")
+        mock_observer = MagicMock()
+
+        with patch("swarmkit_runtime.langgraph_compiler._drift.trace") as mock_trace:
+            mock_trace.get_current_span.return_value = mock_span
+            await _handle_drift_result(
+                drift_result, mock_observer, mock_governance, "test-agent", []
+            )
+
+        mock_span.add_event.assert_called_once_with(
+            "intent.drift",
+            attributes={
+                "swarmkit.drift.score": 0.85,
+                "swarmkit.drift.threshold": 0.75,
+                "swarmkit.drift.action": "warn",
+                "swarmkit.drift.exceeded": True,
+            },
+        )
