@@ -36,7 +36,7 @@ function EventStream({ jobId }: { jobId: string }) {
 
 	useEffect(() => {
 		bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [events]);
+	}, [events.length]);
 
 	return (
 		<Card>
