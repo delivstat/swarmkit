@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import logging
+import os
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -34,6 +35,8 @@ from swarmkit_runtime._workspace_runtime import (
 from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.errors import ResolutionErrors
+from swarmkit_runtime.triggers import TriggerScheduler
+from swarmkit_runtime.triggers._webhook import validate_webhook_signature
 
 logger = logging.getLogger("swarmkit.server")
 
@@ -69,6 +72,28 @@ def _parse_server_config(workspace: Any) -> ServerCfg:
             else _DEFAULT_MCP_ENABLED
         ),
     )
+
+
+def _parse_trigger_configs(workspace: Any) -> list[dict[str, Any]]:
+    """Convert resolved triggers to plain dicts for the scheduler."""
+    configs: list[dict[str, Any]] = []
+    triggers = getattr(workspace, "triggers", ()) or ()
+    for rt in triggers:
+        raw = rt.raw
+        config_obj = getattr(raw, "config", None)
+        config_dict: dict[str, Any] = {}
+        if config_obj is not None:
+            config_dict = dict(config_obj.model_dump(exclude_none=True))
+        configs.append(
+            {
+                "id": rt.id,
+                "type": raw.type.value,
+                "enabled": raw.enabled if raw.enabled is not None else True,
+                "targets": list(rt.targets),
+                "config": config_dict,
+            }
+        )
+    return configs
 
 
 # ---- MCP optional import ---------------------------------------------------
@@ -235,11 +260,58 @@ def _start_job(
     job_store.track_task(task)
 
 
+# ---- webhook signature validation -------------------------------------------
+
+
+def _check_webhook_signature(
+    request: Request,
+    raw_body: bytes,
+    topology_name: str,
+) -> None:
+    """Validate HMAC signature for webhook triggers that have auth configured.
+
+    Raises HTTPException(401) when a matching trigger config requires auth and
+    the signature is absent or incorrect.  No-ops when no trigger requires auth.
+    """
+    trigger_configs: list[dict[str, Any]] = getattr(request.app.state, "trigger_configs", [])
+    for tc in trigger_configs:
+        if tc.get("type") != "webhook":
+            continue
+        if topology_name not in tc.get("targets", []):
+            continue
+        config = tc.get("config") or {}
+        auth = config.get("auth") or {}
+        secret_ref = auth.get("credentials_ref") or config.get("secret_ref")
+        if not secret_ref:
+            continue
+        secret = os.environ.get(secret_ref, "")
+        if not secret:
+            logger.warning(
+                "Webhook trigger secret_ref=%r not found in environment; "
+                "skipping signature validation for topology=%r",
+                secret_ref,
+                topology_name,
+            )
+            continue
+        header_name = auth.get("header", "X-Hub-Signature-256")
+        sig = request.headers.get(header_name, "")
+        if not validate_webhook_signature(raw_body, sig, secret):
+            logger.warning(
+                "Webhook signature validation failed for topology=%r",
+                topology_name,
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid webhook signature",
+            )
+        break
+
+
 # ---- endpoint registration --------------------------------------------------
 
 
 def _register_introspection_routes(app: FastAPI) -> None:
-    """Register health, topologies, skills, archetypes, validate endpoints."""
+    """Register health, topologies, skills, archetypes, validate, triggers endpoints."""
 
     @app.get("/health")
     async def health(request: Request) -> dict[str, str]:
@@ -276,6 +348,11 @@ def _register_introspection_routes(app: FastAPI) -> None:
             "skills": sorted(ws.skills.keys()),
             "archetypes": sorted(ws.archetypes.keys()),
         }
+
+    @app.get("/triggers")
+    async def list_triggers(request: Request) -> list[dict[str, Any]]:
+        trigger_configs: list[dict[str, Any]] = getattr(request.app.state, "trigger_configs", [])
+        return trigger_configs
 
 
 def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
@@ -377,8 +454,19 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
                 detail="Max concurrent jobs reached. Try again later.",
             )
         cfg: ServerCfg = getattr(request.app.state, "server_config", ServerCfg())
-        body = await request.json()
-        user_input = body.get("input", str(body)) if isinstance(body, dict) else str(body)
+
+        raw_body = await request.body()
+        _check_webhook_signature(request, raw_body, topology_name)
+
+        try:
+            body_json = await request.json()
+        except Exception:
+            body_json = raw_body.decode(errors="replace")
+        user_input = (
+            body_json.get("input", str(body_json))
+            if isinstance(body_json, dict)
+            else str(body_json)
+        )
         job = await job_store.create(topology_name, user_input)
         _start_job(
             job_store,
@@ -495,6 +583,59 @@ def _mount_mcp(app: FastAPI) -> None:
         logger.warning("Failed to mount MCP endpoint", exc_info=True)
 
 
+# ---- lifespan helpers -------------------------------------------------------
+
+
+async def _boot_mcp(runtime: WorkspaceRuntime, cfg: ServerCfg) -> None:
+    """Start MCP servers at boot when enabled."""
+    if cfg.mcp_enabled:
+        try:
+            await runtime.start_session()
+            logger.info("MCP servers started at boot")
+        except Exception:
+            logger.warning(
+                "MCP server boot failed; runs will manage per-invocation",
+                exc_info=True,
+            )
+    else:
+        logger.info("MCP server boot disabled by server.mcp.enabled=false")
+
+
+# ---- scheduler factory ------------------------------------------------------
+
+
+async def _start_scheduler(
+    app: FastAPI,
+    job_store: JobStore,
+    trigger_configs: list[dict[str, Any]],
+) -> TriggerScheduler:
+    """Create and start a TriggerScheduler wired to the app's job store."""
+
+    async def _fire_trigger(topology_name: str, source: str) -> None:
+        rt: WorkspaceRuntime = app.state.runtime
+        sema: asyncio.Semaphore | None = getattr(app.state, "job_semaphore", None)
+        server_cfg: ServerCfg = getattr(app.state, "server_config", ServerCfg())
+        job = await job_store.create(topology_name, source)
+        _start_job(
+            job_store,
+            job,
+            rt,
+            max_steps=10,
+            timeout_seconds=server_cfg.timeout_seconds,
+            semaphore=sema,
+        )
+        logger.info(
+            "Trigger fired topology=%r job_id=%s source=%r",
+            topology_name,
+            job.id,
+            source,
+        )
+
+    scheduler = TriggerScheduler(trigger_configs, _fire_trigger)
+    await scheduler.start()
+    return scheduler
+
+
 # ---- app factory ------------------------------------------------------------
 
 
@@ -532,20 +673,16 @@ def create_app(
             cfg.mcp_enabled,
         )
 
-        # Start MCP servers at boot (kept alive across all requests)
-        if cfg.mcp_enabled:
-            try:
-                await runtime.start_session()
-                logger.info("MCP servers started at boot")
-            except Exception:
-                logger.warning(
-                    "MCP server boot failed; runs will manage per-invocation",
-                    exc_info=True,
-                )
-        else:
-            logger.info("MCP server boot disabled by server.mcp.enabled=false")
+        await _boot_mcp(runtime, cfg)
+
+        # Build trigger configs and start the cron scheduler
+        trigger_configs = _parse_trigger_configs(runtime.workspace)
+        app.state.trigger_configs = trigger_configs
+        scheduler = await _start_scheduler(app, job_store, trigger_configs)
+        app.state.scheduler = scheduler
 
         yield
+        await scheduler.stop()
         await runtime.close()
 
     app = FastAPI(
