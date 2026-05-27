@@ -201,6 +201,39 @@ OTel traces to any backend: `SWARMKIT_OTEL_EXPORTER=console swarmkit run ...`
 
 Intent drift detection (M7 — shipped): detects when agents wander from the original goal. Add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }` to your topology.
 
+### HTTP server + canary deployments (M10 — shipped)
+
+`swarmkit serve` runs your workspace as a persistent HTTP service with async job execution, SSE streaming, webhook triggers, MCP endpoint, and pluggable auth:
+
+```bash
+swarmkit serve my-swarm/ --port 8000
+
+# Submit jobs via API
+curl -X POST http://localhost:8000/run/my-topology \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Process this request"}'
+```
+
+**Canary deployments** let you gradually roll out topology changes — split traffic between versions, monitor error rates and drift, auto-promote when criteria are met:
+
+```yaml
+server:
+  canary:
+    routes:
+      - topology: my-swarm
+        versions:
+          - version: "1.0.0"
+            weight: 90
+          - version: "1.1.0"
+            weight: 10
+            promote_when:
+              min_runs: 50
+              error_rate_below: 0.05
+              drift_below: 0.30
+```
+
+Auth providers (API key, JWT with JWKS auto-discovery) and webhook HMAC signature validation are plug-and-play — disabled by default, enabled via workspace config. See [`docs/reference/serve-cli-tests.md`](./docs/reference/serve-cli-tests.md) and [`docs/reference/canary-deployments.md`](./docs/reference/canary-deployments.md).
+
 ### Run trace (M8 — shipped)
 
 Every run saves a structured trace showing the agent call graph, tool usage, and token counts per agent and model.
@@ -290,7 +323,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M0-M9 complete (v1.2.8). Phase 3 in progress.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M0-M9 complete, M10 serve + canary shipped. Next: eject + launch prep.
 
 ## Contributing
 
