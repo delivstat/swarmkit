@@ -34,6 +34,7 @@ from swarmkit_runtime._workspace_runtime import (
 )
 from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
+from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.triggers import TriggerScheduler
 from swarmkit_runtime.triggers._webhook import validate_webhook_signature
@@ -74,6 +75,27 @@ def _parse_server_config(workspace: Any) -> ServerCfg:
     )
 
 
+def _parse_canary_routes(workspace: Any) -> list[dict[str, Any]]:
+    """Extract canary route configs from workspace.yaml server.canary block."""
+    server_raw = getattr(workspace.raw, "server", None)
+    if server_raw is None:
+        return []
+    canary = getattr(server_raw, "canary", None)
+    if canary is None:
+        return []
+    routes = getattr(canary, "routes", None) or []
+    result: list[dict[str, Any]] = []
+    for route in routes:
+        versions = []
+        for v in route.versions:
+            entry: dict[str, Any] = {"version": v.version, "weight": v.weight}
+            if v.promote_when is not None:
+                entry["promote_when"] = v.promote_when.model_dump(exclude_none=True)
+            versions.append(entry)
+        result.append({"topology": route.topology, "versions": versions})
+    return result
+
+
 def _parse_trigger_configs(workspace: Any) -> list[dict[str, Any]]:
     """Convert resolved triggers to plain dicts for the scheduler."""
     configs: list[dict[str, Any]] = []
@@ -112,6 +134,7 @@ class Job:
     topology: str
     status: Literal["pending", "running", "completed", "failed"]
     input: str
+    version: str | None = None
     output: str | None = None
     error: str | None = None
     events: list[str] = field(default_factory=list)
@@ -184,6 +207,7 @@ class JobResponse(BaseModel):
 class JobListItem(BaseModel):
     job_id: str
     topology: str
+    version: str | None = None
     status: str
     created_at: str
     completed_at: str | None = None
@@ -199,6 +223,7 @@ async def execute_job(
     *,
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     semaphore: asyncio.Semaphore | None = None,
+    canary_router: CanaryRouter | None = None,
 ) -> None:
     """Run topology in background, updating job state.
 
@@ -207,7 +232,8 @@ async def execute_job(
     with 429 when all slots are occupied.
     """
     job.status = "running"
-    job.events.append(f"Job started for topology '{job.topology}'")
+    version_label = f" v{job.version}" if job.version else ""
+    job.events.append(f"Job started for topology '{job.topology}'{version_label}")
     try:
         if semaphore is not None:
             await semaphore.acquire()
@@ -236,6 +262,12 @@ async def execute_job(
                 semaphore.release()
     finally:
         job.completed_at = datetime.now(UTC).isoformat()
+        if canary_router and job.version:
+            canary_router.record_result(
+                job.topology,
+                job.version,
+                success=(job.status == "completed"),
+            )
 
 
 def _start_job(
@@ -246,6 +278,7 @@ def _start_job(
     *,
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     semaphore: asyncio.Semaphore | None = None,
+    canary_router: CanaryRouter | None = None,
 ) -> None:
     """Create a background task for a job and track it."""
     task = asyncio.create_task(
@@ -255,6 +288,7 @@ def _start_job(
             max_steps,
             timeout_seconds=timeout_seconds,
             semaphore=semaphore,
+            canary_router=canary_router,
         )
     )
     job_store.track_task(task)
@@ -354,19 +388,70 @@ def _register_introspection_routes(app: FastAPI) -> None:
         trigger_configs: list[dict[str, Any]] = getattr(request.app.state, "trigger_configs", [])
         return trigger_configs
 
+    @app.get("/canary")
+    async def canary_status(request: Request) -> dict[str, Any]:
+        router: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
+        if router is None:
+            return {"enabled": False, "routes": []}
+        return {
+            "enabled": True,
+            "routes": router.get_status(),
+            "promotions": router.get_promotions(),
+        }
 
-def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
+    @app.post("/canary/{topology_name}/promote")
+    async def canary_promote(topology_name: str, request: Request) -> dict[str, Any]:
+        router: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
+        if router is None:
+            raise HTTPException(status_code=404, detail="Canary routing not configured")
+        body = await request.json()
+        version = body.get("version", "")
+        if not version:
+            raise HTTPException(status_code=400, detail="Missing 'version' in request body")
+        if not router.promote(topology_name, version):
+            raise HTTPException(
+                status_code=404,
+                detail=f"No canary route for topology '{topology_name}' version '{version}'",
+            )
+        return {"promoted": True, "topology": topology_name, "version": version}
+
+    @app.post("/canary/{topology_name}/rollback")
+    async def canary_rollback(topology_name: str, request: Request) -> dict[str, Any]:
+        router: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
+        if router is None:
+            raise HTTPException(status_code=404, detail="Canary routing not configured")
+        if not router.rollback(topology_name):
+            raise HTTPException(
+                status_code=404,
+                detail=f"No canary route for topology '{topology_name}'",
+            )
+        return {"rolled_back": True, "topology": topology_name}
+
+
+def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PLR0915
     """Register async job execution, polling, streaming, and webhook endpoints."""
 
     @app.post("/run/{topology_name}")
     async def run_topology(topology_name: str, body: RunRequest, request: Request) -> JobResponse:
         rt = _get_runtime(request)
-        if topology_name not in rt.workspace.topologies:
-            available = sorted(rt.workspace.topologies.keys())
-            raise HTTPException(
-                status_code=404,
-                detail=f"Topology '{topology_name}' not found. Available: {available}",
-            )
+        canary: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
+
+        resolved_name = topology_name
+        selected_version: str | None = None
+        if canary and canary.has_route(topology_name):
+            selected_version = canary.select(topology_name)
+            resolved_name = f"{topology_name}@{selected_version}"
+
+        if resolved_name not in rt.workspace.topologies:
+            if topology_name not in rt.workspace.topologies:
+                available = sorted(rt.workspace.topologies.keys())
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Topology '{topology_name}' not found. Available: {available}",
+                )
+            resolved_name = topology_name
+            selected_version = None
+
         semaphore: asyncio.Semaphore | None = getattr(request.app.state, "job_semaphore", None)
         if semaphore is not None and semaphore.locked():
             raise HTTPException(
@@ -374,7 +459,8 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
                 detail="Max concurrent jobs reached. Try again later.",
             )
         cfg: ServerCfg = getattr(request.app.state, "server_config", ServerCfg())
-        job = await job_store.create(topology_name, body.input)
+        job = await job_store.create(resolved_name, body.input)
+        job.version = selected_version
         _start_job(
             job_store,
             job,
@@ -382,8 +468,14 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
             body.max_steps,
             timeout_seconds=cfg.timeout_seconds,
             semaphore=semaphore,
+            canary_router=canary,
         )
-        return JobResponse(job_id=job.id, status="running")
+        return JobResponse(
+            job_id=job.id,
+            status="running",
+            output=None,
+            error=None,
+        )
 
     @app.get("/jobs")
     async def list_jobs() -> list[JobListItem]:
@@ -392,6 +484,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
             JobListItem(
                 job_id=j.id,
                 topology=j.topology,
+                version=j.version,
                 status=j.status,
                 created_at=j.created_at,
                 completed_at=j.completed_at,
@@ -441,12 +534,24 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
     @app.post("/hooks/{topology_name}")
     async def webhook_trigger(topology_name: str, request: Request) -> JobResponse:
         rt = _get_runtime(request)
-        if topology_name not in rt.workspace.topologies:
-            available = sorted(rt.workspace.topologies.keys())
-            raise HTTPException(
-                status_code=404,
-                detail=f"Topology '{topology_name}' not found. Available: {available}",
-            )
+        canary: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
+
+        resolved_name = topology_name
+        selected_version: str | None = None
+        if canary and canary.has_route(topology_name):
+            selected_version = canary.select(topology_name)
+            resolved_name = f"{topology_name}@{selected_version}"
+
+        if resolved_name not in rt.workspace.topologies:
+            if topology_name not in rt.workspace.topologies:
+                available = sorted(rt.workspace.topologies.keys())
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Topology '{topology_name}' not found. Available: {available}",
+                )
+            resolved_name = topology_name
+            selected_version = None
+
         semaphore: asyncio.Semaphore | None = getattr(request.app.state, "job_semaphore", None)
         if semaphore is not None and semaphore.locked():
             raise HTTPException(
@@ -467,7 +572,8 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
             if isinstance(body_json, dict)
             else str(body_json)
         )
-        job = await job_store.create(topology_name, user_input)
+        job = await job_store.create(resolved_name, user_input)
+        job.version = selected_version
         _start_job(
             job_store,
             job,
@@ -475,6 +581,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
             max_steps=10,
             timeout_seconds=cfg.timeout_seconds,
             semaphore=semaphore,
+            canary_router=canary,
         )
         return JobResponse(job_id=job.id, status="running")
 
@@ -639,7 +746,7 @@ async def _start_scheduler(
 # ---- app factory ------------------------------------------------------------
 
 
-def create_app(
+def create_app(  # noqa: PLR0915
     workspace_path: Path,
     *,
     cors_origins: list[str] | None = None,
@@ -680,6 +787,20 @@ def create_app(
         app.state.trigger_configs = trigger_configs
         scheduler = await _start_scheduler(app, job_store, trigger_configs)
         app.state.scheduler = scheduler
+
+        # Initialize canary router if configured
+        canary_routes = _parse_canary_routes(runtime.workspace)
+        if canary_routes:
+            available: dict[str, set[str]] = {
+                name.split("@")[0]: set() for name in runtime.workspace.topologies
+            }
+            for name in runtime.workspace.topologies:
+                base = name.split("@")[0]
+                topo = runtime.workspace.topologies[name]
+                available[base].add(topo.raw.metadata.version)
+            app.state.canary_router = CanaryRouter(canary_routes, available)
+        else:
+            app.state.canary_router = None
 
         yield
         await scheduler.stop()

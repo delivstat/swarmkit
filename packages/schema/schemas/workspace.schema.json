@@ -330,7 +330,7 @@
     "server_config": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server lifecycle.",
+      "description": "Configuration for swarmkit serve mode. Controls job concurrency, timeouts, MCP server lifecycle, and canary deployments.",
       "properties": {
         "jobs": {
           "type": "object",
@@ -360,6 +360,89 @@
               "description": "Whether to start MCP servers at boot in serve mode."
             }
           }
+        },
+        "canary": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Canary deployment configuration. Routes traffic between topology versions by weight with optional auto-promotion. See design/details/canary-deployments.md.",
+          "properties": {
+            "routes": {
+              "type": "array",
+              "description": "Canary routes. Each route splits traffic for one topology across multiple versions.",
+              "items": { "$ref": "#/$defs/canary_route" }
+            }
+          }
+        }
+      }
+    },
+    "canary_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topology", "versions"],
+      "description": "Traffic splitting rule for a single topology.",
+      "properties": {
+        "topology": {
+          "type": "string",
+          "description": "Topology name (matches metadata.name). Must exist in the workspace."
+        },
+        "versions": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Version entries. Weights must sum to 100.",
+          "items": { "$ref": "#/$defs/canary_version" }
+        }
+      }
+    },
+    "canary_version": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "weight"],
+      "description": "A single version in a canary route with its traffic weight and optional promotion criteria.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Topology version (semver). Must match a topology file's metadata.version."
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage of traffic routed to this version (0-100)."
+        },
+        "promote_when": {
+          "$ref": "#/$defs/promote_criteria",
+          "description": "Auto-promotion criteria. When all conditions are met, this version is promoted to 100% traffic."
+        }
+      }
+    },
+    "promote_criteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Conditions that must ALL be met for auto-promotion of a canary version.",
+      "properties": {
+        "min_runs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum number of completed runs before promotion is eligible."
+        },
+        "error_rate_below": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Maximum error rate (failed/total). E.g. 0.05 = 5% error rate threshold."
+        },
+        "drift_below": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Maximum average drift score. E.g. 0.30 = low drift tolerance."
+        },
+        "window_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 60,
+          "description": "Evaluation window in minutes. Only runs within this window count toward promotion criteria."
         }
       }
     }

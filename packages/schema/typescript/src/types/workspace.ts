@@ -236,12 +236,88 @@ export interface Planning {
 }
 
 /**
- * Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server
- * lifecycle.
+ * Configuration for swarmkit serve mode. Controls job concurrency, timeouts, MCP server
+ * lifecycle, and canary deployments.
  */
 export interface Server {
-    jobs?: Jobs;
-    mcp?:  MCP;
+    /**
+     * Canary deployment configuration. Routes traffic between topology versions by weight with
+     * optional auto-promotion. See design/details/canary-deployments.md.
+     */
+    canary?: Canary;
+    jobs?:   Jobs;
+    mcp?:    MCP;
+}
+
+/**
+ * Canary deployment configuration. Routes traffic between topology versions by weight with
+ * optional auto-promotion. See design/details/canary-deployments.md.
+ */
+export interface Canary {
+    /**
+     * Canary routes. Each route splits traffic for one topology across multiple versions.
+     */
+    routes?: RouteElement[];
+}
+
+/**
+ * Traffic splitting rule for a single topology.
+ */
+export interface RouteElement {
+    /**
+     * Topology name (matches metadata.name). Must exist in the workspace.
+     */
+    topology: string;
+    /**
+     * Version entries. Weights must sum to 100.
+     */
+    versions: VersionElement[];
+}
+
+/**
+ * A single version in a canary route with its traffic weight and optional promotion
+ * criteria.
+ */
+export interface VersionElement {
+    /**
+     * Auto-promotion criteria. When all conditions are met, this version is promoted to 100%
+     * traffic.
+     */
+    promote_when?: PromoteWhen;
+    /**
+     * Topology version (semver). Must match a topology file's metadata.version.
+     */
+    version: string;
+    /**
+     * Percentage of traffic routed to this version (0-100).
+     */
+    weight: number;
+}
+
+/**
+ * Auto-promotion criteria. When all conditions are met, this version is promoted to 100%
+ * traffic.
+ *
+ * Conditions that must ALL be met for auto-promotion of a canary version.
+ */
+export interface PromoteWhen {
+    /**
+     * Maximum average drift score. E.g. 0.30 = low drift tolerance.
+     */
+    drift_below?: number;
+    /**
+     * Maximum error rate (failed/total). E.g. 0.05 = 5% error rate threshold.
+     */
+    error_rate_below?: number;
+    /**
+     * Minimum number of completed runs before promotion is eligible.
+     */
+    min_runs?: number;
+    /**
+     * Evaluation window in minutes. Only runs within this window count toward promotion
+     * criteria.
+     */
+    window_minutes?: number;
 }
 
 export interface Jobs {
