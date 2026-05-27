@@ -38,7 +38,7 @@ status: active
 | 2 | M7 | Intent drift detection | ✅ | IntentObserver, schema extension, compiler wiring, authoring integration |
 | 3 | M8 | MCP integration layer | ✅ | Lazy startup, permission tiers, multimodal, document reader, MarkItDown |
 | 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, structured comms ✅, Sterling log analyser ✅, reference topologies remaining |
-| 4 | M10 | Serve + eject + canary | 🟡 | `swarmkit serve` ✅ (HTTP, auth, MCP, triggers). Eject + canary remaining |
+| 4 | M10 | Serve + eject + canary | 🟡 | `swarmkit serve` ✅ (HTTP, auth, MCP, triggers, canary). Eject remaining |
 | 4 | M11 | Launch prep | — | `pip install swarmkit` → working swarm in <15 min |
 
 ## Cross-cutting workstreams
@@ -486,23 +486,27 @@ Ship-ready for open-source users. Everything needed for public launch.
 
 #### Canary deployments (remaining)
 
-- [ ] **Canary deployments** — topology-level version routing. Schema extension:
+- [x] **Canary deployments** — topology-level version routing. CanaryRouter with weighted random selection, per-version metrics (runs, errors, drift), auto-promotion when all criteria met, manual promote/rollback. Schema: `canary_route`, `canary_version`, `promote_criteria` in workspace `server_config`. Endpoints: `GET /canary`, `POST /canary/{topology}/promote`, `POST /canary/{topology}/rollback`. PR #269.
 
 ```yaml
-deployment:
-  strategy: canary
-  versions:
-    - version: "2.1.0"
-      weight: 95
-    - version: "2.2.0"
-      weight: 5
-      promote_when:
-        drift_below: 0.20
-        error_rate_below: 0.01
-        min_runs: 100
+server:
+  canary:
+    routes:
+      - topology: my-swarm
+        versions:
+          - version: "1.0.0"
+            weight: 90
+          - version: "1.1.0"
+            weight: 10
+            promote_when:
+              min_runs: 50
+              error_rate_below: 0.05
+              drift_below: 0.30
 ```
 
-**Exit demo:** eject the code-review swarm → install in fresh venv → runs without SwarmKit. `swarmkit serve` accepts HTTP triggers ✅. Canary deployment routes 5% traffic to new version, drift metrics visible in OTel.
+Design note: `design/details/canary-deployments.md`. User guide: `docs/reference/canary-deployments.md`.
+
+**Exit demo:** eject the code-review swarm → install in fresh venv → runs without SwarmKit. `swarmkit serve` accepts HTTP triggers ✅. Canary deployment routes 10% traffic to new version, auto-promotes after 50 successful runs with low drift ✅.
 
 ### M11 — Launch prep
 
@@ -600,6 +604,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `governance-decision-skills.md` | M9 ✅ |
 | `scope-freeze-and-spec-conformance.md` | M9 ✅ |
 | `two-phase-execution-flow.md` | M9 ✅ |
+| `canary-deployments.md` | M10 ✅ |
 | `serve-and-auth.md` | M10 ✅ |
 | `structured-inter-agent-communication.md` | M9 ✅ |
 | `document-writer-pattern.md` | M8 ✅ |

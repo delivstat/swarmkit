@@ -457,10 +457,23 @@ server:
     timeout_seconds: 300   # default
   mcp:
     enabled: true          # default
+  canary:                  # optional — see docs/reference/canary-deployments.md
+    routes:
+      - topology: my-swarm
+        versions:
+          - version: "1.0.0"
+            weight: 90
+          - version: "1.1.0"
+            weight: 10
+            promote_when:
+              min_runs: 50
+              error_rate_below: 0.05
+              drift_below: 0.30
 ```
 
 All server features are opt-in / plug-and-play. A workspace without a `server:`
-block uses defaults. Auth is disabled by default (`NoneAuthProvider`).
+block uses defaults. Auth is disabled by default (`NoneAuthProvider`). Canary
+routing is disabled unless `server.canary.routes` is configured.
 
 ---
 
@@ -474,11 +487,14 @@ block uses defaults. Auth is disabled by default (`NoneAuthProvider`).
 | GET | /archetypes | Yes | List archetype names |
 | GET | /validate | Yes | Validate workspace |
 | GET | /triggers | Yes | List configured triggers |
-| POST | /run/{topology} | Yes | Submit async job |
-| GET | /jobs | Yes | List all jobs |
+| GET | /canary | Yes | Canary deployment status + metrics |
+| POST | /run/{topology} | Yes | Submit async job (canary-routed if configured) |
+| GET | /jobs | Yes | List all jobs (includes version field) |
 | GET | /jobs/{id} | Yes | Poll job status |
 | GET | /jobs/{id}/stream | Yes | SSE event stream |
-| POST | /hooks/{topology} | Yes | Webhook trigger |
+| POST | /hooks/{topology} | Yes | Webhook trigger (canary-routed if configured) |
+| POST | /canary/{topology}/promote | Yes | Manually promote a canary version to 100% |
+| POST | /canary/{topology}/rollback | Yes | Roll back to the first (stable) version |
 | POST | /conversations | Yes | Create conversation |
 | GET | /conversations | Yes | List conversations |
 | POST | /conversations/{id}/messages | Yes | Send message |
