@@ -37,8 +37,8 @@ status: active
 | 2 | M6.5 | Workspace env configuration | ✅ | `workspace.env.yaml` + `SWARMKIT_ENV` switching |
 | 2 | M7 | Intent drift detection | ✅ | IntentObserver, schema extension, compiler wiring, authoring integration |
 | 3 | M8 | MCP integration layer | ✅ | Lazy startup, permission tiers, multimodal, document reader, MarkItDown |
-| 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, Sterling log analyser ✅, reference topologies remaining |
-| 4 | M10 | Eject + execution modes | — | `swarmkit eject` + `swarmkit serve` + canary deployments |
+| 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, structured comms ✅, Sterling log analyser ✅, reference topologies remaining |
+| 4 | M10 | Serve + eject + canary | 🟡 | `swarmkit serve` ✅ (HTTP, auth, MCP, triggers). Eject + canary remaining |
 | 4 | M11 | Launch prep | — | `pip install swarmkit` → working swarm in <15 min |
 
 ## Cross-cutting workstreams
@@ -223,20 +223,20 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 **Features:**
 
-- [ ] **OpenTelemetry Phase 1** — `SwarmKitTelemetry` class, trace-per-run, span-per-agent-step, tool call + governance child spans. `swarmkit.*` semantic attribute namespace.
-- [ ] **OTel exporters** — `console` (human-readable to stderr), `otlp` (OTLP/HTTP async batching), `none` (default). Config via `~/.swarmkit/config.yaml` `telemetry:` block.
-- [ ] **Local ring buffer** — SQLite-backed prompt/response store, keyed by OTel span ID. Configurable retention (default: 7 days). Survives process restarts.
-- [ ] **`swarmkit debug`** — `--span-id`, `--run-id`, `--agent`, `--last N`. Retrieves prompts from local ring buffer.
-- [ ] **AuditProvider abstraction** — `record()`, `query()`, `count()` methods. Built-ins: mock, sqlite (default), postgres, agt, plugin. Workspace config: `storage.audit`.
-- [ ] **Per-skill audit redaction** — `audit:` block on skills with `log_inputs`, `log_outputs`, `redact` fields. Category-level defaults.
-- [ ] **CLI primitives** — `swarmkit status` (snapshot), `swarmkit logs <run-id> [--follow]` (event tail), `swarmkit events [--filter]` (cross-run stream), `swarmkit stop <run-id>` (graceful shutdown), `swarmkit why <run-id>` (decision chain).
-- [ ] **`swarmkit review`** — interactive TUI for pending HITL approvals (approve/reject/edit/skip).
-- [ ] **`swarmkit ask`** — conversational observer, LLM-backed. Parses question → loads audit events → answers.
-- [ ] **Notification plugin** — webhook-based, runs outside the SwarmKit runtime process. The runtime emits structured events; notification providers consume them via webhooks. Multiple providers can be configured in parallel. Built-ins: terminal (stdout, for local dev), slack (outgoing webhook), email (SMTP), generic webhook (configurable URL + payload template). Fires on: `hitl_requested`, `run_ended { status: error }`, `skill_gap_surfaced`. Workspace config specifies provider + endpoint + event filters.
-- [ ] **Governance circuit breakers** — `max_steps_per_agent`, `max_steps_per_run`. Sensible defaults ship out of the box (`max_steps_per_run: 500`). Enforced in governance engine. From `market-analysis-and-risk-mitigations.md` Risk 3. Cost-based limit (`max_cost_per_run_usd`) plumbing exists but is inactive until provider-level cost extraction lands.
-- [ ] **Provider-level cost extraction** — each `ModelProvider` implementation must be updated to extract and return `cost_usd` from the LLM provider's API response when supported. Investigate per-provider: Anthropic (usage.input_tokens × published rate), OpenAI (usage + model pricing), Google (usage_metadata), OpenRouter (response cost field or usage × model rate), Groq/Together (usage), Ollama (local, no cost). Once providers report cost, wire into `CircuitBreakerTracker.add_cost()` to activate `max_cost_per_run_usd`.
-- [ ] **OTel metrics** — counters: `swarmkit.runs.total`, `swarmkit.agent.steps.total`, `swarmkit.tool.calls.total`. Histograms: `swarmkit.runs.duration_ms`, `swarmkit.tool.duration_ms`.
-- [ ] **Execution detail API** — beyond high-level `swarmkit status`, users need root-cause access. `swarmkit logs <run-id> --follow` streams full execution detail (every agent step, tool call, governance decision). `swarmkit why <run-id>` traces the decision chain. `swarmkit debug --span-id <id>` retrieves actual prompts/responses from the local ring buffer. For HITL flows, the webhook payload includes the run ID + span ID so the reviewer can pull execution context via CLI or (in Rynko) via the dashboard trace view.
+- [x] **OpenTelemetry Phase 1** — `SwarmKitTelemetry` class, trace-per-run, span-per-agent-step, tool call + governance child spans. `swarmkit.*` semantic attribute namespace. `telemetry/_tracer.py`.
+- [x] **OTel exporters** — `console` (human-readable to stderr), `otlp` (OTLP/HTTP async batching), `none` (default). Config via `telemetry/_config.py`.
+- [x] **Local ring buffer** — SQLite-backed prompt/response store, keyed by OTel span ID. Configurable retention (default: 7 days). WAL mode. `telemetry/_ring_buffer.py`.
+- [x] **`swarmkit debug`** — `--span-id`, `--run-id`, `--agent`, `--last N`. Retrieves prompts from local ring buffer.
+- [x] **AuditProvider abstraction** — `record()`, `query()`, `count()` methods. Built-ins: mock, sqlite (default). Registry system for plugins. `audit/_provider.py`.
+- [x] **Per-skill audit redaction** — `audit:` block on skills with `log_inputs`, `log_outputs`, `redact` fields. Category-level defaults. Workspace-level clamping. `audit/_redact.py`.
+- [x] **CLI primitives** — `swarmkit status` (snapshot), `swarmkit logs <run-id> [--follow]` (event tail), `swarmkit stop <run-id>` (graceful shutdown), `swarmkit why <run-id>` (decision chain). Note: `swarmkit events [--filter]` deferred — cross-run stream not yet needed.
+- [x] **`swarmkit review`** — CLI-based HITL approval flow (`review list|show|approve|reject`). Full interactive TUI deferred to Rynko UI.
+- [x] **`swarmkit ask`** — conversational observer, LLM-backed. Parses question → loads audit events → answers.
+- [x] **Notification plugin** — webhook-based. Built-ins: terminal (stdout), slack, discord, telegram, generic webhook. Fires on: `hitl_requested`, `run_ended { status: error }`, `skill_gap_surfaced`. `notifications/`. Note: email (SMTP) provider deferred.
+- [x] **Governance circuit breakers** — `max_steps_per_agent`, `max_steps_per_run` (default: 500). Enforced in governance engine. `governance/_limits.py`. Cost-based limit (`max_cost_per_run_usd`) plumbing exists but is inactive until provider-level cost extraction lands.
+- [ ] **Provider-level cost extraction** — deferred. `CircuitBreakerTracker.add_cost()` exists but no provider wires cost_usd yet. Will activate `max_cost_per_run_usd` when implemented.
+- [x] **OTel metrics** — counters: `swarmkit.runs.total`, `swarmkit.agent.steps.total`, `swarmkit.tool.calls.total`, `swarmkit.governance.decisions.total`, `swarmkit.agent.drift.breaches.total`. Histograms: `swarmkit.runs.duration_ms`, `swarmkit.tool.duration_ms`, `swarmkit.approval.wait_ms`, `swarmkit.agent.drift.score`. `telemetry/_metrics.py`.
+- [x] **Execution detail API** — `swarmkit logs <run-id> --follow` streams full execution detail. `swarmkit why <run-id>` traces the decision chain. `swarmkit debug --span-id <id>` retrieves actual prompts/responses from the local ring buffer.
 
 **Exit demo:** run a topology with `telemetry.exporter: console` — span output in terminal showing agent steps, tool calls, governance decisions. `swarmkit logs` tails the same run. `swarmkit debug --run-id xyz` retrieves prompt/response pairs from local SQLite. `swarmkit ask "what went wrong?"` answers from audit context. Optional: spin up local Jaeger, see the full trace.
 
@@ -250,12 +250,12 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 **Features:**
 
-- [ ] **Property resolution engine** — two-phase: load `workspace.env.yaml`, then resolve `${ENV_VAR}` in property values
-- [ ] **Env file loading** — `workspace.env.yaml` (default) + `workspace.env.{SWARMKIT_ENV}.yaml` (per-environment override)
-- [ ] **Resolver integration** — load env file before resolving workspace, merge properties into config
-- [ ] **`swarmkit init` update** — generates template `workspace.env.yaml` + adds `workspace.env*.yaml` to `.gitignore`
-- [ ] **`swarmkit validate` update** — warns on unresolved `${property}` references
-- [ ] **Backward compatibility** — existing workspaces with inline values work unchanged
+- [x] **Property resolution engine** — two-phase: load `workspace.env.yaml`, then resolve `${ENV_VAR}` in property values. `resolver/_env_config.py`.
+- [x] **Env file loading** — `workspace.env.yaml` (default) + `workspace.env.{SWARMKIT_ENV}.yaml` (per-environment override). Falls back to default if env-specific file missing.
+- [x] **Resolver integration** — `_apply_env_interpolation()` runs after discovery, before schema validation. `resolver/__init__.py`.
+- [ ] **`swarmkit init` update** — generates template `workspace.env.yaml` + adds `workspace.env*.yaml` to `.gitignore`. Deferred — init prompt mentions secrets but doesn't generate template file.
+- [ ] **`swarmkit validate` update** — warns on unresolved `${property}` references. Deferred — no detection logic for leftover `${...}` patterns.
+- [x] **Backward compatibility** — existing workspaces with inline values work unchanged. `interpolate_value()` no-ops when no `${...}` references exist.
 
 **Exit demo:** same workspace runs against dev and prod with `SWARMKIT_ENV=dev` vs `SWARMKIT_ENV=prod`, each picking up different notification URLs and model providers from their env file.
 
@@ -269,16 +269,16 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 **Features:**
 
-- [ ] **Schema extension** — `intent_monitoring:` block on agents and topology level. Fields: `enabled`, `threshold`, `on_drift` (log/warn/nudge).
-- [ ] **IntentObserver** — `set_anchor(goal)`, `observe(step, output)` → `DriftResult`. Drift = `1 - cosine_similarity(anchor, output)`.
-- [ ] **Embedding backend** — sentence-transformers default (local, no API keys). Pluggable via ModelProvider for API-based embeddings.
-- [ ] **Drift strategies** — `log` (audit only), `warn` (log + emit warning event), `nudge` (inject system message reminding agent of original goal).
-- [ ] **Tool error separation** — only score `agent_reasoning` events for drift. `tool_error` and `tool_response` excluded.
-- [ ] **Audit integration** — drift scores as structured fields in audit events: `intent_drift: { score, threshold, action_taken }`.
-- [ ] **OTel integration** — drift scores as span events with `swarmkit.drift.*` attributes.
-- [ ] **OTel drift metrics** — histogram: `swarmkit.agent.drift.score`. Counter: drift threshold breaches.
+- [x] **Schema extension** — `intent_monitoring:` block on agents and topology level. Fields: `enabled`, `threshold`, `on_drift` (log/warn/nudge).
+- [x] **IntentObserver** — `set_anchor(goal)`, `observe(step, output)` → `DriftResult`. Drift = `1 - cosine_similarity(anchor, output)`.
+- [x] **Embedding backend** — sentence-transformers default (local, no API keys). Pluggable via ModelProvider for API-based embeddings.
+- [x] **Drift strategies** — `log` (audit only), `warn` (log + emit warning event), `nudge` (inject system message reminding agent of original goal).
+- [x] **Tool error separation** — only score `agent_reasoning` events for drift. `tool_error` and `tool_response` excluded. `_is_error_passthrough()` in `_drift.py`.
+- [x] **Audit integration** — drift scores as structured fields in audit events: `intent_drift: { score, threshold, action_taken }`.
+- [x] **OTel integration** — drift scores as span events with `swarmkit.drift.*` attributes.
+- [x] **OTel drift metrics** — histogram: `swarmkit.agent.drift.score`. Counter: `swarmkit.agent.drift.breaches.total`. `telemetry/_metrics.py`.
 
-- [ ] **Authoring integration** — `swarmkit init` and `swarmkit author topology` ask if the user wants intent monitoring. If yes, add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: log }`. If no, add as a commented-out block so users discover the feature.
+- [x] **Authoring integration** — `swarmkit init` and `swarmkit author topology` ask if the user wants intent monitoring. If yes, add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: log }`. If no, add as a commented-out block so users discover the feature.
 
 **Not in scope:** `threshold: auto` self-learning mode. Needs feedback signal design, cold-start strategy, and run history storage (Rynko). See open questions in design note.
 
@@ -424,25 +424,26 @@ Mandatory decision skills with workspace/topology merge semantics. See `design/d
 
 **Exit demo:** Sterling researcher fabricates a name → grounding-verifier catches it → agent revises → clean output passes through.
 
-#### Structured inter-agent communication 🟡
+#### Structured inter-agent communication ✅
 
 Replace prose between agents with structured JSON. Research-backed: 55-87% token reduction + 3-36% accuracy improvement. See `design/details/structured-inter-agent-communication.md`.
 
-**Architecture:** three layers — MCP provenance envelope (Phase A now, Phase B gateway in M10), default output_schema for workers, validation (Tier 1 deterministic + Tier 2 Rynko opt-in).
+**Architecture:** three layers — MCP provenance envelope (Phase A), default output_schema for workers, validation (Tier 1 deterministic + Tier 2 Rynko opt-in).
 
-**Wave 1 (next):**
-- [ ] **MCP provenance envelope** — wrap every tool response with ToolMetadata (source, args, timing). Phase A of gateway path.
-- [ ] **Default output_schema for workers** — all workers produce structured JSON by default. JSON mode from provider. Schema validation + retry.
-- [ ] **Auto-populate source from tool metadata** — citation is infrastructure, not prompt-dependent
-- [ ] **Skip summarizer for structured output** — structured data IS the summary
+**Wave 1 — Provenance + structured output (v1.2.26–v1.2.29):**
+- [x] **MCP provenance envelope** — `ToolMetadata` + `ToolResponse` in `MCPClientManager.call_tool`. PR #223.
+- [x] **Default output_schema for workers** — all workers produce structured JSON by default. JSON mode from provider. Schema validation + retry. PR #222.
+- [x] **Auto-populate source from tool metadata** — `validate_and_fill_sources()` in `_output_schema.py`. PR #224.
+- [x] **Skip summarizer for structured output** — structured data IS the summary. Landed in PR #222.
+- [x] **Structured checkpoint instructions** — checkpoint prompts replaced with JSON action specs. PR #225.
 
-**Wave 2:**
-- [ ] **Deterministic grounding (Tier 1)** — schema check replaces LLM judge for structured agents
-- [ ] **Rynko Flow validation (opt-in)** — business rules as governance decision skill
+**Wave 2 — Governance integration (v1.2.30–v1.2.31):**
+- [x] **Deterministic grounding (Tier 1)** — `check_grounding()` validates all findings have non-empty source. No LLM needed. PR #227.
+- [x] **MCP-backed decision skills** — any MCP server can be a governance decision skill. PR #228.
 
-**Wave 3:**
-- [ ] **Sterling workspace — structured researchers** — validate token savings vs prose
-- [ ] **Authoring skill — auto-suggest schemas** — new archetypes include output_schema
+**Wave 3 — Sterling + authoring + gate-validator (v1.2.32):**
+- [x] **Sterling structured researchers + authoring** — document-writer opts out with `output_schema: null`. PR #230.
+- [x] **Gate-validator MCP server** — `list_gates` + `validate_gate` tools, JSON Schema validation gates. PR #231.
 
 **Future (M10/M11):** Full MCP gateway replaces Phase A proxy. See `mcp-discovery-pattern.md`.
 
@@ -459,20 +460,32 @@ Replace prose between agents with structured JSON. Research-backed: 55-87% token
 
 Ship-ready for open-source users. Everything needed for public launch.
 
-### M10 — Eject + execution modes
+### M10 — Serve + eject + canary 🟡
 
 **Goal:** all three execution modes from §14.1 + the eject escape hatch + canary deployments.
 
-**Design reference:** §14.1, §14.4. `design/details/market-analysis-and-risk-mitigations.md` (canary feature adoption from AgentField analysis).
+**Design reference:** §14.1, §14.4. `design/details/serve-and-auth.md`. `design/details/market-analysis-and-risk-mitigations.md` (canary feature adoption from AgentField analysis).
 
-**Dependencies:** M6 (observability for canary health metrics), M7 (drift detection for canary promotion criteria).
+**Dependencies:** M6 ✅ (observability for canary health metrics), M7 ✅ (drift detection for canary promotion criteria).
 
-**Features:**
+#### Serve mode ✅ (v1.2.53–v1.2.57, PRs #262–#266)
+
+- [x] **FastAPI HTTP server** — `swarmkit serve` for persistent mode. Async job execution, polling, SSE streaming. `server.py`. PR #262.
+- [x] **MCP endpoint** — Streamable HTTP at `/mcp`. Each topology becomes an MCP tool. PR #262, lifecycle PR #264.
+- [x] **AuthProvider abstraction** — `NoneAuthProvider` (default), `APIKeyAuthProvider`, `JWTAuthProvider` (JWKS auto-discovery). `auth/`. PRs #263, #265.
+- [x] **Server config** — `server:` block in workspace.yaml. `jobs.max_concurrent`, `jobs.timeout_seconds`, `mcp.enabled`. Semaphore-based concurrency limiting. PR #264.
+- [x] **Trigger scheduler** — cron scheduler with `croniter` (optional dep), webhook HMAC-SHA256 signature validation. `triggers/`. PR #266.
+- [x] **Conversation endpoints** — create, list, send message via HTTP. PR #262.
+- [x] **Serve CLI reference** — real test outputs documented at `docs/reference/serve-cli-tests.md`. PR #267.
+
+#### Eject (remaining)
 
 - [ ] `design/eject.md` — generated project structure, dependency pinning, README template
 - [ ] **`swarmkit eject <topology>`** — writes standalone LangGraph Python code. CLAUDE.md invariant #7. LangGraph platform risk mitigation.
-- [ ] **FastAPI HTTP server** — `swarmkit serve` for persistent mode
-- [ ] **Scheduler** — cron, webhook, file_watch triggers
+- [ ] Ejected code runs without swarmkit installed — CI verification
+
+#### Canary deployments (remaining)
+
 - [ ] **Canary deployments** — topology-level version routing. Schema extension:
 
 ```yaml
@@ -489,9 +502,7 @@ deployment:
         min_runs: 100
 ```
 
-- [ ] Ejected code runs without swarmkit installed — CI verification
-
-**Exit demo:** eject the code-review swarm → install in fresh venv → runs without SwarmKit. `swarmkit serve` accepts HTTP triggers. Canary deployment routes 5% traffic to new version, drift metrics visible in OTel.
+**Exit demo:** eject the code-review swarm → install in fresh venv → runs without SwarmKit. `swarmkit serve` accepts HTTP triggers ✅. Canary deployment routes 5% traffic to new version, drift metrics visible in OTel.
 
 ### M11 — Launch prep
 
@@ -567,6 +578,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `model-provider-abstraction.md` | M2.5 ✅ |
 | `model-provider-tool-calling.md` | M2.5 ✅ |
 | `opentelemetry-observability.md` | M6 |
+| `pre-input-decision-gate.md` | M9 ✅ |
 | `product-architecture.md` | Cross-cutting (scope boundary) |
 | `product-architecture-refinements.md` | M6 (ring buffer, circuit breakers) |
 | `pydantic-codegen.md` | M0 ✅ |
@@ -588,7 +600,8 @@ Every design note under `design/details/` and where it appears in this plan:
 | `governance-decision-skills.md` | M9 ✅ |
 | `scope-freeze-and-spec-conformance.md` | M9 ✅ |
 | `two-phase-execution-flow.md` | M9 ✅ |
-| `structured-inter-agent-communication.md` | M9 🟡 |
+| `serve-and-auth.md` | M10 ✅ |
+| `structured-inter-agent-communication.md` | M9 ✅ |
 | `document-writer-pattern.md` | M8 ✅ |
 
 ## Open questions
