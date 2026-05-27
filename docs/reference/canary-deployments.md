@@ -368,6 +368,127 @@ Canary metrics integrate with SwarmKit's existing observability:
 
 ---
 
+## Real test outputs
+
+All outputs below are from actual runs against a live SwarmKit server.
+Date: 2026-05-27, version 1.2.58.
+
+### Weighted routing (90/10 split, 200 requests)
+
+```
+v1.0.0: 178 requests (89%)
+v1.1.0: 22 requests (11%)
+```
+
+### Auto-promotion simulation (min_runs=10, drift_below=0.30)
+
+```
+Run 1:  runs=1,  error=0.0%, drift=0.120, weight=20%
+Run 2:  runs=2,  error=0.0%, drift=0.125, weight=20%
+...
+Run 9:  runs=9,  error=0.0%, drift=0.160, weight=20%
+Run 10: runs=10, error=0.0%, drift=0.165, weight=100% → PROMOTED!
+```
+
+### Error rate blocks promotion (20% error rate, threshold 10%)
+
+```
+After 4 success + 1 failure:
+  Error rate: 20.0%
+  Weight: 10 (NOT promoted)
+  Blocked by error rate: True
+```
+
+### High drift blocks promotion (avg_drift=0.50, threshold 0.20)
+
+```
+After 3 runs with drift=0.5:
+  Avg drift: 0.50
+  Weight: 10 (NOT promoted)
+  Blocked by drift: True
+```
+
+### GET /canary endpoint
+
+```bash
+$ curl -s http://localhost:8331/canary | jq .
+```
+
+```json
+{
+  "enabled": true,
+  "routes": [
+    {
+      "topology": "hello",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "weight": 70,
+          "metrics": {
+            "total_runs": 0,
+            "failed_runs": 0,
+            "error_rate": 0.0,
+            "avg_drift": 0.0,
+            "window_start": "2026-05-27T15:08:15.660581+00:00"
+          }
+        },
+        {
+          "version": "1.1.0",
+          "weight": 30,
+          "metrics": { "total_runs": 0, "error_rate": 0.0, "avg_drift": 0.0 },
+          "promote_when": {
+            "min_runs": 5,
+            "error_rate_below": 0.1,
+            "drift_below": 0.5,
+            "window_minutes": 60
+          }
+        }
+      ]
+    }
+  ],
+  "promotions": []
+}
+```
+
+### Manual promote
+
+```bash
+$ curl -s -X POST http://localhost:8331/canary/hello/promote \
+  -H "Content-Type: application/json" \
+  -d '{"version": "1.1.0"}'
+{"promoted": true, "topology": "hello", "version": "1.1.0"}
+
+# After promote:
+#   v1.0.0: weight=0%
+#   v1.1.0: weight=100%
+```
+
+### Rollback
+
+```bash
+$ curl -s -X POST http://localhost:8331/canary/hello/rollback
+{"rolled_back": true, "topology": "hello"}
+
+# After rollback:
+#   v1.0.0: weight=100%
+#   v1.1.0: weight=0%
+```
+
+### Error handling
+
+```bash
+# Unknown topology
+$ curl -s -X POST http://localhost:8331/canary/nonexistent/promote \
+  -d '{"version": "1.0.0"}'
+{"detail": "No canary route for topology 'nonexistent' version '1.0.0'"}
+
+# Missing version
+$ curl -s -X POST http://localhost:8331/canary/hello/promote -d '{}'
+{"detail": "Missing 'version' in request body"}
+```
+
+---
+
 ## Limitations
 
 - **No session affinity** — each request is independently routed by weight.
