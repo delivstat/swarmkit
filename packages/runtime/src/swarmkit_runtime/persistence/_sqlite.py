@@ -247,9 +247,7 @@ class SqliteStore:
 
     def get_conversation(self, conv_id: str) -> ConversationRow | None:
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM conversations WHERE id = ?", (conv_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM conversations WHERE id = ?", (conv_id,)).fetchone()
         if row is None:
             return None
         return self._row_to_conv(row)

@@ -162,15 +162,11 @@ def test_record_and_summarize_usage(store: SqliteStore) -> None:
 
 
 def test_usage_by_model(store: SqliteStore) -> None:
-    store.record_usage(
-        UsageRow(agent_id="a", model="kimi-k2.6", input_tokens=1000, cost_usd=0.002)
-    )
+    store.record_usage(UsageRow(agent_id="a", model="kimi-k2.6", input_tokens=1000, cost_usd=0.002))
     store.record_usage(
         UsageRow(agent_id="b", model="claude-haiku", input_tokens=500, cost_usd=0.0005)
     )
-    store.record_usage(
-        UsageRow(agent_id="c", model="kimi-k2.6", input_tokens=2000, cost_usd=0.004)
-    )
+    store.record_usage(UsageRow(agent_id="c", model="kimi-k2.6", input_tokens=2000, cost_usd=0.004))
 
     by_model = store.get_usage_by_model()
     assert len(by_model) == 2
@@ -180,12 +176,8 @@ def test_usage_by_model(store: SqliteStore) -> None:
 
 
 def test_global_usage_summary(store: SqliteStore) -> None:
-    store.record_usage(
-        UsageRow(agent_id="a", model="m1", input_tokens=100, cost_usd=0.01)
-    )
-    store.record_usage(
-        UsageRow(agent_id="b", model="m2", input_tokens=200, cost_usd=0.02)
-    )
+    store.record_usage(UsageRow(agent_id="a", model="m1", input_tokens=100, cost_usd=0.01))
+    store.record_usage(UsageRow(agent_id="b", model="m2", input_tokens=200, cost_usd=0.02))
     summary = store.get_usage_summary()
     assert summary["total_calls"] == 2
     assert summary["total_cost_usd"] == pytest.approx(0.03)
@@ -221,9 +213,7 @@ def test_conversations_persist_across_restart(tmp_path: Path) -> None:
 
 def test_usage_persists_across_restart(tmp_path: Path) -> None:
     store1 = SqliteStore(tmp_path)
-    store1.record_usage(
-        UsageRow(agent_id="a", model="m1", input_tokens=500, cost_usd=0.01)
-    )
+    store1.record_usage(UsageRow(agent_id="a", model="m1", input_tokens=500, cost_usd=0.01))
 
     store2 = SqliteStore(tmp_path)
     summary = store2.get_usage_summary()
