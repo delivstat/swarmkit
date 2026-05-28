@@ -39,6 +39,7 @@ status: active
 | 3 | M8 | MCP integration layer | ✅ | Lazy startup, permission tiers, multimodal, document reader, MarkItDown |
 | 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, structured comms ✅, Sterling log analyser ✅, reference topologies remaining |
 | 4 | M10 | Serve + eject + canary | 🟡 | `swarmkit serve` ✅ (HTTP, auth, MCP, triggers, canary). Eject remaining |
+| 4 | M12 | UI dashboard + chat | ✅ | Dashboard (8 pages), chat UI, SQLite persistence, workspace memory |
 | 4 | M11 | Launch prep | — | `pip install swarmkit` → working swarm in <15 min |
 
 ## Cross-cutting workstreams
@@ -508,6 +509,25 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 
 **Exit demo:** eject the code-review swarm → install in fresh venv → runs without SwarmKit. `swarmkit serve` accepts HTTP triggers ✅. Canary deployment routes 10% traffic to new version, auto-promotes after 50 successful runs with low drift ✅.
 
+### M12 — UI dashboard + chat + persistence ✅
+
+**Goal:** Web UI for runtime monitoring and conversational interaction. SQLite persistence for all runtime state. Workspace memory for cross-conversation knowledge.
+
+**Design reference:** `design/details/ui-dashboard.md`, `design/details/workspace-memory.md`, `design/details/distributed-architecture.md`.
+
+**Features (shipped v1.2.58–v1.2.62, PRs #271–#278):**
+
+- [x] **UI dashboard scaffold** — Next.js 15 + Tailwind v4 + Lucide icons. 8 pages: dashboard, chat, jobs, topologies, skills, archetypes, canary, triggers. Typed API client for all server endpoints. PR #271.
+- [x] **Chat UI** — `/chat` page with conversation sidebar, message bubbles, real-time send (Enter key), optimistic UI, auto-scroll, "Thinking..." animation, new chat dialog with topology selector. PR #278.
+- [x] **`GET /conversations/{id}`** — full conversation history endpoint (role, content, timestamp per turn). PR #278.
+- [x] **SQLite persistence** — `SqliteStore` at `.swarmkit/store.sqlite`. Jobs, conversations, and usage tracking persist across server restarts. WAL mode for concurrent access. PR #277.
+- [x] **Usage tracking** — per-LLM-call records (agent, model, tokens, cost). `GET /usage` (global summary + per-model breakdown), `GET /usage/{job_id}` (per-job). PR #277.
+- [x] **`GET /jobs/history`** — persisted jobs endpoint (survives restart). PR #277.
+- [x] **Workspace memory** — `MemoryStore` (local JSON + TF-IDF) and `GBrainMemory` (GBrain MCP: hybrid search, graph relationships, fact extraction). Memory-writer (post_output) + memory-reader (pre_input) decision skill hooks. Compiler integration. 36 tests. PRs #274, #275.
+- [x] **Distributed architecture design** — three-layer architecture (gateway → workers → Postgres), Supabase unification, conversation persistence via LangGraph PostgresSaver. PR #272.
+
+**Exit demo:** `swarmkit serve` + `pnpm --filter @swarmkit/ui dev` → dashboard shows health/jobs/canary, chat page talks to topologies, jobs survive restart, workspace memory grows across conversations.
+
 ### M11 — Launch prep
 
 **Goal:** public launch of SwarmKit as an open-source project.
@@ -605,7 +625,10 @@ Every design note under `design/details/` and where it appears in this plan:
 | `scope-freeze-and-spec-conformance.md` | M9 ✅ |
 | `two-phase-execution-flow.md` | M9 ✅ |
 | `canary-deployments.md` | M10 ✅ |
+| `distributed-architecture.md` | M12 ✅ |
 | `serve-and-auth.md` | M10 ✅ |
+| `ui-dashboard.md` | M12 ✅ |
+| `workspace-memory.md` | M12 ✅ |
 | `structured-inter-agent-communication.md` | M9 ✅ |
 | `document-writer-pattern.md` | M8 ✅ |
 
