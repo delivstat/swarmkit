@@ -676,9 +676,7 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:
         return manager.list_conversations()
 
     @app.get("/conversations/{conversation_id}")
-    async def get_conversation(
-        conversation_id: str, request: Request
-    ) -> dict[str, Any]:
+    async def get_conversation(conversation_id: str, request: Request) -> dict[str, Any]:
         from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
 
         rt = _get_runtime(request)
