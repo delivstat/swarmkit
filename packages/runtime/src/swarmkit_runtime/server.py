@@ -761,12 +761,21 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
                     }
                     for e in result.events
                 ]
+                usage_data = None
+                if result.usage:
+                    usage_data = {
+                        "input_tokens": result.usage.input_tokens,
+                        "output_tokens": result.usage.output_tokens,
+                        "total_tokens": result.usage.total_tokens,
+                        "by_model": result.usage.by_model,
+                    }
                 done_payload = {
                     "type": "done",
                     "output": result.output,
                     "turns": len(conv.turns),
                     "conversation_id": conv.id,
                     "events": events,
+                    "usage": usage_data,
                 }
                 yield f"data: {json.dumps(done_payload)}\n\n"
             except Exception as exc:
