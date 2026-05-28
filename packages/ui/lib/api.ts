@@ -66,9 +66,57 @@ export const api = {
 	conversation: (id: string) => get<ConversationDetail>(`/conversations/${id}`),
 	createConversation: (topology: string) =>
 		post<{ id: string; topology: string }>("/conversations", { topology }),
-	sendMessage: (conversationId: string, message: string) =>
-		post<SendMessageResponse>(`/conversations/${conversationId}/messages`, {
-			message,
+	sendMessageStream: (
+		conversationId: string,
+		message: string,
+		onProgress: (text: string) => void,
+	): Promise<SendMessageResponse & { events?: unknown[] }> =>
+		new Promise((resolve, reject) => {
+			fetch(`${BASE}/conversations/${conversationId}/messages`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ message }),
+			})
+				.then((res) => {
+					if (!res.ok) {
+						res.text().then((t) => reject(new Error(`${res.status}: ${t}`)));
+						return;
+					}
+					const reader = res.body?.getReader();
+					if (!reader) {
+						reject(new Error("No response body"));
+						return;
+					}
+					const decoder = new TextDecoder();
+					let buffer = "";
+
+					function pump(): void {
+						reader?.read().then(({ done, value }) => {
+							if (done) return;
+							buffer += decoder.decode(value, { stream: true });
+							const lines = buffer.split("\n");
+							buffer = lines.pop() ?? "";
+							for (const line of lines) {
+								if (!line.startsWith("data: ")) continue;
+								try {
+									const data = JSON.parse(line.slice(6));
+									if (data.type === "progress") {
+										onProgress(data.text);
+									} else if (data.type === "done") {
+										resolve(data);
+									} else if (data.type === "error") {
+										reject(new Error(data.error));
+									}
+								} catch {
+									// skip malformed lines
+								}
+							}
+							pump();
+						});
+					}
+					pump();
+				})
+				.catch(reject);
 		}),
 
 	usage: () => get<UsageSummary>("/usage"),
