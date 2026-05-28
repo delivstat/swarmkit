@@ -36,6 +36,7 @@ from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
+from swarmkit_runtime.persistence import SqliteStore
 from swarmkit_runtime.triggers import TriggerScheduler
 from swarmkit_runtime.triggers._webhook import validate_webhook_signature
 
@@ -224,6 +225,7 @@ async def execute_job(
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     semaphore: asyncio.Semaphore | None = None,
     canary_router: CanaryRouter | None = None,
+    store: SqliteStore | None = None,
 ) -> None:
     """Run topology in background, updating job state.
 
@@ -234,6 +236,8 @@ async def execute_job(
     job.status = "running"
     version_label = f" v{job.version}" if job.version else ""
     job.events.append(f"Job started for topology '{job.topology}'{version_label}")
+    if store:
+        store.update_job(job.id, status="running", events=job.events)
     try:
         if semaphore is not None:
             await semaphore.acquire()
@@ -262,6 +266,15 @@ async def execute_job(
                 semaphore.release()
     finally:
         job.completed_at = datetime.now(UTC).isoformat()
+        if store:
+            store.update_job(
+                job.id,
+                status=job.status,
+                output=job.output,
+                error=job.error,
+                completed_at=job.completed_at,
+                events=job.events,
+            )
         if canary_router and job.version:
             canary_router.record_result(
                 job.topology,
@@ -279,6 +292,7 @@ def _start_job(
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     semaphore: asyncio.Semaphore | None = None,
     canary_router: CanaryRouter | None = None,
+    store: SqliteStore | None = None,
 ) -> None:
     """Create a background task for a job and track it."""
     task = asyncio.create_task(
@@ -289,6 +303,7 @@ def _start_job(
             timeout_seconds=timeout_seconds,
             semaphore=semaphore,
             canary_router=canary_router,
+            store=store,
         )
     )
     job_store.track_task(task)
@@ -388,6 +403,44 @@ def _register_introspection_routes(app: FastAPI) -> None:
         trigger_configs: list[dict[str, Any]] = getattr(request.app.state, "trigger_configs", [])
         return trigger_configs
 
+    @app.get("/usage")
+    async def get_usage(request: Request) -> dict[str, Any]:
+        s: SqliteStore | None = getattr(request.app.state, "store", None)
+        if s is None:
+            return {"summary": {}, "by_model": []}
+        return {
+            "summary": s.get_usage_summary(),
+            "by_model": s.get_usage_by_model(),
+        }
+
+    @app.get("/usage/{job_id}")
+    async def get_job_usage(job_id: str, request: Request) -> dict[str, Any]:
+        s: SqliteStore | None = getattr(request.app.state, "store", None)
+        if s is None:
+            return {}
+        return s.get_usage_summary(job_id=job_id)
+
+    @app.get("/jobs/history")
+    async def list_persisted_jobs(request: Request) -> list[dict[str, Any]]:
+        s: SqliteStore | None = getattr(request.app.state, "store", None)
+        if s is None:
+            return []
+        rows = s.list_jobs(limit=100)
+        return [
+            {
+                "job_id": r.id,
+                "topology": r.topology,
+                "version": r.version,
+                "status": r.status,
+                "created_at": r.created_at,
+                "completed_at": r.completed_at,
+                "usage_input_tokens": r.usage_input_tokens,
+                "usage_output_tokens": r.usage_output_tokens,
+                "usage_cost_usd": r.usage_cost_usd,
+            }
+            for r in rows
+        ]
+
     @app.get("/canary")
     async def canary_status(request: Request) -> dict[str, Any]:
         router: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
@@ -459,8 +512,13 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
                 detail="Max concurrent jobs reached. Try again later.",
             )
         cfg: ServerCfg = getattr(request.app.state, "server_config", ServerCfg())
+        sqlite_store: SqliteStore | None = getattr(request.app.state, "store", None)
         job = await job_store.create(resolved_name, body.input)
         job.version = selected_version
+        if sqlite_store:
+            sqlite_store.create_job(job.id, resolved_name, body.input)
+            if selected_version:
+                sqlite_store.update_job(job.id, version=selected_version)
         _start_job(
             job_store,
             job,
@@ -469,6 +527,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
             timeout_seconds=cfg.timeout_seconds,
             semaphore=semaphore,
             canary_router=canary,
+            store=sqlite_store,
         )
         return JobResponse(
             job_id=job.id,
@@ -572,8 +631,13 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
             if isinstance(body_json, dict)
             else str(body_json)
         )
+        sqlite_store: SqliteStore | None = getattr(request.app.state, "store", None)
         job = await job_store.create(resolved_name, user_input)
         job.version = selected_version
+        if sqlite_store:
+            sqlite_store.create_job(job.id, resolved_name, user_input)
+            if selected_version:
+                sqlite_store.update_job(job.id, version=selected_version)
         _start_job(
             job_store,
             job,
@@ -582,6 +646,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
             timeout_seconds=cfg.timeout_seconds,
             semaphore=semaphore,
             canary_router=canary,
+            store=sqlite_store,
         )
         return JobResponse(job_id=job.id, status="running")
 
@@ -768,6 +833,7 @@ def create_app(  # noqa: PLR0915
             raise RuntimeError(str(exc)) from exc
 
         app.state.runtime = runtime
+        app.state.store = SqliteStore(workspace_path)
 
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)
