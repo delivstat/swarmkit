@@ -142,16 +142,15 @@ function MessageBubble({
 
 function ThinkingIndicator({ progressLines }: { progressLines: string[] }) {
 	const [elapsed, setElapsed] = useState(0);
-	const bottomRef = useRef<HTMLDivElement>(null);
+	const [expanded, setExpanded] = useState(false);
 
 	useEffect(() => {
 		const timer = setInterval(() => setElapsed((e) => e + 1), 1000);
 		return () => clearInterval(timer);
 	}, []);
 
-	useEffect(() => {
-		bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [progressLines.length]);
+	const latest =
+		progressLines.length > 0 ? progressLines[progressLines.length - 1] : null;
 
 	return (
 		<div className="flex justify-start mb-4">
@@ -159,7 +158,7 @@ function ThinkingIndicator({ progressLines }: { progressLines: string[] }) {
 				className="max-w-[85%] px-4 py-3 rounded-2xl rounded-bl-sm text-sm"
 				style={{ background: "var(--bg-sidebar)" }}
 			>
-				<div className="flex items-center gap-2 mb-2">
+				<div className="flex items-center gap-2">
 					<span className="flex gap-1">
 						<span
 							className="w-1.5 h-1.5 rounded-full animate-bounce"
@@ -174,27 +173,39 @@ function ThinkingIndicator({ progressLines }: { progressLines: string[] }) {
 							style={{ background: "var(--accent)", animationDelay: "300ms" }}
 						/>
 					</span>
-					<span className="text-xs font-medium">Working</span>
 					<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
 						{elapsed}s
 					</span>
+					{progressLines.length > 1 && (
+						<button
+							type="button"
+							onClick={() => setExpanded((e) => !e)}
+							className="text-xs ml-auto"
+							style={{ color: "var(--accent)" }}
+						>
+							{expanded ? "hide log" : `${progressLines.length} steps`}
+						</button>
+					)}
 				</div>
-				{progressLines.length > 0 ? (
-					<div className="space-y-0.5 max-h-32 overflow-y-auto">
-						{progressLines.map((line, i) => (
+				<div
+					className="text-xs font-mono mt-1.5"
+					style={{ color: "var(--fg-muted)" }}
+				>
+					{latest ?? "Starting agent..."}
+				</div>
+				{expanded && progressLines.length > 1 && (
+					<div
+						className="mt-2 pt-2 border-t space-y-0.5 max-h-32 overflow-y-auto"
+						style={{ borderColor: "var(--border)" }}
+					>
+						{progressLines.slice(0, -1).map((line, i) => (
 							<div
 								key={`progress-${i}-${line.slice(0, 20)}`}
-								className="text-xs font-mono"
-								style={{ color: "var(--fg-muted)" }}
+								className="text-xs font-mono opacity-50"
 							>
 								{line}
 							</div>
 						))}
-						<div ref={bottomRef} />
-					</div>
-				) : (
-					<div className="text-xs" style={{ color: "var(--fg-muted)" }}>
-						Starting agent...
 					</div>
 				)}
 			</div>
@@ -211,6 +222,13 @@ interface RunEvent {
 	tokens?: number;
 }
 
+interface RunUsage {
+	input_tokens: number;
+	output_tokens: number;
+	total_tokens: number;
+	by_model: Record<string, { input: number; output: number }>;
+}
+
 const EVENT_ICONS: Record<string, string> = {
 	"agent.started": "🚀",
 	"agent.completed": "✅",
@@ -224,8 +242,11 @@ const EVENT_ICONS: Record<string, string> = {
 	"mcp.connected": "🔌",
 };
 
-function EventsSummary({ events }: { events: RunEvent[] }) {
-	if (events.length === 0) return null;
+function EventsSummary({
+	events,
+	usage,
+}: { events: RunEvent[]; usage: RunUsage | null }) {
+	if (events.length === 0 && !usage) return null;
 
 	return (
 		<div className="flex justify-start mb-4">
@@ -237,13 +258,45 @@ function EventsSummary({ events }: { events: RunEvent[] }) {
 				}}
 			>
 				<div
-					className="flex items-center gap-2 mb-1.5"
+					className="flex items-center gap-3 mb-1.5"
 					style={{ color: "var(--fg-muted)" }}
 				>
 					<span className="font-medium">Run details</span>
-					<span>·</span>
-					<span>{events.length} event(s)</span>
+					{usage && (
+						<>
+							<span>{usage.total_tokens.toLocaleString()} tokens</span>
+							<span>
+								({usage.input_tokens.toLocaleString()} in /{" "}
+								{usage.output_tokens.toLocaleString()} out)
+							</span>
+						</>
+					)}
 				</div>
+				{usage && Object.keys(usage.by_model).length > 0 && (
+					<div
+						className="flex gap-3 mb-1.5 pb-1.5 border-b"
+						style={{ borderColor: "var(--border)" }}
+					>
+						{Object.entries(usage.by_model).map(([model, tokens]) => (
+							<span key={model} className="flex items-center gap-1">
+								<span
+									className="px-1 py-0.5 rounded"
+									style={{
+										background: "var(--bg-sidebar)",
+									}}
+								>
+									{model.split("/").pop()}
+								</span>
+								<span style={{ color: "var(--fg-muted)" }}>
+									{(
+										((tokens as Record<string, number>)?.input ?? 0) +
+										((tokens as Record<string, number>)?.output ?? 0)
+									).toLocaleString()}
+								</span>
+							</span>
+						))}
+					</div>
+				)}
 				<div className="space-y-0.5">
 					{events.map((e) => (
 						<div
@@ -290,6 +343,7 @@ function ChatArea({
 	onRetry,
 	sending,
 	events,
+	usage,
 	progressLines,
 }: {
 	conversation: ConversationDetail | null;
@@ -297,6 +351,7 @@ function ChatArea({
 	onRetry: () => void;
 	sending: boolean;
 	events: RunEvent[];
+	usage: RunUsage | null;
 	progressLines: string[];
 }) {
 	const [input, setInput] = useState("");
@@ -370,7 +425,9 @@ function ChatArea({
 						}
 					/>
 				))}
-				{!sending && events.length > 0 && <EventsSummary events={events} />}
+				{!sending && (events.length > 0 || usage) && (
+					<EventsSummary events={events} usage={usage} />
+				)}
 				{sending && <ThinkingIndicator progressLines={progressLines} />}
 				<div ref={bottomRef} />
 			</div>
@@ -498,6 +555,7 @@ export default function ChatPage() {
 	const [sending, setSending] = useState(false);
 	const [showNew, setShowNew] = useState(false);
 	const [lastEvents, setLastEvents] = useState<RunEvent[]>([]);
+	const [lastUsage, setLastUsage] = useState<RunUsage | null>(null);
 	const [progressLines, setProgressLines] = useState<string[]>([]);
 	const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(
 		null,
@@ -518,6 +576,7 @@ export default function ChatPage() {
 		setSending(true);
 		setProgressLines([]);
 		setLastEvents([]);
+		setLastUsage(null);
 		setLastFailedMessage(null);
 
 		setActiveConv((prev) =>
@@ -540,9 +599,12 @@ export default function ChatPage() {
 			const result = await api.sendMessageStream(activeId, message, (text) =>
 				setProgressLines((prev) => [...prev, text]),
 			);
-			const events: RunEvent[] =
-				(result as unknown as { events?: RunEvent[] }).events ?? [];
-			setLastEvents(events);
+			const raw = result as unknown as {
+				events?: RunEvent[];
+				usage?: RunUsage;
+			};
+			setLastEvents(raw.events ?? []);
+			setLastUsage(raw.usage ?? null);
 			setActiveConv((prev) =>
 				prev
 					? {
@@ -611,6 +673,7 @@ export default function ChatPage() {
 				onRetry={handleRetry}
 				sending={sending}
 				events={lastEvents}
+				usage={lastUsage}
 				progressLines={progressLines}
 			/>
 			{showNew && topologies && (

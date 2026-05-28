@@ -61,12 +61,24 @@ class RunEvent:
 
 
 @dataclass(frozen=True)
+class UsageSummary:
+    """Token usage from a topology execution."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
+    by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class RunResult:
     """Output of a topology execution."""
 
     output: str
     agent_results: dict[str, str] = field(default_factory=dict)
     events: list[RunEvent] = field(default_factory=list)
+    usage: UsageSummary | None = None
 
 
 class MissingMCPServerError(Exception):
@@ -422,12 +434,21 @@ class WorkspaceRuntime:
 
         await self._persist_events_to_audit(events, topology_name)
 
+        usage = UsageSummary(
+            input_tokens=trace.total_input_tokens,
+            output_tokens=trace.total_output_tokens,
+            total_tokens=trace.total_input_tokens + trace.total_output_tokens,
+            by_agent=dict(trace.token_by_agent),
+            by_model=dict(trace.token_by_model),
+        )
+
         return RunResult(
             output=result.get("output", ""),
             agent_results={
                 k: str(v) for k, v in result.get("agent_results", {}).items() if isinstance(v, str)
             },
             events=events,
+            usage=usage,
         )
 
     async def resume(
