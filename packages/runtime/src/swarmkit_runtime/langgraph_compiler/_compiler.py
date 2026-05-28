@@ -63,6 +63,7 @@ def compile_topology(
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
     planning_config: PlanningConfig | None = None,
     synthesis_config: Any = None,
+    memory_store: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -96,6 +97,7 @@ def compile_topology(
             decision_skill_bindings=_bindings,
             planning_config=_planning,
             synthesis_config=synthesis_config,
+            memory_store=memory_store,
         )
         graph.add_node(agent.id, node_fn)
 
@@ -158,12 +160,14 @@ def _build_agent_node(  # noqa: PLR0915
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
     planning_config: PlanningConfig | None = None,
     synthesis_config: Any = None,
+    memory_store: Any = None,
 ) -> Any:
     """Build an async node function for one agent."""
     drift_observer = _create_drift_observer(agent)
     _ds_bindings = decision_skill_bindings or []
     _planning = planning_config or PlanningConfig()
     _synthesis = synthesis_config
+    _memory = memory_store
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0911, PLR0912, PLR0915
         global _current_parent_agent  # noqa: PLW0603
@@ -206,6 +210,20 @@ def _build_agent_node(  # noqa: PLR0915
                         agent_id,
                         rejection or "I can only help with questions in my domain.",
                     )
+
+        # ---- workspace memory (pre_input context injection) ----------------
+        if _memory and _ds_bindings:
+            from swarmkit_runtime.memory._gate import memory_pre_input  # noqa: PLC0415
+
+            memory_context = await memory_pre_input(
+                agent_id=agent_id,
+                user_input=state.get("input", ""),
+                bindings=_ds_bindings,
+                store=_memory,
+            )
+            if memory_context:
+                _progress(f"  [{agent_id}] memory context injected")
+                state = {**state, "input": f"{memory_context}\n\n{state.get('input', '')}"}
 
         # ---- already-delegated fast path (resume scenarios) ------------
         _agent_result = state.get("agent_results", {}).get(agent_id, "")
@@ -421,6 +439,20 @@ def _build_agent_node(  # noqa: PLR0915
                 bindings=_ds_bindings,
                 governance=governance,
                 retry_fn=_retry,
+            )
+
+        # ---- workspace memory (post_output insight extraction) --------
+        if _memory and _ds_bindings:
+            from swarmkit_runtime.memory._gate import memory_post_output  # noqa: PLC0415
+
+            await memory_post_output(
+                agent_id=agent_id,
+                user_input=state.get("input", ""),
+                agent_output=result_text,
+                bindings=_ds_bindings,
+                store=_memory,
+                model_provider=model_provider,
+                model_name=(agent.model or {}).get("name", "default"),
             )
 
         return _make_result(agent_id, result_text)

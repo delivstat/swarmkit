@@ -104,10 +104,26 @@ class WorkspaceRuntime:
         self._provider_registry = provider_registry
         self._governance = governance
         self._mcp_manager = mcp_manager
+        self._memory_store = self._create_memory_store()
         self._audit_provider = audit_provider or SQLiteAuditProvider(
             db_path=workspace_root / ".swarmkit" / "audit.sqlite"
         )
         self._session_active = False
+
+    def _create_memory_store(self) -> Any:
+        """Create a MemoryStore for the workspace if memory bindings are configured."""
+        ws_gov = getattr(self._workspace.raw, "governance", None)
+        if ws_gov is None:
+            return None
+        ds_list = getattr(ws_gov, "decision_skills", None) or []
+        has_memory = any(
+            getattr(ds, "id", "") in ("memory-reader", "memory-writer") for ds in ds_list
+        )
+        if not has_memory:
+            return None
+        from swarmkit_runtime.memory import MemoryStore  # noqa: PLC0415
+
+        return MemoryStore(self._workspace_root)
 
     @staticmethod
     def audit_provider_for(path: Path) -> SQLiteAuditProvider:
@@ -218,6 +234,7 @@ class WorkspaceRuntime:
             decision_skill_bindings=decision_bindings,
             planning_config=planning,
             synthesis_config=synthesis,
+            memory_store=self._memory_store,
         )
 
     def _resolve_planning_config(self, topology_name: str) -> Any:
