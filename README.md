@@ -201,6 +201,23 @@ OTel traces to any backend: `SWARMKIT_OTEL_EXPORTER=console swarmkit run ...`
 
 Intent drift detection (M7 — shipped): detects when agents wander from the original goal. Add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }` to your topology.
 
+### Workspace memory — agents that remember (shipped)
+
+Agents remember across conversations. After each turn, structured insights (topic, context, key points) are extracted and saved. Before the next conversation, relevant prior context is injected into the agent's prompt. The agent references past sessions naturally — "As we discussed previously..."
+
+```yaml
+governance:
+  decision_skills:
+    - id: memory-reader
+      trigger: pre_input
+      scope: "*"
+    - id: memory-writer
+      trigger: post_output
+      scope: "*"
+```
+
+Two backends: local JSON store (zero setup) or GBrain MCP server (hybrid vector + keyword search, graph relationships, Supabase/Postgres for production). See [`docs/reference/workspace-memory.md`](./docs/reference/workspace-memory.md) and [`docs/examples/memory-demo.py`](./docs/examples/memory-demo.py).
+
 ### HTTP server + canary deployments (M10 — shipped)
 
 `swarmkit serve` runs your workspace as a persistent HTTP service with async job execution, SSE streaming, webhook triggers, MCP endpoint, and pluggable auth:
