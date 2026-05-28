@@ -89,6 +89,16 @@ Auth providers: `NoneAuthProvider` (default, open access), `APIKeyAuthProvider` 
 
 Canary config in workspace.yaml: `server.canary.routes[].versions[].weight` (traffic percentage), `promote_when.min_runs`, `promote_when.error_rate_below`, `promote_when.drift_below`, `promote_when.window_minutes`. Version-qualified names (`topology@1.1.0`) bypass routing for direct testing.
 
+## Workspace memory (shipped)
+
+Agents remember across conversations. Two decision skill bindings (`memory-reader` at `pre_input`, `memory-writer` at `post_output`) enable automatic insight extraction and context injection. Two backends: `MemoryStore` (local JSON, TF-IDF search, zero deps) and `GBrainMemory` (GBrain MCP server, hybrid vector + keyword search, graph relationships, Supabase/Postgres).
+
+- [Workspace memory reference](https://github.com/delivstat/swarmkit/blob/main/docs/reference/workspace-memory.md): setup, config, GBrain integration, examples, real test outputs.
+- [Memory demo script](https://github.com/delivstat/swarmkit/blob/main/docs/examples/memory-demo.py): runnable demo covering CRUD, search, context injection, extraction, persistence, deletion.
+- [Workspace memory design](https://github.com/delivstat/swarmkit/blob/main/design/details/workspace-memory.md): two-layer knowledge graph, decision skill hooks, GBrain integration, privacy.
+
+Memory-writer extracts structured insights (topic, context, key_points, tags) via LLM after each turn. Memory-reader searches for relevant prior conversations and prepends context. The agent sees prior sessions naturally: "As we discussed previously..." Config: `governance.decision_skills[].config.search_scope` (user/shared/both), `max_results`, `min_output_length`.
+
 ## Product architecture & observability (design, not yet implemented)
 
 - [Product architecture](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture.md): open-source runtime + Rynko as the commercial ops platform. Deployment models, revenue model, brand separation.
@@ -103,6 +113,7 @@ Canary config in workspace.yaml: `server.canary.routes[].versions[].weight` (tra
 - [Model selection](https://github.com/delivstat/swarmkit/blob/main/docs/guides/model-selection.md): pricing comparison, per-agent config, env vars.
 - [Serve CLI reference](https://github.com/delivstat/swarmkit/blob/main/docs/reference/serve-cli-tests.md): complete endpoint reference with real test outputs.
 - [Canary deployments](https://github.com/delivstat/swarmkit/blob/main/docs/reference/canary-deployments.md): weighted version routing, auto-promotion, monitoring, rollback.
+- [Workspace memory](https://github.com/delivstat/swarmkit/blob/main/docs/reference/workspace-memory.md): agents that remember across conversations. Setup, GBrain backend, real test outputs.
 
 ## Fixtures (valid artifact examples)
 
