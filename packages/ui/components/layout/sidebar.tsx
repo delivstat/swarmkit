@@ -7,6 +7,7 @@ import {
 	GitBranch,
 	LayoutDashboard,
 	ListChecks,
+	MessageCircle,
 	Puzzle,
 	Timer,
 	Users,
@@ -16,6 +17,7 @@ import { usePathname } from "next/navigation";
 
 const NAV = [
 	{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+	{ href: "/chat", label: "Chat", icon: MessageCircle },
 	{ href: "/jobs", label: "Jobs", icon: Activity },
 	{ href: "/topologies", label: "Topologies", icon: GitBranch },
 	{ href: "/skills", label: "Skills", icon: Puzzle },
