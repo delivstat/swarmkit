@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import logging
 import os
 import time
@@ -651,7 +652,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
         return JobResponse(job_id=job.id, status="running")
 
 
-def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:
+def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa: PLR0915
     """Register conversation CRUD endpoints."""
 
     @app.post("/conversations")
@@ -705,7 +706,7 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:
     @app.post("/conversations/{conversation_id}/messages")
     async def send_message(
         conversation_id: str, body: SendMessageRequest, request: Request
-    ) -> dict[str, Any]:
+    ) -> StreamingResponse:
         from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
 
         rt = _get_runtime(request)
@@ -716,12 +717,66 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:
                 status_code=404,
                 detail=f"Conversation '{conversation_id}' not found",
             )
-        result = await manager.send(conv, body.message)
-        return {
-            "output": result.output,
-            "turns": len(conv.turns),
-            "conversation_id": conv.id,
-        }
+
+        async def stream_response() -> AsyncGenerator[str]:
+            from swarmkit_runtime.langgraph_compiler._helpers import (  # noqa: PLC0415
+                _progress_listeners,
+            )
+
+            progress_lines: list[str] = []
+
+            def on_progress(msg: str) -> None:
+                text = msg.strip()
+                if text:
+                    progress_lines.append(text)
+
+            _progress_listeners.append(on_progress)
+            send_task = asyncio.create_task(manager.send(conv, body.message))
+
+            sent = 0
+            try:
+                while not send_task.done():
+                    await asyncio.sleep(0.3)
+                    new_lines = progress_lines[sent:]
+                    for line in new_lines:
+                        yield f"data: {json.dumps({'type': 'progress', 'text': line})}\n\n"
+                        sent += 1
+            finally:
+                if on_progress in _progress_listeners:
+                    _progress_listeners.remove(on_progress)
+
+            for line in progress_lines[sent:]:
+                yield f"data: {json.dumps({'type': 'progress', 'text': line})}\n\n"
+
+            try:
+                result = send_task.result()
+                events = [
+                    {
+                        "event_type": e.event_type,
+                        "agent_id": e.agent_id,
+                        "timestamp": e.timestamp,
+                        "duration_ms": e.payload.get("duration_ms"),
+                        "model": e.payload.get("model"),
+                        "tokens": e.payload.get("usage_tokens"),
+                    }
+                    for e in result.events
+                ]
+                done_payload = {
+                    "type": "done",
+                    "output": result.output,
+                    "turns": len(conv.turns),
+                    "conversation_id": conv.id,
+                    "events": events,
+                }
+                yield f"data: {json.dumps(done_payload)}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+
+        return StreamingResponse(
+            stream_response(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
 
 
 # ---- MCP endpoint (optional) ------------------------------------------------

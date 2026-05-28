@@ -6,7 +6,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "next dev --port 3000",
+		"dev": "next dev",
 		"build": "next build",
 		"start": "next start",
 		"lint": "biome check .",
@@ -21,6 +21,8 @@
 		"next": "^15.0.0",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
+		"react-markdown": "^10.1.0",
+		"remark-gfm": "^4.0.1",
 		"tailwind-merge": "^3.6.0",
 		"tailwindcss": "^4.3.0",
 		"zustand": "^5.0.0"

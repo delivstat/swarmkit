@@ -6,6 +6,7 @@ governance checks, trust checks, audit recording, and JSON parsing.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -33,10 +34,16 @@ class ToolCallResult:
     image_blocks: list[ContentBlock] = field(default_factory=list)
 
 
+_progress_listeners: list[Any] = []
+
+
 def _progress(msg: str) -> None:
     """Print user-facing progress. Always shown unless SWARMKIT_QUIET is set."""
     if not os.environ.get("SWARMKIT_QUIET"):
         print(msg, file=sys.stderr)
+    for listener in _progress_listeners:
+        with contextlib.suppress(Exception):
+            listener(msg)
 
 
 def _log_verbose_request(
