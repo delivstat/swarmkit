@@ -117,8 +117,7 @@ class WorkspaceRuntime:
             return None
         ds_list = getattr(ws_gov, "decision_skills", None) or []
         has_memory = any(
-            getattr(ds, "id", "") in ("memory-reader", "memory-writer")
-            for ds in ds_list
+            getattr(ds, "id", "") in ("memory-reader", "memory-writer") for ds in ds_list
         )
         if not has_memory:
             return None
