@@ -80,3 +80,48 @@ export interface TriggerConfig {
 	targets: string[];
 	config: Record<string, unknown>;
 }
+
+export interface ConversationListItem {
+	id: string;
+	topology: string;
+	turns: string;
+	updated: string;
+	last_message: string;
+}
+
+export interface ConversationTurn {
+	role: "human" | "swarm";
+	content: string;
+	timestamp: string;
+}
+
+export interface ConversationDetail {
+	id: string;
+	topology: string;
+	turns: ConversationTurn[];
+	created_at: string;
+	updated_at: string;
+}
+
+export interface SendMessageResponse {
+	output: string;
+	turns: number;
+	conversation_id: string;
+}
+
+export interface UsageSummary {
+	summary: {
+		total_calls: number;
+		total_input_tokens: number;
+		total_output_tokens: number;
+		total_cache_tokens: number;
+		total_cost_usd: number;
+	};
+	by_model: {
+		model: string;
+		calls: number;
+		input_tokens: number;
+		output_tokens: number;
+		cost_usd: number;
+	}[];
+}

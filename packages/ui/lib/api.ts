@@ -1,10 +1,14 @@
 import type {
 	CanaryStatus,
+	ConversationDetail,
+	ConversationListItem,
 	HealthResponse,
 	JobListItem,
 	JobResponse,
+	SendMessageResponse,
 	SkillItem,
 	TriggerConfig,
+	UsageSummary,
 	ValidateResponse,
 } from "./types";
 
@@ -57,4 +61,15 @@ export const api = {
 		}),
 	canaryRollback: (topology: string) =>
 		post<{ rolled_back: boolean }>(`/canary/${topology}/rollback`),
+
+	conversations: () => get<ConversationListItem[]>("/conversations"),
+	conversation: (id: string) => get<ConversationDetail>(`/conversations/${id}`),
+	createConversation: (topology: string) =>
+		post<{ id: string; topology: string }>("/conversations", { topology }),
+	sendMessage: (conversationId: string, message: string) =>
+		post<SendMessageResponse>(`/conversations/${conversationId}/messages`, {
+			message,
+		}),
+
+	usage: () => get<UsageSummary>("/usage"),
 };

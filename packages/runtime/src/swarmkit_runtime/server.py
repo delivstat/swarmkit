@@ -675,6 +675,33 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:
         manager = ConversationManager(rt, workspace_path)
         return manager.list_conversations()
 
+    @app.get("/conversations/{conversation_id}")
+    async def get_conversation(conversation_id: str, request: Request) -> dict[str, Any]:
+        from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
+
+        rt = _get_runtime(request)
+        manager = ConversationManager(rt, workspace_path)
+        conv = manager.resume(conversation_id)
+        if conv is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Conversation '{conversation_id}' not found",
+            )
+        return {
+            "id": conv.id,
+            "topology": conv.topology_name,
+            "turns": [
+                {
+                    "role": t.role,
+                    "content": t.content,
+                    "timestamp": t.timestamp,
+                }
+                for t in conv.turns
+            ],
+            "created_at": conv.created_at,
+            "updated_at": conv.updated_at,
+        }
+
     @app.post("/conversations/{conversation_id}/messages")
     async def send_message(
         conversation_id: str, body: SendMessageRequest, request: Request
