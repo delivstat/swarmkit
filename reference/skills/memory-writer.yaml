@@ -1,0 +1,34 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: memory-writer
+  name: Memory Writer
+  description: >
+    Extracts structured insights from conversation turns and saves them
+    to workspace memory. Fires as a post_output decision skill. Skips
+    trivial exchanges (greetings, clarifications). The saved memories
+    are searchable by the memory-reader skill in future conversations.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass]
+    confidence:
+      type: number
+    reasoning:
+      type: string
+    memory_saved:
+      type: boolean
+    topic:
+      type: string
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: memory_hook
+  hook: extract_and_save
+  config:
+    min_output_length: 50
+provenance:
+  authored_by: human
+  version: 1.0.0
