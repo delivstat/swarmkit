@@ -75,38 +75,10 @@ class ScrapedVerse:
     metadata: dict = field(default_factory=dict)
 
 
-# Verified URLs — all return HTTP 200 on wisdomlib.org (checked 2026-05-28)
+# Verified URLs — HTTP 200 AND server-side content (checked 2026-05-28).
+# Some wisdomlib books render content client-side via JavaScript and
+# cannot be scraped with httpx. Those are listed in JS_RENDERED_TEXTS below.
 TEXTS: dict[str, TextConfig] = {
-    "brahma-sutras": TextConfig(
-        name="Brahma Sutras",
-        collection="vedanta-texts",
-        source="wisdomlib",
-        base_url="https://www.wisdomlib.org",
-        toc_path="/hinduism/book/brahma-sutras",
-        category="philosophy",
-        tradition="vedanta",
-        description="Foundational Vedanta text by Badarayana. Systematizes Upanishadic teachings.",
-    ),
-    "vivekachudamani": TextConfig(
-        name="Vivekachudamani",
-        collection="shankaracharya",
-        source="wisdomlib",
-        base_url="https://www.wisdomlib.org",
-        toc_path="/hinduism/book/vivekachudamani",
-        category="philosophy",
-        tradition="advaita",
-        description="Crest-Jewel of Discrimination by Adi Shankaracharya. Practical guide to self-realization.",
-    ),
-    "ashtavakra-gita": TextConfig(
-        name="Ashtavakra Gita",
-        collection="vedanta-texts",
-        source="wisdomlib",
-        base_url="https://www.wisdomlib.org",
-        toc_path="/hinduism/book/ashtavakra-gita-sanskrit",
-        category="philosophy",
-        tradition="advaita",
-        description="Dialogue between Ashtavakra and King Janaka on absolute non-dualism.",
-    ),
     "yoga-vasistha": TextConfig(
         name="Yoga Vasistha",
         collection="vedanta-texts",
@@ -137,36 +109,6 @@ TEXTS: dict[str, TextConfig] = {
         tradition="tamil",
         description="1,330 couplets by Thiruvalluvar on virtue, wealth, and love. Universal ethics.",
     ),
-    "panchatantra": TextConfig(
-        name="Panchatantra",
-        collection="wisdom-stories",
-        source="wisdomlib",
-        base_url="https://www.wisdomlib.org",
-        toc_path="/hinduism/book/panchatantra-sanskrit",
-        category="stories",
-        tradition="dharmic",
-        description="Five books of animal fables teaching practical wisdom, strategy, and ethics.",
-    ),
-    "hitopadesha": TextConfig(
-        name="Hitopadesha",
-        collection="wisdom-stories",
-        source="wisdomlib",
-        base_url="https://www.wisdomlib.org",
-        toc_path="/hinduism/book/the-book-of-good-counsels",
-        category="stories",
-        tradition="dharmic",
-        description="Beneficial counsel — wisdom fables for relationships and social conduct.",
-    ),
-    "devi-bhagavata": TextConfig(
-        name="Devi Bhagavata Purana",
-        collection="devotional",
-        source="wisdomlib",
-        base_url="https://www.wisdomlib.org",
-        toc_path="/hinduism/book/devi-bhagavata-purana",
-        category="devotion",
-        tradition="shakta",
-        description="Glory of the Divine Mother — includes Devi Mahatmyam. Inner strength and overcoming obstacles.",
-    ),
     "markandeya-purana": TextConfig(
         name="Markandeya Purana",
         collection="devotional",
@@ -179,32 +121,65 @@ TEXTS: dict[str, TextConfig] = {
     ),
 }
 
-# Texts not on wisdomlib — available via separate GitHub repos or plain text files.
-# These are ingested by the companion script ingest-plain-texts.py.
-PLAIN_TEXT_SOURCES = {
+# Texts that need JavaScript rendering (wisdomlib loads content client-side).
+# These require either: (1) playwright/selenium scraper, or (2) alternative
+# plain text sources. Listed here for tracking. Use --list to show them.
+JS_RENDERED_TEXTS = {
+    "brahma-sutras": {
+        "name": "Brahma Sutras",
+        "wisdomlib": "/hinduism/book/brahma-sutras",
+        "alt_source": "gitasupersite.iitk.ac.in or manually curated",
+        "description": "Foundational Vedanta text. Needs JS-capable scraper.",
+    },
+    "vivekachudamani": {
+        "name": "Vivekachudamani",
+        "wisdomlib": "/hinduism/book/vivekachudamani",
+        "alt_source": "gitasupersite.iitk.ac.in",
+        "description": "Crest-Jewel of Discrimination (Shankaracharya). Needs JS-capable scraper.",
+    },
+    "ashtavakra-gita": {
+        "name": "Ashtavakra Gita",
+        "wisdomlib": "/hinduism/book/ashtavakra-gita-sanskrit",
+        "alt_source": "multiple public domain translations available",
+        "description": "Radical non-dualism. Needs JS-capable scraper.",
+    },
+    "panchatantra": {
+        "name": "Panchatantra",
+        "wisdomlib": "/hinduism/book/panchatantra-sanskrit",
+        "alt_source": "Project Gutenberg has Arthur Ryder translation",
+        "description": "Animal fables. Needs JS-capable scraper.",
+    },
+    "hitopadesha": {
+        "name": "Hitopadesha",
+        "wisdomlib": "/hinduism/book/the-book-of-good-counsels",
+        "alt_source": "Project Gutenberg has Edwin Arnold translation",
+        "description": "Wisdom fables. Needs JS-capable scraper.",
+    },
+    "devi-bhagavata": {
+        "name": "Devi Bhagavata Purana",
+        "wisdomlib": "/hinduism/book/devi-bhagavata-purana",
+        "alt_source": "sacred-texts.com (needs browser)",
+        "description": "Divine Mother. Needs JS-capable scraper.",
+    },
     "tattva-bodha": {
         "name": "Tattva Bodha",
-        "description": "Vedanta primer by Shankaracharya. What is atman, maya, the three bodies.",
-        "source": "https://www.gitasupersite.iitk.ac.in/",
-        "collection": "shankaracharya",
+        "alt_source": "gitasupersite.iitk.ac.in",
+        "description": "Vedanta primer (Shankaracharya). Not on wisdomlib.",
     },
     "atma-bodha": {
         "name": "Atma Bodha",
-        "description": "Self-Knowledge in 68 verses by Shankaracharya.",
-        "source": "https://www.gitasupersite.iitk.ac.in/",
-        "collection": "shankaracharya",
+        "alt_source": "gitasupersite.iitk.ac.in",
+        "description": "Self-Knowledge in 68 verses (Shankaracharya). Not on wisdomlib.",
     },
     "narada-bhakti-sutras": {
         "name": "Narada Bhakti Sutras",
-        "description": "84 aphorisms on the path of devotion by sage Narada.",
-        "source": "manually curated from public domain translations",
-        "collection": "devotional",
+        "alt_source": "manually curated from public domain translations",
+        "description": "84 aphorisms on devotion. Not on wisdomlib.",
     },
     "dhammapada": {
         "name": "Dhammapada",
-        "description": "423 verses on mindfulness, suffering, and the path.",
-        "source": "Project Gutenberg / F. Max Muller translation (public domain)",
-        "collection": "buddhist",
+        "alt_source": "Project Gutenberg / F. Max Muller translation",
+        "description": "423 Buddhist verses on mindfulness. Not on wisdomlib.",
     },
 }
 
@@ -262,23 +237,27 @@ def scrape_chapter_verses(
         return []
 
     verses: list[ScrapedVerse] = []
-    content = soup.find("div", class_="text-body") or soup.find("div", id="content") or soup
 
-    text_blocks = content.find_all(
-        ["blockquote", "p", "div"], class_=re.compile(r"verse|sloka|text|sutra", re.I)
-    )
+    # Wisdomlib puts content in #scontent div (server-rendered books only)
+    content = soup.find(id="scontent")
+    if not content or not content.get_text(strip=True):
+        # Fallback for pages without #scontent
+        content = soup.find("div", class_=lambda c: c and "chapter-content" in c)
+    if not content or not content.get_text(strip=True):
+        return []
 
-    if not text_blocks:
-        text_blocks = content.find_all("blockquote")
-
-    if not text_blocks:
-        paragraphs = content.find_all("p")
-        text_blocks = [p for p in paragraphs if len(p.get_text(strip=True)) > 30]
+    # Split content into paragraphs — each meaningful paragraph is a "verse"
+    paragraphs = content.find_all("p")
+    if not paragraphs:
+        # Some pages use direct text nodes instead of <p> tags
+        raw_text = content.get_text(separator="\n").strip()
+        blocks = [b.strip() for b in raw_text.split("\n\n") if b.strip()]
+    else:
+        blocks = [p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)]
 
     verse_num = 0
-    for block in text_blocks:
-        text = block.get_text(strip=True)
-        if len(text) < 10:
+    for text in blocks:
+        if len(text) < 20:
             continue
         verse_num += 1
         verses.append(
@@ -401,10 +380,15 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.list:
-        print("Available texts:")
+        print("Available texts (server-rendered, scrapeable):")
         for key, cfg in TEXTS.items():
             print(f"  {key:25s} {cfg.name:30s} [{cfg.category}/{cfg.tradition}]")
             print(f"  {'':25s} {cfg.description}")
+        print()
+        print("Pending texts (need JS-capable scraper or alt source):")
+        for key, info in JS_RENDERED_TEXTS.items():
+            print(f"  {key:25s} {info['name']:30s}")
+            print(f"  {'':25s} {info['description']}")
         return
 
     texts_to_scrape = TEXTS
