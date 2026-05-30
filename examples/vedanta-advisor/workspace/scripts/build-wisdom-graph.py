@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["chromadb>=0.5", "httpx>=0.27"]
 # ///
+# ruff: noqa: E501, E402, E741, PLW1510, PLR0915
 """Batch wisdom graph builder — bypasses the agent loop entirely.
 
 For each theme/story, makes ONE LLM call to generate a wisdom or
@@ -528,6 +529,150 @@ KNOWLEDGE_BLOCKS = [
         search_queries=["Valmiki robber transformation sage", "Ratnakara anthill Ramayana"],
         verse_refs=[],
     ),
+    # ---- New texts: Yoga Vasistha ----
+    BlockSpec(
+        slug="nature-of-mind-vasistha",
+        block_type="wisdom",
+        title="Nature of Mind (Yoga Vasistha)",
+        description="The mind alone is the cause of bondage and liberation. Vasistha teaches Rama that the world is as you see it — change the mind, change the world. No external practice needed if the mind is still.",
+        search_queries=["mind bondage liberation Vasistha", "mind cause world illusion"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="self-effort-vs-destiny",
+        block_type="wisdom",
+        title="Self-effort vs Destiny (Yoga Vasistha)",
+        description="Vasistha's core teaching: self-effort (purushartha) always prevails over fate. Destiny is the result of past effort. Present effort can overcome past karma. Laziness disguised as surrender is not spirituality.",
+        search_queries=["self effort destiny fate purushartha", "effort overcomes fate Vasistha"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="world-as-dream",
+        block_type="wisdom",
+        title="World as Dream (Yoga Vasistha)",
+        description="The Yoga Vasistha's radical teaching: waking life has the same ontological status as a dream. Neither real nor unreal — experienced but not substantial. Liberation is waking up from the dream of separation.",
+        search_queries=["world dream waking illusion Vasistha", "dream waking reality consciousness"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="story-of-queen-lila",
+        block_type="knowledge",
+        title="Story of Queen Lila (Yoga Vasistha)",
+        description="Queen Lila's husband dies. Through meditation, she discovers he is living a completely different life in another reality — simultaneously. Vasistha uses this story to teach that consciousness creates multiple simultaneous worlds, and death is merely a transition between them.",
+        search_queries=["Queen Lila Vasistha husband death parallel", "Lila consciousness worlds"],
+        verse_refs=[],
+    ),
+    # ---- New texts: Brahma Sutras ----
+    BlockSpec(
+        slug="brahman-inquiry",
+        block_type="wisdom",
+        title="The Inquiry into Brahman (Brahma Sutras)",
+        description="Athato brahma jijnasa — now therefore the inquiry into Brahman. The Brahma Sutras systematize the Upanishadic teaching that Brahman is the origin, sustainer, and dissolution of the universe. Not intellectual knowledge but direct realization.",
+        search_queries=["Brahman inquiry jijnasa Brahma Sutra", "athato brahma origin universe"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="individual-self-and-brahman",
+        block_type="wisdom",
+        title="Individual Self and Brahman (Brahma Sutras)",
+        description="The jiva (individual self) is not different from Brahman — it only appears so due to upadhis (limiting adjuncts). Like space in a pot is not different from universal space. Moksha is recognizing this identity, not achieving something new.",
+        search_queries=["jiva Brahman identity upadhi", "individual self universal Brahma Sutra"],
+        verse_refs=[],
+    ),
+    # ---- New texts: Ashtavakra Gita ----
+    BlockSpec(
+        slug="ashtavakra-instant-liberation",
+        block_type="wisdom",
+        title="Instant Liberation (Ashtavakra Gita)",
+        description="Ashtavakra tells Janaka: you are already free. Liberation is not something to be attained through practice — it is your nature right now. The very idea that you are bound is the only bondage. Drop that idea and you are free this instant.",
+        search_queries=["Ashtavakra liberation free instant", "already free bondage idea Janaka"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="witness-consciousness",
+        block_type="wisdom",
+        title="Witness Consciousness (Ashtavakra Gita)",
+        description="You are the witness — pure awareness watching thoughts, emotions, and the body. You are not the doer. Like the sky is not affected by clouds passing through it, you are not affected by experiences. Rest as the witness.",
+        search_queries=["witness awareness Ashtavakra consciousness", "not doer pure awareness sky clouds"],
+        verse_refs=[],
+    ),
+    # ---- New texts: Arthashastra ----
+    BlockSpec(
+        slug="practical-wisdom-governance",
+        block_type="wisdom",
+        title="Practical Wisdom for Leadership (Arthashastra)",
+        description="Kautilya's teaching: a leader must balance dharma (righteousness), artha (wealth), and kama (desire). Self-discipline is the foundation of all governance — one who cannot govern themselves cannot govern others. The four upayas: sama (persuasion), dana (giving), bheda (division), danda (force).",
+        search_queries=["leadership governance dharma artha kama", "self discipline leader Kautilya Arthashastra"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="strategic-patience",
+        block_type="wisdom",
+        title="Strategic Patience (Arthashastra)",
+        description="Kautilya teaches that the wise person waits for the right moment. Not every battle should be fought immediately. Sometimes restraint is the greatest strategy. The tortoise withdrawing into its shell is not cowardice — it is wisdom.",
+        search_queries=["patience strategy wait right moment Kautilya", "restraint wisdom timing Arthashastra"],
+        verse_refs=[],
+    ),
+    # ---- New texts: Panchatantra ----
+    BlockSpec(
+        slug="practical-wisdom-fables",
+        block_type="wisdom",
+        title="Practical Wisdom through Stories (Panchatantra)",
+        description="The Panchatantra teaches through animal fables: the crow who used pebbles to raise water, the monkey who destroyed the bridge it sat on. Wisdom is not just knowing the truth — it is knowing when and how to act on it. Better to be clever than merely strong.",
+        search_queries=["Panchatantra wisdom fable practical clever", "animal story strategy Panchatantra"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="choosing-friends-wisely",
+        block_type="wisdom",
+        title="Choosing Friends Wisely (Panchatantra & Hitopadesha)",
+        description="Both the Panchatantra and Hitopadesha emphasize: your association determines your destiny. The company of fools brings ruin even to the wise. True friendship is tested in adversity, not prosperity. A friend who tells you the truth you don't want to hear is worth more than one who flatters.",
+        search_queries=["friendship company wise fools Panchatantra", "true friend adversity Hitopadesha counsel"],
+        verse_refs=[],
+    ),
+    # ---- New texts: Dhammapada ----
+    BlockSpec(
+        slug="mind-is-everything-dhammapada",
+        block_type="wisdom",
+        title="Mind is Everything (Dhammapada)",
+        description="All that we are is the result of what we have thought. The mind is everything. What you think, you become. If you speak or act with a pure mind, happiness follows like a shadow that never leaves. The Dhammapada's opening verses are among the most practical teachings on mental discipline.",
+        search_queries=["mind everything thought Dhammapada", "pure mind happiness follows shadow"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="overcoming-hatred",
+        block_type="wisdom",
+        title="Overcoming Hatred (Dhammapada)",
+        description="Hatred does not cease by hatred at any time. Hatred ceases by love. This is an eternal law. The Dhammapada teaches that anger and resentment are poisons you drink hoping the other person dies. Letting go is not weakness — it is the ultimate strength.",
+        search_queries=["hatred ceases love Dhammapada", "anger resentment letting go eternal law"],
+        verse_refs=[],
+    ),
+    # ---- New texts: Devi Mahatmyam (Markandeya Purana) ----
+    BlockSpec(
+        slug="divine-feminine-strength",
+        block_type="wisdom",
+        title="Divine Feminine Strength (Devi Mahatmyam)",
+        description="When the gods could not defeat the demons, the Divine Mother arose from their combined powers. She teaches: sometimes the gentlest force is the most powerful. Inner strength is not aggression — it is the unshakeable calm of someone who knows their own power.",
+        search_queries=["Devi Divine Mother strength power demons", "feminine strength calm power Mahatmyam"],
+        verse_refs=[],
+    ),
+    BlockSpec(
+        slug="overcoming-inner-demons",
+        block_type="wisdom",
+        title="Overcoming Inner Demons (Devi Mahatmyam)",
+        description="The asuras (demons) in the Devi Mahatmyam represent internal obstacles: Mahishasura is ego, Shumbha and Nishumbha are attachment and aversion, Raktabija is the thought that multiplies when you fight it. The Goddess defeats them not by force alone but by transformation.",
+        search_queries=["demons obstacles ego attachment Devi Mahatmyam", "Mahishasura ego inner demons transformation"],
+        verse_refs=[],
+    ),
+    # ---- New texts: Tirukural ----
+    BlockSpec(
+        slug="tirukural-virtue-ethics",
+        block_type="wisdom",
+        title="Universal Ethics (Tirukural)",
+        description="Thiruvalluvar's 1,330 couplets cover virtue, wealth, and love without referencing any specific religion. His teaching: virtue is the foundation of all prosperity. Speak truth, practice non-violence, be generous, control desire. These are universal — they belong to no tradition and every tradition.",
+        search_queries=["Tirukural virtue ethics universal Thiruvalluvar", "Kural truth non-violence generosity"],
+        verse_refs=[],
+    ),
 ]
 
 
@@ -539,8 +684,13 @@ def fetch_verses(client: chromadb.ClientAPI, queries: list[str], refs: list[str]
     """Fetch verse context from ChromaDB — summary level."""
     parts = []
 
+    all_collections = [
+        "gita", "ramayana", "mahabharata", "niti",
+        "vedanta-texts", "shastras", "devotional", "buddhist",
+        "wisdom-stories", "ethics", "upanishads", "vedas",
+    ]
     for query in queries[:3]:
-        for coll_name in ["gita", "ramayana", "mahabharata", "niti"]:
+        for coll_name in all_collections:
             try:
                 coll = client.get_collection(coll_name)
                 results = coll.query(query_texts=[query], n_results=limit, include=["documents", "metadatas"])
@@ -846,7 +996,7 @@ def main() -> None:
 
         time.sleep(0.5)
 
-    print(f"\n=== Done ===")
+    print("\n=== Done ===")
     print(f"Created: {created}")
     print(f"Skipped: {skipped}")
     print(f"Failed: {failed}")
