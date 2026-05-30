@@ -8,6 +8,7 @@ import {
 	LayoutDashboard,
 	ListChecks,
 	MessageCircle,
+	PenTool,
 	Puzzle,
 	Timer,
 	Users,
@@ -18,6 +19,7 @@ import { usePathname } from "next/navigation";
 const NAV = [
 	{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 	{ href: "/chat", label: "Chat", icon: MessageCircle },
+	{ href: "/composer", label: "Composer", icon: PenTool },
 	{ href: "/jobs", label: "Jobs", icon: Activity },
 	{ href: "/topologies", label: "Topologies", icon: GitBranch },
 	{ href: "/skills", label: "Skills", icon: Puzzle },

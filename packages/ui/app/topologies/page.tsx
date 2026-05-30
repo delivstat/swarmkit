@@ -3,6 +3,7 @@
 import { Card, CardTitle } from "@/components/card";
 import { api } from "@/lib/api";
 import { usePoll } from "@/lib/use-poll";
+import Link from "next/link";
 import { useCallback, useState } from "react";
 
 function RunDialog({
@@ -97,17 +98,28 @@ export default function TopologiesPage() {
 						<Card key={name}>
 							<div className="flex items-center justify-between">
 								<span className="font-medium">{name}</span>
-								<button
-									type="button"
-									onClick={() => setRunTarget(name)}
-									className="text-xs px-2.5 py-1 rounded font-medium"
-									style={{
-										background: "var(--accent)",
-										color: "var(--accent-fg)",
-									}}
-								>
-									Run
-								</button>
+								<div className="flex gap-2">
+									<Link
+										href={`/composer?topology=${name}`}
+										className="text-xs px-2.5 py-1 rounded font-medium"
+										style={{
+											border: "1px solid var(--border)",
+										}}
+									>
+										Edit
+									</Link>
+									<button
+										type="button"
+										onClick={() => setRunTarget(name)}
+										className="text-xs px-2.5 py-1 rounded font-medium"
+										style={{
+											background: "var(--accent)",
+											color: "var(--accent-fg)",
+										}}
+									>
+										Run
+									</button>
+								</div>
 							</div>
 						</Card>
 					))}

@@ -1,4 +1,5 @@
 import type {
+	ArchetypeDetail,
 	CanaryStatus,
 	ConversationDetail,
 	ConversationListItem,
@@ -6,7 +7,9 @@ import type {
 	JobListItem,
 	JobResponse,
 	SendMessageResponse,
+	SkillDetail,
 	SkillItem,
+	TopologyDetail,
 	TriggerConfig,
 	UsageSummary,
 	ValidateResponse,
@@ -120,4 +123,17 @@ export const api = {
 		}),
 
 	usage: () => get<UsageSummary>("/usage"),
+
+	topologyDetail: (id: string) => get<TopologyDetail>(`/api/topologies/${id}`),
+	topologyYaml: (id: string) =>
+		get<{ yaml: string }>(`/api/topologies/${id}/yaml`),
+	archetypeDetail: (id: string) =>
+		get<ArchetypeDetail>(`/api/archetypes/${id}`),
+	skillDetail: (id: string) => get<SkillDetail>(`/api/skills/${id}`),
+	saveTopology: (id: string, yaml: string, dryRun = false) =>
+		post<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+			`/api/topologies/${id}`,
+			{ yaml, dry_run: dryRun },
+		),
+	reloadWorkspace: () => post<{ valid: boolean }>("/api/reload"),
 };
