@@ -37,7 +37,7 @@ from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
-from swarmkit_runtime.persistence import SqliteStore
+from swarmkit_runtime.persistence import SqliteStore, create_store
 from swarmkit_runtime.triggers import TriggerScheduler
 from swarmkit_runtime.triggers._webhook import validate_webhook_signature
 
@@ -924,7 +924,7 @@ def create_app(  # noqa: PLR0915
             raise RuntimeError(str(exc)) from exc
 
         app.state.runtime = runtime
-        app.state.store = SqliteStore(workspace_path)
+        app.state.store = create_store(workspace_path, runtime.workspace.raw)
 
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)

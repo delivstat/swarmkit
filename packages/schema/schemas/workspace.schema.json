@@ -251,6 +251,22 @@
             "url": { "type": "string" }
           }
         },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Backend for jobs, conversations, and usage tracking. Defaults to sqlite at .swarmkit/store.sqlite.",
+          "properties": {
+            "backend": {
+              "enum": ["sqlite", "postgres"],
+              "default": "sqlite",
+              "description": "Storage backend. sqlite (default, zero config) or postgres (production, shared)."
+            },
+            "url": {
+              "type": "string",
+              "description": "Connection URL for postgres backend. Supports ${ENV_VAR} interpolation. Ignored for sqlite."
+            }
+          }
+        },
         "knowledge_bases": {
           "type": "object",
           "additionalProperties": false,
