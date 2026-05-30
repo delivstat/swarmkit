@@ -342,6 +342,11 @@ export interface Storage {
     audit?:           Audit;
     checkpoints?:     Checkpoints;
     knowledge_bases?: KnowledgeBases;
+    /**
+     * Backend for jobs, conversations, and usage tracking. Defaults to sqlite at
+     * .swarmkit/store.sqlite.
+     */
+    runtime?: Runtime;
 }
 
 export interface Audit {
@@ -358,10 +363,29 @@ export interface Checkpoints {
     url?:     string;
 }
 
+/**
+ * Storage backend. sqlite (default, zero config) or postgres (production, shared).
+ */
 export type DefaultBackendEnum = "sqlite" | "postgres";
 
 export interface KnowledgeBases {
     default_backend?: DefaultBackendEnum;
+}
+
+/**
+ * Backend for jobs, conversations, and usage tracking. Defaults to sqlite at
+ * .swarmkit/store.sqlite.
+ */
+export interface Runtime {
+    /**
+     * Storage backend. sqlite (default, zero config) or postgres (production, shared).
+     */
+    backend?: DefaultBackendEnum;
+    /**
+     * Connection URL for postgres backend. Supports ${ENV_VAR} interpolation. Ignored for
+     * sqlite.
+     */
+    url?: string;
 }
 
 /**

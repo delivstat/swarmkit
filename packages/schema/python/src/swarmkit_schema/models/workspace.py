@@ -236,6 +236,34 @@ class Audit(BaseModel):
     url: str | None = None
 
 
+class Backend2(Enum):
+    """
+    Storage backend. sqlite (default, zero config) or postgres (production, shared).
+    """
+
+    sqlite = "sqlite"
+    postgres = "postgres"
+
+
+class Runtime(BaseModel):
+    """
+    Backend for jobs, conversations, and usage tracking. Defaults to sqlite at .swarmkit/store.sqlite.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    backend: Backend2 | None = Field(
+        "sqlite",
+        description="Storage backend. sqlite (default, zero config) or postgres (production, shared).",
+    )
+    url: str | None = Field(
+        None,
+        description="Connection URL for postgres backend. Supports ${ENV_VAR} interpolation. Ignored for sqlite.",
+    )
+
+
 class DefaultBackend(Enum):
     sqlite = "sqlite"
     postgres = "postgres"
@@ -256,6 +284,10 @@ class Storage(BaseModel):
     )
     checkpoints: Checkpoints | None = None
     audit: Audit | None = None
+    runtime: Runtime | None = Field(
+        None,
+        description="Backend for jobs, conversations, and usage tracking. Defaults to sqlite at .swarmkit/store.sqlite.",
+    )
     knowledge_bases: KnowledgeBases | None = None
 
 
