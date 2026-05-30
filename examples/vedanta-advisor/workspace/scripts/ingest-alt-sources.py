@@ -237,15 +237,9 @@ SOURCES = {
         "category": "philosophy",
         "description": "Dialogue between Ashtavakra and King Janaka on absolute non-dualism.",
     },
-    "vivekachudamani": {
-        "name": "Vivekachudamani",
-        "type": "gutenberg",
-        "url": "https://www.gutenberg.org/cache/epub/55826/pg55826.txt",
-        "collection": "shankaracharya",
-        "tradition": "advaita",
-        "category": "philosophy",
-        "description": "Crest-Jewel of Discrimination by Shankaracharya.",
-    },
+    # NOTE: Vivekachudamani removed — Gutenberg epub/55826 is "Peggy Goes
+    # Straw Hat" (wrong book). Vivekachudamani is on wisdomlib but needs
+    # JS-capable scraper. Will add when playwright scraper is available.
     "panchatantra": {
         "name": "Panchatantra",
         "type": "gutenberg",
