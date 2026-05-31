@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: translate-from-english
+  name: Translate from English
+  description: >
+    Translate English text to a target Indian language.
+    Use when responding to a user who wrote in their native language.
+category: capability
+implementation:
+  type: mcp_tool
+  server: translation
+  tool: translate_from_english
+provenance:
+  authored_by: human
+  version: 1.0.0

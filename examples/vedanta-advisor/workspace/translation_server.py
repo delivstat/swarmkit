@@ -1,5 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
+<<<<<<< Updated upstream
 # dependencies = ["mcp>=1.0", "torch>=2.0,<2.7", "transformers>=4.40,<5.0", "sentencepiece>=0.2", "langdetect>=1.0"]
 # ///
 """Translation MCP Server — IndicLID + IndicTrans2 for Vedanta Advisor.
@@ -13,20 +14,37 @@ Tools:
   - detect_language: identify the language of input text
   - translate: translate text between any supported language pair
   - translate_to_english: detect language + translate to English
+=======
+# dependencies = ["mcp>=1.0", "deep-translator>=1.11", "langdetect>=1.0"]
+# ///
+"""Translation MCP Server — Google Translate via deep-translator.
+
+Free, no API key, no model download. Supports all Indian languages.
+
+Tools:
+  - detect_language: identify the language of input text
+  - translate_to_english: detect + translate to English
+>>>>>>> Stashed changes
   - translate_from_english: translate English to a target language
 """
 
 from __future__ import annotations
 
+<<<<<<< Updated upstream
 import os
 import sys
 from functools import lru_cache
+=======
+import json
+import sys
+>>>>>>> Stashed changes
 
 try:
     from mcp.server import Server
     from mcp.server.stdio import stdio_server
     from mcp.types import TextContent, Tool
 except ImportError:
+<<<<<<< Updated upstream
     print(
         "Missing dependencies. Run with:\n"
         "  uv run translation_server.py",
@@ -158,10 +176,45 @@ def _translate_text(text: str, src_lang: str, tgt_lang: str) -> str:
         return result
     except Exception as e:
         return f"[Translation error: {e}] {text}"
+=======
+    print("Missing mcp. Run with: uv run translation_server.py", file=sys.stderr)
+    sys.exit(1)
+
+LANG_CODES = {
+    "hi": "Hindi",
+    "bn": "Bengali",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "kn": "Kannada",
+    "ml": "Malayalam",
+    "mr": "Marathi",
+    "gu": "Gujarati",
+    "pa": "Punjabi",
+    "ur": "Urdu",
+    "sa": "Sanskrit",
+    "ne": "Nepali",
+    "en": "English",
+}
+
+server = Server("translation")
+
+
+def _detect(text: str) -> str:
+    from langdetect import detect
+
+    return detect(text)
+
+
+def _translate(text: str, source: str, target: str) -> str:
+    from deep_translator import GoogleTranslator
+
+    return GoogleTranslator(source=source, target=target).translate(text)
+>>>>>>> Stashed changes
 
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
+<<<<<<< Updated upstream
     langs = ", ".join(INDIC_LANGUAGES.values())
     return [
         Tool(
@@ -192,10 +245,21 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["text", "source_language", "target_language"],
+=======
+    return [
+        Tool(
+            name="detect_language",
+            description="Detect the language of input text.",
+            inputSchema={
+                "type": "object",
+                "required": ["text"],
+                "properties": {"text": {"type": "string"}},
+>>>>>>> Stashed changes
             },
         ),
         Tool(
             name="translate_to_english",
+<<<<<<< Updated upstream
             description=(
                 "Auto-detect language and translate to English. "
                 "Use this when the user's input might not be in English."
@@ -206,10 +270,18 @@ async def list_tools() -> list[Tool]:
                     "text": {"type": "string", "description": "Text in any Indian language"},
                 },
                 "required": ["text"],
+=======
+            description="Auto-detect language and translate to English.",
+            inputSchema={
+                "type": "object",
+                "required": ["text"],
+                "properties": {"text": {"type": "string"}},
+>>>>>>> Stashed changes
             },
         ),
         Tool(
             name="translate_from_english",
+<<<<<<< Updated upstream
             description="Translate English text to a target Indian language.",
             inputSchema={
                 "type": "object",
@@ -221,11 +293,25 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["text", "target_language"],
+=======
+            description="Translate English text to a target language.",
+            inputSchema={
+                "type": "object",
+                "required": ["text", "target_language"],
+                "properties": {
+                    "text": {"type": "string"},
+                    "target_language": {
+                        "type": "string",
+                        "description": "Target language: hindi, tamil, telugu, bengali, etc.",
+                    },
+                },
+>>>>>>> Stashed changes
             },
         ),
     ]
 
 
+<<<<<<< Updated upstream
 def _resolve_lang_code(lang: str) -> str:
     """Resolve language name or code to IndicTrans2 code."""
     if lang in INDIC_LANGUAGES:
@@ -233,11 +319,19 @@ def _resolve_lang_code(lang: str) -> str:
     resolved = LANG_NAME_TO_CODE.get(lang.lower())
     if resolved:
         return resolved
+=======
+def _resolve_code(lang: str) -> str:
+    lang = lang.lower().strip()
+    for code, name in LANG_CODES.items():
+        if lang == code or lang == name.lower():
+            return code
+>>>>>>> Stashed changes
     return lang
 
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+<<<<<<< Updated upstream
     import json
 
     if name == "detect_language":
@@ -278,6 +372,73 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         tgt = _resolve_lang_code(arguments.get("target_language", ""))
         result = _translate_text(arguments["text"], "eng_Latn", tgt)
         return [TextContent(type="text", text=result)]
+=======
+    if name == "detect_language":
+        text = arguments.get("text", "")
+        code = _detect(text)
+        lang_name = LANG_CODES.get(code, code)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {"language": code, "language_name": lang_name},
+                    ensure_ascii=False,
+                ),
+            )
+        ]
+
+    if name == "translate_to_english":
+        text = arguments.get("text", "")
+        source = _detect(text)
+        if source == "en":
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {
+                            "source_language": "en",
+                            "translation": text,
+                            "note": "Already in English",
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            ]
+        translated = _translate(text, source, "en")
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "source_language": source,
+                        "source_language_name": LANG_CODES.get(source, source),
+                        "translation": translated,
+                        "original": text,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        ]
+
+    if name == "translate_from_english":
+        text = arguments.get("text", "")
+        target = _resolve_code(arguments.get("target_language", "hi"))
+        translated = _translate(text, "en", target)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "target_language": target,
+                        "target_language_name": LANG_CODES.get(target, target),
+                        "translation": translated,
+                        "original": text,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        ]
+>>>>>>> Stashed changes
 
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
