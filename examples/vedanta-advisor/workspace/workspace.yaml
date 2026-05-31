@@ -39,6 +39,19 @@ governance:
     - id: output-sanitizer
       trigger: post_output
       scope: "advisor"
+    # Workspace memory — remember conversations for future context
+    - id: memory-reader
+      trigger: pre_input
+      scope: "advisor"
+      config:
+        max_results: 5
+        similarity_threshold: 0.15
+        search_scope: all
+    - id: memory-writer
+      trigger: post_output
+      scope: "advisor"
+      config:
+        min_output_length: 100
 credentials:
   openrouter-key:
     source: env
