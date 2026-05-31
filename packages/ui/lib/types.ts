@@ -125,3 +125,38 @@ export interface UsageSummary {
 		cost_usd: number;
 	}[];
 }
+
+export interface ResolvedAgent {
+	id: string;
+	role: string;
+	source_archetype: string | null;
+	model: Record<string, unknown> | null;
+	skills: string[];
+	children?: ResolvedAgent[];
+}
+
+export interface TopologyDetail {
+	id: string;
+	version: string;
+	description: string | null;
+	resolved: ResolvedAgent;
+}
+
+export interface ArchetypeDetail {
+	id: string;
+	name: string;
+	description: string;
+	role: string;
+	defaults: {
+		model: Record<string, unknown> | null;
+		skills: string[];
+	};
+}
+
+export interface SkillDetail {
+	id: string;
+	name: string;
+	description: string;
+	category: string;
+	implementation_type: string | null;
+}
