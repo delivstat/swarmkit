@@ -41,9 +41,17 @@ COLLECTIONS = [
     "gita",
     "upanishads",
     "mahabharata",
+    "mahabharata_english",
     "ramayana",
     "puranas",
     "niti",
+    "vedanta-texts",
+    "shastras",
+    "devotional",
+    "buddhist",
+    "wisdom-stories",
+    "ethics",
+    "vedas",
 ]
 
 server = Server("scripture-search")
