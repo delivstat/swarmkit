@@ -47,6 +47,14 @@ class Model(BaseModel):
     name: str | None = None
     temperature: float | None = Field(None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(None, ge=1)
+    tool_provider: str | None = Field(
+        None,
+        description="Model provider for tool-calling turns (cheaper model). Falls back to provider if unset.",
+    )
+    tool_model: str | None = Field(
+        None,
+        description="Model name for tool-calling turns. When set, tool loop uses this cheaper model and synthesis uses the main model.",
+    )
 
 
 class Prompt(BaseModel):

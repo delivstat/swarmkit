@@ -309,6 +309,14 @@ def _build_agent_node(  # noqa: PLR0915
                 ]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
+        _tool_model_name = (agent.model or {}).get("tool_model")
+        _tool_provider_name = (agent.model or {}).get("tool_provider")
+        _tool_model_provider = None
+        if _tool_model_name and provider_registry and _tool_provider_name:
+            _tool_model_provider = provider_registry.get(_tool_provider_name)
+        elif _tool_model_name and provider_registry:
+            _tool_model_provider = model_provider
+
         system_prompt = _build_system_prompt(
             agent,
             tools,
@@ -360,6 +368,8 @@ def _build_agent_node(  # noqa: PLR0915
             provider_registry=provider_registry,
             planning_config=_planning,
             synthesis_config=_synthesis,
+            tool_model_name=_tool_model_name,
+            tool_model_provider=_tool_model_provider,
         )
         if isinstance(result, dict):
             _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()

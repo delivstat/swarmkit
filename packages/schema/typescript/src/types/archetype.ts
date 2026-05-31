@@ -37,6 +37,15 @@ export interface Model {
     name?:        string;
     provider?:    string;
     temperature?: number;
+    /**
+     * Model name for tool-calling turns. When set, tool loop uses this cheaper model and
+     * synthesis uses the main model.
+     */
+    tool_model?: string;
+    /**
+     * Model provider for tool-calling turns (cheaper model). Falls back to provider if unset.
+     */
+    tool_provider?: string;
     [property: string]: any;
 }
 

@@ -433,6 +433,9 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
     governance: GovernanceProvider,
     tool_results: list[ToolCallResult],
     verbose: str,
+    *,
+    tool_model_name: str | None = None,
+    tool_model_provider: ModelProviderProtocol | None = None,
 ) -> str | dict[str, Any]:
     """Run the multi-turn tool loop until final text or turn limit.
 
@@ -446,6 +449,10 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
     current_response = response
     current_results = tool_results
     _tool_call_counts: dict[str, int] = {}
+    _loop_provider = tool_model_provider or model_provider
+    _loop_model = tool_model_name or model_name
+    if _loop_model != model_name:
+        _progress(f"  [{agent.id}] tool model: {_loop_model.rsplit('/', 1)[-1]}")
 
     for _turn in range(_max_tool_turns):
         assistant_blocks = list(current_response.content)
@@ -465,9 +472,6 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         loop_messages.append(
             Message(role="user", content=tool_result_blocks),
         )
-        follow_up = _build_completion_request(
-            model_name, loop_messages, system_prompt, tools, agent
-        )
         _result_summaries = []
         for tr in current_results:
             _size = len(tr.result)
@@ -484,8 +488,11 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
                 f"  [tool loop turn {_turn + 1}: {len(current_results)} tool results]",
                 file=sys.stderr,
             )
-        current_response = await model_provider.complete(follow_up)
-        _record_tool_loop_tokens(agent.id, model_name, current_response)
+        follow_up = _build_completion_request(
+            _loop_model, loop_messages, system_prompt, tools, agent
+        )
+        current_response = await _loop_provider.complete(follow_up)
+        _record_tool_loop_tokens(agent.id, _loop_model, current_response)
 
         state_change = _check_for_state_change(current_response, agent, agent.id, None)
         if state_change is not None:
@@ -494,8 +501,8 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         next_results = await _handle_skill_tool_calls(
             current_response,
             agent,
-            model_provider,
-            model_name,
+            _loop_provider,
+            _loop_model,
             mcp_manager,
             governance,
         )
@@ -546,9 +553,9 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
                     ),
                 )
                 nudge_req = _build_completion_request(
-                    model_name, loop_messages, system_prompt, tools, agent
+                    _loop_model, loop_messages, system_prompt, tools, agent
                 )
-                current_response = await model_provider.complete(nudge_req)
+                current_response = await _loop_provider.complete(nudge_req)
                 _record_tool_loop_tokens(agent.id, model_name, current_response)
                 state_change = _check_for_state_change(current_response, agent, agent.id, None)
                 if state_change is not None:
