@@ -10,6 +10,7 @@ import {
 	ChevronRight,
 	Crown,
 	Layers,
+	Plus,
 	Shield,
 	User,
 } from "lucide-react";
@@ -507,6 +508,127 @@ function findAgent(root: ResolvedAgent, id: string): ResolvedAgent | null {
 	return null;
 }
 
+const NEW_TOPOLOGY_TEMPLATE = `apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: NAME
+  version: "1.0.0"
+  description: ""
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: moonshotai/kimi-k2.6
+    prompt:
+      system: |
+        You are the root coordinator.
+    children: []
+`;
+
+function NewTopologyDialog({
+	onClose,
+	onCreate,
+}: {
+	onClose: () => void;
+	onCreate: (name: string) => void;
+}) {
+	const [name, setName] = useState("");
+	const [creating, setCreating] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const handleCreate = async () => {
+		const slug = name
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-|-$/g, "");
+		if (!slug) {
+			setError("Name must contain at least one letter");
+			return;
+		}
+		setCreating(true);
+		setError(null);
+		try {
+			const yaml = NEW_TOPOLOGY_TEMPLATE.replace("NAME", slug);
+			const result = await api.saveTopology(slug, yaml);
+			if (result.valid) {
+				await api.reloadWorkspace();
+				onCreate(slug);
+			} else {
+				setError(
+					result.errors?.map((e) => e.message).join(", ") ??
+						"Validation failed",
+				);
+			}
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setCreating(false);
+		}
+	};
+
+	return (
+		<div
+			className="fixed inset-0 flex items-center justify-center z-50"
+			style={{ background: "rgba(0,0,0,0.5)" }}
+		>
+			<Card className="w-96">
+				<CardTitle>New Topology</CardTitle>
+				<label
+					htmlFor="topo-name"
+					className="block text-sm mb-1"
+					style={{ color: "var(--fg-muted)" }}
+				>
+					Name (kebab-case)
+				</label>
+				<input
+					id="topo-name"
+					className="w-full px-3 py-2 rounded border text-sm mb-3"
+					style={{
+						background: "var(--bg)",
+						borderColor: "var(--border)",
+						color: "var(--fg)",
+					}}
+					placeholder="my-topology"
+					value={name}
+					onChange={(e) => setName(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === "Enter") handleCreate();
+					}}
+				/>
+				{error && (
+					<p className="text-xs mb-3" style={{ color: "var(--error)" }}>
+						{error}
+					</p>
+				)}
+				<div className="flex gap-2 justify-end">
+					<button
+						type="button"
+						onClick={onClose}
+						className="px-3 py-1.5 text-sm rounded border"
+						style={{ borderColor: "var(--border)" }}
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						onClick={handleCreate}
+						disabled={creating || !name.trim()}
+						className="px-3 py-1.5 text-sm rounded font-medium disabled:opacity-40"
+						style={{
+							background: "var(--accent)",
+							color: "var(--accent-fg)",
+						}}
+					>
+						{creating ? "Creating..." : "Create"}
+					</button>
+				</div>
+			</Card>
+		</div>
+	);
+}
+
 function countAgents(agent: ResolvedAgent): number {
 	let count = 1;
 	for (const child of agent.children ?? []) {
@@ -522,6 +644,7 @@ export default function ComposerPage() {
 
 	const [selectedTopology, setSelectedTopology] = useState<string | null>(null);
 	const [autoLoaded, setAutoLoaded] = useState(false);
+	const [showNewDialog, setShowNewDialog] = useState(false);
 	const [topologyDetail, setTopologyDetail] = useState<TopologyDetail | null>(
 		null,
 	);
@@ -627,6 +750,19 @@ export default function ComposerPage() {
 						</option>
 					))}
 				</select>
+
+				<button
+					type="button"
+					onClick={() => setShowNewDialog(true)}
+					className="flex items-center gap-1 text-xs px-2.5 py-1 rounded font-medium"
+					style={{
+						background: "var(--accent)",
+						color: "var(--accent-fg)",
+					}}
+				>
+					<Plus size={12} />
+					New
+				</button>
 
 				{topologyDetail && (
 					<>
@@ -839,6 +975,16 @@ export default function ComposerPage() {
 						spellCheck={false}
 					/>
 				</div>
+			)}
+
+			{showNewDialog && (
+				<NewTopologyDialog
+					onClose={() => setShowNewDialog(false)}
+					onCreate={(name) => {
+						setShowNewDialog(false);
+						loadTopology(name);
+					}}
+				/>
 			)}
 		</div>
 	);
