@@ -271,6 +271,233 @@ function PropertyPanel({
 	);
 }
 
+function RelationshipsView({
+	agent,
+	root,
+	onSelect,
+}: {
+	agent: ResolvedAgent;
+	root: ResolvedAgent;
+	onSelect: (id: string) => void;
+}) {
+	const style = ROLE_STYLES[agent.role] ?? ROLE_STYLES.worker;
+	const Icon = style?.icon ?? User;
+	const parent = findParent(root, agent.id);
+
+	return (
+		<div className="p-4 flex flex-col items-center gap-6 min-h-full">
+			{/* Parent */}
+			{parent && (
+				<>
+					<button
+						type="button"
+						onClick={() => onSelect(parent.id)}
+						className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm hover:opacity-80"
+						style={{
+							background: "var(--bg-sidebar)",
+							border: "1px solid var(--border)",
+						}}
+					>
+						<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+							parent
+						</span>
+						<span className="font-medium">{parent.id}</span>
+					</button>
+					<div className="w-px h-4" style={{ background: "var(--border)" }} />
+				</>
+			)}
+
+			{/* Selected agent — center */}
+			<div
+				className="px-6 py-4 rounded-xl text-center"
+				style={{
+					background: "var(--bg-sidebar)",
+					border: `2px solid ${style?.color}`,
+				}}
+			>
+				<Icon
+					size={24}
+					className="mx-auto mb-1"
+					style={{ color: style?.color }}
+				/>
+				<div className="font-bold text-lg">{agent.id}</div>
+				<div className="text-xs" style={{ color: "var(--fg-muted)" }}>
+					{agent.role}
+					{agent.source_archetype && ` · ${agent.source_archetype}`}
+				</div>
+				{agent.model && (
+					<div
+						className="text-xs mt-1 font-mono"
+						style={{ color: "var(--fg-muted)" }}
+					>
+						{((agent.model as Record<string, unknown>).name as string) ?? ""}
+					</div>
+				)}
+			</div>
+
+			{/* Connections row */}
+			<div className="flex gap-8 items-start">
+				{/* Skills (left) */}
+				<div className="space-y-2">
+					<div
+						className="text-xs font-semibold text-center"
+						style={{ color: "var(--fg-muted)" }}
+					>
+						Skills
+					</div>
+					{agent.skills.length === 0 ? (
+						<div
+							className="text-xs text-center"
+							style={{ color: "var(--fg-muted)" }}
+						>
+							none
+						</div>
+					) : (
+						agent.skills.map((s) => (
+							<div
+								key={s}
+								className="text-xs px-3 py-1.5 rounded"
+								style={{
+									background: "var(--bg)",
+									border: "1px solid var(--border)",
+								}}
+							>
+								{s}
+							</div>
+						))
+					)}
+				</div>
+
+				{/* Children (center) */}
+				{agent.children && agent.children.length > 0 && (
+					<div className="space-y-2">
+						<div
+							className="text-xs font-semibold text-center"
+							style={{ color: "var(--fg-muted)" }}
+						>
+							Children
+						</div>
+						{agent.children.map((c) => {
+							const cs = ROLE_STYLES[c.role] ?? ROLE_STYLES.worker;
+							return (
+								<button
+									key={c.id}
+									type="button"
+									onClick={() => onSelect(c.id)}
+									className="flex items-center gap-2 text-xs px-3 py-1.5 rounded w-full hover:opacity-80"
+									style={{
+										background: "var(--bg)",
+										border: "1px solid var(--border)",
+									}}
+								>
+									<span
+										className="w-2 h-2 rounded-full"
+										style={{ background: cs?.color }}
+									/>
+									<span>{c.id}</span>
+									<span style={{ color: "var(--fg-muted)" }}>{c.role}</span>
+								</button>
+							);
+						})}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+function NetworkView({
+	root,
+	selectedId,
+	onSelect,
+}: {
+	root: ResolvedAgent;
+	selectedId: string | null;
+	onSelect: (id: string) => void;
+}) {
+	const allAgents = flattenAgents(root);
+
+	return (
+		<div className="p-6 flex flex-wrap gap-3 content-start">
+			{allAgents.map((agent) => {
+				const style = ROLE_STYLES[agent.role] ?? ROLE_STYLES.worker;
+				const Icon = style?.icon ?? User;
+				const isSelected = selectedId === agent.id;
+				const parent = findParent(root, agent.id);
+
+				return (
+					<button
+						key={agent.id}
+						type="button"
+						onClick={() => onSelect(agent.id)}
+						className={cn(
+							"flex flex-col items-center gap-1 px-4 py-3 rounded-lg text-xs transition-all",
+							isSelected ? "ring-2" : "hover:opacity-80",
+						)}
+						style={{
+							background: "var(--bg-sidebar)",
+							border: `2px solid ${isSelected ? style?.color : "var(--border)"}`,
+						}}
+					>
+						<Icon size={18} style={{ color: style?.color }} />
+						<span className="font-medium">{agent.id}</span>
+						<span style={{ color: "var(--fg-muted)" }}>
+							{agent.skills.length} skills
+						</span>
+						{parent && (
+							<span style={{ color: "var(--fg-muted)" }}>← {parent.id}</span>
+						)}
+					</button>
+				);
+			})}
+
+			{/* Edges */}
+			<div
+				className="w-full mt-4 pt-4 border-t"
+				style={{ borderColor: "var(--border)" }}
+			>
+				<div
+					className="text-xs font-semibold mb-2"
+					style={{ color: "var(--fg-muted)" }}
+				>
+					Delegation paths
+				</div>
+				{allAgents
+					.filter((a) => a.children && a.children.length > 0)
+					.map((a) => (
+						<div
+							key={a.id}
+							className="text-xs mb-1"
+							style={{ color: "var(--fg-muted)" }}
+						>
+							{a.id} → {a.children?.map((c) => c.id).join(", ")}
+						</div>
+					))}
+			</div>
+		</div>
+	);
+}
+
+function flattenAgents(agent: ResolvedAgent): ResolvedAgent[] {
+	const result: ResolvedAgent[] = [agent];
+	for (const child of agent.children ?? []) {
+		result.push(...flattenAgents(child));
+	}
+	return result;
+}
+
+function findParent(
+	root: ResolvedAgent,
+	childId: string,
+): ResolvedAgent | null {
+	for (const child of root.children ?? []) {
+		if (child.id === childId) return root;
+		const found = findParent(child, childId);
+		if (found) return found;
+	}
+	return null;
+}
+
 function findAgent(root: ResolvedAgent, id: string): ResolvedAgent | null {
 	if (root.id === id) return root;
 	for (const child of root.children ?? []) {
@@ -472,42 +699,74 @@ export default function ComposerPage() {
 						</div>
 					)}
 					{topologyDetail && activeView === "relationships" && (
-						<div className="p-4 text-sm" style={{ color: "var(--fg-muted)" }}>
-							Click an agent in the tree to see relationships.
-							<div className="py-2">
-								<AgentNode
-									agent={topologyDetail.resolved}
-									depth={0}
-									selectedId={selectedAgentId}
-									onSelect={setSelectedAgentId}
-								/>
-							</div>
+						<div className="py-2">
+							<AgentNode
+								agent={topologyDetail.resolved}
+								depth={0}
+								selectedId={selectedAgentId}
+								onSelect={setSelectedAgentId}
+							/>
 						</div>
 					)}
 					{topologyDetail && activeView === "network" && (
-						<div className="p-4 text-sm" style={{ color: "var(--fg-muted)" }}>
-							Network view — coming in PR 4
+						<div className="py-2">
+							<AgentNode
+								agent={topologyDetail.resolved}
+								depth={0}
+								selectedId={selectedAgentId}
+								onSelect={setSelectedAgentId}
+							/>
 						</div>
 					)}
 				</div>
 
-				{/* Right: Property Panel */}
-				<div className="flex-1 overflow-y-auto p-4">
-					{!selectedAgent && topologyDetail && (
-						<div
-							className="text-sm text-center py-12"
-							style={{ color: "var(--fg-muted)" }}
-						>
-							Select an agent from the tree
+				{/* Right: View content */}
+				<div className="flex-1 overflow-y-auto">
+					{activeView === "structure" && (
+						<div className="p-4">
+							{!selectedAgent && topologyDetail && (
+								<div
+									className="text-sm text-center py-12"
+									style={{ color: "var(--fg-muted)" }}
+								>
+									Select an agent from the tree
+								</div>
+							)}
+							{selectedAgent && (
+								<PropertyPanel
+									agent={selectedAgent}
+									yaml={topologyYaml}
+									onSave={handleSave}
+									saving={saving}
+									validationResult={validationResult}
+								/>
+							)}
 						</div>
 					)}
-					{selectedAgent && (
-						<PropertyPanel
-							agent={selectedAgent}
-							yaml={topologyYaml}
-							onSave={handleSave}
-							saving={saving}
-							validationResult={validationResult}
+					{activeView === "relationships" &&
+						topologyDetail &&
+						selectedAgent && (
+							<RelationshipsView
+								agent={selectedAgent}
+								root={topologyDetail.resolved}
+								onSelect={setSelectedAgentId}
+							/>
+						)}
+					{activeView === "relationships" &&
+						topologyDetail &&
+						!selectedAgent && (
+							<div
+								className="text-sm text-center py-12 p-4"
+								style={{ color: "var(--fg-muted)" }}
+							>
+								Select an agent to view relationships
+							</div>
+						)}
+					{activeView === "network" && topologyDetail && (
+						<NetworkView
+							root={topologyDetail.resolved}
+							selectedId={selectedAgentId}
+							onSelect={setSelectedAgentId}
 						/>
 					)}
 				</div>
