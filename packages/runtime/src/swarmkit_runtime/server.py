@@ -924,8 +924,9 @@ def _register_crud_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa: 
             try:
                 raw = _yaml.safe_load(f.read_text()) or {}
                 meta = raw.get("metadata", {})
-                name = meta.get("name", meta.get("id", ""))
-                if name == artifact_id:
+                file_id = meta.get("id", "")
+                file_name = meta.get("name", "")
+                if artifact_id in (file_id, file_name):
                     return f
             except Exception:
                 continue
@@ -986,6 +987,20 @@ def _register_crud_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa: 
         f = _find_file("topology", topology_id)
         if f is None:
             raise HTTPException(status_code=404, detail=f"Topology '{topology_id}' not found")
+        return {"yaml": f.read_text()}
+
+    @app.get("/api/skills/{skill_id}/yaml")
+    async def get_skill_yaml(skill_id: str) -> dict[str, str]:
+        f = _find_file("skill", skill_id)
+        if f is None:
+            raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found")
+        return {"yaml": f.read_text()}
+
+    @app.get("/api/archetypes/{archetype_id}/yaml")
+    async def get_archetype_yaml(archetype_id: str) -> dict[str, str]:
+        f = _find_file("archetype", archetype_id)
+        if f is None:
+            raise HTTPException(status_code=404, detail=f"Archetype '{archetype_id}' not found")
         return {"yaml": f.read_text()}
 
     @app.get("/api/archetypes/{archetype_id}")
