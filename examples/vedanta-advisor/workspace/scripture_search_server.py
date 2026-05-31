@@ -43,13 +43,11 @@ COLLECTIONS = [
     "mahabharata",
     "mahabharata_english",
     "ramayana",
-    "puranas",
     "niti",
     "vedanta-texts",
     "shastras",
     "devotional",
     "buddhist",
-    "wisdom-stories",
     "ethics",
     "vedas",
 ]
