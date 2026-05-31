@@ -532,6 +532,8 @@ export default function ComposerPage() {
 	>("structure");
 	const [loading, setLoading] = useState(false);
 	const [saving, setSaving] = useState(false);
+	const [yamlPanelOpen, setYamlPanelOpen] = useState(false);
+	const [yamlDraft, setYamlDraft] = useState("");
 	const [validationResult, setValidationResult] = useState<{
 		valid: boolean;
 		errors?: { message: string }[];
@@ -556,6 +558,7 @@ export default function ComposerPage() {
 			]);
 			setTopologyDetail(detail);
 			setTopologyYaml(yamlResp.yaml);
+			setYamlDraft(yamlResp.yaml);
 			setSelectedAgentId(detail.resolved.id);
 		} catch {
 			setTopologyDetail(null);
@@ -640,6 +643,20 @@ export default function ComposerPage() {
 							{countAgents(topologyDetail.resolved)} agents
 						</span>
 					</>
+				)}
+
+				{topologyDetail && (
+					<button
+						type="button"
+						onClick={() => setYamlPanelOpen(!yamlPanelOpen)}
+						className={cn(
+							"text-xs px-2.5 py-1 rounded",
+							yamlPanelOpen ? "font-medium" : "opacity-60",
+						)}
+						style={{ border: "1px solid var(--border)" }}
+					>
+						{yamlPanelOpen ? "Hide YAML" : "YAML"}
+					</button>
 				)}
 
 				<div
@@ -771,6 +788,58 @@ export default function ComposerPage() {
 					)}
 				</div>
 			</div>
+
+			{/* Bottom: YAML Panel */}
+			{yamlPanelOpen && topologyDetail && (
+				<div
+					className="border-t shrink-0"
+					style={{ borderColor: "var(--border)", height: "280px" }}
+				>
+					<div
+						className="flex items-center justify-between px-3 py-1.5 border-b"
+						style={{
+							borderColor: "var(--border)",
+							background: "var(--bg-sidebar)",
+						}}
+					>
+						<span className="text-xs font-medium">
+							Topology YAML — {selectedTopology}
+						</span>
+						<div className="flex gap-2">
+							{yamlDraft !== topologyYaml && (
+								<span
+									className="text-xs px-1.5 py-0.5 rounded"
+									style={{ color: "var(--warning)" }}
+								>
+									unsaved
+								</span>
+							)}
+							<button
+								type="button"
+								onClick={() => handleSave(yamlDraft)}
+								disabled={saving || yamlDraft === topologyYaml}
+								className="text-xs px-2.5 py-0.5 rounded font-medium disabled:opacity-40"
+								style={{
+									background: "var(--accent)",
+									color: "var(--accent-fg)",
+								}}
+							>
+								{saving ? "Saving..." : "Save"}
+							</button>
+						</div>
+					</div>
+					<textarea
+						className="w-full h-[calc(100%-32px)] font-mono text-xs p-3 resize-none border-0 outline-none"
+						style={{
+							background: "var(--bg)",
+							color: "var(--fg)",
+						}}
+						value={yamlDraft}
+						onChange={(e) => setYamlDraft(e.target.value)}
+						spellCheck={false}
+					/>
+				</div>
+			)}
 		</div>
 	);
 }
