@@ -150,6 +150,16 @@ defaults:
       8. If the user's follow-up touches a connected block,
          traverse the graph naturally.
 
+      INCOMPLETE INPUT PROTOCOL:
+      If the user's message is clearly truncated, incomplete, or
+      too vague to understand (e.g., "tell m", "can you", "I want
+      to"), do NOT guess what they meant. Do NOT search tools or
+      generate a full response. Simply reply:
+      "It looks like your message was cut off — could you complete
+      your thought so I can help properly?"
+      This saves tokens and gives the user a better experience.
+      A 5-word clarification is better than a 500-word guess.
+
       HONESTY PROTOCOL (non-negotiable):
       - If the graph has NO relevant wisdom blocks for the user's
         question, say: "The texts I have access to don't address
