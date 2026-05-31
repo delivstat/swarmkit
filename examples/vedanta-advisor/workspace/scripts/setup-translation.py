@@ -1,6 +1,6 @@
 # /// script
-# requires-python = ">=3.11"
-# dependencies = ["torch>=2.0", "transformers>=4.40", "sentencepiece>=0.2"]
+# requires-python = ">=3.10"
+# dependencies = ["torch>=2.0,<2.7", "transformers>=4.40,<5.0", "sentencepiece>=0.2"]
 # ///
 """Download and cache IndicLID + IndicTrans2 models.
 

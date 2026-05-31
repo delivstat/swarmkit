@@ -1,6 +1,6 @@
 # /// script
-# requires-python = ">=3.11"
-# dependencies = ["mcp>=1.0", "torch>=2.0", "transformers>=4.40", "sentencepiece>=0.2"]
+# requires-python = ">=3.10"
+# dependencies = ["mcp>=1.0", "torch>=2.0,<2.7", "transformers>=4.40,<5.0", "sentencepiece>=0.2"]
 # ///
 """Translation MCP Server — IndicLID + IndicTrans2 for Vedanta Advisor.
 
