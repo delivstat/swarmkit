@@ -101,93 +101,171 @@ function AgentNode({
 	);
 }
 
-function PropertyPanel({ agent }: { agent: ResolvedAgent }) {
+function PropertyPanel({
+	agent,
+	yaml,
+	onSave,
+	saving,
+	validationResult,
+}: {
+	agent: ResolvedAgent;
+	yaml: string | null;
+	onSave: (yaml: string) => void;
+	saving: boolean;
+	validationResult: { valid: boolean; errors?: { message: string }[] } | null;
+}) {
 	const style = ROLE_STYLES[agent.role] ?? ROLE_STYLES.worker;
+	const [editingYaml, setEditingYaml] = useState(false);
+	const [yamlContent, setYamlContent] = useState(yaml ?? "");
+
+	useEffect(() => {
+		if (yaml) setYamlContent(yaml);
+	}, [yaml]);
 
 	return (
 		<div className="space-y-4">
-			<div>
-				<h3 className="text-lg font-bold">{agent.id}</h3>
-				<div className="flex items-center gap-2 mt-1">
-					<span
-						className="text-xs px-2 py-0.5 rounded-full font-medium"
-						style={{
-							color: style?.color,
-							border: `1px solid ${style?.color}40`,
-						}}
-					>
-						{agent.role}
-					</span>
-					{agent.source_archetype && (
-						<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-							archetype: {agent.source_archetype}
+			<div className="flex items-center justify-between">
+				<div>
+					<h3 className="text-lg font-bold">{agent.id}</h3>
+					<div className="flex items-center gap-2 mt-1">
+						<span
+							className="text-xs px-2 py-0.5 rounded-full font-medium"
+							style={{
+								color: style?.color,
+								border: `1px solid ${style?.color}40`,
+							}}
+						>
+							{agent.role}
 						</span>
+						{agent.source_archetype && (
+							<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+								archetype: {agent.source_archetype}
+							</span>
+						)}
+					</div>
+				</div>
+				<div className="flex gap-2">
+					<button
+						type="button"
+						onClick={() => setEditingYaml(!editingYaml)}
+						className="text-xs px-2.5 py-1 rounded"
+						style={{ border: "1px solid var(--border)" }}
+					>
+						{editingYaml ? "View" : "YAML"}
+					</button>
+					{editingYaml && (
+						<button
+							type="button"
+							onClick={() => onSave(yamlContent)}
+							disabled={saving}
+							className="text-xs px-2.5 py-1 rounded font-medium disabled:opacity-40"
+							style={{
+								background: "var(--accent)",
+								color: "var(--accent-fg)",
+							}}
+						>
+							{saving ? "Saving..." : "Save"}
+						</button>
 					)}
 				</div>
 			</div>
 
-			{agent.model && (
-				<Card>
-					<CardTitle>Model</CardTitle>
-					<div className="text-sm space-y-1">
-						{Object.entries(agent.model).map(([k, v]) => (
-							<div key={k} className="flex justify-between">
-								<span style={{ color: "var(--fg-muted)" }}>{k}</span>
-								<span className="font-mono text-xs">{String(v)}</span>
-							</div>
-						))}
-					</div>
-				</Card>
+			{validationResult && !validationResult.valid && (
+				<div
+					className="text-xs p-2 rounded"
+					style={{
+						background: "var(--bg)",
+						border: "1px solid var(--error)",
+						color: "var(--error)",
+					}}
+				>
+					{validationResult.errors?.map((e, i) => (
+						<div key={`err-${e.message.slice(0, 20)}-${i}`}>{e.message}</div>
+					))}
+				</div>
 			)}
 
-			<Card>
-				<CardTitle>Skills ({agent.skills.length})</CardTitle>
-				{agent.skills.length === 0 ? (
-					<p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-						No skills assigned
-					</p>
-				) : (
-					<div className="flex flex-wrap gap-1.5">
-						{agent.skills.map((s) => (
-							<span
-								key={s}
-								className="text-xs px-2 py-1 rounded"
-								style={{
-									background: "var(--bg)",
-									border: "1px solid var(--border)",
-								}}
-							>
-								{s}
-							</span>
-						))}
-					</div>
-				)}
-			</Card>
+			{editingYaml ? (
+				<div>
+					<textarea
+						className="w-full font-mono text-xs p-3 rounded border resize-none"
+						style={{
+							background: "var(--bg)",
+							borderColor: "var(--border)",
+							color: "var(--fg)",
+							minHeight: "400px",
+						}}
+						value={yamlContent}
+						onChange={(e) => setYamlContent(e.target.value)}
+						spellCheck={false}
+					/>
+				</div>
+			) : (
+				<>
+					{agent.model && (
+						<Card>
+							<CardTitle>Model</CardTitle>
+							<div className="text-sm space-y-1">
+								{Object.entries(agent.model).map(([k, v]) => (
+									<div key={k} className="flex justify-between">
+										<span style={{ color: "var(--fg-muted)" }}>{k}</span>
+										<span className="font-mono text-xs">{String(v)}</span>
+									</div>
+								))}
+							</div>
+						</Card>
+					)}
 
-			{agent.children && agent.children.length > 0 && (
-				<Card>
-					<CardTitle>Children ({agent.children.length})</CardTitle>
-					<div className="space-y-1">
-						{agent.children.map((c) => {
-							const cs = ROLE_STYLES[c.role] ?? ROLE_STYLES.worker;
-							return (
-								<div key={c.id} className="flex items-center gap-2 text-sm">
+					<Card>
+						<CardTitle>Skills ({agent.skills.length})</CardTitle>
+						{agent.skills.length === 0 ? (
+							<p className="text-sm" style={{ color: "var(--fg-muted)" }}>
+								No skills assigned
+							</p>
+						) : (
+							<div className="flex flex-wrap gap-1.5">
+								{agent.skills.map((s) => (
 									<span
-										className="w-2 h-2 rounded-full"
-										style={{ background: cs?.color }}
-									/>
-									<span>{c.id}</span>
-									<span
-										className="text-xs"
-										style={{ color: "var(--fg-muted)" }}
+										key={s}
+										className="text-xs px-2 py-1 rounded"
+										style={{
+											background: "var(--bg)",
+											border: "1px solid var(--border)",
+										}}
 									>
-										{c.role}
+										{s}
 									</span>
-								</div>
-							);
-						})}
-					</div>
-				</Card>
+								))}
+							</div>
+						)}
+					</Card>
+
+					{agent.children && agent.children.length > 0 && (
+						<Card>
+							<CardTitle>Children ({agent.children.length})</CardTitle>
+							<div className="space-y-1">
+								{agent.children.map((c) => {
+									const cs = ROLE_STYLES[c.role] ?? ROLE_STYLES.worker;
+									return (
+										<div key={c.id} className="flex items-center gap-2 text-sm">
+											<span
+												className="w-2 h-2 rounded-full"
+												style={{ background: cs?.color }}
+											/>
+											<span>{c.id}</span>
+											<span
+												className="text-xs"
+												style={{ color: "var(--fg-muted)" }}
+											>
+												{c.role}
+											</span>
+										</div>
+									);
+								})}
+							</div>
+						</Card>
+					)}
+				</>
 			)}
 		</div>
 	);
@@ -220,11 +298,17 @@ export default function ComposerPage() {
 	const [topologyDetail, setTopologyDetail] = useState<TopologyDetail | null>(
 		null,
 	);
+	const [topologyYaml, setTopologyYaml] = useState<string | null>(null);
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 	const [activeView, setActiveView] = useState<
 		"structure" | "relationships" | "network"
 	>("structure");
 	const [loading, setLoading] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const [validationResult, setValidationResult] = useState<{
+		valid: boolean;
+		errors?: { message: string }[];
+	} | null>(null);
 
 	useEffect(() => {
 		const t = searchParams.get("topology");
@@ -237,14 +321,45 @@ export default function ComposerPage() {
 	const loadTopology = async (id: string) => {
 		setSelectedTopology(id);
 		setLoading(true);
+		setValidationResult(null);
 		try {
-			const detail = await api.topologyDetail(id);
+			const [detail, yamlResp] = await Promise.all([
+				api.topologyDetail(id),
+				api.topologyYaml(id),
+			]);
 			setTopologyDetail(detail);
+			setTopologyYaml(yamlResp.yaml);
 			setSelectedAgentId(detail.resolved.id);
 		} catch {
 			setTopologyDetail(null);
+			setTopologyYaml(null);
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	const handleSave = async (yaml: string) => {
+		if (!selectedTopology) return;
+		setSaving(true);
+		setValidationResult(null);
+		try {
+			const result = await api.saveTopology(selectedTopology, yaml);
+			setValidationResult(result);
+			if (result.valid) {
+				setTopologyYaml(yaml);
+				await loadTopology(selectedTopology);
+			}
+		} catch (err) {
+			setValidationResult({
+				valid: false,
+				errors: [
+					{
+						message: err instanceof Error ? err.message : String(err),
+					},
+				],
+			});
+		} finally {
+			setSaving(false);
 		}
 	};
 
@@ -386,7 +501,15 @@ export default function ComposerPage() {
 							Select an agent from the tree
 						</div>
 					)}
-					{selectedAgent && <PropertyPanel agent={selectedAgent} />}
+					{selectedAgent && (
+						<PropertyPanel
+							agent={selectedAgent}
+							yaml={topologyYaml}
+							onSave={handleSave}
+							saving={saving}
+							validationResult={validationResult}
+						/>
+					)}
 				</div>
 			</div>
 		</div>
