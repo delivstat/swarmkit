@@ -1,11 +1,12 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["torch>=2.0,<2.7", "transformers>=4.40,<5.0", "sentencepiece>=0.2"]
+# dependencies = ["torch>=2.0,<2.7", "transformers>=4.40,<5.0", "sentencepiece>=0.2", "langdetect>=1.0"]
 # ///
-"""Download and cache IndicLID + IndicTrans2 models.
+"""Download and cache translation models + install language detection.
 
-One-time setup — downloads ~2-3GB of model weights to ~/.cache/huggingface/.
-Subsequent runs of the translation MCP server use the cached models.
+One-time setup:
+- langdetect: lightweight language detection (no model download)
+- IndicTrans2: en↔indic translation (~2GB model download)
 
 Usage:
     cd /home/srijith/dev/vedanta-advisor
@@ -21,15 +22,14 @@ def main() -> None:
     print(f"Cache dir: {os.environ.get('HF_HOME', '~/.cache/huggingface/')}")
     print()
 
-    print("1/2 Downloading IndicLID (language detection, ~500MB)...")
+    print("1/2 Testing langdetect (language detection)...")
     try:
-        from transformers import pipeline
+        from langdetect import detect
 
-        lid = pipeline("text-classification", model="ai4bharat/IndicLID", device=-1)
-        result = lid("नमस्ते, मैं कैसे मदद कर सकता हूँ?")
-        print(f"  ✓ IndicLID ready — test: {result[0]['label']}")
+        lang = detect("नमस्ते, मैं कैसे मदद कर सकता हूँ?")
+        print(f"  ✓ langdetect ready — test: {lang}")
     except Exception as e:
-        print(f"  ✗ IndicLID failed: {e}", file=sys.stderr)
+        print(f"  ✗ langdetect failed: {e}", file=sys.stderr)
         sys.exit(1)
 
     print()

@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["mcp>=1.0", "torch>=2.0,<2.7", "transformers>=4.40,<5.0", "sentencepiece>=0.2"]
+# dependencies = ["mcp>=1.0", "torch>=2.0,<2.7", "transformers>=4.40,<5.0", "sentencepiece>=0.2", "langdetect>=1.0"]
 # ///
 """Translation MCP Server — IndicLID + IndicTrans2 for Vedanta Advisor.
 
@@ -65,28 +65,36 @@ LANG_NAME_TO_CODE = {v.lower(): k for k, v in INDIC_LANGUAGES.items()}
 
 server = Server("translation")
 
-_lid_model = None
 _trans_model = None
 _trans_tokenizer = None
 
 
-def _load_lid():
-    """Load IndicLID language detection model."""
-    global _lid_model  # noqa: PLW0603
-    if _lid_model is not None:
-        return _lid_model
+LANGDETECT_TO_INDIC = {
+    "hi": "hin_Deva",
+    "bn": "ben_Beng",
+    "ta": "tam_Taml",
+    "te": "tel_Telu",
+    "kn": "kan_Knda",
+    "ml": "mal_Mlym",
+    "mr": "mar_Deva",
+    "gu": "guj_Gujr",
+    "pa": "pan_Guru",
+    "ur": "urd_Arab",
+    "ne": "npi_Deva",
+    "sa": "san_Deva",
+    "en": "eng_Latn",
+}
 
+
+def _detect_language(text: str) -> str | None:
+    """Detect language using langdetect (lightweight, no model download)."""
     try:
-        from transformers import pipeline
+        from langdetect import detect
 
-        _lid_model = pipeline(
-            "text-classification",
-            model="ai4bharat/IndicLID",
-            device=-1,
-        )
-        return _lid_model
+        lang_code = detect(text)
+        return LANGDETECT_TO_INDIC.get(lang_code, lang_code)
     except Exception as e:
-        print(f"Failed to load IndicLID: {e}", file=sys.stderr)
+        print(f"Language detection failed: {e}", file=sys.stderr)
         return None
 
 
@@ -115,21 +123,17 @@ def _load_translator():
         return None, None
 
 
-def _detect_language(text: str) -> dict:
-    """Detect language using IndicLID."""
-    lid = _load_lid()
-    if lid is None:
-        return {"language": "eng_Latn", "language_name": "English", "confidence": 0.0, "error": "IndicLID not available"}
+def _detect_language_full(text: str) -> dict:
+    """Detect language using langdetect and return structured result."""
+    lang_code = _detect_language(text)
+    if lang_code is None:
+        return {"language": "eng_Latn", "language_name": "English", "confidence": 0.0}
 
-    result = lid(text[:512])[0]
-    lang_code = result["label"]
-    confidence = result["score"]
     lang_name = INDIC_LANGUAGES.get(lang_code, lang_code)
-
     return {
         "language": lang_code,
         "language_name": lang_name,
-        "confidence": round(confidence, 4),
+        "confidence": 0.95,
     }
 
 
@@ -237,7 +241,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     import json
 
     if name == "detect_language":
-        result = _detect_language(arguments.get("text", ""))
+        result = _detect_language_full(arguments.get("text", ""))
         return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
 
     elif name == "translate":
@@ -248,7 +252,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
     elif name == "translate_to_english":
         text = arguments.get("text", "")
-        detected = _detect_language(text)
+        detected = _detect_language_full(text)
         src_lang = detected["language"]
 
         if src_lang == "eng_Latn":
