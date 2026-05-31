@@ -18,6 +18,22 @@ from swarmkit_runtime.resolver import ResolvedAgent
 from ._helpers import ToolCallResult, _extract_text, _progress, _truncate_result
 from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomplete
 
+
+def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResponse) -> None:
+    """Record tokens from a tool-loop LLM call into the active trace."""
+    from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
+        _active_trace,
+    )
+
+    if _active_trace is not None:
+        _active_trace.record_llm_call(
+            agent_id=agent_id,
+            model=model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
+
+
 _MAX_TOOL_CALLS_PER_TURN = int(os.environ.get("SWARMKIT_MAX_TOOLS", "10"))
 
 
@@ -469,6 +485,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
                 file=sys.stderr,
             )
         current_response = await model_provider.complete(follow_up)
+        _record_tool_loop_tokens(agent.id, model_name, current_response)
 
         state_change = _check_for_state_change(current_response, agent, agent.id, None)
         if state_change is not None:
@@ -532,6 +549,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
                     model_name, loop_messages, system_prompt, tools, agent
                 )
                 current_response = await model_provider.complete(nudge_req)
+                _record_tool_loop_tokens(agent.id, model_name, current_response)
                 state_change = _check_for_state_change(current_response, agent, agent.id, None)
                 if state_change is not None:
                     return state_change
@@ -614,6 +632,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         )
     synthesis_req = _build_completion_request(model_name, loop_messages, system_prompt, [], agent)
     synthesis_response = await model_provider.complete(synthesis_req)
+    _record_tool_loop_tokens(agent.id, model_name, synthesis_response)
     text = _extract_text(synthesis_response)
 
     if text and not _looks_incomplete(text):
@@ -648,4 +667,5 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         )
     retry_req = _build_completion_request(model_name, minimal_messages, system_prompt, [], agent)
     retry_response = await model_provider.complete(retry_req)
+    _record_tool_loop_tokens(agent.id, model_name, retry_response)
     return _extract_text(retry_response) or "(analysis incomplete — tool limit reached)"

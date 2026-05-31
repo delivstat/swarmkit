@@ -62,9 +62,38 @@ class RunTrace:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_tokens: int = 0
+    llm_calls: int = 0
     agent_steps: list[AgentStep] = field(default_factory=list)
     token_by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
     token_by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    def record_llm_call(
+        self,
+        agent_id: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> None:
+        """Record tokens from any LLM call (tool loop, synthesis, etc)."""
+        self.total_input_tokens += input_tokens
+        self.total_output_tokens += output_tokens
+        self.total_tokens += input_tokens + output_tokens
+        self.llm_calls += 1
+
+        agent_tokens = self.token_by_agent.setdefault(
+            agent_id, {"input": 0, "output": 0, "total": 0}
+        )
+        agent_tokens["input"] += input_tokens
+        agent_tokens["output"] += output_tokens
+        agent_tokens["total"] += input_tokens + output_tokens
+
+        if model:
+            model_tokens = self.token_by_model.setdefault(
+                model, {"input": 0, "output": 0, "total": 0}
+            )
+            model_tokens["input"] += input_tokens
+            model_tokens["output"] += output_tokens
+            model_tokens["total"] += input_tokens + output_tokens
 
     def start(self, run_id: str, topology: str) -> None:
         self.run_id = run_id
@@ -129,9 +158,11 @@ class RunTrace:
         lines.append(f"Topology: {self.topology}")
         dur_s = self.duration_ms / 1000
         lines.append(f"Duration: {dur_s:.1f}s")
+        total_calls = self.llm_calls + len(self.agent_steps)
         lines.append(
             f"Total tokens: {self.total_tokens:,} "
             f"(input: {self.total_input_tokens:,} / output: {self.total_output_tokens:,})"
+            f" across {total_calls} LLM call(s)"
         )
         lines.append("")
 
