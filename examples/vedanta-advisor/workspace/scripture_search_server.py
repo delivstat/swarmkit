@@ -50,6 +50,9 @@ COLLECTIONS = [
     "buddhist",
     "ethics",
     "vedas",
+    "puranas",
+    "wisdom-stories",
+    "shankaracharya",
 ]
 
 server = Server("scripture-search")
