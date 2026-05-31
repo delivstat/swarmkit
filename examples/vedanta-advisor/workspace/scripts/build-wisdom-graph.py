@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["chromadb>=0.5", "httpx>=0.27"]
 # ///
-# ruff: noqa: E501, E402, E741, PLW1510, PLR0915
+# ruff: noqa: E501, E402, E741, PLW1510, PLR0915, PLR0912, PLC0415, F841
 """Batch wisdom graph builder — bypasses the agent loop entirely.
 
 For each theme/story, makes ONE LLM call to generate a wisdom or
@@ -24,7 +24,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -965,36 +964,62 @@ def main() -> None:
     created = 0
     failed = 0
 
-    print(f"Building {total} blocks with {args.model}")
+    # Filter to blocks that need processing
+    to_process = []
+    for spec in blocks:
+        if spec.slug in existing:
+            skipped += 1
+        else:
+            to_process.append(spec)
+
+    print(f"Building {len(to_process)} blocks with {args.model} (skipping {skipped} existing)")
     print(f"ChromaDB: {chromadb_dir}")
-    print(f"Existing blocks: {len(existing)}")
     print()
 
-    for i, spec in enumerate(blocks, 1):
-        if spec.slug in existing:
-            print(f"[{i}/{total}] {spec.slug} — skipped (exists)")
-            skipped += 1
-            continue
+    if not to_process:
+        print("Nothing to do — all blocks exist.")
+        return
 
-        print(f"[{i}/{total}] {spec.slug} ({spec.block_type})...")
+    # Phase 1: fetch verse context for all blocks (fast, local ChromaDB)
+    print("Phase 1: Fetching verse context...")
+    verse_contexts: dict[str, str] = {}
+    for spec in to_process:
+        verse_contexts[spec.slug] = fetch_verses(client, spec.search_queries, spec.verse_refs)
+    print(f"  {len(verse_contexts)} contexts fetched")
 
-        verse_context = fetch_verses(client, spec.search_queries, spec.verse_refs)
-        verse_count = verse_context.count("[gita:") + verse_context.count("[ramayana:") + verse_context.count("[mahabharata:")
-        print(f"  verses: {verse_count} found, {len(verse_context)} chars context")
+    # Phase 2: parallel LLM calls (the bottleneck)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    print("\nPhase 2: Generating blocks (5 concurrent)...")
+    generated: dict[str, str] = {}
+
+    def _generate_one(spec: BlockSpec) -> tuple[str, str | None]:
         try:
-            content = generate_block(spec, verse_context, api_key, args.model)
-            print(f"  generated: {len(content)} chars")
+            content = generate_block(spec, verse_contexts[spec.slug], api_key, args.model)
+            return (spec.slug, content)
+        except Exception as e:
+            print(f"  ERROR {spec.slug}: {e}")
+            return (spec.slug, None)
 
-            if write_to_gbrain(spec.slug, content, dry_run=args.dry_run):
-                created += 1
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {pool.submit(_generate_one, spec): spec for spec in to_process}
+        for i, future in enumerate(as_completed(futures), 1):
+            spec = futures[future]
+            slug, content = future.result()
+            if content:
+                generated[slug] = content
+                print(f"  [{i}/{len(to_process)}] {slug} — {len(content)} chars")
             else:
                 failed += 1
-        except Exception as e:
-            print(f"  ERROR: {e}")
-            failed += 1
+                print(f"  [{i}/{len(to_process)}] {slug} — FAILED")
 
-        time.sleep(0.5)
+    # Phase 3: write to GBrain (sequential — subprocess calls)
+    print(f"\nPhase 3: Writing {len(generated)} blocks to GBrain...")
+    for slug, content in generated.items():
+        if write_to_gbrain(slug, content, dry_run=args.dry_run):
+            created += 1
+        else:
+            failed += 1
 
     print("\n=== Done ===")
     print(f"Created: {created}")
