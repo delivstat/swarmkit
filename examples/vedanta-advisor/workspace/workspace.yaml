@@ -65,18 +65,10 @@ mcp_servers:
     env:
       CHROMADB_PATH: "${VEDANTA_CHROMADB_DIR}"
 
-<<<<<<< Updated upstream
-  # Translation — disabled (IndicTrans2 requires gated HuggingFace access).
-  # The LLM handles Hindi/Tamil/Sanskrit natively. Re-enable when needed:
-  # - id: translation
-  #   transport: stdio
-  #   command: ["uv", "run", "translation_server.py"]
-=======
   # Translation — Google Translate via deep-translator (free, no API key)
   - id: translation
     transport: stdio
     command: ["uv", "run", "translation_server.py"]
->>>>>>> Stashed changes
 
   # Gate validator — schema validation for wisdom/knowledge blocks
   - id: gate-validator
