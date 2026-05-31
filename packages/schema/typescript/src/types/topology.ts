@@ -109,6 +109,15 @@ export interface Model {
      */
     provider?:    string;
     temperature?: number;
+    /**
+     * Model name for tool-calling turns. Uses a cheaper model for tool calls, main model for
+     * synthesis.
+     */
+    tool_model?: string;
+    /**
+     * Model provider for tool-calling turns. Falls back to provider if unset.
+     */
+    tool_provider?: string;
     [property: string]: any;
 }
 

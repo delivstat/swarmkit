@@ -11,9 +11,10 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: anthropic/claude-sonnet-4
+    name: moonshotai/kimi-k2.6
     temperature: 0.4
     max_tokens: 4096
+    tool_model: moonshotai/kimi-k2.5
   prompt:
     system: |
       You are a knowledgeable guide to Hindu philosophical texts.
