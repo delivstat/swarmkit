@@ -11,7 +11,7 @@ role: worker
 defaults:
   model:
     provider: openrouter
-    name: moonshotai/kimi-k2.6
+    name: deepseek/deepseek-v4-pro
     temperature: 0.4
     max_tokens: 4096
     tool_model: moonshotai/kimi-k2.5
@@ -42,43 +42,12 @@ defaults:
           you need multiple darshana perspectives.
         * full (~15KB): all 21 commentators. Use only when the user
           specifically asks about commentaries or darshana comparison.
-      - translate-to-english: auto-detect language and translate
-        user input to English (use when input is not English)
-      - translate-from-english: translate your English response
-        to the user's language
-
-      MULTILINGUAL CONVERSATION:
-      People naturally mix languages — Hinglish ("mujhe lagta hai
-      my business will fail"), Tanglish, Benglish. Don't force
-      everything through translation. Be smart about it.
-
-      STEP 1 — DETECT what kind of input it is:
-      - Pure native script (देवनागरी, তামিল, తెలుగు) → translate
-      - Romanized Indic or code-mixed (Hinglish, Tanglish) → you
-        already understand this, don't translate
-      - English → no translation needed
-      Use detect-language if you're unsure.
-
-      STEP 2 — RESPOND in the same style:
-      - Pure native script input → use translate-from-english to
-        respond in that script. Sanskrit verses stay as-is.
-      - Code-mixed input → respond naturally in the same mixed
-        style. "Gita mein Krishna ne Arjuna ko exactly yahi
-        bola — your right is to action alone..."
-      - English → respond in English
-      - User explicitly asks "reply in Tamil" → translate output
-
-      STEP 3 — TRANSLATE only when needed:
-      - Only call translate-to-english when you genuinely cannot
-        understand the input (pure script you can't read)
-      - Only call translate-from-english when the user wrote in
-        pure native script or explicitly requested a language
-      - Never translate code-mixed input — you lose the tone
-      - Never translate Sanskrit verses — sacred text stays as-is
-
-      If the user switches languages mid-conversation, follow them.
-      Match their energy — if they're casual and code-mixing, be
-      casual. If they write in formal Hindi, respond formally.
+      MULTILINGUAL SUPPORT:
+      You understand Hindi, Tamil, Telugu, Bengali, Sanskrit and
+      other Indian languages natively. Respond in the same language
+      the user writes in. Code-mixed input (Hinglish, Tanglish) →
+      respond in the same mixed style naturally. Sanskrit verses
+      stay as-is — never transliterate sacred text.
 
       MODE DETECTION — understand what the user wants:
 
@@ -213,9 +182,6 @@ defaults:
     - search-scripture
     - get-verse
     - write-notes
-    - detect-language
-    - translate-to-english
-    - translate-from-english
   iam:
     base_scope: [knowledge:read]
 provenance:

@@ -65,12 +65,11 @@ mcp_servers:
     env:
       CHROMADB_PATH: "${VEDANTA_CHROMADB_DIR}"
 
-  # Translation — IndicLID (language detection) + IndicTrans2 (translation)
-  # Supports English + 22 Indian languages including Hindi, Tamil, Sanskrit
-  # First run downloads models (~2GB). Subsequent runs use cache.
-  - id: translation
-    transport: stdio
-    command: ["uv", "run", "translation_server.py"]
+  # Translation — disabled (IndicTrans2 requires gated HuggingFace access).
+  # The LLM handles Hindi/Tamil/Sanskrit natively. Re-enable when needed:
+  # - id: translation
+  #   transport: stdio
+  #   command: ["uv", "run", "translation_server.py"]
 
   # Gate validator — schema validation for wisdom/knowledge blocks
   - id: gate-validator
