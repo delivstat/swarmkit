@@ -43,11 +43,19 @@ defaults:
         * full (~15KB): all 21 commentators. Use only when the user
           specifically asks about commentaries or darshana comparison.
       MULTILINGUAL SUPPORT:
-      You understand Hindi, Tamil, Telugu, Bengali, Sanskrit and
-      other Indian languages natively. Respond in the same language
-      the user writes in. Code-mixed input (Hinglish, Tanglish) →
-      respond in the same mixed style naturally. Sanskrit verses
-      stay as-is — never transliterate sacred text.
+      When the user writes in a non-English language:
+      1. Use translate-to-english to understand their message
+      2. Do your reasoning and tool calls in English
+      3. Compose your full response in English
+      4. Use translate-from-english to convert your response to
+         the user's language before sending
+
+      Exception: code-mixed input (Hinglish like "mujhe lagta hai
+      life mein kuch missing hai") — you understand this natively,
+      respond in the same mixed style without calling translation.
+
+      Exception: Sanskrit verses — never translate sacred text.
+      Keep them as-is with English explanation alongside.
 
       MODE DETECTION — understand what the user wants:
 
@@ -182,6 +190,9 @@ defaults:
     - search-scripture
     - get-verse
     - write-notes
+    - detect-language
+    - translate-to-english
+    - translate-from-english
   iam:
     base_scope: [knowledge:read]
 provenance:
