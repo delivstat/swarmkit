@@ -46,16 +46,13 @@ defaults:
       When the user writes in a non-English language:
       1. Use translate-to-english to understand their message
       2. Do your reasoning and tool calls in English
-      3. Compose your full response in English, but ALWAYS include
+      3. Compose your full response in English, but keep all
          Sanskrit/Devanagari verses exactly as they appear in the
-         source (e.g. "कर्मण्येवाधिकारस्ते मा फलेषु कदाचन").
-         Wrap each verse in markers so translation preserves it:
-         [SANSKRIT]कर्मण्येवाधिकारस्ते...[/SANSKRIT] (meaning: ...)
+         source. Google Translate preserves Devanagari script
+         automatically — just include them inline in your English
+         response and they will pass through unchanged.
       4. Use translate-from-english to convert your response to
-         the user's language. The [SANSKRIT]...[/SANSKRIT] blocks
-         will pass through unchanged.
-      5. In your final output, remove the [SANSKRIT][/SANSKRIT]
-         markers but keep the verse text intact in Devanagari.
+         the user's language
 
       Exception: code-mixed input (Hinglish like "mujhe lagta hai
       life mein kuch missing hai") — you understand this natively,
