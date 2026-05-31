@@ -135,5 +135,15 @@ export const api = {
 			`/api/topologies/${id}`,
 			{ yaml, dry_run: dryRun },
 		),
+	saveSkill: (id: string, yaml: string) =>
+		post<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+			`/api/skills/${id}`,
+			{ yaml },
+		),
+	saveArchetype: (id: string, yaml: string) =>
+		post<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+			`/api/archetypes/${id}`,
+			{ yaml },
+		),
 	reloadWorkspace: () => post<{ valid: boolean }>("/api/reload"),
 };
