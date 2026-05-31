@@ -89,10 +89,19 @@ export interface ConversationListItem {
 	last_message: string;
 }
 
+export interface TurnUsage {
+	input_tokens: number;
+	output_tokens: number;
+	total_tokens: number;
+	by_model: Record<string, { input: number; output: number }>;
+}
+
 export interface ConversationTurn {
 	role: "human" | "swarm";
 	content: string;
 	timestamp: string;
+	usage?: TurnUsage;
+	events?: { event_type: string; agent_id: string }[];
 }
 
 export interface ConversationDetail {
