@@ -40,6 +40,8 @@ status: active
 | 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, structured comms ✅, Sterling log analyser ✅, reference topologies remaining |
 | 4 | M10 | Serve + eject + canary | 🟡 | `swarmkit serve` ✅ (HTTP, auth, MCP, triggers, canary). Eject remaining |
 | 4 | M12 | UI dashboard + chat | ✅ | Dashboard (8 pages), chat UI, SQLite persistence, workspace memory |
+| 4 | M13 | Topology Composer | ✅ | Three-view editor (Structure/Relationships/Network), YAML editing, create new, CRUD API |
+| 4 | M14 | Cost optimization | ✅ | Dual model (tool/synthesis split), accurate token tracking, configurable store backend |
 | 4 | M11 | Launch prep | — | `pip install swarmkit` → working swarm in <15 min |
 
 ## Cross-cutting workstreams
@@ -528,6 +530,47 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 
 **Exit demo:** `swarmkit serve` + `pnpm --filter @swarmkit/ui dev` → dashboard shows health/jobs/canary, chat page talks to topologies, jobs survive restart, workspace memory grows across conversations.
 
+### M13 — Topology Composer ✅
+
+**Goal:** Visual topology editor with three views per design §15.2.
+
+**Design reference:** `design/details/topology-composer-ui.md`.
+
+**Features (shipped v1.2.65–v1.2.70, PRs #283–#293):**
+
+- [x] **Server CRUD endpoints** — `GET/PUT/POST/DELETE /api/topologies/:id`, same for skills/archetypes. Validate → write → re-resolve workspace. `dry_run` support. PR #283.
+- [x] **Structure View** — org-chart agent tree with role-colored icons (root/leader/worker), expand/collapse, archetype badges, skill counts. PR #284.
+- [x] **Property panel + YAML editing** — view mode (resolved model/skills/children) + YAML mode (editable textarea + save with validation). PR #290.
+- [x] **Relationships View** — centered agent with parent/children/skills connections, clickable navigation. PR #291.
+- [x] **Network View** — flat card layout with all agents, delegation paths, role colors. PR #291.
+- [x] **YAML panel** — collapsible bottom pane with unsaved indicator + save button. PR #292.
+- [x] **Create new topology** — dialog with name input, creates from template, auto-loads in composer. PR #293.
+- [x] **Topologies page** — "Edit" button links to `/composer?topology=name`. PR #284.
+
+**Exit demo:** `swarmkit serve` + UI → `/composer?topology=hello` → switch Structure/Relationships/Network views → edit YAML → save → tree reloads. Click "New" → create topology → loads in composer.
+
+### M14 — Cost optimization ✅
+
+**Goal:** Reduce per-query cost without affecting response quality.
+
+**Features (shipped v1.2.66–v1.2.69, PRs #285–#289):**
+
+- [x] **Accurate token tracking** — `RunTrace.record_llm_call()` tracks ALL LLM calls (tool loop, synthesis, nudge, retry), not just the first. 4 call sites patched in `_tool_loop.py`. PR #285.
+- [x] **Dual model support** — `tool_model` and `tool_provider` on archetype/topology model config. Tool-calling turns use cheap model, synthesis uses quality model. PR #287.
+- [x] **GBrain-first token efficiency** — prompt optimization: search GBrain first, max 2 tool calls, default `detail='quote'`. PR #286.
+- [x] **Configurable store backend** — `storage.runtime.backend` (sqlite/postgres) via workspace.yaml or `SWARMKIT_STORE_BACKEND` env var. PR #281.
+- [x] **Per-message token display** — chat UI shows token count and model breakdown on each message, not globally. PR #289.
+
+**Cost impact (vedanta-advisor):**
+
+| Config | Cost/query |
+|--------|-----------|
+| K2.6 everything (original) | $0.027 |
+| K2.5 tools + K2.6 synthesis | $0.016 |
+| K2.5 tools + V4 Pro synthesis | $0.006 |
+
+**Exit demo:** vedanta chat shows per-message tokens with dual model breakdown (e.g., "16,946 tok · kimi-k2.5 13,675, deepseek-v4-pro 3,271").
+
 ### M11 — Launch prep
 
 **Goal:** public launch of SwarmKit as an open-source project.
@@ -629,6 +672,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `serve-and-auth.md` | M10 ✅ |
 | `ui-dashboard.md` | M12 ✅ |
 | `workspace-memory.md` | M12 ✅ |
+| `topology-composer-ui.md` | M13 ✅ |
 | `structured-inter-agent-communication.md` | M9 ✅ |
 | `document-writer-pattern.md` | M8 ✅ |
 
