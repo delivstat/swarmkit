@@ -121,6 +121,26 @@ function MessageBubble({
 							{new Date(turn.timestamp).toLocaleTimeString()}
 						</span>
 					)}
+					{!isHuman && turn.usage && (
+						<span className="text-xs opacity-60">
+							{turn.usage.total_tokens.toLocaleString()} tok
+							{turn.usage.by_model &&
+								Object.keys(turn.usage.by_model).length > 0 && (
+									<>
+										{" · "}
+										{Object.entries(turn.usage.by_model)
+											.map(
+												([m, t]) =>
+													`${m.split("/").pop()} ${(
+														((t as Record<string, number>)?.input ?? 0) +
+															((t as Record<string, number>)?.output ?? 0)
+													).toLocaleString()}`,
+											)
+											.join(", ")}
+									</>
+								)}
+						</span>
+					)}
 					{isError && onRetry && (
 						<button
 							type="button"
@@ -342,16 +362,12 @@ function ChatArea({
 	onSend,
 	onRetry,
 	sending,
-	events,
-	usage,
 	progressLines,
 }: {
 	conversation: ConversationDetail | null;
 	onSend: (message: string) => void;
 	onRetry: () => void;
 	sending: boolean;
-	events: RunEvent[];
-	usage: RunUsage | null;
 	progressLines: string[];
 }) {
 	const [input, setInput] = useState("");
@@ -425,9 +441,6 @@ function ChatArea({
 						}
 					/>
 				))}
-				{!sending && (events.length > 0 || usage) && (
-					<EventsSummary events={events} usage={usage} />
-				)}
 				{sending && <ThinkingIndicator progressLines={progressLines} />}
 				<div ref={bottomRef} />
 			</div>
@@ -554,8 +567,6 @@ export default function ChatPage() {
 	const [activeConv, setActiveConv] = useState<ConversationDetail | null>(null);
 	const [sending, setSending] = useState(false);
 	const [showNew, setShowNew] = useState(false);
-	const [lastEvents, setLastEvents] = useState<RunEvent[]>([]);
-	const [lastUsage, setLastUsage] = useState<RunUsage | null>(null);
 	const [progressLines, setProgressLines] = useState<string[]>([]);
 	const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(
 		null,
@@ -575,8 +586,6 @@ export default function ChatPage() {
 		if (!activeId || !activeConv) return;
 		setSending(true);
 		setProgressLines([]);
-		setLastEvents([]);
-		setLastUsage(null);
 		setLastFailedMessage(null);
 
 		setActiveConv((prev) =>
@@ -603,8 +612,6 @@ export default function ChatPage() {
 				events?: RunEvent[];
 				usage?: RunUsage;
 			};
-			setLastEvents(raw.events ?? []);
-			setLastUsage(raw.usage ?? null);
 			setActiveConv((prev) =>
 				prev
 					? {
@@ -615,6 +622,8 @@ export default function ChatPage() {
 									role: "swarm" as const,
 									content: result.output,
 									timestamp: new Date().toISOString(),
+									usage: raw.usage ?? undefined,
+									events: raw.events ?? undefined,
 								},
 							],
 						}
@@ -672,8 +681,6 @@ export default function ChatPage() {
 				onSend={handleSend}
 				onRetry={handleRetry}
 				sending={sending}
-				events={lastEvents}
-				usage={lastUsage}
 				progressLines={progressLines}
 			/>
 			{showNew && topologies && (
