@@ -56,7 +56,7 @@ agents:
 ```
 
 ```bash
-pip install swarmkit-runtime  # or: uv tool install swarmkit-runtime
+uv tool install swarmkit-runtime
 swarmkit run my-swarm/ code-review --input "Review PR #49"
 ```
 
@@ -80,12 +80,8 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 ### Install
 
 ```bash
-# Option 1: uv (recommended — fast, no venv needed)
 curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv if you don't have it
 uv tool install swarmkit-runtime
-
-# Option 2: pip
-pip install swarmkit-runtime
 ```
 
 ### Create and run a swarm

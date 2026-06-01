@@ -42,7 +42,7 @@ status: active
 | 4 | M12 | UI dashboard + chat | ✅ | Dashboard (8 pages), chat UI, SQLite persistence, workspace memory |
 | 4 | M13 | Topology Composer | ✅ | Three-view editor (Structure/Relationships/Network), YAML editing, create new, CRUD API |
 | 4 | M14 | Cost optimization | ✅ | Dual model (tool/synthesis split), accurate token tracking, configurable store backend |
-| 4 | M11 | Launch prep | 🟡 | `pip install swarmkit` → working swarm in <15 min |
+| 4 | M11 | Launch prep | 🟡 | `uv tool install swarmkit-runtime` → working swarm in <15 min |
 
 ## Cross-cutting workstreams
 
@@ -589,7 +589,7 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 - [ ] Schema hosting on `schemas.swarmkit.dev` (GitHub Pages)
 - [ ] **Installable expertise packages Phase 1** — `swarmkit mcp-serve` exposes installed workspaces as MCP tools. `package.yaml` format. `swarmkit install`, `swarmkit publish` via GitHub releases. See `design/details/installable-expertise-packages.md`.
 
-**Exit demo:** `pip install swarmkit` → `swarmkit init` → working swarm in <15 min. Public launch post. A first user with no prior context can follow the README to a running swarm.
+**Exit demo:** `uv tool install swarmkit-runtime` → `swarmkit init` → working swarm in <15 min. Public launch post. A first user with no prior context can follow the README to a running swarm.
 
 ---
 

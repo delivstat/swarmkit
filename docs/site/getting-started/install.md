@@ -1,17 +1,15 @@
 # Installation
 
-## From PyPI (recommended)
+## Install the CLI (recommended)
 
 ```bash
-# Using uv (fastest — installs as a CLI tool, no venv needed)
 uv tool install swarmkit-runtime
 
-# Or with pip
-pip install swarmkit-runtime
-
 # With serve mode dependencies (HTTP server, JWT auth, cron triggers)
-pip install swarmkit-runtime[serve]
+uv tool install swarmkit-runtime --with "swarmkit-runtime[serve]"
 ```
+
+This installs `swarmkit` as a globally available CLI tool in an isolated environment — no virtual env needed, no system Python pollution.
 
 ## From source
 
