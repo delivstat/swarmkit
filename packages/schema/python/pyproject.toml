@@ -6,7 +6,16 @@ readme = {text = "SwarmKit canonical JSON Schemas + Python validator. See https:
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Srijith Kartha" }]
-keywords = ["swarmkit", "schema", "json-schema"]
+keywords = ["swarmkit", "schema", "json-schema", "multi-agent", "validation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
 
 dependencies = [
     "jsonschema>=4.23",
@@ -23,6 +32,11 @@ dev = [
     "types-pyyaml",
     "types-jsonschema",
 ]
+
+[project.urls]
+Homepage = "https://github.com/delivstat/swarmkit"
+Documentation = "https://delivstat.github.io/swarmkit/"
+Repository = "https://github.com/delivstat/swarmkit"
 
 [build-system]
 requires = ["hatchling"]

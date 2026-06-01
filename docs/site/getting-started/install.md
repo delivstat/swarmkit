@@ -1,21 +1,33 @@
 # Installation
 
-## From source (current)
+## From PyPI (recommended)
 
 ```bash
-git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
-uv sync --all-packages    # Python deps
-pnpm install              # TypeScript deps (optional, for schema validation)
-```
-
-## From PyPI
-
-```bash
-# Recommended — installs as a CLI tool (no venv needed)
+# Using uv (fastest — installs as a CLI tool, no venv needed)
 uv tool install swarmkit-runtime
 
-# Or with pip in a virtual environment
+# Or with pip
 pip install swarmkit-runtime
+
+# With serve mode dependencies (HTTP server, JWT auth, cron triggers)
+pip install swarmkit-runtime[serve]
+```
+
+## From source
+
+```bash
+git clone https://github.com/delivstat/swarmkit.git && cd swarmkit
+uv sync --all-packages    # Python deps
+pnpm install              # TypeScript deps (optional, for UI + schema validation)
+```
+
+## Docker
+
+```bash
+docker run -v ./workspace:/workspace \
+  -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
+  -p 8000:8000 \
+  ghcr.io/delivstat/swarmkit:latest
 ```
 
 ## Verify
