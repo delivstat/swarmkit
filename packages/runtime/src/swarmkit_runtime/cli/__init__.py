@@ -2002,9 +2002,6 @@ def mcp_serve(
 
     Starts an MCP server that AI assistants (Claude Desktop, Cursor,
     Claude Code) can connect to. Each topology becomes a callable tool.
-
-    Example Claude Desktop config:
-        {"mcpServers": {"swarmkit": {"command": "swarmkit", "args": ["mcp-serve", "./my-workspace"]}}}
     """
     _suppress_noisy_logs()
     from swarmkit_runtime.mcp._serve import run_mcp_server  # noqa: PLC0415
@@ -2016,7 +2013,7 @@ def mcp_serve(
 def install(
     package: Annotated[
         str,
-        typer.Argument(help="Package to install (e.g. @delivstat/sterling-oms or path to tarball)."),
+        typer.Argument(help="Package to install (path, .tar.gz, or URL)."),
     ],
     upgrade: Annotated[
         bool,
