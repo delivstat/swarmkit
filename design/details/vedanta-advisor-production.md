@@ -519,43 +519,110 @@ At scale (10K users), this means 10K sources in one Postgres.
 Supabase handles this fine — sources are just rows, and pgvector
 indexes are shared across all pages regardless of source.
 
-### Per-user memory pages
+### Per-user memory pages (citation model)
 
-Each conversation insight becomes a GBrain page in the user's source:
+User memory pages in GBrain are **lightweight index entries with
+citations back to Postgres conversations** — not duplicates of
+conversation content. GBrain is the search index, Postgres is the
+source of truth.
+
+```
+GBrain (user source)              Postgres (conversations)
+┌──────────────────────┐          ┌──────────────────────┐
+│ Page: grief-loss     │          │ conversations table   │
+│ tags: [grief,        │  ──────► │ id: conv-xyz789       │
+│   accepted,          │  cite    │ turns: [full text...] │
+│   nachiketa,         │          └──────────────────────┘
+│   gita:2:47]         │
+│ cite: conv:xyz789/7  │
+│ brief summary only   │
+└──────────────────────┘
+```
+
+Each memory page contains:
 
 ```yaml
-# Page slug: memory/user-abc123/grief-fathers-passing
+# Page slug: memory/grief-fathers-passing
 ---
 type: conversation-memory
 topic: grief and loss
-conversation_id: conv-xyz789
-user_reaction: accepted
-advice_given: Nachiketa story + Gita 2:47 on detachment
+citations:
+  - conv:xyz789/turn:7    # conversation id + turn number
+  - conv:xyz789/turn:8
 verses_cited: [gita:2:47, katha-upanishad:1:1:20]
-tags: [grief, loss, parent, nachiketa, detachment]
-sentiment: positive
+reaction: accepted
 created: 2026-06-01T14:30:00Z
 ---
+tags: grief, loss, parent, nachiketa, detachment,
+  accepted, story-based
 
-User was dealing with the loss of their father. Shared the
-story of Nachiketa from Katha Upanishad — a son who confronts
-Death itself to understand what lies beyond. Connected to Gita
-2:47 on acting without attachment to outcomes. User found this
-framing helpful and asked follow-up questions about the
-Nachiketa story specifically.
-
-Key insight: user responds well to narrative/story-based
-teachings rather than abstract philosophy. Avoid pure
-Advaita detachment framing — prefers relatable characters.
+User dealing with father's passing. Nachiketa story resonated.
+Prefers narrative-based teachings over abstract philosophy.
+Avoid pure detachment framing.
 ```
+
+Key differences from a full content copy:
+- **No conversation text stored** — just a brief summary + tags
+- **Citations point to Postgres** — `conv:xyz789/turn:7` resolves to the actual turn
+- **Tags carry the signal** — `accepted`, `rejected`, verse references, topics
+- **Embeddings are on the summary** — enough for semantic search without duplicating content
+
+When the memory-reader finds a relevant memory, it can optionally
+fetch the full conversation turns from Postgres for deeper context.
+Usually the summary + tags are sufficient.
 
 Memory pages link to each other via GBrain edges:
 - `grief-fathers-passing` → `career-confusion` (same life period)
 - `grief-fathers-passing` → `nachiketa-followup` (continued topic)
 
-This creates a personal knowledge graph per user that the advisor
-can traverse: "the user's grief led to career questioning, which
-led to purpose-seeking — this is a coherent journey."
+This creates a personal knowledge graph the advisor can traverse:
+"the user's grief led to career questioning, which led to
+purpose-seeking — this is a coherent journey."
+
+### Ingestion safety
+
+When new scriptures are ingested (e.g., adding a new Purana to
+ChromaDB, or new wisdom blocks to GBrain), user memories must
+not be affected. Guardrails:
+
+**Source isolation:** Scripture ingestion targets `vedanta-wisdom`
+source only. Ingestion scripts MUST specify the target source
+explicitly — no global operations.
+
+```python
+# CORRECT — source-scoped
+brain_write(source="vedanta-wisdom", slug="vishnu-purana/ch3", ...)
+
+# WRONG — could hit user sources
+brain_write(slug="vishnu-purana/ch3", ...)  # no source = dangerous
+```
+
+**Ingestion rules:**
+1. All ingestion scripts specify `source="vedanta-wisdom"` explicitly
+2. No `DELETE ALL` or `TRUNCATE` operations — only upsert by slug
+3. Re-ingestion uses `upsert` (update if slug exists, insert if not)
+4. User sources (`user-*`) are NEVER touched by ingestion scripts
+5. CI check: grep ingestion scripts for any operation without explicit
+   source targeting — fail if found
+
+**Schema-level protection (Supabase RLS):**
+
+```sql
+-- Ingestion service role can only write to vedanta-wisdom source
+CREATE POLICY ingestion_write ON pages
+    FOR INSERT
+    TO ingestion_role
+    USING (source_id = (SELECT id FROM sources WHERE name = 'vedanta-wisdom'));
+
+-- User memory writes scoped to their own source
+CREATE POLICY user_memory_write ON pages
+    FOR INSERT
+    TO app_role
+    USING (source_id IN (
+        SELECT id FROM sources
+        WHERE name = 'user-' || current_setting('app.user_id')
+    ));
+```
 
 ### How memory flows through a conversation
 
@@ -563,24 +630,21 @@ led to purpose-seeking — this is a coherent journey."
 User sends: "I'm feeling lost again"
     ↓
 memory-reader (pre_input):
-    1. Search user_memories WHERE user_id = X
-       ORDER BY embedding <=> query_embedding LIMIT 5
-    2. Found: [
-         {topic: "grief and purpose", sentiment: positive,
-          advice: "Nachiketa story + Gita 2:47",
-          user_reaction: "accepted"},
-         {topic: "career confusion", sentiment: negative,
-          advice: "Arjuna's duty analogy",
-          user_reaction: "rejected"}
-       ]
-    3. Inject context:
+    1. Search GBrain source "user-{id}" for relevant memories
+    2. Found memories (by semantic similarity):
+       - grief-fathers-passing [reaction:accepted, tags:nachiketa,gita:2:47]
+         cite: conv:xyz789/turn:7
+       - career-confusion [reaction:rejected, tags:arjuna-duty]
+         cite: conv:abc456/turn:3
+    3. Optionally fetch full turns from Postgres for deep context
+    4. Inject into prompt:
        "PRIOR CONVERSATIONS WITH THIS USER:
-        - 2 weeks ago: discussed grief after father's passing.
-          You shared the Nachiketa story and Gita 2:47 on
-          detachment. The user found this helpful.
-        - 3 weeks ago: discussed career confusion. You used
-          Arjuna's duty analogy. The user did not find this
-          helpful — avoid this framing.
+        - 2 weeks ago (conv:xyz789): discussed grief after
+          father's passing. Nachiketa story + Gita 2:47
+          resonated. User prefers story-based teachings.
+        - 3 weeks ago (conv:abc456): discussed career confusion.
+          Arjuna's duty analogy was rejected — user found it
+          unhelpful. Avoid this framing.
         Reference prior conversations naturally. Do NOT repeat
         approaches the user previously rejected."
     ↓
@@ -591,42 +655,42 @@ Response: "I remember we talked about this feeling before,
   Nachiketa story resonated with you then..."
     ↓
 memory-writer (post_output):
-    1. LLM extracts: topic, key_points, verses, advice_given
-    2. Detect user_reaction from next message:
-       - "thank you" / follow-up question → accepted
-       - "no that's not right" / topic change → rejected
-       - no response → neutral
-    3. Generate embedding for the topic + context
-    4. INSERT INTO user_memories (user_id, topic, ...)
+    1. LLM extracts: topic, tags, brief summary
+    2. Write GBrain page to source "user-{id}":
+       slug: memory/{topic-slug}
+       tags: [topic tags, verse refs, reaction:pending]
+       citations: [conv:{id}/turn:{n}]
+       content: brief summary (2-3 sentences max)
+    3. Create GBrain edges to related memory pages
 ```
 
-### Rejection tracking
+### Rejection tracking + reaction detection
 
-When the user explicitly rejects advice, the memory-writer marks it:
+The memory-writer can't know the user's reaction at write time —
+it comes in the *next* message. Use **write-then-update**:
+
+1. After advisor responds: write memory page with `reaction:pending` tag
+2. When next message arrives: classify it as acceptance/rejection/neutral
+3. Update the previous memory page: replace `reaction:pending` with
+   `reaction:accepted` or `reaction:rejected`
 
 ```
 User: "How do I deal with my boss?"
 Advisor: [gives advice using Chanakya Niti on workplace politics]
-User: "No, that's too manipulative. I don't like that approach."
+    → memory-writer creates page: workplace-conflict
+      tags: [workplace, chanakya-niti, strategy, reaction:pending]
 
-memory-writer detects rejection → saves:
-  topic: "workplace conflict"
-  advice_given: "Chanakya Niti workplace politics strategy"
-  user_reaction: "rejected"
-  key_points: ["user finds strategic/manipulative framing unhelpful"]
+User: "No, that's too manipulative."
+    → memory-writer detects rejection of previous turn
+    → Updates page: replace reaction:pending → reaction:rejected
+    → Adds tag: avoid:chanakya-strategic-framing
+    → New page for this turn with the rejection context
 ```
 
-Next time the user asks about workplace issues, the memory-reader injects: "This user prefers direct, ethical approaches. Avoid Chanakya Niti strategic framing — previously rejected."
-
-### Reaction detection
-
-The memory-writer can't know the reaction at write time — it comes in the *next* message. Two approaches:
-
-**Approach A: Delayed write.** Don't write the memory until the next message arrives. The next message's sentiment tells you whether the advice landed. Downside: the last message in a session never gets a reaction signal.
-
-**Approach B: Write immediately, update later.** Write with `user_reaction: 'pending'`. When the next message arrives, classify it as acceptance/rejection/neutral and UPDATE the previous memory. This is cleaner and loses no data.
-
-Recommended: **Approach B**.
+Next time the user asks about workplace issues, memory-reader finds
+the `reaction:rejected` + `avoid:chanakya-strategic-framing` tags
+and injects: "This user prefers direct, ethical approaches. Avoid
+Chanakya Niti strategic framing — previously rejected."
 
 ### Global knowledge enrichment (anonymized)
 
@@ -669,6 +733,320 @@ GBrain source-per-user wins because:
 - Memory pages can link to each other (personal knowledge graph)
 - Same MCP tools (brain-search, brain-write) work for both scopes
 - No custom search infrastructure to build or maintain
+
+## Analytics + dashboard
+
+### Metrics to track
+
+| Category | Metric | Why it matters |
+|----------|--------|----------------|
+| Usage | DAU, MAU | Product-market fit signal |
+| Usage | Messages/day, messages/user/day | Engagement depth |
+| Revenue | Daily revenue, ARPU, conversion rate (free→paid) | Business viability |
+| Content | Top 20 topics asked | Content gaps, what to curate next |
+| Content | Verses most cited | Which scriptures resonate |
+| Quality | Safety gate trigger rate | Are users testing boundaries? |
+| Quality | Rejection rate (user says "not helpful") | Response quality signal |
+| Quality | Follow-up rate (user continues conversation) | Stickiness |
+| Cost | LLM cost/day, cost/user, cost/query actual | Margin monitoring |
+| Platform | Messages by platform (WA vs Telegram vs Web) | Where to invest |
+| Retention | D1, D7, D30 retention | Long-term viability |
+
+### Implementation
+
+A `swarmkit-analytics` table in Supabase with daily aggregates,
+queryable via a simple admin dashboard (Supabase Studio or a
+custom page in the SwarmKit UI).
+
+Real-time metrics via Supabase Realtime subscriptions — live
+dashboard showing current active conversations, messages flowing,
+revenue ticker.
+
+Nightly email digest to admin: yesterday's numbers, week-over-week
+trends, flagged conversations requiring review.
+
+## Error handling + reliability
+
+Paying users expect a response. Every external dependency can fail.
+
+### Failure modes and fallbacks
+
+| Dependency | Failure mode | Fallback |
+|------------|-------------|----------|
+| OpenRouter (LLM) | API timeout, 5xx, rate limit | Retry once after 2s. If still down, queue message and notify user: "High demand right now. Your question is saved — I'll respond within 5 minutes." Process from queue when back up. |
+| Deepgram (STT) | API timeout, transcription error | Reply: "I couldn't process your voice message. Could you type your question instead?" No charge for the failed attempt. |
+| Supabase (Postgres) | Connection failure | This is fatal — can't look up user, can't save anything. Return: "We're experiencing technical difficulties. Please try again in a few minutes." Alert admin immediately. |
+| ChromaDB (scripture) | Search returns empty/error | Advisor responds from GBrain wisdom blocks only. Fewer exact citations but still meaningful. Log the gap. |
+| GBrain | Search/write failure | Advisor works without memory context. Response quality drops but is still functional. Memory-writer retries on next turn. |
+| Razorpay (payments) | Payment link fails | Extend free tier for the session. "Payment is temporarily unavailable. Enjoy this session on us — we'll sort it out." |
+| WhatsApp Cloud API | Send failure | Retry with exponential backoff (3 attempts). If still failing, the message is lost — WhatsApp has no outbox concept. Log for retry when API recovers. |
+
+### Health checks
+
+- `/health` endpoint checks all dependencies every 30s
+- Alert (email/Slack) if any dependency is unreachable for >2 minutes
+- Circuit breaker: if LLM fails 5x in 60s, pause new requests and
+  drain queue instead of burning retries
+
+### Uptime target
+
+99.5% (allows ~3.5 hours downtime/month). Acceptable for a
+consumer product at this stage. No SLA until enterprise tier.
+
+## Message formatting per platform
+
+The advisor's responses contain Sanskrit verses, structured advice,
+and sometimes lists. Each platform renders differently.
+
+### Platform capabilities
+
+| Feature | WhatsApp | Telegram | Web |
+|---------|----------|----------|-----|
+| Bold | `*text*` | `**text**` or `*text*` | Markdown |
+| Italic | `_text_` | `_text_` | Markdown |
+| Monospace | `` `text` `` | `` `text` `` | Markdown |
+| Lists | Manual (- or •) | Markdown lists | Markdown |
+| Tables | Not supported | Not supported natively | Full markdown |
+| Max message length | 4096 chars | 4096 chars | Unlimited |
+| Devanagari rendering | Native (font dependent) | Native | Full Unicode |
+| Line breaks | `\n` | `\n` | `<br>` or `\n\n` |
+| Links | Auto-detected | Markdown `[text](url)` | Markdown |
+
+### Formatting pipeline
+
+After the advisor generates a response:
+
+```
+Raw response (Markdown)
+    ↓
+Platform formatter
+    ├── WhatsApp: strip tables → bullet lists,
+    │   convert **bold** → *bold*, keep Devanagari,
+    │   truncate at 4000 chars + "..." if needed
+    ├── Telegram: light markdown cleanup,
+    │   keep Devanagari, MarkdownV2 escaping
+    └── Web: pass through (full markdown)
+```
+
+### Sanskrit verse formatting
+
+Devanagari renders natively on all platforms. Format consistently:
+
+```
+WhatsApp/Telegram:
+  ॥ कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ॥
+  — भगवद्गीता 2.47
+
+  _"You have the right to action alone, never to its fruits."_
+
+Web:
+  > ॥ कर्मण्येवाधिकारस्ते मा फलेषु कदाचन ॥
+  > — Bhagavad Gita 2.47
+  >
+  > *"You have the right to action alone, never to its fruits."*
+```
+
+### Response length by platform
+
+WhatsApp users read on small screens. Long responses feel
+overwhelming. Platform-specific length guidance injected
+into the advisor prompt:
+
+| Platform | Target length | Approach |
+|----------|--------------|----------|
+| WhatsApp | 200-400 words | One teaching, one verse, one reflection question. Offer "tell me more" for depth. |
+| Telegram | 300-600 words | Slightly more room. Still concise. |
+| Web | 400-800 words | Full depth — story + verse + reflection. |
+
+## Privacy policy + terms
+
+### Required for WhatsApp Business API
+
+Meta requires a published privacy policy URL before approving
+a business account. Must cover:
+
+1. What data is collected (phone number, message content, voice)
+2. How data is stored (Supabase, India region)
+3. How long data is retained
+4. Whether data is used for improvement (yes — anonymized aggregate insights)
+5. User rights (delete account, export data)
+6. Third-party services (OpenRouter, Deepgram, Razorpay)
+
+### Data retention policy
+
+| Data | Retention | Deletion |
+|------|-----------|----------|
+| User record | Until account deleted | On request, within 72 hours |
+| Conversations | 1 year, then archived | User can delete individual conversations |
+| Voice recordings | Not stored — transcribed and discarded immediately | N/A |
+| Payment records | 7 years (Indian tax law) | Cannot delete, but anonymized after account deletion |
+| Usage analytics | Aggregated, anonymized, kept indefinitely | Not tied to individual users |
+| GBrain user memories | Until account deleted | Deleted with account |
+
+### User commands
+
+Users can manage their data via chat commands:
+
+- `/delete` — delete account and all data (72h processing)
+- `/export` — receive a JSON export of all conversations
+- `/privacy` — link to privacy policy
+- `/plan` — view current plan and usage
+
+### Terms of service
+
+Key points:
+- Not a substitute for professional medical, legal, or
+  financial advice
+- Not a religious authority — a knowledge companion
+- Content is sourced from published texts, not generated opinions
+- User-generated content (questions) is not shared publicly
+- Service can be suspended for abuse (as defined by safety gates)
+
+Host at: `vedanta-advisor.com/privacy` and `vedanta-advisor.com/terms`
+
+## Onboarding flow
+
+First message experience determines whether users come back.
+
+### First contact (any platform)
+
+```
+User sends: "hi" / "namaste" / "hello" / any first message
+
+Advisor responds:
+  "🙏 Namaste! I'm your Vedanta Advisor — a guide to Hindu
+  philosophical texts.
+
+  I can help with:
+  • Life guidance through ancient wisdom
+  • Stories from the Mahabharata, Ramayana, and Puranas
+  • Teachings from the Gita, Upanishads, and Yoga Sutras
+  • Sanskrit verse explanations
+
+  I cite exact verses — no made-up quotes.
+
+  You get 2 free messages daily. Ask me anything to start.
+
+  💡 You can send voice notes in Hindi, Tamil, Telugu,
+  Malayalam, Bengali, Kannada, or English."
+```
+
+### Language detection
+
+The onboarding message is in English. But if the user's first
+real question is in Hindi, all subsequent system messages
+(rate limit notices, payment prompts, error messages) switch
+to Hindi. Detected via the existing `detect-language` tool.
+
+Store preferred language on the user record.
+
+### Returning user
+
+No re-onboarding. If the user has prior conversations:
+
+```
+User sends: "hi" (returning user with 3 prior conversations)
+
+Advisor responds:
+  "Welcome back! Last time we talked about [topic from
+  most recent conversation]. Would you like to continue,
+  or explore something new?"
+```
+
+## Conversation sharing + export
+
+Users want to share meaningful teachings with friends and family.
+This is also a growth mechanism — every shared conversation is
+a referral.
+
+### Share a teaching
+
+User sends: `/share` after a meaningful response.
+
+The system generates a shareable card:
+
+```
+┌─────────────────────────────────┐
+│  ॥ कर्मण्येवाधिकारस्ते ॥        │
+│  — Bhagavad Gita 2.47           │
+│                                 │
+│  "You have the right to action  │
+│  alone, never to its fruits."   │
+│                                 │
+│  🙏 Via Vedanta Advisor         │
+│  vedanta-advisor.com            │
+└─────────────────────────────────┘
+```
+
+On WhatsApp: generates an image card (Pillow/PIL) that can be
+forwarded. Include a QR code or short link to the bot.
+
+On Telegram: generates a formatted message the user can forward.
+
+### Export conversations
+
+User sends: `/export`
+
+System generates a PDF or JSON of all conversations, sent as
+a file attachment. PDF includes Sanskrit verses rendered
+properly with Devanagari fonts.
+
+### Referral mechanism
+
+When a user shares, the card includes a referral link:
+`wa.me/+91XXXXXXXXXX?text=START_REF_{user_id}`
+
+When a new user starts with a referral code:
+- Referrer gets 5 bonus free messages
+- New user gets 3 free messages (instead of 2) for the first day
+- Tracked in the `users` table: `referred_by UUID`
+
+## Admin tools
+
+### Admin dashboard (web)
+
+A protected page in the SwarmKit UI (`/admin`) or a standalone
+dashboard on Supabase Studio:
+
+| Page | Content |
+|------|---------|
+| Overview | DAU, revenue today, active conversations, error rate |
+| Users | User list, search by phone/name, view plan, ban/unban |
+| Conversations | Browse conversations, search by topic, view flagged |
+| Safety | Flagged conversations, block reasons, false positive review |
+| Revenue | Daily/weekly/monthly revenue, conversion funnel, ARPU |
+| Costs | LLM spend, Deepgram spend, infra costs, margin tracker |
+| Content | Top topics, most-cited verses, knowledge gaps |
+
+### Admin CLI commands
+
+```bash
+# User management
+vedanta-admin users list --plan paid
+vedanta-admin users ban +91-98765-43210 --reason "repeated abuse"
+vedanta-admin users gift +91-98765-43210 --messages 10
+
+# Safety review
+vedanta-admin safety flagged --last 24h
+vedanta-admin safety review <flag-id> --verdict false-positive
+
+# Revenue
+vedanta-admin revenue today
+vedanta-admin revenue report --period 2026-06
+
+# Knowledge gaps
+vedanta-admin gaps --top 10  # topics users ask about that we can't answer
+```
+
+### Alerts
+
+| Trigger | Channel | Action |
+|---------|---------|--------|
+| Safety gate triggered 10x in 1 hour | Email + Slack | Review — possible coordinated attack |
+| Revenue dropped 50% day-over-day | Email | Investigate — payment issue? |
+| Error rate >5% for 5 minutes | Slack | Check dependencies — outage? |
+| New user spike >100 in 1 hour | Email | Good news — check infra capacity |
+| LLM cost exceeded daily budget | Slack | Review — are responses too long? Model cost changed? |
 
 ## Deployment plan
 
