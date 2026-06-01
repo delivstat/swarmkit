@@ -60,12 +60,18 @@ nav:
       - Market analysis: design-notes/market-analysis-and-risk-mitigations.md
   - Reference:
     - CLI commands: reference/cli.md
+    - Serve mode: reference/serve.md
+    - Dual model support: reference/dual-model.md
+    - Workspace memory: reference/workspace-memory.md
     - Environment configuration: reference/env-config.md
     - Telemetry configuration: reference/telemetry.md
     - Intent drift detection: reference/intent-drift.md
     - Notifications: reference/notifications.md
     - Skills catalogue: reference/skills.md
     - Archetypes catalogue: reference/archetypes.md
+  - Releases:
+    - v1.2: releases/v1.2.md
+    - v1.1: releases/v1.1.md
 
 markdown_extensions:
   - pymdownx.highlight:

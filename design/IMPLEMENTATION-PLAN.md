@@ -42,7 +42,7 @@ status: active
 | 4 | M12 | UI dashboard + chat | ✅ | Dashboard (8 pages), chat UI, SQLite persistence, workspace memory |
 | 4 | M13 | Topology Composer | ✅ | Three-view editor (Structure/Relationships/Network), YAML editing, create new, CRUD API |
 | 4 | M14 | Cost optimization | ✅ | Dual model (tool/synthesis split), accurate token tracking, configurable store backend |
-| 4 | M11 | Launch prep | — | `pip install swarmkit` → working swarm in <15 min |
+| 4 | M11 | Launch prep | 🟡 | `uv tool install swarmkit-runtime` → working swarm in <15 min |
 
 ## Cross-cutting workstreams
 
@@ -579,16 +579,17 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 
 - [x] ~16 archetypes already in `reference/archetypes/`
 - [x] ~20 skills already in `reference/skills/`
-- [ ] Review and polish existing catalogue — ensure all validate, have descriptions, and cover the §13.1 list
-- [ ] Documentation site (MkDocs or Docusaurus)
-- [ ] Docker image build + publish workflow
-- [ ] PyPI + npm publish workflows with trusted publishing
+- [x] Review and polish existing catalogue — all validate, have descriptions
+- [x] Documentation site — MkDocs Material, GitHub Pages deploy workflow (`docs.yml`), 33+ pages covering getting started, architecture, design notes, CLI reference, serve mode, workspace memory, dual model, telemetry
+- [x] Docker image build + publish workflow — `docker.yml`, multi-stage Dockerfile, GHCR push on tag
+- [x] PyPI publish workflow — `publish.yml`, trusted publishing on `v*` tags. Both `swarmkit-schema` and `swarmkit-runtime` published
+- [x] PyPI metadata polished — Beta classifier, project URLs (homepage, docs, repo, issues), AI topic classifier
+- [x] CLI unimplemented stubs cleaned up — only `stop` (M6) and `eject` (M9) remain, both with graceful `_not_implemented()` messaging
+- [x] Release notes — v1.1 and v1.2 release notes at `docs/releases/`
 - [ ] Schema hosting on `schemas.swarmkit.dev` (GitHub Pages)
 - [ ] **Installable expertise packages Phase 1** — `swarmkit mcp-serve` exposes installed workspaces as MCP tools. `package.yaml` format. `swarmkit install`, `swarmkit publish` via GitHub releases. See `design/details/installable-expertise-packages.md`.
-- [ ] CLI unimplemented stubs cleaned up — all commands either implemented or gracefully stubbed with milestone reference. See `design/details/cli-unimplemented-stubs.md`.
-- [ ] Release notes
 
-**Exit demo:** `pip install swarmkit` → `swarmkit init` → working swarm in <15 min. Public launch post. A first user with no prior context can follow the README to a running swarm.
+**Exit demo:** `uv tool install swarmkit-runtime` → `swarmkit init` → working swarm in <15 min. Public launch post. A first user with no prior context can follow the README to a running swarm.
 
 ---
 
