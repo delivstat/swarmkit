@@ -586,8 +586,8 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 - [x] PyPI metadata polished — Beta classifier, project URLs (homepage, docs, repo, issues), AI topic classifier
 - [x] CLI unimplemented stubs cleaned up — only `stop` (M6) and `eject` (M9) remain, both with graceful `_not_implemented()` messaging
 - [x] Release notes — v1.1 and v1.2 release notes at `docs/releases/`
-- [ ] Schema hosting on `schemas.swarmkit.dev` (GitHub Pages)
-- [ ] **Installable expertise packages Phase 1** — `swarmkit mcp-serve` exposes installed workspaces as MCP tools. `package.yaml` format. `swarmkit install`, `swarmkit publish` via GitHub releases. See `design/details/installable-expertise-packages.md`.
+- [ ] ~~Schema hosting on `schemas.swarmkit.dev`~~ — deferred. All validation is local (bundled schemas). Remote `$id` URLs only needed when external tools validate against them. Will use `raw.githubusercontent.com` URLs if needed
+- [x] **Installable expertise packages Phase 1** — `swarmkit mcp-serve` exposes workspace topologies as MCP tools on stdio. `swarmkit publish` bundles workspace into .tar.gz. `swarmkit install` installs from dir/tarball/URL. `swarmkit packages` lists installed. Auto-discovery of installed workspaces. See `design/details/installable-expertise-packages.md`.
 
 **Exit demo:** `uv tool install swarmkit-runtime` → `swarmkit init` → working swarm in <15 min. Public launch post. A first user with no prior context can follow the README to a running swarm.
 
