@@ -7,6 +7,9 @@ import tarfile
 from pathlib import Path
 
 import pytest
+from swarmkit_runtime.mcp._serve import run_mcp_server
+from swarmkit_runtime.packages import _installer
+from swarmkit_runtime.packages._publisher import _should_exclude, publish_package
 
 
 @pytest.fixture()
@@ -60,7 +63,6 @@ topologies:
 
 class TestPublisher:
     def test_publish_creates_tarball(self, sample_workspace: Path, tmp_path: Path) -> None:
-        from swarmkit_runtime.packages._publisher import publish_package
 
         output = tmp_path / "dist"
         publish_package(sample_workspace, output)
@@ -70,7 +72,6 @@ class TestPublisher:
         assert "test-hello-workspace" in tarballs[0].name
 
     def test_publish_excludes_dotenv(self, sample_workspace: Path, tmp_path: Path) -> None:
-        from swarmkit_runtime.packages._publisher import publish_package
 
         (sample_workspace / ".env").write_text("SECRET=bad", encoding="utf-8")
         (sample_workspace / ".swarmkit").mkdir()
@@ -86,7 +87,6 @@ class TestPublisher:
             assert not any(".swarmkit" in n for n in names)
 
     def test_publish_no_workspace_yaml(self, tmp_path: Path) -> None:
-        from swarmkit_runtime.packages._publisher import publish_package
 
         with pytest.raises(SystemExit):
             publish_package(tmp_path / "empty", tmp_path / "dist")
@@ -99,7 +99,6 @@ class TestInstaller:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from swarmkit_runtime.packages import _installer
 
         pkg_dir = tmp_path / "packages"
         monkeypatch.setattr(_installer, "_PACKAGES_DIR", pkg_dir)
@@ -120,8 +119,6 @@ class TestInstaller:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from swarmkit_runtime.packages import _installer
-        from swarmkit_runtime.packages._publisher import publish_package
 
         dist = tmp_path / "dist"
         publish_package(sample_workspace, dist)
@@ -142,7 +139,6 @@ class TestInstaller:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from swarmkit_runtime.packages import _installer
 
         pkg_dir = tmp_path / "packages"
         monkeypatch.setattr(_installer, "_PACKAGES_DIR", pkg_dir)
@@ -157,7 +153,6 @@ class TestInstaller:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from swarmkit_runtime.packages import _installer
 
         pkg_dir = tmp_path / "packages"
         monkeypatch.setattr(_installer, "_PACKAGES_DIR", pkg_dir)
@@ -167,7 +162,6 @@ class TestInstaller:
         assert len(list(pkg_dir.iterdir())) == 1
 
     def test_list_empty(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        from swarmkit_runtime.packages import _installer
 
         pkg_dir = tmp_path / "packages"
         pkg_dir.mkdir()
@@ -176,11 +170,10 @@ class TestInstaller:
 
 
 class TestMCPServeModule:
-    def test_tool_name_single_workspace(self) -> None:
-        from swarmkit_runtime.mcp._serve import run_mcp_server  # noqa: F401
+    def test_module_importable(self) -> None:
+        assert callable(run_mcp_server)
 
     def test_should_exclude(self) -> None:
-        from swarmkit_runtime.packages._publisher import _should_exclude
 
         assert _should_exclude("__pycache__/foo.pyc")
         assert _should_exclude(".git/config")
