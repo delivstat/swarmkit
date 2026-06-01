@@ -124,9 +124,9 @@ def _register_handlers(
     TextContent: type,
     Tool: type,
 ) -> None:
-    @server.list_tools()
-    async def list_tools() -> list:
-        tools: list = []
+    @server.list_tools()  # type: ignore[untyped-decorator]
+    async def list_tools() -> list[Any]:
+        tools: list[Any] = []
         for ws_id, rt in runtimes.items():
             for topo_name, topo in rt.workspace.topologies.items():
                 desc = (
@@ -171,8 +171,8 @@ def _register_handlers(
         )
         return tools
 
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict) -> list:
+    @server.call_tool()  # type: ignore[untyped-decorator]
+    async def call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         if name == "list_workspaces":
             return [
                 TextContent(
@@ -192,9 +192,9 @@ def _register_handlers(
 async def _run_topology(
     rt: Any,
     topo_name: str,
-    arguments: dict,
+    arguments: dict[str, Any],
     TextContent: type,
-) -> list:
+) -> list[Any]:
     user_input = arguments.get("input", "")
     try:
         await rt.start_session()
@@ -214,9 +214,9 @@ async def _run_topology(
 
 async def _search(
     rt: Any,
-    arguments: dict,
+    arguments: dict[str, Any],
     TextContent: type,
-) -> list:
+) -> list[Any]:
     query = arguments.get("query", "")
     if rt._mcp_manager is None:
         return [TextContent(type="text", text="No MCP servers configured.")]

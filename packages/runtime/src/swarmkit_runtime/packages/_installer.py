@@ -15,6 +15,7 @@ import json
 import shutil
 import tarfile
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.table import Table
@@ -29,14 +30,15 @@ def _packages_dir() -> Path:
     return _PACKAGES_DIR
 
 
-def _load_package_yaml(path: Path) -> dict:
+def _load_package_yaml(path: Path) -> dict[str, Any]:
     """Load package.yaml from a workspace directory."""
     import yaml  # noqa: PLC0415
 
     pkg_file = path / "package.yaml"
     if not pkg_file.exists():
         raise FileNotFoundError(f"No package.yaml in {path}")
-    return yaml.safe_load(pkg_file.read_text(encoding="utf-8"))
+    result: dict[str, Any] = yaml.safe_load(pkg_file.read_text(encoding="utf-8"))
+    return result
 
 
 def install_package(source: str, *, upgrade: bool = False) -> None:
