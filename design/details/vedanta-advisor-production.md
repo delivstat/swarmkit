@@ -460,6 +460,185 @@ Requirements:
 - Set webhook URL
 - No approval process, no costs
 
+## Conversation memory architecture
+
+The advisor must remember past conversations per user — reference prior discussions, avoid repeating rejected advice, build on established context. This is what separates a product from a chatbot.
+
+### Two memory stores, two purposes
+
+```
+┌─────────────────────────────────────────────────┐
+│  GBrain (shared knowledge graph)                 │
+│  Scope: ALL users                                │
+│  Content: scripture wisdom, cross-text            │
+│    connections, aggregate conversation insights   │
+│  Searched by: every query                         │
+│  Written by: curators, nightly insight extractor  │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  User Memory Graph (Postgres + pgvector)          │
+│  Scope: ONE user (WHERE user_id = X)              │
+│  Content: conversation summaries, accepted/        │
+│    rejected advice, user context, preferences,     │
+│    emotional patterns                              │
+│  Searched by: that user's queries only             │
+│  Written by: memory-writer after each turn         │
+└─────────────────────────────────────────────────┘
+```
+
+The advisor sees both: shared wisdom from GBrain + personal context from the user's memory graph. GBrain answers "what does the Gita say about grief?" The user memory graph answers "this user lost their father 2 weeks ago and found the Nachiketa story helpful."
+
+### User memory graph schema
+
+```sql
+CREATE TABLE user_memories (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(id),
+    conversation_id UUID REFERENCES conversations(id),
+
+    -- Structured content (same shape as MemoryStore entries)
+    topic           TEXT NOT NULL,
+    context         TEXT,           -- what the user was asking about
+    key_points      JSONB,          -- ["point 1", "point 2"]
+    tags            TEXT[],         -- semantic tags for search
+    verses_cited    TEXT[],         -- ["gita:2:47", "yoga-vasistha:3:14"]
+
+    -- Signals for personalization
+    sentiment       TEXT,           -- positive | negative | neutral
+    user_reaction   TEXT,           -- accepted | rejected | followup | none
+    advice_given    TEXT,           -- summary of what the advisor recommended
+
+    -- Embedding for semantic search
+    embedding       vector(384),    -- sentence-transformers/all-MiniLM-L6-v2
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Fast per-user semantic search
+CREATE INDEX idx_user_memories_embedding
+    ON user_memories USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
+
+-- Fast per-user lookup
+CREATE INDEX idx_user_memories_user_id ON user_memories(user_id);
+CREATE INDEX idx_user_memories_tags ON user_memories USING gin(tags);
+```
+
+### How memory flows through a conversation
+
+```
+User sends: "I'm feeling lost again"
+    ↓
+memory-reader (pre_input):
+    1. Search user_memories WHERE user_id = X
+       ORDER BY embedding <=> query_embedding LIMIT 5
+    2. Found: [
+         {topic: "grief and purpose", sentiment: positive,
+          advice: "Nachiketa story + Gita 2:47",
+          user_reaction: "accepted"},
+         {topic: "career confusion", sentiment: negative,
+          advice: "Arjuna's duty analogy",
+          user_reaction: "rejected"}
+       ]
+    3. Inject context:
+       "PRIOR CONVERSATIONS WITH THIS USER:
+        - 2 weeks ago: discussed grief after father's passing.
+          You shared the Nachiketa story and Gita 2:47 on
+          detachment. The user found this helpful.
+        - 3 weeks ago: discussed career confusion. You used
+          Arjuna's duty analogy. The user did not find this
+          helpful — avoid this framing.
+        Reference prior conversations naturally. Do NOT repeat
+        approaches the user previously rejected."
+    ↓
+advisor agent runs (with injected context)
+    ↓
+Response: "I remember we talked about this feeling before,
+  when you were dealing with your father's passing. The
+  Nachiketa story resonated with you then..."
+    ↓
+memory-writer (post_output):
+    1. LLM extracts: topic, key_points, verses, advice_given
+    2. Detect user_reaction from next message:
+       - "thank you" / follow-up question → accepted
+       - "no that's not right" / topic change → rejected
+       - no response → neutral
+    3. Generate embedding for the topic + context
+    4. INSERT INTO user_memories (user_id, topic, ...)
+```
+
+### Rejection tracking
+
+When the user explicitly rejects advice, the memory-writer marks it:
+
+```
+User: "How do I deal with my boss?"
+Advisor: [gives advice using Chanakya Niti on workplace politics]
+User: "No, that's too manipulative. I don't like that approach."
+
+memory-writer detects rejection → saves:
+  topic: "workplace conflict"
+  advice_given: "Chanakya Niti workplace politics strategy"
+  user_reaction: "rejected"
+  key_points: ["user finds strategic/manipulative framing unhelpful"]
+```
+
+Next time the user asks about workplace issues, the memory-reader injects: "This user prefers direct, ethical approaches. Avoid Chanakya Niti strategic framing — previously rejected."
+
+### Reaction detection
+
+The memory-writer can't know the reaction at write time — it comes in the *next* message. Two approaches:
+
+**Approach A: Delayed write.** Don't write the memory until the next message arrives. The next message's sentiment tells you whether the advice landed. Downside: the last message in a session never gets a reaction signal.
+
+**Approach B: Write immediately, update later.** Write with `user_reaction: 'pending'`. When the next message arrives, classify it as acceptance/rejection/neutral and UPDATE the previous memory. This is cleaner and loses no data.
+
+Recommended: **Approach B**.
+
+### Global knowledge enrichment (anonymized)
+
+Separate from per-user memory. A nightly batch job analyzes conversation patterns across all users and writes aggregate insights to GBrain:
+
+```
+Nightly job:
+  1. Query: conversations from last 24h with positive user_reaction
+  2. Cluster by topic (embedding similarity)
+  3. For each cluster with 5+ conversations:
+     - Extract: common question pattern, best response pattern,
+       key verses that resonated
+     - Anonymize: remove all user-specific details
+     - Generate candidate GBrain wisdom block
+  4. Push to human review queue
+  5. Approved blocks → brain-write to GBrain
+
+Example output:
+  "Users frequently ask about dealing with difficult family members.
+   The most effective teaching combines Gita 6:5 (self as friend/enemy)
+   with the Vidura-Dhritarashtra dynamic from Mahabharata. Users
+   respond poorly to 'detachment' framing and better to 'boundary
+   setting with compassion' framing."
+```
+
+This creates a flywheel: more conversations → better insights in GBrain → better responses → more satisfied users → more conversations.
+
+### Why not GBrain for per-user memory?
+
+GBrain is designed as a shared knowledge graph — it has no concept of user scoping. Options considered:
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| GBrain per user | Full graph features (relations, traversal) | Hundreds of separate databases, unmanageable at scale |
+| GBrain with user tags | Single instance, filter by tag | GBrain search doesn't support user-scoped filtering natively |
+| **Postgres + pgvector** | User scoping via SQL WHERE, scales naturally, same Supabase DB | No graph traversal (but we don't need it for personal memory) |
+
+Postgres + pgvector wins because:
+- User isolation is a SQL WHERE clause, not a separate database
+- pgvector cosine similarity search is fast enough (sub-10ms for 1000 memories per user)
+- Same Supabase instance as everything else — no additional infra
+- Row-level security (RLS) enforces user isolation at the database level
+- Personal memories don't need graph traversal — they need search + recency
+
 ## Deployment plan
 
 ### Phase 1: Telegram MVP (week 1-2)
