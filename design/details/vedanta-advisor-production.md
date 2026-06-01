@@ -464,66 +464,98 @@ Requirements:
 
 The advisor must remember past conversations per user — reference prior discussions, avoid repeating rejected advice, build on established context. This is what separates a product from a chatbot.
 
-### Two memory stores, two purposes
+### One GBrain, two scopes
+
+Both shared knowledge and per-user memory live in the same GBrain
+instance backed by the same Supabase Postgres. GBrain's `sources`
+table provides the namespace isolation — a "source" is a logical
+partition within one database.
 
 ```
-┌─────────────────────────────────────────────────┐
-│  GBrain (shared knowledge graph)                 │
-│  Scope: ALL users                                │
-│  Content: scripture wisdom, cross-text            │
-│    connections, aggregate conversation insights   │
-│  Searched by: every query                         │
-│  Written by: curators, nightly insight extractor  │
-└─────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────┐
-│  User Memory Graph (Postgres + pgvector)          │
-│  Scope: ONE user (WHERE user_id = X)              │
-│  Content: conversation summaries, accepted/        │
-│    rejected advice, user context, preferences,     │
-│    emotional patterns                              │
-│  Searched by: that user's queries only             │
-│  Written by: memory-writer after each turn         │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  GBrain (single instance, Supabase Postgres)         │
+│                                                      │
+│  Source: "vedanta-wisdom"                            │
+│  ├── Scope: ALL users                                │
+│  ├── Content: scripture wisdom, cross-text            │
+│  │   connections, aggregate conversation insights     │
+│  ├── Searched by: every query                         │
+│  └── Written by: curators, nightly insight extractor  │
+│                                                      │
+│  Source: "user-{user_id}" (one per user)              │
+│  ├── Scope: THIS user only                            │
+│  ├── Content: conversation summaries, accepted/        │
+│  │   rejected advice, preferences, emotional patterns  │
+│  ├── Searched by: this user's queries only              │
+│  └── Written by: memory-writer after each turn          │
+│                                                      │
+│  Shared infra:                                       │
+│  ├── pgvector embeddings (HNSW index)                │
+│  ├── Graph edges (links table)                       │
+│  ├── Tags per page                                   │
+│  └── Hybrid search (semantic + keyword)              │
+└─────────────────────────────────────────────────────┘
 ```
 
-The advisor sees both: shared wisdom from GBrain + personal context from the user's memory graph. GBrain answers "what does the Gita say about grief?" The user memory graph answers "this user lost their father 2 weeks ago and found the Nachiketa story helpful."
+The advisor searches both scopes per query:
+1. Search `vedanta-wisdom` source → shared teachings
+2. Search `user-{id}` source → personal memory
+3. Merge results → advisor sees universal wisdom + personal context
 
-### User memory graph schema
+This gives us graph features (edges between memories, traversal)
+for per-user memory without maintaining a separate store. One
+database, one search mechanism, one embedding pipeline.
 
-```sql
-CREATE TABLE user_memories (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES users(id),
-    conversation_id UUID REFERENCES conversations(id),
+### Why source-per-user works
 
-    -- Structured content (same shape as MemoryStore entries)
-    topic           TEXT NOT NULL,
-    context         TEXT,           -- what the user was asking about
-    key_points      JSONB,          -- ["point 1", "point 2"]
-    tags            TEXT[],         -- semantic tags for search
-    verses_cited    TEXT[],         -- ["gita:2:47", "yoga-vasistha:3:14"]
+GBrain's `sources` table is the multi-tenant primitive:
+- Each source has its own `config JSONB` with access policies
+- OAuth client scoping restricts search to allowed sources
+- `federated=false` keeps per-user searches confined
+- Pages have `frontmatter JSONB` for arbitrary metadata
+- Tags are a separate table (queryable via `get_tags`, `list_pages`)
 
-    -- Signals for personalization
-    sentiment       TEXT,           -- positive | negative | neutral
-    user_reaction   TEXT,           -- accepted | rejected | followup | none
-    advice_given    TEXT,           -- summary of what the advisor recommended
+At scale (10K users), this means 10K sources in one Postgres.
+Supabase handles this fine — sources are just rows, and pgvector
+indexes are shared across all pages regardless of source.
 
-    -- Embedding for semantic search
-    embedding       vector(384),    -- sentence-transformers/all-MiniLM-L6-v2
+### Per-user memory pages
 
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+Each conversation insight becomes a GBrain page in the user's source:
 
--- Fast per-user semantic search
-CREATE INDEX idx_user_memories_embedding
-    ON user_memories USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+```yaml
+# Page slug: memory/user-abc123/grief-fathers-passing
+---
+type: conversation-memory
+topic: grief and loss
+conversation_id: conv-xyz789
+user_reaction: accepted
+advice_given: Nachiketa story + Gita 2:47 on detachment
+verses_cited: [gita:2:47, katha-upanishad:1:1:20]
+tags: [grief, loss, parent, nachiketa, detachment]
+sentiment: positive
+created: 2026-06-01T14:30:00Z
+---
 
--- Fast per-user lookup
-CREATE INDEX idx_user_memories_user_id ON user_memories(user_id);
-CREATE INDEX idx_user_memories_tags ON user_memories USING gin(tags);
+User was dealing with the loss of their father. Shared the
+story of Nachiketa from Katha Upanishad — a son who confronts
+Death itself to understand what lies beyond. Connected to Gita
+2:47 on acting without attachment to outcomes. User found this
+framing helpful and asked follow-up questions about the
+Nachiketa story specifically.
+
+Key insight: user responds well to narrative/story-based
+teachings rather than abstract philosophy. Avoid pure
+Advaita detachment framing — prefers relatable characters.
 ```
+
+Memory pages link to each other via GBrain edges:
+- `grief-fathers-passing` → `career-confusion` (same life period)
+- `grief-fathers-passing` → `nachiketa-followup` (continued topic)
+
+This creates a personal knowledge graph per user that the advisor
+can traverse: "the user's grief led to career questioning, which
+led to purpose-seeking — this is a coherent journey."
 
 ### How memory flows through a conversation
 
@@ -622,22 +654,21 @@ Example output:
 
 This creates a flywheel: more conversations → better insights in GBrain → better responses → more satisfied users → more conversations.
 
-### Why not GBrain for per-user memory?
-
-GBrain is designed as a shared knowledge graph — it has no concept of user scoping. Options considered:
+### Options considered
 
 | Approach | Pros | Cons |
 |----------|------|------|
-| GBrain per user | Full graph features (relations, traversal) | Hundreds of separate databases, unmanageable at scale |
-| GBrain with user tags | Single instance, filter by tag | GBrain search doesn't support user-scoped filtering natively |
-| **Postgres + pgvector** | User scoping via SQL WHERE, scales naturally, same Supabase DB | No graph traversal (but we don't need it for personal memory) |
+| Separate GBrain per user | Complete isolation | Hundreds of DBs, unmanageable |
+| Separate Postgres table + pgvector | Simple SQL, no GBrain dependency | No graph edges, no hybrid search, duplicates infra |
+| **GBrain source-per-user** | One DB, full graph features, existing search, source isolation | Source count grows with users (but sources are just rows) |
 
-Postgres + pgvector wins because:
-- User isolation is a SQL WHERE clause, not a separate database
-- pgvector cosine similarity search is fast enough (sub-10ms for 1000 memories per user)
-- Same Supabase instance as everything else — no additional infra
-- Row-level security (RLS) enforces user isolation at the database level
-- Personal memories don't need graph traversal — they need search + recency
+GBrain source-per-user wins because:
+- One Postgres instance (Supabase) for everything
+- pgvector embeddings + graph edges + hybrid search already built
+- Source isolation is GBrain's native multi-tenant mechanism
+- Memory pages can link to each other (personal knowledge graph)
+- Same MCP tools (brain-search, brain-write) work for both scopes
+- No custom search infrastructure to build or maintain
 
 ## Deployment plan
 
