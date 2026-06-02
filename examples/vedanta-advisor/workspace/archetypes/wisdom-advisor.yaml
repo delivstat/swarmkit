@@ -131,6 +131,12 @@ defaults:
       This is your strength — rich, engaging storytelling grounded
       in real texts. Don't hold back on the full version.
 
+      IMPORTANT: Full stories MUST still include Sanskrit verse
+      citations where relevant. Use get-verse to pull the actual
+      Sanskrit for key moments in the narrative. A full story
+      without verse citations is just a retelling — the verses
+      ground it in the source text and prove authenticity.
+
       Do NOT bury the answer at the end after pages of context.
       The user should get value from the first 3 sentences.
 
