@@ -718,6 +718,110 @@ Example output:
 
 This creates a flywheel: more conversations → better insights in GBrain → better responses → more satisfied users → more conversations.
 
+### Session monitoring agent — self-improving knowledge coverage
+
+A post-session monitoring agent analyzes each conversation's tool
+usage patterns to detect knowledge gaps in GBrain. When the advisor
+repeatedly falls back to ChromaDB for the same topics, that's a
+signal those topics need GBrain blocks.
+
+**What it monitors:**
+
+| Signal | Detection | Action |
+|--------|-----------|--------|
+| Repeated ChromaDB searches | `search-scripture` called 2+ times for similar queries in one session | Flag topic for GBrain ingestion |
+| High-token sessions | Session >30K tokens on K2.5 (tool model) | Analyze which tool calls consumed the most — likely redundant searches |
+| GBrain miss → ChromaDB hit | `brain-search` returned nothing, `search-scripture` found results | The topic exists in scripture but not in GBrain — needs a block |
+| Same topic across users | 5+ users ask about the same topic in 7 days, all hitting ChromaDB | High-value block candidate — many users need this |
+| Slow responses | Response time >30s | Usually caused by many sequential tool calls — check if GBrain coverage would reduce call count |
+
+**How it works:**
+
+```
+After each conversation turn:
+  1. Session monitor reviews the tool call log:
+     - Which tools were called, with what queries
+     - How many tokens each call consumed
+     - Whether brain-search returned useful results
+     - Whether search-scripture was called redundantly
+
+  2. If pattern detected (ChromaDB hit for uncovered topic):
+     - Extract: topic, search queries used, results found
+     - Check: does a GBrain block already exist for this?
+     - If not: create a GBrain ingestion candidate
+
+  3. Ingestion candidate format:
+     {
+       "topic": "Indra — character, role, stories",
+       "block_type": "character",
+       "evidence": {
+         "sessions_hitting_chromadb": 12,
+         "avg_tokens_wasted": 35000,
+         "search_queries": ["Indra king devas", "Indra ego jealousy", ...],
+         "chromadb_collections_searched": ["mahabharata_english", "puranas", "vedas"],
+         "estimated_savings_per_query": "40K → 8K tokens"
+       },
+       "suggested_slug": "character/indra",
+       "priority": "high"  // based on frequency + token waste
+     }
+
+  4. High-priority candidates go to:
+     - Auto-generation queue (run build-index-blocks.py for this slug)
+     - Human review for quality before GBrain write
+```
+
+**Priority scoring:**
+
+```
+priority = (sessions_hitting_chromadb * 2)
+         + (avg_tokens_wasted / 10000)
+         + (unique_users * 3)
+
+high:   priority > 20  → auto-generate + review
+medium: priority > 10  → weekly batch
+low:    priority > 5   → backlog
+```
+
+**Self-improvement loop:**
+
+```
+Week 1: User asks about Indra → 48K tokens, 4 tool calls
+  → Monitor flags: "character/indra missing from GBrain"
+  → Auto-generates block from ChromaDB content
+  → Human reviews and approves
+
+Week 2: User asks about Indra → 8K tokens, 1 tool call
+  → GBrain hit → no ChromaDB fallback needed
+  → Monitor sees improvement: "character/indra coverage working"
+
+Over time:
+  → GBrain coverage grows from runtime evidence
+  → Token costs decrease as more queries hit GBrain directly
+  → Response times improve (fewer tool calls)
+  → The system literally gets cheaper and faster with use
+```
+
+**Additional quality signals the monitor tracks:**
+
+- **Response rejection rate per topic** — if users frequently reject
+  advice on a topic, the GBrain block for that topic may need
+  improvement (bad framing, wrong stories, missing perspectives)
+- **Follow-up question patterns** — if users always ask "but what
+  about X?" after a topic, the block is incomplete (missing the X
+  angle)
+- **Mode detection accuracy** — did the advisor correctly identify
+  STUDY vs LIFE GUIDANCE vs STORY mode? Wrong mode = wrong response
+  structure
+- **Citation accuracy** — did the advisor cite verses that actually
+  exist in ChromaDB? False citations = governance failure
+- **Safety gate trigger patterns** — which topics trigger safety
+  gates? Are they legitimate blocks or false positives?
+
+This monitoring agent runs as a post_output decision skill with
+low priority — it doesn't affect the response, just observes and
+logs. The analysis and ingestion happen asynchronously (nightly
+batch or on-demand).
+
 ### Options considered
 
 | Approach | Pros | Cons |
