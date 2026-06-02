@@ -344,6 +344,8 @@ def _build_agent_node(  # noqa: PLR0915
             output_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
         )
+        if _active_trace is not None:
+            _active_trace.add_step(_trace_step)
         _prev_parent = _current_parent_agent
         _current_parent_agent = agent_id
 
@@ -394,8 +396,6 @@ def _build_agent_node(  # noqa: PLR0915
             _trace_step.delegations = delegated_to
             _trace_step.end_time = datetime.now(tz=UTC).timestamp()
             _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
-            if _active_trace is not None:
-                _active_trace.add_step(_trace_step)
             _current_parent_agent = _prev_parent
             return result
 
@@ -420,8 +420,6 @@ def _build_agent_node(  # noqa: PLR0915
         _trace_step.end_time = datetime.now(tz=UTC).timestamp()
         _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
         _trace_step.result_length = len(result_text)
-        if _active_trace is not None:
-            _active_trace.add_step(_trace_step)
         _current_parent_agent = _prev_parent
 
         if drift_observer and drift_observer.config.enabled:
