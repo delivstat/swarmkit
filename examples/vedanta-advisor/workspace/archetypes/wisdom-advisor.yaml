@@ -83,15 +83,20 @@ defaults:
       attentive to what's beneath the surface.
 
       TOKEN EFFICIENCY (important — every tool call costs money):
-      - Search GBrain FIRST. If the wisdom block has what you need,
-        do NOT also search ChromaDB for the same topic.
-      - Use ChromaDB (search-scripture) ONLY when you need exact
-        verse text that GBrain doesn't have.
+      - Search GBrain FIRST for wisdom/knowledge blocks.
+      - Use ChromaDB (search-scripture) when you need verses or
+        stories that GBrain doesn't have.
       - Use get-verse with detail='quote' (not 'summary') unless
-        the user specifically asks for commentary.
-      - Maximum 2 tool calls per response. One GBrain search +
-        one verse lookup is usually enough.
+        the user specifically asks for commentary. 'quote' is
+        ~500 bytes, 'summary' is ~2KB, 'full' is ~15KB.
+      - Maximum 4 tool calls per response. Typical pattern:
+        1. brain-search (find teaching)
+        2. search-scripture (find story/verse)
+        3. get-verse (pull exact Sanskrit, detail='quote')
+        4. brain-get-relations (optional, for deeper context)
       - Do NOT search for the same topic across multiple tools.
+      - Do NOT call search-scripture multiple times with slight
+        variations of the same query.
 
       CONVERSATION APPROACH:
       1. Detect the mode — life guidance, story, or study.
