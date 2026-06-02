@@ -7,6 +7,7 @@ import type {
 	ConversationDetail,
 	ConversationListItem,
 	ConversationTurn,
+	TraceData,
 } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { MessageCircle, Plus, Send } from "lucide-react";
@@ -242,6 +243,89 @@ interface RunEvent {
 	tokens?: number;
 }
 
+function TracePanel({ trace }: { trace: TraceData }) {
+	const [expanded, setExpanded] = useState(false);
+	const totalToolCalls = trace.agent_steps.reduce(
+		(sum, s) => sum + s.tool_calls.length,
+		0,
+	);
+	if (totalToolCalls === 0) return null;
+
+	return (
+		<div className="flex justify-start mb-2">
+			<div
+				className="max-w-[85%] px-3 py-2 rounded-lg text-xs"
+				style={{
+					background: "var(--bg)",
+					border: "1px solid var(--border)",
+				}}
+			>
+				<button
+					type="button"
+					onClick={() => setExpanded(!expanded)}
+					className="flex items-center gap-2 w-full text-left"
+					style={{ color: "var(--fg-muted)" }}
+				>
+					<span>{expanded ? "▼" : "▶"}</span>
+					<span className="font-medium">Tool calls ({totalToolCalls})</span>
+					<span>{(trace.duration_ms / 1000).toFixed(1)}s</span>
+					<span>{trace.llm_calls} LLM calls</span>
+				</button>
+				{expanded && (
+					<div className="mt-2 space-y-2">
+						{trace.agent_steps.map((step) =>
+							step.tool_calls.map((tc) => (
+								<div
+									key={`${step.agent_id}-${tc.tool_name}-${tc.duration_ms}`}
+									className="flex flex-col gap-0.5 py-1 border-t"
+									style={{ borderColor: "var(--border)" }}
+								>
+									<div className="flex items-center gap-2">
+										<span
+											className="px-1.5 py-0.5 rounded font-mono"
+											style={{
+												background: "var(--bg-sidebar)",
+											}}
+										>
+											{tc.tool_name}
+										</span>
+										<span style={{ color: "var(--fg-muted)" }}>
+											{(tc.duration_ms / 1000).toFixed(1)}s
+										</span>
+										<span style={{ color: "var(--fg-muted)" }}>
+											{tc.result_length > 1024
+												? `${(tc.result_length / 1024).toFixed(1)}KB`
+												: `${tc.result_length}B`}
+										</span>
+										{tc.error && (
+											<span style={{ color: "var(--error)" }}>{tc.error}</span>
+										)}
+									</div>
+									{Object.keys(tc.arguments).length > 0 && (
+										<div
+											className="font-mono pl-2"
+											style={{ color: "var(--fg-muted)" }}
+										>
+											{Object.entries(tc.arguments).map(([k, v]) => (
+												<span key={k} className="mr-2">
+													{k}=
+													{typeof v === "string"
+														? `"${v.length > 60 ? `${v.slice(0, 60)}...` : v}"`
+														: JSON.stringify(v)}
+												</span>
+											))}
+										</div>
+									)}
+								</div>
+							)),
+						)}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
 interface RunUsage {
 	input_tokens: number;
 	output_tokens: number;
@@ -429,17 +513,19 @@ function ChatArea({
 					</div>
 				)}
 				{conversation.turns.map((turn, idx) => (
-					<MessageBubble
-						key={`${turn.role}-${turn.timestamp}`}
-						turn={turn}
-						onRetry={
-							idx === conversation.turns.length - 1 &&
-							turn.role === "swarm" &&
-							turn.content.startsWith("Error:")
-								? onRetry
-								: undefined
-						}
-					/>
+					<div key={`${turn.role}-${turn.timestamp}`}>
+						<MessageBubble
+							turn={turn}
+							onRetry={
+								idx === conversation.turns.length - 1 &&
+								turn.role === "swarm" &&
+								turn.content.startsWith("Error:")
+									? onRetry
+									: undefined
+							}
+						/>
+						{turn.trace && <TracePanel trace={turn.trace} />}
+					</div>
 				))}
 				{sending && <ThinkingIndicator progressLines={progressLines} />}
 				<div ref={bottomRef} />
@@ -611,6 +697,7 @@ export default function ChatPage() {
 			const raw = result as unknown as {
 				events?: RunEvent[];
 				usage?: RunUsage;
+				trace?: TraceData;
 			};
 			setActiveConv((prev) =>
 				prev
@@ -624,6 +711,7 @@ export default function ChatPage() {
 									timestamp: new Date().toISOString(),
 									usage: raw.usage ?? undefined,
 									events: raw.events ?? undefined,
+									trace: raw.trace ?? undefined,
 								},
 							],
 						}

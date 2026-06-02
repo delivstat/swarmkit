@@ -79,6 +79,7 @@ class RunResult:
     agent_results: dict[str, str] = field(default_factory=dict)
     events: list[RunEvent] = field(default_factory=list)
     usage: UsageSummary | None = None
+    trace_data: dict[str, Any] | None = None
 
 
 class MissingMCPServerError(Exception):
@@ -442,6 +443,32 @@ class WorkspaceRuntime:
             by_model=dict(trace.token_by_model),
         )
 
+        trace_summary = {
+            "run_id": trace.run_id,
+            "duration_ms": trace.duration_ms,
+            "llm_calls": trace.llm_calls,
+            "agent_steps": [
+                {
+                    "agent_id": s.agent_id,
+                    "model": s.model,
+                    "duration_ms": s.duration_ms,
+                    "input_tokens": s.input_tokens,
+                    "output_tokens": s.output_tokens,
+                    "tool_calls": [
+                        {
+                            "tool_name": tc.tool_name,
+                            "arguments": tc.arguments,
+                            "result_length": tc.result_length,
+                            "duration_ms": tc.duration_ms,
+                            "error": tc.error,
+                        }
+                        for tc in s.tool_calls
+                    ],
+                }
+                for s in trace.agent_steps
+            ],
+        }
+
         return RunResult(
             output=result.get("output", ""),
             agent_results={
@@ -449,6 +476,7 @@ class WorkspaceRuntime:
             },
             events=events,
             usage=usage,
+            trace_data=trace_summary,
         )
 
     async def resume(

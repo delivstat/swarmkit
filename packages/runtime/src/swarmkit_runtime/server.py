@@ -769,7 +769,7 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
                         "total_tokens": result.usage.total_tokens,
                         "by_model": result.usage.by_model,
                     }
-                done_payload = {
+                done_payload: dict[str, object] = {
                     "type": "done",
                     "output": result.output,
                     "turns": len(conv.turns),
@@ -777,6 +777,8 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
                     "events": events,
                     "usage": usage_data,
                 }
+                if result.trace_data:
+                    done_payload["trace"] = result.trace_data
                 yield f"data: {json.dumps(done_payload)}\n\n"
             except Exception as exc:
                 yield f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n"

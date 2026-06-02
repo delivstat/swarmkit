@@ -96,12 +96,37 @@ export interface TurnUsage {
 	by_model: Record<string, { input: number; output: number }>;
 }
 
+export interface TraceToolCall {
+	tool_name: string;
+	arguments: Record<string, unknown>;
+	result_length: number;
+	duration_ms: number;
+	error: string | null;
+}
+
+export interface TraceAgentStep {
+	agent_id: string;
+	model: string;
+	duration_ms: number;
+	input_tokens: number;
+	output_tokens: number;
+	tool_calls: TraceToolCall[];
+}
+
+export interface TraceData {
+	run_id: string;
+	duration_ms: number;
+	llm_calls: number;
+	agent_steps: TraceAgentStep[];
+}
+
 export interface ConversationTurn {
 	role: "human" | "swarm";
 	content: string;
 	timestamp: string;
 	usage?: TurnUsage;
 	events?: { event_type: string; agent_id: string }[];
+	trace?: TraceData;
 }
 
 export interface ConversationDetail {
