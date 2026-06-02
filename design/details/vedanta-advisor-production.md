@@ -736,74 +736,87 @@ GBrain source-per-user wins because:
 
 ### Retrieval fallback cascade
 
-Inspired by Memory OS's 4-level retrieval pattern. When the
-memory-reader searches a user's source, it shouldn't rely on a
-single search method — semantic search can miss exact matches,
-keyword search can miss conceptual similarities.
+Inspired by Memory OS's 4-level retrieval pattern. All levels
+except the last are GBrain operations on the same Supabase
+Postgres — different search modes, not different systems.
 
 ```
-Level 1: Hybrid search (pgvector dense + BM25 sparse)
-  → Best of both: semantic similarity + keyword matching
+Level 1: GBrain hybrid search (user source)
+  → brain-search on source "user-{id}"
+  → GBrain's built-in hybrid: pgvector dense + BM25 sparse
   → Primary path, handles 90% of queries
 
-Level 2: Dense-only (pgvector cosine similarity)
-  → Falls back here if hybrid returns <2 results
-  → Catches conceptual matches that keywords miss
-
-Level 3: Tag lookup
-  → Search by tags: reaction:rejected, topic tags, verse refs
+Level 2: GBrain tag lookup (user source)
+  → get_tags + list_pages on source "user-{id}"
   → Catches structured signals that embeddings miss
-  → "Find all memories where user rejected advice" is a tag
+  → "Find all memories tagged reaction:rejected" is a tag
     query, not a semantic one
 
-Level 4: Recent conversations (Postgres)
-  → Last 5 conversations from the turns table
-  → Catches very recent context that hasn't been written
-    to GBrain yet (memory-writer runs post_output, so the
-    current turn's memory doesn't exist yet)
+Level 3: GBrain shared source search
+  → brain-search on source "vedanta-wisdom"
+  → Finds relevant curated teachings from the shared graph
+  → Searched on every query (not just fallback)
+
+Level 4: Recent turns (Postgres direct)
+  → Last 3-5 turns from the conversations/turns table
+  → Only level that bypasses GBrain
+  → Needed because memory-writer runs post_output — the
+    current conversation's memories don't exist in GBrain yet
 ```
 
-Each level adds results to the context window. Dedup by memory
-page slug before injecting into the prompt.
+Levels 1-3 are all GBrain calls against the same Postgres.
+Level 4 is the only direct Postgres query — a bridge for
+current-session context. Results from all levels are merged
+and deduped by page slug before injecting into the prompt.
 
 ### Memory dedup + decay
 
 Without consolidation, a user who discusses grief 10 times gets
-10 near-identical memory blocks cluttering the search results.
+10 near-identical memory pages in their GBrain source, cluttering
+search results.
 
-**Dedup on write:** Before writing a new memory page, check
-cosine similarity against existing pages in the user's source.
-If similarity > 0.90, merge instead of creating a new page:
+**Dedup on write:** Before the memory-writer creates a new page
+in the user's GBrain source, search for existing pages with high
+cosine similarity. If similarity > 0.90, merge via brain-write
+(upsert the existing page slug) instead of creating a new one:
 
 ```
-Existing: grief-fathers-passing (3 conversations merged)
-New:      grief-feeling-lost (current conversation)
-Similarity: 0.93 → MERGE
+Existing page in GBrain: memory/grief-fathers-passing
+  (3 conversations merged, tags: [grief, accepted, nachiketa])
 
-Result: grief-fathers-passing (4 conversations merged)
-  - Update tags (add new ones)
+New memory to write: grief-feeling-lost
+  (current conversation)
+
+brain-search "user-{id}" → finds grief-fathers-passing
+Cosine similarity: 0.93 → MERGE
+
+brain-write to existing slug: memory/grief-fathers-passing
   - Append new citation (conv:new-id/turn:N)
+  - Add new tags
   - Update reaction if changed
-  - Refresh embedding with merged content
+  - Update page content with merged summary
+  - GBrain auto-refreshes embedding on page update
 ```
 
-**Weekly decay scan:** Memories that haven't been retrieved in
-90 days get their relevance score reduced. After 180 days with
-no retrieval, archive them (move to a `user-{id}-archive`
-source). They're not deleted — just deprioritized in search
-results. If the user asks about an archived topic, it can be
-restored.
+**Weekly decay scan:** A scheduled job queries each user's GBrain
+source for pages not retrieved in 90+ days (tracked via a
+`last_retrieved` frontmatter field updated by memory-reader).
 
 ```
 Decay schedule:
-  0-90 days since last retrieval:   weight 1.0 (full relevance)
-  90-180 days:                      weight 0.5 (deprioritized)
-  180+ days:                        weight 0.0 (archived)
+  0-90 days since last retrieval:   active (normal search weight)
+  90-180 days:                      tag: decay:deprioritized
+  180+ days:                        move to source "user-{id}-archive"
+
+Archived pages are not deleted from GBrain — just moved to a
+separate source that memory-reader doesn't search by default.
+If the user asks about an archived topic, the advisor can search
+the archive source as a Level 2 fallback.
 ```
 
 This keeps the active memory graph lean. A user with 500
-conversations over 2 years might have 200 active memory pages,
-not 500.
+conversations over 2 years might have ~200 active pages in
+their GBrain source, not 500.
 
 ### Ground truth hierarchy
 
