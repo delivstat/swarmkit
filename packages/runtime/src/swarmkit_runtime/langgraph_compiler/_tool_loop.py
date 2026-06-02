@@ -34,6 +34,34 @@ def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResp
         )
 
 
+def _record_tool_call(
+    tool_name: str,
+    arguments: dict[str, Any],
+    result_length: int,
+    duration_ms: int,
+    error: str | None = None,
+) -> None:
+    """Record a tool/MCP call into the active trace's current step."""
+    from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
+        _active_trace,
+    )
+    from swarmkit_runtime.trace import ToolCall  # noqa: PLC0415
+
+    if _active_trace is None:
+        return
+    if not _active_trace.agent_steps:
+        return
+    _active_trace.agent_steps[-1].tool_calls.append(
+        ToolCall(
+            tool_name=tool_name,
+            arguments=arguments,
+            result_length=result_length,
+            duration_ms=duration_ms,
+            error=error,
+        )
+    )
+
+
 _MAX_TOOL_CALLS_PER_TURN = int(os.environ.get("SWARMKIT_MAX_TOOLS", "10"))
 
 
@@ -396,6 +424,9 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
         _progress(f"  [{agent.id}] calling {block.tool_name}{_mcp_args_preview}")
         if _verbose:
             print(f"  executing: {block.tool_name}", file=sys.stderr)
+        import time as _time  # noqa: PLC0415
+
+        _tc_start = _time.monotonic()
         raw_result = await execute_skill(
             skill,
             input_text=input_text,
@@ -405,10 +436,17 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
             governance=governance,
             agent_id=agent.id,
         )
+        _tc_dur = int((_time.monotonic() - _tc_start) * 1000)
         if isinstance(raw_result, tuple):
             text_result, images = raw_result
         else:
             text_result, images = raw_result, []
+        _record_tool_call(
+            tool_name=block.tool_name,
+            arguments=block.tool_input if isinstance(block.tool_input, dict) else {},
+            result_length=len(text_result or ""),
+            duration_ms=_tc_dur,
+        )
         results.append(
             ToolCallResult(
                 tool_use_id=block.tool_use_id or f"call_{len(results)}",
