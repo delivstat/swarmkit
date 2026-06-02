@@ -734,6 +734,114 @@ GBrain source-per-user wins because:
 - Same MCP tools (brain-search, brain-write) work for both scopes
 - No custom search infrastructure to build or maintain
 
+### Retrieval fallback cascade
+
+Inspired by Memory OS's 4-level retrieval pattern. When the
+memory-reader searches a user's source, it shouldn't rely on a
+single search method — semantic search can miss exact matches,
+keyword search can miss conceptual similarities.
+
+```
+Level 1: Hybrid search (pgvector dense + BM25 sparse)
+  → Best of both: semantic similarity + keyword matching
+  → Primary path, handles 90% of queries
+
+Level 2: Dense-only (pgvector cosine similarity)
+  → Falls back here if hybrid returns <2 results
+  → Catches conceptual matches that keywords miss
+
+Level 3: Tag lookup
+  → Search by tags: reaction:rejected, topic tags, verse refs
+  → Catches structured signals that embeddings miss
+  → "Find all memories where user rejected advice" is a tag
+    query, not a semantic one
+
+Level 4: Recent conversations (Postgres)
+  → Last 5 conversations from the turns table
+  → Catches very recent context that hasn't been written
+    to GBrain yet (memory-writer runs post_output, so the
+    current turn's memory doesn't exist yet)
+```
+
+Each level adds results to the context window. Dedup by memory
+page slug before injecting into the prompt.
+
+### Memory dedup + decay
+
+Without consolidation, a user who discusses grief 10 times gets
+10 near-identical memory blocks cluttering the search results.
+
+**Dedup on write:** Before writing a new memory page, check
+cosine similarity against existing pages in the user's source.
+If similarity > 0.90, merge instead of creating a new page:
+
+```
+Existing: grief-fathers-passing (3 conversations merged)
+New:      grief-feeling-lost (current conversation)
+Similarity: 0.93 → MERGE
+
+Result: grief-fathers-passing (4 conversations merged)
+  - Update tags (add new ones)
+  - Append new citation (conv:new-id/turn:N)
+  - Update reaction if changed
+  - Refresh embedding with merged content
+```
+
+**Weekly decay scan:** Memories that haven't been retrieved in
+90 days get their relevance score reduced. After 180 days with
+no retrieval, archive them (move to a `user-{id}-archive`
+source). They're not deleted — just deprioritized in search
+results. If the user asks about an archived topic, it can be
+restored.
+
+```
+Decay schedule:
+  0-90 days since last retrieval:   weight 1.0 (full relevance)
+  90-180 days:                      weight 0.5 (deprioritized)
+  180+ days:                        weight 0.0 (archived)
+```
+
+This keeps the active memory graph lean. A user with 500
+conversations over 2 years might have 200 active memory pages,
+not 500.
+
+### Ground truth hierarchy
+
+Not all memory sources are equal. When the advisor's response
+draws from both GBrain shared wisdom and user memory, there's
+a hierarchy of authority:
+
+```
+Priority 1: Scripture (ChromaDB)
+  → Actual verse text. Never contradicted. Never paraphrased
+    from memory. Always fetched fresh from the source.
+
+Priority 2: Curated wisdom (GBrain vedanta-wisdom source)
+  → Human-reviewed teaching blocks. High trust. The advisor
+    can reference these with confidence.
+
+Priority 3: User memory (GBrain user-{id} source)
+  → Personal context. High relevance but NOT authoritative.
+    "The user prefers story-based teachings" shapes HOW the
+    advisor responds, but never WHAT it teaches.
+
+Priority 4: Aggregate insights (GBrain, from nightly job)
+  → Pattern-derived. Lower trust. Useful for framing, not
+    for claims. "Users generally respond well to X" is a
+    suggestion, not a rule.
+```
+
+**Critical rule:** User preferences never override scripture.
+If a user rejected a teaching from the Gita, the memory says
+"avoid this framing" — it does NOT say "this teaching is wrong."
+The advisor can present the same truth differently (story vs
+philosophy, different verse, different analogy) but cannot
+suppress or contradict the texts to please a user.
+
+This prevents the failure mode where memory-driven
+personalization degrades into telling users what they want
+to hear rather than what the texts actually teach.
+
 ## Analytics + dashboard
 
 ### Metrics to track
