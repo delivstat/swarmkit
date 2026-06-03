@@ -463,6 +463,8 @@ CHARACTER_BLOCKS = [
         search_queries=["Damayanti Nala swayamvara chose gods disguised", "Nala Damayanti dice loss exile reunion", "Damayanti swan love message Nala"],
         verse_refs=[],
     ),
+]
+
 
 CONCEPT_BLOCKS = [
     BlockSpec(
