@@ -838,6 +838,191 @@ GBrain source-per-user wins because:
 - Same MCP tools (brain-search, brain-write) work for both scopes
 - No custom search infrastructure to build or maintain
 
+### Typed memory model
+
+Ref: [Oracle — From RAG to Memory Systems](https://blogs.oracle.com/developers/from-rag-to-memory-systems-building-stateful-ai-architecture)
+
+Instead of storing all memories in one generic bucket, separate
+into five types — each with its own schema, lifecycle, retrieval
+strategy, and prompt slot. This prevents context bloat and makes
+retrieval predictable.
+
+#### Five memory types
+
+```
+┌─────────────────────────────────────────────────┐
+│  POLICY (always loaded, exact match)             │
+│  Safety guardrails, content policies, cultural    │
+│  sensitivity rules. Versioned, immutable.         │
+│  Never searched by similarity — always in prompt. │
+│  Source: workspace config + admin overrides        │
+│  Example: "never endorse violence", "crisis        │
+│  resources first", "no sectarian positions"        │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  PREFERENCE (keyed lookup, always loaded)         │
+│  User-specific settings. Language, response        │
+│  length, favored teaching style, time zone.        │
+│  Loaded every turn via user_id lookup — no search. │
+│  Mutable by user ("shorter responses please").     │
+│  Example: {lang: "hi", style: "story-based",      │
+│    length: "concise", rejected_framings:            │
+│    ["chanakya-strategic"]}                          │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  FACT (hybrid search, deduped)                    │
+│  Durable assertions about the user with            │
+│  provenance. Subject/predicate/content +           │
+│  confidence + status (active/provisional).         │
+│  Content-hash dedup prevents duplicates.           │
+│  Hybrid retrieval: 0.4 vector + 0.6 lexical.      │
+│  Example: {subject: "user", predicate: "lost",    │
+│    content: "father passed away 2 weeks ago",      │
+│    confidence: 0.9, status: "active",              │
+│    source: "conv:xyz789/turn:3"}                    │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  EPISODIC (hybrid search, summarized)             │
+│  Structured summaries of completed conversations.  │
+│  Title, summary, outcome, key_steps, reaction.     │
+│  Searched when new query relates to a prior topic. │
+│  Example: {title: "Grief after father's passing", │
+│    summary: "Discussed Nachiketa story...",        │
+│    outcome: "user found story-based framing         │
+│    helpful", reaction: "accepted"}                  │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│  TRACE (append-only, never in prompt)             │
+│  Raw execution events: tool calls, model            │
+│  responses, token counts, timing. Stored per run.  │
+│  Source material for distillation into facts and    │
+│  episodes — never directly in agent context.        │
+│  Already implemented: RunTrace + .swarmkit/traces/  │
+└─────────────────────────────────────────────────┘
+```
+
+#### Per-turn prompt assembly
+
+Instead of accumulating context across turns (which causes
+40K+ token bloat), rebuild the prompt from scratch each turn
+under a token budget:
+
+```
+Token budget: 8000 tokens for memory context
+
+Slot 1: POLICY (always, ~500 tokens)
+  → Safety rules, content policies, cultural sensitivity
+  → Exact match from workspace config
+  → Never omitted
+
+Slot 2: PREFERENCE (always, ~200 tokens)
+  → User's language, style, length preference
+  → Keyed lookup by user_id
+  → Never omitted
+
+Slot 3: FACTS (ranked, ~2000 tokens)
+  → Hybrid search: query against user's facts
+  → Rank by fused score (0.4 vector + 0.6 lexical)
+  → Fill until slot budget exhausted
+  → Most relevant facts first
+
+Slot 4: EPISODES (ranked, ~3000 tokens)
+  → Hybrid search: query against user's episode summaries
+  → Include reaction signal (accepted/rejected)
+  → Fill until slot budget exhausted
+
+Slot 5: RECENT TRACE (last 2-3 turns, ~2000 tokens)
+  → Current conversation context only
+  → Not from memory store — from the conversation state
+  → Keeps the agent aware of what just happened
+
+Remaining budget: returned to the model for response generation
+```
+
+This approach:
+- Keeps total memory context under a fixed budget (no bloat)
+- Policies and preferences are always present (consistency)
+- Facts and episodes are ranked by relevance (precision)
+- Trace is recent-only (no stale context)
+- The agent never sees raw trace data from old sessions
+
+#### How typed memory maps to GBrain
+
+Each memory type maps to GBrain page types within the user's
+source:
+
+| Memory type | GBrain page type | Retrieval | Lifecycle |
+|---|---|---|---|
+| Policy | `type: policy` in shared source | Exact match, always loaded | Admin-managed, versioned |
+| Preference | `type: preference` in user source | Key lookup by user_id | User-mutable |
+| Fact | `type: fact` in user source | Hybrid search | Content-hash dedup, confidence scoring |
+| Episodic | `type: episodic` in user source | Hybrid search | Created post-conversation, reaction-tagged |
+| Trace | Not in GBrain | Replay by run_id from `.swarmkit/traces/` | Append-only, distilled periodically |
+
+The promotion gate (memory-writer decision skill) classifies
+each extraction into the right type before writing:
+
+```
+Agent output + user input
+    ↓
+LLM extraction (existing _EXTRACT_PROMPT)
+    ↓
+Promotion gate:
+  - Is this a user preference? → type: preference
+    (e.g., "user prefers story-based teachings")
+  - Is this a durable fact? → type: fact
+    (e.g., "user lost their father")
+    → Check content_hash: already exists? → skip
+    → Confidence > 0.7? → status: active
+    → Confidence 0.5-0.7? → status: provisional
+  - Is this a conversation summary? → type: episodic
+    (end of conversation or topic change)
+  - Is this a policy update? → reject
+    (policies are admin-only, never from conversation)
+    ↓
+Write to GBrain user source with correct page type
+```
+
+#### Hybrid retrieval with fused scoring
+
+For fact and episodic retrieval, use fused scoring instead
+of pure vector similarity:
+
+```
+score = 0.4 * vector_similarity + 0.6 * lexical_similarity
+```
+
+Lexical similarity matters more because:
+- User facts contain specific names, places, events
+- "Father passed away" should match "father" and "passed"
+  exactly, not just semantically similar concepts
+- Vector search alone returns thematically related but
+  factually wrong matches
+
+Relevance tiers after scoring:
+- High (>0.7): always include in context
+- Standard (0.4-0.7): include if budget allows
+- Low (<0.4): exclude
+
+#### Cascade fallback for retrieval
+
+If hybrid search returns insufficient results, degrade
+gracefully:
+
+```
+Level 1: Hybrid (vector + lexical fused) → primary
+Level 2: Vector-only → if lexical index unavailable
+Level 3: Lexical-only (FTS) → if embeddings missing
+Level 4: Exact tag match → last resort
+```
+
+This is the same cascade we designed earlier but formalized
+with the Oracle article's scoring model.
+
 ### Retrieval fallback cascade
 
 Inspired by Memory OS's 4-level retrieval pattern. All levels
