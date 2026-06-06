@@ -124,7 +124,11 @@ class WorkspaceRuntime:
         self._session_active = False
 
     def _create_memory_store(self) -> Any:
-        """Create a MemoryStore for the workspace if memory bindings are configured."""
+        """Create a memory store for the workspace if memory bindings are configured.
+
+        Returns GBrainMemory if a GBrain MCP server is configured,
+        otherwise falls back to MemoryStore (local JSON + TF-IDF).
+        """
         ws_gov = getattr(self._workspace.raw, "governance", None)
         if ws_gov is None:
             return None
@@ -134,6 +138,15 @@ class WorkspaceRuntime:
         )
         if not has_memory:
             return None
+
+        if self._mcp_manager is not None:
+            mcp_servers = getattr(self._workspace.raw, "mcp_servers", None) or []
+            has_gbrain = any(getattr(s, "id", "") == "gbrain" for s in mcp_servers)
+            if has_gbrain:
+                from swarmkit_runtime.memory import GBrainMemory  # noqa: PLC0415
+
+                return GBrainMemory(self._mcp_manager)
+
         from swarmkit_runtime.memory import MemoryStore  # noqa: PLC0415
 
         return MemoryStore(self._workspace_root)

@@ -121,7 +121,7 @@ class GBrainMemory:
         if user:
             slug_parts.append(user)
         slug_parts.append(ts)
-        slug = "/".join(slug_parts)
+        slug = "-".join(slug_parts)
 
         content = _build_memory_page(
             slug=slug,
