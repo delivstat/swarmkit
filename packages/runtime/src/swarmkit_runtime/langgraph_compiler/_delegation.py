@@ -95,6 +95,8 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
     provider_registry: ProviderRegistry | None = None,
     planning_config: Any = None,
     synthesis_config: Any = None,
+    tool_model_name: str | None = None,
+    tool_model_provider: ModelProviderProtocol | None = None,
 ) -> dict[str, Any] | tuple[CompletionResponse, list[Message]]:
     """Run the retry loop: delegation, tool-loop, or text-with-retry.
 
@@ -304,6 +306,8 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
                 governance,
                 tool_results,
                 verbose,
+                tool_model_name=tool_model_name,
+                tool_model_provider=tool_model_provider,
             )
             if isinstance(loop_result, dict):
                 return loop_result

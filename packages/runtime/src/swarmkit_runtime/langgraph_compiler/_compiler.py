@@ -63,6 +63,7 @@ def compile_topology(
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
     planning_config: PlanningConfig | None = None,
     synthesis_config: Any = None,
+    memory_store: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -96,6 +97,7 @@ def compile_topology(
             decision_skill_bindings=_bindings,
             planning_config=_planning,
             synthesis_config=synthesis_config,
+            memory_store=memory_store,
         )
         graph.add_node(agent.id, node_fn)
 
@@ -158,12 +160,14 @@ def _build_agent_node(  # noqa: PLR0915
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
     planning_config: PlanningConfig | None = None,
     synthesis_config: Any = None,
+    memory_store: Any = None,
 ) -> Any:
     """Build an async node function for one agent."""
     drift_observer = _create_drift_observer(agent)
     _ds_bindings = decision_skill_bindings or []
     _planning = planning_config or PlanningConfig()
     _synthesis = synthesis_config
+    _memory = memory_store
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0911, PLR0912, PLR0915
         global _current_parent_agent  # noqa: PLW0603
@@ -206,6 +210,20 @@ def _build_agent_node(  # noqa: PLR0915
                         agent_id,
                         rejection or "I can only help with questions in my domain.",
                     )
+
+        # ---- workspace memory (pre_input context injection) ----------------
+        if _memory and _ds_bindings:
+            from swarmkit_runtime.memory._gate import memory_pre_input  # noqa: PLC0415
+
+            memory_context = await memory_pre_input(
+                agent_id=agent_id,
+                user_input=state.get("input", ""),
+                bindings=_ds_bindings,
+                store=_memory,
+            )
+            if memory_context:
+                _progress(f"  [{agent_id}] memory context injected")
+                state = {**state, "input": f"{memory_context}\n\n{state.get('input', '')}"}
 
         # ---- already-delegated fast path (resume scenarios) ------------
         _agent_result = state.get("agent_results", {}).get(agent_id, "")
@@ -291,6 +309,14 @@ def _build_agent_node(  # noqa: PLR0915
                 ]
 
         model_name = os.environ.get("SWARMKIT_MODEL") or (agent.model or {}).get("name", "mock")
+        _tool_model_name = (agent.model or {}).get("tool_model")
+        _tool_provider_name = (agent.model or {}).get("tool_provider")
+        _tool_model_provider = None
+        if _tool_model_name and provider_registry and _tool_provider_name:
+            _tool_model_provider = provider_registry.get(_tool_provider_name)
+        elif _tool_model_name and provider_registry:
+            _tool_model_provider = model_provider
+
         system_prompt = _build_system_prompt(
             agent,
             tools,
@@ -318,6 +344,8 @@ def _build_agent_node(  # noqa: PLR0915
             output_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
         )
+        if _active_trace is not None:
+            _active_trace.add_step(_trace_step)
         _prev_parent = _current_parent_agent
         _current_parent_agent = agent_id
 
@@ -342,6 +370,8 @@ def _build_agent_node(  # noqa: PLR0915
             provider_registry=provider_registry,
             planning_config=_planning,
             synthesis_config=_synthesis,
+            tool_model_name=_tool_model_name,
+            tool_model_provider=_tool_model_provider,
         )
         if isinstance(result, dict):
             _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()
@@ -366,8 +396,6 @@ def _build_agent_node(  # noqa: PLR0915
             _trace_step.delegations = delegated_to
             _trace_step.end_time = datetime.now(tz=UTC).timestamp()
             _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
-            if _active_trace is not None:
-                _active_trace.add_step(_trace_step)
             _current_parent_agent = _prev_parent
             return result
 
@@ -392,8 +420,6 @@ def _build_agent_node(  # noqa: PLR0915
         _trace_step.end_time = datetime.now(tz=UTC).timestamp()
         _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
         _trace_step.result_length = len(result_text)
-        if _active_trace is not None:
-            _active_trace.add_step(_trace_step)
         _current_parent_agent = _prev_parent
 
         if drift_observer and drift_observer.config.enabled:
@@ -421,6 +447,20 @@ def _build_agent_node(  # noqa: PLR0915
                 bindings=_ds_bindings,
                 governance=governance,
                 retry_fn=_retry,
+            )
+
+        # ---- workspace memory (post_output insight extraction) --------
+        if _memory and _ds_bindings:
+            from swarmkit_runtime.memory._gate import memory_post_output  # noqa: PLC0415
+
+            await memory_post_output(
+                agent_id=agent_id,
+                user_input=state.get("input", ""),
+                agent_output=result_text,
+                bindings=_ds_bindings,
+                store=_memory,
+                model_provider=model_provider,
+                model_name=(agent.model or {}).get("name", "default"),
             )
 
         return _make_result(agent_id, result_text)

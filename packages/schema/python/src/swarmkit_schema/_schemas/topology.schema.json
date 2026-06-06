@@ -140,7 +140,15 @@
         },
         "name": { "type": "string" },
         "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
-        "max_tokens": { "type": "integer", "minimum": 1 }
+        "max_tokens": { "type": "integer", "minimum": 1 },
+        "tool_provider": {
+          "type": "string",
+          "description": "Model provider for tool-calling turns. Falls back to provider if unset."
+        },
+        "tool_model": {
+          "type": "string",
+          "description": "Model name for tool-calling turns. Uses a cheaper model for tool calls, main model for synthesis."
+        }
       }
     },
     "prompt": {

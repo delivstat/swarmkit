@@ -2,19 +2,19 @@
 
 > An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
 
-**Status:** v1.2.51. Phases 1-3 complete (M0-M9). Phase 4 next (M10 Eject + execution modes, M11 Launch prep). Structured delegation v2 compiler with planner-driven task execution, parallel/sequential dependency ordering, crash-resilient task plans, auto-fix, and summary-first results. Structured inter-agent communication (typed JSON/YAML schemas, 55-87% token reduction). Decision skill `pre_input` trigger for input validation before LLM work. Gate-validator MCP server for deterministic output validation via Rynko Flow. Complete OTel drift metrics and tool error separation. CLI, HTTP server, 7 model providers (Anthropic, OpenAI, Google, Ollama, OpenRouter, Groq, Together), MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support across all providers, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, 2 reference topologies, 20 skills, 16 archetypes, 566+ tests.
+**Status:** v1.2.58. M0-M10 shipped. Structured delegation v2 compiler, planner-driven task execution, crash-resilient plans. CLI + HTTP server (`swarmkit serve`) with async jobs, SSE streaming, webhook triggers, MCP endpoint (Streamable HTTP), pluggable auth (API key, JWT/JWKS), canary deployments (weighted version routing, auto-promotion by error rate + drift). 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, structured inter-agent communication (provenance envelopes, output_schema, deterministic grounding), 2 reference topologies, 20 skills, 16 archetypes. Next: eject + launch prep (M11).
 
 ## Start here
 
 - [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, what works today, milestone progress.
 - [CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/CLAUDE.md): repo-wide invariants, feature-delivery workflow, release checklist.
 - [SwarmKit Design v0.6](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md): the authoritative architecture. §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §14 (Runtime), §18 (MCP Integration).
-- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): 4 phases — Phase 1 (Foundation) complete, Phase 2 (Runtime Completion) complete, Phase 3 (Knowledge + Skills) complete. Phase 4 (Eject + Launch) next.
-- [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): release notes through v1.2.51.
+- [Implementation plan](https://github.com/delivstat/swarmkit/blob/main/design/IMPLEMENTATION-PLAN.md): 4 phases — Phase 1 (Foundation) complete, Phase 2 (Runtime Completion) complete, Phase 3 (MCP + Delegation) complete, Phase 4 (serve + canary shipped, eject + launch prep remaining).
+- [CHANGELOG](https://github.com/delivstat/swarmkit/blob/main/CHANGELOG.md): release notes through v1.2.8.
 
 ## CLI commands
 
-`validate`, `run` (with `--verbose`, `--dry-run`), `chat` (multi-turn with `--resume`), `conversations` (with `--pick`), `init`, `author` (with `--thorough`), `edit`, `serve`, `status` (reads from SQLite audit store), `logs` (with `--run-id`, `--agent`, `--format markdown`), `why` (LLM analysis from audit store), `ask` (with `--run` scoping), `debug` (query local prompt ring buffer: `--span-id`, `--run-id`, `--agent`), `stop` (planned), `knowledge-pack`, `knowledge-server`, `review list/show/approve/reject`, `gaps`.
+`validate`, `run` (with `--verbose`, `--dry-run`), `chat` (multi-turn with `--resume`), `conversations` (with `--pick`), `init`, `author` (with `--thorough`), `edit`, `serve` (HTTP server with async jobs, SSE, auth, MCP, triggers, canary routing), `status` (reads from SQLite audit store), `logs` (with `--run-id`, `--agent`, `--format markdown`), `why` (LLM analysis from audit store), `ask` (with `--run` scoping), `debug` (query local prompt ring buffer: `--span-id`, `--run-id`, `--agent`), `stop`, `knowledge-pack`, `knowledge-server`, `review list/show/approve/reject`, `gaps`, `trace` (call graph + token counts).
 
 ## Schemas
 
@@ -76,7 +76,30 @@ Per-feature design notes under `design/details/`:
 - [Skill registry](https://github.com/delivstat/swarmkit/blob/main/design/details/skill-registry.md): community skill import from SKILL.md repos and MCP catalogues.
 - [Knowledge Curator topology](https://github.com/delivstat/swarmkit/blob/main/design/details/knowledge-curator-topology.md): persistent wiki maintained by LLM agents.
 
-## Product architecture & observability design notes
+## HTTP server, auth, and canary deployments (M10 — shipped)
+
+- [Serve and auth design](https://github.com/delivstat/swarmkit/blob/main/design/details/serve-and-auth.md): FastAPI server, AuthProvider ABC, MCP endpoint, triggers, workspace.yaml `server:` block.
+- [Canary deployments design](https://github.com/delivstat/swarmkit/blob/main/design/details/canary-deployments.md): weighted topology version routing, auto-promotion by error rate + drift, manual promote/rollback.
+- [Serve CLI reference](https://github.com/delivstat/swarmkit/blob/main/docs/reference/serve-cli-tests.md): all endpoints with real curl output — health, topologies, jobs, SSE, webhooks, conversations, auth, MCP.
+- [Canary deployments guide](https://github.com/delivstat/swarmkit/blob/main/docs/reference/canary-deployments.md): quick start, configuration reference, monitoring, auto-promotion, manual controls, common scenarios, real test outputs.
+
+`swarmkit serve` endpoints: `GET /health`, `GET /topologies`, `GET /skills`, `GET /archetypes`, `GET /validate`, `GET /triggers`, `POST /run/{topology}`, `GET /jobs`, `GET /jobs/{id}`, `GET /jobs/{id}/stream` (SSE), `POST /hooks/{topology}`, `POST /conversations`, `GET /conversations`, `POST /conversations/{id}/messages`, `POST /mcp` (Streamable HTTP), `GET /canary`, `POST /canary/{topology}/promote`, `POST /canary/{topology}/rollback`.
+
+Auth providers: `NoneAuthProvider` (default, open access), `APIKeyAuthProvider` (Bearer token, env:VAR resolution, scopes), `JWTAuthProvider` (RS256/ES256, JWKS auto-discovery). Auth is perimeter; governance is internal policy.
+
+Canary config in workspace.yaml: `server.canary.routes[].versions[].weight` (traffic percentage), `promote_when.min_runs`, `promote_when.error_rate_below`, `promote_when.drift_below`, `promote_when.window_minutes`. Version-qualified names (`topology@1.1.0`) bypass routing for direct testing.
+
+## Workspace memory (shipped)
+
+Agents remember across conversations. Two decision skill bindings (`memory-reader` at `pre_input`, `memory-writer` at `post_output`) enable automatic insight extraction and context injection. Two backends: `MemoryStore` (local JSON, TF-IDF search, zero deps) and `GBrainMemory` (GBrain MCP server, hybrid vector + keyword search, graph relationships, Supabase/Postgres).
+
+- [Workspace memory reference](https://github.com/delivstat/swarmkit/blob/main/docs/reference/workspace-memory.md): setup, config, GBrain integration, examples, real test outputs.
+- [Memory demo script](https://github.com/delivstat/swarmkit/blob/main/docs/examples/memory-demo.py): runnable demo covering CRUD, search, context injection, extraction, persistence, deletion.
+- [Workspace memory design](https://github.com/delivstat/swarmkit/blob/main/design/details/workspace-memory.md): two-layer knowledge graph, decision skill hooks, GBrain integration, privacy.
+
+Memory-writer extracts structured insights (topic, context, key_points, tags) via LLM after each turn. Memory-reader searches for relevant prior conversations and prepends context. The agent sees prior sessions naturally: "As we discussed previously..." Config: `governance.decision_skills[].config.search_scope` (user/shared/both), `max_results`, `min_output_length`.
+
+## Product architecture & observability (design, not yet implemented)
 
 - [Product architecture](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture.md): open-source runtime + Rynko as the commercial ops platform. Deployment models, revenue model, brand separation.
 - [Product architecture refinements](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture-refinements.md): local ring buffer for prompt privacy, LangGraph checkpointer for approval gates, usage-based pricing, OTLP/HTTP transport.
@@ -88,6 +111,9 @@ Per-feature design notes under `design/details/`:
 
 - [Sterling OMS workspace](https://github.com/delivstat/swarmkit/blob/main/docs/guides/sterling-oms-workspace.md): building domain-specific agent workspaces with knowledge bases.
 - [Model selection](https://github.com/delivstat/swarmkit/blob/main/docs/guides/model-selection.md): pricing comparison, per-agent config, env vars.
+- [Serve CLI reference](https://github.com/delivstat/swarmkit/blob/main/docs/reference/serve-cli-tests.md): complete endpoint reference with real test outputs.
+- [Canary deployments](https://github.com/delivstat/swarmkit/blob/main/docs/reference/canary-deployments.md): weighted version routing, auto-promotion, monitoring, rollback.
+- [Workspace memory](https://github.com/delivstat/swarmkit/blob/main/docs/reference/workspace-memory.md): agents that remember across conversations. Setup, GBrain backend, real test outputs.
 
 ## Fixtures (valid artifact examples)
 

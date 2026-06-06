@@ -61,12 +61,25 @@ class RunEvent:
 
 
 @dataclass(frozen=True)
+class UsageSummary:
+    """Token usage from a topology execution."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
+    by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class RunResult:
     """Output of a topology execution."""
 
     output: str
     agent_results: dict[str, str] = field(default_factory=dict)
     events: list[RunEvent] = field(default_factory=list)
+    usage: UsageSummary | None = None
+    trace_data: dict[str, Any] | None = None
 
 
 class MissingMCPServerError(Exception):
@@ -104,10 +117,39 @@ class WorkspaceRuntime:
         self._provider_registry = provider_registry
         self._governance = governance
         self._mcp_manager = mcp_manager
+        self._memory_store = self._create_memory_store()
         self._audit_provider = audit_provider or SQLiteAuditProvider(
             db_path=workspace_root / ".swarmkit" / "audit.sqlite"
         )
         self._session_active = False
+
+    def _create_memory_store(self) -> Any:
+        """Create a memory store for the workspace if memory bindings are configured.
+
+        Returns GBrainMemory if a GBrain MCP server is configured,
+        otherwise falls back to MemoryStore (local JSON + TF-IDF).
+        """
+        ws_gov = getattr(self._workspace.raw, "governance", None)
+        if ws_gov is None:
+            return None
+        ds_list = getattr(ws_gov, "decision_skills", None) or []
+        has_memory = any(
+            getattr(ds, "id", "") in ("memory-reader", "memory-writer") for ds in ds_list
+        )
+        if not has_memory:
+            return None
+
+        if self._mcp_manager is not None:
+            mcp_servers = getattr(self._workspace.raw, "mcp_servers", None) or []
+            has_gbrain = any(getattr(s, "id", "") == "gbrain" for s in mcp_servers)
+            if has_gbrain:
+                from swarmkit_runtime.memory import GBrainMemory  # noqa: PLC0415
+
+                return GBrainMemory(self._mcp_manager)
+
+        from swarmkit_runtime.memory import MemoryStore  # noqa: PLC0415
+
+        return MemoryStore(self._workspace_root)
 
     @staticmethod
     def audit_provider_for(path: Path) -> SQLiteAuditProvider:
@@ -218,6 +260,7 @@ class WorkspaceRuntime:
             decision_skill_bindings=decision_bindings,
             planning_config=planning,
             synthesis_config=synthesis,
+            memory_store=self._memory_store,
         )
 
     def _resolve_planning_config(self, topology_name: str) -> Any:
@@ -405,12 +448,48 @@ class WorkspaceRuntime:
 
         await self._persist_events_to_audit(events, topology_name)
 
+        usage = UsageSummary(
+            input_tokens=trace.total_input_tokens,
+            output_tokens=trace.total_output_tokens,
+            total_tokens=trace.total_input_tokens + trace.total_output_tokens,
+            by_agent=dict(trace.token_by_agent),
+            by_model=dict(trace.token_by_model),
+        )
+
+        trace_summary = {
+            "run_id": trace.run_id,
+            "duration_ms": trace.duration_ms,
+            "llm_calls": trace.llm_calls,
+            "agent_steps": [
+                {
+                    "agent_id": s.agent_id,
+                    "model": s.model,
+                    "duration_ms": s.duration_ms,
+                    "input_tokens": s.input_tokens,
+                    "output_tokens": s.output_tokens,
+                    "tool_calls": [
+                        {
+                            "tool_name": tc.tool_name,
+                            "arguments": tc.arguments,
+                            "result_length": tc.result_length,
+                            "duration_ms": tc.duration_ms,
+                            "error": tc.error,
+                        }
+                        for tc in s.tool_calls
+                    ],
+                }
+                for s in trace.agent_steps
+            ],
+        }
+
         return RunResult(
             output=result.get("output", ""),
             agent_results={
                 k: str(v) for k, v in result.get("agent_results", {}).items() if isinstance(v, str)
             },
             events=events,
+            usage=usage,
+            trace_data=trace_summary,
         )
 
     async def resume(

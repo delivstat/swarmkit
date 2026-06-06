@@ -236,6 +236,34 @@ class Audit(BaseModel):
     url: str | None = None
 
 
+class Backend2(Enum):
+    """
+    Storage backend. sqlite (default, zero config) or postgres (production, shared).
+    """
+
+    sqlite = "sqlite"
+    postgres = "postgres"
+
+
+class Runtime(BaseModel):
+    """
+    Backend for jobs, conversations, and usage tracking. Defaults to sqlite at .swarmkit/store.sqlite.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    backend: Backend2 | None = Field(
+        "sqlite",
+        description="Storage backend. sqlite (default, zero config) or postgres (production, shared).",
+    )
+    url: str | None = Field(
+        None,
+        description="Connection URL for postgres backend. Supports ${ENV_VAR} interpolation. Ignored for sqlite.",
+    )
+
+
 class DefaultBackend(Enum):
     sqlite = "sqlite"
     postgres = "postgres"
@@ -256,6 +284,10 @@ class Storage(BaseModel):
     )
     checkpoints: Checkpoints | None = None
     audit: Audit | None = None
+    runtime: Runtime | None = Field(
+        None,
+        description="Backend for jobs, conversations, and usage tracking. Defaults to sqlite at .swarmkit/store.sqlite.",
+    )
     knowledge_bases: KnowledgeBases | None = None
 
 
@@ -363,17 +395,37 @@ class Mcp(BaseModel):
     )
 
 
-class ServerConfig(BaseModel):
+class PromoteCriteria(BaseModel):
     """
-    Configuration for swarmkit serve mode. Controls job concurrency, timeouts, and MCP server lifecycle.
+    Conditions that must ALL be met for auto-promotion of a canary version.
     """
 
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
     )
-    jobs: Jobs | None = None
-    mcp: Mcp | None = None
+    min_runs: int | None = Field(
+        None,
+        description="Minimum number of completed runs before promotion is eligible.",
+        ge=1,
+    )
+    error_rate_below: float | None = Field(
+        None,
+        description="Maximum error rate (failed/total). E.g. 0.05 = 5% error rate threshold.",
+        ge=0.0,
+        le=1.0,
+    )
+    drift_below: float | None = Field(
+        None,
+        description="Maximum average drift score. E.g. 0.30 = low drift tolerance.",
+        ge=0.0,
+        le=2.0,
+    )
+    window_minutes: int | None = Field(
+        60,
+        description="Evaluation window in minutes. Only runs within this window count toward promotion criteria.",
+        ge=1,
+    )
 
 
 class Governance(BaseModel):
@@ -395,6 +447,82 @@ class Governance(BaseModel):
     decision_skills: list[DecisionSkillBinding] | None = Field(
         None,
         description="Mandatory decision skills that fire at specified trigger points. Topologies inherit these and can override by id.",
+    )
+
+
+class CanaryVersion(BaseModel):
+    """
+    A single version in a canary route with its traffic weight and optional promotion criteria.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    version: str = Field(
+        ...,
+        description="Topology version (semver). Must match a topology file's metadata.version.",
+        pattern="^\\d+\\.\\d+\\.\\d+$",
+    )
+    weight: int = Field(
+        ...,
+        description="Percentage of traffic routed to this version (0-100).",
+        ge=0,
+        le=100,
+    )
+    promote_when: PromoteCriteria | None = Field(
+        None,
+        description="Auto-promotion criteria. When all conditions are met, this version is promoted to 100% traffic.",
+    )
+
+
+class CanaryRoute(BaseModel):
+    """
+    Traffic splitting rule for a single topology.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    topology: str = Field(
+        ...,
+        description="Topology name (matches metadata.name). Must exist in the workspace.",
+    )
+    versions: list[CanaryVersion] = Field(
+        ..., description="Version entries. Weights must sum to 100.", min_length=2
+    )
+
+
+class Canary(BaseModel):
+    """
+    Canary deployment configuration. Routes traffic between topology versions by weight with optional auto-promotion. See design/details/canary-deployments.md.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    routes: list[CanaryRoute] | None = Field(
+        None,
+        description="Canary routes. Each route splits traffic for one topology across multiple versions.",
+    )
+
+
+class ServerConfig(BaseModel):
+    """
+    Configuration for swarmkit serve mode. Controls job concurrency, timeouts, MCP server lifecycle, and canary deployments.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    jobs: Jobs | None = None
+    mcp: Mcp | None = None
+    canary: Canary | None = Field(
+        None,
+        description="Canary deployment configuration. Routes traffic between topology versions by weight with optional auto-promotion. See design/details/canary-deployments.md.",
     )
 
 

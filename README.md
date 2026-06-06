@@ -12,7 +12,7 @@
   <a href="https://pypi.org/project/swarmkit-runtime/"><img src="https://img.shields.io/pypi/v/swarmkit-runtime.svg" alt="PyPI" /></a>
   <a href="https://github.com/delivstat/swarmkit/actions"><img src="https://img.shields.io/github/actions/workflow/status/delivstat/swarmkit/ci.yml?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+" />
-  <img src="https://img.shields.io/badge/tests-566+-green.svg" alt="566+ tests" />
+  <img src="https://img.shields.io/badge/tests-566-green.svg" alt="566 tests" />
 </p>
 
 <!-- TODO: Record the demo GIF with: vhs scripts/demo.tape -->
@@ -56,7 +56,7 @@ agents:
 ```
 
 ```bash
-pip install swarmkit-runtime  # or: uv tool install swarmkit-runtime
+uv tool install swarmkit-runtime
 swarmkit run my-swarm/ code-review --input "Review PR #49"
 ```
 
@@ -80,12 +80,8 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 ### Install
 
 ```bash
-# Option 1: uv (recommended — fast, no venv needed)
 curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv if you don't have it
 uv tool install swarmkit-runtime
-
-# Option 2: pip
-pip install swarmkit-runtime
 ```
 
 ### Create and run a swarm
@@ -199,9 +195,57 @@ audit:
 
 OTel traces to any backend: `SWARMKIT_OTEL_EXPORTER=console swarmkit run ...`
 
-OTel drift metrics and tool error separation (M6 — shipped): intent drift events emit as OTel metrics. Tool errors are tracked separately from agent errors in spans and counters.
-
 Intent drift detection (M7 — shipped): detects when agents wander from the original goal. Add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }` to your topology.
+
+### Workspace memory — agents that remember (shipped)
+
+Agents remember across conversations. After each turn, structured insights (topic, context, key points) are extracted and saved. Before the next conversation, relevant prior context is injected into the agent's prompt. The agent references past sessions naturally — "As we discussed previously..."
+
+```yaml
+governance:
+  decision_skills:
+    - id: memory-reader
+      trigger: pre_input
+      scope: "*"
+    - id: memory-writer
+      trigger: post_output
+      scope: "*"
+```
+
+Two backends: local JSON store (zero setup) or GBrain MCP server (hybrid vector + keyword search, graph relationships, Supabase/Postgres for production). See [`docs/reference/workspace-memory.md`](./docs/reference/workspace-memory.md) and [`docs/examples/memory-demo.py`](./docs/examples/memory-demo.py).
+
+### HTTP server + canary deployments (M10 — shipped)
+
+`swarmkit serve` runs your workspace as a persistent HTTP service with async job execution, SSE streaming, webhook triggers, MCP endpoint, and pluggable auth:
+
+```bash
+swarmkit serve my-swarm/ --port 8000
+
+# Submit jobs via API
+curl -X POST http://localhost:8000/run/my-topology \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Process this request"}'
+```
+
+**Canary deployments** let you gradually roll out topology changes — split traffic between versions, monitor error rates and drift, auto-promote when criteria are met:
+
+```yaml
+server:
+  canary:
+    routes:
+      - topology: my-swarm
+        versions:
+          - version: "1.0.0"
+            weight: 90
+          - version: "1.1.0"
+            weight: 10
+            promote_when:
+              min_runs: 50
+              error_rate_below: 0.05
+              drift_below: 0.30
+```
+
+Auth providers (API key, JWT with JWKS auto-discovery) and webhook HMAC signature validation are plug-and-play — disabled by default, enabled via workspace config. See [`docs/reference/serve-cli-tests.md`](./docs/reference/serve-cli-tests.md) and [`docs/reference/canary-deployments.md`](./docs/reference/canary-deployments.md).
 
 ### Run trace (M8 — shipped)
 
@@ -215,18 +259,6 @@ swarmkit trace <run-id> -w .   # show full call graph for a run
 ### Structured delegation (M9 — shipped)
 
 Planner-driven task execution. Coordinators call `create-task-plan` to produce a dependency-ordered plan; the compiler executes independent tasks in parallel and dependent tasks sequentially. Plans are crash-resilient (`tasks.json` on disk) — the CLI detects previous plans on fresh runs. Results are summary-first (3-5 bullet key_findings, full results on disk). Auto-fix adds missing dependencies and synthesis tasks.
-
-### Structured inter-agent communication (M9 — shipped)
-
-Agents communicate via typed JSON/YAML schemas instead of free-form prose. 55-87% token reduction with improved accuracy. Three waves: schema definitions, compiler integration, and runtime enforcement.
-
-### Decision skill `pre_input` trigger (M9 — shipped)
-
-Governance decision skills can validate user input before any LLM work begins. The `pre_input` trigger runs deterministic checks (e.g., gate-validator via Rynko Flow) at request time, rejecting invalid inputs early.
-
-### Gate-validator MCP server (M9 — shipped)
-
-Deterministic output validation via external schema gates. Integrates with Rynko Flow for field-level structured output checking — eliminates shape-level hallucination before any LLM judge runs.
 
 ### Sub-agent architecture (M8 — shipped)
 
@@ -304,16 +336,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap.
-
-| Phase | Milestones | Status |
-|---|---|---|
-| Phase 1 — Foundation | M0-M5 (Schema, Runtime, Compiler, MCP, Governance, CLI) | Complete |
-| Phase 2 — Runtime Completion | M6 (Observability), M6.5 (Env config), M7 (Intent drift) | Complete |
-| Phase 3 — Knowledge + Skills | M8 (MCP integration layer), M9 (Reference topologies, structured delegation, structured comms) | Complete |
-| Phase 4 — Launch | M10 (Eject + execution modes), M11 (Launch prep) | Next |
-
-Current runtime version: **v1.2.51**.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M0-M9 complete, M10 serve + canary shipped. Next: eject + launch prep.
 
 ## Contributing
 

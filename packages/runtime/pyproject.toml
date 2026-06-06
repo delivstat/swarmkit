@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.2.56"
+version = "1.3.2"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -8,13 +8,15 @@ license = { text = "MIT" }
 authors = [{ name = "Srijith Kartha" }]
 keywords = ["agents", "multi-agent", "swarm", "langgraph", "mcp", "agt"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
 
 # Dependencies below are intentionally un-pinned placeholders. Lock concrete
@@ -71,6 +73,7 @@ dependencies = [
 serve = [
     "mcp>=1.0",
     "PyJWT[crypto]>=2.8",
+    "croniter>=1.0",
 ]
 dev = [
     "pytest>=8.0",
@@ -83,6 +86,12 @@ dev = [
 
 [project.scripts]
 swarmkit = "swarmkit_runtime.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/delivstat/swarmkit"
+Documentation = "https://delivstat.github.io/swarmkit/"
+Repository = "https://github.com/delivstat/swarmkit"
+Issues = "https://github.com/delivstat/swarmkit/issues"
 
 [build-system]
 requires = ["hatchling"]
