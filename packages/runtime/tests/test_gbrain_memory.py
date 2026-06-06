@@ -24,7 +24,7 @@ from swarmkit_runtime.memory._gbrain import GBrainMemory, _build_memory_page
 
 def test_build_memory_page_full() -> None:
     page = _build_memory_page(
-        slug="memory/alice/20260528T120000",
+        slug="memory-alice-20260528T120000",
         topic="Grief and letting go",
         context="User dealing with loss of a friend",
         key_points=["Katha 2.19 resonated", "Impermanence as comfort"],
@@ -43,7 +43,7 @@ def test_build_memory_page_full() -> None:
 
 def test_build_memory_page_minimal() -> None:
     page = _build_memory_page(
-        slug="memory/20260528T120000",
+        slug="memory-20260528T120000",
         topic="Quick note",
         context="",
         key_points=[],
@@ -73,7 +73,7 @@ def mock_mcp() -> AsyncMock:
         elif tool_name == "query":
             results = [
                 {
-                    "slug": "memory/alice/20260528",
+                    "slug": "memory-alice-20260528",
                     "content": "user: alice\n# grief\nKatha helped",
                     "score": 0.85,
                 },
@@ -96,8 +96,8 @@ def mock_mcp() -> AsyncMock:
             result.data = [MagicMock(text='{"ok": true}')]
         elif tool_name == "list_pages":
             pages = [
-                {"slug": "memory/alice/1", "type": "memory"},
-                {"slug": "memory/alice/2", "type": "memory"},
+                {"slug": "memory-alice-1", "type": "memory"},
+                {"slug": "memory-alice-2", "type": "memory"},
             ]
             result.data = [MagicMock(text=json.dumps({"pages": pages}))]
         else:
@@ -130,7 +130,7 @@ async def test_save_memory(gbrain: GBrainMemory, mock_mcp: AsyncMock) -> None:
         agent_id="advisor",
     )
 
-    assert slug.startswith("memory/alice/")
+    assert slug.startswith("memory-alice-")
 
     calls = mock_mcp.call_tool.call_args_list
     tool_names = [c.args[1] for c in calls]
@@ -162,7 +162,7 @@ async def test_save_memory_with_related_sessions(gbrain: GBrainMemory, mock_mcp:
 async def test_search_memory(gbrain: GBrainMemory) -> None:
     results = await gbrain.search_memory("grief", user="alice")
     assert len(results) == 1
-    assert results[0]["slug"].startswith("memory/")
+    assert results[0]["slug"].startswith("memory-")
     assert results[0]["score"] == 0.85
 
 
@@ -207,7 +207,7 @@ async def test_recall(gbrain: GBrainMemory) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_memory(gbrain: GBrainMemory) -> None:
-    result = await gbrain.delete_memory("memory/alice/20260528")
+    result = await gbrain.delete_memory("memory-alice-20260528")
     assert result == {"ok": True}
 
 
