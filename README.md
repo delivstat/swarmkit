@@ -272,6 +272,97 @@ Image content blocks across all 7 model providers. MCP tools can return `ImageCo
 
 Per-server and per-tool governance: `permission: open|cautious|strict|readonly` in workspace.yaml. Reads auto-approved, writes need governance approval, readonly denies mutations.
 
+## Complete feature list
+
+### Topology & Agent Orchestration
+1. **Topology as data** — define swarms in YAML, not Python code
+2. **Agent hierarchy** — root, leader, worker roles with delegation
+3. **Parallel delegation** — multiple child agents execute concurrently
+4. **DAG dependencies** — `depends_on` for execution ordering across agents
+5. **Structured delegation** — task plans with `create-task-plan`, `create-scope`, two-phase planning
+6. **Synthesis** — automatic output synthesis with configurable model and prompt
+7. **Per-agent model override** — different models per agent in the same topology
+8. **Dual model support** — cheap model for tool calls, quality model for synthesis
+9. **Output schema** — JSON Schema enforcement on agent outputs
+10. **Checkpointing** — resume interrupted runs from saved state (SQLite/Postgres)
+
+### Skills & Tools
+11. **Four skill categories** — capability, decision, coordination, persistence
+12. **Three implementation types** — `mcp_tool`, `llm_prompt`, `composed`
+13. **7,000+ MCP tools** — wire any MCP server via YAML config
+14. **Custom MCP servers** — build your own in Python/Node with stdio transport
+15. **MCP permission tiers** — open, cautious, strict, readonly per server/tool
+16. **MCP sandboxing** — Docker isolation with `--network=none` and read-only mounts
+17. **Lazy MCP startup** — servers start on first tool call, not at boot
+18. **Multimodal support** — image content blocks, document reader, MarkItDown
+19. **Composed skills** — parallel-consensus, sequential, or custom composition
+20. **Skill gap detection** — auto-detect missing skills, surface after threshold
+
+### Governance & Safety
+21. **IAM scopes** — per-agent permission model (`repo:read`, `skills:activate`)
+22. **Decision skill gates** — pre_input / post_output validation on every turn
+23. **Policy evaluation tiers** — deterministic, single LLM judge, panel
+24. **Circuit breakers** — max steps, max cost, max tokens per run
+25. **Trust levels** — tiered access control for agents
+26. **Audit trail** — append-only structured events (SQLite/Postgres)
+27. **Audit redaction** — JSON pointer paths to redact sensitive fields
+28. **Human-in-the-loop** — review queues with approve/reject workflow
+29. **Gate validators** — drop-in JSON Schema files in `gates/` directory
+30. **Output validation** — structured output enforcement with auto-correction
+
+### Observability & Debugging
+31. **OpenTelemetry** — traces, metrics, spans to any OTel backend
+32. **Intent drift detection** — cosine similarity tracking, nudge/warn/log actions
+33. **Run tracing** — agent call graph, tool calls, token counts per agent/model
+34. **Prompt ring buffer** — local SQLite cache of all prompts/responses
+35. **CLI debugging** — `logs`, `trace`, `why`, `ask`, `debug`, `status` commands
+36. **Notification plugins** — configurable alerts on run events
+37. **Tool call recording** — every MCP call tracked with arguments, result size, duration
+
+### Memory & Knowledge
+38. **Workspace memory** — agents remember across conversations (MemoryStore or GBrain)
+39. **Memory gates** — pre_input context injection, post_output insight extraction
+40. **GBrain integration** — hybrid vector + keyword search, graph relationships
+41. **Knowledge MCP server** — workspace docs, schema queries, file I/O
+42. **Document reader** — PDF, DOCX, Excel, CSV, SVG, draw.io parsing
+
+### Conversations & Authoring
+43. **Multi-turn chat** — `swarmkit chat` with persistent history
+44. **Conversation persistence** — saved to disk, resume by ID
+45. **Conversational authoring** — `swarmkit init/author/edit` create artifacts via conversation
+46. **Thorough mode** — multi-agent authoring swarm for complex artifacts
+
+### HTTP Server & Deployment
+47. **Persistent serve mode** — `swarmkit serve` with async job execution
+48. **SSE streaming** — real-time progress events during execution
+49. **REST API** — CRUD endpoints for topologies, skills, archetypes
+50. **Auth providers** — None, API key, JWT (JWKS auto-discovery)
+51. **Canary deployments** — weighted traffic splitting, auto-promotion by metrics
+52. **Cron triggers** — scheduled topology execution
+53. **Webhook triggers** — HMAC-SHA256 signature validation
+54. **MCP endpoint** — expose topologies as MCP tools for AI assistants
+55. **Concurrent job limiting** — semaphore-based with configurable max
+
+### Packaging & Distribution
+56. **Expertise packages** — bundle workspaces for distribution
+57. **`swarmkit mcp-serve`** — expose workspaces to Claude Desktop, Cursor, Claude Code
+58. **`swarmkit install/publish`** — install from directory, tarball, or URL
+
+### Model Providers
+59. **7 providers** — Anthropic, OpenAI, Google, OpenRouter, Groq, Together, Ollama
+60. **Auto-detection** — providers activated from environment variables
+61. **Per-agent provider** — mix providers within a single topology
+62. **Prompt caching** — automatic prefix caching (99% savings on DeepSeek)
+
+### Developer Experience
+63. **`swarmkit validate --tree`** — visual agent tree with skills, archetypes, MCP servers
+64. **`swarmkit run --dry-run`** — show resolved agents without executing
+65. **`swarmkit run --verbose`** — per-agent execution detail
+66. **Web UI** — dashboard, chat, topology composer, skill/archetype editors
+67. **JSON & TypeScript schemas** — validators in both languages
+68. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
+69. **16 archetypes + 25 skills** — production-ready out of the box
+
 ## Reference topologies
 
 Ships with production-quality topologies you can use immediately:
