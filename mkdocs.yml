@@ -28,6 +28,23 @@ nav:
   - Getting started:
     - Installation: getting-started/install.md
     - Hello Swarm: getting-started/hello-swarm.md
+  - Tutorials:
+    - Overview: tutorials/index.md
+    - "Level 1: Hello World": tutorials/01-hello-world.md
+    - "Level 2: Archetypes": tutorials/02-archetypes.md
+    - "Level 3: Skills": tutorials/03-skills.md
+    - "Level 4: Multi-Agent": tutorials/04-multi-agent.md
+    - "Level 5: MCP Tools": tutorials/05-mcp-tools.md
+    - "Level 6: Structured Delegation": tutorials/06-structured-delegation.md
+    - "Level 7: Governance & Safety": tutorials/07-governance.md
+    - "Level 8: Observability": tutorials/08-observability.md
+    - "Level 9: Conversations & Memory": tutorials/09-conversations-memory.md
+    - "Level 10: Knowledge & RAG": tutorials/10-knowledge-rag.md
+    - "Level 11: Serve & HTTP API": tutorials/11-serve-api.md
+    - "Level 12: Triggers & Canary": tutorials/12-triggers-canary.md
+    - "Level 13: Authoring & Review": tutorials/13-authoring-review.md
+    - "Level 14: Packaging": tutorials/14-packaging.md
+    - "Level 15: Production Example": tutorials/15-production-example.md
   - Architecture:
     - Design overview: architecture/design-overview.md
     - Implementation plan: architecture/implementation-plan.md
