@@ -617,6 +617,7 @@ Items explicitly not in this plan:
 - **Skill marketplace** — community ratings, trust scores. v1 is import-only.
 - **Cross-topology agent communication** — explicitly not planned. Mesh discovery is a governance liability, not a feature. See `design/details/market-analysis-and-risk-mitigations.md` (AgentField analysis).
 - **Installable expertise packages Phase 2-3** — public registry, dependency resolution, search/ratings. Phase 1 ships in M11.
+- **OpenClaw as agent execution layer** — each agent node in a SwarmKit topology runs as an OpenClaw instance. SwarmKit stays the orchestrator (topology, delegation, governance); OpenClaw provides per-agent containment (OS-level sandboxing via Microsoft Execution Containers), enterprise identity (Entra), and the MCP tool ecosystem (Hermes, Nvidia MXC). This separates the swarm coordination layer (SwarmKit) from the single-agent execution layer (OpenClaw). Ref: [The New Stack — Microsoft just made the agent runtime free](https://thenewstack.io/microsoft-just-made-the-agent-runtime-free-and-kept-everything-around-it/). Evaluate when OpenClaw stabilizes and has a Python-native embedding API.
 
 ## Design note index
 
