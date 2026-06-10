@@ -171,6 +171,10 @@ def _to_google_config(
         kwargs["tool_config"] = gtypes.ToolConfig(
             function_calling_config=gtypes.FunctionCallingConfig(mode=mode),
         )
+        # Gemini thinking models can interfere with tool calling —
+        # the thinking phase may time out or generate incomplete tool
+        # call blocks. Disable thinking when tools are present.
+        kwargs["thinking_config"] = gtypes.ThinkingConfig(thinking_budget=0)
     return gtypes.GenerateContentConfig(**kwargs)
 
 
