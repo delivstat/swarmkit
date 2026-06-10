@@ -23,6 +23,17 @@ from ._types import (
 
 _DEFAULT_BASE_URL = "http://localhost:11434"
 
+# Models that need special handling for tool calling.
+# Gemma models use <think> blocks that confuse the Ollama tool parser,
+# and expect role="tool_responses" instead of role="tool".
+_THINKING_MODEL_FAMILIES = ("gemma",)
+
+
+def _is_thinking_model(model: str) -> bool:
+    """Check if a model belongs to a family that uses thinking tokens."""
+    model_lower = model.lower()
+    return any(family in model_lower for family in _THINKING_MODEL_FAMILIES)
+
 
 class OllamaModelProvider:
     """ModelProvider for local Ollama models."""
@@ -31,7 +42,7 @@ class OllamaModelProvider:
 
     def __init__(self, *, base_url: str = _DEFAULT_BASE_URL) -> None:
         self._base_url = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=120.0)
+        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=300.0)
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         from ._types import with_retry  # noqa: PLC0415
@@ -70,21 +81,32 @@ class OllamaModelProvider:
         await self._client.aclose()
 
 
-def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
+def _build_messages(request: CompletionRequest, *, remap_tool_role: bool) -> list[dict[str, Any]]:
+    """Convert request messages to Ollama's format."""
     messages: list[dict[str, Any]] = []
     if request.system:
         messages.append({"role": "system", "content": request.system})
     for msg in request.messages:
+        role: str = msg.role
+        if remap_tool_role and role == "tool":
+            role = "tool_responses"
         if isinstance(msg.content, str):
-            messages.append({"role": msg.role, "content": msg.content})
+            messages.append({"role": role, "content": msg.content})
         else:
             text_parts = [b.text for b in msg.content if b.type == "text" and b.text]
             images = [b.image_data for b in msg.content if b.type == "image" and b.image_data]
-            entry: dict[str, Any] = {"role": msg.role, "content": " ".join(text_parts)}
+            entry: dict[str, Any] = {"role": role, "content": " ".join(text_parts)}
             if images:
                 entry["images"] = images
             messages.append(entry)
+    return messages
 
+
+def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
+    is_gemma = _is_thinking_model(request.model)
+    # Gemma expects "tool_responses" instead of "tool" for tool results.
+    # Without this mapping, Gemma loops indefinitely re-calling the same tool.
+    messages = _build_messages(request, remap_tool_role=is_gemma)
     payload: dict[str, Any] = {"model": request.model, "messages": messages}
     options: dict[str, Any] = {}
     if request.temperature is not None:
@@ -93,6 +115,14 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
         options["num_predict"] = request.max_tokens
     if options:
         payload["options"] = options
+
+    # Gemma models use <think> blocks that interfere with Ollama's tool-call
+    # parser — the parser fails to piece together tool-call JSON across
+    # thinking chunks. Disabling thinking forces the model to emit tool
+    # calls directly, which Ollama can parse reliably.
+    if is_gemma:
+        payload["think"] = False
+
     if request.response_format is not None:
         rf_type = request.response_format.get("type", "")
         if rf_type in ("json_object", "json_schema"):
