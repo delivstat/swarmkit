@@ -7,6 +7,7 @@ See ``design/details/model-provider-abstraction.md``.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from swarmkit_runtime.model_providers import (
@@ -464,7 +465,7 @@ _JSON_SCHEMA_RF = {
 }
 
 
-def _req(response_format: dict[str, object] | None) -> CompletionRequest:
+def _req(response_format: dict[str, Any] | None) -> CompletionRequest:
     return CompletionRequest(
         model="m",
         messages=(Message(role="user", content="hi"),),
