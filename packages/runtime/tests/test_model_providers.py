@@ -505,3 +505,55 @@ def test_google_json_object_no_response_schema() -> None:
     config = _to_google_config(_req({"type": "json_object"}))
     assert config.response_mime_type == "application/json"
     assert config.response_schema is None
+
+
+# ---- generic per-model options passthrough -------------------------------
+#
+# A model config's ``options`` block carries provider-native runtime params
+# from the artifact YAML. Each provider folds them into its native call — for
+# Ollama into the ``options`` object, for the others as top-level params —
+# applied after the first-class fields so a same-named option overrides them.
+
+
+def _opts_req(options: dict[str, Any], **kw: Any) -> CompletionRequest:
+    return CompletionRequest(
+        model="m",
+        messages=(Message(role="user", content="hi"),),
+        options=options,
+        **kw,
+    )
+
+
+def test_ollama_options_fold_into_options_object() -> None:
+    payload = _to_ollama_payload(
+        _opts_req({"num_ctx": 8192, "repeat_penalty": 1.15}, temperature=0.0)
+    )
+    assert payload["options"]["num_ctx"] == 8192
+    assert payload["options"]["repeat_penalty"] == 1.15
+    # first-class temperature still present alongside the options
+    assert payload["options"]["temperature"] == 0.0
+
+
+def test_ollama_options_override_first_class() -> None:
+    # An option with the same name as a first-class field wins.
+    payload = _to_ollama_payload(_opts_req({"temperature": 0.9}, temperature=0.0))
+    assert payload["options"]["temperature"] == 0.9
+
+
+def test_ollama_no_options_omits_them() -> None:
+    payload = _to_ollama_payload(
+        CompletionRequest(model="m", messages=(Message(role="user", content="hi"),))
+    )
+    assert "options" not in payload
+
+
+def test_openai_options_become_top_level_kwargs() -> None:
+    kwargs = _to_openai_kwargs(_opts_req({"top_p": 0.9, "frequency_penalty": 0.2}))
+    assert kwargs["top_p"] == 0.9
+    assert kwargs["frequency_penalty"] == 0.2
+
+
+def test_google_options_become_config_fields() -> None:
+    config = _to_google_config(_opts_req({"top_p": 0.8, "top_k": 40}))
+    assert config.top_p == 0.8
+    assert config.top_k == 40

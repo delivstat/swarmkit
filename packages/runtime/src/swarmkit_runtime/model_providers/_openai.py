@@ -75,6 +75,10 @@ def _to_openai_kwargs(request: CompletionRequest) -> dict[str, Any]:
         ]
     if request.response_format is not None:
         kwargs["response_format"] = request.response_format
+    # Per-model options (top_p, frequency_penalty, seed, ...) as top-level
+    # call params; runtime ``extra`` is applied last so it stays authoritative.
+    if request.options:
+        kwargs.update(request.options)
     if request.extra:
         kwargs.update(request.extra)
     return kwargs

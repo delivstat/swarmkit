@@ -33,8 +33,15 @@ export interface Iam {
 }
 
 export interface Model {
-    max_tokens?:  number;
-    name?:        string;
+    max_tokens?: number;
+    name?:       string;
+    /**
+     * Provider-native runtime options passed through to the model call (e.g. Ollama num_ctx /
+     * repeat_penalty, OpenAI top_p / frequency_penalty, Google top_k). Applied after the
+     * first-class fields, so an option with the same name (e.g. temperature) overrides them.
+     * Keys must be valid for the resolved provider.
+     */
+    options?:     { [key: string]: any };
     provider?:    string;
     temperature?: number;
     /**
