@@ -265,9 +265,24 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
                     )
                 )
 
-    output = (
-        "\n".join(text_parts) or str(result.content) if result.content else "(no response from MCP)"
-    )
+    # Text content is primary: FastMCP and most servers serialise the result
+    # (including structured output) into a text block, so this carries the
+    # meaningful payload. Only when a server returns structured output with no
+    # text fallback — permitted by the MCP spec — do we surface
+    # ``structuredContent`` directly, so such tools no longer read as empty.
+    text_output = "\n".join(text_parts)
+    if text_output:
+        output = text_output
+    else:
+        structured = getattr(result, "structuredContent", None)
+        if structured:
+            import json as _json  # noqa: PLC0415
+
+            output = _json.dumps(structured, indent=2)
+        elif result.content:
+            output = str(result.content)
+        else:
+            output = "(no response from MCP)"
 
     provenance = f"\n[source: {metadata.source} | {metadata.duration_ms}ms]"
     if output and output != "(no response from MCP)":
