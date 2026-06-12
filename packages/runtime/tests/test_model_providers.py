@@ -24,7 +24,12 @@ from swarmkit_runtime.model_providers import (
     image_block,
 )
 from swarmkit_runtime.model_providers._anthropic import _to_anthropic_messages
-from swarmkit_runtime.model_providers._openai import _build_openai_messages
+from swarmkit_runtime.model_providers._google import _to_google_config
+from swarmkit_runtime.model_providers._ollama import _to_ollama_payload
+from swarmkit_runtime.model_providers._openai import (
+    _build_openai_messages,
+    _to_openai_kwargs,
+)
 
 # ---- types --------------------------------------------------------------
 
@@ -437,3 +442,65 @@ def test_openai_image_translation() -> None:
     assert parts[0] == {"type": "text", "text": "What is this?"}
     assert parts[1]["type"] == "image_url"
     assert "data:image/jpeg;base64,aW1hZ2VkYXRh" in parts[1]["image_url"]["url"]
+
+
+# ---- schema-constrained response_format ----------------------------------
+#
+# A worker with an output_schema produces a json_schema response_format
+# (see _build_completion_request). Each provider must translate that into its
+# native schema-constrained decoding control rather than a generic "valid JSON"
+# flag, so small local models are held to the schema shape.
+
+_OUTPUT_SCHEMA = {
+    "type": "object",
+    "required": ["answer"],
+    "properties": {"answer": {"type": "string"}},
+    "additionalProperties": False,
+}
+
+_JSON_SCHEMA_RF = {
+    "type": "json_schema",
+    "json_schema": {"name": "agent_output", "schema": _OUTPUT_SCHEMA},
+}
+
+
+def _req(response_format: dict[str, object] | None) -> CompletionRequest:
+    return CompletionRequest(
+        model="m",
+        messages=(Message(role="user", content="hi"),),
+        response_format=response_format,
+    )
+
+
+def test_ollama_json_schema_sets_format_to_schema() -> None:
+    payload = _to_ollama_payload(_req(_JSON_SCHEMA_RF))
+    # Ollama constrains decoding when ``format`` is the schema object itself.
+    assert payload["format"] == _OUTPUT_SCHEMA
+
+
+def test_ollama_json_object_stays_json_mode() -> None:
+    payload = _to_ollama_payload(_req({"type": "json_object"}))
+    assert payload["format"] == "json"
+
+
+def test_ollama_no_response_format_omits_format() -> None:
+    payload = _to_ollama_payload(_req(None))
+    assert "format" not in payload
+
+
+def test_openai_passes_json_schema_through() -> None:
+    kwargs = _to_openai_kwargs(_req(_JSON_SCHEMA_RF))
+    # OpenAI / OpenRouter consume the json_schema response_format natively.
+    assert kwargs["response_format"] == _JSON_SCHEMA_RF
+
+
+def test_google_json_schema_sets_response_schema() -> None:
+    config = _to_google_config(_req(_JSON_SCHEMA_RF))
+    assert config.response_mime_type == "application/json"
+    assert config.response_schema == _OUTPUT_SCHEMA
+
+
+def test_google_json_object_no_response_schema() -> None:
+    config = _to_google_config(_req({"type": "json_object"}))
+    assert config.response_mime_type == "application/json"
+    assert config.response_schema is None

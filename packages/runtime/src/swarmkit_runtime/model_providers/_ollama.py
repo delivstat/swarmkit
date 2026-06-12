@@ -125,7 +125,12 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
 
     if request.response_format is not None:
         rf_type = request.response_format.get("type", "")
-        if rf_type in ("json_object", "json_schema"):
+        if rf_type == "json_schema":
+            # Ollama structured outputs: pass the JSON schema as ``format`` so
+            # decoding is constrained to the schema, not just "valid JSON".
+            schema = (request.response_format.get("json_schema") or {}).get("schema")
+            payload["format"] = schema if schema else "json"
+        elif rf_type == "json_object":
             payload["format"] = "json"
     if request.tools:
         payload["tools"] = [

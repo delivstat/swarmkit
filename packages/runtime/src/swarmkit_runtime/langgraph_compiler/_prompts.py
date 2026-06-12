@@ -47,7 +47,18 @@ def _build_completion_request(
     from ._output_schema import get_effective_output_schema  # noqa: PLC0415
 
     effective_schema = get_effective_output_schema(agent)
-    response_format = {"type": "json_object"} if effective_schema else None
+    # Carry the actual schema (not just "json_object") so providers can do
+    # true schema-constrained generation: OpenAI/OpenRouter pass it through as
+    # native structured output, Google maps it to ``response_schema``, and
+    # Ollama maps it to ``format=<schema>``. Without the schema the model only
+    # gets "produce some JSON", which small models satisfy with malformed or
+    # off-schema output.
+    response_format: dict[str, object] | None = None
+    if effective_schema:
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {"name": "agent_output", "schema": effective_schema},
+        }
 
     return CompletionRequest(
         model=model_name,

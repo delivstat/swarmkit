@@ -118,7 +118,23 @@ class TestCompletionRequest:
         agent = _make_agent(role="worker")
         req = _build_completion_request("mock", [], None, [], agent)
         assert req.response_format is not None
-        assert req.response_format["type"] == "json_object"
+        # The actual schema is carried (not just "json_object") so providers can
+        # do true schema-constrained decoding.
+        assert req.response_format["type"] == "json_schema"
+        carried = req.response_format["json_schema"]["schema"]
+        assert "findings" in carried["properties"]
+
+    def test_explicit_schema_carried_in_response_format(self) -> None:
+        custom = {
+            "type": "object",
+            "required": ["answer"],
+            "properties": {"answer": {"type": "string"}},
+        }
+        agent = _make_agent(role="worker", output_schema=custom)
+        req = _build_completion_request("mock", [], None, [], agent)
+        assert req.response_format is not None
+        assert req.response_format["type"] == "json_schema"
+        assert req.response_format["json_schema"]["schema"] == custom
 
     def test_leader_no_response_format(self) -> None:
         agent = _make_agent(role="leader")
