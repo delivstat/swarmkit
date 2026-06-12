@@ -175,6 +175,10 @@ def _to_google_config(
         # the thinking phase may time out or generate incomplete tool
         # call blocks. Disable thinking when tools are present.
         kwargs["thinking_config"] = gtypes.ThinkingConfig(thinking_budget=0)
+    # Per-model options (top_p, top_k, seed, ...) become GenerateContentConfig
+    # fields, overriding the first-class settings above on conflict.
+    if request.options:
+        kwargs.update(request.options)
     return gtypes.GenerateContentConfig(**kwargs)
 
 

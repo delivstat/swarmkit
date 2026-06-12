@@ -113,6 +113,13 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
         options["temperature"] = request.temperature
     if request.max_tokens is not None:
         options["num_predict"] = request.max_tokens
+    # Generic per-model options (num_ctx, repeat_penalty, top_k, ...) fold
+    # straight into Ollama's native options object, overriding the first-class
+    # fields above on conflict. num_ctx matters here: Ollama defaults to a
+    # small context (2048) and silently truncates longer prompts, which a
+    # large system prompt + tool schemas can exceed.
+    if request.options:
+        options.update(request.options)
     if options:
         payload["options"] = options
 

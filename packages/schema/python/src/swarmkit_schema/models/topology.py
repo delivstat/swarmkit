@@ -89,6 +89,10 @@ class Model(BaseModel):
         None,
         description="Model name for tool-calling turns. Uses a cheaper model for tool calls, main model for synthesis.",
     )
+    options: dict[str, Any] | None = Field(
+        None,
+        description="Provider-native runtime options passed through to the model call (e.g. Ollama num_ctx / repeat_penalty, OpenAI top_p / frequency_penalty, Google top_k). Applied after the first-class fields, so an option with the same name (e.g. temperature) overrides them. Keys must be valid for the resolved provider.",
+    )
 
 
 class Prompt(BaseModel):

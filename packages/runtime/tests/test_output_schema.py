@@ -146,6 +146,23 @@ class TestCompletionRequest:
         req = _build_completion_request("mock", [], None, [], agent)
         assert req.response_format is None
 
+    def test_model_options_flow_to_request(self) -> None:
+        agent = ResolvedAgent(
+            id="opt-agent",
+            role="root",
+            model={"name": "llama3.2:3b", "options": {"num_ctx": 8192}},
+            prompt={"system": "x"},
+            skills=(),
+            iam=None,
+        )
+        req = _build_completion_request("llama3.2:3b", [], None, [], agent)
+        assert req.options == {"num_ctx": 8192}
+
+    def test_no_model_options_is_none(self) -> None:
+        agent = _make_agent(role="root")
+        req = _build_completion_request("mock", [], None, [], agent)
+        assert req.options is None
+
 
 # ---- _looks_incomplete ---------------------------------------------------
 

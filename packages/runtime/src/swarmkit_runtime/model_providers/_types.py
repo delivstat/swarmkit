@@ -73,6 +73,13 @@ class CompletionRequest:
     tools: Sequence[ToolSpec] | None = None
     response_format: dict[str, Any] | None = None
     extra: dict[str, Any] | None = None
+    # Provider-native runtime options carried from the artifact's ``model.options``
+    # block (e.g. Ollama ``num_ctx`` / ``repeat_penalty``, OpenAI ``top_p`` /
+    # ``frequency_penalty``). Each provider folds these into its native call —
+    # for Ollama into the ``options`` object, for the others as top-level call
+    # parameters. Applied after the first-class fields, so an option with the
+    # same name (e.g. ``temperature``) overrides them.
+    options: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

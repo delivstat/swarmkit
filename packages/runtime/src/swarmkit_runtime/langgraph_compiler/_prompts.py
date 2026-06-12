@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json as _json
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -60,13 +61,18 @@ def _build_completion_request(
             "json_schema": {"name": "agent_output", "schema": effective_schema},
         }
 
+    model_cfg = agent.model or {}
+    raw_options = model_cfg.get("options")
+    options = dict(raw_options) if isinstance(raw_options, Mapping) else None
+
     return CompletionRequest(
         model=model_name,
         messages=tuple(messages),
         system=system_prompt,
         tools=tuple(tools) if tools else None,
-        temperature=(agent.model or {}).get("temperature"),
+        temperature=model_cfg.get("temperature"),
         response_format=response_format,
+        options=options,
     )
 
 

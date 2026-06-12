@@ -51,6 +51,8 @@ class AnthropicModelProvider:
                 }
                 for t in request.tools
             ]
+        if request.options:
+            kwargs.update(request.options)
         if request.extra:
             kwargs.update(request.extra)
 
@@ -71,6 +73,8 @@ class AnthropicModelProvider:
             kwargs["system"] = request.system
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
+        if request.options:
+            kwargs.update(request.options)
 
         async with self._client.messages.stream(**kwargs) as stream:
             async for text in stream.text_stream:
