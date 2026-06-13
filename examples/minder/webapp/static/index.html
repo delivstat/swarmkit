@@ -1089,7 +1089,13 @@
   <div class="liveview-overlay" id="liveview-overlay">
     <div class="liveview-header">
       <h3 id="liveview-title">Live View</h3>
-      <button class="btn btn-secondary" style="font-size:0.8rem; padding:0.35rem 0.75rem" onclick="closeLiveView()">Close</button>
+      <div style="display:flex; gap:0.5rem; align-items:center">
+        <span id="liveview-pager" style="display:none; gap:0.4rem; align-items:center">
+          <button class="btn btn-secondary" style="font-size:0.8rem; padding:0.35rem 0.6rem" onclick="liveViewPage(-1)">‹ Prev</button>
+          <button class="btn btn-secondary" style="font-size:0.8rem; padding:0.35rem 0.6rem" onclick="liveViewPage(1)">Next ›</button>
+        </span>
+        <button class="btn btn-secondary" style="font-size:0.8rem; padding:0.35rem 0.75rem" onclick="closeLiveView()">Close</button>
+      </div>
     </div>
     <div class="liveview-body" id="liveview-body"></div>
   </div>
@@ -1907,20 +1913,46 @@ async function loadDashCameras() {
   }
 }
 
+// Live streams are H.265 → the browser falls back to CPU-transcoded jsmpeg,
+// which the box can only sustain ~6 of at once. Show at most 6 per page with
+// pagination so the grid never exceeds that budget.
+const LIVE_PAGE_SIZE = 6;
+let _liveCams = [];
+let _livePage = 0;
+
 function openLiveView(singleIp) {
-  const overlay = document.getElementById('liveview-overlay');
+  _liveCams = singleIp ? state.cameras.filter(c => c.ip === singleIp) : state.cameras;
+  _livePage = 0;
+  document.getElementById('liveview-overlay').classList.add('active');
+  document.body.style.overflow = 'hidden';
+  _renderLivePage();
+}
+
+function _renderLivePage() {
   const body = document.getElementById('liveview-body');
   const title = document.getElementById('liveview-title');
+  const pager = document.getElementById('liveview-pager');
 
-  const cams = singleIp
-    ? state.cameras.filter(c => c.ip === singleIp)
-    : state.cameras;
+  // Stop the current page's streams before swapping — frees transcode slots.
+  body.querySelectorAll('img').forEach(img => { img.src = ''; });
 
-  const isSingle = cams.length === 1;
-  title.textContent = isSingle ? (cams[0].name || cams[0].ip) : `Live View — ${cams.length} cameras`;
-  body.className = 'liveview-body ' + (isSingle ? 'single' : 'multi');
+  const single = _liveCams.length === 1;
+  const paginated = _liveCams.length > LIVE_PAGE_SIZE;
+  let pageCams = _liveCams, label = '';
+  if (paginated) {
+    const pages = Math.ceil(_liveCams.length / LIVE_PAGE_SIZE);
+    _livePage = ((_livePage % pages) + pages) % pages;  // wrap
+    pageCams = _liveCams.slice(_livePage * LIVE_PAGE_SIZE, (_livePage + 1) * LIVE_PAGE_SIZE);
+    label = ` (page ${_livePage + 1}/${pages})`;
+  }
 
-  body.innerHTML = cams.map(cam => `
+  title.textContent = single
+    ? (pageCams[0].name || pageCams[0].ip)
+    : `Live View — ${_liveCams.length} cameras${label}`;
+  pager.style.display = paginated ? 'flex' : 'none';
+  body.className = 'liveview-body ' + (single ? 'single' : 'multi');
+
+  body.innerHTML = pageCams.map(cam => `
     <div class="camera-card">
       <img src="/api/cameras/${cam.ip}/stream"
            alt="${cam.name || cam.ip}"
@@ -1931,16 +1963,19 @@ function openLiveView(singleIp) {
       </div>
     </div>
   `).join('');
+}
 
-  overlay.classList.add('active');
-  document.body.style.overflow = 'hidden';
+function liveViewPage(delta) {
+  _livePage += delta;
+  _renderLivePage();
 }
 
 function closeLiveView() {
   const overlay = document.getElementById('liveview-overlay');
   const body = document.getElementById('liveview-body');
-  body.querySelectorAll('img').forEach(img => img.src = '');
+  body.querySelectorAll('img').forEach(img => { img.src = ''; });
   body.innerHTML = '';
+  _liveCams = [];
   overlay.classList.remove('active');
   document.body.style.overflow = '';
 }
