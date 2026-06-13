@@ -63,7 +63,7 @@ ignore = [
 # Example apps are intentionally pragmatic/monolithic, not framework code.
 # Relax complexity heuristics + the lazy-import rule for them; real quality
 # rules (pyflakes, line length, bugbear, simplify) still apply.
-"examples/**" = [
+"examples/minder/**" = [
     "PLR0911",  # too many return statements
     "PLR0912",  # too many branches
     "PLR0915",  # too many statements
