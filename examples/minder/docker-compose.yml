@@ -1,0 +1,106 @@
+services:
+  # Home Assistant — hidden integration layer for smart device control
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    network_mode: host
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/minder/ha-init.sh"]
+    volumes:
+      - ha-config:/config
+      - ./ha-init.sh:/minder/ha-init.sh:ro
+    environment:
+      - TZ=Asia/Kolkata
+
+  # Seeds the generic Frigate template into the config volume on first boot
+  # only (never overwrites). Keeps the committed template pristine — the real
+  # per-install config is generated into the volume by Minder's
+  # `configure_cameras`, never written back to the source tree.
+  frigate-init:
+    image: busybox
+    volumes:
+      - frigate-config:/config
+      - ./frigate/config.yml:/seed/config.yml:ro
+    command: sh -c "[ -f /config/config.yml ] || cp /seed/config.yml /config/config.yml"
+
+  # Frigate — hidden perception sidecar for RTSP cameras (motion-gate, detect,
+  # track, zones, and later crop-and-zoom VLM enrichment). CPU detector only;
+  # the GPU stays free for Ollama. Its config lives in a volume (per-install
+  # runtime state, like cameras.json) — Minder generates it from discovery.
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable
+    network_mode: host
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: "512mb"
+    depends_on:
+      frigate-init:
+        condition: service_completed_successfully
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - frigate-config:/config
+      - frigate-media:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    environment:
+      - TZ=${TZ:-Asia/Kolkata}
+      - FRIGATE_RTSP_PASSWORD=${MINDER_CAM_PASS:-admin123}
+
+  # Minder — SwarmKit runtime + onboarding webapp + Telegram bot in one container
+  minder:
+    build:
+      context: .
+      args:
+        SWARMKIT_VERSION: "1.3.6"
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - minder-data:/data
+      # Recovery backups on a host path so they can be copied off-box.
+      - ./backups:/backups
+      # HA config, read-only, so Minder can back it up for full-stack DR
+      # (restore is host-side via scripts/recover.sh — it must stop HA first).
+      - ha-config:/ha-config:ro
+    environment:
+      - TZ=${TZ:-Asia/Kolkata}
+      - MINDER_BACKUP_DIR=/backups
+      - FRIGATE_URL=http://localhost:5000
+      - MINDER_SUBNET=${MINDER_SUBNET:-192.168.0}
+      - MINDER_CAM_USER=${MINDER_CAM_USER:-admin}
+      - MINDER_CAM_PASS=${MINDER_CAM_PASS:-admin123}
+      # Model profiles (consumed by workspace.env.yaml → archetypes/topologies)
+      - MINDER_REASONING_PROVIDER=${MINDER_REASONING_PROVIDER:-ollama}
+      - MINDER_REASONING_MODEL=${MINDER_REASONING_MODEL:-llama3.2:3b}
+      - MINDER_LOCAL_PROVIDER=${MINDER_LOCAL_PROVIDER:-ollama}
+      - MINDER_LOCAL_MODEL=${MINDER_LOCAL_MODEL:-llama3.2:3b}
+      # granite3.2-vision: non-thinking VLM that fits beside llama3.2:3b on 4GB
+      # and gives direct descriptions. AVOID qwen3-vl* (thinking models — they
+      # burn the token budget on <think> and return empty descriptions to
+      # Frigate genai). On a dedicated appliance where the VLM owns the GPU,
+      # use qwen2.5vl:3b (or :7b) for richer descriptions. Serves both the
+      # interactive VLM and Frigate genai enrichment.
+      - MINDER_VISION_MODEL=${MINDER_VISION_MODEL:-granite3.2-vision}
+      # Frigate event poller is the live alert source (Phase 2b cutover). The
+      # YOLO monitor loop (monitor-cameras trigger) is disabled; set "shadow" to
+      # roll back to parallel-run if needed.
+      - MINDER_POLLER_ALERTS=${MINDER_POLLER_ALERTS:-live}
+      # Frigate genai crop-and-zoom enrichment (local VLM). "on" or "off".
+      - MINDER_GENAI=${MINDER_GENAI:-on}
+      - MINDER_DATA_DIR=/data
+      # Single-action agents: one tool call, then compose the answer.
+      - SWARMKIT_MAX_PER_TOOL=${SWARMKIT_MAX_PER_TOOL:-1}
+      - MINDER_TELEGRAM_TOKEN=${MINDER_TELEGRAM_TOKEN:-}
+      - OLLAMA_URL=http://localhost:11434
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - HA_URL=http://localhost:8123
+      - HA_TOKEN=${HA_TOKEN:-}
+      - SWARMKIT_URL=http://localhost:8321
+    depends_on:
+      - homeassistant
+
+volumes:
+  minder-data:
+  ha-config:
+  frigate-media:
+  frigate-config:

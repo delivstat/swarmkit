@@ -1,0 +1,74 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: minder
+  name: Minder — Proactive AI Home Agent
+  description: >
+    Autonomous smart home intelligence running entirely on local edge
+    hardware. Discovers cameras and smart devices, analyses video feeds
+    with vision AI, controls devices, and communicates via Telegram.
+    Zero cloud dependencies for video/AI processing.
+
+mcp_servers:
+  - id: camera
+    transport: stdio
+    command: ["python", "/app/mcp-servers/camera/server.py"]
+    env:
+      MINDER_SUBNET: "${MINDER_SUBNET}"
+      MINDER_CAM_USER: "${MINDER_CAM_USER}"
+      MINDER_CAM_PASS: "${MINDER_CAM_PASS}"
+      MINDER_DATA_DIR: "/data"
+      OLLAMA_URL: "http://localhost:11434"
+      MINDER_VISION_MODEL: "${MINDER_VISION_MODEL}"
+
+  - id: vision
+    transport: stdio
+    command: ["python", "/app/mcp-servers/vision/server.py"]
+    env:
+      OLLAMA_URL: "http://localhost:11434"
+      MINDER_VISION_MODEL: "${MINDER_VISION_MODEL}"
+      MINDER_DATA_DIR: "/data"
+
+  - id: detect
+    transport: stdio
+    command: ["python", "/app/mcp-servers/detect/server.py"]
+    env:
+      MINDER_DATA_DIR: "/data"
+      MINDER_CAM_USER: "${MINDER_CAM_USER}"
+      MINDER_CAM_PASS: "${MINDER_CAM_PASS}"
+      MINDER_DETECT_CONF: "0.35"
+
+  - id: devices
+    transport: stdio
+    command: ["python", "/app/mcp-servers/tuya/server.py"]
+    env:
+      HA_URL: "${HA_URL}"
+      HA_TOKEN: "${HA_TOKEN}"
+
+  - id: doctor
+    transport: stdio
+    command: ["python", "/app/mcp-servers/doctor/server.py"]
+    env:
+      MINDER_DATA_DIR: "/data"
+      MINDER_API_URL: "http://localhost:80"
+
+  - id: frigate
+    transport: stdio
+    command: ["python", "/app/mcp-servers/frigate/server.py"]
+    env:
+      MINDER_DATA_DIR: "/data"
+      MINDER_CAM_USER: "${MINDER_CAM_USER}"
+      FRIGATE_URL: "http://localhost:5000"
+      OLLAMA_URL: "http://localhost:11434"
+      HA_URL: "${HA_URL}"
+      MINDER_VISION_MODEL: "${MINDER_VISION_MODEL}"
+      # genai crop-and-zoom enrichment (Frigate → local VLM). "on"/"off".
+      MINDER_GENAI: "${MINDER_GENAI}"
+      # shadow = log would-be alerts only (parallel-run with the YOLO loop);
+      # flip to "live" at the Phase 2b cutover once shadow data confirms parity.
+      MINDER_POLLER_ALERTS: "${MINDER_POLLER_ALERTS}"
+
+storage:
+  checkpoints:
+    backend: sqlite
+    path: /data/.swarmkit/state

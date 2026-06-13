@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-device
+  version: 1.2.0
+  description: Quick device control — turn on/off lights, switches, fans.
+agents:
+  root:
+    id: device
+    role: root
+    archetype: action-agent
+    skills:
+      - control-device
+      - get-device-state
+    prompt:
+      system: >
+        The user's message lists the available devices. Match their request to one of them and switch it on or off, then confirm what you did.

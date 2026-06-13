@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: diagnose
+  name: Diagnose Health
+  description: Check appliance health and raise an approval-request alert if anything is wrong. Read-only — never fixes.
+category: capability
+implementation:
+  type: mcp_tool
+  server: doctor
+  tool: diagnose
+provenance:
+  authored_by: human
+  version: 1.0.0

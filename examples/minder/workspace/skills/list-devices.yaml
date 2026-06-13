@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: list-devices
+  name: List Smart Devices
+  description: List all smart devices (lights, switches, fans, etc) from Home Assistant.
+category: capability
+implementation:
+  type: mcp_tool
+  server: devices
+  tool: list_devices
+provenance:
+  authored_by: human
+  version: 1.0.0

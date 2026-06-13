@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-discover
+  version: 1.0.0
+  description: Single-purpose — run camera discovery.
+agents:
+  root:
+    id: discover
+    role: root
+    archetype: action-agent
+    skills:
+      - discover-cameras
+    prompt:
+      system: >
+        Run camera discovery and report how many cameras you found and their names.

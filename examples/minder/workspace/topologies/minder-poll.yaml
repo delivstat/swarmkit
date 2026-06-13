@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-poll
+  version: 1.0.0
+  description: >
+    Single-purpose — poll Frigate events and apply the monitoring scenarios.
+    Event-driven replacement for the YOLO snapshot loop (minder-monitor).
+agents:
+  root:
+    id: poll
+    role: root
+    archetype: action-agent
+    skills:
+      - poll-events
+    prompt:
+      system: >
+        Call poll_events to check Frigate for new detections and apply the
+        monitoring rules, then report how many alerts fired.

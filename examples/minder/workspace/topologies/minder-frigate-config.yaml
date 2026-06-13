@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-frigate-config
+  version: 1.0.0
+  description: Single-purpose — regenerate Frigate's config from the camera inventory.
+agents:
+  root:
+    id: frigate-config
+    role: root
+    archetype: action-agent
+    skills:
+      - configure-frigate
+    prompt:
+      system: >
+        Call configure_cameras to apply the current cameras to Frigate, then
+        report how many cameras were configured.

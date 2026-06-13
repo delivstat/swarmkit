@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-onboard
+  version: 1.2.0
+  description: First-time setup — set up Home Assistant, discover cameras.
+agents:
+  root:
+    id: onboard
+    role: root
+    archetype: action-agent
+    skills:
+      - setup-homeassistant
+      - discover-cameras
+    prompt:
+      system: >
+        Set up the Home Assistant backend, then run camera discovery, and report what you found.

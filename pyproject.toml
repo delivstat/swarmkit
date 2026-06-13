@@ -59,6 +59,26 @@ ignore = [
     "PLR2004",  # magic values — noisy
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Example apps are intentionally pragmatic/monolithic, not framework code.
+# Relax complexity heuristics + the lazy-import rule for them; real quality
+# rules (pyflakes, line length, bugbear, simplify) still apply.
+"examples/minder/**" = [
+    "PLR0911",  # too many return statements
+    "PLR0912",  # too many branches
+    "PLR0915",  # too many statements
+    "PLC0415",  # import outside top-level (intentional lazy / sys.path imports)
+    "E501",     # line length — example prompts/strings run long
+    "E402",     # module import placement (lazy app wiring)
+    "PLW1510",  # subprocess.run without check= (pragmatic scripts)
+    "PLW0603",  # global statement (simple module-level singletons)
+    "PLW2901",  # loop var reassignment
+    "SIM115",   # open without context manager (short-lived scripts)
+    "B905",     # zip without strict=
+]
+# Real code-quality issues (lost exception context, dead variables) are NOT
+# relaxed and are fixed in the example code.
+
 [tool.ruff.format]
 quote-style = "double"
 

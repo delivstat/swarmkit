@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-core
+  version: 1.1.0
+  description: >
+    Conversational fallback for open-ended requests. The camera and device
+    lists are injected into every message, so this agent has NO list-* tools —
+    it already knows the names and shouldn't waste a turn fetching them.
+agents:
+  root:
+    id: minder
+    role: root
+    archetype: minder-agent
+    skills:
+      - detect-objects
+      - capture-snapshot
+      - capture-video
+      - control-device
+      - get-device-state
+    prompt:
+      system: >
+        You are Minder. The user's message lists the available CAMERAS and
+        DEVICES — use those exact names, you already know them, so never try
+        to look them up. To check what a camera sees use detect-objects; to
+        show a camera use capture-snapshot or capture-video; to control a
+        device use control-device. Answer in one or two short sentences.

@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: discover-cameras
+  name: Discover Cameras
+  description: Scan the network for cameras via ONVIF and return inventory with names.
+category: capability
+implementation:
+  type: mcp_tool
+  server: camera
+  tool: discover_cameras
+provenance:
+  authored_by: human
+  version: 1.0.0
