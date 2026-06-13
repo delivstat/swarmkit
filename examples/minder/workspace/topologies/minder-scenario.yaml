@@ -1,0 +1,103 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-scenario
+  version: 3.1.0
+  description: >
+    Turn a natural-language automation request into a structured scenario.
+    A single worker agent extracts the rule fields — no tools — and its
+    output_schema constrains decoding so even the small local model emits
+    on-schema JSON. Supports multiple cameras and multiple devices. The webapp
+    validates the field values and persists the rule; the agent never writes
+    anything.
+agents:
+  root:
+    id: scenario
+    role: root
+    archetype: action-agent
+    model:
+      provider: ${model.local.provider}
+      name: ${model.local.name}
+      temperature: 0
+    output_schema:
+      type: object
+      properties:
+        cameras:
+          type: array
+          items:
+            type: string
+          description: >
+            Which cameras to watch — exact names the message lists under
+            CAMERAS. Use ["all"] for any camera or a purely time-based rule.
+        condition:
+          type: string
+          description: >
+            What to look for, as a short visual question (e.g. "is there a
+            person"). Empty string if the rule is purely time-based.
+        schedule:
+          type: string
+          description: >
+            "always", "night", "day", or a 24h range like "22:00-06:00".
+            "after 10pm" means "22:00-06:00".
+        at_time:
+          type: string
+          description: >
+            A daily clock time to run the action, 24h like "04:00". "at 4am"
+            means "04:00". Empty string unless a specific time is given.
+        devices:
+          type: array
+          items:
+            type: string
+          description: >
+            Devices to switch — exact names under DEVICES. Empty [] if the
+            request switches no device. All listed devices get device_action.
+        device_action:
+          type: string
+          enum: [turn_on, turn_off, ""]
+          description: Action applied to every device in `devices`; "" if none.
+        alert:
+          type: boolean
+          description: true if the user should be notified.
+      required:
+        - cameras
+        - condition
+        - schedule
+        - at_time
+        - devices
+        - device_action
+        - alert
+    prompt:
+      system: |
+        The user describes a home automation. Their message lists the
+        available CAMERAS and DEVICES. Extract the rule into the structured
+        fields — do not call any tools, just produce the fields. Leave a list
+        empty ([]) or a field "" unless the request clearly provides it; never
+        invent a device or a time the user did not mention.
+
+        Fields:
+        - cameras: a list of exact names from CAMERAS, or ["all"]. Use ["all"]
+          for "any camera" or a purely time-based rule. Include every camera
+          the user names.
+        - condition: a short visual question like "is there a person". Use ""
+          if the rule is purely time-based (no camera). Never put a time here.
+        - schedule: "always", "night", "day", or a 24h range like
+          "22:00-06:00" — "after 10pm" means "22:00-06:00".
+        - at_time: a daily clock time like "04:00" for "at 4am", else "".
+        - devices: a list of exact names from DEVICES, or []. Include every
+          device the user asks to switch. ONLY list a device if the user
+          explicitly asks to switch it on or off.
+        - device_action: "turn_on", "turn_off", or "" when devices is empty.
+          The same action applies to every device listed.
+        - alert: true unless the user says not to notify them.
+
+        Examples:
+        "alert me if you see a dog at the gate"
+        -> cameras ["Gate"], condition "is there a dog", schedule "always",
+           at_time "", devices [], device_action "", alert true
+        "switch on the water pump at 5:30am"
+        -> cameras ["all"], condition "", schedule "always", at_time "05:30",
+           devices [the pump], device_action "turn_on", alert false
+        "if any camera sees a person after 10pm turn on the porch light and the hallway light"
+        -> cameras ["all"], condition "is there a person",
+           schedule "22:00-06:00", at_time "", devices [porch light, hallway
+           light], device_action "turn_on", alert true

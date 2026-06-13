@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: system-doctor
+  name: System Self-Heal
+  description: >
+    Periodic health check via the doctor agent. Read-only — if a problem is
+    found it raises an alert asking a human to approve a repair (reply /repair).
+    It never fixes anything itself; fixes are human-gated.
+type: cron
+enabled: true
+targets:
+  - minder-doctor
+config:
+  expression: "0 */6 * * *"
+  input: "Check the appliance health and alert me if anything needs repair"

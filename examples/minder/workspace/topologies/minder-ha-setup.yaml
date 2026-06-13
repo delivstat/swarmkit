@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-ha-setup
+  version: 1.0.0
+  description: Single-purpose — set up Home Assistant.
+agents:
+  root:
+    id: ha-setup
+    role: root
+    archetype: action-agent
+    skills:
+      - setup-homeassistant
+    prompt:
+      system: >
+        Set up the Home Assistant smart-home backend and report the result.

@@ -1,0 +1,19 @@
+# Secrets — real tokens/passwords (use .env.example as the template)
+.env
+
+# Local Python venv
+.venv/
+
+# Recovery backups (contain HA tokens + auth — never commit)
+backups/
+
+# Runtime data (lives in the minder-data docker volume, not the tree)
+data/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+
+# Atomic-write temp files
+*.tmp

@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: detect-people
+  name: Detect People
+  description: Detect whether any people are present in a camera's view using fast object detection.
+category: capability
+implementation:
+  type: mcp_tool
+  server: detect
+  tool: detect_people
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-router
+  version: 2.0.0
+  description: >
+    Intent router. When the keyword fast-path can't classify a message, this
+    agent decides what the user wants and records it via the route tool, so
+    the ops layer can dispatch to the right specialist topology. Runs on the
+    small local model — a cheap, high-frequency decision.
+agents:
+  root:
+    id: router
+    role: root
+    archetype: action-agent
+    model:
+      provider: ${model.local.provider}
+      name: ${model.local.name}
+      temperature: 0
+    skills:
+      - route
+    prompt:
+      system: >
+        Decide what the user wants and record it with the route tool. The
+        intent is one of: scenario (set up an automation that triggers on a
+        condition or time), vision (what does a camera see right now),
+        snapshot (send a photo), video (send a live clip), device (turn a
+        device on or off now), device_list (what smart devices exist or their
+        state), camera_list (list or name the cameras), or chat (anything
+        else). Call route once with your chosen intent.

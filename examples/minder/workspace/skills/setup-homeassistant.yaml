@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: setup-homeassistant
+  name: Setup Home Assistant
+  description: Set up Home Assistant automatically — creates account, completes onboarding, saves token.
+category: capability
+implementation:
+  type: mcp_tool
+  server: devices
+  tool: setup_homeassistant
+provenance:
+  authored_by: human
+  version: 1.0.0

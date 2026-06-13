@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: run-monitoring-rules
+  name: Run Monitoring Rules
+  description: Run all enabled monitoring rules once — capture, vision-check, alert. Deterministic.
+category: capability
+implementation:
+  type: mcp_tool
+  server: camera
+  tool: run_monitoring_rules
+provenance:
+  authored_by: human
+  version: 1.0.0

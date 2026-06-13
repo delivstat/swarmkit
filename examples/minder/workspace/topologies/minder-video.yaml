@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-video
+  version: 1.0.0
+  description: Capture a short video clip from a camera.
+agents:
+  root:
+    id: video
+    role: root
+    archetype: action-agent
+    skills:
+      - capture-video
+    prompt:
+      system: >
+        Capture a short video clip from the camera the user named, then report the camera name and clip length.

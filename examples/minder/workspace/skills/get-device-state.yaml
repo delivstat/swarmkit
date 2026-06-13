@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-device-state
+  name: Get Device State
+  description: Get the current state of a specific smart device.
+category: capability
+implementation:
+  type: mcp_tool
+  server: devices
+  tool: get_device_state
+provenance:
+  authored_by: human
+  version: 1.0.0

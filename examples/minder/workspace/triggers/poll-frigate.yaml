@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: poll-frigate
+  name: Frigate Event Poller (parallel/shadow)
+  description: >
+    Per-minute poll of Frigate's event stream applied against the monitoring
+    scenarios. Runs in parallel with the YOLO monitoring loop (minder-monitor)
+    during migration. While MINDER_POLLER_ALERTS=shadow it only logs would-be
+    alerts to poller_shadow.json — the YOLO loop stays the sole alert source.
+    At the Phase 2b cutover, flip the poller to "live" and retire
+    minder-monitor.
+type: cron
+enabled: true
+targets:
+  - minder-poll
+config:
+  expression: "* * * * *"
+  input: "Poll Frigate events and apply the monitoring scenarios"

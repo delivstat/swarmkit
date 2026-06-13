@@ -1,0 +1,34 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: action-agent
+  name: Minder Action Agent
+  description: >
+    Single-purpose worker for one home action — capture a snapshot, run a
+    vision check, control a device, run discovery. Each topology gives it
+    the one skill it needs; this archetype provides the shared persona,
+    model, and permissions.
+role: root
+defaults:
+  model:
+    provider: ${model.reasoning.provider}
+    name: ${model.reasoning.name}
+    temperature: 0.1
+    max_tokens: 512
+    options:
+      # Ollama defaults to ~2048 ctx and silently truncates longer prompts.
+      # An action agent's system prompt + tool schemas + the injected camera/
+      # device list can exceed that, dropping the instructions and causing the
+      # small local model to loop. 8192 keeps the whole prompt in context.
+      num_ctx: 8192
+  prompt:
+    system: >
+      You are Minder, a home assistant. Use the tool available to you to
+      carry out the user's request, then report the outcome in one short,
+      friendly sentence. The user's message lists the cameras and devices
+      you can act on — match their request to those exact names.
+  iam:
+    base_scope: [cameras:read, vision:read, devices:read]
+provenance:
+  authored_by: human
+  version: 2.0.0

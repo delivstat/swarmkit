@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minder — Login</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --border: #2a2e3d;
+      --text: #e4e4e7; --text-dim: #8b8fa3;
+      --accent: #6366f1; --accent-hover: #818cf8; --error: #ef4444;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    }
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      padding: 2.5rem 2rem; width: 100%; max-width: 380px; text-align: center;
+    }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-dim); font-size: 0.9rem; margin-bottom: 2rem; }
+    .form-group { margin-bottom: 1rem; text-align: left; }
+    label { display: block; font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.3rem; }
+    input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.65rem 0.75rem; color: var(--text); font-size: 0.95rem;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    .btn {
+      width: 100%; padding: 0.7rem; border: none; border-radius: 8px;
+      background: var(--accent); color: #fff; font-size: 0.95rem; font-weight: 500;
+      cursor: pointer; margin-top: 0.5rem;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .error { color: var(--error); font-size: 0.85rem; margin-top: 0.75rem; display: none; }
+    .hint { color: var(--text-dim); font-size: 0.8rem; margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <h1>Minder</h1>
+    <p class="subtitle">Sign in to your dashboard</p>
+    <form onsubmit="doLogin(event)">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="username" value="admin" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Enter password" autocomplete="current-password" autofocus>
+      </div>
+      <button type="submit" class="btn">Sign In</button>
+      <div class="error" id="error"></div>
+    </form>
+    <p class="hint">Default: admin / minder</p>
+  </div>
+<script>
+async function doLogin(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('error');
+  errEl.style.display = 'none';
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+      }),
+    });
+    if (resp.ok) {
+      window.location.href = '/';
+    } else {
+      errEl.textContent = 'Invalid username or password';
+      errEl.style.display = 'block';
+    }
+  } catch (err) {
+    errEl.textContent = 'Connection error';
+    errEl.style.display = 'block';
+  }
+}
+</script>
+</body>
+</html>

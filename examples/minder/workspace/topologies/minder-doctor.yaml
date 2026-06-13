@@ -1,0 +1,32 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-doctor
+  version: 1.0.0
+  description: >
+    Diagnostic doctor agent. Checks the appliance's health and, if anything is
+    wrong, raises an alert asking a human to approve a repair. It NEVER fixes
+    anything itself — the diagnose tool is read-only. Fixes are human-gated: the
+    human replies /repair to apply the restore. Runs on a schedule and on demand.
+agents:
+  root:
+    id: doctor
+    role: root
+    archetype: action-agent
+    skills:
+      - diagnose
+    output_schema:
+      type: object
+      properties:
+        summary:
+          type: string
+          description: One short sentence — healthy, or what problem needs approval to fix.
+      required:
+        - summary
+    prompt:
+      system: >
+        You are Minder's system doctor. Call diagnose once to check the
+        appliance. It is read-only and will raise an alert if a fix is needed —
+        you must NOT attempt to fix anything yourself. Then report in one short
+        sentence: whether everything is healthy, or what problem was found and
+        that a human must approve the repair. Use only the tool's result.

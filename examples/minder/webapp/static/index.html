@@ -1,0 +1,2571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minder Setup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface-hover: #222633;
+      --border: #2a2e3d;
+      --text: #e4e4e7;
+      --text-dim: #8b8fa3;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    header {
+      text-align: center;
+      padding: 2rem 0 1rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      color: var(--text-dim);
+      margin-top: 0.25rem;
+      font-size: 0.95rem;
+    }
+
+    /* Progress bar */
+    .progress {
+      display: flex;
+      gap: 6px;
+      margin: 1.5rem 0 2rem;
+    }
+
+    .progress-dot {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+
+    .progress-dot.active { background: var(--accent); }
+    .progress-dot.done { background: var(--success); }
+
+    /* Steps */
+    .step { display: none; }
+    .step.active { display: block; }
+
+    .step h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .step .subtitle {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .card-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .card-label {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    .card-value {
+      font-weight: 500;
+    }
+
+    /* Camera grid */
+    .camera-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    .camera-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .camera-card:hover { border-color: var(--accent); }
+
+    .camera-card img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      background: #000;
+    }
+
+    .camera-card .camera-info {
+      padding: 0.75rem;
+    }
+
+    .camera-card input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.5rem;
+      color: var(--text);
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+    }
+
+    .camera-card input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .camera-card .camera-ip {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 0.35rem;
+      color: var(--text-dim);
+    }
+
+    input[type="text"], input[type="password"], input[type="number"], select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .form-hint {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-top: 0.25rem;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1.25rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover { background: var(--surface-hover); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-dim);
+    }
+
+    .btn-ghost:hover { color: var(--text); }
+
+    .btn-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Status badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 99px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge-success { background: rgba(34,197,94,.15); color: var(--success); }
+    .badge-warning { background: rgba(245,158,11,.15); color: var(--warning); }
+    .badge-error { background: rgba(239,68,68,.15); color: var(--error); }
+
+    .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+
+    .dot-green { background: var(--success); }
+    .dot-yellow { background: var(--warning); }
+    .dot-red { background: var(--error); }
+
+    /* Loading spinner */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    /* Live view overlay */
+    .liveview-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: var(--bg);
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    .liveview-overlay.active { display: flex; flex-direction: column; }
+
+    .liveview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 201;
+    }
+
+    .liveview-header h3 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .liveview-body {
+      flex: 1;
+      padding: 0.75rem;
+      display: grid;
+      gap: 0.75rem;
+      align-content: start;
+    }
+
+    /* Single camera — fill the viewport */
+    .liveview-body.single {
+      grid-template-columns: 1fr;
+    }
+
+    .liveview-body.single .camera-card img {
+      width: 100%;
+      height: auto;
+      max-height: calc(100vh - 120px);
+      object-fit: contain;
+    }
+
+    /* Multi camera grid — responsive */
+    .liveview-body.multi {
+      grid-template-columns: 1fr;
+    }
+
+    @media (min-width: 768px) {
+      .liveview-body.multi {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (min-width: 1200px) {
+      .liveview-body.multi {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+    }
+
+    .liveview-body .camera-card {
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #000;
+    }
+
+    .liveview-body .camera-card img {
+      width: 100%;
+      height: auto;
+      min-height: 140px;
+      display: block;
+      background: #000;
+    }
+
+    .liveview-cam-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.4rem 0.75rem;
+      background: var(--surface);
+    }
+
+    .liveview-cam-label .cam-name {
+      font-weight: 500;
+      font-size: 0.85rem;
+    }
+
+    .loading-text {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: var(--text-dim);
+      padding: 1rem 0;
+    }
+
+    /* Rules */
+    .rule-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .rule-card .rule-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .rule-card .rule-desc {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin-top: 0.25rem;
+    }
+
+    .rule-remove {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 1.1rem;
+      padding: 0.25rem;
+    }
+
+    .rule-remove:hover { color: var(--error); }
+
+    /* Rule templates */
+    .template-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.75rem;
+      margin: 1rem 0;
+    }
+
+    .template-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+
+    .template-card:hover {
+      border-color: var(--accent);
+      background: var(--surface-hover);
+    }
+
+    .template-card .template-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 0.4rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+    }
+    .template-card .template-name { font-size: 0.85rem; font-weight: 500; }
+
+    /* Summary */
+    .summary-section {
+      margin-bottom: 1.25rem;
+    }
+
+    .summary-section h3 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .summary-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.4rem 0;
+      font-size: 0.9rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .summary-item:last-child { border-bottom: none; }
+
+    /* Instructions card */
+    .instructions {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin: 1rem 0;
+    }
+
+    .instructions ol {
+      padding-left: 1.25rem;
+    }
+
+    .instructions li {
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .instructions code {
+      background: var(--bg);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+
+    /* Device list */
+    .device-list {
+      margin: 1rem 0;
+    }
+
+    .device-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+    }
+
+    .device-name { font-weight: 500; font-size: 0.9rem; }
+    .device-type { color: var(--text-dim); font-size: 0.8rem; }
+    .device-state { font-size: 0.8rem; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.9rem;
+      opacity: 0;
+      transition: all 0.3s;
+      z-index: 100;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .toast.error { border-color: var(--error); }
+
+    /* User list */
+    .user-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .user-item:last-child { border-bottom: none; }
+
+    .user-role {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 99px;
+      background: rgba(99,102,241,.15);
+      color: var(--accent);
+    }
+
+    /* Skip link */
+    .skip-link {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .skip-link:hover { color: var(--text); text-decoration: underline; }
+
+    /* Dashboard */
+    #dashboard { display: none; }
+    #dashboard.active { display: block; }
+
+    .dash-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .dash-header h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .dash-nav {
+      display: flex;
+      gap: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 1.5rem;
+      overflow-x: auto;
+    }
+
+    .dash-nav button {
+      flex: 1;
+      padding: 0.5rem 0.75rem;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+
+    .dash-nav button:hover { color: var(--text); }
+    .dash-nav button.active { background: var(--accent); color: #fff; }
+
+    .dash-tab { display: none; }
+    .dash-tab.active { display: block; }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .status-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+    }
+
+    .status-card .status-label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 0.25rem;
+    }
+
+    .status-card .status-value {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .dash-section-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 1.5rem 0 0.75rem;
+    }
+
+    .dash-empty {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      display: inline-block;
+    }
+
+    .toggle input { opacity: 0; width: 0; height: 0; }
+
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; bottom: 3px;
+      background: var(--text);
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+
+    .toggle input:checked + .toggle-slider { background: var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header id="main-header">
+      <h1>Minder</h1>
+      <p id="header-subtitle">Let's set up your home AI agent</p>
+    </header>
+
+    <div class="progress" id="progress"></div>
+
+    <!-- Step 1: Network -->
+    <div class="step" id="step-1" data-title="Network">
+      <h2>Welcome</h2>
+      <p class="subtitle">Let's find your cameras and devices on the local network.</p>
+
+      <div class="card" id="network-info">
+        <div class="loading-text"><span class="spinner"></span> Detecting network...</div>
+      </div>
+
+      <div class="btn-row">
+        <span></span>
+        <button class="btn btn-primary" onclick="goStep(2)">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Cameras -->
+    <div class="step" id="step-2" data-title="Cameras">
+      <h2>Camera Discovery</h2>
+      <p class="subtitle">Scan your network for ONVIF cameras and name them.</p>
+
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Subnet</label>
+            <input type="text" id="cam-subnet" value="192.168.0">
+          </div>
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="cam-user" value="admin">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="cam-pass" value="admin123">
+        </div>
+        <button class="btn btn-secondary" id="btn-discover" onclick="discoverCameras()">
+          Scan Network
+        </button>
+      </div>
+
+      <div id="camera-results"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(1)">Back</button>
+        <div>
+          <a class="skip-link" onclick="goStep(3)">Skip</a>
+          <button class="btn btn-primary" onclick="saveCameraNames()" style="margin-left:0.75rem">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Home Assistant -->
+    <div class="step" id="step-3" data-title="Devices">
+      <h2>Smart Devices</h2>
+      <p class="subtitle">Control lights, fans, AC, and other smart devices.</p>
+
+      <div class="card" id="ha-status-card">
+        <div class="loading-text"><span class="spinner"></span> Setting up smart home backend...</div>
+      </div>
+
+      <div id="ha-details" style="display:none">
+        <div id="ha-devices" class="device-list"></div>
+
+        <div class="card" style="margin-top:1rem">
+          <div style="font-size:0.9rem; font-weight:600; margin-bottom:0.75rem">Add your SmartLife / Tuya devices</div>
+          <p style="color:var(--text-dim); font-size:0.85rem; margin-bottom:0.75rem">
+            If you have smart lights, fans, or switches from SmartLife or Tuya, connect them now.
+            This is optional — cameras and monitoring work without it.
+          </p>
+          <div style="display:flex; flex-direction:column; gap:0.5rem; font-size:0.9rem; margin-bottom:1rem">
+            <div>1. Open <a id="ha-url-link" href="http://localhost:8123" target="_blank" style="color:var(--accent)"><code id="ha-url-display">http://localhost:8123</code></a></div>
+            <div>2. Log in: <code>minder</code> / <code>minder-internal-do-not-change</code></div>
+            <div>3. Settings &rarr; Devices &amp; Services &rarr; Add Integration</div>
+            <div>4. Search <strong>SmartLife</strong> (or <strong>Tuya</strong>) and log in with your app credentials</div>
+          </div>
+          <button class="btn btn-secondary" onclick="checkHADevices()">Check for Devices</button>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(2)">Back</button>
+        <div>
+          <a class="skip-link" onclick="goStep(4)">Skip</a>
+          <button class="btn btn-primary" onclick="goStep(4)" style="margin-left:0.75rem">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Telegram -->
+    <div class="step" id="step-4" data-title="Telegram">
+      <h2>Telegram Bot</h2>
+      <p class="subtitle">Connect Minder to Telegram so you can chat with your home.</p>
+
+      <!-- Step 4a: Open BotFather -->
+      <div class="card" style="text-align:center; padding:1.5rem" id="tg-step-create">
+        <p style="font-size:0.9rem; margin-bottom:1rem">Scan this QR code on your phone to open BotFather in Telegram:</p>
+        <img id="qr-botfather" src="/api/qrcode?url=https://t.me/BotFather?start=start"
+             alt="Open BotFather" style="width:180px; height:180px; border-radius:8px; background:#fff; padding:4px">
+        <p style="margin-top:0.75rem">
+          <a href="https://t.me/BotFather?start=start" target="_blank"
+             style="color:var(--accent); text-decoration:none; font-size:0.9rem">
+            Or click here to open on this device
+          </a>
+        </p>
+      </div>
+
+      <!-- Step 4b: Instructions -->
+      <div class="card" style="margin-top:1rem">
+        <div style="font-size:0.85rem; font-weight:600; color:var(--text-dim); margin-bottom:0.75rem">
+          In BotFather, send these messages:
+        </div>
+        <div style="display:flex; flex-direction:column; gap:0.75rem">
+          <div>
+            <div style="font-size:0.75rem; color:var(--text-dim)">1. Send this command:</div>
+            <code style="background:var(--bg); padding:0.4rem 0.75rem; border-radius:6px; display:block; margin-top:0.25rem">/newbot</code>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--text-dim)">2. When asked for a name, type:</div>
+            <code style="background:var(--bg); padding:0.4rem 0.75rem; border-radius:6px; display:block; margin-top:0.25rem">Minder Home</code>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--text-dim)">3. When asked for a username, type something unique:</div>
+            <code style="background:var(--bg); padding:0.4rem 0.75rem; border-radius:6px; display:block; margin-top:0.25rem" id="tg-suggested-username">minder_home_bot</code>
+            <div style="font-size:0.75rem; color:var(--text-dim); margin-top:0.2rem">Must end in "bot". Add numbers if taken.</div>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--text-dim)">4. BotFather will reply with a token that looks like:</div>
+            <code style="background:var(--bg); padding:0.4rem 0.75rem; border-radius:6px; display:block; margin-top:0.25rem; color:var(--text-dim)">123456789:ABCdefGHIjklMNOpqrSTUvwxYZ</code>
+          </div>
+          <div>
+            <div style="font-size:0.75rem; color:var(--text-dim)">5. Then disable privacy mode so the bot can hear @mentions in your group:</div>
+            <code style="background:var(--bg); padding:0.4rem 0.75rem; border-radius:6px; display:block; margin-top:0.25rem">/setprivacy</code>
+            <div style="font-size:0.75rem; color:var(--text-dim); margin-top:0.2rem">Pick your bot, choose <strong>Disable</strong>. Do this before adding the bot to the group.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4c: Paste token -->
+      <div style="margin-top:1.25rem">
+        <div class="form-group">
+          <label>Paste the token from BotFather here</label>
+          <input type="text" id="tg-token" placeholder="123456789:ABCdefGHI..." style="font-family:monospace">
+        </div>
+        <button class="btn btn-primary" id="btn-verify-tg" onclick="verifyTelegram()">Connect Bot</button>
+      </div>
+
+      <div id="tg-result" style="display:none; margin-top:1rem"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(3)">Back</button>
+        <button class="btn btn-primary" id="btn-tg-next" onclick="goStep(5)">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 5: AI Models -->
+    <div class="step" id="step-5" data-title="AI">
+      <h2>AI Model Setup</h2>
+      <p class="subtitle">Configure the AI models Minder uses for reasoning and vision.</p>
+
+      <div class="card" id="hw-info">
+        <div class="loading-text"><span class="spinner"></span> Detecting hardware...</div>
+      </div>
+
+      <div id="model-config" style="display:none">
+        <div class="card">
+          <div class="card-row">
+            <div>
+              <div class="card-label">Reasoning Model</div>
+              <div class="card-value" id="reasoning-model">-</div>
+            </div>
+            <span class="badge" id="reasoning-badge">-</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-row">
+            <div>
+              <div class="card-label">Vision Model</div>
+              <div class="card-value" id="vision-model">-</div>
+            </div>
+            <span class="badge" id="vision-badge">-</span>
+          </div>
+        </div>
+
+        <div id="cloud-key-section" style="display:none">
+          <div class="form-group">
+            <label>OpenRouter API Key</label>
+            <input type="password" id="openrouter-key" placeholder="sk-or-...">
+            <div class="form-hint">Required for cloud reasoning model. Get one at openrouter.ai</div>
+          </div>
+        </div>
+
+        <div id="ollama-models" style="margin-top:1rem"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(4)">Back</button>
+        <button class="btn btn-primary" onclick="goStep(6)">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 6: Monitoring Rules -->
+    <div class="step" id="step-6" data-title="Rules">
+      <h2>Monitoring Rules</h2>
+      <p class="subtitle">What should Minder watch for? Pick from templates or create custom rules.</p>
+
+      <div class="template-grid" id="rule-templates"></div>
+
+      <div id="active-rules"></div>
+
+      <div id="custom-rule-form" class="card" style="margin-top:1rem">
+        <div class="form-group">
+          <label>Camera</label>
+          <select id="rule-camera"><option value="all">All cameras</option></select>
+        </div>
+        <div class="form-group">
+          <label>Condition to watch for</label>
+          <input type="text" id="rule-condition" placeholder="e.g. person at the gate">
+        </div>
+        <div class="form-group">
+          <label>When</label>
+          <select id="rule-schedule">
+            <option value="always">Always</option>
+            <option value="night">Night only (8pm - 6am)</option>
+            <option value="day">Day only (6am - 8pm)</option>
+            <option value="away">When away</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary" onclick="addCustomRule()">Add Rule</button>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(5)">Back</button>
+        <button class="btn btn-primary" onclick="goStep(7)">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 7: Summary / Done -->
+    <div class="step" id="step-7" data-title="Done">
+      <h2>All Set!</h2>
+      <p class="subtitle">Here's a summary of your Minder setup.</p>
+
+      <div id="summary"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="goStep(6)">Back</button>
+        <button class="btn btn-primary" onclick="completeSetup()">Finish Setup</button>
+      </div>
+    </div>
+    <!-- Dashboard (shown after setup is complete) -->
+    <div id="dashboard">
+      <div class="dash-header">
+        <h2>Minder</h2>
+        <div style="display:flex; gap:0.5rem">
+          <button class="btn btn-secondary" onclick="showWizard()" style="font-size:0.8rem; padding:0.4rem 0.75rem">Reconfigure</button>
+          <button class="btn btn-ghost" onclick="doLogout()" style="font-size:0.8rem">Logout</button>
+        </div>
+      </div>
+
+      <div id="approval-banner" onclick="dashTab('settings')" style="display:none; cursor:pointer; margin-bottom:0.75rem; padding:0.75rem 1rem; border-radius:8px; background:rgba(239,68,68,.12); border:1px solid var(--error); color:var(--error); font-size:0.9rem; font-weight:600"></div>
+
+      <div class="dash-nav" id="dash-nav">
+        <button class="active" onclick="dashTab('overview')">Overview</button>
+        <button onclick="dashTab('events')" id="nav-events" style="position:relative">
+          Events
+          <span id="event-badge" style="display:none; position:absolute; top:2px; right:4px; width:18px; height:18px; background:var(--error); color:#fff; border-radius:50%; font-size:0.65rem; line-height:18px; text-align:center"></span>
+        </button>
+        <button onclick="dashTab('cameras')">Cameras</button>
+        <button onclick="dashTab('devices')">Devices</button>
+        <button onclick="dashTab('rules')">Rules</button>
+        <button onclick="dashTab('settings')" id="nav-settings" style="position:relative">
+          Settings
+          <span id="approval-badge" style="display:none; position:absolute; top:2px; right:4px; width:18px; height:18px; background:var(--error); color:#fff; border-radius:50%; font-size:0.65rem; line-height:18px; text-align:center"></span>
+        </button>
+      </div>
+
+      <!-- Overview tab -->
+      <div class="dash-tab active" id="tab-overview">
+        <div class="status-grid" id="dash-status-grid"></div>
+        <div class="dash-section-title">Recent Activity</div>
+        <div class="card" id="dash-activity">
+          <div class="dash-empty">No recent activity</div>
+        </div>
+      </div>
+
+      <!-- Events tab -->
+      <div class="dash-tab" id="tab-events">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+          <div class="dash-section-title" style="margin:0">Monitoring Events</div>
+          <button class="btn btn-ghost" style="font-size:0.8rem" onclick="markAllEventsViewed()">Mark All Read</button>
+        </div>
+        <div id="dash-events-list"></div>
+      </div>
+
+      <!-- Cameras tab -->
+      <div class="dash-tab" id="tab-cameras">
+        <div class="card" style="margin-bottom:1rem">
+          <div class="form-row" style="margin-bottom:0.5rem">
+            <div class="form-group">
+              <label>Subnet</label>
+              <input type="text" id="dash-cam-subnet" value="192.168.0">
+            </div>
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" id="dash-cam-user" value="admin">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Password</label>
+              <input type="password" id="dash-cam-pass" value="admin123">
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-primary" id="dash-btn-scan" onclick="dashScanCameras()" style="width:100%">Scan Network</button>
+            </div>
+          </div>
+        </div>
+        <div id="dash-cameras"></div>
+      </div>
+
+      <!-- Devices tab -->
+      <div class="dash-tab" id="tab-devices">
+        <div id="dash-devices"></div>
+        <div class="dash-section-title" style="margin-top:1.5rem">Add Integration</div>
+        <div id="dash-integrations"></div>
+        <div id="dash-integration-form" style="display:none"></div>
+        <div style="margin-top:1rem; text-align:center">
+          <a id="ha-dash-link" href="http://localhost:8123" target="_blank"
+             style="color:var(--text-dim); font-size:0.8rem; text-decoration:none">
+            Need a different integration? Open Home Assistant directly
+          </a>
+        </div>
+      </div>
+
+      <!-- Rules tab -->
+      <div class="dash-tab" id="tab-rules">
+        <div class="card" style="margin-bottom:1rem; border-color:var(--accent)">
+          <div style="font-size:0.9rem; font-weight:600; margin-bottom:0.5rem">Describe a scenario</div>
+          <p style="color:var(--text-dim); font-size:0.85rem; margin-bottom:0.75rem">
+            Plain language — conditions, times, and device actions.
+          </p>
+          <div class="form-group">
+            <input type="text" id="dash-scenario-text"
+                   placeholder="When someone is outside after 10pm, turn on the porch light">
+          </div>
+          <button class="btn btn-primary" id="dash-scenario-btn" onclick="dashCreateScenario()">Create Scenario</button>
+        </div>
+        <div id="dash-rules-list"></div>
+        <div class="dash-section-title">Add Rule Manually</div>
+        <div class="card">
+          <div class="form-group">
+            <label>Camera</label>
+            <select id="dash-rule-camera"><option value="all">All cameras</option></select>
+          </div>
+          <div class="form-group">
+            <label>Condition</label>
+            <input type="text" id="dash-rule-condition" placeholder="e.g. person at the gate">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>When</label>
+              <select id="dash-rule-schedule">
+                <option value="always">Always</option>
+                <option value="night">Night only</option>
+                <option value="day">Day only</option>
+                <option value="away">When away</option>
+              </select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-primary" onclick="dashAddRule()" style="width:100%">Add Rule</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings tab -->
+      <div class="dash-tab" id="tab-settings">
+        <div id="dash-settings"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="liveview-overlay" id="liveview-overlay">
+    <div class="liveview-header">
+      <h3 id="liveview-title">Live View</h3>
+      <button class="btn btn-secondary" style="font-size:0.8rem; padding:0.35rem 0.75rem" onclick="closeLiveView()">Close</button>
+    </div>
+    <div class="liveview-body" id="liveview-body"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const TOTAL_STEPS = 7;
+let currentStep = 1;
+let state = {
+  network: null,
+  cameras: [],
+  haToken: '',
+  haDevices: [],
+  telegramToken: '',
+  telegramBot: null,
+  users: [],
+  hardware: null,
+  openrouterKey: '',
+  rules: [],
+};
+
+// ---- Navigation ----
+
+function goStep(n) {
+  if (n < 1 || n > TOTAL_STEPS) return;
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById(`step-${n}`).classList.add('active');
+  currentStep = n;
+  updateProgress();
+  onStepEnter(n);
+  window.scrollTo(0, 0);
+}
+
+function updateProgress() {
+  const bar = document.getElementById('progress');
+  bar.innerHTML = '';
+  for (let i = 1; i <= TOTAL_STEPS; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'progress-dot';
+    if (i < currentStep) dot.classList.add('done');
+    if (i === currentStep) dot.classList.add('active');
+    bar.appendChild(dot);
+  }
+}
+
+function onStepEnter(n) {
+  if (n === 1) loadNetwork();
+  if (n === 3) checkHA();
+  if (n === 5) detectHardware();
+  if (n === 6) setupRulesStep();
+  if (n === 7) renderSummary();
+}
+
+// ---- API helpers ----
+
+async function api(endpoint, opts = {}) {
+  const timeout = opts.timeout || 30000;
+  delete opts.timeout;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const resp = await fetch(`/api${endpoint}`, {
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      ...opts,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    clearTimeout(timer);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || 'Request failed');
+    }
+    return resp.json();
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') throw new Error('Request timed out — try again');
+    throw e;
+  }
+}
+
+function toast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => el.className = 'toast', 3000);
+}
+
+// ---- Step 1: Network ----
+
+async function loadNetwork() {
+  const el = document.getElementById('network-info');
+  try {
+    state.network = await api('/network');
+    el.innerHTML = `
+      <div class="card-row" style="margin-bottom:0.5rem">
+        <span class="card-label">Local IP</span>
+        <span class="card-value">${state.network.local_ip}</span>
+      </div>
+      <div class="card-row">
+        <span class="card-label">Subnet</span>
+        <span class="card-value">${state.network.subnet}.0/24</span>
+      </div>
+    `;
+    document.getElementById('cam-subnet').value = state.network.subnet;
+  } catch (e) {
+    el.innerHTML = `<span class="badge badge-warning"><span class="dot dot-yellow"></span>Could not detect network</span>`;
+  }
+}
+
+// ---- Step 2: Cameras ----
+
+async function discoverCameras() {
+  const btn = document.getElementById('btn-discover');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Scanning...';
+  const results = document.getElementById('camera-results');
+  results.innerHTML = '<div class="loading-text"><span class="spinner"></span> Scanning network for cameras (this can take 2-3 minutes)...</div>';
+
+  try {
+    const data = await api('/cameras/discover', {
+      method: 'POST',
+      timeout: 300000,
+      body: {
+        subnet: document.getElementById('cam-subnet').value,
+        username: document.getElementById('cam-user').value,
+        password: document.getElementById('cam-pass').value,
+      },
+    });
+
+    const camData = await api('/cameras');
+    state.cameras = camData.cameras || [];
+    renderCameras();
+    toast(`Found ${state.cameras.length} cameras`);
+  } catch (e) {
+    results.innerHTML = `<div class="card"><span class="badge badge-error"><span class="dot dot-red"></span>${e.message}</span></div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Scan Network';
+  }
+}
+
+function renderCameras() {
+  const el = document.getElementById('camera-results');
+  if (!state.cameras.length) {
+    el.innerHTML = '<div class="card"><p style="color:var(--text-dim)">No cameras found. Check credentials and try again.</p></div>';
+    return;
+  }
+  el.innerHTML = '<div class="camera-grid">' + state.cameras.map((cam, i) => `
+    <div class="camera-card">
+      <img src="/api/cameras/${cam.ip}/snapshot" onerror="this.style.display='none'" alt="${cam.name || cam.ip}">
+      <div class="camera-info">
+        <div class="camera-ip">${cam.ip} &mdash; ${cam.manufacturer || ''} ${cam.model || ''}</div>
+        <input type="text" value="${cam.name || cam.osd_name || ''}" placeholder="Name this camera"
+               data-ip="${cam.ip}" class="cam-name-input">
+      </div>
+    </div>
+  `).join('') + '</div>';
+}
+
+async function saveCameraNames() {
+  const inputs = document.querySelectorAll('.cam-name-input');
+  for (const input of inputs) {
+    const name = input.value.trim();
+    const ip = input.dataset.ip;
+    if (name) {
+      try {
+        await api('/cameras/name', { method: 'POST', body: { ip, name } });
+      } catch (e) { /* ignore individual failures */ }
+    }
+  }
+  const camData = await api('/cameras');
+  state.cameras = camData.cameras || [];
+  goStep(3);
+}
+
+// ---- Step 3: Home Assistant ----
+
+async function checkHA() {
+  const el = document.getElementById('ha-status-card');
+
+  try {
+    // Auto-setup HA via the backend (which calls the MCP tool)
+    const setup = await api('/ha/setup', { method: 'POST', timeout: 60000 });
+
+    const haUrl = `http://${state.network?.local_ip || 'localhost'}:8123`;
+    el.innerHTML = `
+      <div class="card-row">
+        <span class="card-value">Home Assistant</span>
+        <span class="badge badge-success"><span class="dot dot-green"></span>Ready</span>
+      </div>
+    `;
+    document.getElementById('ha-details').style.display = 'block';
+    document.getElementById('ha-url-display').textContent = haUrl;
+    const urlLink = document.getElementById('ha-url-link');
+    if (urlLink) urlLink.href = haUrl;
+
+    // Check for devices
+    const devices = await api('/ha/devices');
+    state.haDevices = devices.devices || [];
+    renderHADevices();
+  } catch (e) {
+    el.innerHTML = `
+      <div class="card-row">
+        <span class="card-value">Home Assistant</span>
+        <span class="badge badge-warning"><span class="dot dot-yellow"></span>Not ready yet</span>
+      </div>
+      <p style="color:var(--text-dim); font-size:0.85rem; margin-top:0.5rem">
+        HA may still be starting up. You can skip and it will be set up automatically.
+      </p>
+    `;
+  }
+}
+
+function renderHADevices() {
+  const el = document.getElementById('ha-devices');
+  if (!state.haDevices.length) return;
+  el.innerHTML = '<div class="dash-section-title">Discovered Devices</div>' +
+    state.haDevices.map(d => `
+    <div class="device-item">
+      <div>
+        <div class="device-name">${d.name}</div>
+        <div class="device-type">${d.type}</div>
+      </div>
+      <span class="badge ${d.state === 'on' ? 'badge-success' : 'badge-warning'}">${d.state}</span>
+    </div>
+  `).join('');
+}
+
+async function checkHADevices() {
+  try {
+    const devices = await api('/ha/devices');
+    state.haDevices = devices.devices || [];
+    if (state.haDevices.length) {
+      renderHADevices();
+      toast(`Found ${state.haDevices.length} device(s)`);
+    } else {
+      toast('No devices found yet. Add SmartLife integration in HA first.', true);
+    }
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+// ---- Step 4: Telegram ----
+
+async function verifyTelegram() {
+  const token = document.getElementById('tg-token').value.trim();
+  if (!token) { toast('Paste your bot token', true); return; }
+
+  const btn = document.getElementById('btn-verify-tg');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Verifying...';
+
+  try {
+    const data = await api('/telegram/verify', { method: 'POST', body: { token } });
+    state.telegramToken = token;
+    state.telegramBot = data.bot;
+
+    const el = document.getElementById('tg-result');
+    el.style.display = 'block';
+    const botLink = `https://t.me/${data.bot.username}?startgroup=minder`;
+    el.innerHTML = `
+      <div class="card" style="padding:1.5rem">
+        <div style="text-align:center">
+          <span class="badge badge-success" style="font-size:0.85rem; padding:0.35rem 0.75rem; margin-bottom:0.75rem">
+            <span class="dot dot-green"></span>Bot Connected
+          </span>
+          <div class="card-value" style="font-size:1.1rem; margin:0.5rem 0 0.25rem">@${data.bot.username}</div>
+        </div>
+
+        <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border)">
+          <div style="font-size:0.85rem; font-weight:600; color:var(--text-dim); margin-bottom:0.75rem">
+            Now set up the family group:
+          </div>
+          <div style="display:flex; flex-direction:column; gap:0.6rem; font-size:0.9rem">
+            <div>1. Create a new Telegram group (e.g. <strong>Minder Home</strong>)</div>
+            <div>2. Add <strong>@${data.bot.username}</strong> to the group</div>
+            <div>3. Add your family members to the group</div>
+            <div>4. Send <code>/start</code> in the group</div>
+          </div>
+        </div>
+
+        <div style="text-align:center; margin-top:1.25rem; padding-top:1rem; border-top:1px solid var(--border)">
+          <p style="font-size:0.85rem; color:var(--text-dim); margin-bottom:0.75rem">Scan to add bot to a group:</p>
+          <img src="/api/qrcode?url=${encodeURIComponent(botLink)}"
+               alt="Add bot to group" style="width:150px; height:150px; border-radius:8px; background:#fff; padding:4px">
+          <p style="margin-top:0.5rem">
+            <a href="${botLink}" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.85rem">
+              Add to group
+            </a>
+          </p>
+        </div>
+      </div>
+    `;
+    document.getElementById('tg-step-create').style.display = 'none';
+    toast('Bot connected!');
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Verify Token';
+  }
+}
+
+
+
+// ---- Step 6: AI Models ----
+
+async function detectHardware() {
+  const el = document.getElementById('hw-info');
+  try {
+    state.hardware = await api('/hardware');
+    const rec = state.hardware.recommendation;
+    el.innerHTML = `
+      <div class="card-row" style="margin-bottom:0.5rem">
+        <span class="card-label">GPU</span>
+        <span class="card-value">${state.hardware.gpu_available ? state.hardware.gpu_info : 'Not detected'}</span>
+      </div>
+      <div class="card-row" style="margin-bottom:0.5rem">
+        <span class="card-label">RAM</span>
+        <span class="card-value">${state.hardware.ram_gb} GB</span>
+      </div>
+      <div class="card-row">
+        <span class="card-label">Disk Free</span>
+        <span class="card-value">${state.hardware.disk_free_gb} GB</span>
+      </div>
+    `;
+
+    const mcfg = document.getElementById('model-config');
+    mcfg.style.display = 'block';
+
+    if (rec === 'local') {
+      document.getElementById('reasoning-model').textContent = 'llama3.2:3b (local)';
+      document.getElementById('reasoning-badge').className = 'badge badge-success';
+      document.getElementById('reasoning-badge').innerHTML = '<span class="dot dot-green"></span>Local';
+    } else {
+      document.getElementById('reasoning-model').textContent = 'llama3.2:3b (local)';
+      document.getElementById('reasoning-badge').className = 'badge badge-success';
+      document.getElementById('reasoning-badge').innerHTML = '<span class="dot dot-green"></span>Local';
+    }
+
+    document.getElementById('vision-model').textContent = 'qwen3-vl (local)';
+    document.getElementById('vision-badge').className = 'badge badge-success';
+    document.getElementById('vision-badge').innerHTML = '<span class="dot dot-green"></span>Local';
+
+    loadOllamaModels();
+  } catch (e) {
+    el.innerHTML = `<span class="badge badge-warning"><span class="dot dot-yellow"></span>Could not detect hardware</span>`;
+  }
+}
+
+async function loadOllamaModels() {
+  const el = document.getElementById('ollama-models');
+  try {
+    const data = await api('/models');
+    if (!data.ollama_running) {
+      el.innerHTML = '<div class="card"><span class="badge badge-warning"><span class="dot dot-yellow"></span>Ollama not running</span><p style="color:var(--text-dim);font-size:0.85rem;margin-top:0.5rem">Vision will not work without Ollama. Start it on the host machine.</p></div>';
+      return;
+    }
+    const names = data.models.map(m => m.name);
+    const hasVision = names.some(n => n.includes('gemma4'));
+    const hasReasoning = names.some(n => n.includes('qwen'));
+
+    let html = '<div style="font-size:0.85rem; color:var(--text-dim); margin-bottom:0.5rem">Installed models:</div>';
+    if (data.models.length) {
+      html += data.models.map(m => `
+        <div class="card" style="padding:0.6rem 1rem; margin-bottom:0.5rem">
+          <div class="card-row">
+            <span class="card-value" style="font-size:0.9rem">${m.name}</span>
+            <span class="card-label">${m.size_gb} GB</span>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      html += '<p style="color:var(--text-dim); font-size:0.85rem">No models installed.</p>';
+    }
+
+    if (!hasVision) {
+      html += '<button class="btn btn-secondary" style="margin-top:0.5rem" onclick="pullModel(\'gemma4:e2b\')">Pull gemma4:e2b (vision)</button>';
+    }
+
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '';
+  }
+}
+
+async function pullModel(name) {
+  toast(`Pulling ${name} — this may take a while...`);
+  try {
+    await api('/models/pull', { method: 'POST', body: { model: name } });
+    toast(`${name} pulled successfully`);
+    loadOllamaModels();
+  } catch (e) {
+    toast(`Failed to pull ${name}: ${e.message}`, true);
+  }
+}
+
+// ---- Step 7: Monitoring Rules ----
+
+const RULE_TEMPLATES = [
+  { icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>', color: '#6366f1', name: 'Person at gate', condition: 'person standing at the gate or entrance', camera: 'all', schedule: 'always' },
+  { icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>', color: '#8b5cf6', name: 'Night visitor', condition: 'person visible after dark', camera: 'all', schedule: 'night' },
+  { icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="11" width="22" height="8" rx="2"/><path d="M5 11V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/><circle cx="7" cy="19" r="2"/><circle cx="17" cy="19" r="2"/></svg>', color: '#f59e0b', name: 'Car missing', condition: 'car is not present in the usual parking spot', camera: 'all', schedule: 'always' },
+  { icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 5.172C10 3.782 8.423 2.679 6.5 3c-2.823.47-4.113 6.006-4 7 .137 1.217 1.5 2 2.5 2s2-.5 3-1l1-1"/><path d="M14.267 5.172c0-1.39 1.577-2.493 3.5-2.172 2.823.47 4.113 6.006 4 7-.137 1.217-1.5 2-2.5 2s-2-.5-3-1l-1-1"/><path d="M8 14v.5"/><path d="M16 14v.5"/><path d="M11.25 16.25h1.5L12 17l-.75-.75z"/><path d="M4.42 11.247A13.152 13.152 0 0 0 4 14.556C4 18.728 7.582 21 12 21s8-2.272 8-6.444a11.702 11.702 0 0 0-.493-3.309"/></svg>', color: '#22c55e', name: 'Animal detected', condition: 'animal (dog, cat, monkey) visible', camera: 'all', schedule: 'always' },
+  { icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-2 2-4-4-2 2-4-4L3 10"/><rect x="3" y="10" width="18" height="11" rx="1"/><path d="M10 21v-5h4v5"/></svg>', color: '#3b82f6', name: 'Package delivered', condition: 'package or delivery box at the door', camera: 'all', schedule: 'day' },
+  { icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h3"/><path d="M13 20h9"/><path d="M10 12v.01"/><path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561z"/></svg>', color: '#ef4444', name: 'Door left open', condition: 'door appears to be open', camera: 'all', schedule: 'always' },
+];
+
+function setupRulesStep() {
+  const tplEl = document.getElementById('rule-templates');
+  tplEl.innerHTML = RULE_TEMPLATES.map((t, i) => `
+    <div class="template-card" onclick="addTemplateRule(${i})">
+      <div class="template-icon" style="background:${t.color}">${t.icon}</div>
+      <div class="template-name">${t.name}</div>
+    </div>
+  `).join('');
+
+  const camSelect = document.getElementById('rule-camera');
+  camSelect.innerHTML = '<option value="all">All cameras</option>';
+  state.cameras.forEach(c => {
+    const name = c.name || c.ip;
+    camSelect.innerHTML += `<option value="${name}">${name}</option>`;
+  });
+
+  renderRules();
+}
+
+function addTemplateRule(index) {
+  const t = RULE_TEMPLATES[index];
+  state.rules.push({ camera: t.camera, condition: t.condition, schedule: t.schedule, enabled: true });
+  renderRules();
+  toast(`Added: ${t.name}`);
+}
+
+function addCustomRule() {
+  const camera = document.getElementById('rule-camera').value;
+  const condition = document.getElementById('rule-condition').value.trim();
+  const schedule = document.getElementById('rule-schedule').value;
+
+  if (!condition) { toast('Enter a condition', true); return; }
+
+  state.rules.push({ camera, condition, schedule, enabled: true });
+  document.getElementById('rule-condition').value = '';
+  renderRules();
+  toast('Rule added');
+}
+
+function removeRule(index) {
+  state.rules.splice(index, 1);
+  renderRules();
+}
+
+function renderRules() {
+  const el = document.getElementById('active-rules');
+  if (!state.rules.length) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = '<div style="font-size:0.85rem; color:var(--text-dim); margin:1rem 0 0.5rem">Active Rules</div>' +
+    state.rules.map((r, i) => `
+    <div class="rule-card">
+      <div class="rule-header">
+        <strong style="font-size:0.9rem">${r.condition}</strong>
+        <button class="rule-remove" onclick="removeRule(${i})">&times;</button>
+      </div>
+      <div class="rule-desc">${r.camera === 'all' ? 'All cameras' : r.camera} &bull; ${r.schedule}</div>
+    </div>
+  `).join('');
+}
+
+// ---- Step 8: Summary ----
+
+function renderSummary() {
+  const el = document.getElementById('summary');
+  let html = '';
+
+  // Cameras
+  html += '<div class="summary-section"><h3>Cameras</h3><div class="card">';
+  if (state.cameras.length) {
+    html += state.cameras.map(c => `
+      <div class="summary-item">
+        <span>${c.name || c.ip}</span>
+        <span class="badge badge-success"><span class="dot dot-green"></span>Found</span>
+      </div>
+    `).join('');
+  } else {
+    html += '<div class="summary-item"><span style="color:var(--text-dim)">No cameras configured</span></div>';
+  }
+  html += '</div></div>';
+
+  // Devices
+  html += '<div class="summary-section"><h3>Smart Devices</h3><div class="card">';
+  if (state.haDevices.length) {
+    html += `<div class="summary-item"><span>${state.haDevices.length} device(s) via Home Assistant</span><span class="badge badge-success"><span class="dot dot-green"></span>Connected</span></div>`;
+  } else {
+    html += '<div class="summary-item"><span>Home Assistant</span><span class="badge badge-success"><span class="dot dot-green"></span>Ready</span></div>';
+    html += '<div class="summary-item"><span style="color:var(--text-dim)">No SmartLife devices yet — add via HA dashboard</span></div>';
+  }
+  html += '</div></div>';
+
+  // Telegram
+  html += '<div class="summary-section"><h3>Telegram</h3><div class="card">';
+  if (state.telegramBot) {
+    html += `<div class="summary-item"><span>@${state.telegramBot.username}</span><span class="badge badge-success"><span class="dot dot-green"></span>Connected</span></div>`;
+  } else {
+    html += '<div class="summary-item"><span style="color:var(--text-dim)">Not configured</span><span class="badge badge-error"><span class="dot dot-red"></span>Required</span></div>';
+  }
+  html += '</div></div>';
+
+  // AI
+  html += '<div class="summary-section"><h3>AI Models</h3><div class="card">';
+  html += `<div class="summary-item"><span>Reasoning</span><span>llama3.2:3b (local)</span></div>`;
+  html += `<div class="summary-item"><span>Vision</span><span>qwen3-vl (local)</span></div>`;
+  html += '</div></div>';
+
+  // Rules
+  html += '<div class="summary-section"><h3>Monitoring Rules</h3><div class="card">';
+  if (state.rules.length) {
+    html += state.rules.map(r => `<div class="summary-item"><span>${r.condition}</span><span style="color:var(--text-dim)">${r.schedule}</span></div>`).join('');
+  } else {
+    html += '<div class="summary-item"><span style="color:var(--text-dim)">No rules configured</span></div>';
+  }
+  html += '</div></div>';
+
+  el.innerHTML = html;
+}
+
+async function completeSetup() {
+  try {
+    if (state.rules.length) {
+      await api('/rules', { method: 'POST', body: { rules: state.rules } });
+    }
+
+    await api('/complete', {
+      method: 'POST',
+      body: {
+        telegram_token: state.telegramToken,
+        openrouter_key: document.getElementById('openrouter-key')?.value || state.openrouterKey,
+        ha_token: state.haToken,
+      },
+    });
+
+    toast('Setup complete!');
+    showDashboard();
+  } catch (e) {
+    toast('Setup failed: ' + e.message, true);
+  }
+}
+
+// ---- Dashboard ----
+
+let _approvalPoll = null;
+function showDashboard() {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('progress').style.display = 'none';
+  document.getElementById('header-subtitle').style.display = 'none';
+  document.getElementById('dashboard').classList.add('active');
+  dashTab('overview');
+  updateApprovalBanner();
+  if (!_approvalPoll) _approvalPoll = setInterval(updateApprovalBanner, 30000);
+}
+
+async function updateApprovalBanner() {
+  try {
+    const ap = (await api('/ops/approvals')).approvals || [];
+    const banner = document.getElementById('approval-banner');
+    const badge = document.getElementById('approval-badge');
+    if (ap.length) {
+      banner.textContent = `⚠ ${ap.length} repair${ap.length > 1 ? 's' : ''} need your approval — tap to review in Settings`;
+      banner.style.display = 'block';
+      badge.textContent = ap.length; badge.style.display = 'block';
+    } else {
+      banner.style.display = 'none';
+      badge.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+function showWizard() {
+  document.getElementById('dashboard').classList.remove('active');
+  document.getElementById('progress').style.display = 'flex';
+  document.getElementById('header-subtitle').style.display = '';
+  goStep(1);
+}
+
+function dashTab(name) {
+  document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  document.querySelectorAll('.dash-nav button').forEach((b, i) => {
+    b.classList.toggle('active', b.textContent.toLowerCase() === name);
+  });
+  if (name === 'overview') loadDashOverview();
+  if (name === 'events') loadDashEvents();
+  if (name === 'cameras') loadDashCameras();
+  if (name === 'devices') loadDashDevices();
+  if (name === 'rules') loadDashRules();
+  if (name === 'settings') loadDashSettings();
+}
+
+async function loadDashOverview() {
+  const grid = document.getElementById('dash-status-grid');
+  const [cameras, ha, models, rules, events] = await Promise.allSettled([
+    api('/cameras'), api('/ha/status'), api('/models'), api('/rules'), api('/events?limit=5'),
+  ]);
+
+  const camCount = cameras.status === 'fulfilled' ? cameras.value.count : 0;
+  const haRunning = ha.status === 'fulfilled' && ha.value.running;
+  const ollamaUp = models.status === 'fulfilled' && models.value.ollama_running;
+  const ruleCount = rules.status === 'fulfilled' ? (rules.value.rules?.length || 0) : 0;
+  const unviewed = events.status === 'fulfilled' ? events.value.unviewed : 0;
+  const recentEvents = events.status === 'fulfilled' ? (events.value.events || []) : [];
+
+  grid.innerHTML = `
+    <div class="status-card">
+      <div class="status-label">Cameras</div>
+      <div class="status-value">${camCount} online</div>
+    </div>
+    <div class="status-card" style="cursor:pointer" onclick="dashTab('events')">
+      <div class="status-label">Events</div>
+      <div class="status-value">${unviewed
+        ? `<span style="color:var(--error)">${unviewed} unread</span>`
+        : '<span style="color:var(--text-dim)">All clear</span>'}</div>
+    </div>
+    <div class="status-card">
+      <div class="status-label">Home Assistant</div>
+      <div class="status-value">${haRunning
+        ? '<span style="color:var(--success)">Connected</span>'
+        : '<span style="color:var(--text-dim)">Offline</span>'}</div>
+    </div>
+    <div class="status-card">
+      <div class="status-label">Monitoring Rules</div>
+      <div class="status-value">${ruleCount} active</div>
+    </div>
+  `;
+
+  // Recent activity
+  const actEl = document.getElementById('dash-activity');
+  if (recentEvents.length) {
+    actEl.innerHTML = recentEvents.map(ev => {
+      const dt = new Date(ev.timestamp);
+      const timeStr = dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      return `<div class="summary-item" style="cursor:pointer" onclick="dashTab('events')">
+        <span>${ev.viewed ? '' : '<span class="dot dot-red" style="width:6px;height:6px;display:inline-block;margin-right:0.35rem"></span>'}${ev.message}</span>
+        <span style="color:var(--text-dim); font-size:0.8rem">${timeStr}</span>
+      </div>`;
+    }).join('');
+  } else {
+    actEl.innerHTML = '<div class="dash-empty">No recent events</div>';
+  }
+
+  updateEventBadge();
+}
+
+async function dashScanCameras() {
+  const btn = document.getElementById('dash-btn-scan');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Scanning...';
+  const el = document.getElementById('dash-cameras');
+  el.innerHTML = '<div class="loading-text"><span class="spinner"></span> Scanning network for cameras (this can take 2-3 minutes)...</div>';
+
+  try {
+    await api('/cameras/discover', {
+      method: 'POST',
+      timeout: 300000,
+      body: {
+        subnet: document.getElementById('dash-cam-subnet').value,
+        username: document.getElementById('dash-cam-user').value,
+        password: document.getElementById('dash-cam-pass').value,
+      },
+    });
+    await loadDashCameras();
+    toast(`Found ${state.cameras.length} cameras`);
+  } catch (e) {
+    el.innerHTML = `<div class="dash-empty" style="color:var(--error)">${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Scan Network';
+  }
+}
+
+// ---- Events ----
+
+async function updateEventBadge() {
+  try {
+    const data = await api('/events?limit=1');
+    const badge = document.getElementById('event-badge');
+    if (data.unviewed > 0) {
+      badge.textContent = data.unviewed > 99 ? '99+' : data.unviewed;
+      badge.style.display = 'block';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+async function loadDashEvents() {
+  const el = document.getElementById('dash-events-list');
+  try {
+    const data = await api('/events?limit=100');
+    if (!data.events?.length) {
+      el.innerHTML = '<div class="dash-empty">No monitoring events yet. Events will appear here when cameras detect something.</div>';
+      return;
+    }
+    el.innerHTML = data.events.map(ev => {
+      const dt = new Date(ev.timestamp);
+      const timeStr = dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      return `
+        <div class="card" style="margin-bottom:0.75rem; border-color:${ev.viewed ? 'var(--border)' : 'var(--accent)'}; cursor:pointer"
+             onclick="viewEvent('${ev.id}')">
+          <div class="card-row">
+            <div style="flex:1; min-width:0">
+              <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem">
+                ${ev.viewed ? '' : '<span class="dot dot-red" style="width:8px; height:8px; flex-shrink:0"></span>'}
+                <strong style="font-size:0.9rem">${ev.message}</strong>
+              </div>
+              <div style="font-size:0.8rem; color:var(--text-dim)">${ev.camera || 'Unknown'} &bull; ${timeStr}</div>
+            </div>
+            ${ev.snapshot_path ? `<img src="/api/events/${ev.id}/snapshot" style="width:60px; height:40px; border-radius:6px; object-fit:cover; margin-left:0.75rem; flex-shrink:0">` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+    updateEventBadge();
+  } catch (e) {
+    el.innerHTML = '<div class="dash-empty">Failed to load events</div>';
+  }
+}
+
+async function viewEvent(eventId) {
+  await api(`/events/${eventId}/view`, { method: 'POST' });
+  // Show event detail in overlay
+  try {
+    const data = await api('/events?limit=500');
+    const ev = (data.events || []).find(e => e.id === eventId);
+    if (!ev) return;
+    const dt = new Date(ev.timestamp);
+    const timeStr = dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString();
+
+    const overlay = document.getElementById('liveview-overlay');
+    const body = document.getElementById('liveview-body');
+    const title = document.getElementById('liveview-title');
+
+    title.textContent = ev.camera || 'Event Detail';
+    body.className = 'liveview-body single';
+    body.innerHTML = `
+      <div style="max-width:640px; margin:0 auto; width:100%">
+        ${ev.snapshot_path ? `<img src="/api/events/${ev.id}/snapshot" style="width:100%; border-radius:var(--radius); margin-bottom:1rem">` : ''}
+        ${ev.video_path ? `<video src="/api/events/${ev.id}/video" controls style="width:100%; border-radius:var(--radius); margin-bottom:1rem"></video>` : ''}
+        <div class="card">
+          <div style="font-weight:600; margin-bottom:0.5rem">${ev.message}</div>
+          <div style="font-size:0.85rem; color:var(--text-dim)">${ev.camera} &bull; ${timeStr}</div>
+        </div>
+      </div>
+    `;
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  } catch (e) {}
+  updateEventBadge();
+  loadDashEvents();
+}
+
+async function markAllEventsViewed() {
+  await api('/events/view-all', { method: 'POST' });
+  updateEventBadge();
+  loadDashEvents();
+  toast('All events marked as read');
+}
+
+// ---- Auth ----
+
+async function doLogout() {
+  await api('/auth/logout', { method: 'POST' }).catch(() => {});
+  window.location.href = '/login';
+}
+
+async function loadDashCameras() {
+  const el = document.getElementById('dash-cameras');
+
+  if (state.network) {
+    document.getElementById('dash-cam-subnet').value = state.network.subnet;
+  }
+
+  try {
+    const data = await api('/cameras');
+    state.cameras = data.cameras || [];
+    if (!state.cameras.length) {
+      el.innerHTML = '<div class="dash-empty">No cameras discovered yet. Enter your subnet and scan.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem">
+        <div class="dash-section-title" style="margin:0">${state.cameras.length} Camera${state.cameras.length > 1 ? 's' : ''}</div>
+        <button class="btn btn-primary" style="font-size:0.8rem; padding:0.35rem 0.75rem" onclick="openLiveView()">
+          Live View All
+        </button>
+      </div>
+    ` + '<div class="camera-grid">' + state.cameras.map(cam => `
+      <div class="camera-card" style="cursor:pointer" onclick="openLiveView('${cam.ip}')">
+        <img src="/api/cameras/${cam.ip}/snapshot?t=${Date.now()}" onerror="this.style.background='var(--bg)';this.style.height='80px'" alt="${cam.name || cam.ip}">
+        <div class="camera-info">
+          <div style="display:flex; justify-content:space-between; align-items:center">
+            <div>
+              <div style="font-weight:500; font-size:0.9rem">${cam.name || '(unnamed)'}</div>
+              <div class="camera-ip">${cam.ip}</div>
+            </div>
+            <span style="font-size:0.75rem; color:var(--accent)">Live</span>
+          </div>
+        </div>
+      </div>
+    `).join('') + '</div>';
+  } catch (e) {
+    el.innerHTML = `<div class="dash-empty">Failed to load cameras</div>`;
+  }
+}
+
+function openLiveView(singleIp) {
+  const overlay = document.getElementById('liveview-overlay');
+  const body = document.getElementById('liveview-body');
+  const title = document.getElementById('liveview-title');
+
+  const cams = singleIp
+    ? state.cameras.filter(c => c.ip === singleIp)
+    : state.cameras;
+
+  const isSingle = cams.length === 1;
+  title.textContent = isSingle ? (cams[0].name || cams[0].ip) : `Live View — ${cams.length} cameras`;
+  body.className = 'liveview-body ' + (isSingle ? 'single' : 'multi');
+
+  body.innerHTML = cams.map(cam => `
+    <div class="camera-card">
+      <img src="/api/cameras/${cam.ip}/stream"
+           alt="${cam.name || cam.ip}"
+           onerror="this.src='/api/cameras/${cam.ip}/snapshot?t=${Date.now()}'; this.onerror=null">
+      <div class="liveview-cam-label">
+        <span class="cam-name">${cam.name || cam.ip}</span>
+        <span class="badge badge-error" style="font-size:0.7rem"><span class="dot dot-red" style="animation:pulse 1.5s infinite"></span>LIVE</span>
+      </div>
+    </div>
+  `).join('');
+
+  overlay.classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLiveView() {
+  const overlay = document.getElementById('liveview-overlay');
+  const body = document.getElementById('liveview-body');
+  body.querySelectorAll('img').forEach(img => img.src = '');
+  body.innerHTML = '';
+  overlay.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+async function loadDashDevices() {
+  const el = document.getElementById('dash-devices');
+
+  const haUrl = `http://${state.network?.local_ip || 'localhost'}:8123`;
+  const haLink = document.getElementById('ha-dash-link');
+  if (haLink) haLink.href = haUrl;
+
+  loadDashIntegrations();
+
+  try {
+    const data = await api('/ha/devices');
+    if (!data.devices?.length) {
+      el.innerHTML = `
+        <div class="dash-empty">No smart devices found yet</div>
+        <p style="color:var(--text-dim); font-size:0.85rem; text-align:center; margin-bottom:0.5rem">
+          Use the Home Assistant panel below to add SmartLife or other integrations, then refresh.
+        </p>
+        <div style="text-align:center">
+          <button class="btn btn-secondary" onclick="loadDashDevices()">Refresh Devices</button>
+        </div>
+      `;
+      return;
+    }
+    el.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem">' +
+      '<div class="dash-section-title" style="margin:0">Connected Devices</div>' +
+      '<button class="btn btn-ghost" onclick="loadDashDevices()" style="font-size:0.8rem">Refresh</button>' +
+      '</div>' +
+      data.devices.map(d => `
+      <div class="device-item">
+        <div>
+          <div class="device-name">${d.name}</div>
+          <div class="device-type">${d.type}</div>
+        </div>
+        <span class="badge ${d.state === 'on' ? 'badge-success' : 'badge-warning'}">${d.state}</span>
+      </div>
+    `).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="dash-empty">Cannot reach Home Assistant</div>`;
+  }
+}
+
+async function loadDashIntegrations() {
+  const el = document.getElementById('dash-integrations');
+  try {
+    const data = await api('/ha/integrations');
+    el.innerHTML = (data.integrations || []).map(integ => `
+      <div class="card" style="margin-bottom:0.75rem">
+        <div class="card-row">
+          <div style="display:flex; align-items:center; gap:0.75rem">
+            <div class="template-icon" style="background:${integ.icon_color}; width:32px; height:32px; border-radius:8px; font-size:0.85rem; flex-shrink:0">
+              ${integ.icon_letter}
+            </div>
+            <div>
+              <div class="card-value" style="font-size:0.9rem">${integ.name}</div>
+              <div class="card-label">${integ.description}</div>
+            </div>
+          </div>
+          ${integ.installed
+            ? '<span class="badge badge-success"><span class="dot dot-green"></span>Connected</span>'
+            : `<button class="btn btn-secondary" style="font-size:0.8rem; padding:0.35rem 0.75rem" onclick="showIntegrationSetup('${integ.id}')">Set Up</button>`
+          }
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    el.innerHTML = '';
+  }
+}
+
+function showIntegrationSetup(integId) {
+  const formEl = document.getElementById('dash-integration-form');
+  api('/ha/integrations').then(data => {
+    const integ = (data.integrations || []).find(i => i.id === integId);
+    if (!integ) return;
+
+    if (!integ.fields || !integ.fields.length) {
+      // No fields needed — just start the flow
+      setupIntegration(integId, {});
+      return;
+    }
+
+    formEl.style.display = 'block';
+    formEl.innerHTML = `
+      <div class="card" style="margin-top:0.75rem; border-color:var(--accent)">
+        <div style="font-size:0.9rem; font-weight:600; margin-bottom:0.75rem">Set up ${integ.name}</div>
+        ${integ.fields.map(f => `
+          <div class="form-group">
+            <label>${f.label}</label>
+            <input type="${f.type || 'text'}" id="integ-${f.name}" value="${f.default || ''}" placeholder="${f.label}">
+          </div>
+        `).join('')}
+        <div style="display:flex; gap:0.5rem">
+          <button class="btn btn-primary" id="integ-connect-btn">Connect</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('dash-integration-form').style.display='none'">Cancel</button>
+        </div>
+      </div>
+    `;
+    const fieldNames = integ.fields.map(f => f.name);
+    document.getElementById('integ-connect-btn').addEventListener('click', () => {
+      submitIntegrationForm(integId, fieldNames);
+    });
+    formEl.scrollIntoView({ behavior: 'smooth' });
+  }).catch(e => {
+    toast('Failed to load integration: ' + e.message, true);
+  });
+}
+
+async function submitIntegrationForm(integId, fieldNames) {
+  const data = {};
+  for (const name of fieldNames) {
+    const el = document.getElementById(`integ-${name}`);
+    if (el) data[name] = el.value.trim();
+  }
+  await setupIntegration(integId, data);
+}
+
+async function setupIntegration(integId, data) {
+  const formEl = document.getElementById('dash-integration-form');
+  try {
+    toast('Connecting...', false);
+    const result = await api('/ha/integrations/setup', {
+      method: 'POST',
+      timeout: 60000,
+      body: { integration_id: integId, data },
+    });
+    handleFlowResult(result, integId);
+  } catch (e) {
+    console.error('setupIntegration error:', e);
+    toast(e.message, true);
+  }
+}
+
+function handleFlowResult(result, name) {
+  const formEl = document.getElementById('dash-integration-form');
+
+  if (result.status === 'ok') {
+    toast(`${name} connected!`);
+    formEl.style.display = 'none';
+    loadDashDevices();
+    return;
+  }
+
+  if (result.status === 'error') {
+    toast(result.message, true);
+    // Re-render the form with error shown
+    if (result.step?.flow_id && result.step?.data_schema) {
+      renderFlowStep({
+        status: 'next_step',
+        flow_id: result.step.flow_id,
+        step_id: result.step.step_id,
+        fields: (result.step.data_schema || []).map(s => ({
+          name: s.name, label: s.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          type: s.name.includes('password') ? 'password' : 'text',
+          default: s.default || '',
+        })),
+      }, name, result.message);
+    }
+    return;
+  }
+
+  if (result.status === 'next_step' || result.status === 'flow_started') {
+    // flow_started returns step info in result.step, normalize it
+    if (result.step && !result.fields) {
+      const step = result.step;
+      result.flow_id = step.flow_id;
+      result.step_id = step.step_id;
+      result.fields = (step.data_schema || []).map(s => ({
+        name: s.name,
+        label: s.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        type: s.name.includes('password') || s.name.includes('secret') ? 'password'
+            : s.type === 'select' ? 'select'
+            : s.type === 'boolean' ? 'select'
+            : 'text',
+        required: s.required || false,
+        default: s.default != null ? String(s.default) : '',
+        options: s.type === 'boolean' ? [{value:'true',label:'Yes'},{value:'false',label:'No'}]
+               : s.type === 'select' ? (s.options || []).map(o => Array.isArray(o) ? {value:o[0],label:o[1]} : {value:o,label:o})
+               : undefined,
+      }));
+    }
+    renderFlowStep(result, name);
+    return;
+  }
+
+  toast('Setup in progress...', false);
+}
+
+function renderFlowStep(step, name, errorMsg) {
+  const formEl = document.getElementById('dash-integration-form');
+  formEl.style.display = 'block';
+
+  const stepLabel = step.step_id ? ` — ${step.step_id.replace(/_/g, ' ')}` : '';
+  formEl.innerHTML = `
+    <div class="card" style="margin-top:0.75rem; border-color:var(--accent)">
+      <div style="font-size:0.9rem; font-weight:600; margin-bottom:0.75rem">${name}${stepLabel}</div>
+      ${errorMsg ? `<div style="color:var(--error); font-size:0.85rem; margin-bottom:0.75rem; padding:0.5rem; background:rgba(239,68,68,.1); border-radius:6px">${errorMsg}</div>` : ''}
+      ${(step.fields || []).map(f => {
+        if (f.type === 'qr' && f.default) {
+          return `<div style="text-align:center; margin:1rem 0">
+            <p style="font-size:0.85rem; color:var(--text-dim); margin-bottom:0.75rem">Scan this QR code with your SmartLife / Tuya app:</p>
+            <img src="/api/qrcode?url=${encodeURIComponent(f.default)}" style="width:200px; height:200px; border-radius:8px; background:#fff; padding:6px">
+            <input type="hidden" id="flow-${f.name}" value="${f.default}">
+          </div>`;
+        }
+        if (f.type === 'select' && f.options) {
+          return `<div class="form-group">
+            <label>${f.label}</label>
+            <select id="flow-${f.name}">
+              ${f.options.map(o => `<option value="${o.value || o}" ${o === f.default ? 'selected' : ''}>${o.label || o}</option>`).join('')}
+            </select>
+          </div>`;
+        }
+        return `<div class="form-group">
+          <label>${f.label}</label>
+          <input type="${f.type || 'text'}" id="flow-${f.name}" value="${f.default || ''}" placeholder="${f.label}">
+        </div>`;
+      }).join('')}
+      ${step.step_id === 'scan' ? `
+        <p style="font-size:0.85rem; color:var(--text-dim); margin-bottom:0.75rem">
+          After scanning, tap "Confirm" in the SmartLife app, then click Continue below.
+        </p>
+      ` : ''}
+      <div style="display:flex; gap:0.5rem">
+        <button class="btn btn-primary" id="flow-submit-btn">${step.step_id === 'scan' ? 'I\'ve Scanned It' : 'Continue'}</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('dash-integration-form').style.display='none'">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('flow-submit-btn').addEventListener('click', async () => {
+    const data = {};
+    for (const f of (step.fields || [])) {
+      const el = document.getElementById('flow-' + f.name);
+      if (el) data[f.name] = el.value.trim();
+    }
+    try {
+      toast('Submitting...', false);
+      const result = await api('/ha/integrations/flow-step', {
+        method: 'POST',
+        timeout: 60000,
+        body: { flow_id: step.flow_id, data },
+      });
+      handleFlowResult(result, name);
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
+
+  formEl.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function loadDashRules() {
+  const el = document.getElementById('dash-rules-list');
+  try {
+    const data = await api('/rules');
+    state.rules = data.rules || [];
+    if (!state.rules.length) {
+      el.innerHTML = '<div class="dash-empty">No monitoring rules configured</div>';
+      return;
+    }
+    el.innerHTML = state.rules.map((r, i) => `
+      <div class="rule-card">
+        <div class="rule-header">
+          <strong style="font-size:0.9rem">${r.condition}</strong>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <label class="toggle">
+              <input type="checkbox" ${r.enabled !== false ? 'checked' : ''} onchange="dashToggleRule(${i}, this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+            <button class="rule-remove" onclick="dashRemoveRule(${i})">&times;</button>
+          </div>
+        </div>
+        <div class="rule-desc">
+          ${r.camera === 'all' ? 'All cameras' : r.camera} &bull; ${r.schedule}
+          ${(r.actions || []).filter(a => a.type === 'device').map(a =>
+            ` &bull; ${a.action === 'turn_on' ? '⚡ on' : '⚡ off'}: ${a.device}`).join('')}
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="dash-empty">Failed to load rules</div>`;
+  }
+
+  const camSelect = document.getElementById('dash-rule-camera');
+  camSelect.innerHTML = '<option value="all">All cameras</option>';
+  state.cameras.forEach(c => {
+    camSelect.innerHTML += `<option value="${c.name || c.ip}">${c.name || c.ip}</option>`;
+  });
+}
+
+async function dashCreateScenario() {
+  const input = document.getElementById('dash-scenario-text');
+  const btn = document.getElementById('dash-scenario-btn');
+  const text = input.value.trim();
+  if (!text) { toast('Describe the scenario first', true); return; }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Understanding...';
+  try {
+    const result = await api('/ops/scenario', {
+      method: 'POST', timeout: 150000, body: { text },
+    });
+    toast(result.kind === 'error' ? result.text : 'Scenario created');
+    if (result.kind !== 'error') input.value = '';
+    loadDashRules();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Scenario';
+  }
+}
+
+async function dashToggleRule(index, enabled) {
+  state.rules[index].enabled = enabled;
+  await api('/rules', { method: 'POST', body: { rules: state.rules } });
+}
+
+async function dashRemoveRule(index) {
+  state.rules.splice(index, 1);
+  await api('/rules', { method: 'POST', body: { rules: state.rules } });
+  loadDashRules();
+  toast('Rule removed');
+}
+
+async function dashAddRule() {
+  const camera = document.getElementById('dash-rule-camera').value;
+  const condition = document.getElementById('dash-rule-condition').value.trim();
+  const schedule = document.getElementById('dash-rule-schedule').value;
+  if (!condition) { toast('Enter a condition', true); return; }
+
+  state.rules.push({ camera, condition, schedule, enabled: true });
+  await api('/rules', { method: 'POST', body: { rules: state.rules } });
+  document.getElementById('dash-rule-condition').value = '';
+  loadDashRules();
+  toast('Rule added');
+}
+
+async function loadDashSettings() {
+  const el = document.getElementById('dash-settings');
+  const haUrl = `http://${state.network?.local_ip || 'localhost'}:8123`;
+
+  // Load telegram group info
+  let groupInfo = '';
+  try {
+    const gdata = await fetch('/data/telegram_group.json').then(r => r.ok ? r.json() : null).catch(() => null);
+    if (gdata?.title) {
+      groupInfo = `
+        <div class="card-row" style="margin-bottom:0.5rem">
+          <span class="card-label">Telegram Group</span>
+          <span class="card-value">${gdata.title}</span>
+        </div>
+      `;
+    }
+  } catch (e) {}
+
+  let botInfo = '';
+  try {
+    const status = await api('/status');
+    const bot = status.config?.telegram_bot;
+    if (bot) {
+      botInfo = `
+        <div class="card-row">
+          <span class="card-label">Bot</span>
+          <span class="card-value">@${bot.username}</span>
+        </div>
+      `;
+    }
+  } catch (e) {}
+
+  let botUsername = '';
+  try {
+    const status = await api('/status');
+    botUsername = status.config?.telegram_bot?.username || '';
+  } catch (e) {}
+
+  const groupLink = botUsername ? 'https://t.me/' + botUsername + '?startgroup=minder' : '';
+  const groupQR = groupLink ? '/api/qrcode?url=' + encodeURIComponent(groupLink) : '';
+
+  let telegramSection = '';
+  if (botInfo && groupInfo) {
+    telegramSection = botInfo + groupInfo;
+  } else if (botInfo) {
+    telegramSection = botInfo + '<div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border)">'
+      + '<div style="font-size:0.85rem; color:var(--text-dim); margin-bottom:0.75rem">'
+      + 'Bot is connected but not added to a group yet. Create a group, add the bot and family members, then send <code>/start</code>.</div>'
+      + '<div style="text-align:center">'
+      + '<img src="' + groupQR + '" alt="Add to group" style="width:150px; height:150px; border-radius:8px; background:#fff; padding:4px">'
+      + '<p style="margin-top:0.5rem"><a href="' + groupLink + '" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.85rem">Add @' + botUsername + ' to a group</a></p>'
+      + '</div></div>';
+  }
+
+  el.innerHTML = `
+    <div class="dash-section-title">Telegram</div>
+    <div class="card">
+      ${telegramSection || '<div class="card-row"><span class="card-label">Bot</span><span style="color:var(--text-dim)">Not connected</span></div>'}
+      ${!botInfo ? `
+        <div style="margin-top:0.75rem; padding-top:0.75rem; border-top:1px solid var(--border)">
+          <div style="font-size:0.85rem; font-weight:600; margin-bottom:0.5rem">Connect Telegram Bot</div>
+          <div style="text-align:center; margin-bottom:1rem">
+            <img src="/api/qrcode?url=https://t.me/BotFather?start=start" alt="BotFather"
+                 style="width:140px; height:140px; border-radius:8px; background:#fff; padding:4px">
+            <p style="margin-top:0.5rem"><a href="https://t.me/BotFather?start=start" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.85rem">Open BotFather</a></p>
+          </div>
+          <div style="font-size:0.85rem; color:var(--text-dim); margin-bottom:0.75rem">
+            Send <code>/newbot</code> to BotFather, name it <strong>Minder Home</strong>, then paste the token:
+          </div>
+          <div class="form-group">
+            <input type="text" id="settings-tg-token" placeholder="123456789:ABCdefGHI..." style="font-family:monospace">
+          </div>
+          <button class="btn btn-primary" id="settings-tg-connect">Connect Bot</button>
+        </div>
+      ` : ''}
+    </div>
+
+    <div class="dash-section-title" style="margin-top:1.5rem">Home Assistant</div>
+    <div class="card">
+      <div class="card-row" style="margin-bottom:0.5rem">
+        <span class="card-label">Dashboard</span>
+        <a href="${haUrl}" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.9rem">${haUrl}</a>
+      </div>
+      <div class="card-row" style="margin-bottom:0.5rem">
+        <span class="card-label">Username</span>
+        <span class="card-value"><code>minder</code></span>
+      </div>
+      <div class="card-row">
+        <span class="card-label">Password</span>
+        <span class="card-value"><code>minder-internal-do-not-change</code></span>
+      </div>
+    </div>
+
+    <div class="dash-section-title" style="margin-top:1.5rem">Dashboard Password</div>
+    <div class="card">
+      <div class="form-group">
+        <label>Current Password</label>
+        <input type="password" id="settings-current-pw" placeholder="Current password">
+      </div>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="settings-new-pw" placeholder="New password">
+      </div>
+      <button class="btn btn-secondary" onclick="changePassword()">Change Password</button>
+    </div>
+
+    <div class="dash-section-title" style="margin-top:1.5rem">System</div>
+    <div class="card">
+      <div id="settings-hardware"></div>
+      <button class="btn btn-ghost" style="margin-top:0.75rem; font-size:0.85rem" onclick="showWizard()">Run Setup Wizard Again</button>
+    </div>
+
+    <div class="dash-section-title" style="margin-top:1.5rem">Health &amp; Recovery</div>
+    <div class="card">
+      <div id="settings-health"><span style="color:var(--text-dim)">Checking health…</span></div>
+      <div id="settings-approvals" style="margin-top:0.9rem"></div>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.9rem">
+        <button class="btn btn-secondary" style="font-size:0.85rem" onclick="recoverAction('backup')">Backup Now</button>
+        <button class="btn btn-secondary" style="font-size:0.85rem" onclick="recoverAction('backup-ha')">Backup HA</button>
+        <button class="btn btn-ghost" style="font-size:0.85rem" onclick="loadSystemHealth()">Refresh</button>
+      </div>
+    </div>
+  `;
+
+  // Load hardware info
+  try {
+    const hw = await api('/hardware');
+    document.getElementById('settings-hardware').innerHTML = `
+      <div class="card-row" style="margin-bottom:0.5rem">
+        <span class="card-label">GPU</span>
+        <span>${hw.gpu_available ? hw.gpu_info : 'Not detected'}</span>
+      </div>
+      <div class="card-row" style="margin-bottom:0.5rem">
+        <span class="card-label">RAM</span>
+        <span>${hw.ram_gb} GB</span>
+      </div>
+      <div class="card-row">
+        <span class="card-label">Disk Free</span>
+        <span>${hw.disk_free_gb} GB</span>
+      </div>
+    `;
+  } catch (e) {}
+
+  // Wire up Telegram connect button if shown
+  const tgBtn = document.getElementById('settings-tg-connect');
+  if (tgBtn) {
+    tgBtn.addEventListener('click', async () => {
+      const token = document.getElementById('settings-tg-token').value.trim();
+      if (!token) { toast('Paste the bot token', true); return; }
+      try {
+        tgBtn.disabled = true;
+        tgBtn.textContent = 'Verifying...';
+        const data = await api('/telegram/verify', { method: 'POST', body: { token } });
+        toast(`Bot @${data.bot.username} connected!`);
+        loadDashSettings();
+      } catch (e) {
+        toast(e.message, true);
+        tgBtn.disabled = false;
+        tgBtn.textContent = 'Connect Bot';
+      }
+    });
+  }
+  loadSystemHealth();
+}
+
+async function loadSystemHealth() {
+  const el = document.getElementById('settings-health');
+  if (!el) return;
+  try {
+    const h = await api('/ops/health');
+    const dot = ok => `<span style="color:${ok ? 'var(--accent)' : '#e05'}">${ok ? '●' : '●'}</span>`;
+    let rows = '';
+    for (const [name, st] of Object.entries(h.files || {})) {
+      const ok = (st === 'ok' || st === 'empty');
+      rows += `<div class="card-row" style="margin-bottom:0.3rem"><span class="card-label">${name}</span><span>${dot(ok)} ${st}</span></div>`;
+    }
+    el.innerHTML = `
+      <div class="card-row" style="margin-bottom:0.5rem"><span class="card-label">Status</span>
+        <strong>${dot(h.healthy)} ${h.healthy ? 'Healthy' : 'Needs attention'}</strong></div>
+      ${rows}
+      <div class="card-row" style="margin-bottom:0.3rem"><span class="card-label">Home Assistant</span><span>${dot(h.ha)} ${h.ha ? 'reachable' : 'down'}</span></div>
+      <div class="card-row" style="margin-bottom:0.3rem"><span class="card-label">Frigate</span><span>${dot(h.frigate)} ${h.frigate ? 'reachable' : 'down'}</span></div>
+      <div class="card-row" style="margin-bottom:0.3rem"><span class="card-label">State backups</span><span>${h.backups} (latest ${h.latest_backup || 'none'})</span></div>
+      <div class="card-row"><span class="card-label">HA volume backups</span><span>${h.ha_volume_backups || 0}</span></div>`;
+  } catch (e) {
+    el.innerHTML = `<span style="color:#e05">Couldn't read health: ${e.message}</span>`;
+  }
+  loadApprovals();
+}
+
+async function loadApprovals() {
+  const el = document.getElementById('settings-approvals');
+  if (!el) return;
+  try {
+    const ap = (await api('/ops/approvals')).approvals || [];
+    if (!ap.length) { el.innerHTML = ''; return; }
+    el.innerHTML = ap.map(a => `
+      <div class="card" style="border:1px solid #e0a; margin-top:0.5rem">
+        <div style="font-weight:600; margin-bottom:0.3rem">Repair needs your approval</div>
+        <div style="font-size:0.85rem; color:var(--text-dim); margin-bottom:0.6rem">${a.reason}</div>
+        <div style="display:flex; gap:0.5rem">
+          <button class="btn btn-primary" style="font-size:0.85rem" onclick="approveRepair('${a.id}')">Approve &amp; Repair</button>
+          <button class="btn btn-ghost" style="font-size:0.85rem" onclick="rejectRepair('${a.id}')">Dismiss</button>
+        </div>
+      </div>`).join('');
+  } catch (e) { el.innerHTML = ''; }
+}
+
+async function approveRepair(id) {
+  try {
+    toast('Approved — repairing…');
+    const r = await api('/ops/approvals/approve', { method: 'POST', body: { id }, timeout: 180000 });
+    const fixed = (r.repaired || []).concat(r.regenerated || []);
+    toast(r.status === 'approved' ? (fixed.length ? `Repaired: ${fixed.join(', ')}` : 'Approved — nothing needed fixing') : 'Nothing to approve');
+  } catch (e) { toast(e.message, true); }
+  loadSystemHealth();
+}
+
+async function rejectRepair(id) {
+  try {
+    await api('/ops/approvals/reject', { method: 'POST', body: { id } });
+    toast('Dismissed');
+  } catch (e) { toast(e.message, true); }
+  loadSystemHealth();
+}
+
+async function recoverAction(kind) {
+  try {
+    if (kind === 'backup') {
+      const r = await api('/ops/backup', { method: 'POST' });
+      toast(`Backed up: ${(r.files || []).join(', ')}`);
+    } else if (kind === 'backup-ha') {
+      toast('Backing up HA volume…');
+      const r = await api('/ops/backup/ha', { method: 'POST', timeout: 180000 });
+      toast(r.status === 'ok' ? `HA backup: ${r.file} (${r.size_kb}kb)` : `HA backup: ${r.status}`);
+    }
+  } catch (e) {
+    toast(e.message, true);
+  }
+  loadSystemHealth();
+}
+
+async function changePassword() {
+  const current = document.getElementById('settings-current-pw').value;
+  const newPw = document.getElementById('settings-new-pw').value;
+  if (!current || !newPw) { toast('Fill in both fields', true); return; }
+  if (newPw.length < 4) { toast('Password too short', true); return; }
+  try {
+    await api('/auth/change-password', { method: 'POST', body: { current_password: current, new_password: newPw } });
+    toast('Password changed');
+    document.getElementById('settings-current-pw').value = '';
+    document.getElementById('settings-new-pw').value = '';
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+// ---- Init ----
+
+async function init() {
+  let isCompleted = false;
+  try {
+    const status = await api('/status');
+    isCompleted = status.completed;
+    const camData = await api('/cameras');
+    state.cameras = camData.cameras || [];
+    const userData = await api('/users');
+    state.users = userData.users || [];
+    const rulesData = await api('/rules');
+    state.rules = rulesData.rules || [];
+  } catch (e) { /* fresh install */ }
+
+  if (!state.network) {
+    try { state.network = await api('/network'); } catch (e) {}
+  }
+
+  if (isCompleted) {
+    showDashboard();
+  } else {
+    goStep(1);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

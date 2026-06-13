@@ -1,0 +1,34 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-vision
+  version: 3.1.0
+  description: >
+    Answer "what does a camera see" questions. One tool (detect-objects)
+    captures a fresh frame and detects in a single call; the agent then
+    produces a structured answer. With MAX_PER_TOOL=1 the agent calls the
+    tool once and is forced to synthesise — and output_schema makes that
+    synthesis a clean JSON answer instead of free-form text.
+agents:
+  root:
+    id: vision
+    role: root
+    archetype: action-agent
+    skills:
+      - detect-objects
+    output_schema:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: One short, friendly sentence answering the user's question.
+      required:
+        - answer
+    prompt:
+      system: >
+        The user is asking what a camera can see. Their message lists the
+        cameras. Call detect-objects ONCE with the camera they named and what
+        they're asking about (person, car, or animal). It returns 'found',
+        'count', 'confidence_pct', and 'everything_seen'. Then answer the
+        user's exact question in one short friendly sentence naming the
+        camera — yes or no to the thing they asked about. Use only the data.

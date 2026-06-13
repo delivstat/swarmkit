@@ -1,0 +1,21 @@
+# Frigate config — Minder bootstrap template (GENERIC — no cameras).
+#
+# This is the SEED only. On first boot it is copied once into the frigate-config
+# volume; from then on the real per-install config is generated into the volume
+# by Minder's `configure_cameras` MCP tool (from the discovered cameras.json)
+# and never written back here. So this template is identical on every box —
+# never hand-add cameras to it.
+#
+# genai (crop-and-zoom VLM enrichment) is added per-camera by the generator
+# when MINDER_GENAI=on; see mcp-servers/frigate/server.py:_build_config.
+
+mqtt:
+  enabled: false
+
+detectors:
+  # CPU detector — the GPU stays free for Ollama. Detection is safety-critical
+  # and must never contend on the GPU.
+  cpu1:
+    type: cpu
+
+cameras: {}
