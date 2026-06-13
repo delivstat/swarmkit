@@ -55,8 +55,8 @@ TRACK_OBJECTS = ["person", "car", "dog", "cat"]
 # poller appends to the alert. Local-only (Ollama); fires per event, never on
 # the live stream. Enrichment is additive — a missing description never blocks
 # an alert (see _fire / graceful degradation).
-GENAI_ENABLED = os.environ.get("MINDER_GENAI", "on").lower() in ("on", "1", "true")
-VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "granite3.2-vision")
+GENAI_ENABLED = os.environ.get("MINDER_GENAI", "off").lower() in ("on", "1", "true")
+VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 # Describe the security-relevant objects only (keeps VLM load focused on a
 # 4GB box); pets are tracked for alerts but not described.

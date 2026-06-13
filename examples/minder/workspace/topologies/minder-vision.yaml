@@ -16,14 +16,6 @@ agents:
     archetype: action-agent
     skills:
       - check-condition
-    output_schema:
-      type: object
-      properties:
-        answer:
-          type: string
-          description: One short, friendly sentence answering the user's question.
-      required:
-        - answer
     prompt:
       system: >
         The user is asking about what a camera sees. Their message lists the

@@ -40,7 +40,7 @@ SNAPSHOT_DIR = DATA_DIR / "snapshots"
 RULES_FILE = DATA_DIR / "rules.json"
 MONITOR_STATE_FILE = DATA_DIR / "monitor_state.json"
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "granite3.2-vision")
+VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
 ALERT_COOLDOWN_S = 600  # don't re-alert the same rule+camera within 10 min
 
 CAMERA_PORTS = {554: "RTSP", 8554: "RTSP-alt", 80: "HTTP", 8080: "HTTP-alt"}

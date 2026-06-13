@@ -1510,7 +1510,7 @@ async function detectHardware() {
       document.getElementById('reasoning-badge').innerHTML = '<span class="dot dot-green"></span>Local';
     }
 
-    document.getElementById('vision-model').textContent = 'qwen3-vl (local)';
+    document.getElementById('vision-model').textContent = 'llava-phi3 (local)';
     document.getElementById('vision-badge').className = 'badge badge-success';
     document.getElementById('vision-badge').innerHTML = '<span class="dot dot-green"></span>Local';
 
@@ -1682,7 +1682,7 @@ function renderSummary() {
   // AI
   html += '<div class="summary-section"><h3>AI Models</h3><div class="card">';
   html += `<div class="summary-item"><span>Reasoning</span><span>llama3.2:3b (local)</span></div>`;
-  html += `<div class="summary-item"><span>Vision</span><span>qwen3-vl (local)</span></div>`;
+  html += `<div class="summary-item"><span>Vision</span><span>llava-phi3 (local)</span></div>`;
   html += '</div></div>';
 
   // Rules

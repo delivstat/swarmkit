@@ -526,14 +526,21 @@ def _phrase_check(question: str, check: dict) -> str:
     text isn't usable. Phrased to what the user actually asked."""
     cam = check.get("camera", "the camera")
     match = check.get("match")
-    scene = check.get("answer", "")  # stored scene summary
+    scene = check.get("answer", "")  # YOLO counts, or the VLM's scene answer
     q = (question or "").lower()
-    if any(w in q for w in ["car", "vehicle", "truck", "bike", "van", "bus"]):
+    if any(w in q for w in ["person", "someone", "anyone", "people", "intruder", "man", "woman"]):
+        subj = "person"
+    elif any(w in q for w in ["car", "vehicle", "truck", "bike", "van", "bus"]):
         subj = "vehicle"
     elif any(w in q for w in ["animal", "dog", "cat", "monkey", "pet", "bird"]):
         subj = "animal"
     else:
-        subj = "person"
+        # Open scene question ("is the gate open", "what's in the yard"): the
+        # answer is the VLM's own description — surface it, don't force the
+        # person/object framing.
+        if scene:
+            return f"📷 {cam}: {scene.strip()}"
+        return f"📷 {cam}: I couldn't get a clear read on that."
     if match:
         tail = f" (I see {scene})" if scene else ""
         return f"🔴 {cam}: yes, there's a {subj} there{tail}."

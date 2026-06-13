@@ -74,19 +74,27 @@ services:
       - MINDER_REASONING_MODEL=${MINDER_REASONING_MODEL:-llama3.2:3b}
       - MINDER_LOCAL_PROVIDER=${MINDER_LOCAL_PROVIDER:-ollama}
       - MINDER_LOCAL_MODEL=${MINDER_LOCAL_MODEL:-llama3.2:3b}
-      # granite3.2-vision: non-thinking VLM that fits beside llama3.2:3b on 4GB
-      # and gives direct descriptions. AVOID qwen3-vl* (thinking models — they
-      # burn the token budget on <think> and return empty descriptions to
-      # Frigate genai). On a dedicated appliance where the VLM owns the GPU,
-      # use qwen2.5vl:3b (or :7b) for richer descriptions. Serves both the
-      # interactive VLM and Frigate genai enrichment.
-      - MINDER_VISION_MODEL=${MINDER_VISION_MODEL:-granite3.2-vision}
+      # llava-phi3 (3.8B): the on-demand VLM. It does NOT hallucinate people
+      # (moondream did — fatal for security) and warm it answers in ~5s on CPU.
+      # The VLM runs on CPU/RAM (num_gpu=0, kept warm — see vision server) so it
+      # never contends with llama3.2 for VRAM; on this box GPU model-loading
+      # thrashes (100-240s). minicpm-v (8B) and qwen2.5vl (3B) are too slow for
+      # CPU image inference (>300s); on a dedicated-GPU appliance use qwen2.5vl:3b
+      # on the GPU. NOTE: object presence (person/car/animal) uses YOLO, not the
+      # VLM — the VLM is only for open scene questions ("is the gate open").
+      - MINDER_VISION_MODEL=${MINDER_VISION_MODEL:-llava-phi3}
       # Frigate event poller is the live alert source (Phase 2b cutover). The
       # YOLO monitor loop (monitor-cameras trigger) is disabled; set "shadow" to
       # roll back to parallel-run if needed.
       - MINDER_POLLER_ALERTS=${MINDER_POLLER_ALERTS:-live}
       # Frigate genai crop-and-zoom enrichment (local VLM). "on" or "off".
-      - MINDER_GENAI=${MINDER_GENAI:-on}
+      # OFF by default: genai runs the VLM on every tracked detection 24/7,
+      # which contends for VRAM on a shared box and doesn't drive alerts (the
+      # detector + zones + scenarios do). Turn on only on a dedicated-GPU
+      # appliance, and use a Frigate-recommended VLM (qwen2.5vl:3b / qwen3-vl:4b),
+      # not moondream — moondream is fine for on-demand queries but weak for
+      # situational event descriptions.
+      - MINDER_GENAI=${MINDER_GENAI:-off}
       - MINDER_DATA_DIR=/data
       # Single-action agents: cap every tool at 2 calls, then the runtime
       # force-stops and the model synthesises from the result already in context.
