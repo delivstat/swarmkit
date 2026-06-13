@@ -33,6 +33,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import ModuleType
 
 import httpx
 
@@ -473,27 +474,51 @@ def _looks_unhelpful(text: str) -> bool:
 _devices_tool_module = None
 
 
-def _weather_summary() -> str:
-    """Invoke the devices MCP tool and return its ready-to-speak 'summary'.
-    The phrasing lives in the MCP server (the capability layer), not here — the
-    backend only relays it. This is authoritative for weather: the 3B reasoning
-    model hallucinates a plausible 'can't find weather' refusal in the agent
-    loop instead of calling the tool, so we read the capability directly."""
+def _devices_module() -> ModuleType:
+    """Load the devices MCP server module in-process so the backend can invoke
+    its tools directly (config/setup actions, and deterministic relays where the
+    3B agent loop is unreliable). The capability logic stays in the MCP server."""
     global _devices_tool_module
-    try:
-        if _devices_tool_module is None:
-            import importlib.util
+    if _devices_tool_module is None:
+        import importlib.util
 
-            spec = importlib.util.spec_from_file_location(
-                "_minder_devices_tool", "/app/mcp-servers/tuya/server.py"
-            )
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            _devices_tool_module = mod
-        data = json.loads(_devices_tool_module.get_weather())
+        spec = importlib.util.spec_from_file_location(
+            "_minder_devices_tool", "/app/mcp-servers/tuya/server.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _devices_tool_module = mod
+    return _devices_tool_module
+
+
+def _weather_summary() -> str:
+    """Relay the get-weather MCP tool's ready-to-speak 'summary'. Authoritative
+    for weather: the 3B model hallucinates a 'can't find weather' refusal in the
+    agent loop instead of calling the tool, so we read the capability directly."""
+    try:
+        data = json.loads(_devices_module().get_weather())
         return str(data.get("summary", "")).strip()
     except Exception:
         return ""
+
+
+def weather_status() -> dict:
+    """Is the weather source set up, and where (for the setup UI)."""
+    try:
+        return json.loads(_devices_module().weather_status())
+    except Exception as e:
+        return {"set_up": False, "reason": str(e)}
+
+
+def setup_weather(city: str = "", latitude: float = 0.0, longitude: float = 0.0) -> dict:
+    """Preset weather setup (Met.no — no API key) for a city or coordinates.
+    Config action, so it runs deterministically against the MCP capability."""
+    try:
+        return json.loads(
+            _devices_module().setup_weather(city=city, latitude=latitude, longitude=longitude)
+        )
+    except Exception as e:
+        return {"status": "error", "message": str(e), "summary": "Weather setup failed."}
 
 
 def _phrase_check(question: str, check: dict) -> str:

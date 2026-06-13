@@ -783,6 +783,8 @@
         </div>
       </div>
 
+      <div class="weather-mount" style="margin-top:1rem"></div>
+
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="goStep(2)">Back</button>
         <div>
@@ -1081,6 +1083,7 @@
 
       <!-- Settings tab -->
       <div class="dash-tab" id="tab-settings">
+        <div class="weather-mount" style="margin-bottom:1rem"></div>
         <div id="dash-settings"></div>
       </div>
     </div>
@@ -1144,10 +1147,79 @@ function updateProgress() {
 
 function onStepEnter(n) {
   if (n === 1) loadNetwork();
-  if (n === 3) checkHA();
+  if (n === 3) { checkHA(); mountAllWeather(); }
   if (n === 5) detectHardware();
   if (n === 6) setupRulesStep();
   if (n === 7) renderSummary();
+}
+
+// ---- Weather setup (preset Met.no — shared by onboarding + dashboard) ----
+
+function mountAllWeather() {
+  document.querySelectorAll('.weather-mount').forEach(mountWeather);
+}
+
+function mountWeather(el) {
+  if (el.dataset.mounted) { refreshWeather(el); return; }
+  el.dataset.mounted = '1';
+  const inp = 'flex:1; min-width:150px; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--text)';
+  el.innerHTML = `
+    <div class="card">
+      <div class="dash-section-title">Local Weather</div>
+      <p style="color:var(--text-dim); font-size:0.85rem; margin:0.25rem 0 0.75rem">
+        Lets Minder answer “is it raining outside?”. Uses Met.no — free, no API key, just a location.
+      </p>
+      <div class="wx-status" style="font-size:0.9rem; margin-bottom:0.75rem">Checking…</div>
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center">
+        <input class="wx-city" type="text" placeholder="City (e.g. Bengaluru)" style="${inp}">
+        <button class="btn btn-primary wx-go">Set up weather</button>
+      </div>
+      <a class="wx-coord-toggle" style="color:var(--accent); font-size:0.8rem; cursor:pointer; display:inline-block; margin-top:0.5rem">Enter coordinates instead</a>
+      <div class="wx-coords" style="display:none; gap:0.5rem; margin-top:0.5rem">
+        <input class="wx-lat" type="number" step="any" placeholder="Latitude" style="${inp}">
+        <input class="wx-lon" type="number" step="any" placeholder="Longitude" style="${inp}">
+      </div>
+    </div>`;
+  el.querySelector('.wx-coord-toggle').onclick = () => {
+    const c = el.querySelector('.wx-coords');
+    c.style.display = c.style.display === 'none' ? 'flex' : 'none';
+  };
+  el.querySelector('.wx-go').onclick = () => submitWeather(el);
+  el.querySelector('.wx-city').addEventListener('keydown', e => { if (e.key === 'Enter') submitWeather(el); });
+  refreshWeather(el);
+}
+
+async function submitWeather(el) {
+  const city = el.querySelector('.wx-city').value.trim();
+  const lat = el.querySelector('.wx-lat').value;
+  const lon = el.querySelector('.wx-lon').value;
+  const body = {};
+  if (city) body.city = city;
+  else if (lat && lon) { body.latitude = parseFloat(lat); body.longitude = parseFloat(lon); }
+  else { toast('Enter a city or coordinates', true); return; }
+  const btn = el.querySelector('.wx-go');
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Setting up…';
+  try {
+    const r = await api('/ops/weather/setup', { method: 'POST', body, timeout: 30000 });
+    if (r.status === 'ok') { toast(r.message || 'Weather set up'); el.querySelector('.wx-city').value = ''; }
+    else toast(r.message || 'Weather setup failed', true);
+  } catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; btn.textContent = old; refreshWeather(el); }
+}
+
+async function refreshWeather(el) {
+  const statusEl = el.querySelector('.wx-status');
+  try {
+    const s = await api('/ops/weather');
+    if (s.set_up) {
+      statusEl.innerHTML = `✅ <strong>${s.location || 'Set up'}</strong> — ${s.summary || 'weather available'}`;
+    } else {
+      statusEl.textContent = 'Not set up yet — enter your city to enable weather answers.';
+    }
+  } catch (e) {
+    statusEl.textContent = 'Could not check weather status.';
+  }
 }
 
 // ---- API helpers ----
@@ -1694,7 +1766,7 @@ function dashTab(name) {
   if (name === 'cameras') loadDashCameras();
   if (name === 'devices') loadDashDevices();
   if (name === 'rules') loadDashRules();
-  if (name === 'settings') loadDashSettings();
+  if (name === 'settings') { loadDashSettings(); mountAllWeather(); }
 }
 
 async function loadDashOverview() {
