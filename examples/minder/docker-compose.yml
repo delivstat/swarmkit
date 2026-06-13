@@ -88,8 +88,13 @@ services:
       # Frigate genai crop-and-zoom enrichment (local VLM). "on" or "off".
       - MINDER_GENAI=${MINDER_GENAI:-on}
       - MINDER_DATA_DIR=/data
-      # Single-action agents: one tool call, then compose the answer.
-      - SWARMKIT_MAX_PER_TOOL=${SWARMKIT_MAX_PER_TOOL:-1}
+      # Single-action agents: cap every tool at 2 calls, then the runtime
+      # force-stops and the model synthesises from the result already in context.
+      # On a 3B local model this is what produces a clean answer — 1 exits before
+      # the synthesis turn; the framework read-tool default of 50 (tuned for
+      # code-analysis file reads) lets one-shot lookups spiral. Both caps = 2.
+      - SWARMKIT_MAX_PER_TOOL=${SWARMKIT_MAX_PER_TOOL:-2}
+      - SWARMKIT_MAX_PER_READ_TOOL=${SWARMKIT_MAX_PER_READ_TOOL:-2}
       - MINDER_TELEGRAM_TOKEN=${MINDER_TELEGRAM_TOKEN:-}
       - OLLAMA_URL=http://localhost:11434
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}

@@ -246,46 +246,6 @@ def get_ha_devices() -> list[dict]:
     return devices
 
 
-_RAIN_STATES = {"rainy", "pouring", "lightning-rainy", "snowy-rainy", "hail", "lightning"}
-
-
-def get_weather() -> dict:
-    """Answer weather questions from Home Assistant's weather entity — accurate
-    and works at night (unlike reading rain off a camera). Guides setup if no
-    weather integration exists yet."""
-    token = _ha_token()
-    if not token:
-        return _envelope("weather", "Home Assistant isn't connected yet — set it up first.")
-    try:
-        req = urllib.request.Request(
-            f"{HA_URL}/api/states", headers={"Authorization": f"Bearer {token}"}
-        )
-        states = json.loads(urllib.request.urlopen(req, timeout=5).read())
-    except Exception:
-        return _envelope("error", "Couldn't reach Home Assistant.")
-    wx = [s for s in states if s.get("entity_id", "").startswith("weather.")]
-    if not wx:
-        return _envelope(
-            "weather",
-            "Weather isn't set up yet. Add a weather integration (e.g. Met.no — "
-            "no API key needed) in Home Assistant and set your home location, "
-            "then I can tell you the conditions.",
-        )
-    w = wx[0]
-    cond = (w.get("state") or "").lower()
-    a = w.get("attributes", {})
-    temp = a.get("temperature")
-    unit = a.get("temperature_unit", "°")
-    raining = cond in _RAIN_STATES
-    label = cond.replace("-", " ") or "unknown"
-    msg = "Yes — it's raining." if raining else f"No rain right now — {label}."
-    if temp is not None:
-        msg += f" {temp}{unit}."
-    return _envelope(
-        "weather", msg, data={"condition": cond, "temperature": temp, "raining": raining}
-    )
-
-
 _DEVICE_STOPWORDS = {
     "can",
     "you",
@@ -498,7 +458,42 @@ def _looks_unhelpful(text: str) -> bool:
         or "no relevant data" in low
         or low.startswith("{")
         or low.startswith("[")
+        # Tool-call/instruction leakage: a confused small model echoes the
+        # skill name or the function-call shape instead of an answer.
+        or "check-camera-condition" in low
+        or "check-condition" in low
+        or "get-weather" in low
+        or "get_weather" in low
+        or "tool_use" in low
+        or "'name':" in low
+        or "'parameters'" in low
     )
+
+
+_devices_tool_module = None
+
+
+def _weather_summary() -> str:
+    """Invoke the devices MCP tool and return its ready-to-speak 'summary'.
+    The phrasing lives in the MCP server (the capability layer), not here — the
+    backend only relays it. This is authoritative for weather: the 3B reasoning
+    model hallucinates a plausible 'can't find weather' refusal in the agent
+    loop instead of calling the tool, so we read the capability directly."""
+    global _devices_tool_module
+    try:
+        if _devices_tool_module is None:
+            import importlib.util
+
+            spec = importlib.util.spec_from_file_location(
+                "_minder_devices_tool", "/app/mcp-servers/tuya/server.py"
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _devices_tool_module = mod
+        data = json.loads(_devices_tool_module.get_weather())
+        return str(data.get("summary", "")).strip()
+    except Exception:
+        return ""
 
 
 def _phrase_check(question: str, check: dict) -> str:
@@ -1036,6 +1031,18 @@ def _latest_good_backup(filename: str) -> Path | None:
     return None
 
 
+def _is_problem(name: str, status: str) -> bool:
+    """A precious file is a genuine fault only if it's corrupt (restore from
+    backup), or missing AND a good backup exists (it was there before → real
+    loss). Missing with no backup is just not-set-up-yet (fresh install / no
+    scenarios) — not a fault, so it never raises an alert."""
+    if status == "corrupt":
+        return True
+    if status == "missing":
+        return _latest_good_backup(name) is not None
+    return False
+
+
 def restore(ts: str = "") -> dict:
     """Restore precious files from a backup (a specific ts, or the latest good
     copy of each file if ts is empty)."""
@@ -1066,7 +1073,9 @@ def health() -> dict:
         "latest_backup": backups[0]["ts"] if backups else None,
         "ha_volume_backups": len(ha_tars),
         "latest_ha_volume_backup": ha_tars[-1].name if ha_tars else None,
-        "healthy": all(s in ("ok", "empty") for s in files.values()),
+        # Healthy unless a file is a genuine fault. Missing-on-fresh-install
+        # (no backup yet) is "not set up", not unhealthy.
+        "healthy": not any(_is_problem(n, s) for n, s in files.items()),
     }
 
 
@@ -1083,12 +1092,11 @@ def diagnose_and_alert() -> dict:
     item (the native HITL gate) and alert the human to approve it. NEVER fixes
     anything — the fix runs only when the review item is resolved 'approved'."""
     h = health()
-    if not h.get("healthy"):
-        bad = [f"{f} ({s})" for f, s in h["files"].items() if s in ("corrupt", "missing")]
-        if not h.get("ha"):
-            bad.append("Home Assistant unreachable")
-        if not h.get("frigate"):
-            bad.append("Frigate unreachable")
+    # Only file a repair the doctor can actually apply (restore corrupt/lost
+    # files). HA/Frigate being unreachable isn't doctor-repairable — it's shown
+    # in health() but never raises a repair-approval alert.
+    bad = [f"{f} ({s})" for f, s in h["files"].items() if _is_problem(f, s)]
+    if bad:
         if not _pending_repairs():
             item = create_review_item(
                 topology_id="minder-doctor",
@@ -1406,7 +1414,15 @@ async def handle_message(
         return await asyncio.to_thread(list_devices)
 
     if kind == "weather":
-        return await asyncio.to_thread(get_weather)
+        # Weather is a deterministic, zero-argument lookup — the answer is fully
+        # determined by the get-weather MCP tool's 'summary'. The 3B agent loop
+        # adds only hallucination here (it invents a refusal instead of calling
+        # the tool), so the backend relays the tool's summary directly. All
+        # interpretation/phrasing still lives in the MCP server, not here.
+        reply = await asyncio.to_thread(_weather_summary)
+        if reply:
+            return _envelope("weather", reply)
+        return _envelope("weather", "I couldn't read the weather just now.")
 
     if kind == "camera_list":
         return await asyncio.to_thread(list_cameras)

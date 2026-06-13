@@ -1,0 +1,29 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: minder-weather
+  version: 1.0.0
+  description: >
+    Answer weather questions. The agent calls get-weather (Home Assistant's
+    weather entity — accurate, works at night) and synthesises a short reply.
+    output_schema keeps the answer reliable on the small local model.
+agents:
+  root:
+    id: weather
+    role: root
+    archetype: action-agent
+    skills:
+      - get-weather
+    output_schema:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: One short, friendly sentence answering the user's weather question.
+      required:
+        - answer
+    prompt:
+      system: >
+        The user asked about the weather. Call get_weather ONCE. The result has
+        a 'summary' field — a complete, ready-to-speak sentence. Set 'answer' to
+        that summary verbatim. Do not rephrase, add, or invent anything.

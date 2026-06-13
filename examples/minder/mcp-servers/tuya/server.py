@@ -361,6 +361,59 @@ def list_devices() -> str:
     return json.dumps({"devices": devices, "count": len(devices)})
 
 
+_RAIN_STATES = {"rainy", "pouring", "lightning-rainy", "snowy-rainy", "hail", "lightning"}
+
+
+def _weather_summary(cond: str, raining: bool, temp: Any, unit: str) -> str:
+    """One ready-to-speak sentence. The local 3B can't reliably phrase facts,
+    so the capability layer owns the wording (callers relay this verbatim)."""
+    nice = cond.replace("-", " ") or "unclear"
+    tail = f", and it's {temp}{unit} out" if temp is not None else ""
+    if raining:
+        return f"Yes, it's raining outside right now ({nice}){tail}."
+    return f"No, it's not raining — it's {nice} right now{tail}."
+
+
+@mcp.tool()
+def get_weather() -> str:
+    """Get the current weather from Home Assistant's weather entity — accurate
+    and works at night. Returns the condition, temperature, whether it is
+    raining, and a ready-to-speak 'summary'. If no weather integration is set
+    up, returns a setup hint as the summary."""
+    token = _load_ha_token()
+    if not token:
+        msg = "Home Assistant isn't connected yet, so I can't check the weather."
+        return json.dumps({"status": "setup_required", "message": msg, "summary": msg})
+    states = _ha_request("states")
+    if isinstance(states, dict) and "error" in states:
+        msg = "I couldn't reach Home Assistant to check the weather just now."
+        return json.dumps({"status": "error", "message": states["error"], "summary": msg})
+    wx = [s for s in states if s.get("entity_id", "").startswith("weather.")]
+    if not wx:
+        msg = (
+            "There's no weather source set up yet — add the Met.no integration "
+            "in Home Assistant (no API key needed) and set your home location."
+        )
+        return json.dumps({"status": "not_set_up", "message": msg, "summary": msg})
+    w = wx[0]
+    cond = (w.get("state") or "").lower()
+    a = w.get("attributes", {})
+    raining = cond in _RAIN_STATES
+    temp = a.get("temperature")
+    unit = a.get("temperature_unit", "°")
+    return json.dumps(
+        {
+            "status": "ok",
+            "condition": cond.replace("-", " "),
+            "raining": raining,
+            "temperature": temp,
+            "temperature_unit": unit,
+            "humidity": a.get("humidity"),
+            "summary": _weather_summary(cond, raining, temp, unit),
+        }
+    )
+
+
 @mcp.tool()
 def control_device(
     device_name: str,
