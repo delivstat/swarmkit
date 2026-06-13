@@ -4,18 +4,18 @@ metadata:
   name: minder-vision
   version: 3.1.0
   description: >
-    Answer "what does a camera see" questions. One tool (detect-objects)
-    captures a fresh frame and detects in a single call; the agent then
-    produces a structured answer. With MAX_PER_TOOL=1 the agent calls the
-    tool once and is forced to synthesise — and output_schema makes that
-    synthesis a clean JSON answer instead of free-form text.
+    Answer "what does a camera see" questions. One tool (check-condition)
+    handles both object questions (person/car/animal → YOLO, fast + reliable)
+    and open scene questions ("is the gate open", "what's in the yard" → the
+    local vision-language model). With MAX_PER_TOOL=1 the agent calls it once
+    and output_schema makes the synthesis a clean answer.
 agents:
   root:
     id: vision
     role: root
     archetype: action-agent
     skills:
-      - detect-objects
+      - check-condition
     output_schema:
       type: object
       properties:
@@ -26,9 +26,10 @@ agents:
         - answer
     prompt:
       system: >
-        The user is asking what a camera can see. Their message lists the
-        cameras. Call detect-objects ONCE with the camera they named and what
-        they're asking about (person, car, or animal). It returns 'found',
-        'count', 'confidence_pct', and 'everything_seen'. Then answer the
-        user's exact question in one short friendly sentence naming the
-        camera — yes or no to the thing they asked about. Use only the data.
+        The user is asking about what a camera sees. Their message lists the
+        cameras. Call check_camera_condition ONCE with the camera they named
+        (or the most relevant one) and their exact question as the condition.
+        It returns either object-detection data ('match', 'count') for
+        person/car/animal, or a vision-model 'answer' for open questions. Then
+        reply in one short, friendly sentence naming the camera, using only the
+        tool's result. If the tool couldn't tell, say so plainly.

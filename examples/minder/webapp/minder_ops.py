@@ -108,6 +108,23 @@ def classify(text: str) -> str:
         return "camera_list"
     if _has_kw(t, "devices", "smart home") or "what devices" in t:
         return "device_list"
+    # Weather goes to the HA weather entity (accurate), not camera vision.
+    if _has_kw(
+        t,
+        "weather",
+        "raining",
+        "rain",
+        "forecast",
+        "sunny",
+        "cloudy",
+        "overcast",
+        "drizzle",
+        "storm",
+        "snowing",
+        "humid",
+        "windy",
+    ):
+        return "weather"
     if _has_kw(
         t,
         "turn on",
@@ -227,6 +244,46 @@ def get_ha_devices() -> list[dict]:
                 }
             )
     return devices
+
+
+_RAIN_STATES = {"rainy", "pouring", "lightning-rainy", "snowy-rainy", "hail", "lightning"}
+
+
+def get_weather() -> dict:
+    """Answer weather questions from Home Assistant's weather entity — accurate
+    and works at night (unlike reading rain off a camera). Guides setup if no
+    weather integration exists yet."""
+    token = _ha_token()
+    if not token:
+        return _envelope("weather", "Home Assistant isn't connected yet — set it up first.")
+    try:
+        req = urllib.request.Request(
+            f"{HA_URL}/api/states", headers={"Authorization": f"Bearer {token}"}
+        )
+        states = json.loads(urllib.request.urlopen(req, timeout=5).read())
+    except Exception:
+        return _envelope("error", "Couldn't reach Home Assistant.")
+    wx = [s for s in states if s.get("entity_id", "").startswith("weather.")]
+    if not wx:
+        return _envelope(
+            "weather",
+            "Weather isn't set up yet. Add a weather integration (e.g. Met.no — "
+            "no API key needed) in Home Assistant and set your home location, "
+            "then I can tell you the conditions.",
+        )
+    w = wx[0]
+    cond = (w.get("state") or "").lower()
+    a = w.get("attributes", {})
+    temp = a.get("temperature")
+    unit = a.get("temperature_unit", "°")
+    raining = cond in _RAIN_STATES
+    label = cond.replace("-", " ") or "unknown"
+    msg = "Yes — it's raining." if raining else f"No rain right now — {label}."
+    if temp is not None:
+        msg += f" {temp}{unit}."
+    return _envelope(
+        "weather", msg, data={"condition": cond, "temperature": temp, "raining": raining}
+    )
 
 
 _DEVICE_STOPWORDS = {
@@ -1347,6 +1404,9 @@ async def handle_message(
 
     if kind == "device_list":
         return await asyncio.to_thread(list_devices)
+
+    if kind == "weather":
+        return await asyncio.to_thread(get_weather)
 
     if kind == "camera_list":
         return await asyncio.to_thread(list_cameras)
