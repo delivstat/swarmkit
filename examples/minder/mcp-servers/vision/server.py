@@ -5,6 +5,7 @@ Provides tools for scene description and condition checking.
 """
 
 import base64
+import contextlib
 import json
 import os
 import sys
@@ -34,28 +35,30 @@ def _record_check(camera: str, condition: str, match: bool, answer: str) -> None
     """Append a check result so the bot can format replies without LLM text."""
     checks = []
     if CHECKS_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             checks = json.loads(CHECKS_FILE.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
-    checks.append({
-        "ts": time.time(),
-        "camera": camera,
-        "condition": condition,
-        "match": match,
-        "answer": answer,
-    })
+    checks.append(
+        {
+            "ts": time.time(),
+            "camera": camera,
+            "condition": condition,
+            "match": match,
+            "answer": answer,
+        }
+    )
     CHECKS_FILE.write_text(json.dumps(checks[-50:], indent=2))
 
 
 def _query_vision(image_b64: str, prompt: str) -> dict:
-    payload = json.dumps({
-        "model": VISION_MODEL,
-        "messages": [{"role": "user", "content": prompt, "images": [image_b64]}],
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.1, "num_predict": 300},
-    }).encode()
+    payload = json.dumps(
+        {
+            "model": VISION_MODEL,
+            "messages": [{"role": "user", "content": prompt, "images": [image_b64]}],
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0.1, "num_predict": 300},
+        }
+    ).encode()
 
     req = urllib.request.Request(
         f"{OLLAMA_URL}/api/chat",
@@ -81,9 +84,11 @@ def _load_image(camera_identifier: str) -> tuple[str, str] | None:
         cameras = json.loads(cameras_file.read_text())
         ident_lower = camera_identifier.lower().strip()
         for cam in cameras:
-            if (cam.get("name", "").lower() == ident_lower or
-                    cam.get("ip", "") == ident_lower or
-                    ident_lower in cam.get("name", "").lower()):
+            if (
+                cam.get("name", "").lower() == ident_lower
+                or cam.get("ip", "") == ident_lower
+                or ident_lower in cam.get("name", "").lower()
+            ):
                 ip = cam["ip"]
                 snap = SNAPSHOT_DIR / f"{ip.replace('.', '_')}.jpg"
                 if snap.exists():
@@ -103,9 +108,11 @@ def _resolve_snapshot_path(camera_identifier: str) -> Path | None:
         cameras = json.loads(cameras_file.read_text())
         ident = camera_identifier.lower().strip()
         for cam in cameras:
-            if (cam.get("name", "").lower() == ident
-                    or cam.get("ip", "") == ident
-                    or ident in cam.get("name", "").lower()):
+            if (
+                cam.get("name", "").lower() == ident
+                or cam.get("ip", "") == ident
+                or ident in cam.get("name", "").lower()
+            ):
                 snap = SNAPSHOT_DIR / f"{cam['ip'].replace('.', '_')}.jpg"
                 if snap.exists():
                     return snap
@@ -129,11 +136,13 @@ def describe_camera_scene(camera: str) -> str:
         "anything unusual. If the scene is empty, say so.",
     )
 
-    return json.dumps({
-        "camera": cam_name,
-        "description": result["response"],
-        "latency_ms": result["latency_ms"],
-    })
+    return json.dumps(
+        {
+            "camera": cam_name,
+            "description": result["response"],
+            "latency_ms": result["latency_ms"],
+        }
+    )
 
 
 @mcp.tool()
@@ -161,15 +170,17 @@ def check_camera_condition(camera: str, condition: str) -> str:
         scene = _yolo.describe_counts(res["counts"])
         _record_check(cam_name, condition, match, scene)
         # Structured data only — the agent composes the user-facing reply.
-        return json.dumps({
-            "camera": cam_name,
-            "you_asked": condition,
-            "match": match,
-            "match_count": res["matched"],
-            "confidence_pct": int(res["best_confidence"] * 100),
-            "everything_visible": scene or "nothing",
-            "method": "object-detection",
-        })
+        return json.dumps(
+            {
+                "camera": cam_name,
+                "you_asked": condition,
+                "match": match,
+                "match_count": res["matched"],
+                "confidence_pct": int(res["best_confidence"] * 100),
+                "everything_visible": scene or "nothing",
+                "method": "object-detection",
+            }
+        )
 
     # Non-object condition → vision-language model
     result = _query_vision(
@@ -178,7 +189,16 @@ def check_camera_condition(camera: str, condition: str) -> str:
     )
 
     response = result["response"].strip().lower()
-    yes_signals = ["yes", "there is", "there are", "visible", "can see", "detected", "present", "appears to be"]
+    yes_signals = [
+        "yes",
+        "there is",
+        "there are",
+        "visible",
+        "can see",
+        "detected",
+        "present",
+        "appears to be",
+    ]
     no_signals = ["no ", "not ", "cannot", "don't", "empty", "no one", "nobody", "none"]
     has_yes = any(s in response for s in yes_signals)
     has_no = any(s in response for s in no_signals)
@@ -186,14 +206,16 @@ def check_camera_condition(camera: str, condition: str) -> str:
 
     _record_check(cam_name, condition, match, result["response"].strip())
 
-    return json.dumps({
-        "camera": cam_name,
-        "condition": condition,
-        "match": match,
-        "answer": response,
-        "method": "vlm",
-        "latency_ms": result["latency_ms"],
-    })
+    return json.dumps(
+        {
+            "camera": cam_name,
+            "condition": condition,
+            "match": match,
+            "answer": response,
+            "method": "vlm",
+            "latency_ms": result["latency_ms"],
+        }
+    )
 
 
 @mcp.tool()
@@ -225,7 +247,16 @@ def check_all_cameras(condition: str) -> str:
             f"Look at this security camera image. {condition}? Describe what you see.",
         )
         response = result["response"].strip().lower()
-        yes_signals = ["yes", "there is", "there are", "visible", "can see", "detected", "present", "appears to be"]
+        yes_signals = [
+            "yes",
+            "there is",
+            "there are",
+            "visible",
+            "can see",
+            "detected",
+            "present",
+            "appears to be",
+        ]
         no_signals = ["no ", "not ", "cannot", "don't", "empty", "no one", "nobody", "none"]
         has_yes = any(s in response for s in yes_signals)
         has_no = any(s in response for s in no_signals)
@@ -233,21 +264,25 @@ def check_all_cameras(condition: str) -> str:
 
         _record_check(cam.get("name", ip), condition, match, result["response"].strip())
 
-        results.append({
-            "camera": cam.get("name", ip),
-            "ip": ip,
-            "match": match,
-            "answer": response,
-            "latency_ms": result["latency_ms"],
-        })
+        results.append(
+            {
+                "camera": cam.get("name", ip),
+                "ip": ip,
+                "match": match,
+                "answer": response,
+                "latency_ms": result["latency_ms"],
+            }
+        )
 
     matches = [r for r in results if r["match"]]
-    return json.dumps({
-        "condition": condition,
-        "total_checked": len(results),
-        "matches": matches,
-        "no_match_count": len(results) - len(matches),
-    })
+    return json.dumps(
+        {
+            "condition": condition,
+            "total_checked": len(results),
+            "matches": matches,
+            "no_match_count": len(results) - len(matches),
+        }
+    )
 
 
 if __name__ == "__main__":

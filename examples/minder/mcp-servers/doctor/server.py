@@ -25,9 +25,11 @@ def _ops(method: str, path: str, body: dict | None = None) -> dict:
     token = INTERNAL_TOKEN_FILE.read_text().strip() if INTERNAL_TOKEN_FILE.exists() else ""
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
-        f"{OPS_URL}{path}", data=data,
+        f"{OPS_URL}{path}",
+        data=data,
         headers={"Content-Type": "application/json", "X-Minder-Internal": token},
-        method=method)
+        method=method,
+    )
     return json.loads(urllib.request.urlopen(req, timeout=180).read())
 
 
@@ -51,10 +53,12 @@ def diagnose() -> str:
 @mcp.tool()
 def create_backup() -> str:
     """Back up precious state files and the Home Assistant config volume now."""
-    return json.dumps({
-        "state": _ops("POST", "/api/ops/backup"),
-        "ha_volume": _ops("POST", "/api/ops/backup/ha"),
-    })
+    return json.dumps(
+        {
+            "state": _ops("POST", "/api/ops/backup"),
+            "ha_volume": _ops("POST", "/api/ops/backup/ha"),
+        }
+    )
 
 
 if __name__ == "__main__":

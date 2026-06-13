@@ -33,17 +33,18 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
 
 import httpx
 
 sys.path.insert(0, "/app/mcp-servers")
-from _atomic import read_json_safe, write_json_atomic  # noqa: E402
-from _alert_sink import write_alert as _sink_write_alert  # noqa: E402
+import contextlib
+
+from _alert_sink import write_alert as _sink_write_alert
+from _atomic import read_json_safe, write_json_atomic
 
 # SwarmKit's native human-in-the-loop primitive — repairs are gated as review
 # items a human resolves (via bot, dashboard, or `swarmkit review approve`).
-from swarmkit_runtime.review import (  # noqa: E402
+from swarmkit_runtime.review import (
     FileReviewQueue,
     create_review_item,
 )
@@ -82,7 +83,8 @@ def _has_kw(t: str, *keywords: str) -> bool:
 _TIME_EXPR = re.compile(
     r"\b(at\s+\d{1,2}([:.]\d{2})?\s*(am|pm)?\b"
     r"|every\s+(day|morning|afternoon|evening|night)"
-    r"|daily|each\s+day)\b")
+    r"|daily|each\s+day)\b"
+)
 
 
 def classify(text: str) -> str:
@@ -98,27 +100,57 @@ def classify(text: str) -> str:
     ):
         return "scenario"
     # Camera listing — "list/name/what/which/how many cameras"
-    if _has_kw(t, "camera", "cameras") and _has_kw(
-            t, "list", "name", "names", "which", "what", "all", "how many") \
-            and not _has_kw(t, "show", "snap", "see", "look", "photo", "picture"):
+    if (
+        _has_kw(t, "camera", "cameras")
+        and _has_kw(t, "list", "name", "names", "which", "what", "all", "how many")
+        and not _has_kw(t, "show", "snap", "see", "look", "photo", "picture")
+    ):
         return "camera_list"
     if _has_kw(t, "devices", "smart home") or "what devices" in t:
         return "device_list"
-    if _has_kw(t, "turn on", "turn off", "switch on", "switch off", "lights",
-               "light", "fan", "ac", "pump", "heater", "socket", "plug",
-               "brightness", "dim"):
+    if _has_kw(
+        t,
+        "turn on",
+        "turn off",
+        "switch on",
+        "switch off",
+        "lights",
+        "light",
+        "fan",
+        "ac",
+        "pump",
+        "heater",
+        "socket",
+        "plug",
+        "brightness",
+        "dim",
+    ):
         # "switch on the heater AT 4AM" is a schedule, not an immediate action
         if _TIME_EXPR.search(t):
             return "scenario"
         return "device"
     if t.startswith("/video") or _has_kw(t, "video", "feed", "live", "stream"):
         return "video"
-    if t.startswith("/snap") or _has_kw(t, "show", "snap", "see", "look",
-                                        "photo", "picture", "capture"):
+    if t.startswith("/snap") or _has_kw(
+        t, "show", "snap", "see", "look", "photo", "picture", "capture"
+    ):
         return "snapshot"
-    if t.startswith("/check") or "?" in t or _has_kw(
-            t, "is there", "is anyone", "is the", "are there", "can you see",
-            "do you see", "how many", "check", "detect"):
+    if (
+        t.startswith("/check")
+        or "?" in t
+        or _has_kw(
+            t,
+            "is there",
+            "is anyone",
+            "is the",
+            "are there",
+            "can you see",
+            "do you see",
+            "how many",
+            "check",
+            "detect",
+        )
+    ):
         return "vision"
     return "chat"
 
@@ -139,7 +171,8 @@ def _ha_token() -> str:
     access = tokens.get("access_token", "")
     try:
         req = urllib.request.Request(
-            f"{HA_URL}/api/", headers={"Authorization": f"Bearer {access}"})
+            f"{HA_URL}/api/", headers={"Authorization": f"Bearer {access}"}
+        )
         urllib.request.urlopen(req, timeout=5)
         return access
     except Exception:
@@ -147,17 +180,21 @@ def _ha_token() -> str:
 
     try:
         refresh = tokens.get("refresh_token", "")
-        form = (f"grant_type=refresh_token&refresh_token={refresh}"
-                f"&client_id={HA_URL}/").encode()
+        form = (f"grant_type=refresh_token&refresh_token={refresh}&client_id={HA_URL}/").encode()
         req = urllib.request.Request(
-            f"{HA_URL}/auth/token", data=form,
+            f"{HA_URL}/auth/token",
+            data=form,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST")
+            method="POST",
+        )
         new_tokens = json.loads(urllib.request.urlopen(req, timeout=10).read())
-        write_json_atomic(token_file, {
-            "access_token": new_tokens["access_token"],
-            "refresh_token": refresh,
-        })
+        write_json_atomic(
+            token_file,
+            {
+                "access_token": new_tokens["access_token"],
+                "refresh_token": refresh,
+            },
+        )
         return new_tokens["access_token"]
     except Exception:
         return ""
@@ -181,18 +218,33 @@ def get_ha_devices() -> list[dict]:
         eid = entity.get("entity_id", "")
         domain = eid.split(".")[0] if "." in eid else ""
         if domain in ("light", "switch", "fan", "climate", "cover", "lock", "media_player"):
-            devices.append({
-                "id": eid,
-                "domain": domain,
-                "name": entity.get("attributes", {}).get("friendly_name", eid),
-                "state": entity.get("state", "unknown"),
-            })
+            devices.append(
+                {
+                    "id": eid,
+                    "domain": domain,
+                    "name": entity.get("attributes", {}).get("friendly_name", eid),
+                    "state": entity.get("state", "unknown"),
+                }
+            )
     return devices
 
 
 _DEVICE_STOPWORDS = {
-    "can", "you", "please", "the", "a", "my", "turn", "switch",
-    "off", "on", "toggle", "set", "is", "it", "to",
+    "can",
+    "you",
+    "please",
+    "the",
+    "a",
+    "my",
+    "turn",
+    "switch",
+    "off",
+    "on",
+    "toggle",
+    "set",
+    "is",
+    "it",
+    "to",
 }
 
 
@@ -200,9 +252,11 @@ def control_device(text: str) -> dict:
     """Deterministic device control — no LLM."""
     devices = get_ha_devices()
     if not devices:
-        return _envelope("error",
+        return _envelope(
+            "error",
             "No smart devices connected yet. Add them in the dashboard "
-            "at http://minder.local (Devices tab).")
+            "at http://minder.local (Devices tab).",
+        )
 
     words = re.findall(r"[a-z0-9]+", text.lower())
     if "off" in words:
@@ -227,31 +281,38 @@ def control_device(text: str) -> dict:
 
     if not best:
         names = ", ".join(d["name"] for d in devices[:15])
-        return _envelope("device_action",
-            f"Couldn't match that to a device. Available: {names}")
+        return _envelope("device_action", f"Couldn't match that to a device. Available: {names}")
 
     token = _ha_token()
     try:
         req = urllib.request.Request(
             f"{HA_URL}/api/services/{best['domain']}/{action}",
             data=json.dumps({"entity_id": best["id"]}).encode(),
-            headers={"Authorization": f"Bearer {token}",
-                     "Content-Type": "application/json"},
-            method="POST")
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            method="POST",
+        )
         urllib.request.urlopen(req, timeout=10)
         verb = {"turn_off": "turned off", "turn_on": "turned on"}.get(action, "toggled")
-        return _envelope("device_action", f"✅ {best['name']} - {verb}",
-                         data={"device": best["name"], "action": action, "ok": True})
+        return _envelope(
+            "device_action",
+            f"✅ {best['name']} - {verb}",
+            data={"device": best["name"], "action": action, "ok": True},
+        )
     except Exception as e:
-        return _envelope("device_action", f"❌ {best['name']} - failed: {e}",
-                         data={"device": best["name"], "action": action, "ok": False})
+        return _envelope(
+            "device_action",
+            f"❌ {best['name']} - failed: {e}",
+            data={"device": best["name"], "action": action, "ok": False},
+        )
 
 
 def list_devices() -> dict:
     devices = get_ha_devices()
     if not devices:
-        return _envelope("device_list",
-            "No smart devices connected yet. Add them at http://minder.local (Devices tab).")
+        return _envelope(
+            "device_list",
+            "No smart devices connected yet. Add them at http://minder.local (Devices tab).",
+        )
     lines = [f"{len(devices)} device(s):"]
     lines += [f"  • {d['name']} - {d['state']}" for d in devices]
     return _envelope("device_list", "\n".join(lines), data={"devices": devices})
@@ -260,8 +321,9 @@ def list_devices() -> dict:
 def list_cameras() -> dict:
     cams = _load_cameras()
     if not cams:
-        return _envelope("camera_list",
-            "No cameras discovered yet. Send /start to scan your network.")
+        return _envelope(
+            "camera_list", "No cameras discovered yet. Send /start to scan your network."
+        )
     names = [c.get("name") or c["ip"] for c in cams]
     lines = [f"{len(names)} camera(s):"]
     lines += [f"  • {n}" for n in names]
@@ -309,8 +371,7 @@ async def send_chat(message: str, source: str) -> str:
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, read=300.0)) as client:
         if not conv_id:
-            resp = await client.post(
-                f"{SERVE_URL}/conversations", json={"topology": "minder-core"})
+            resp = await client.post(f"{SERVE_URL}/conversations", json={"topology": "minder-core"})
             resp.raise_for_status()
             conv_id = resp.json()["id"]
             conversations[source] = conv_id
@@ -318,7 +379,8 @@ async def send_chat(message: str, source: str) -> str:
 
         result_text = ""
         async with client.stream(
-            "POST", f"{SERVE_URL}/conversations/{conv_id}/messages",
+            "POST",
+            f"{SERVE_URL}/conversations/{conv_id}/messages",
             json={"message": message},
             headers={"Accept": "text/event-stream"},
         ) as resp:
@@ -373,10 +435,13 @@ def _looks_unhelpful(text: str) -> bool:
     """Detect the garbage small models emit instead of an answer, so we can
     fall back to a deterministic reply."""
     low = text.lower()
-    return (len(text) < 2
-            or "## analysis" in low
-            or "no relevant data" in low
-            or low.startswith("{") or low.startswith("["))
+    return (
+        len(text) < 2
+        or "## analysis" in low
+        or "no relevant data" in low
+        or low.startswith("{")
+        or low.startswith("[")
+    )
 
 
 def _phrase_check(question: str, check: dict) -> str:
@@ -518,15 +583,16 @@ async def create_scenario(text: str) -> dict:
     context = build_context()
     enriched = f"{context}\n\n{clean}" if context else clean
     try:
-        output = await asyncio.wait_for(
-            run_topology("minder-scenario", enriched), timeout=120)
+        output = await asyncio.wait_for(run_topology("minder-scenario", enriched), timeout=120)
         parsed = _extract_json(output)
     except Exception as e:
         return _envelope("error", f"Scenario creation failed: {e}")
     if not parsed:
-        return _envelope("error",
+        return _envelope(
+            "error",
             "I couldn't understand that scenario. Try: "
-            "\"when someone is outside after 10pm, turn on the porch light\"")
+            '"when someone is outside after 10pm, turn on the porch light"',
+        )
 
     return _persist_scenario(parsed, clean)
 
@@ -545,7 +611,7 @@ def _extract_json(output: str) -> dict | None:
     start, end = output.find("{"), output.rfind("}")
     if 0 <= start < end:
         try:
-            obj = json.loads(output[start:end + 1])
+            obj = json.loads(output[start : end + 1])
             return obj if isinstance(obj, dict) else None
         except (json.JSONDecodeError, ValueError):
             return None
@@ -594,9 +660,13 @@ def _schedule_to_ha_condition(schedule: str) -> list[dict]:
         return [{"condition": "time", "after": "06:00:00", "before": "20:00:00"}]
     m = re.fullmatch(r"(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})", s)
     if m:
-        return [{"condition": "time",
-                 "after": f"{int(m[1]):02d}:{m[2]}:00",
-                 "before": f"{int(m[3]):02d}:{m[4]}:00"}]
+        return [
+            {
+                "condition": "time",
+                "after": f"{int(m[1]):02d}:{m[2]}:00",
+                "before": f"{int(m[3]):02d}:{m[4]}:00",
+            }
+        ]
     return []
 
 
@@ -622,14 +692,19 @@ def _ha_device_services(device_actions: list[dict]) -> list[dict]:
     for act in device_actions:
         d = by_name.get((act.get("device") or "").lower())
         if d:
-            out.append({"service": f"{d['domain']}.{act['action']}",
-                        "target": {"entity_id": d["id"]}})
+            out.append(
+                {"service": f"{d['domain']}.{act['action']}", "target": {"entity_id": d["id"]}}
+            )
     return out
 
 
-def _deploy_automation(automation_id: str, triggers: list[dict],
-                       conditions: list[dict], device_actions: list[dict],
-                       label: str) -> str:
+def _deploy_automation(
+    automation_id: str,
+    triggers: list[dict],
+    conditions: list[dict],
+    device_actions: list[dict],
+    label: str,
+) -> str:
     """Deploy a native HA automation (trigger → device service calls) via HA's
     config API. Returns the automation id on success, '' otherwise."""
     token = _ha_token()
@@ -638,17 +713,24 @@ def _deploy_automation(automation_id: str, triggers: list[dict],
     ha_actions = _ha_device_services(device_actions)
     if not ha_actions:
         return ""
-    config = {"alias": f"Minder: {label}", "trigger": triggers,
-              "condition": conditions, "action": ha_actions, "mode": "single"}
+    config = {
+        "alias": f"Minder: {label}",
+        "trigger": triggers,
+        "condition": conditions,
+        "action": ha_actions,
+        "mode": "single",
+    }
     try:
         for path, body in (
             (f"/api/config/automation/config/{automation_id}", config),
             ("/api/services/automation/reload", {}),
         ):
             req = urllib.request.Request(
-                f"{HA_URL}{path}", data=json.dumps(body).encode(),
-                headers={"Authorization": f"Bearer {token}",
-                         "Content-Type": "application/json"}, method="POST")
+                f"{HA_URL}{path}",
+                data=json.dumps(body).encode(),
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                method="POST",
+            )
             urllib.request.urlopen(req, timeout=10)
         return automation_id
     except Exception:
@@ -668,15 +750,22 @@ def _compile_ha_reflex(rule: dict) -> str:
     at_time, condition = rule.get("at_time"), rule.get("condition")
     if at_time and not condition:
         return _deploy_automation(
-            aid, [{"platform": "time", "at": f"{at_time}:00"}], [],
-            device_actions, f"every day at {at_time}")
+            aid,
+            [{"platform": "time", "at": f"{at_time}:00"}],
+            [],
+            device_actions,
+            f"every day at {at_time}",
+        )
     if condition and not at_time:
         motion = _camera_motion_entities(rule.get("cameras", []))
         if motion:
             return _deploy_automation(
-                aid, [{"platform": "state", "entity_id": motion, "to": "on"}],
+                aid,
+                [{"platform": "state", "entity_id": motion, "to": "on"}],
                 _schedule_to_ha_condition(rule.get("schedule", "always")),
-                device_actions, f"{condition} → device")
+                device_actions,
+                f"{condition} → device",
+            )
     return ""
 
 
@@ -687,9 +776,11 @@ def _persist_scenario(parsed: dict, request: str = "") -> dict:
     at_time = _normalize_time(parsed.get("at_time", ""))
     condition = (parsed.get("condition") or "").strip()
     if not condition and not at_time:
-        return _envelope("error",
+        return _envelope(
+            "error",
             "I couldn't understand that scenario. Try: "
-            "\"when someone is outside after 10pm, turn on the porch light\"")
+            '"when someone is outside after 10pm, turn on the porch light"',
+        )
 
     # Cameras: match each requested name; "all" collapses the whole rule to all.
     requested_cams = _coerce_str_list(parsed.get("cameras"), parsed.get("camera"))
@@ -752,17 +843,18 @@ def _persist_scenario(parsed: dict, request: str = "") -> dict:
 
     rules = []
     if RULES_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             rules = json.loads(RULES_FILE.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
     for existing in rules:
-        if (sorted(_rule_cameras(existing)) == sorted(cameras)
-                and existing.get("condition") == rule["condition"]
-                and existing.get("schedule") == rule["schedule"]
-                and existing.get("at_time", "") == rule["at_time"]):
-            return _envelope("scenario", "That scenario already exists.",
-                             data={"rules": [existing]})
+        if (
+            sorted(_rule_cameras(existing)) == sorted(cameras)
+            and existing.get("condition") == rule["condition"]
+            and existing.get("schedule") == rule["schedule"]
+            and existing.get("at_time", "") == rule["at_time"]
+        ):
+            return _envelope(
+                "scenario", "That scenario already exists.", data={"rules": [existing]}
+            )
     rules.append(rule)
     write_json_atomic(RULES_FILE, rules)
 
@@ -782,8 +874,9 @@ def _format_scenario_reply(created: list[dict]) -> dict:
             parts.append(f"Scenario created - every day at {rule['at_time']}{where}:")
         else:
             parts.append(
-                f"Scenario created - when \"{rule['condition']}\" on "
-                f"{cam_label} ({rule.get('schedule', 'always')}):")
+                f'Scenario created - when "{rule["condition"]}" on '
+                f"{cam_label} ({rule.get('schedule', 'always')}):"
+            )
         for a in rule.get("actions", []):
             if a["type"] == "alert":
                 parts.append("  • send an alert")
@@ -833,16 +926,22 @@ def backup() -> dict:
 def list_backups() -> list[dict]:
     if not BACKUP_DIR.exists():
         return []
-    return [{"ts": p.name, "files": sorted(f.name for f in p.iterdir())}
-            for p in sorted((d for d in BACKUP_DIR.iterdir() if d.is_dir()), reverse=True)]
+    return [
+        {"ts": p.name, "files": sorted(f.name for f in p.iterdir())}
+        for p in sorted((d for d in BACKUP_DIR.iterdir() if d.is_dir()), reverse=True)
+    ]
 
 
 def _ha_tar_filter(tarinfo):
     """Skip the recorder DB, logs, and TTS cache — huge and disposable. Keep
     .storage (auth/entities/integrations), automations, custom_components."""
     base = tarinfo.name.rsplit("/", 1)[-1]
-    if (base.startswith("home-assistant_v2.db") or base.endswith((".log", ".log.1"))
-            or "/tts/" in tarinfo.name or "/deps/" in tarinfo.name):
+    if (
+        base.startswith("home-assistant_v2.db")
+        or base.endswith((".log", ".log.1"))
+        or "/tts/" in tarinfo.name
+        or "/deps/" in tarinfo.name
+    ):
         return None
     return tarinfo
 
@@ -851,7 +950,8 @@ def backup_ha_volume() -> dict:
     """Tar the HA config volume (config-only, no recorder DB) to the host
     backups path for full-stack disaster recovery. Live snapshot — HA writes
     .storage atomically per-file, so this is consistent enough for DR."""
-    import tarfile  # noqa: PLC0415
+    import tarfile
+
     if not HA_VOLUME_DIR.exists():
         return {"status": "skipped", "reason": "ha-config not mounted"}
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
@@ -862,7 +962,7 @@ def backup_ha_volume() -> dict:
         with tarfile.open(tmp, "w:gz") as tf:
             tf.add(HA_VOLUME_DIR, arcname=".", filter=_ha_tar_filter)
         os.replace(tmp, out)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return {"status": "error", "message": str(e)[:200]}
     for old in sorted(BACKUP_DIR.glob("ha-config-*.tar.gz"))[:-BACKUP_KEEP]:
         old.unlink(missing_ok=True)
@@ -918,8 +1018,7 @@ def _review_queue() -> FileReviewQueue:
 
 
 def _pending_repairs() -> list:
-    return [it for it in _review_queue().list_pending()
-            if it.skill_id == _REPAIR_MARKER]
+    return [it for it in _review_queue().list_pending() if it.skill_id == _REPAIR_MARKER]
 
 
 def diagnose_and_alert() -> dict:
@@ -928,26 +1027,29 @@ def diagnose_and_alert() -> dict:
     anything — the fix runs only when the review item is resolved 'approved'."""
     h = health()
     if not h.get("healthy"):
-        bad = [f"{f} ({s})" for f, s in h["files"].items()
-               if s in ("corrupt", "missing")]
+        bad = [f"{f} ({s})" for f, s in h["files"].items() if s in ("corrupt", "missing")]
         if not h.get("ha"):
             bad.append("Home Assistant unreachable")
         if not h.get("frigate"):
             bad.append("Frigate unreachable")
         if not _pending_repairs():
             item = create_review_item(
-                topology_id="minder-doctor", agent_id="doctor",
+                topology_id="minder-doctor",
+                agent_id="doctor",
                 skill_id=_REPAIR_MARKER,
                 output="Restore corrupt/missing state from the last good backup "
-                       "and regenerate derived config.",
+                "and regenerate derived config.",
                 verdict="needs-revision",
-                reason="Health issue: " + "; ".join(bad))
+                reason="Health issue: " + "; ".join(bad),
+            )
             _review_queue().submit(item)
             short = item.id[:8]
             _sink_write_alert(
                 "Minder found a problem and needs your approval to fix it: "
-                + "; ".join(bad) + f".\nApprove: /approve {short}   Dismiss: /reject {short}",
-                "")
+                + "; ".join(bad)
+                + f".\nApprove: /approve {short}   Dismiss: /reject {short}",
+                "",
+            )
             h["review_id"] = item.id
         else:
             pending = _pending_repairs()[0]
@@ -958,7 +1060,9 @@ def diagnose_and_alert() -> dict:
             if time.time() - st.get("_health_reminder_ts", 0) > 5 * 3600:
                 _sink_write_alert(
                     "Reminder: a repair still needs your approval — "
-                    f"/approve {pending.id[:8]} (or open the dashboard).", "")
+                    f"/approve {pending.id[:8]} (or open the dashboard).",
+                    "",
+                )
                 st["_health_reminder_ts"] = time.time()
                 write_json_atomic(DATA_DIR / "monitor_state.json", st)
     return h
@@ -966,8 +1070,16 @@ def diagnose_and_alert() -> dict:
 
 def list_approvals() -> list[dict]:
     """Pending repair approvals (SwarmKit review items awaiting a human)."""
-    return [{"id": it.id, "short": it.id[:8], "reason": it.reason,
-             "action": it.output, "ts": it.timestamp} for it in _pending_repairs()]
+    return [
+        {
+            "id": it.id,
+            "short": it.id[:8],
+            "reason": it.reason,
+            "action": it.output,
+            "ts": it.timestamp,
+        }
+        for it in _pending_repairs()
+    ]
 
 
 async def approve_repair(item_id: str = "") -> dict:
@@ -976,13 +1088,19 @@ async def approve_repair(item_id: str = "") -> dict:
     pending = _pending_repairs()
     if not pending:
         return {"status": "none", "message": "No repair is awaiting approval."}
-    item = next((it for it in pending if it.id.startswith(item_id)), pending[0]) \
-        if item_id else pending[0]
+    item = (
+        next((it for it in pending if it.id.startswith(item_id)), pending[0])
+        if item_id
+        else pending[0]
+    )
     _review_queue().resolve(item.id, "approved")
     report = await doctor(repair=True)  # gated action — runs only after approval
-    return {"status": "approved", "item_id": item.id,
-            "repaired": report.get("repaired", []),
-            "regenerated": report.get("regenerated", [])}
+    return {
+        "status": "approved",
+        "item_id": item.id,
+        "repaired": report.get("repaired", []),
+        "regenerated": report.get("regenerated", []),
+    }
 
 
 def reject_repair(item_id: str = "") -> dict:
@@ -990,8 +1108,11 @@ def reject_repair(item_id: str = "") -> dict:
     pending = _pending_repairs()
     if not pending:
         return {"status": "none"}
-    item = next((it for it in pending if it.id.startswith(item_id)), pending[0]) \
-        if item_id else pending[0]
+    item = (
+        next((it for it in pending if it.id.startswith(item_id)), pending[0])
+        if item_id
+        else pending[0]
+    )
     _review_queue().resolve(item.id, "rejected")
     return {"status": "rejected", "item_id": item.id}
 
@@ -1034,7 +1155,7 @@ async def setup_cameras(subnet: str = "") -> dict:
     message = f"Discover cameras on subnet {subnet}" if subnet else "Discover cameras"
     try:
         await run_topology("minder-discover", message, timeout=180)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return _envelope("setup_cameras", "Camera discovery timed out. Try again.")
     except Exception as e:
         return _envelope("setup_cameras", f"Camera discovery failed: {e}")
@@ -1043,21 +1164,21 @@ async def setup_cameras(subnet: str = "") -> dict:
     if cameras:
         # Push the discovered RTSP cameras into Frigate (generates its config
         # from the inventory). Best-effort — never block discovery on it.
-        try:
+        with contextlib.suppress(Exception):
             await run_topology("minder-frigate-config", "Configure Frigate", timeout=120)
-        except Exception:
-            pass
         lines = [f"Found {len(cameras)} camera(s):"]
         lines += [f"  {i}. {c.get('name') or c['ip']}" for i, c in enumerate(cameras, 1)]
         lines.append("\nTry: /snap porch, /check is anyone at the gate, /video main door")
         text = "\n".join(lines)
     else:
-        text = ("No cameras found. Check that cameras are powered on, "
-                "or configure the subnet at http://minder.local")
+        text = (
+            "No cameras found. Check that cameras are powered on, "
+            "or configure the subnet at http://minder.local"
+        )
 
-    return _envelope("setup_cameras", text,
-                     media=collect_media_since(started),
-                     data={"cameras": cameras})
+    return _envelope(
+        "setup_cameras", text, media=collect_media_since(started), data={"cameras": cameras}
+    )
 
 
 def pending_alerts() -> list[dict]:
@@ -1082,8 +1203,16 @@ ROUTES_FILE = DATA_DIR / "route_decisions.json"
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 ROUTER_MODEL = os.environ.get("MINDER_REASONING_MODEL", "llama3.2:3b")
 
-_INTENTS = ["scenario", "vision", "snapshot", "video", "device", "device_list",
-            "camera_list", "chat"]
+_INTENTS = [
+    "scenario",
+    "vision",
+    "snapshot",
+    "video",
+    "device",
+    "device_list",
+    "camera_list",
+    "chat",
+]
 
 _INTENT_SCHEMA = {
     "type": "object",
@@ -1155,13 +1284,16 @@ async def _route_via_agent(text: str) -> str | None:
 async def _route_constrained(text: str) -> str | None:
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(f"{OLLAMA_URL}/api/generate", json={
-                "model": ROUTER_MODEL,
-                "prompt": _ROUTER_PROMPT.format(req=text[:300]),
-                "format": _INTENT_SCHEMA,
-                "stream": False,
-                "options": {"temperature": 0},
-            })
+            resp = await client.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": ROUTER_MODEL,
+                    "prompt": _ROUTER_PROMPT.format(req=text[:300]),
+                    "format": _INTENT_SCHEMA,
+                    "stream": False,
+                    "options": {"temperature": 0},
+                },
+            )
             resp.raise_for_status()
             intent = json.loads(resp.json().get("response", "{}")).get("intent")
     except Exception:
@@ -1172,17 +1304,16 @@ async def _route_constrained(text: str) -> str | None:
     # Record the decision for observability
     routes = []
     if ROUTES_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             routes = json.loads(ROUTES_FILE.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
     routes.append({"ts": time.time(), "intent": intent, "cleaned_request": text[:200]})
     ROUTES_FILE.write_text(json.dumps(routes[-50:], indent=2))
     return intent
 
 
-async def handle_message(text: str, source: str = "default", sender: str = "",
-                         kind: str | None = None) -> dict:
+async def handle_message(
+    text: str, source: str = "default", sender: str = "", kind: str | None = None
+) -> dict:
     """THE channel-neutral entry point. Classify, execute, return envelope.
 
     Routing is hybrid: a deterministic keyword fast-path handles commands and
@@ -1222,19 +1353,23 @@ async def handle_message(text: str, source: str = "default", sender: str = "",
 
     if kind in ("vision", "snapshot", "video"):
         if not _cameras_configured():
-            return _envelope("error",
+            return _envelope(
+                "error",
                 "No cameras configured yet. Send /start to discover cameras, "
-                "or set them up at http://minder.local")
+                "or set them up at http://minder.local",
+            )
 
         context = build_context()
         enriched = f"{context}\n\n{text}" if context else text
-        topology = {"vision": "minder-vision", "snapshot": "minder-snapshot",
-                    "video": "minder-video"}[kind]
+        topology = {
+            "vision": "minder-vision",
+            "snapshot": "minder-snapshot",
+            "video": "minder-video",
+        }[kind]
         try:
             output = await asyncio.wait_for(run_topology(topology, enriched), timeout=180)
-        except asyncio.TimeoutError:
-            return _envelope("error",
-                "Request timed out — the AI model took too long. Try again.")
+        except TimeoutError:
+            return _envelope("error", "Request timed out — the AI model took too long. Try again.")
 
         media = collect_media_since(started)
 
@@ -1249,9 +1384,12 @@ async def handle_message(text: str, source: str = "default", sender: str = "",
             if checks:
                 c = checks[-1]
                 return _envelope("vision", _phrase_check(text, c), media=media)
-            return _envelope("vision",
+            return _envelope(
+                "vision",
                 "I couldn't run that check. Tell me which camera, "
-                "e.g. 'is anyone at the front door'.", media=media)
+                "e.g. 'is anyone at the front door'.",
+                media=media,
+            )
 
         if media:
             return _envelope(kind, "", media=media)
@@ -1271,10 +1409,11 @@ async def handle_message(text: str, source: str = "default", sender: str = "",
     enriched = f"{context}\n\n{prefix}{text}" if context else f"{prefix}{text}"
     try:
         response = await asyncio.wait_for(send_chat(enriched, source), timeout=180)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return _envelope("error", "Request timed out. Try again.")
     except Exception:
-        return _envelope("error",
-            "Minder's AI runtime isn't reachable right now. Try again in a moment.")
+        return _envelope(
+            "error", "Minder's AI runtime isn't reachable right now. Try again in a moment."
+        )
     formatted = response.replace("---", "").replace("***", "**").strip()
     return _envelope("chat", formatted or "Done.")

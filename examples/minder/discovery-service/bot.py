@@ -16,9 +16,9 @@ Any text message is treated as a vision query across all cameras.
 import json
 import logging
 import os
-import time
 from pathlib import Path
 
+from discover import Camera, capture_snapshot, discover_all
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -27,9 +27,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-
-from discover import Camera, capture_snapshot, discover_all, probe_onvif, scan_subnet
-from vision import analyse_frame, check_scene, describe_scene, SNAPSHOT_DIR
+from vision import SNAPSHOT_DIR, check_scene, describe_scene
 
 logging.basicConfig(
     format="%(asctime)s [%(name)s] %(message)s",
@@ -55,6 +53,7 @@ def load_cameras() -> list[Camera]:
 
 def save_cameras(cameras: list[Camera]) -> None:
     from dataclasses import asdict
+
     CAMERAS_FILE.parent.mkdir(parents=True, exist_ok=True)
     CAMERAS_FILE.write_text(json.dumps([asdict(c) for c in cameras], indent=2))
 
@@ -78,8 +77,7 @@ def fresh_snapshot(cam: Camera) -> Path | None:
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "Hi! I'm Minder, your home AI agent.\n\n"
-        "Let me scan your network for cameras..."
+        "Hi! I'm Minder, your home AI agent.\n\nLet me scan your network for cameras..."
     )
 
     cameras = discover_all(SUBNET, CAM_USER, CAM_PASS)
@@ -102,8 +100,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "\nName your cameras by replying with numbers:\n"
         "  1=front gate, 2=backyard, 3=porch\n\n"
         "Or just ask me anything:\n"
-        "  \"Is anyone at the front door?\"\n"
-        "  \"Show me the backyard\""
+        '  "Is anyone at the front door?"\n'
+        '  "Show me the backyard"'
     )
     await update.message.reply_text("\n".join(lines))
 
@@ -132,7 +130,9 @@ async def cmd_cameras(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 caption=f"{label} — {cam.manufacturer} {cam.model}",
             )
         else:
-            await update.message.reply_text(f"{label} — {cam.manufacturer} {cam.model} (no snapshot)")
+            await update.message.reply_text(
+                f"{label} — {cam.manufacturer} {cam.model} (no snapshot)"
+            )
 
 
 async def cmd_snap(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -144,8 +144,7 @@ async def cmd_snap(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not ctx.args:
         names = [cam.name or cam.ip for cam in cameras]
         await update.message.reply_text(
-            "Which camera? Usage: /snap <name>\n\n"
-            f"Available: {', '.join(names)}"
+            f"Which camera? Usage: /snap <name>\n\nAvailable: {', '.join(names)}"
         )
         return
 
@@ -180,14 +179,14 @@ async def cmd_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(
             "What should I check? Usage: /check <question>\n\n"
             "Examples:\n"
-            '  /check is there a person\n'
-            '  /check is there a car in the driveway\n'
-            '  /check is the gate open'
+            "  /check is there a person\n"
+            "  /check is there a car in the driveway\n"
+            "  /check is the gate open"
         )
         return
 
     condition = " ".join(ctx.args)
-    await update.message.reply_text(f"Checking {len(cameras)} cameras: \"{condition}\"...")
+    await update.message.reply_text(f'Checking {len(cameras)} cameras: "{condition}"...')
 
     matches = []
     for cam in cameras:
@@ -204,11 +203,10 @@ async def cmd_check(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             )
 
     if not matches:
-        await update.message.reply_text(f"No cameras matched: \"{condition}\"")
+        await update.message.reply_text(f'No cameras matched: "{condition}"')
     else:
         await update.message.reply_text(
-            f"{len(matches)} camera(s) matched: "
-            + ", ".join(m[1].camera_name for m in matches)
+            f"{len(matches)} camera(s) matched: " + ", ".join(m[1].camera_name for m in matches)
         )
 
 
@@ -326,7 +324,7 @@ async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
                 )
 
         if not any_match:
-            await update.message.reply_text(f"None of the cameras matched: \"{text}\"")
+            await update.message.reply_text(f'None of the cameras matched: "{text}"')
 
 
 def main() -> None:

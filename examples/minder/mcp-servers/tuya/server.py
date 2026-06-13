@@ -18,7 +18,9 @@ from typing import Any, Literal
 from mcp.server.fastmcp import FastMCP
 
 sys.path.insert(0, "/app/mcp-servers")
-from _atomic import write_json_atomic  # noqa: E402  (corruption-safe writes)
+import contextlib
+
+from _atomic import write_json_atomic
 
 mcp = FastMCP("minder-devices")
 
@@ -74,14 +76,18 @@ def _load_ha_token() -> str:
 
 
 def _save_ha_token(access_token: str, refresh_token: str) -> None:
-    write_json_atomic(HA_TOKEN_FILE, {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-    })
+    write_json_atomic(
+        HA_TOKEN_FILE,
+        {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+        },
+    )
 
 
-def _ha_raw(url: str, method: str = "GET", data: Any = None,
-            headers: dict | None = None, timeout: int = 10) -> tuple[int, Any]:
+def _ha_raw(
+    url: str, method: str = "GET", data: Any = None, headers: dict | None = None, timeout: int = 10
+) -> tuple[int, Any]:
     """Low-level HTTP request returning (status_code, parsed_body)."""
     body = json.dumps(data).encode() if data else None
     hdrs = {"Content-Type": "application/json"}
@@ -107,7 +113,9 @@ def _ha_request(endpoint: str, method: str = "GET", data: dict | None = None) ->
         return {"error": "HA not set up yet. Call setup_homeassistant first."}
     url = f"{HA_URL}/api/{endpoint}"
     _, result = _ha_raw(
-        url, method, data,
+        url,
+        method,
+        data,
         headers={"Authorization": f"Bearer {token}"},
     )
     return result
@@ -176,7 +184,8 @@ def setup_homeassistant() -> str:
     # Step 1: Create user (if not done)
     if not steps_done.get("user"):
         code, resp = _ha_raw(
-            f"{HA_URL}/api/onboarding/users", "POST",
+            f"{HA_URL}/api/onboarding/users",
+            "POST",
             {
                 "client_id": HA_CLIENT_ID,
                 "name": "Minder",
@@ -194,15 +203,14 @@ def setup_homeassistant() -> str:
     # Step 2: Get access token
     if auth_code:
         code, tokens = _ha_raw(
-            f"{HA_URL}/auth/token", "POST",
+            f"{HA_URL}/auth/token",
+            "POST",
             None,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         # urllib doesn't send form data with _ha_raw, use direct request
         form_data = (
-            f"grant_type=authorization_code"
-            f"&code={auth_code}"
-            f"&client_id={HA_CLIENT_ID}"
+            f"grant_type=authorization_code&code={auth_code}&client_id={HA_CLIENT_ID}"
         ).encode()
         req = urllib.request.Request(
             f"{HA_URL}/auth/token",
@@ -248,14 +256,16 @@ def setup_homeassistant() -> str:
     for step in ["core_config", "analytics"]:
         if not steps_done.get(step):
             _ha_raw(
-                f"{HA_URL}/api/onboarding/{step}", "POST",
+                f"{HA_URL}/api/onboarding/{step}",
+                "POST",
                 {"client_id": HA_CLIENT_ID},
                 headers=auth_header,
             )
 
     if not steps_done.get("integration"):
         _ha_raw(
-            f"{HA_URL}/api/onboarding/integration", "POST",
+            f"{HA_URL}/api/onboarding/integration",
+            "POST",
             {"client_id": HA_CLIENT_ID, "redirect_uri": f"{HA_URL}/"},
             headers=auth_header,
         )
@@ -263,10 +273,12 @@ def setup_homeassistant() -> str:
     # Save token for future use
     _save_ha_token(access_token, refresh_token)
 
-    return json.dumps({
-        "status": "ok",
-        "message": "Home Assistant set up successfully. Account created and token saved.",
-    })
+    return json.dumps(
+        {
+            "status": "ok",
+            "message": "Home Assistant set up successfully. Account created and token saved.",
+        }
+    )
 
 
 @mcp.tool()
@@ -297,19 +309,20 @@ DEVICES_CACHE = DATA_DIR / "devices_cache.json"
 def _record_action(device: str, action: str, ok: bool, message: str = "") -> None:
     """Append an action result so the bot can format replies without LLM text."""
     import time as _time
+
     actions = []
     if ACTIONS_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             actions = json.loads(ACTIONS_FILE.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
-    actions.append({
-        "ts": _time.time(),
-        "device": device,
-        "action": action,
-        "ok": ok,
-        "message": message,
-    })
+    actions.append(
+        {
+            "ts": _time.time(),
+            "device": device,
+            "action": action,
+            "ok": ok,
+            "message": message,
+        }
+    )
     ACTIONS_FILE.write_text(json.dumps(actions[-50:], indent=2))
 
 
@@ -319,10 +332,12 @@ def list_devices() -> str:
     Returns device names, types (light/switch/fan/etc), and current state."""
     token = _load_ha_token()
     if not token:
-        return json.dumps({
-            "status": "setup_required",
-            "message": "Call setup_homeassistant first.",
-        })
+        return json.dumps(
+            {
+                "status": "setup_required",
+                "message": "Call setup_homeassistant first.",
+            }
+        )
 
     states = _ha_request("states")
     if isinstance(states, dict) and "error" in states:
@@ -333,12 +348,14 @@ def list_devices() -> str:
         eid = entity.get("entity_id", "")
         domain = eid.split(".")[0] if "." in eid else ""
         if domain in ("light", "switch", "fan", "climate", "cover", "lock", "media_player"):
-            devices.append({
-                "id": eid,
-                "name": entity.get("attributes", {}).get("friendly_name", eid),
-                "type": domain,
-                "state": entity.get("state", "unknown"),
-            })
+            devices.append(
+                {
+                    "id": eid,
+                    "name": entity.get("attributes", {}).get("friendly_name", eid),
+                    "type": domain,
+                    "state": entity.get("state", "unknown"),
+                }
+            )
 
     DEVICES_CACHE.write_text(json.dumps(devices, indent=2))
     return json.dumps({"devices": devices, "count": len(devices)})
@@ -375,8 +392,12 @@ def control_device(
         if domain not in ("light", "switch", "fan", "climate", "cover", "lock", "media_player"):
             continue
         friendly = entity.get("attributes", {}).get("friendly_name", "").lower()
-        if (friendly == name_lower or name_lower in friendly or eid == name_lower
-                or (words and all(w in friendly for w in words))):
+        if (
+            friendly == name_lower
+            or name_lower in friendly
+            or eid == name_lower
+            or (words and all(w in friendly for w in words))
+        ):
             target = entity
             break
 
@@ -391,16 +412,24 @@ def control_device(
     service_data: dict[str, Any] = {"entity_id": eid}
 
     if brightness and action != "turn_off":
-        result = _ha_request(f"services/{domain}/turn_on", "POST",
-                             {**service_data, "brightness": max(1, min(255, brightness))})
+        result = _ha_request(
+            f"services/{domain}/turn_on",
+            "POST",
+            {**service_data, "brightness": max(1, min(255, brightness))},
+        )
     elif temperature and action != "turn_off":
-        result = _ha_request("services/climate/set_temperature", "POST",
-                             {**service_data, "temperature": max(16, min(30, temperature))})
+        result = _ha_request(
+            "services/climate/set_temperature",
+            "POST",
+            {**service_data, "temperature": max(16, min(30, temperature))},
+        )
     else:
         result = _ha_request(f"services/{domain}/{action}", "POST", service_data)
 
     failed = isinstance(result, dict) and result.get("error")
-    _record_action(friendly_name, action, not failed, str(result.get("error", "")) if failed else "")
+    _record_action(
+        friendly_name, action, not failed, str(result.get("error", "")) if failed else ""
+    )
 
     return json.dumps({"status": "ok", "device": friendly_name, "action": action})
 
@@ -421,15 +450,26 @@ def get_device_state(device_name: str) -> str:
         friendly = entity.get("attributes", {}).get("friendly_name", "").lower()
         eid = entity.get("entity_id", "")
         if friendly == name_lower or name_lower in friendly or eid == name_lower:
-            return json.dumps({
-                "device": entity.get("attributes", {}).get("friendly_name", eid),
-                "state": entity.get("state"),
-                "attributes": {
-                    k: v for k, v in entity.get("attributes", {}).items()
-                    if k in ("brightness", "color_temp", "temperature", "current_temperature",
-                             "fan_mode", "hvac_mode", "is_locked")
-                },
-            })
+            return json.dumps(
+                {
+                    "device": entity.get("attributes", {}).get("friendly_name", eid),
+                    "state": entity.get("state"),
+                    "attributes": {
+                        k: v
+                        for k, v in entity.get("attributes", {}).items()
+                        if k
+                        in (
+                            "brightness",
+                            "color_temp",
+                            "temperature",
+                            "current_temperature",
+                            "fan_mode",
+                            "hvac_mode",
+                            "is_locked",
+                        )
+                    },
+                }
+            )
 
     return json.dumps({"status": "error", "message": f"Device '{device_name}' not found"})
 

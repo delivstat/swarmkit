@@ -11,7 +11,6 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-
 OLLAMA_URL = "http://localhost:11434"
 VISION_MODEL = "gemma4:e2b"
 SNAPSHOT_DIR = Path("/data/snapshots")
@@ -32,22 +31,24 @@ def analyse_frame(image_path: Path, query: str, model: str = VISION_MODEL) -> di
     """Send a single image + query to the vision model and return the response."""
     image_b64 = base64.b64encode(image_path.read_bytes()).decode()
 
-    payload = json.dumps({
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": query,
-                "images": [image_b64],
-            }
-        ],
-        "stream": False,
-        "think": False,
-        "options": {
-            "temperature": 0.1,
-            "num_predict": 200,
-        },
-    }).encode()
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": query,
+                    "images": [image_b64],
+                }
+            ],
+            "stream": False,
+            "think": False,
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 200,
+            },
+        }
+    ).encode()
 
     req = urllib.request.Request(
         f"{OLLAMA_URL}/api/chat",
@@ -130,7 +131,9 @@ def scan_all_cameras(condition: str | None = None, model: str = VISION_MODEL) ->
         if condition:
             result = check_scene(snap, condition, model)
             status = "MATCH" if result.match else "no match"
-            print(f"  {result.camera_ip:>15} — {status} ({result.latency_ms}ms): {result.answer[:100]}")
+            print(
+                f"  {result.camera_ip:>15} — {status} ({result.latency_ms}ms): {result.answer[:100]}"
+            )
         else:
             result = describe_scene(snap, model)
             print(f"  {result.camera_ip:>15} ({result.latency_ms}ms): {result.answer[:120]}")
@@ -152,7 +155,7 @@ if __name__ == "__main__":
 
     if args:
         condition = " ".join(args)
-        print(f"\nChecking all cameras: \"{condition}\" (model: {model})\n")
+        print(f'\nChecking all cameras: "{condition}" (model: {model})\n')
     else:
         print(f"\nDescribing all camera scenes (model: {model})\n")
 
@@ -177,4 +180,6 @@ if __name__ == "__main__":
 
     matches = [r for r in results if r.match]
     if condition and matches:
-        print(f"\n*** {len(matches)} camera(s) matched: {', '.join(r.camera_ip for r in matches)} ***")
+        print(
+            f"\n*** {len(matches)} camera(s) matched: {', '.join(r.camera_ip for r in matches)} ***"
+        )

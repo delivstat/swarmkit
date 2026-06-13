@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, "/app/mcp-servers")
-from _atomic import write_json_atomic  # noqa: E402  (corruption-safe writes)
+from _atomic import write_json_atomic
 
 HA_URL = os.environ.get("HA_URL", "http://localhost:8123").rstrip("/")
 HA_CLIENT_ID = "http://localhost:8123/"
@@ -25,8 +25,7 @@ HA_TOKEN_FILE = DATA_DIR / "ha_token.json"
 def _get(url: str, token: str = "", raw: bool = False, timeout: int = 10):
     hdrs = {"Authorization": f"Bearer {token}"} if token else {}
     try:
-        resp = urllib.request.urlopen(
-            urllib.request.Request(url, headers=hdrs), timeout=timeout)
+        resp = urllib.request.urlopen(urllib.request.Request(url, headers=hdrs), timeout=timeout)
         data = resp.read()
         return resp.status, (data if raw else json.loads(data))
     except urllib.error.HTTPError as e:
@@ -50,17 +49,19 @@ def ha_token() -> str:
     if code == 200:
         return access
     if refresh:
-        form = (f"grant_type=refresh_token&refresh_token={refresh}"
-                f"&client_id={HA_CLIENT_ID}").encode()
+        form = (
+            f"grant_type=refresh_token&refresh_token={refresh}&client_id={HA_CLIENT_ID}"
+        ).encode()
         req = urllib.request.Request(
-            f"{HA_URL}/auth/token", data=form,
+            f"{HA_URL}/auth/token",
+            data=form,
             headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST")
+            method="POST",
+        )
         try:
             tok = json.loads(urllib.request.urlopen(req, timeout=10).read())
             new = tok["access_token"]
-            write_json_atomic(HA_TOKEN_FILE,
-                              {"access_token": new, "refresh_token": refresh})
+            write_json_atomic(HA_TOKEN_FILE, {"access_token": new, "refresh_token": refresh})
             return new
         except Exception:
             pass

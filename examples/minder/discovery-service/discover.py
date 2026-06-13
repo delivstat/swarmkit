@@ -4,17 +4,17 @@ Scans the local subnet for ONVIF cameras and Tuya/SmartLife devices,
 extracts stream URLs, and captures snapshots via ffmpeg.
 """
 
-import hashlib
-import datetime
 import base64
+import datetime
+import hashlib
+import http.client
+import json
 import os
 import re
-import json
 import socket
 import subprocess
-import http.client
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 
@@ -72,7 +72,9 @@ def _onvif_request(ip: str, path: str, body: str, user: str, pwd: str) -> str:
     )
     conn = http.client.HTTPConnection(ip, 80, timeout=5)
     conn.request(
-        "POST", path, body=soap,
+        "POST",
+        path,
+        body=soap,
         headers={"Content-Type": "application/soap+xml; charset=utf-8"},
     )
     resp = conn.getresponse()
@@ -123,7 +125,9 @@ def probe_onvif(ip: str, user: str, pwd: str) -> Camera:
         for field in ["Manufacturer", "Model", "FirmwareVersion", "SerialNumber"]:
             m = re.search(rf"<[^>]*{field}[^>]*>(.*?)</", body)
             if m:
-                attr = {"FirmwareVersion": "firmware", "SerialNumber": "serial"}.get(field, field.lower())
+                attr = {"FirmwareVersion": "firmware", "SerialNumber": "serial"}.get(
+                    field, field.lower()
+                )
                 setattr(cam, attr, m.group(1))
         cam.onvif = True
     except Exception:
@@ -179,12 +183,18 @@ def capture_snapshot(cam: Camera, user: str, pwd: str) -> Path | None:
     try:
         subprocess.run(
             [
-                "ffmpeg", "-rtsp_transport", "tcp",
-                "-i", authed_url,
-                "-frames:v", "1",
-                "-y", str(outpath),
+                "ffmpeg",
+                "-rtsp_transport",
+                "tcp",
+                "-i",
+                authed_url,
+                "-frames:v",
+                "1",
+                "-y",
+                str(outpath),
             ],
-            capture_output=True, timeout=10,
+            capture_output=True,
+            timeout=10,
         )
         if outpath.exists() and outpath.stat().st_size > 1000:
             return outpath

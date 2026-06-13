@@ -17,19 +17,17 @@ Runs as a FastAPI service inside the swarmkit container, port 80.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
-import shutil
+import secrets
 import socket
 import subprocess
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
-
-import hashlib
-import secrets
-import uuid
 
 from fastapi import Cookie, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
@@ -100,15 +98,19 @@ async def _startup_recovery() -> None:
     """On boot: DIAGNOSE only (never auto-fix — fixes are human-gated). If a
     precious file is corrupt/missing, raise an approval-request alert; the human
     runs /repair to apply the restore. Always take a fresh good-state backup."""
-    import minder_ops  # noqa: PLC0415
+    import minder_ops
+
     try:
         h = minder_ops.diagnose_and_alert()
         if not h.get("healthy"):
-            print(f"[recovery] startup health issue (awaiting human /repair): "
-                  f"{h.get('files')}", flush=True)
+            print(
+                f"[recovery] startup health issue (awaiting human /repair): {h.get('files')}",
+                flush=True,
+            )
         minder_ops.backup()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print(f"[recovery] startup diagnose failed: {e}", flush=True)
+
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 HA_URL = os.environ.get("HA_URL", "http://localhost:8123")
@@ -116,8 +118,9 @@ SWARMKIT_URL = os.environ.get("SWARMKIT_URL", "http://localhost:8321")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-import minder_ops  # noqa: E402  (channel-neutral operations layer)
+import contextlib
 
+import minder_ops
 
 # ---- Ops API — the single backend every channel adapter talks to ----
 
@@ -273,7 +276,8 @@ def _ha_api(endpoint: str, token: str, method: str = "GET", data: dict | None = 
     url = f"{HA_URL}/api/{endpoint}"
     body = json.dumps(data).encode() if data else None
     req = urllib.request.Request(
-        url, data=body,
+        url,
+        data=body,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         method=method,
     )
@@ -376,15 +380,23 @@ def _load_webapp_auth() -> dict[str, str]:
             return json.loads(WEBAPP_AUTH_FILE.read_text())
         except (json.JSONDecodeError, ValueError):
             pass
-    return {"username": DEFAULT_USERNAME, "password_hash": hashlib.sha256(DEFAULT_PASSWORD.encode()).hexdigest()}
+    return {
+        "username": DEFAULT_USERNAME,
+        "password_hash": hashlib.sha256(DEFAULT_PASSWORD.encode()).hexdigest(),
+    }
 
 
 def _save_webapp_auth(username: str, password: str) -> None:
     WEBAPP_AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
-    WEBAPP_AUTH_FILE.write_text(json.dumps({
-        "username": username,
-        "password_hash": hashlib.sha256(password.encode()).hexdigest(),
-    }, indent=2))
+    WEBAPP_AUTH_FILE.write_text(
+        json.dumps(
+            {
+                "username": username,
+                "password_hash": hashlib.sha256(password.encode()).hexdigest(),
+            },
+            indent=2,
+        )
+    )
 
 
 # ---- Events helpers ----
@@ -404,12 +416,15 @@ def _save_events(events: list[dict[str, Any]]) -> None:
     EVENTS_FILE.write_text(json.dumps(events, indent=2))
 
 
-def _add_event(camera: str, condition: str, message: str,
-               snapshot_path: str = "", video_path: str = "") -> dict[str, Any]:
+def _add_event(
+    camera: str, condition: str, message: str, snapshot_path: str = "", video_path: str = ""
+) -> dict[str, Any]:
     events = _load_events()
     event = {
         "id": str(uuid.uuid4())[:8],
-        "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "timestamp": __import__("datetime")
+        .datetime.now(__import__("datetime").timezone.utc)
+        .isoformat(),
         "camera": camera,
         "condition": condition,
         "message": message,
@@ -445,7 +460,9 @@ async def login(req: LoginRequest):
         session_id = secrets.token_hex(32)
         _active_sessions[session_id] = req.username
         response = JSONResponse({"status": "ok"})
-        response.set_cookie("minder_session", session_id, httponly=True, samesite="lax", max_age=86400 * 30)
+        response.set_cookie(
+            "minder_session", session_id, httponly=True, samesite="lax", max_age=86400 * 30
+        )
         return response
     raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -563,7 +580,7 @@ async def discover_cameras(req: CameraDiscoverRequest):
         cameras = result.get("data", {}).get("cameras", [])
         return {"cameras": cameras, "count": len(cameras), "output": result.get("text", "")}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/cameras")
@@ -611,12 +628,19 @@ async def get_camera_stream(ip: str):
 
     async def mjpeg_generator():
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-rtsp_transport", "tcp",
-            "-i", rtsp_url,
-            "-f", "mjpeg",
-            "-q:v", "5",
-            "-r", "5",
-            "-vf", "scale=640:-1",
+            "ffmpeg",
+            "-rtsp_transport",
+            "tcp",
+            "-i",
+            rtsp_url,
+            "-f",
+            "mjpeg",
+            "-q:v",
+            "5",
+            "-r",
+            "5",
+            "-vf",
+            "scale=640:-1",
             "-an",
             "pipe:1",
             stdout=asyncio.subprocess.PIPE,
@@ -634,19 +658,23 @@ async def get_camera_stream(ip: str):
                     end = buf.find(b"\xff\xd9", start + 2) if start >= 0 else -1
                     if start < 0 or end < 0:
                         break
-                    frame = buf[start:end + 2]
-                    buf = buf[end + 2:]
+                    frame = buf[start : end + 2]
+                    buf = buf[end + 2 :]
                     yield (
                         b"--frame\r\n"
                         b"Content-Type: image/jpeg\r\n"
-                        b"Content-Length: " + str(len(frame)).encode() + b"\r\n\r\n"
-                        + frame + b"\r\n"
+                        b"Content-Length: "
+                        + str(len(frame)).encode()
+                        + b"\r\n\r\n"
+                        + frame
+                        + b"\r\n"
                     )
         finally:
             proc.kill()
             await proc.wait()
 
     from starlette.responses import StreamingResponse
+
     return StreamingResponse(
         mjpeg_generator(),
         media_type="multipart/x-mixed-replace; boundary=frame",
@@ -679,7 +707,7 @@ async def setup_ha():
         result = await minder_ops.setup_ha()
         return {"status": "ok", "message": result.get("text", "Set up")}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 POPULAR_INTEGRATIONS = [
@@ -690,7 +718,11 @@ POPULAR_INTEGRATIONS = [
         "icon_color": "#f59e0b",
         "icon_letter": "T",
         "fields": [
-            {"name": "user_code", "label": "User Code (from iot.tuya.com → Cloud → Link Devices)", "type": "text"},
+            {
+                "name": "user_code",
+                "label": "User Code (from iot.tuya.com → Cloud → Link Devices)",
+                "type": "text",
+            },
         ],
     },
     {
@@ -735,10 +767,12 @@ async def ha_integrations():
 
     result = []
     for integ in POPULAR_INTEGRATIONS:
-        result.append({
-            **integ,
-            "installed": integ["id"] in installed,
-        })
+        result.append(
+            {
+                **integ,
+                "installed": integ["id"] in installed,
+            }
+        )
     return {"integrations": result}
 
 
@@ -760,7 +794,8 @@ async def setup_integration(req: IntegrationSetupRequest):
     try:
         start_resp = _ha_api(
             "config/config_entries/flow",
-            token, "POST",
+            token,
+            "POST",
             {"handler": req.integration_id, "show_advanced_options": False},
         )
         if not start_resp or not isinstance(start_resp, dict):
@@ -777,7 +812,8 @@ async def setup_integration(req: IntegrationSetupRequest):
 
         result = _ha_api(
             f"config/config_entries/flow/{flow_id}",
-            token, "POST",
+            token,
+            "POST",
             req.data,
         )
         return _parse_flow_result(result, req.integration_id)
@@ -802,7 +838,8 @@ async def continue_flow(req: FlowStepRequest):
     try:
         result = _ha_api(
             f"config/config_entries/flow/{req.flow_id}",
-            token, "POST",
+            token,
+            "POST",
             req.data,
         )
         return _parse_flow_result(result, "integration")
@@ -832,13 +869,15 @@ def _parse_flow_result(result: dict | None, name: str) -> dict:
             qr_data = (selector.get("qr_code") or {}).get("data", "")
 
             if qr_data:
-                fields.append({
-                    "name": schema.get("name", "qr"),
-                    "label": "QR Code",
-                    "type": "qr",
-                    "default": qr_data,
-                    "required": False,
-                })
+                fields.append(
+                    {
+                        "name": schema.get("name", "qr"),
+                        "label": "QR Code",
+                        "type": "qr",
+                        "default": qr_data,
+                        "required": False,
+                    }
+                )
                 continue
 
             field = {
@@ -886,7 +925,8 @@ def _get_ha_token() -> str:
                     if refresh:
                         form = f"grant_type=refresh_token&refresh_token={refresh}&client_id=http://localhost:8123/".encode()
                         req = urllib.request.Request(
-                            f"{HA_URL}/auth/token", data=form,
+                            f"{HA_URL}/auth/token",
+                            data=form,
                             headers={"Content-Type": "application/x-www-form-urlencoded"},
                             method="POST",
                         )
@@ -894,10 +934,15 @@ def _get_ha_token() -> str:
                             resp = urllib.request.urlopen(req, timeout=10)
                             tokens = json.loads(resp.read())
                             new_token = tokens["access_token"]
-                            HA_TOKEN_FILE.write_text(json.dumps({
-                                "access_token": new_token,
-                                "refresh_token": refresh,
-                            }, indent=2))
+                            HA_TOKEN_FILE.write_text(
+                                json.dumps(
+                                    {
+                                        "access_token": new_token,
+                                        "refresh_token": refresh,
+                                    },
+                                    indent=2,
+                                )
+                            )
                             return new_token
                         except Exception:
                             pass
@@ -921,12 +966,14 @@ async def ha_devices():
             eid = entity.get("entity_id", "")
             domain = eid.split(".")[0] if "." in eid else ""
             if domain in ("light", "switch", "fan", "climate", "cover", "lock", "media_player"):
-                devices.append({
-                    "id": eid,
-                    "name": entity.get("attributes", {}).get("friendly_name", eid),
-                    "type": domain,
-                    "state": entity.get("state", "unknown"),
-                })
+                devices.append(
+                    {
+                        "id": eid,
+                        "name": entity.get("attributes", {}).get("friendly_name", eid),
+                        "type": domain,
+                        "state": entity.get("state", "unknown"),
+                    }
+                )
         return {"devices": devices, "count": len(devices)}
     except Exception as e:
         return {"devices": [], "message": str(e)}
@@ -939,14 +986,16 @@ async def ha_devices():
 async def generate_qrcode(url: str):
     """Generate a QR code PNG for the given URL."""
     import io
+
     try:
         import qrcode
+
         img = qrcode.make(url, box_size=6, border=2)
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return Response(content=buf.getvalue(), media_type="image/png")
-    except ImportError:
-        raise HTTPException(status_code=501, detail="qrcode not installed")
+    except ImportError as e:
+        raise HTTPException(status_code=501, detail="qrcode not installed") from e
 
 
 @app.post("/api/telegram/verify")
@@ -959,7 +1008,7 @@ async def verify_telegram(req: TelegramVerifyRequest):
         _save_config(config)
         return {"status": "ok", "bot": bot_info}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid token: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid token: {e}") from e
 
 
 # -- Step 4b: Authorized users --
@@ -979,19 +1028,19 @@ async def list_users():
 async def add_user(req: AuthUserRequest):
     auth = {"users": []}
     if AUTH_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             auth = json.loads(AUTH_FILE.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
     if not auth.get("users"):
         auth["users"] = []
 
-    auth["users"].append({
-        "telegram_id": req.telegram_id,
-        "username": req.username,
-        "name": req.name,
-        "role": req.role,
-    })
+    auth["users"].append(
+        {
+            "telegram_id": req.telegram_id,
+            "username": req.username,
+            "name": req.name,
+            "role": req.role,
+        }
+    )
     AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
     AUTH_FILE.write_text(json.dumps(auth, indent=2))
     return {"status": "ok", "users": auth["users"]}
@@ -1018,8 +1067,12 @@ async def detect_hardware():
     gpu_available = False
     gpu_info = ""
     try:
-        result = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
-                                capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         if result.returncode == 0 and result.stdout.strip():
             gpu_available = True
             gpu_info = result.stdout.strip()
@@ -1027,7 +1080,8 @@ async def detect_hardware():
         pass
 
     import shutil as _shutil
-    total, used, free = _shutil.disk_usage("/")
+
+    _total, _used, free = _shutil.disk_usage("/")
     try:
         with open("/proc/meminfo") as f:
             for line in f:
@@ -1072,12 +1126,10 @@ async def list_models():
 @app.post("/api/models/pull")
 async def pull_model(req: ModelPullRequest):
     try:
-        result = await asyncio.to_thread(
-            _ollama_api, "pull", "POST", {"name": req.model, "stream": False}
-        )
+        await asyncio.to_thread(_ollama_api, "pull", "POST", {"name": req.model, "stream": False})
         return {"status": "ok", "model": req.model}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # -- Step 6: Monitoring Rules --
@@ -1151,5 +1203,6 @@ async def index():
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.environ.get("MINDER_WEBAPP_PORT", "80"))
     uvicorn.run(app, host="0.0.0.0", port=port)

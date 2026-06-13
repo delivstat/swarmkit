@@ -23,8 +23,18 @@ VEHICLE_CLASSES = {1, 2, 3, 5, 7}  # bicycle, car, motorcycle, bus, truck
 ANIMAL_CLASSES = {14, 15, 16, 17, 18, 19, 20, 21, 22, 23}  # bird..giraffe
 
 _CLASS_NAME = {
-    0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 5: "bus", 7: "truck",
-    14: "bird", 15: "cat", 16: "dog", 17: "horse", 18: "sheep", 19: "cow",
+    0: "person",
+    1: "bicycle",
+    2: "car",
+    3: "motorcycle",
+    5: "bus",
+    7: "truck",
+    14: "bird",
+    15: "cat",
+    16: "dog",
+    17: "horse",
+    18: "sheep",
+    19: "cow",
 }
 
 DEFAULT_CONF = float(os.environ.get("MINDER_DETECT_CONF", "0.35"))
@@ -39,7 +49,8 @@ def _get_model():
     if _model is None:
         with _model_lock:
             if _model is None:
-                from ultralytics import YOLO  # noqa: PLC0415
+                from ultralytics import YOLO
+
                 _model = YOLO(MODEL_PATH)
     return _model
 
@@ -50,20 +61,35 @@ def classes_for_condition(condition: str) -> set[int]:
     (caller should fall back to the VLM)."""
     t = (condition or "").lower()
     classes: set[int] = set()
-    if any(w in t for w in ["person", "people", "someone", "somebody", "anyone",
-                            "human", "intruder", "visitor", "man", "woman", "child"]):
+    if any(
+        w in t
+        for w in [
+            "person",
+            "people",
+            "someone",
+            "somebody",
+            "anyone",
+            "human",
+            "intruder",
+            "visitor",
+            "man",
+            "woman",
+            "child",
+        ]
+    ):
         classes |= PERSON_CLASSES
-    if any(w in t for w in ["car", "vehicle", "truck", "bike", "bicycle",
-                            "motorcycle", "van", "bus"]):
+    if any(
+        w in t for w in ["car", "vehicle", "truck", "bike", "bicycle", "motorcycle", "van", "bus"]
+    ):
         classes |= VEHICLE_CLASSES
-    if any(w in t for w in ["animal", "dog", "cat", "bird", "cow", "monkey",
-                            "pet"]):
+    if any(w in t for w in ["animal", "dog", "cat", "bird", "cow", "monkey", "pet"]):
         classes |= ANIMAL_CLASSES
     return classes
 
 
-def detect(image_path: str, want_classes: set[int] | None = None,
-           conf: float = DEFAULT_CONF) -> dict:
+def detect(
+    image_path: str, want_classes: set[int] | None = None, conf: float = DEFAULT_CONF
+) -> dict:
     """Run detection on an image. Returns counts per class name plus the
     detections matching want_classes (if given)."""
     model = _get_model()

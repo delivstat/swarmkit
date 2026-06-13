@@ -14,7 +14,7 @@ same two endpoints.
 
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -55,8 +55,7 @@ def _internal_headers() -> dict[str, str]:
 
 async def ops_post(path: str, payload: dict, timeout: float = 200.0) -> dict:
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=timeout)) as client:
-        resp = await client.post(
-            f"{API_URL}{path}", json=payload, headers=_internal_headers())
+        resp = await client.post(f"{API_URL}{path}", json=payload, headers=_internal_headers())
         resp.raise_for_status()
         return resp.json()
 
@@ -110,10 +109,8 @@ def _split_message(text: str, max_len: int = 4096) -> list[str]:
 
 async def render_result(update: Update, thinking_msg: Any, result: dict) -> None:
     """Render an ops result envelope: delete status msg, send text + media."""
-    try:
+    with contextlib.suppress(Exception):
         await thinking_msg.delete()
-    except Exception:
-        pass
     if not update.message:
         return
 
@@ -131,7 +128,8 @@ async def render_result(update: Update, thinking_msg: Any, result: dict) -> None
             await update.message.reply_photo(photo=path.open("rb"), caption=caption)
         elif item.get("type") == "video":
             await update.message.reply_video(
-                video=path.open("rb"), caption=caption, supports_streaming=True)
+                video=path.open("rb"), caption=caption, supports_streaming=True
+            )
 
 
 # ---- Handlers ----
@@ -158,7 +156,8 @@ async def message_handler(update: Update, context: Any) -> None:
         elif group["chat_id"] != chat.id:
             await update.message.reply_text(
                 "Minder is already connected to another group. "
-                "Remove me from that group first to switch.")
+                "Remove me from that group first to switch."
+            )
             return
 
     # DMs redirect to the group
@@ -166,13 +165,15 @@ async def message_handler(update: Update, context: Any) -> None:
         group = _load_group()
         if group.get("chat_id"):
             await update.message.reply_text(
-                "Minder works in your family group. Send messages there instead.")
+                "Minder works in your family group. Send messages there instead."
+            )
         else:
             await update.message.reply_text(
                 "Add me to a family group to get started.\n\n"
-                "1. Create a Telegram group (e.g. \"Minder Home\")\n"
+                '1. Create a Telegram group (e.g. "Minder Home")\n'
                 "2. Add me to the group\n"
-                "3. Send /start in the group")
+                "3. Send /start in the group"
+            )
         return
 
     # In groups: only respond to commands, @mentions, or replies to the bot
@@ -199,10 +200,8 @@ async def message_handler(update: Update, context: Any) -> None:
     # /start gets channel-side progress messages (it takes minutes)
     if clean_text.lower().strip() in ("/start", "start", "/cameras", "/setup"):
         thinking = await update.message.reply_text("Setting up Home Assistant...")
-        try:
+        with contextlib.suppress(Exception):
             await ops_post("/api/ops/setup/ha", {}, timeout=90)
-        except Exception:
-            pass
         await update.message.reply_text("Discovering cameras (this takes a minute)...")
         try:
             result = await ops_post("/api/ops/setup/cameras", {}, timeout=240)
@@ -220,14 +219,18 @@ async def message_handler(update: Update, context: Any) -> None:
 
     thinking = await update.message.reply_text("Working on it...")
     try:
-        result = await ops_post("/api/ops/message", {
-            "text": clean_text,
-            "source": "telegram",
-            "sender": sender,
-        })
+        result = await ops_post(
+            "/api/ops/message",
+            {
+                "text": clean_text,
+                "source": "telegram",
+                "sender": sender,
+            },
+        )
     except httpx.ConnectError:
-        await render_result(update, thinking,
-            {"text": "Minder service is not running. Try again in a moment."})
+        await render_result(
+            update, thinking, {"text": "Minder service is not running. Try again in a moment."}
+        )
         return
     except Exception as e:
         log.exception("Ops call failed")
@@ -259,7 +262,9 @@ async def _handle_recovery(update: Update, cmd: str, arg: str = "") -> None:
             r = await ops_post("/api/ops/approvals/approve", {"id": arg}, timeout=180)
             if r.get("status") == "approved":
                 fixed = r.get("repaired", []) + r.get("regenerated", [])
-                text = "Approved. " + (f"Repaired: {', '.join(fixed)}" if fixed else "Nothing needed fixing.")
+                text = "Approved. " + (
+                    f"Repaired: {', '.join(fixed)}" if fixed else "Nothing needed fixing."
+                )
             elif r.get("status") == "none":
                 text = "Nothing is awaiting approval."
             else:
@@ -279,8 +284,15 @@ async def _handle_recovery(update: Update, cmd: str, arg: str = "") -> None:
     if cmd == "/approvals":
         try:
             ap = (await ops_get("/api/ops/approvals")).get("approvals", [])
-            text = ("Pending approvals:\n" + "\n".join(f"  {a['short']}: {a['reason']}" for a in ap)
-                    + "\nApprove with /approve <id>") if ap else "No repairs awaiting approval."
+            text = (
+                (
+                    "Pending approvals:\n"
+                    + "\n".join(f"  {a['short']}: {a['reason']}" for a in ap)
+                    + "\nApprove with /approve <id>"
+                )
+                if ap
+                else "No repairs awaiting approval."
+            )
         except Exception as e:
             text = f"Couldn't read approvals: {e}"
         await update.message.reply_text(text)
@@ -320,20 +332,21 @@ async def poll_alerts(context: Any) -> None:
         data = await ops_get("/api/ops/alerts")
         alerts = data.get("alerts", [])
         for alert in alerts:
-            await context.bot.send_message(
-                chat_id=group_chat_id, text=f"🚨 {alert['message']}")
+            await context.bot.send_message(chat_id=group_chat_id, text=f"🚨 {alert['message']}")
             snap_path = alert.get("snapshot_path")
             if snap_path and Path(snap_path).exists():
                 await context.bot.send_photo(
                     chat_id=group_chat_id,
                     photo=Path(snap_path).open("rb"),
-                    caption=alert.get("camera", ""))
+                    caption=alert.get("camera", ""),
+                )
             video_path = alert.get("video_path")
             if video_path and Path(video_path).exists():
                 await context.bot.send_video(
                     chat_id=group_chat_id,
                     video=Path(video_path).open("rb"),
-                    supports_streaming=True)
+                    supports_streaming=True,
+                )
         if alerts:
             log.info(f"Sent {len(alerts)} alert(s) to group")
     except Exception as e:
@@ -345,16 +358,19 @@ async def poll_alerts(context: Any) -> None:
 
 async def post_init(app: Application) -> None:
     from telegram import BotCommand
-    await app.bot.set_my_commands([
-        BotCommand("start", "Discover cameras on your network"),
-        BotCommand("cameras", "Show all cameras with snapshots"),
-        BotCommand("check", "Check a condition (e.g. /check is anyone at the gate)"),
-        BotCommand("snap", "Snapshot from a camera (e.g. /snap porch)"),
-        BotCommand("video", "Live video clip (e.g. /video main-door)"),
-        BotCommand("health", "Show appliance health"),
-        BotCommand("approvals", "Show repairs awaiting your approval"),
-        BotCommand("reset", "Start a fresh conversation"),
-    ])
+
+    await app.bot.set_my_commands(
+        [
+            BotCommand("start", "Discover cameras on your network"),
+            BotCommand("cameras", "Show all cameras with snapshots"),
+            BotCommand("check", "Check a condition (e.g. /check is anyone at the gate)"),
+            BotCommand("snap", "Snapshot from a camera (e.g. /snap porch)"),
+            BotCommand("video", "Live video clip (e.g. /video main-door)"),
+            BotCommand("health", "Show appliance health"),
+            BotCommand("approvals", "Show repairs awaiting your approval"),
+            BotCommand("reset", "Start a fresh conversation"),
+        ]
+    )
     log.info("Telegram command menu registered")
 
     app.job_queue.run_repeating(poll_alerts, interval=10, first=5)
@@ -373,11 +389,7 @@ def main() -> None:
     # concurrent_updates: handle messages from multiple people at once instead
     # of strictly one-at-a-time. Non-model work (RTSP capture, YOLO, HA calls)
     # then overlaps; only the single-GPU LLM steps still queue at Ollama.
-    app = (Application.builder()
-           .token(token)
-           .concurrent_updates(True)
-           .post_init(post_init)
-           .build())
+    app = Application.builder().token(token).concurrent_updates(True).post_init(post_init).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.add_handler(MessageHandler(filters.COMMAND, message_handler))
 

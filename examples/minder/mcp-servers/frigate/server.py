@@ -10,19 +10,20 @@ See examples/minder/design/vision-architecture.md.
 import json
 import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-import sys
-
 import yaml
 from mcp.server.fastmcp import FastMCP
 
 sys.path.insert(0, "/app/mcp-servers")
-from _alert_sink import (  # noqa: E402  (shared alert/event writer + helpers)
+import contextlib
+
+from _alert_sink import (
     ALERT_COOLDOWN_S,
     execute_device_action,
     load_monitor_state,
@@ -30,8 +31,8 @@ from _alert_sink import (  # noqa: E402  (shared alert/event writer + helpers)
     schedule_active,
     write_alert,
 )
-from _atomic import write_json_atomic  # noqa: E402  (corruption-safe writes)
-from _ha import ha_camera_snapshot, ha_states  # noqa: E402  (HA snapshot tier)
+from _atomic import write_json_atomic
+from _ha import ha_camera_snapshot, ha_states
 
 mcp = FastMCP("minder-frigate")
 
@@ -111,8 +112,7 @@ def _substream_url(cam: dict) -> str:
     Frigate substitutes it from the env at load."""
     ip = cam["ip"]
     return (
-        f"rtsp://{CAM_USER}:{{FRIGATE_RTSP_PASSWORD}}@{ip}:554"
-        f"/cam/realmonitor?channel=1&subtype=1"
+        f"rtsp://{CAM_USER}:{{FRIGATE_RTSP_PASSWORD}}@{ip}:554/cam/realmonitor?channel=1&subtype=1"
     )
 
 
@@ -171,8 +171,9 @@ def _build_config(cameras: list[dict]) -> dict:
     return config
 
 
-def _http(method: str, path: str, body: bytes | None = None,
-          ctype: str = "application/json") -> tuple[int, bytes]:
+def _http(
+    method: str, path: str, body: bytes | None = None, ctype: str = "application/json"
+) -> tuple[int, bytes]:
     url = f"{FRIGATE_URL}{path}"
     req = urllib.request.Request(url, data=body, method=method)
     if body is not None:
@@ -182,7 +183,7 @@ def _http(method: str, path: str, body: bytes | None = None,
             return resp.status, resp.read()
     except urllib.error.HTTPError as e:
         return e.code, e.read()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return 0, str(e).encode()
 
 
@@ -205,19 +206,25 @@ def configure_cameras() -> str:
     )
     keys = [_slug(c.get("name") or c["ip"]) for c in cameras]
     if status not in (200, 201):
-        return json.dumps({
-            "status": "error", "http": status,
-            "message": raw.decode(errors="replace")[:400],
-        })
-    return json.dumps({
-        "status": "ok", "cameras_configured": len(cameras),
-        "cameras": keys, "reloaded": True,
-    })
+        return json.dumps(
+            {
+                "status": "error",
+                "http": status,
+                "message": raw.decode(errors="replace")[:400],
+            }
+        )
+    return json.dumps(
+        {
+            "status": "ok",
+            "cameras_configured": len(cameras),
+            "cameras": keys,
+            "reloaded": True,
+        }
+    )
 
 
 def _slug_to_name() -> dict[str, str]:
-    return {_slug(c.get("name") or c["ip"]): (c.get("name") or c["ip"])
-            for c in _load_cameras()}
+    return {_slug(c.get("name") or c["ip"]): (c.get("name") or c["ip"]) for c in _load_cameras()}
 
 
 def _normalize(ev: dict, slug2name: dict[str, str]) -> dict:
@@ -239,8 +246,9 @@ def _normalize(ev: dict, slug2name: dict[str, str]) -> dict:
     }
 
 
-def _fetch_events(after: float = 0.0, camera: str = "", label: str = "",
-                  limit: int = 50) -> list[dict]:
+def _fetch_events(
+    after: float = 0.0, camera: str = "", label: str = "", limit: int = 50
+) -> list[dict]:
     """Fetch + normalize Frigate events. Raises on transport/parse error."""
     params: dict = {"limit": limit, "has_snapshot": 1, "include_thumbnails": 0}
     if after:
@@ -258,14 +266,13 @@ def _fetch_events(after: float = 0.0, camera: str = "", label: str = "",
 
 
 @mcp.tool()
-def get_events(after: float = 0.0, camera: str = "", label: str = "",
-               limit: int = 50) -> str:
+def get_events(after: float = 0.0, camera: str = "", label: str = "", limit: int = 50) -> str:
     """Fetch Frigate events since `after` (epoch seconds) as normalized events.
     Empty camera/label means all. Used by the monitoring poller and for
     'what happened' queries."""
     try:
         return json.dumps(_fetch_events(after, camera, label, limit))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return json.dumps({"status": "error", "message": str(e)[:300]})
 
 
@@ -283,16 +290,14 @@ def _download(path: str, suffix: str, event_id: str) -> str:
 def get_event_snapshot(event_id: str) -> str:
     """Download a Frigate event's snapshot JPEG to local storage; returns its
     path (empty string if unavailable)."""
-    return json.dumps({"path": _download(
-        f"/api/events/{event_id}/snapshot.jpg", ".jpg", event_id)})
+    return json.dumps({"path": _download(f"/api/events/{event_id}/snapshot.jpg", ".jpg", event_id)})
 
 
 @mcp.tool()
 def get_event_clip(event_id: str) -> str:
     """Download a Frigate event's clip MP4 to local storage; returns its path
     (empty string if unavailable)."""
-    return json.dumps({"path": _download(
-        f"/api/events/{event_id}/clip.mp4", ".mp4", event_id)})
+    return json.dumps({"path": _download(f"/api/events/{event_id}/clip.mp4", ".mp4", event_id)})
 
 
 # ---- HA snapshot tier (cloud-locked cameras via Home Assistant) ----
@@ -304,37 +309,52 @@ def get_event_clip(event_id: str) -> str:
 
 
 def _ha_cameras() -> list[dict]:
-    return [c for c in _load_cameras()
-            if c.get("tier") == "ha-snapshot" and c.get("ha_entity")]
+    return [c for c in _load_cameras() if c.get("tier") == "ha-snapshot" and c.get("ha_entity")]
 
 
 def _parse_ha_time(s: str) -> float:
     try:
         import datetime
+
         return datetime.datetime.fromisoformat(s).timestamp()
     except (ValueError, TypeError):
         return 0.0
 
 
 @mcp.tool()
-def register_ha_camera(name: str, motion_entity: str,
-                       camera_entity: str = "") -> str:
+def register_ha_camera(name: str, motion_entity: str, camera_entity: str = "") -> str:
     """Register a cloud-locked camera (no RTSP) on the HA snapshot tier.
     motion_entity is its HA motion/person binary_sensor (what we watch);
     camera_entity is its HA camera entity (for snapshots, optional)."""
     cameras = _load_cameras()
     for c in cameras:
         if c.get("ha_entity") == motion_entity or c.get("name") == name:
-            c.update({"name": name, "tier": "ha-snapshot",
-                      "ha_entity": motion_entity, "snapshot_url": camera_entity})
+            c.update(
+                {
+                    "name": name,
+                    "tier": "ha-snapshot",
+                    "ha_entity": motion_entity,
+                    "snapshot_url": camera_entity,
+                }
+            )
             _save_cameras(cameras)
             return json.dumps({"status": "ok", "updated": name})
-    cameras.append({
-        "ip": "", "manufacturer": "ha", "model": "cloud-camera",
-        "firmware": "", "serial": "", "rtsp_url": "",
-        "snapshot_url": camera_entity, "name": name, "onvif": False,
-        "osd_name": "", "tier": "ha-snapshot", "ha_entity": motion_entity,
-    })
+    cameras.append(
+        {
+            "ip": "",
+            "manufacturer": "ha",
+            "model": "cloud-camera",
+            "firmware": "",
+            "serial": "",
+            "rtsp_url": "",
+            "snapshot_url": camera_entity,
+            "name": name,
+            "onvif": False,
+            "osd_name": "",
+            "tier": "ha-snapshot",
+            "ha_entity": motion_entity,
+        }
+    )
     _save_cameras(cameras)
     return json.dumps({"status": "ok", "registered": name})
 
@@ -359,26 +379,39 @@ def _fetch_ha_events(after: float = 0.0) -> list[dict]:
         ts = _parse_ha_time(s.get("last_changed", ""))
         if ts <= after:
             continue
-        out.append({
-            "source": "ha",
-            "event_id": f"ha:{c['ha_entity']}:{int(ts)}",
-            "camera": c.get("name") or c["ha_entity"],
-            "label": "person",
-            "zone": None,
-            "ts": ts,
-            "confidence": None,
-            "snapshot_ref": f"ha:{c['snapshot_url']}" if c.get("snapshot_url") else "",
-            "clip_ref": "",
-            "description": None,
-        })
+        out.append(
+            {
+                "source": "ha",
+                "event_id": f"ha:{c['ha_entity']}:{int(ts)}",
+                "camera": c.get("name") or c["ha_entity"],
+                "label": "person",
+                "zone": None,
+                "ts": ts,
+                "confidence": None,
+                "snapshot_ref": f"ha:{c['snapshot_url']}" if c.get("snapshot_url") else "",
+                "clip_ref": "",
+                "description": None,
+            }
+        )
     return out
 
 
 # ---- Monitoring poller (replaces the deterministic YOLO loop) ----
 
 _LABEL_WORDS = {
-    "person": {"person", "people", "someone", "somebody", "anyone", "man",
-               "woman", "intruder", "stranger", "burglar", "human"},
+    "person": {
+        "person",
+        "people",
+        "someone",
+        "somebody",
+        "anyone",
+        "man",
+        "woman",
+        "intruder",
+        "stranger",
+        "burglar",
+        "human",
+    },
     "car": {"car", "vehicle", "truck", "van", "auto", "automobile"},
     "dog": {"dog", "puppy"},
     "cat": {"cat", "kitten"},
@@ -425,10 +458,8 @@ def _camera_match(cameras: list[str], event_camera: str) -> bool:
 def _record_shadow(entry: dict) -> None:
     rows = []
     if SHADOW_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             rows = json.loads(SHADOW_FILE.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
     rows.append(entry)
     SHADOW_FILE.write_text(json.dumps(rows[-200:], indent=2))
 
@@ -443,8 +474,15 @@ def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
     if desc:
         msg += f": {desc}"
     if not live:
-        _record_shadow({"ts": now, "camera": cam, "label": ev["label"],
-                        "condition": rule.get("condition"), "would_alert": msg})
+        _record_shadow(
+            {
+                "ts": now,
+                "camera": cam,
+                "label": ev["label"],
+                "condition": rule.get("condition"),
+                "would_alert": msg,
+            }
+        )
         return "shadow"
     snapshot_path = ""
     video_path = ""
@@ -460,7 +498,7 @@ def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
         if act.get("type") == "device":
             try:
                 notes.append(execute_device_action(act["device"], act["action"]))
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 notes.append(f"device {act.get('device')} failed: {e}")
     if any(a.get("type") == "alert" for a in actions) or notes:
         if notes:
@@ -496,14 +534,15 @@ def _run_time_rules(active: list[dict], state: dict, now: float, live: bool) -> 
             if act.get("type") == "device" and live:
                 try:
                     notes.append(execute_device_action(act["device"], act["action"]))
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     notes.append(f"device {act.get('device')} failed: {e}")
         msg = f"Scheduled ({at_time}): " + ("; ".join(notes) or "alert")
         if live:
             write_alert(msg, "")
         else:
-            _record_shadow({"ts": now, "camera": "", "condition": f"@{at_time}",
-                            "would_alert": msg})
+            _record_shadow(
+                {"ts": now, "camera": "", "condition": f"@{at_time}", "would_alert": msg}
+            )
         fired += 1
     return fired
 
@@ -523,26 +562,26 @@ def poll_events() -> str:
     except (json.JSONDecodeError, ValueError):
         return json.dumps({"status": "idle", "reason": "rules unreadable"})
     # target=="ha" rules are compiled to native HA automations — HA fires them.
-    active = [r for r in rules
-              if r.get("enabled", True) and r.get("target") != "ha"
-              and schedule_active(r.get("schedule", "always"))]
+    active = [
+        r
+        for r in rules
+        if r.get("enabled", True)
+        and r.get("target") != "ha"
+        and schedule_active(r.get("schedule", "always"))
+    ]
 
     now = time.time()
     cursor = now - 120.0
     if CURSOR_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             cursor = json.loads(CURSOR_FILE.read_text()).get("after", cursor)
-        except (json.JSONDecodeError, ValueError):
-            pass
     try:
         events = _fetch_events(after=cursor, limit=100)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return json.dumps({"status": "error", "message": str(e)[:200]})
     # Fold in the HA snapshot tier (cloud-locked cameras) — same event stream.
-    try:
+    with contextlib.suppress(Exception):
         events = events + _fetch_ha_events(cursor)
-    except Exception:  # noqa: BLE001  (HA optional — never block Frigate alerts)
-        pass
 
     state = load_monitor_state()
     seen = set(state.get("_frigate_seen", []))
@@ -567,18 +606,25 @@ def poll_events() -> str:
             if now - state.get(key, 0) < ALERT_COOLDOWN_S:
                 continue
             state[key] = now
-            fired.append({"camera": ev["camera"], "label": ev["label"],
-                          "mode": _fire(rule, ev, now, live)})
+            fired.append(
+                {"camera": ev["camera"], "label": ev["label"], "mode": _fire(rule, ev, now, live)}
+            )
             break  # one rule per event
 
     time_fired = _run_time_rules(active, state, now, live)
     state["_frigate_seen"] = list(seen)[-500:]
     save_monitor_state(state)
     write_json_atomic(CURSOR_FILE, {"after": max_ts})
-    return json.dumps({
-        "status": "ok", "mode": POLLER_MODE, "events_seen": len(events),
-        "alerts": len(fired), "time_rules_fired": time_fired, "fired": fired,
-    })
+    return json.dumps(
+        {
+            "status": "ok",
+            "mode": POLLER_MODE,
+            "events_seen": len(events),
+            "alerts": len(fired),
+            "time_rules_fired": time_fired,
+            "fired": fired,
+        }
+    )
 
 
 if __name__ == "__main__":

@@ -13,13 +13,14 @@ import json
 import os
 import re
 import sys
-import time
 import urllib.request
 import uuid
 from pathlib import Path
 
 sys.path.insert(0, "/app/mcp-servers")
-from _atomic import write_json_atomic  # noqa: E402  (corruption-safe writes)
+import contextlib
+
+from _atomic import write_json_atomic
 
 DATA_DIR = Path(os.environ.get("MINDER_DATA_DIR", "/data"))
 MONITOR_STATE_FILE = DATA_DIR / "monitor_state.json"
@@ -28,48 +29,54 @@ OPS_URL = os.environ.get("MINDER_API_URL", "http://localhost:80")
 INTERNAL_TOKEN_FILE = DATA_DIR / "internal_token"
 
 
-def write_alert(message: str, camera: str = "", snapshot_path: str = "",
-                video_path: str = "", event_id: str | None = None) -> str:
+def write_alert(
+    message: str,
+    camera: str = "",
+    snapshot_path: str = "",
+    video_path: str = "",
+    event_id: str | None = None,
+) -> str:
     """Write one alert to the Telegram queue (pending_alerts.json) and the
     dashboard log (events.json), using pre-captured media paths. Media capture
     is the caller's job — the YOLO path captures fresh RTSP frames, the Frigate
     path passes Frigate's snapshot/clip. Returns the event id."""
-    ts = datetime.datetime.now(datetime.timezone.utc)
+    ts = datetime.datetime.now(datetime.UTC)
     event_id = event_id or uuid.uuid4().hex[:8]
 
     alert_file = DATA_DIR / "pending_alerts.json"
     alerts = []
     if alert_file.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             alerts = json.loads(alert_file.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
-    alerts.append({
-        "message": message,
-        "camera": camera,
-        "timestamp": ts.isoformat(),
-        "snapshot_path": snapshot_path,
-        "video_path": video_path,
-    })
+    alerts.append(
+        {
+            "message": message,
+            "camera": camera,
+            "timestamp": ts.isoformat(),
+            "snapshot_path": snapshot_path,
+            "video_path": video_path,
+        }
+    )
     write_json_atomic(alert_file, alerts)
 
     events_file = DATA_DIR / "events.json"
     events = []
     if events_file.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             events = json.loads(events_file.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
-    events.insert(0, {
-        "id": event_id,
-        "timestamp": ts.isoformat(),
-        "camera": camera,
-        "condition": message,
-        "message": message,
-        "snapshot_path": snapshot_path,
-        "video_path": video_path,
-        "viewed": False,
-    })
+    events.insert(
+        0,
+        {
+            "id": event_id,
+            "timestamp": ts.isoformat(),
+            "camera": camera,
+            "condition": message,
+            "message": message,
+            "snapshot_path": snapshot_path,
+            "video_path": video_path,
+            "viewed": False,
+        },
+    )
     write_json_atomic(events_file, events[:500])
     return event_id
 

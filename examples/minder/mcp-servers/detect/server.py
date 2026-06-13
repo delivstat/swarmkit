@@ -5,6 +5,7 @@ This is the workhorse for monitoring and for "is anyone there" checks —
 purpose-built object detection, not a general vision-language model.
 """
 
+import contextlib
 import json
 import os
 import re
@@ -12,9 +13,8 @@ import subprocess
 import time
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
-
 import detector
+from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("minder-detect")
 
@@ -31,12 +31,17 @@ def _record_check(camera: str, condition: str, match: bool, scene: str) -> None:
     f = DATA_DIR / "vision_checks.json"
     checks = []
     if f.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             checks = json.loads(f.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
-    checks.append({"ts": time.time(), "camera": camera, "condition": condition,
-                   "match": match, "answer": scene})
+    checks.append(
+        {
+            "ts": time.time(),
+            "camera": camera,
+            "condition": condition,
+            "match": match,
+            "answer": scene,
+        }
+    )
     f.write_text(json.dumps(checks[-50:], indent=2))
 
 
@@ -74,9 +79,10 @@ def _fresh_snapshot(cam: dict) -> Path | None:
     url = cam["rtsp_url"].replace("rtsp://", f"rtsp://{CAM_USER}:{CAM_PASS}@")
     try:
         subprocess.run(
-            ["ffmpeg", "-rtsp_transport", "tcp", "-i", url,
-             "-frames:v", "1", "-y", str(out)],
-            capture_output=True, timeout=10)
+            ["ffmpeg", "-rtsp_transport", "tcp", "-i", url, "-frames:v", "1", "-y", str(out)],
+            capture_output=True,
+            timeout=10,
+        )
         if out.exists() and out.stat().st_size > 1000:
             return out
     except Exception:
@@ -101,13 +107,15 @@ def detect_people(camera: str) -> str:
 
     res = detector.detect(str(snap), want_classes=detector.PERSON_CLASSES)
     people = res["matched"]
-    return json.dumps({
-        "camera": cam.get("name", cam["ip"]),
-        "people": people,
-        "present": people > 0,
-        "confidence": res["best_confidence"],
-        "also_seen": detector.describe_counts(res["counts"]),
-    })
+    return json.dumps(
+        {
+            "camera": cam.get("name", cam["ip"]),
+            "people": people,
+            "present": people > 0,
+            "confidence": res["best_confidence"],
+            "also_seen": detector.describe_counts(res["counts"]),
+        }
+    )
 
 
 @mcp.tool()
@@ -130,14 +138,16 @@ def detect_objects(camera: str, looking_for: str = "person") -> str:
     cam_name = cam.get("name", cam["ip"])
     scene = detector.describe_counts(res["counts"])
     _record_check(cam_name, looking_for, res["matched"] > 0, scene)
-    return json.dumps({
-        "camera": cam_name,
-        "looking_for": looking_for,
-        "found": res["matched"] > 0,
-        "count": res["matched"],
-        "confidence_pct": int(res["best_confidence"] * 100),
-        "everything_seen": scene or "nothing",
-    })
+    return json.dumps(
+        {
+            "camera": cam_name,
+            "looking_for": looking_for,
+            "found": res["matched"] > 0,
+            "count": res["matched"],
+            "confidence_pct": int(res["best_confidence"] * 100),
+            "everything_seen": scene or "nothing",
+        }
+    )
 
 
 if __name__ == "__main__":

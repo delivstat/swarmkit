@@ -24,8 +24,10 @@ from typing import Literal
 from mcp.server.fastmcp import FastMCP
 
 sys.path.insert(0, "/app/mcp-servers")
-from _alert_sink import write_alert  # noqa: E402  (shared alert/event writer)
-from _atomic import write_json_atomic  # noqa: E402  (corruption-safe writes)
+import contextlib
+
+from _alert_sink import write_alert
+from _atomic import write_json_atomic
 
 mcp = FastMCP("minder-camera")
 
@@ -108,8 +110,9 @@ def _onvif_request(ip: str, path: str, body: str) -> str:
         "</soap:Envelope>"
     )
     conn = http.client.HTTPConnection(ip, 80, timeout=5)
-    conn.request("POST", path, body=soap,
-                 headers={"Content-Type": "application/soap+xml; charset=utf-8"})
+    conn.request(
+        "POST", path, body=soap, headers={"Content-Type": "application/soap+xml; charset=utf-8"}
+    )
     resp = conn.getresponse()
     result = resp.read().decode("utf-8", errors="replace")
     conn.close()
@@ -125,8 +128,7 @@ def _get_osd_name(ip: str) -> str:
         if text_match:
             return text_match.group(1).strip()
         # Fallback: look in VideoSourceConfiguration name
-        body2 = _onvif_request(ip, "/onvif/media_service",
-                               "<trt:GetVideoSourceConfigurations/>")
+        body2 = _onvif_request(ip, "/onvif/media_service", "<trt:GetVideoSourceConfigurations/>")
         name_match = re.search(r'<trt:VideoSourceConfiguration[^>]*Name="([^"]+)"', body2)
         if name_match:
             return name_match.group(1).strip()
@@ -145,7 +147,8 @@ def _probe_camera(ip: str) -> Camera | None:
             m = re.search(rf"<[^>]*{field}[^>]*>(.*?)</", body)
             if m:
                 attr = {"FirmwareVersion": "firmware", "SerialNumber": "serial"}.get(
-                    field, field.lower())
+                    field, field.lower()
+                )
                 setattr(cam, attr, m.group(1))
         cam.onvif = True
     except Exception:
@@ -186,9 +189,19 @@ def _capture_snapshot(cam: Camera) -> Path | None:
     authed_url = cam.rtsp_url.replace("rtsp://", f"rtsp://{CAM_USER}:{CAM_PASS}@")
     try:
         subprocess.run(
-            ["ffmpeg", "-rtsp_transport", "tcp", "-i", authed_url,
-             "-frames:v", "1", "-y", str(outpath)],
-            capture_output=True, timeout=10,
+            [
+                "ffmpeg",
+                "-rtsp_transport",
+                "tcp",
+                "-i",
+                authed_url,
+                "-frames:v",
+                "1",
+                "-y",
+                str(outpath),
+            ],
+            capture_output=True,
+            timeout=10,
         )
         if outpath.exists() and outpath.stat().st_size > 1000:
             return outpath
@@ -260,11 +273,15 @@ def discover_cameras(subnet: str = "") -> str:
 
     _save_cameras(cameras)
     # Return concise summary — full JSON overwhelms small models
-    summary = [f"{i+1}. {c.name or c.ip} — {c.manufacturer} {c.model}" for i, c in enumerate(cameras)]
-    return json.dumps({
-        "count": len(cameras),
-        "cameras": summary,
-    })
+    summary = [
+        f"{i + 1}. {c.name or c.ip} — {c.manufacturer} {c.model}" for i, c in enumerate(cameras)
+    ]
+    return json.dumps(
+        {
+            "count": len(cameras),
+            "cameras": summary,
+        }
+    )
 
 
 @mcp.tool()
@@ -273,15 +290,17 @@ def list_cameras() -> str:
     cameras = _load_cameras()
     summary = []
     for i, cam in enumerate(cameras, 1):
-        summary.append({
-            "index": i,
-            "ip": cam.ip,
-            "name": cam.name or "(unnamed)",
-            "manufacturer": cam.manufacturer,
-            "model": cam.model,
-            "osd_name": cam.osd_name,
-            "has_rtsp": bool(cam.rtsp_url),
-        })
+        summary.append(
+            {
+                "index": i,
+                "ip": cam.ip,
+                "name": cam.name or "(unnamed)",
+                "manufacturer": cam.manufacturer,
+                "model": cam.model,
+                "osd_name": cam.osd_name,
+                "has_rtsp": bool(cam.rtsp_url),
+            }
+        )
     return json.dumps(summary)
 
 
@@ -328,11 +347,13 @@ def capture_camera_snapshot(camera_identifier: str) -> str:
 
     snap = _capture_snapshot(target)
     if snap and snap.exists():
-        return json.dumps({
-            "status": "ok",
-            "camera": target.name or target.ip,
-            "path": str(snap),
-        })
+        return json.dumps(
+            {
+                "status": "ok",
+                "camera": target.name or target.ip,
+                "path": str(snap),
+            }
+        )
     return json.dumps({"status": "error", "message": "Failed to capture snapshot"})
 
 
@@ -360,15 +381,27 @@ def capture_video_clip(cam: Camera, duration: int = 8) -> Path | None:
     try:
         subprocess.run(
             [
-                "ffmpeg", "-rtsp_transport", "tcp",
-                "-i", authed_url,
-                "-t", str(duration),
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-                "-vf", "scale=640:-2",
+                "ffmpeg",
+                "-rtsp_transport",
+                "tcp",
+                "-i",
+                authed_url,
+                "-t",
+                str(duration),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "28",
+                "-vf",
+                "scale=640:-2",
                 "-an",
-                "-y", str(outpath),
+                "-y",
+                str(outpath),
             ],
-            capture_output=True, timeout=duration + 15,
+            capture_output=True,
+            timeout=duration + 15,
         )
         if outpath.exists() and outpath.stat().st_size > 5000:
             return outpath
@@ -387,14 +420,16 @@ def capture_camera_video(camera_identifier: str, duration: int = 8) -> str:
 
     clip = capture_video_clip(cam, duration)
     if clip and clip.exists():
-        return json.dumps({
-            "status": "ok",
-            "camera_ip": cam.ip,
-            "camera_name": cam.name,
-            "path": str(clip),
-            "duration": duration,
-            "size_kb": clip.stat().st_size // 1024,
-        })
+        return json.dumps(
+            {
+                "status": "ok",
+                "camera_ip": cam.ip,
+                "camera_name": cam.name,
+                "path": str(clip),
+                "duration": duration,
+                "size_kb": clip.stat().st_size // 1024,
+            }
+        )
     return json.dumps({"status": "error", "message": "Failed to capture video"})
 
 
@@ -421,6 +456,7 @@ def _create_alert(message: str, camera_name: str = "") -> str:
 
     if cam:
         import shutil as _shutil
+
         snap = _capture_snapshot(cam)
         if snap and snap.exists():
             event_snap = event_dir / "snapshot.jpg"
@@ -442,7 +478,7 @@ def _create_alert(message: str, camera_name: str = "") -> str:
 # YOLO object detector is shared with the detect MCP server.
 sys.path.insert(0, "/app/mcp-servers/detect")
 try:
-    import detector as _yolo  # noqa: PLC0415
+    import detector as _yolo
 except Exception:  # pragma: no cover - detector optional at import time
     _yolo = None
 
@@ -458,29 +494,41 @@ def _vision_condition(snapshot: Path, condition: str) -> tuple[bool, str]:
     if want:
         res = _yolo.detect(str(snapshot), want_classes=want)
         if res["matched"] > 0:
-            return True, f"detected {res['matched']} ({res['best_confidence']:.0%} conf); scene: {_yolo.describe_counts(res['counts'])}"
+            return (
+                True,
+                f"detected {res['matched']} ({res['best_confidence']:.0%} conf); scene: {_yolo.describe_counts(res['counts'])}",
+            )
         return False, f"none detected; scene: {_yolo.describe_counts(res['counts'])}"
 
     # Non-object condition → vision-language model
     img_b64 = base64.b64encode(snapshot.read_bytes()).decode()
-    payload = json.dumps({
-        "model": VISION_MODEL,
-        "prompt": f"Look at this security camera image. {condition}? Describe what you see.",
-        "images": [img_b64],
-        "stream": False,
-        "options": {"temperature": 0.1, "num_predict": 200},
-    }).encode()
+    payload = json.dumps(
+        {
+            "model": VISION_MODEL,
+            "prompt": f"Look at this security camera image. {condition}? Describe what you see.",
+            "images": [img_b64],
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 200},
+        }
+    ).encode()
     req = urllib.request.Request(
-        f"{OLLAMA_URL}/api/generate", data=payload,
-        headers={"Content-Type": "application/json"})
+        f"{OLLAMA_URL}/api/generate", data=payload, headers={"Content-Type": "application/json"}
+    )
     resp = urllib.request.urlopen(req, timeout=120)
     answer = json.loads(resp.read()).get("response", "").strip()
 
     low = answer.lower()
-    yes_signals = ["yes", "there is", "there are", "visible", "can see",
-                   "detected", "present", "appears to be"]
-    no_signals = ["no ", "not ", "cannot", "don't", "empty", "no one",
-                  "nobody", "none"]
+    yes_signals = [
+        "yes",
+        "there is",
+        "there are",
+        "visible",
+        "can see",
+        "detected",
+        "present",
+        "appears to be",
+    ]
+    no_signals = ["no ", "not ", "cannot", "don't", "empty", "no one", "nobody", "none"]
     match = any(s in low for s in yes_signals) and not any(s in low for s in no_signals)
     return match, answer
 
@@ -536,14 +584,23 @@ def _execute_device_action(device: str, action: str) -> str:
 
 
 ROUTES_FILE = DATA_DIR / "route_decisions.json"
-VALID_INTENTS = {"scenario", "vision", "snapshot", "video", "device",
-                 "device_list", "camera_list", "chat"}
+VALID_INTENTS = {
+    "scenario",
+    "vision",
+    "snapshot",
+    "video",
+    "device",
+    "device_list",
+    "camera_list",
+    "chat",
+}
 
 
 @mcp.tool()
 def route_request(
-    intent: Literal["scenario", "vision", "snapshot", "video",
-                    "device", "device_list", "camera_list", "chat"],
+    intent: Literal[
+        "scenario", "vision", "snapshot", "video", "device", "device_list", "camera_list", "chat"
+    ],
     cleaned_request: str = "",
 ) -> str:
     """Record what kind of request the user made so the right specialist
@@ -565,12 +622,9 @@ def route_request(
         intent = "chat"
     routes = []
     if ROUTES_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             routes = json.loads(ROUTES_FILE.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
-    routes.append({"ts": time.time(), "intent": intent,
-                   "cleaned_request": cleaned_request})
+    routes.append({"ts": time.time(), "intent": intent, "cleaned_request": cleaned_request})
     ROUTES_FILE.write_text(json.dumps(routes[-50:], indent=2))
     return json.dumps({"status": "ok", "intent": intent})
 
@@ -616,8 +670,9 @@ def create_monitoring_rule(
     """
     at_time = _normalize_time(at_time)
     if not (condition and condition.strip()) and not at_time:
-        return json.dumps({"status": "error",
-                           "message": "need a condition (vision rule) or at_time (time rule)"})
+        return json.dumps(
+            {"status": "error", "message": "need a condition (vision rule) or at_time (time rule)"}
+        )
 
     # Fuzzy-match camera against the inventory
     cam_name = "all"
@@ -654,19 +709,18 @@ def create_monitoring_rule(
 
     rules = []
     if RULES_FILE.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
             rules = json.loads(RULES_FILE.read_text())
-        except (json.JSONDecodeError, ValueError):
-            pass
 
     # Dedup — agents may call this tool repeatedly within one run
     for existing in rules:
-        if (existing.get("camera") == rule["camera"]
-                and existing.get("condition") == rule["condition"]
-                and existing.get("schedule") == rule["schedule"]
-                and existing.get("at_time", "") == rule["at_time"]):
-            return json.dumps({"status": "ok", "rule": existing,
-                               "note": "rule already exists"})
+        if (
+            existing.get("camera") == rule["camera"]
+            and existing.get("condition") == rule["condition"]
+            and existing.get("schedule") == rule["schedule"]
+            and existing.get("at_time", "") == rule["at_time"]
+        ):
+            return json.dumps({"status": "ok", "rule": existing, "note": "rule already exists"})
 
     rules.append(rule)
     write_json_atomic(RULES_FILE, rules)
@@ -687,8 +741,9 @@ def run_monitoring_rules(rules: str = "") -> str:
     except (json.JSONDecodeError, ValueError):
         return json.dumps({"status": "idle", "reason": "rules file unreadable"})
 
-    active = [r for r in rules
-              if r.get("enabled", True) and _schedule_active(r.get("schedule", "always"))]
+    active = [
+        r for r in rules if r.get("enabled", True) and _schedule_active(r.get("schedule", "always"))
+    ]
     if not active:
         return json.dumps({"status": "idle", "reason": "no active rules"})
 
@@ -734,7 +789,8 @@ def run_monitoring_rules(rules: str = "") -> str:
                     if act.get("type") == "device":
                         try:
                             action_notes.append(
-                                _execute_device_action(act["device"], act["action"]))
+                                _execute_device_action(act["device"], act["action"])
+                            )
                         except Exception as e:
                             action_notes.append(f"FAILED {act.get('device')}: {e}")
                 if any(a.get("type") == "alert" for a in rule.get("actions", [])) or action_notes:
@@ -748,8 +804,11 @@ def run_monitoring_rules(rules: str = "") -> str:
             if any(rc in ("all", "") for rc in rule_cams):
                 targets = cameras
             else:
-                targets = [c for c in cameras if any(
-                    rc in (c.name or "").lower() or c.ip == rc for rc in rule_cams)]
+                targets = [
+                    c
+                    for c in cameras
+                    if any(rc in (c.name or "").lower() or c.ip == rc for rc in rule_cams)
+                ]
             for cam in targets:
                 snap = _capture_snapshot(cam)
                 if not snap:
@@ -787,8 +846,7 @@ def run_monitoring_rules(rules: str = "") -> str:
         state["_running_since"] = 0
         write_json_atomic(MONITOR_STATE_FILE, state)
 
-    return json.dumps({"status": "ok", "checked": checked, "alerts": len(fired),
-                       "fired": fired})
+    return json.dumps({"status": "ok", "checked": checked, "alerts": len(fired), "fired": fired})
 
 
 if __name__ == "__main__":
