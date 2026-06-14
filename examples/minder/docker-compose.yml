@@ -113,6 +113,10 @@ services:
       - MINDER_MQTT=${MINDER_MQTT:-on}
       - MQTT_HOST=${MQTT_HOST:-localhost}
       - MQTT_PORT=${MQTT_PORT:-1883}
+      # Recording (motion-based, short retain) so alerts can include the event
+      # clip. Off -> snapshots only. Tune retain days for your disk.
+      - MINDER_RECORD=${MINDER_RECORD:-on}
+      - MINDER_RECORD_DAYS=${MINDER_RECORD_DAYS:-2}
       # Frigate genai crop-and-zoom enrichment (local VLM). "on" or "off".
       # OFF by default: genai runs the VLM on every tracked detection 24/7,
       # which contends for VRAM on a shared box and doesn't drive alerts (the

@@ -64,6 +64,10 @@ VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
 DESCRIBE_ENABLED = os.environ.get("MINDER_DESCRIBE", "on").lower() in ("on", "1", "true")
 DESCRIBE_TIMEOUT = int(os.environ.get("MINDER_DESCRIBE_TIMEOUT", "90"))
 DESCRIBE_NUM_GPU = int(os.environ.get("MINDER_VISION_NUM_GPU", "0"))
+# Recording: needed for event clips (Minder attaches the clip to alerts). Records
+# motion segments only (not 24/7) with a short retain, so disk stays bounded.
+RECORD_ENABLED = os.environ.get("MINDER_RECORD", "on").lower() in ("on", "1", "true")
+RECORD_DAYS = int(os.environ.get("MINDER_RECORD_DAYS", "2"))
 # Objects Frigate tracks per camera. Maps onto the same person/vehicle/animal
 # vocabulary Minder's scenarios use.
 TRACK_OBJECTS = ["person", "car", "dog", "cat"]
@@ -162,8 +166,11 @@ def _build_config(cameras: list[dict]) -> dict:
                 ]
             },
             "detect": {"enabled": True, "fps": 5},
-            "snapshots": {"enabled": True, "retain": {"default": 7}},
-            "record": {"enabled": False},
+            # bounding_box draws the detection box (+ label) on the stored event
+            # snapshot, which is what alerts attach. Default is True; set it
+            # explicitly so the alert image always carries the box.
+            "snapshots": {"enabled": True, "bounding_box": True, "retain": {"default": 7}},
+            "record": {"enabled": RECORD_ENABLED},
             "objects": objects,
         }
     config: dict = {
@@ -178,6 +185,15 @@ def _build_config(cameras: list[dict]) -> dict:
         "go2rtc": {"streams": streams},
         "cameras": cams,
     }
+    if RECORD_ENABLED:
+        # Frigate 0.17 record retention is per-kind (no top-level/camera `retain`).
+        # Keep only event segments — detections + alerts (tracked objects) — for
+        # RECORD_DAYS; no `continuous`, so disk stays bounded.
+        config["record"] = {
+            "enabled": True,
+            "detections": {"retain": {"days": RECORD_DAYS}},
+            "alerts": {"retain": {"days": RECORD_DAYS}},
+        }
     if GENAI_ENABLED:
         config["genai"] = {
             "provider": "ollama",
@@ -312,6 +328,8 @@ def _download(path: str, suffix: str, event_id: str) -> str:
 def get_event_snapshot(event_id: str) -> str:
     """Download a Frigate event's snapshot JPEG to local storage; returns its
     path (empty string if unavailable)."""
+    # The box is baked into the stored snapshot via snapshots.bounding_box (set
+    # in _build_config) — Frigate 0.17 ignores fetch-time bbox/crop params.
     return json.dumps({"path": _download(f"/api/events/{event_id}/snapshot.jpg", ".jpg", event_id)})
 
 
@@ -565,6 +583,10 @@ def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
     ref = ev.get("snapshot_ref") or ""
     if ref and ev.get("source") == "frigate":
         snapshot_path = json.loads(get_event_snapshot(ev["event_id"])).get("path", "")
+        # The event clip (raw recording — needs Frigate recording enabled). No
+        # bbox overlay on the clip; the box is only on the snapshot.
+        if ev.get("clip_ref"):
+            video_path = json.loads(get_event_clip(ev["event_id"])).get("path", "")
     elif ref and ev.get("source") == "ha":
         MEDIA_DIR.mkdir(parents=True, exist_ok=True)
         out = MEDIA_DIR / (ev["event_id"].replace(":", "_") + ".jpg")

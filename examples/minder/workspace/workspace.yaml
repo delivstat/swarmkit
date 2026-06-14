@@ -76,6 +76,9 @@ mcp_servers:
       # camera tiers, replacing Frigate genai.
       MINDER_DESCRIBE: "${MINDER_DESCRIBE}"
       MINDER_DESCRIBE_TIMEOUT: "${MINDER_DESCRIBE_TIMEOUT}"
+      # Recording for event clips (the config generator sets Frigate's record block).
+      MINDER_RECORD: "${MINDER_RECORD}"
+      MINDER_RECORD_DAYS: "${MINDER_RECORD_DAYS}"
 
 storage:
   checkpoints:
