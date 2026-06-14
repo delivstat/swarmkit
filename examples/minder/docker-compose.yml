@@ -11,6 +11,16 @@ services:
     environment:
       - TZ=Asia/Kolkata
 
+  # MQTT broker — Frigate publishes tracked-object events here; the Minder webapp
+  # subscribes for real-time alerting (replaces the up-to-60s poll lag). Host
+  # networking + localhost:1883, consistent with the rest of the stack.
+  mosquitto:
+    image: eclipse-mosquitto:2
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
   # Seeds the generic Frigate template into the config volume on first boot
   # only (never overwrites). Keeps the committed template pristine — the real
   # per-install config is generated into the volume by Minder's
@@ -35,6 +45,8 @@ services:
     depends_on:
       frigate-init:
         condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - frigate-config:/config
@@ -96,6 +108,11 @@ services:
       # YOLO monitor loop (monitor-cameras trigger) is disabled; set "shadow" to
       # roll back to parallel-run if needed.
       - MINDER_POLLER_ALERTS=${MINDER_POLLER_ALERTS:-live}
+      # Real-time alerts: Frigate -> mosquitto (frigate/events) -> webapp
+      # subscriber. The minute poller above stays as the reconcile backstop.
+      - MINDER_MQTT=${MINDER_MQTT:-on}
+      - MQTT_HOST=${MQTT_HOST:-localhost}
+      - MQTT_PORT=${MQTT_PORT:-1883}
       # Frigate genai crop-and-zoom enrichment (local VLM). "on" or "off".
       # OFF by default: genai runs the VLM on every tracked detection 24/7,
       # which contends for VRAM on a shared box and doesn't drive alerts (the

@@ -67,6 +67,11 @@ mcp_servers:
       # shadow = log would-be alerts only (parallel-run with the YOLO loop);
       # flip to "live" at the Phase 2b cutover once shadow data confirms parity.
       MINDER_POLLER_ALERTS: "${MINDER_POLLER_ALERTS}"
+      # MQTT push: the frigate config generator (_build_config) enables Frigate's
+      # mqtt block pointed at the mosquitto broker on localhost.
+      MINDER_MQTT: "${MINDER_MQTT}"
+      MQTT_HOST: "${MQTT_HOST}"
+      MQTT_PORT: "${MQTT_PORT}"
 
 storage:
   checkpoints:
