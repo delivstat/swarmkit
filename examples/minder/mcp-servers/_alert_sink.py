@@ -9,6 +9,7 @@ it without pulling in the other's module-level app.
 """
 
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -19,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, "/app/mcp-servers")
 import contextlib
+from collections.abc import Iterator
 
 from _atomic import write_json_atomic
 
@@ -27,6 +29,25 @@ MONITOR_STATE_FILE = DATA_DIR / "monitor_state.json"
 ALERT_COOLDOWN_S = int(os.environ.get("MINDER_ALERT_COOLDOWN", "600"))
 OPS_URL = os.environ.get("MINDER_API_URL", "http://localhost:80")
 INTERNAL_TOKEN_FILE = DATA_DIR / "internal_token"
+_ALERT_LOCK_FILE = DATA_DIR / ".alert.lock"
+
+
+@contextlib.contextmanager
+def _alert_lock() -> Iterator[None]:
+    """Serialize the alert/event read-modify-write across all writers — the cron
+    poller (its own subprocess), the webapp's MQTT subscriber, and the per-event
+    background media threads all call write_alert, and a bare read→append→write
+    would drop alerts under that concurrency. flock over a sidecar file makes the
+    whole append atomic across threads and processes (Linux/Unix deploy target)."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    lock = _ALERT_LOCK_FILE.open("w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            fcntl.flock(lock, fcntl.LOCK_UN)
+        lock.close()
 
 
 def write_alert(
@@ -43,41 +64,42 @@ def write_alert(
     ts = datetime.datetime.now(datetime.UTC)
     event_id = event_id or uuid.uuid4().hex[:8]
 
-    alert_file = DATA_DIR / "pending_alerts.json"
-    alerts = []
-    if alert_file.exists():
-        with contextlib.suppress(json.JSONDecodeError, ValueError):
-            alerts = json.loads(alert_file.read_text())
-    alerts.append(
-        {
-            "message": message,
-            "camera": camera,
-            "timestamp": ts.isoformat(),
-            "snapshot_path": snapshot_path,
-            "video_path": video_path,
-        }
-    )
-    write_json_atomic(alert_file, alerts)
+    with _alert_lock():
+        alert_file = DATA_DIR / "pending_alerts.json"
+        alerts = []
+        if alert_file.exists():
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                alerts = json.loads(alert_file.read_text())
+        alerts.append(
+            {
+                "message": message,
+                "camera": camera,
+                "timestamp": ts.isoformat(),
+                "snapshot_path": snapshot_path,
+                "video_path": video_path,
+            }
+        )
+        write_json_atomic(alert_file, alerts)
 
-    events_file = DATA_DIR / "events.json"
-    events = []
-    if events_file.exists():
-        with contextlib.suppress(json.JSONDecodeError, ValueError):
-            events = json.loads(events_file.read_text())
-    events.insert(
-        0,
-        {
-            "id": event_id,
-            "timestamp": ts.isoformat(),
-            "camera": camera,
-            "condition": message,
-            "message": message,
-            "snapshot_path": snapshot_path,
-            "video_path": video_path,
-            "viewed": False,
-        },
-    )
-    write_json_atomic(events_file, events[:500])
+        events_file = DATA_DIR / "events.json"
+        events = []
+        if events_file.exists():
+            with contextlib.suppress(json.JSONDecodeError, ValueError):
+                events = json.loads(events_file.read_text())
+        events.insert(
+            0,
+            {
+                "id": event_id,
+                "timestamp": ts.isoformat(),
+                "camera": camera,
+                "condition": message,
+                "message": message,
+                "snapshot_path": snapshot_path,
+                "video_path": video_path,
+                "viewed": False,
+            },
+        )
+        write_json_atomic(events_file, events[:500])
     return event_id
 
 

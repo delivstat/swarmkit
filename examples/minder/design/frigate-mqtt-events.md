@@ -90,10 +90,43 @@ Terminal: `mosquitto_pub -t frigate/events -m '<synthetic person@gate>'` →
 alert appears in `/api/ops/alerts` within ~1s. Plus a live walk-past showing the
 alert arriving in ~seconds instead of up to a minute.
 
+## Addendum — media when ready (fix)
+
+The MQTT event fires on `type:"new"`, **before** Frigate has written the event
+snapshot (`has_snapshot=false` at that instant), and the recorded **clip only
+exists once the event ends**. So `_normalize` produced empty `snapshot_ref` /
+`clip_ref` and the alert went out with no media — the regression vs the poller
+path, which only ever sees `has_snapshot=1`-filtered (already-ready) events.
+
+Fix: **decouple the text alert from the media.** `_fire` writes the text alert
+instantly, then hands off to `_deliver_event_media(event_id, cam)` — a daemon
+thread (never blocks the alert path) that:
+
+1. polls `get_event_snapshot` until it returns a path or `SNAPSHOT_WAIT_S` (20s);
+   on success sends the boxed photo as a **media-only follow-up** (empty message,
+   so the bot skips a duplicate 🚨 bubble);
+2. runs the VLM description on that snapshot → a `📷 cam: …` follow-up (warm
+   ~9s; the 90s timeout returns "" gracefully — first event after a restart gets
+   no description, snapshot + clip still arrive);
+3. if recording is on, polls `get_event_clip` until ready or `CLIP_WAIT_S` (90s)
+   → sends the clip.
+
+This unifies the #318 (describe) and #319 (clip) enrichments under one "wait for
+the media, then send it" path; both needed the not-yet-ready snapshot. The
+HA-snapshot tier (`_deliver_ha_media`) pulls a live frame synchronously (no clip)
+and is otherwise identical. The poller path is unchanged in shape — its events
+already have media, so the follow-ups arrive immediately.
+
+The Telegram message sequence per event: **text alert → photo → description →
+clip**, each as it materialises.
+
 ## Open questions
 
-- `monitor_state.json` is written by both the subscriber (webapp process) and the
-  cron poller (serve process) — concurrent writes can clobber a cooldown delta
-  (low risk: 10min cooldown, atomic writes). File-lock if it proves flaky.
+- ~~Concurrent writes to the alert queue~~ **(resolved)**: the per-event media
+  threads, the webapp MQTT subscriber, and the cron poller all call `write_alert`,
+  so the read-modify-write of `pending_alerts.json` / `events.json` is now guarded
+  by an `flock` over a sidecar lock file (`_alert_sink._alert_lock`), atomic across
+  threads and processes. `monitor_state.json` (cooldown deltas) is still bare
+  atomic-write — low risk (10min cooldown); file-lock it too if it proves flaky.
 - Auth: broker is anonymous on the host. Fine for a single-box appliance; add
   credentials if the broker is ever exposed.
