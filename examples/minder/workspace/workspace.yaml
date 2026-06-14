@@ -72,6 +72,10 @@ mcp_servers:
       MINDER_MQTT: "${MINDER_MQTT}"
       MQTT_HOST: "${MQTT_HOST}"
       MQTT_PORT: "${MQTT_PORT}"
+      # Post-match VLM description (on alert) — Minder's own enrichment for both
+      # camera tiers, replacing Frigate genai.
+      MINDER_DESCRIBE: "${MINDER_DESCRIBE}"
+      MINDER_DESCRIBE_TIMEOUT: "${MINDER_DESCRIBE_TIMEOUT}"
 
 storage:
   checkpoints:
