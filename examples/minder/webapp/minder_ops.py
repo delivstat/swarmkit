@@ -1297,8 +1297,9 @@ def _cameras_configured() -> bool:
 
 
 ROUTES_FILE = DATA_DIR / "route_decisions.json"
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-ROUTER_MODEL = os.environ.get("MINDER_REASONING_MODEL", "llama3.2:3b")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+ROUTER_MODEL = os.environ.get("MINDER_REASONING_MODEL", "qwen2.5:3b")
+VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
 
 _INTENTS = [
     "scenario",
@@ -1470,6 +1471,154 @@ def _resolve_cameras(plan: dict) -> list[str]:
     return deduped or names
 
 
+# ---- Deterministic vision execution ----
+# The router already parsed camera + subject; the backend runs YOLO/VLM directly.
+# No agent: small models can't reliably orchestrate the tool call (proven), but
+# YOLO and a single VLM call are deterministic code.
+
+_detector_mod: ModuleType | None = None
+
+
+def _yolo() -> ModuleType:
+    """Lazy-import the shared YOLO detector (model itself loads on first detect)."""
+    global _detector_mod
+    if _detector_mod is None:
+        sys.path.insert(0, "/app/mcp-servers/detect")
+        import detector as d
+
+        _detector_mod = d
+    return _detector_mod
+
+
+def _subject_classes(subject: str) -> set | None:
+    d = _yolo()
+    return {
+        "person": d.PERSON_CLASSES,
+        "vehicle": d.VEHICLE_CLASSES,
+        "animal": d.ANIMAL_CLASSES,
+    }.get(subject)
+
+
+def _grab_frame(camera: str) -> Path | None:
+    """Fetch the camera's current frame deterministically and save it to the
+    snapshot dir (so collect_media_since picks it up). Frigate tier → latest.jpg."""
+    cam = next(
+        (
+            c
+            for c in _load_cameras()
+            if (c.get("name") or "").lower() == camera.lower() or c.get("ip") == camera
+        ),
+        None,
+    )
+    if not cam:
+        return None
+    name = cam.get("name") or cam["ip"]
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    dest = SNAPSHOT_DIR / f"{cam['ip'].replace('.', '_')}.jpg"
+    try:
+        data = urllib.request.urlopen(f"{FRIGATE_URL}/api/{slug}/latest.jpg", timeout=8).read()
+        if data[:2] == b"\xff\xd8":
+            SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+            return dest
+    except Exception:
+        pass
+    return None
+
+
+def _vlm_answer(frame_b64: str, question: str) -> str:
+    """One direct VLM (llava-phi3, CPU) call for an open-scene question."""
+    payload = json.dumps(
+        {
+            "model": VISION_MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Look at this security camera image. {question or 'What do you see?'} "
+                    "Answer in one short, factual sentence.",
+                    "images": [frame_b64],
+                }
+            ],
+            "stream": False,
+            "think": False,
+            "keep_alive": -1,
+            "options": {"temperature": 0.1, "num_predict": 120, "num_gpu": 0},
+        }
+    ).encode()
+    try:
+        req = urllib.request.Request(
+            f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"}
+        )
+        r = json.loads(urllib.request.urlopen(req, timeout=200).read())
+        return (r.get("message", {}).get("content") or "").strip()
+    except Exception:
+        return ""
+
+
+def _run_vision_checks(
+    cams: list[str], subject: str, question: str, open_scene: bool
+) -> list[dict]:
+    """Per camera: grab a frame, then YOLO (objects) or the VLM (open scene).
+    Synchronous — call via asyncio.to_thread."""
+    import base64
+
+    d = _yolo()
+    results: list[dict] = []
+    for cam in cams:
+        frame = _grab_frame(cam)
+        if not frame:
+            results.append({"camera": cam, "error": "no frame"})
+            continue
+        if open_scene:
+            ans = _vlm_answer(base64.b64encode(frame.read_bytes()).decode(), question)
+            results.append({"camera": cam, "open": True, "answer": ans})
+        else:
+            want = _subject_classes(subject) or d.classes_for_condition(question or subject)
+            res = d.detect(str(frame), want_classes=want)
+            results.append(
+                {
+                    "camera": cam,
+                    "match": res["matched"] > 0,
+                    "count": res["matched"],
+                    "scene": d.describe_counts(res["counts"]),
+                }
+            )
+    return results
+
+
+async def _dispatch_query(plan: dict, started: float) -> dict:
+    """Deterministic vision query: YOLO for person/vehicle/animal, VLM for open
+    scene questions, on the camera(s) the router resolved. No agent."""
+    cams = _resolve_cameras(plan)
+    if not cams:
+        return _envelope("vision", "No cameras are configured yet. Send /start to set them up.")
+    subject = (plan.get("subject") or "").lower()
+    question = plan.get("condition") or ""
+    open_scene = subject == "open" or (
+        subject not in ("person", "vehicle", "animal") and _subject_classes(subject) is None
+    )
+    results = await asyncio.to_thread(_run_vision_checks, cams, subject, question, open_scene)
+    media = collect_media_since(started)
+
+    if open_scene:
+        r = next((x for x in results if x.get("answer")), None)
+        cam = (r or results[0]).get("camera", "the camera")
+        ans = (r or {}).get("answer")
+        text = f"📷 {cam}: {ans}" if ans else f"📷 {cam}: I couldn't get a clear read on that."
+        return _envelope("vision", text, media=media)
+
+    subj = subject if subject in ("person", "vehicle", "animal") else "person"
+    checked = [r for r in results if "match" in r]
+    if not checked:
+        return _envelope("vision", "I couldn't capture from that camera right now.", media=media)
+    hits = [r for r in checked if r["match"]]
+    if hits:
+        where = ", ".join(r["camera"] for r in hits)
+        return _envelope("vision", f"🔴 Yes — {subj} at {where}.", media=media)
+    spot = checked[0]["camera"] if len(checked) == 1 else f"{len(checked)} cameras"
+    return _envelope("vision", f"🟢 All clear — no {subj} on {spot} right now.", media=media)
+
+
 async def handle_message(
     text: str, source: str = "default", sender: str = "", kind: str | None = None
 ) -> dict:
@@ -1518,7 +1667,20 @@ async def handle_message(
     if kind == "camera_list":
         return await asyncio.to_thread(list_cameras)
 
+    if kind == "vision" and plan:
+        # Deterministic execution: the router parsed camera + subject; run
+        # YOLO/VLM directly (no agent — proven unreliable at the tool call).
+        if not _cameras_configured():
+            return _envelope(
+                "error",
+                "No cameras configured yet. Send /start to discover cameras, "
+                "or set them up at http://minder.local",
+            )
+        return await _dispatch_query(plan, started)
+
     if kind in ("vision", "snapshot", "video"):
+        # Serve-down fallback for vision (no plan); snapshot/video still go
+        # through the agent for now (Phase 3 makes them deterministic too).
         if not _cameras_configured():
             return _envelope(
                 "error",
@@ -1528,13 +1690,6 @@ async def handle_message(
 
         context = build_context()
         enriched = f"{context}\n\n{text}" if context else text
-        # The router already resolved which camera(s) the user means (zone-aware:
-        # "outside" -> outdoor cams, "the gate" -> the gate camera). Pass that
-        # through so the specialist targets the right camera instead of guessing.
-        if plan:
-            cams = _resolve_cameras(plan)
-            if cams and len(cams) < len(_load_cameras()):
-                enriched += "\n\nFocus on camera(s): " + ", ".join(cams)
         topology = {
             "vision": "minder-vision",
             "snapshot": "minder-snapshot",
