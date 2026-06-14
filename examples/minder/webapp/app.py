@@ -94,6 +94,18 @@ async def _ensure_internal_token() -> None:
 
 
 @app.on_event("startup")
+async def _start_mqtt() -> None:
+    """Real-time camera alerts: subscribe to Frigate's MQTT events. Backgrounded;
+    the minute poller remains the reconcile backstop if this is off/unavailable."""
+    try:
+        from mqtt_listener import start_mqtt_listener
+
+        start_mqtt_listener()
+    except Exception as e:
+        print(f"[mqtt] startup hook failed: {e}", flush=True)
+
+
+@app.on_event("startup")
 async def _startup_recovery() -> None:
     """On boot: DIAGNOSE only (never auto-fix — fixes are human-gated). If a
     precious file is corrupt/missing, raise an approval-request alert; the human

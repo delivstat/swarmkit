@@ -46,6 +46,11 @@ CURSOR_FILE = DATA_DIR / "frigate_cursor.json"
 SHADOW_FILE = DATA_DIR / "poller_shadow.json"
 # "shadow" = log would-be alerts only (parallel-run safety); "live" = fire them.
 POLLER_MODE = os.environ.get("MINDER_POLLER_ALERTS", "shadow").lower()
+# MQTT event push: Frigate publishes to mosquitto; the webapp subscribes and
+# reacts in real time. The minute poller stays as the reconcile backstop.
+MQTT_ENABLED = os.environ.get("MINDER_MQTT", "on").lower() in ("on", "1", "true")
+MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 # Objects Frigate tracks per camera. Maps onto the same person/vehicle/animal
 # vocabulary Minder's scenarios use.
 TRACK_OBJECTS = ["person", "car", "dog", "cat"]
@@ -151,7 +156,13 @@ def _build_config(cameras: list[dict]) -> dict:
             "objects": objects,
         }
     config: dict = {
-        "mqtt": {"enabled": False},
+        # Publish tracked-object events to mosquitto so Minder reacts in real time
+        # (the webapp MQTT subscriber), instead of waiting for the minute poller.
+        "mqtt": (
+            {"enabled": True, "host": MQTT_HOST, "port": MQTT_PORT}
+            if MQTT_ENABLED
+            else {"enabled": False}
+        ),
         "detectors": {"cpu1": {"type": "cpu"}},
         "go2rtc": {"streams": streams},
         "cameras": cams,
@@ -547,6 +558,78 @@ def _run_time_rules(active: list[dict], state: dict, now: float, live: bool) -> 
     return fired
 
 
+def _active_rules(rules: list[dict]) -> list[dict]:
+    return [
+        r
+        for r in rules
+        if r.get("enabled", True)
+        and r.get("target") != "ha"
+        and schedule_active(r.get("schedule", "always"))
+    ]
+
+
+def _match_and_fire_event(
+    ev: dict, active: list[dict], state: dict, now: float, live: bool
+) -> dict | None:
+    """Match ONE normalized event against the active rules and fire the first
+    match (object label + camera + cooldown). Mutates `state` (cooldown). Shared
+    by the cron poller and the MQTT subscriber so they never double-fire."""
+    for rule in active:
+        if rule.get("at_time"):
+            continue  # time rules handled separately
+        if not _camera_match(_rule_cameras(rule), ev["camera"]):
+            continue
+        labels = _condition_to_labels(rule.get("condition", ""))
+        if not labels:
+            continue  # non-object condition → not answerable from the stream
+        if ev["label"] not in labels:
+            continue
+        key = f"{ev['camera']}|{rule.get('condition')}"
+        if now - state.get(key, 0) < ALERT_COOLDOWN_S:
+            continue
+        state[key] = now
+        return {"camera": ev["camera"], "label": ev["label"], "mode": _fire(rule, ev, now, live)}
+    return None
+
+
+def _normalize_mqtt(after: dict, slug2name: dict[str, str]) -> dict:
+    """Frigate's MQTT 'after' object → the normalized event shape (_normalize
+    expects REST field names; MQTT uses current_zones instead of zones)."""
+    a = dict(after)
+    if "zones" not in a and "current_zones" in a:
+        a["zones"] = a.get("current_zones")
+    return _normalize(a, slug2name)
+
+
+def handle_live_event(after: dict) -> dict | None:
+    """Process one Frigate MQTT event (the 'after' object): load active rules +
+    shared state, dedupe by event id, match + fire. Returns the fired info or
+    None. Called by the webapp's MQTT subscriber for real-time alerting."""
+    if not after.get("id") or not after.get("label"):
+        return None
+    if not RULES_FILE.exists():
+        return None
+    try:
+        rules = json.loads(RULES_FILE.read_text())
+    except (json.JSONDecodeError, ValueError):
+        return None
+    now = time.time()
+    live = POLLER_MODE == "live"
+    active = _active_rules(rules)
+    if not active:
+        return None
+    ev = _normalize_mqtt(after, _slug_to_name())
+    state = load_monitor_state()
+    seen = set(state.get("_frigate_seen", []))
+    if ev["event_id"] in seen:
+        return None
+    seen.add(ev["event_id"])
+    fired = _match_and_fire_event(ev, active, state, now, live)
+    state["_frigate_seen"] = list(seen)[-500:]
+    save_monitor_state(state)
+    return fired
+
+
 @mcp.tool()
 def poll_events() -> str:
     """Poll Frigate for new events and apply the monitoring scenarios — the
@@ -562,13 +645,7 @@ def poll_events() -> str:
     except (json.JSONDecodeError, ValueError):
         return json.dumps({"status": "idle", "reason": "rules unreadable"})
     # target=="ha" rules are compiled to native HA automations — HA fires them.
-    active = [
-        r
-        for r in rules
-        if r.get("enabled", True)
-        and r.get("target") != "ha"
-        and schedule_active(r.get("schedule", "always"))
-    ]
+    active = _active_rules(rules)
 
     now = time.time()
     cursor = now - 120.0
@@ -592,24 +669,9 @@ def poll_events() -> str:
         if ev["event_id"] in seen:
             continue
         seen.add(ev["event_id"])
-        for rule in active:
-            if rule.get("at_time"):
-                continue  # time rules handled separately
-            if not _camera_match(_rule_cameras(rule), ev["camera"]):
-                continue
-            labels = _condition_to_labels(rule.get("condition", ""))
-            if labels and ev["label"] not in labels:
-                continue
-            if not labels:
-                continue  # non-object condition → not answerable from the stream
-            key = f"{ev['camera']}|{rule.get('condition')}"
-            if now - state.get(key, 0) < ALERT_COOLDOWN_S:
-                continue
-            state[key] = now
-            fired.append(
-                {"camera": ev["camera"], "label": ev["label"], "mode": _fire(rule, ev, now, live)}
-            )
-            break  # one rule per event
+        fired_one = _match_and_fire_event(ev, active, state, now, live)
+        if fired_one:
+            fired.append(fired_one)
 
     time_fired = _run_time_rules(active, state, now, live)
     state["_frigate_seen"] = list(seen)[-500:]

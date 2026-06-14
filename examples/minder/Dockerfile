@@ -26,7 +26,8 @@ RUN uv pip install --system \
     mcp \
     fastapi \
     uvicorn[standard] \
-    qrcode[pil]
+    qrcode[pil] \
+    "paho-mqtt==2.1.0"
 
 # Object detection (YOLO) — CPU-only torch to keep the image lean and avoid
 # CUDA in-container. Pre-download the nano weights so first run is offline.
