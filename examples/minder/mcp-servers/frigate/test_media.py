@@ -36,6 +36,34 @@ def _capture_alerts(monkeypatch_target):
     return calls
 
 
+def test_describe_prompt_grounded():
+    # the prompt anchors to the detected object and forbids the fabrication moves
+    # that produced "person in a red shirt" / "plate 960142" on a car detection
+    car = f._describe_prompt("car")
+    assert "vehicle" in car and "Describe only that vehicle" in car
+    for ban in ("licence plate", "not clearly visible", "do NOT guess how many", "ONE short"):
+        assert ban in car, ban
+    # person/animal map through; unknown/empty label → generic, still constrained
+    assert "person" in f._describe_prompt("person")
+    assert "animal" in f._describe_prompt("dog")
+    generic = f._describe_prompt("")
+    assert "clearly visible" in generic and "licence plate" in generic
+    print("ok  _describe_prompt grounded + fabrication-forbidden")
+
+
+def test_describe_prompt_alert_cause():
+    # the alert's cause (camera + watch condition) is fed to the model, with a
+    # guard against simply restating the condition
+    p = f._describe_prompt("car", cam="Main Gate", condition="is there a car")
+    assert "on the Main Gate camera" in p
+    assert 'watching for: "is there a car"' in p
+    assert "do not simply restate the watch condition" in p
+    # no cause given → no camera/watch clauses leak in
+    bare = f._describe_prompt("car")
+    assert "camera detected a vehicle" in bare and "watching for" not in bare
+    print("ok  _describe_prompt feeds alert cause (camera + condition)")
+
+
 def test_await_media_ready():
     # path present on the first fetch → returned immediately
     assert f._await_media(lambda: json.dumps({"path": "/data/x.jpg"}), 5) == "/data/x.jpg"
@@ -61,7 +89,9 @@ def test_deliver_event_media_full():
     f.RECORD_ENABLED = True
     f.get_event_snapshot = lambda eid: json.dumps({"path": "/data/evt.jpg"})  # type: ignore
     f.get_event_clip = lambda eid: json.dumps({"path": "/data/evt.mp4"})  # type: ignore
-    f._describe_snapshot = lambda p: "a person in a red jacket at the door"  # type: ignore
+    f._describe_snapshot = lambda p, label="", cam="", condition="": (  # type: ignore
+        "a person in a red jacket at the door"
+    )
     calls = _capture_alerts(f)
 
     f._deliver_event_media("evt1", "Front Door")
@@ -109,8 +139,10 @@ def test_deliver_event_media_describe_off():
 def test_fire_frigate_instant_text_then_media():
     f.threading.Thread = _SyncThread  # type: ignore
     dispatched: list[tuple] = []
-    f._deliver_event_media = lambda eid, cam: dispatched.append(("frigate", eid, cam))  # type: ignore
-    f._deliver_ha_media = lambda ev, cam: dispatched.append(("ha", cam))  # type: ignore
+    f._deliver_event_media = lambda eid, cam, label="", condition="": dispatched.append(
+        ("frigate", eid, cam, label)
+    )  # type: ignore
+    f._deliver_ha_media = lambda ev, cam, condition="": dispatched.append(("ha", cam))  # type: ignore
     calls = _capture_alerts(f)
 
     ev = {"source": "frigate", "event_id": "e9", "camera": "Front Door", "label": "person"}
@@ -120,16 +152,18 @@ def test_fire_frigate_instant_text_then_media():
     assert mode == "live"
     # instant text alert, no media attached inline
     assert calls == [("is there a person — Front Door", "Front Door", "", "")], calls
-    # media delivery dispatched to the frigate path only
-    assert dispatched == [("frigate", "e9", "Front Door")], dispatched
+    # media delivery dispatched to the frigate path only, with YOLO's label
+    assert dispatched == [("frigate", "e9", "Front Door", "person")], dispatched
     print("ok  _fire frigate: instant text + frigate media dispatch")
 
 
 def test_fire_ha_dispatch():
     f.threading.Thread = _SyncThread  # type: ignore
     dispatched: list[tuple] = []
-    f._deliver_event_media = lambda eid, cam: dispatched.append(("frigate", eid, cam))  # type: ignore
-    f._deliver_ha_media = lambda ev, cam: dispatched.append(("ha", cam))  # type: ignore
+    f._deliver_event_media = lambda eid, cam, label="", condition="": dispatched.append(
+        ("frigate", eid, cam, label)
+    )  # type: ignore
+    f._deliver_ha_media = lambda ev, cam, condition="": dispatched.append(("ha", cam))  # type: ignore
     calls = _capture_alerts(f)
 
     ev = {"source": "ha", "event_id": "ha:cam.x", "camera": "Living Room", "label": "person"}
@@ -145,7 +179,7 @@ def test_fire_shadow_no_alert():
     captured: list[dict] = []
     f._record_shadow = captured.append  # type: ignore
     calls = _capture_alerts(f)
-    f._deliver_event_media = lambda eid, cam: calls.append(("MEDIA",))  # type: ignore
+    f._deliver_event_media = lambda eid, cam, label="", condition="": calls.append(("MEDIA",))  # type: ignore
 
     ev = {"source": "frigate", "event_id": "e", "camera": "Gate", "label": "person"}
     rule = {"condition": "person at gate", "actions": [{"type": "alert"}]}
@@ -159,7 +193,7 @@ def test_fire_shadow_no_alert():
 
 def test_fire_device_action_note():
     f.threading.Thread = _SyncThread  # type: ignore
-    f._deliver_event_media = lambda eid, cam: None  # type: ignore
+    f._deliver_event_media = lambda eid, cam, label="", condition="": None  # type: ignore
     f.execute_device_action = lambda device, action: f"turned {action} {device}"  # type: ignore
     calls = _capture_alerts(f)
 
@@ -176,6 +210,8 @@ def test_fire_device_action_note():
 
 
 if __name__ == "__main__":
+    test_describe_prompt_grounded()
+    test_describe_prompt_alert_cause()
     test_await_media_ready()
     test_await_media_timeout()
     test_deliver_event_media_full()

@@ -95,15 +95,20 @@ services:
       # router can be swapped/placed independently if ever needed.
       - MINDER_ROUTER_PROVIDER=${MINDER_ROUTER_PROVIDER:-ollama}
       - MINDER_ROUTER_MODEL=${MINDER_ROUTER_MODEL:-qwen2.5:3b}
-      # llava-phi3 (3.8B): the on-demand VLM. It does NOT hallucinate people
-      # (moondream did — fatal for security) and warm it answers in ~5s on CPU.
-      # The VLM runs on CPU/RAM (num_gpu=0, kept warm — see vision server) so it
-      # never contends with llama3.2 for VRAM; on this box GPU model-loading
-      # thrashes (100-240s). minicpm-v (8B) and qwen2.5vl (3B) are too slow for
-      # CPU image inference (>300s); on a dedicated-GPU appliance use qwen2.5vl:3b
-      # on the GPU. NOTE: object presence (person/car/animal) uses YOLO, not the
-      # VLM — the VLM is only for open scene questions ("is the gate open").
-      - MINDER_VISION_MODEL=${MINDER_VISION_MODEL:-llava-phi3}
+      # qwen2.5vl:3b (3.8B): the on-demand VLM. Chosen on a CPU benchmark
+      # (scripts/vlm_bench.py) over the low-res 352x288 detect-stream snapshot with
+      # the grounded prompt: it gives a specific, grounded one-liner ("a dark sedan
+      # partially obscured by a garage door") in ~70s, vs llava-phi3's vague "a car
+      # in the garage" and granite3.2-vision's same-quality-but-141s. (At low res
+      # it's ~70s, not the >300s seen on full-frame input — so we keep snapshots
+      # low-res.) The VLM runs on CPU/RAM (num_gpu=0, kept warm) so it never
+      # contends with the reasoning model for the 4GB GPU; only qwen2.5:3b is
+      # resident there. NOTE: object presence (person/car/animal) is YOLO's job,
+      # not the VLM's — the VLM only describes the alert snapshot / answers open
+      # scene questions, and is hard-grounded + plate/identity-forbidden so a small
+      # model can't fabricate (see _describe_prompt). moondream hallucinated people
+      # — fatal for security — so it's out regardless of speed.
+      - MINDER_VISION_MODEL=${MINDER_VISION_MODEL:-qwen2.5vl:3b}
       # Frigate event poller is the live alert source (Phase 2b cutover). The
       # YOLO monitor loop (monitor-cameras trigger) is disabled; set "shadow" to
       # roll back to parallel-run if needed.

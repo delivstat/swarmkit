@@ -511,33 +511,62 @@ def _record_shadow(entry: dict) -> None:
     SHADOW_FILE.write_text(json.dumps(rows[-200:], indent=2))
 
 
-def _describe_snapshot(path: str) -> str:
-    """Describe an alert snapshot with the local VLM (Ollama). Mirrors Frigate's
-    genai handling: a generous timeout, graceful empty string on ANY failure (the
-    alert already fired — the description is additive). Runs on CPU by default."""
+# What YOLO actually detected, in words the VLM should describe. Grounding the
+# prompt in the detected object stops a small VLM inventing entities that aren't
+# there (it described "a person in a red shirt" on a car-only detection).
+_SUBJECT = {"car": "vehicle", "person": "person", "dog": "animal", "cat": "animal"}
+
+
+def _describe_prompt(label: str, cam: str = "", condition: str = "") -> str:
+    """A grounded, conservative instruction. The snapshot is the low-res detect
+    stream (~352x288), so a VLM asked open-endedly fabricates confident specifics
+    — it invents people/counts and "reads" licence plates it cannot resolve. The
+    CPU benchmark (scripts/vlm_bench.py) confirmed: the open prompt reproduces the
+    hallucination on every model; this grounded one removes it. So: anchor to what
+    YOLO detected (and where, and which watch-rule fired — the alert's cause, which
+    orients the model), forbid the fabrication-prone moves, ask for ONE sentence."""
+    subject = _SUBJECT.get(label, "")
+    where = f" on the {cam} camera" if cam else ""
+    lead = (
+        f"A home security camera{where} detected a {subject}. Describe only that {subject}"
+        if subject
+        else f"Describe only what is clearly visible in this security camera image{where}"
+    )
+    cause = f' The camera is watching for: "{condition}".' if condition else ""
+    return (
+        f"You are a home security assistant.{cause} {lead}, in ONE short, factual "
+        "sentence (plain prose, no preamble, no list). State only what is clearly "
+        "visible — colour, type, and rough position. Do NOT read, guess, or mention "
+        "any licence plate, text, sign, or number. Do NOT mention any person, animal, "
+        "or vehicle that is not clearly visible, and do NOT guess how many there are. "
+        "Describe only what you actually see — do not simply restate the watch "
+        "condition. If a detail is unclear, leave it out rather than guess. Ignore any "
+        "timestamp overlay."
+    )
+
+
+def _describe_snapshot(path: str, label: str = "", cam: str = "", condition: str = "") -> str:
+    """Describe an alert snapshot with the local VLM (Ollama), grounded in the
+    object YOLO detected (`label`) and the alert's cause (`cam` + watch `condition`).
+    Mirrors Frigate's genai handling: a generous timeout, graceful empty string on
+    ANY failure (the alert already fired — the description is additive). Runs on CPU
+    by default."""
     try:
         img = base64.b64encode(Path(path).read_bytes()).decode()
     except Exception:
         return ""
+    prompt = _describe_prompt(label, cam, condition)
     payload = json.dumps(
         {
             "model": VISION_MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "You are a home security camera assistant. In two or three "
-                    "short, factual sentences of plain prose (not a list, no preamble), "
-                    "describe what is happening: people and what they're doing, vehicles, and "
-                    "anything notable. Ignore any timestamp overlay.",
-                    "images": [img],
-                }
-            ],
+            "messages": [{"role": "user", "content": prompt, "images": [img]}],
             "stream": False,
             "think": False,
             "keep_alive": -1,
-            # Cap output: uncapped, the VLM rambles for 200+ tokens and blows the
-            # timeout on CPU. ~160 covers 2-3 sentences and stays fast when warm.
-            "options": {"temperature": 0.3, "num_gpu": DESCRIBE_NUM_GPU, "num_predict": 160},
+            # Low temperature: we want grounded fact, not creative prose — higher
+            # temp is where the invented plate numbers and phantom people come from.
+            # One sentence (~80 tokens) leaves less room to drift into fiction.
+            "options": {"temperature": 0.1, "num_gpu": DESCRIBE_NUM_GPU, "num_predict": 80},
         }
     ).encode()
     try:
@@ -564,13 +593,15 @@ def _await_media(fetch: Callable[[], str], timeout_s: float) -> str:
         time.sleep(MEDIA_POLL_S)
 
 
-def _deliver_event_media(event_id: str, cam: str) -> None:
+def _deliver_event_media(event_id: str, cam: str, label: str = "", condition: str = "") -> None:
     """Send a Frigate event's media as follow-ups once it exists. The text alert
     already went out; a live MQTT "new" event fires before the snapshot is written
     and the clip only exists after the event ends, so we wait here (in a daemon
     thread, never blocking the alert path) for each and send it when ready — the
-    boxed snapshot + VLM description, then the recorded clip. Graceful if either
-    never materialises (snapshot disabled / recording off / VLM slow or down)."""
+    boxed snapshot + VLM description (grounded in `label`, the object YOLO detected,
+    plus the alert's cause: `cam` + watch `condition`), then the recorded clip.
+    Graceful if either never materialises (snapshot off / recording off / VLM
+    slow or down)."""
 
     def _run() -> None:
         snapshot_path = _await_media(lambda: get_event_snapshot(event_id), SNAPSHOT_WAIT_S)
@@ -579,7 +610,7 @@ def _deliver_event_media(event_id: str, cam: str) -> None:
             # so the bot skips a duplicate 🚨 bubble). The box is baked in.
             write_alert("", cam, snapshot_path)
             if DESCRIBE_ENABLED:
-                desc = _describe_snapshot(snapshot_path)
+                desc = _describe_snapshot(snapshot_path, label, cam, condition)
                 if desc:
                     write_alert(f"📷 {cam}: {desc}", cam)
         if RECORD_ENABLED:
@@ -590,7 +621,7 @@ def _deliver_event_media(event_id: str, cam: str) -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _deliver_ha_media(ev: dict, cam: str) -> None:
+def _deliver_ha_media(ev: dict, cam: str, condition: str = "") -> None:
     """HA-snapshot tier: HA pulls a live frame synchronously (no wait) and there
     is no clip. Sent in a daemon thread so the VLM describe never blocks."""
     ref = ev.get("snapshot_ref") or ""
@@ -605,7 +636,7 @@ def _deliver_ha_media(ev: dict, cam: str) -> None:
             return
         write_alert("", cam, snapshot_path)
         if DESCRIBE_ENABLED:
-            desc = _describe_snapshot(snapshot_path)
+            desc = _describe_snapshot(snapshot_path, ev.get("label", ""), cam, condition)
             if desc:
                 write_alert(f"📷 {cam}: {desc}", cam)
 
@@ -647,10 +678,11 @@ def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
         if notes:
             msg += "\n" + "\n".join(notes)
         write_alert(msg, cam)  # instant text — media follows when ready
+        cond = rule.get("condition") or ""
         if ev.get("source") == "frigate" and ev.get("event_id"):
-            _deliver_event_media(ev["event_id"], cam)
+            _deliver_event_media(ev["event_id"], cam, ev.get("label", ""), cond)
         elif ev.get("source") == "ha":
-            _deliver_ha_media(ev, cam)
+            _deliver_ha_media(ev, cam, cond)
     return "live"
 
 
