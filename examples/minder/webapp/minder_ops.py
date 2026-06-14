@@ -390,38 +390,58 @@ def _load_conversations() -> dict:
 
 
 async def send_chat(message: str, source: str) -> str:
-    """Conversational fallback via minder-core, one conversation per channel."""
+    """Conversational fallback via minder-core, one conversation per channel.
+
+    The conversation id is cached per channel, but serve restarts (rebuilds,
+    reboots) drop the conversation — the cached id then 404s. So if a message
+    POST 404s, recreate the conversation once and retry. This was the "AI runtime
+    isn't reachable" error on every chat after a restart.
+    """
     conversations = _load_conversations()
     conv_id = conversations.get(source)
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, read=300.0)) as client:
-        if not conv_id:
+
+        async def _new_conversation() -> str:
             resp = await client.post(f"{SERVE_URL}/conversations", json={"topology": "minder-core"})
             resp.raise_for_status()
-            conv_id = resp.json()["id"]
-            conversations[source] = conv_id
+            cid = resp.json()["id"]
+            conversations[source] = cid
             CONVERSATIONS_FILE.write_text(json.dumps(conversations, indent=2))
+            return cid
 
-        result_text = ""
-        async with client.stream(
-            "POST",
-            f"{SERVE_URL}/conversations/{conv_id}/messages",
-            json={"message": message},
-            headers={"Accept": "text/event-stream"},
-        ) as resp:
-            resp.raise_for_status()
-            async for line in resp.aiter_lines():
-                if not line.startswith("data: "):
+        if not conv_id:
+            conv_id = await _new_conversation()
+
+        for attempt in range(2):
+            result_text = ""
+            try:
+                async with client.stream(
+                    "POST",
+                    f"{SERVE_URL}/conversations/{conv_id}/messages",
+                    json={"message": message},
+                    headers={"Accept": "text/event-stream"},
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        try:
+                            data = json.loads(line[6:])
+                            if data.get("type") == "done":
+                                result_text = data.get("output", "")
+                            elif data.get("type") == "error":
+                                result_text = f"Error: {data.get('error', 'unknown')}"
+                        except (json.JSONDecodeError, KeyError):
+                            continue
+                return result_text or "I couldn't generate a response."
+            except httpx.HTTPStatusError as e:
+                # Cached conversation vanished (serve restarted) — recreate & retry once.
+                if e.response.status_code == 404 and attempt == 0:
+                    conv_id = await _new_conversation()
                     continue
-                try:
-                    data = json.loads(line[6:])
-                    if data.get("type") == "done":
-                        result_text = data.get("output", "")
-                    elif data.get("type") == "error":
-                        result_text = f"Error: {data.get('error', 'unknown')}"
-                except (json.JSONDecodeError, KeyError):
-                    continue
-        return result_text or "I couldn't generate a response."
+                raise
+        return "I couldn't generate a response."
 
 
 # ---- Tool-result readers (ground truth for reply formatting) ----
