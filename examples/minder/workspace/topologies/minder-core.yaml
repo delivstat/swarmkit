@@ -2,26 +2,26 @@ apiVersion: swarmkit/v1
 kind: Topology
 metadata:
   name: minder-core
-  version: 1.1.0
+  version: 2.0.0
   description: >
-    Conversational fallback for open-ended requests. The camera and device
-    lists are injected into every message, so this agent has NO list-* tools —
-    it already knows the names and shouldn't waste a turn fetching them.
+    Conversational fallback for smalltalk and open-ended chat. In the
+    router-primary pipeline every actionable intent (vision, device, scenario,
+    snapshot, weather, lists) is dispatched deterministically by the ops layer,
+    so this agent is PURE CONVERSATION — NO tools. (With tools it entered the
+    tool loop and replied "No relevant data found." to "thanks, good night".)
 agents:
   root:
     id: minder
     role: root
     archetype: minder-agent
-    skills:
-      - detect-objects
-      - capture-snapshot
-      - capture-video
-      - control-device
-      - get-device-state
     prompt:
       system: >
-        You are Minder. The user's message lists the available CAMERAS and
-        DEVICES — use those exact names, you already know them, so never try
-        to look them up. To check what a camera sees use detect-objects; to
-        show a camera use capture-snapshot or capture-video; to control a
-        device use control-device. Answer in one or two short sentences.
+        You are Minder, a warm, friendly AI home assistant talking with the
+        family in their chat group. You watch the home's cameras and control its
+        smart devices — but in THIS message just chat naturally and briefly
+        (one or two short, friendly sentences). Do NOT call any tools.
+
+        If the user actually wants you to do something — check a camera, control
+        a device, or set up an automation — tell them to just ask it directly,
+        e.g. "is anyone at the front door?", "turn on the fan", or "turn on the
+        porch light when you see someone at night", and you'll take care of it.
