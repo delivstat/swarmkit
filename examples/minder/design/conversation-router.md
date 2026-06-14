@@ -91,21 +91,30 @@ local models on CPU (`num_gpu=0`) over 14 real Minder messages, scoring intent
 
 ¹ CPU/warm; ≤4B models run ~1–3s on GPU. Accuracy is device-independent.
 
-**Decision: `qwen2.5:7b` on CPU** (`MINDER_ROUTER_MODEL`, `num_gpu=0`).
-Rationale: perfect `kind` accuracy and the cleanest, already-normalized field
-extraction (which matters most because the output feeds deterministic
-execution); runs entirely in RAM so it never touches the GPU (the VLM is also on
-CPU; the GPU stays free). The cost is latency — **~12–19s per query warm on
-CPU** (verified on "is someone at the main door" → `query/person/[Main-Door]`,
-and the full "outside / who's at the gate / any cameras" spread), on top of
-execution. That is acceptable for a deliberate query and is being evaluated in
-practice.
+**Initial pick was `qwen2.5:7b` (14/14, cleanest fields). Serve-path testing
+overturned it.** The benchmark ran standalone Ollama with `format: "json"` (just
+"emit valid JSON") — light. But the runtime constrains generation against the
+**full JSON schema** (`_ollama.py` sets `format: <schema>` for `output_schema`
+agents), which is grammar-constrained decoding — far heavier on CPU. Measured
+through `/run/minder-router`:
 
-**Documented fast fallback:** `qwen2.5:3b` on the GPU (~1–2s, 13/14, the lone
-weather miss covered by the keyword pre-check) if the CPU latency proves too
-slow. Swappable via `MINDER_ROUTER_MODEL` + `MINDER_ROUTER_NUM_GPU` with no code
-change. The old `llama3.2:3b` is **not** viable for routing (can't extract
-scenario devices).
+| Router model | serve-path latency | routing |
+| --- | --- | --- |
+| qwen2.5:7b / CPU | **>200s/call** (unusable) | — |
+| **qwen2.5:3b / CPU (chosen)** | **~9s warm** (~116s cold first call after idle) | correct: "is someone at the main door" → `{query, person, [Main-Door]}` |
+
+**Decision: `qwen2.5:3b` on CPU** (`MINDER_ROUTER_MODEL`, `num_gpu=0`). ~9s warm,
+correct routing, zero VRAM (no GPU contention with the VLM or the poller's
+reasoning model). To keep the schema grammar cheap on CPU the `output_schema` is
+**flat** (no nested objects; `trigger_*` fields instead of a `trigger` object)
+and `num_ctx` is 3072.
+
+**Fallbacks / notes:** GPU is *not* a free win here — the 4GB GPU already holds
+`llama3.2:3b` (the minute-poller's reasoning model), so a GPU router would
+contend. The lone 3b miss ("is it raining" → `query`) is covered by the keyword
+pre-check. The old `llama3.2:3b` is **not** viable for routing (can't extract
+scenario devices). The ~116s cold-first-call after idle is the main rough edge —
+candidate for a `keep_alive` warm-hold.
 
 The current `llama3.2:3b` stays as `MINDER_REASONING_MODEL` for any remaining
 agent work and as the keyword-`classify()` fallback substrate.

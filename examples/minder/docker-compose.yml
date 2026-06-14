@@ -74,6 +74,14 @@ services:
       - MINDER_REASONING_MODEL=${MINDER_REASONING_MODEL:-llama3.2:3b}
       - MINDER_LOCAL_PROVIDER=${MINDER_LOCAL_PROVIDER:-ollama}
       - MINDER_LOCAL_MODEL=${MINDER_LOCAL_MODEL:-llama3.2:3b}
+      # Intent router: understands the message and emits a structured plan (no
+      # tools), on CPU (num_gpu=0 in the topology) so it never touches the GPU.
+      # qwen2.5:3b chosen over 7b on serve-path evidence: serve constrains
+      # decoding against the FULL JSON schema (heavier than a plain format=json),
+      # so on CPU the 7b is >200s/call while the 3b is ~9s warm and routes
+      # correctly. (~116s on the first cold call after idle.)
+      - MINDER_ROUTER_PROVIDER=${MINDER_ROUTER_PROVIDER:-ollama}
+      - MINDER_ROUTER_MODEL=${MINDER_ROUTER_MODEL:-qwen2.5:3b}
       # llava-phi3 (3.8B): the on-demand VLM. It does NOT hallucinate people
       # (moondream did — fatal for security) and warm it answers in ~5s on CPU.
       # The VLM runs on CPU/RAM (num_gpu=0, kept warm — see vision server) so it
