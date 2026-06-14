@@ -121,6 +121,12 @@ services:
       # not moondream — moondream is fine for on-demand queries but weak for
       # situational event descriptions.
       - MINDER_GENAI=${MINDER_GENAI:-off}
+      # Post-match VLM enrichment: on an alert, describe the snapshot with the
+      # local VLM and send it as a follow-up — both RTSP (Frigate) and HA-snapshot
+      # cameras, only on the rare rule match (vs genai's every-detection load).
+      # Non-blocking; generous timeout; graceful if the VLM is slow/down.
+      - MINDER_DESCRIBE=${MINDER_DESCRIBE:-on}
+      - MINDER_DESCRIBE_TIMEOUT=${MINDER_DESCRIBE_TIMEOUT:-90}
       - MINDER_DATA_DIR=/data
       # Single-action agents: cap every tool at 2 calls, then the runtime
       # force-stops and the model synthesises from the result already in context.

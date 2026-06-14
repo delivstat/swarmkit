@@ -7,10 +7,12 @@ zones, and (Phase 4) crop-and-zoom VLM enrichment; Minder stays the brain.
 See examples/minder/design/vision-architecture.md.
 """
 
+import base64
 import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -51,6 +53,17 @@ POLLER_MODE = os.environ.get("MINDER_POLLER_ALERTS", "shadow").lower()
 MQTT_ENABLED = os.environ.get("MINDER_MQTT", "on").lower() in ("on", "1", "true")
 MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+# Post-match VLM enrichment: when an alert fires, describe the snapshot with the
+# local VLM and send it as a follow-up — for BOTH Frigate (RTSP) and HA-snapshot
+# (cloud-locked) cameras, since Minder has the snapshot for both. Replaces
+# Frigate's genai (which only sees RTSP cams and runs on every detection); this
+# runs only on the rare rule match. Mirrors Frigate's handling: a generous
+# timeout, runs in the background (never blocks the alert), graceful on failure.
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
+DESCRIBE_ENABLED = os.environ.get("MINDER_DESCRIBE", "on").lower() in ("on", "1", "true")
+DESCRIBE_TIMEOUT = int(os.environ.get("MINDER_DESCRIBE_TIMEOUT", "90"))
+DESCRIBE_NUM_GPU = int(os.environ.get("MINDER_VISION_NUM_GPU", "0"))
 # Objects Frigate tracks per camera. Maps onto the same person/vehicle/animal
 # vocabulary Minder's scenarios use.
 TRACK_OBJECTS = ["person", "car", "dog", "cat"]
@@ -61,8 +74,6 @@ TRACK_OBJECTS = ["person", "car", "dog", "cat"]
 # the live stream. Enrichment is additive — a missing description never blocks
 # an alert (see _fire / graceful degradation).
 GENAI_ENABLED = os.environ.get("MINDER_GENAI", "off").lower() in ("on", "1", "true")
-VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 # Describe the security-relevant objects only (keeps VLM load focused on a
 # 4GB box); pets are tracked for alerts but not described.
 GENAI_OBJECTS = ["person", "car"]
@@ -475,6 +486,60 @@ def _record_shadow(entry: dict) -> None:
     SHADOW_FILE.write_text(json.dumps(rows[-200:], indent=2))
 
 
+def _describe_snapshot(path: str) -> str:
+    """Describe an alert snapshot with the local VLM (Ollama). Mirrors Frigate's
+    genai handling: a generous timeout, graceful empty string on ANY failure (the
+    alert already fired — the description is additive). Runs on CPU by default."""
+    try:
+        img = base64.b64encode(Path(path).read_bytes()).decode()
+    except Exception:
+        return ""
+    payload = json.dumps(
+        {
+            "model": VISION_MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "You are a home security camera assistant. In two or three "
+                    "short, factual sentences of plain prose (not a list, no preamble), "
+                    "describe what is happening: people and what they're doing, vehicles, and "
+                    "anything notable. Ignore any timestamp overlay.",
+                    "images": [img],
+                }
+            ],
+            "stream": False,
+            "think": False,
+            "keep_alive": -1,
+            # Cap output: uncapped, the VLM rambles for 200+ tokens and blows the
+            # timeout on CPU. ~160 covers 2-3 sentences and stays fast when warm.
+            "options": {"temperature": 0.3, "num_gpu": DESCRIBE_NUM_GPU, "num_predict": 160},
+        }
+    ).encode()
+    try:
+        req = urllib.request.Request(
+            f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"}
+        )
+        r = json.loads(urllib.request.urlopen(req, timeout=DESCRIBE_TIMEOUT).read())
+        return (r.get("message", {}).get("content") or "").strip()
+    except Exception:
+        return ""  # graceful — no description, the alert already went out
+
+
+def _describe_async(snapshot_path: str, cam: str) -> None:
+    """Run the VLM description in the background and send it as a follow-up alert.
+    Never blocks the alert path (Frigate-style async enrichment); works for both
+    Frigate (RTSP) and HA-snapshot (cloud-locked) cameras."""
+    if not DESCRIBE_ENABLED or not snapshot_path:
+        return
+
+    def _run() -> None:
+        desc = _describe_snapshot(snapshot_path)
+        if desc:
+            write_alert(f"📷 {cam}: {desc}", cam)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
     """Fire a matched rule — live writes the real alert + runs device actions;
     shadow only logs the would-be alert for parallel-run comparison."""
@@ -515,6 +580,9 @@ def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
         if notes:
             msg += "\n" + "\n".join(notes)
         write_alert(msg, cam, snapshot_path, video_path)
+        # Enrich with a VLM description as a non-blocking follow-up (the verdict
+        # alert already went out). Covers RTSP + HA-snapshot cameras.
+        _describe_async(snapshot_path, cam)
     return "live"
 
 
