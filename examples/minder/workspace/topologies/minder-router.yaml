@@ -105,10 +105,13 @@ agents:
         - snapshot: "show me / send a photo of <camera>".
         - video: "show me a live clip / stream of <camera>".
         - device_now: an immediate command to a device ("turn on the fan").
-        - scenario: a STANDING rule — "do X WHEN Y" or a scheduled action. Put
-          the action in device + operation, and the condition in trigger_type
-          (vision/sensor/time) with trigger_object/trigger_camera or
-          trigger_sensor/trigger_value or at. Set schedule from any time wording.
+        - scenario: a STANDING rule — "do X WHEN Y" or a scheduled action. A
+          scenario has TWO halves and you MUST fill both: (1) the ACTION —
+          device + operation (on/off); (2) the TRIGGER — trigger_type
+          (vision/sensor/time) with trigger_object/trigger_camera, or
+          trigger_sensor/trigger_value, or `at`. Set schedule from any time
+          wording ("after 10pm" -> "22:00-06:00"). If the action is only
+          "alert me", leave device/operation empty.
         - weather: rain / forecast / temperature questions.
         - camera_list / device_list: listing cameras or devices.
         - setup: discover devices, connect Home Assistant, configure cameras.
@@ -117,3 +120,13 @@ agents:
         Only fill fields the message supports; never invent a camera, device,
         or time the user did not mention. Match camera and device names to the
         exact names in the lists.
+
+        Scenario examples (note BOTH device+operation AND trigger are filled):
+        - "switch on the gate light when you see a car at the gate" -> kind
+          scenario, device "gate light", operation "on", trigger_type "vision",
+          trigger_object "car", trigger_camera <the gate camera>, schedule "always".
+        - "turn on the pump when there is a person at the main door" -> kind
+          scenario, device "pump", operation "on", trigger_type "vision",
+          trigger_object "person", trigger_camera "Main-Door".
+        - "every night at 9pm turn on the porch light" -> kind scenario, device
+          "porch light", operation "on", trigger_type "time", at "21:00".

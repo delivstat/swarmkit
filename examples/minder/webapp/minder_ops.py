@@ -853,6 +853,44 @@ def _compile_ha_reflex(rule: dict) -> str:
     return ""
 
 
+def _plan_to_rule(plan: dict) -> tuple[dict, str]:
+    """Map the router's scenario plan to the fields _persist_scenario expects.
+    The router already parsed the trigger/device/schedule, so this is a pure
+    translation — no LLM. Returns (parsed, trigger_type)."""
+    tt = (plan.get("trigger_type") or "").lower()
+    op = (plan.get("operation") or "").lower()
+    device = (plan.get("device") or "").strip()
+    parsed: dict = {
+        "cameras": [],
+        "condition": "",
+        "schedule": (plan.get("schedule") or "always").strip() or "always",
+        "at_time": "",
+        "devices": [device] if device else [],
+        "device_action": {"on": "turn_on", "off": "turn_off"}.get(op, ""),
+        "alert": True,
+    }
+    if tt == "vision":
+        obj = (plan.get("trigger_object") or "person").strip().lower()
+        parsed["condition"] = f"is there a {obj}"
+        parsed["cameras"] = [plan.get("trigger_camera") or "all"]
+    elif tt == "time":
+        parsed["at_time"] = plan.get("at") or ""
+    return parsed, tt
+
+
+async def author_scenario(plan: dict, text: str) -> dict:
+    """Deterministic scenario authoring from the router's plan — no second agent.
+    Sensor triggers aren't supported by the rule engine yet (vision + time only)."""
+    parsed, tt = _plan_to_rule(plan)
+    if tt == "sensor":
+        return _envelope(
+            "scenario",
+            "Sensor-based rules (like 'when the water level is reached') aren't "
+            "supported yet — I can trigger on what a camera sees or at a set time.",
+        )
+    return await asyncio.to_thread(_persist_scenario, parsed, text)
+
+
 def _persist_scenario(parsed: dict, request: str = "") -> dict:
     """Validate the worker's extracted fields and write the rule. Supports
     multiple cameras and multiple devices, and compiles pure time→device
@@ -1643,6 +1681,11 @@ async def handle_message(
         return await setup_cameras()
 
     if kind == "scenario":
+        # Deterministic: the router already parsed the trigger/device/schedule, so
+        # translate + persist directly (no minder-scenario agent). Fall back to
+        # the agent only if the router was unavailable.
+        if plan:
+            return await author_scenario(plan, text)
         return await create_scenario(text)
 
     if kind == "device":
