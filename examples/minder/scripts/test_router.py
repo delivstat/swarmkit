@@ -13,6 +13,7 @@ Exit code 0 if all cases pass. This is the example's routing acceptance test —
 it proves "the LLM does the language" half is solid before the deterministic
 execution runs.
 """
+
 import asyncio
 import json
 import sys
