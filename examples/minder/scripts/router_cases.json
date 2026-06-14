@@ -1,0 +1,17 @@
+[
+  {"msg": "is someone at the main door", "kind": "query"},
+  {"msg": "do you see anyone outside?", "kind": "query"},
+  {"msg": "who's at the gate", "kind": "query"},
+  {"msg": "is the gate open?", "kind": "query"},
+  {"msg": "is there a car in the driveway", "kind": "query"},
+  {"msg": "turn off the pressure pump", "kind": "device_now"},
+  {"msg": "switch on the solar heater", "kind": "device_now"},
+  {"msg": "turn on the pump when there is a person at the main door", "kind": "scenario"},
+  {"msg": "every night at 9pm turn on the porch light", "kind": "scenario"},
+  {"msg": "switch off the pump when the water level is reached", "kind": "scenario"},
+  {"msg": "is it raining outside?", "kind": "weather"},
+  {"msg": "show me the porch", "kind": "snapshot"},
+  {"msg": "what cameras do I have", "kind": "camera_list"},
+  {"msg": "what smart devices are connected", "kind": "device_list"},
+  {"msg": "thanks, good night", "kind": "chat"}
+]
