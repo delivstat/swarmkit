@@ -19,7 +19,7 @@ import sys
 import time
 
 sys.path.insert(0, "/app/webapp")
-import minder_ops as m  # noqa: E402
+import minder_ops as m
 
 
 async def main(cases_path: str) -> int:
