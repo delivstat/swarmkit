@@ -69,17 +69,18 @@ services:
       - MINDER_SUBNET=${MINDER_SUBNET:-192.168.0}
       - MINDER_CAM_USER=${MINDER_CAM_USER:-admin}
       - MINDER_CAM_PASS=${MINDER_CAM_PASS:-admin123}
-      # Model profiles (consumed by workspace.env.yaml → archetypes/topologies)
+      # Model profiles (consumed by workspace.env.yaml → archetypes/topologies).
+      # ONE LLM does everything — reasoning, routing, the vision agent — so only
+      # a single model loads. qwen2.5:3b replaced llama3.2:3b: it's far more
+      # reliable at structured/tool calls (llama3.2 mangled tool args), benchmarked
+      # best for routing, and at ~2GB it runs on the GPU with headroom. The VLM
+      # (llava-phi3) stays on CPU; YOLO does object detection. No llama3.2.
       - MINDER_REASONING_PROVIDER=${MINDER_REASONING_PROVIDER:-ollama}
-      - MINDER_REASONING_MODEL=${MINDER_REASONING_MODEL:-llama3.2:3b}
+      - MINDER_REASONING_MODEL=${MINDER_REASONING_MODEL:-qwen2.5:3b}
       - MINDER_LOCAL_PROVIDER=${MINDER_LOCAL_PROVIDER:-ollama}
-      - MINDER_LOCAL_MODEL=${MINDER_LOCAL_MODEL:-llama3.2:3b}
-      # Intent router: understands the message and emits a structured plan (no
-      # tools), on CPU (num_gpu=0 in the topology) so it never touches the GPU.
-      # qwen2.5:3b chosen over 7b on serve-path evidence: serve constrains
-      # decoding against the FULL JSON schema (heavier than a plain format=json),
-      # so on CPU the 7b is >200s/call while the 3b is ~9s warm and routes
-      # correctly. (~116s on the first cold call after idle.)
+      - MINDER_LOCAL_MODEL=${MINDER_LOCAL_MODEL:-qwen2.5:3b}
+      # Router profile points at the same model; kept as a separate knob so the
+      # router can be swapped/placed independently if ever needed.
       - MINDER_ROUTER_PROVIDER=${MINDER_ROUTER_PROVIDER:-ollama}
       - MINDER_ROUTER_MODEL=${MINDER_ROUTER_MODEL:-qwen2.5:3b}
       # llava-phi3 (3.8B): the on-demand VLM. It does NOT hallucinate people

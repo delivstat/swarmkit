@@ -21,12 +21,11 @@ agents:
       temperature: 0
       max_tokens: 256
       options:
-        # Router prompt + injected camera/device list fits well under 4k; a
-        # smaller context keeps CPU decoding fast (8192 was ~10x slower).
-        num_ctx: 3072
-        # num_gpu 0 = run the router on CPU/RAM so it never contends with the
-        # VLM/other models for the small GPU. One call per message.
-        num_gpu: 0
+        # Match the action-agent archetype (num_ctx 8192, GPU) so the router and
+        # the reasoning agents share ONE loaded qwen2.5:3b instance on the GPU —
+        # no second model, no CPU<->GPU reload. GPU makes the schema-constrained
+        # decode fast (~1-3s) where CPU was ~9s.
+        num_ctx: 8192
     output_schema:
       type: object
       properties:
