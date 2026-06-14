@@ -1378,8 +1378,27 @@ async def route(text: str) -> dict | None:
     plan = _extract_json(out)
     if not isinstance(plan, dict) or not plan.get("kind"):
         return None
+    _correct_plan(plan, text)
     plan["dispatch_kind"] = _ROUTER_KIND.get(plan["kind"], "chat")
     return plan
+
+
+def _correct_plan(plan: dict, text: str) -> None:
+    """Deterministic guard on the router's intent. A scenario is, by definition,
+    a standing rule with a future TRIGGER (when/if/every/at-a-time). So a plain
+    question with no such trigger can never be a scenario — force it to query.
+    Keys on sentence structure, not keywords the 3B can wobble on. Mutates plan."""
+    t = text.strip().lower()
+    if plan.get("kind") != "scenario":
+        return
+    has_trigger = bool(re.search(r"\b(when|whenever|if|every|each|after|before)\b", t)) or bool(
+        _TIME_EXPR.search(t)
+    )
+    is_question = t.endswith("?") or bool(
+        re.match(r"(is|are|was|were|who|what|which|where|do|does|did|can|how|any)\b", t)
+    )
+    if is_question and not has_trigger:
+        plan["kind"] = "query"
 
 
 def _resolve_cameras(plan: dict) -> list[str]:
