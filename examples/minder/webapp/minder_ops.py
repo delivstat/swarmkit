@@ -1509,16 +1509,25 @@ def _grab_frames(cams: list[str]) -> list[Path]:
     return [f for f in (_grab_frame(c) for c in cams) if f]
 
 
-def _vlm_answer(frame_b64: str, question: str) -> str:
-    """One direct VLM (llava-phi3, CPU) call for an open-scene question."""
+def _vlm_answer(frame_b64: str, question: str, camera: str = "") -> str:
+    """One direct VLM (llava-phi3, CPU) call for an open-scene question. Pass the
+    user's ACTUAL words (not the router's condition rewrite — it mangles "describe
+    the scene" into a yes/no), and instruct the model to answer or describe."""
+    where = f" of the {camera}" if camera else ""
+    q = (question or "").strip() or "What do you see?"
+    _content = (
+        f"You are a home security camera assistant. Look at this camera image{where}. "
+        f'The user asked: "{q}". Answer their question in one short, factual sentence '
+        "based only on what you see. If they asked you to describe the scene or what's "
+        "there, describe what you see (people, vehicles, anything notable)."
+    )
     payload = json.dumps(
         {
             "model": VISION_MODEL,
             "messages": [
                 {
                     "role": "user",
-                    "content": f"Look at this security camera image. {question or 'What do you see?'} "
-                    "Answer in one short, factual sentence.",
+                    "content": _content,
                     "images": [frame_b64],
                 }
             ],
@@ -1553,7 +1562,7 @@ def _run_vision_checks(
             results.append({"camera": cam, "error": "no frame"})
             continue
         if open_scene:
-            ans = _vlm_answer(base64.b64encode(frame.read_bytes()).decode(), question)
+            ans = _vlm_answer(base64.b64encode(frame.read_bytes()).decode(), question, cam)
             results.append({"camera": cam, "open": True, "answer": ans})
         else:
             want = _subject_classes(subject) or d.classes_for_condition(question or subject)
@@ -1569,14 +1578,18 @@ def _run_vision_checks(
     return results
 
 
-async def _dispatch_query(plan: dict, started: float) -> dict:
+async def _dispatch_query(plan: dict, started: float, text: str = "") -> dict:
     """Deterministic vision query: YOLO for person/vehicle/animal, VLM for open
-    scene questions, on the camera(s) the router resolved. No agent."""
+    scene questions, on the camera(s) the router resolved. No agent.
+
+    For open-scene the VLM gets the user's ORIGINAL text, not the router's
+    `condition` (which the 3B mangles — e.g. "describe the scene" became "is there
+    anyone?", and the VLM answered "No")."""
     cams = _resolve_cameras(plan)
     if not cams:
         return _envelope("vision", "No cameras are configured yet. Send /start to set them up.")
     subject = (plan.get("subject") or "").lower()
-    question = plan.get("condition") or ""
+    question = text or plan.get("condition") or ""
     open_scene = subject == "open" or (
         subject not in ("person", "vehicle", "animal") and _subject_classes(subject) is None
     )
@@ -1666,7 +1679,7 @@ async def handle_message(
                 "No cameras configured yet. Send /start to discover cameras, "
                 "or set them up at http://minder.local",
             )
-        return await _dispatch_query(plan, started)
+        return await _dispatch_query(plan, started, text)
 
     if kind == "snapshot" and plan:
         # Deterministic: grab the router's camera frame(s) directly (no agent).
