@@ -32,7 +32,7 @@ from typing import Any
 from fastapi import Cookie, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from starlette.middleware.base import BaseHTTPMiddleware
 
 app = FastAPI(title="Minder Setup")
@@ -378,12 +378,24 @@ class AuthUserRequest(BaseModel):
 
 
 class MonitoringRule(BaseModel):
-    camera: str
+    # The matching engine (frigate.server._rule_cameras / _match_and_fire_event)
+    # is the source of truth for the rule shape — this envelope must round-trip
+    # it losslessly, not impose a narrower one. Scenario-authored rules carry
+    # `cameras` (list) + `target` and no `camera`; the router may add further
+    # fields over time. So `camera` is optional, both camera shapes are allowed,
+    # and extra fields are preserved (extra="allow") — otherwise re-saving the
+    # full list to delete/toggle one rule drops fields or 422s and the whole
+    # save fails silently.
+    model_config = ConfigDict(extra="allow")
+
+    camera: str = ""
+    cameras: list[str] = []
     condition: str = ""
     schedule: str = "always"
     enabled: bool = True
     actions: list[dict] = []
     at_time: str = ""
+    target: str = ""
     created_ts: float = 0
 
 
