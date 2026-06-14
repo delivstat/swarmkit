@@ -168,6 +168,28 @@ async def ops_scenario(req: ScenarioRequest):
     return await minder_ops.create_scenario(req.text)
 
 
+# ---- Weather (preset Met.no setup — no API key) ----
+
+
+class WeatherSetupRequest(BaseModel):
+    city: str = ""
+    latitude: float = 0.0
+    longitude: float = 0.0
+
+
+@app.get("/api/ops/weather")
+async def ops_weather_status():
+    """Whether the weather source is set up and where (drives the setup UI)."""
+    return minder_ops.weather_status()
+
+
+@app.post("/api/ops/weather/setup")
+async def ops_weather_setup(req: WeatherSetupRequest):
+    """Preset weather setup (Met.no, no API key) for a city or coordinates.
+    Geocodes the city and configures Home Assistant in one click."""
+    return await asyncio.to_thread(minder_ops.setup_weather, req.city, req.latitude, req.longitude)
+
+
 # ---- Recovery (backup / restore / doctor / health) ----
 
 

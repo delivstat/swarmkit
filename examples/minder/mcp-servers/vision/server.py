@@ -25,7 +25,30 @@ except Exception:
     _yolo = None
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "granite3.2-vision")
+# llava-phi3 (3.8B): on this class of box it's the sweet spot — it does NOT
+# hallucinate people (moondream did; that's disqualifying for security), and
+# warm it answers in ~5s on CPU. minicpm-v (8B) / qwen2.5vl (3B) are too slow
+# for CPU image inference here (>300s).
+VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
+# Ollama GPU layers for the VLM. 0 = run entirely on CPU/RAM (default) so the
+# VLM never evicts the reasoning model from VRAM. On this box GPU model-loading
+# thrashes (100-240s cold) because llama3.2 owns the VRAM, while CPU loads
+# straight into RAM. >0 to use the GPU on an appliance with its own headroom.
+VISION_NUM_GPU = int(os.environ.get("MINDER_VISION_NUM_GPU", "0"))
+
+
+# Keep the VLM resident in RAM so only the first query pays the cold-load cost
+# (~75s); subsequent queries are ~5s. -1 = never unload. RAM is cheap (36GB).
+# Ollama wants an int (-1) or a duration string ("24h") — a numeric *string*
+# like "-1" is a 400, so coerce numerics to int.
+def _keep_alive(raw: str) -> int | str:
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+VISION_KEEP_ALIVE = _keep_alive(os.environ.get("MINDER_VISION_KEEP_ALIVE", "-1"))
 DATA_DIR = Path(os.environ.get("MINDER_DATA_DIR", "/data"))
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
 CHECKS_FILE = DATA_DIR / "vision_checks.json"
@@ -50,13 +73,21 @@ def _record_check(camera: str, condition: str, match: bool, answer: str) -> None
 
 
 def _query_vision(image_b64: str, prompt: str) -> dict:
+    # num_gpu=0 pins the VLM to CPU/RAM so it never contends with the reasoning
+    # model for VRAM. On a shared box the on-demand VLM is occasional, so a
+    # slower CPU pass beats minutes of GPU model-swapping/thrash. Set
+    # MINDER_VISION_NUM_GPU>0 on a dedicated-GPU appliance to use the GPU.
+    # 128 tokens is plenty for a condition answer + brief scene; keeping it low
+    # matters because CPU decode time scales with tokens.
+    options: dict = {"temperature": 0.1, "num_predict": 128, "num_gpu": VISION_NUM_GPU}
     payload = json.dumps(
         {
             "model": VISION_MODEL,
             "messages": [{"role": "user", "content": prompt, "images": [image_b64]}],
             "stream": False,
             "think": False,
-            "options": {"temperature": 0.1, "num_predict": 300},
+            "keep_alive": VISION_KEEP_ALIVE,
+            "options": options,
         }
     ).encode()
 

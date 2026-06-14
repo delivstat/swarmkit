@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Literal
@@ -27,6 +28,7 @@ mcp = FastMCP("minder-devices")
 HA_URL = os.environ.get("HA_URL", "http://localhost:8123")
 DATA_DIR = Path(os.environ.get("MINDER_DATA_DIR", "/data"))
 HA_TOKEN_FILE = DATA_DIR / "ha_token.json"
+WEATHER_LOC_FILE = DATA_DIR / "weather_location.json"
 
 HA_INTERNAL_USER = "minder"
 HA_INTERNAL_PASS = "minder-internal-do-not-change"
@@ -359,6 +361,205 @@ def list_devices() -> str:
 
     DEVICES_CACHE.write_text(json.dumps(devices, indent=2))
     return json.dumps({"devices": devices, "count": len(devices)})
+
+
+_RAIN_STATES = {"rainy", "pouring", "lightning-rainy", "snowy-rainy", "hail", "lightning"}
+
+
+# Home Assistant weather condition codes -> human wording.
+_CONDITION_LABELS = {
+    "clear-night": "clear",
+    "cloudy": "cloudy",
+    "fog": "foggy",
+    "hail": "hailing",
+    "lightning": "stormy",
+    "lightning-rainy": "stormy with rain",
+    "partlycloudy": "partly cloudy",
+    "pouring": "pouring rain",
+    "rainy": "rainy",
+    "snowy": "snowy",
+    "snowy-rainy": "sleeting",
+    "sunny": "sunny",
+    "windy": "windy",
+    "windy-variant": "windy",
+    "exceptional": "extreme",
+}
+
+
+def _condition_label(cond: str) -> str:
+    return _CONDITION_LABELS.get(cond, cond.replace("-", " ")) or "unclear"
+
+
+def _weather_summary(cond: str, raining: bool, temp: Any, unit: str) -> str:
+    """One ready-to-speak sentence. The local 3B can't reliably phrase facts,
+    so the capability layer owns the wording (callers relay this verbatim)."""
+    nice = _condition_label(cond)
+    tail = f", and it's {temp}{unit} out" if temp is not None else ""
+    if raining:
+        return f"Yes, it's raining outside right now ({nice}){tail}."
+    return f"No, it's not raining — it's {nice} right now{tail}."
+
+
+@mcp.tool()
+def get_weather() -> str:
+    """Get the current weather from Home Assistant's weather entity — accurate
+    and works at night. Returns the condition, temperature, whether it is
+    raining, and a ready-to-speak 'summary'. If no weather integration is set
+    up, returns a setup hint as the summary."""
+    token = _load_ha_token()
+    if not token:
+        msg = "Home Assistant isn't connected yet, so I can't check the weather."
+        return json.dumps({"status": "setup_required", "message": msg, "summary": msg})
+    states = _ha_request("states")
+    if isinstance(states, dict) and "error" in states:
+        msg = "I couldn't reach Home Assistant to check the weather just now."
+        return json.dumps({"status": "error", "message": states["error"], "summary": msg})
+    wx = [s for s in states if s.get("entity_id", "").startswith("weather.")]
+    if not wx:
+        msg = (
+            "There's no weather source set up yet — add the Met.no integration "
+            "in Home Assistant (no API key needed) and set your home location."
+        )
+        return json.dumps({"status": "not_set_up", "message": msg, "summary": msg})
+    w = wx[0]
+    cond = (w.get("state") or "").lower()
+    a = w.get("attributes", {})
+    raining = cond in _RAIN_STATES
+    temp = a.get("temperature")
+    unit = a.get("temperature_unit", "°")
+    return json.dumps(
+        {
+            "status": "ok",
+            "condition": _condition_label(cond),
+            "raining": raining,
+            "temperature": temp,
+            "temperature_unit": unit,
+            "humidity": a.get("humidity"),
+            "summary": _weather_summary(cond, raining, temp, unit),
+        }
+    )
+
+
+def _geocode(city: str) -> tuple[float, float, str] | None:
+    """City name -> (lat, lon, display_name) via OpenStreetMap Nominatim
+    (no API key). Returns None if nothing matches."""
+    url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(
+        {"q": city, "format": "json", "limit": 1}
+    )
+    req = urllib.request.Request(url, headers={"User-Agent": "minder-home/1.0"})
+    try:
+        hits = json.loads(urllib.request.urlopen(req, timeout=10).read())
+    except Exception:
+        return None
+    if not hits:
+        return None
+    h = hits[0]
+    return float(h["lat"]), float(h["lon"]), h.get("display_name", city)
+
+
+def _met_entry_ids(token: str) -> list[str]:
+    """IDs of any existing Met.no config entries (so we can replace on relocate)."""
+    code, entries = _ha_raw(
+        f"{HA_URL}/api/config/config_entries/entry",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if code != 200 or not isinstance(entries, list):
+        return []
+    return [e["entry_id"] for e in entries if e.get("domain") == "met"]
+
+
+@mcp.tool()
+def weather_status() -> str:
+    """Report whether the weather source is set up and where. Returns
+    'set_up' (bool), the configured 'location' name if known, and the
+    current 'summary'. Use this to drive the setup UI."""
+    token = _load_ha_token()
+    if not token:
+        return json.dumps({"set_up": False, "reason": "ha_not_connected"})
+    wx = json.loads(get_weather())
+    set_up = wx.get("status") == "ok"
+    loc = {}
+    if WEATHER_LOC_FILE.exists():
+        try:
+            loc = json.loads(WEATHER_LOC_FILE.read_text())
+        except (json.JSONDecodeError, ValueError):
+            loc = {}
+    return json.dumps(
+        {
+            "set_up": set_up,
+            "location": loc.get("location", ""),
+            "latitude": loc.get("latitude"),
+            "longitude": loc.get("longitude"),
+            "summary": wx.get("summary", ""),
+        }
+    )
+
+
+@mcp.tool()
+def setup_weather(city: str = "", latitude: float = 0.0, longitude: float = 0.0) -> str:
+    """Set up the local weather source (Met.no — free, no API key) for a
+    location. Pass a 'city' name (geocoded automatically) or explicit
+    'latitude'/'longitude'. Replaces any existing weather location. Returns
+    status plus the first reading's 'summary'."""
+    token = _load_ha_token()
+    if not token:
+        msg = "Home Assistant isn't connected yet — finish device setup first."
+        return json.dumps({"status": "error", "message": msg, "summary": msg})
+
+    place = city or "your location"
+    if city:
+        geo = _geocode(city)
+        if not geo:
+            msg = f"I couldn't find '{city}'. Try a bigger nearby city, or enter coordinates."
+            return json.dumps({"status": "not_found", "message": msg, "summary": msg})
+        latitude, longitude, place = geo
+    elif not (latitude or longitude):
+        msg = "Give me a city name or latitude/longitude to set up the weather."
+        return json.dumps({"status": "error", "message": msg, "summary": msg})
+
+    # Replace any existing Met.no entry so relocating just works.
+    for eid in _met_entry_ids(token):
+        _ha_raw(
+            f"{HA_URL}/api/config/config_entries/entry/{eid}",
+            "DELETE",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+    code, flow = _ha_raw(
+        f"{HA_URL}/api/config/config_entries/flow",
+        "POST",
+        {"handler": "met", "show_advanced_options": False},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if code != 200 or "flow_id" not in flow:
+        msg = "Couldn't start the weather setup in Home Assistant."
+        return json.dumps({"status": "error", "message": f"{msg} ({flow})", "summary": msg})
+    code, res = _ha_raw(
+        f"{HA_URL}/api/config/config_entries/flow/{flow['flow_id']}",
+        "POST",
+        {"name": "Home", "latitude": latitude, "longitude": longitude, "elevation": 0},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if res.get("type") != "create_entry":
+        msg = "Home Assistant rejected the weather setup."
+        return json.dumps({"status": "error", "message": f"{msg} ({res})", "summary": msg})
+
+    short = place.split(",")[0]
+    write_json_atomic(
+        WEATHER_LOC_FILE,
+        {"location": short, "display_name": place, "latitude": latitude, "longitude": longitude},
+    )
+    msg = f"Weather is set up for {short}."
+    return json.dumps(
+        {
+            "status": "ok",
+            "message": msg,
+            "location": short,
+            "latitude": latitude,
+            "longitude": longitude,
+            "summary": msg,
+        }
+    )
 
 
 @mcp.tool()

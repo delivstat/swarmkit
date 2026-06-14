@@ -33,6 +33,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import ModuleType
 
 import httpx
 
@@ -108,6 +109,23 @@ def classify(text: str) -> str:
         return "camera_list"
     if _has_kw(t, "devices", "smart home") or "what devices" in t:
         return "device_list"
+    # Weather goes to the HA weather entity (accurate), not camera vision.
+    if _has_kw(
+        t,
+        "weather",
+        "raining",
+        "rain",
+        "forecast",
+        "sunny",
+        "cloudy",
+        "overcast",
+        "drizzle",
+        "storm",
+        "snowing",
+        "humid",
+        "windy",
+    ):
+        return "weather"
     if _has_kw(
         t,
         "turn on",
@@ -441,7 +459,66 @@ def _looks_unhelpful(text: str) -> bool:
         or "no relevant data" in low
         or low.startswith("{")
         or low.startswith("[")
+        # Tool-call/instruction leakage: a confused small model echoes the
+        # skill name or the function-call shape instead of an answer.
+        or "check-camera-condition" in low
+        or "check-condition" in low
+        or "get-weather" in low
+        or "get_weather" in low
+        or "tool_use" in low
+        or "'name':" in low
+        or "'parameters'" in low
     )
+
+
+_devices_tool_module = None
+
+
+def _devices_module() -> ModuleType:
+    """Load the devices MCP server module in-process so the backend can invoke
+    its tools directly (config/setup actions, and deterministic relays where the
+    3B agent loop is unreliable). The capability logic stays in the MCP server."""
+    global _devices_tool_module
+    if _devices_tool_module is None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_minder_devices_tool", "/app/mcp-servers/tuya/server.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _devices_tool_module = mod
+    return _devices_tool_module
+
+
+def _weather_summary() -> str:
+    """Relay the get-weather MCP tool's ready-to-speak 'summary'. Authoritative
+    for weather: the 3B model hallucinates a 'can't find weather' refusal in the
+    agent loop instead of calling the tool, so we read the capability directly."""
+    try:
+        data = json.loads(_devices_module().get_weather())
+        return str(data.get("summary", "")).strip()
+    except Exception:
+        return ""
+
+
+def weather_status() -> dict:
+    """Is the weather source set up, and where (for the setup UI)."""
+    try:
+        return json.loads(_devices_module().weather_status())
+    except Exception as e:
+        return {"set_up": False, "reason": str(e)}
+
+
+def setup_weather(city: str = "", latitude: float = 0.0, longitude: float = 0.0) -> dict:
+    """Preset weather setup (Met.no — no API key) for a city or coordinates.
+    Config action, so it runs deterministically against the MCP capability."""
+    try:
+        return json.loads(
+            _devices_module().setup_weather(city=city, latitude=latitude, longitude=longitude)
+        )
+    except Exception as e:
+        return {"status": "error", "message": str(e), "summary": "Weather setup failed."}
 
 
 def _phrase_check(question: str, check: dict) -> str:
@@ -449,14 +526,21 @@ def _phrase_check(question: str, check: dict) -> str:
     text isn't usable. Phrased to what the user actually asked."""
     cam = check.get("camera", "the camera")
     match = check.get("match")
-    scene = check.get("answer", "")  # stored scene summary
+    scene = check.get("answer", "")  # YOLO counts, or the VLM's scene answer
     q = (question or "").lower()
-    if any(w in q for w in ["car", "vehicle", "truck", "bike", "van", "bus"]):
+    if any(w in q for w in ["person", "someone", "anyone", "people", "intruder", "man", "woman"]):
+        subj = "person"
+    elif any(w in q for w in ["car", "vehicle", "truck", "bike", "van", "bus"]):
         subj = "vehicle"
     elif any(w in q for w in ["animal", "dog", "cat", "monkey", "pet", "bird"]):
         subj = "animal"
     else:
-        subj = "person"
+        # Open scene question ("is the gate open", "what's in the yard"): the
+        # answer is the VLM's own description — surface it, don't force the
+        # person/object framing.
+        if scene:
+            return f"📷 {cam}: {scene.strip()}"
+        return f"📷 {cam}: I couldn't get a clear read on that."
     if match:
         tail = f" (I see {scene})" if scene else ""
         return f"🔴 {cam}: yes, there's a {subj} there{tail}."
@@ -979,6 +1063,18 @@ def _latest_good_backup(filename: str) -> Path | None:
     return None
 
 
+def _is_problem(name: str, status: str) -> bool:
+    """A precious file is a genuine fault only if it's corrupt (restore from
+    backup), or missing AND a good backup exists (it was there before → real
+    loss). Missing with no backup is just not-set-up-yet (fresh install / no
+    scenarios) — not a fault, so it never raises an alert."""
+    if status == "corrupt":
+        return True
+    if status == "missing":
+        return _latest_good_backup(name) is not None
+    return False
+
+
 def restore(ts: str = "") -> dict:
     """Restore precious files from a backup (a specific ts, or the latest good
     copy of each file if ts is empty)."""
@@ -1009,7 +1105,9 @@ def health() -> dict:
         "latest_backup": backups[0]["ts"] if backups else None,
         "ha_volume_backups": len(ha_tars),
         "latest_ha_volume_backup": ha_tars[-1].name if ha_tars else None,
-        "healthy": all(s in ("ok", "empty") for s in files.values()),
+        # Healthy unless a file is a genuine fault. Missing-on-fresh-install
+        # (no backup yet) is "not set up", not unhealthy.
+        "healthy": not any(_is_problem(n, s) for n, s in files.items()),
     }
 
 
@@ -1026,12 +1124,11 @@ def diagnose_and_alert() -> dict:
     item (the native HITL gate) and alert the human to approve it. NEVER fixes
     anything — the fix runs only when the review item is resolved 'approved'."""
     h = health()
-    if not h.get("healthy"):
-        bad = [f"{f} ({s})" for f, s in h["files"].items() if s in ("corrupt", "missing")]
-        if not h.get("ha"):
-            bad.append("Home Assistant unreachable")
-        if not h.get("frigate"):
-            bad.append("Frigate unreachable")
+    # Only file a repair the doctor can actually apply (restore corrupt/lost
+    # files). HA/Frigate being unreachable isn't doctor-repairable — it's shown
+    # in health() but never raises a repair-approval alert.
+    bad = [f"{f} ({s})" for f, s in h["files"].items() if _is_problem(f, s)]
+    if bad:
         if not _pending_repairs():
             item = create_review_item(
                 topology_id="minder-doctor",
@@ -1347,6 +1444,17 @@ async def handle_message(
 
     if kind == "device_list":
         return await asyncio.to_thread(list_devices)
+
+    if kind == "weather":
+        # Weather is a deterministic, zero-argument lookup — the answer is fully
+        # determined by the get-weather MCP tool's 'summary'. The 3B agent loop
+        # adds only hallucination here (it invents a refusal instead of calling
+        # the tool), so the backend relays the tool's summary directly. All
+        # interpretation/phrasing still lives in the MCP server, not here.
+        reply = await asyncio.to_thread(_weather_summary)
+        if reply:
+            return _envelope("weather", reply)
+        return _envelope("weather", "I couldn't read the weather just now.")
 
     if kind == "camera_list":
         return await asyncio.to_thread(list_cameras)
