@@ -2,29 +2,137 @@ apiVersion: swarmkit/v1
 kind: Topology
 metadata:
   name: minder-router
-  version: 2.0.0
+  version: 3.0.0
   description: >
-    Intent router. When the keyword fast-path can't classify a message, this
-    agent decides what the user wants and records it via the route tool, so
-    the ops layer can dispatch to the right specialist topology. Runs on the
-    small local model — a cheap, high-frequency decision.
+    Intent router — the first call on every message. Understands what the user
+    wants and emits a structured PLAN (no tools), which the ops layer executes
+    deterministically. output_schema constrains decoding so the result is always
+    on-shape. Runs on the router model (qwen2.5:7b, CPU). The schema is FLAT
+    (no nested objects) so Ollama's grammar-constrained decoding stays fast on
+    CPU. See design/conversation-router.md.
 agents:
   root:
     id: router
     role: root
     archetype: action-agent
     model:
-      provider: ${model.local.provider}
-      name: ${model.local.name}
+      provider: ${model.router.provider}
+      name: ${model.router.name}
       temperature: 0
-    skills:
-      - route
+      max_tokens: 256
+      options:
+        # Match the action-agent archetype (num_ctx 8192, GPU) so the router and
+        # the reasoning agents share ONE loaded qwen2.5:3b instance on the GPU —
+        # no second model, no CPU<->GPU reload. GPU makes the schema-constrained
+        # decode fast (~1-3s) where CPU was ~9s.
+        num_ctx: 8192
+    output_schema:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+            - query
+            - snapshot
+            - video
+            - device_now
+            - scenario
+            - weather
+            - camera_list
+            - device_list
+            - setup
+            - chat
+          description: The single best-fit intent for the message.
+        subject:
+          type: string
+          description: >
+            For query/snapshot: "person", "vehicle", "animal", or "open" for an
+            open-ended scene question. Empty otherwise.
+        cameras:
+          type: array
+          items:
+            type: string
+          description: >
+            Camera names from the CAMERAS list, or ["all"]. "outside" -> the
+            outdoor cameras.
+        condition:
+          type: string
+          description: 'Open-ended visual question for an "open" query (e.g. "is the gate open"). Empty otherwise.'
+        device:
+          type: string
+          description: For device_now / scenario — the device name from DEVICES.
+        operation:
+          type: string
+          description: '"on", "off", or "toggle". Empty if no device action.'
+        trigger_type:
+          type: string
+          description: 'For scenario only: "vision", "sensor", or "time". Empty otherwise.'
+        trigger_object:
+          type: string
+          description: 'For a vision trigger: "person", "car", "dog", or "cat".'
+        trigger_camera:
+          type: string
+          description: For a vision trigger — the camera to watch, or "all".
+        trigger_sensor:
+          type: string
+          description: For a sensor trigger — what is measured (e.g. "water level").
+        trigger_value:
+          type: string
+          description: For a sensor trigger — the threshold.
+        at:
+          type: string
+          description: 'For a time trigger — 24h clock like "21:00".'
+        schedule:
+          type: string
+          description: >
+            When the rule/intent applies: "always", "day", "night", or a 24h
+            range like "22:00-06:00". "after 10pm" -> "22:00-06:00".
+      required:
+        - kind
     prompt:
       system: >
-        Decide what the user wants and record it with the route tool. The
-        intent is one of: scenario (set up an automation that triggers on a
-        condition or time), vision (what does a camera see right now),
-        snapshot (send a photo), video (send a live clip), device (turn a
-        device on or off now), device_list (what smart devices exist or their
-        state), camera_list (list or name the cameras), or chat (anything
-        else). Call route once with your chosen intent.
+        You are Minder's intent router. The user's message lists the available
+        CAMERAS and DEVICES. Decide what the user wants and fill the plan
+        fields. Do NOT call any tools — just produce the structured plan.
+
+        kind:
+        - query: a question about what a camera sees now. "anyone/someone/
+          person/who" -> subject "person"; "car/vehicle" -> "vehicle";
+          "dog/cat/animal" -> "animal"; "is the gate open / what's there" ->
+          subject "open" and put the question in condition. "outside" -> the
+          outdoor cameras; "any/all cameras" -> cameras ["all"]; a named place
+          -> the matching camera.
+        - snapshot: "show me / send a photo of <camera>".
+        - video: "show me a live clip / stream of <camera>".
+        - device_now: an immediate one-off command to a device with NO condition
+          and NO time — "turn on the fan", "turn off the pump", "switch off the
+          heater". Fill device + operation. A bare command (no "when"/"if" and no
+          time) is ALWAYS device_now, never scenario.
+        - scenario: a STANDING rule — ONLY when there is a trigger: a "when"/"if"
+          condition or a time/schedule ("...when a car is at the gate",
+          "...at 9pm", "every night..."). No trigger => it is device_now, not a
+          scenario. A scenario has TWO halves and you MUST fill both: (1) the
+          ACTION —
+          device + operation (on/off); (2) the TRIGGER — trigger_type
+          (vision/sensor/time) with trigger_object/trigger_camera, or
+          trigger_sensor/trigger_value, or `at`. Set schedule from any time
+          wording ("after 10pm" -> "22:00-06:00"). If the action is only
+          "alert me", leave device/operation empty.
+        - weather: rain / forecast / temperature questions.
+        - camera_list / device_list: listing cameras or devices.
+        - setup: discover devices, connect Home Assistant, configure cameras.
+        - chat: greetings, thanks, anything else.
+
+        Only fill fields the message supports; never invent a camera, device,
+        or time the user did not mention. Match camera and device names to the
+        exact names in the lists.
+
+        Scenario examples (note BOTH device+operation AND trigger are filled):
+        - "switch on the gate light when you see a car at the gate" -> kind
+          scenario, device "gate light", operation "on", trigger_type "vision",
+          trigger_object "car", trigger_camera <the gate camera>, schedule "always".
+        - "turn on the pump when there is a person at the main door" -> kind
+          scenario, device "pump", operation "on", trigger_type "vision",
+          trigger_object "person", trigger_camera "Main-Door".
+        - "every night at 9pm turn on the porch light" -> kind scenario, device
+          "porch light", operation "on", trigger_type "time", at "21:00".

@@ -266,8 +266,9 @@ _DEVICE_STOPWORDS = {
 }
 
 
-def control_device(text: str) -> dict:
-    """Deterministic device control — no LLM."""
+def control_device(text: str, device: str = "", operation: str = "") -> dict:
+    """Deterministic device control — no LLM. When the router supplies the
+    resolved device + operation, use them directly; otherwise parse the text."""
     devices = get_ha_devices()
     if not devices:
         return _envelope(
@@ -276,18 +277,24 @@ def control_device(text: str) -> dict:
             "at http://minder.local (Devices tab).",
         )
 
-    words = re.findall(r"[a-z0-9]+", text.lower())
-    if "off" in words:
-        action = "turn_off"
-    elif "on" in words:
-        action = "turn_on"
-    elif "toggle" in words:
-        action = "toggle"
+    op = (operation or "").lower()
+    if op in ("on", "off", "toggle"):
+        action = {"on": "turn_on", "off": "turn_off", "toggle": "toggle"}[op]
     else:
-        names = ", ".join(d["name"] for d in devices[:15])
-        return _envelope("device_action", f"Tell me on or off. Devices: {names}")
+        words = re.findall(r"[a-z0-9]+", text.lower())
+        if "off" in words:
+            action = "turn_off"
+        elif "on" in words:
+            action = "turn_on"
+        elif "toggle" in words:
+            action = "toggle"
+        else:
+            names = ", ".join(d["name"] for d in devices[:15])
+            return _envelope("device_action", f"Tell me on or off. Devices: {names}")
 
-    query = set(words) - _DEVICE_STOPWORDS
+    # Match against the router's device name if given, else the message words.
+    query_src = device or text
+    query = set(re.findall(r"[a-z0-9]+", query_src.lower())) - _DEVICE_STOPWORDS
     best, best_key = None, (0, 0)
     for d in devices:
         name_words = set(re.findall(r"[a-z0-9]+", d["name"].lower()))
@@ -853,6 +860,44 @@ def _compile_ha_reflex(rule: dict) -> str:
     return ""
 
 
+def _plan_to_rule(plan: dict) -> tuple[dict, str]:
+    """Map the router's scenario plan to the fields _persist_scenario expects.
+    The router already parsed the trigger/device/schedule, so this is a pure
+    translation — no LLM. Returns (parsed, trigger_type)."""
+    tt = (plan.get("trigger_type") or "").lower()
+    op = (plan.get("operation") or "").lower()
+    device = (plan.get("device") or "").strip()
+    parsed: dict = {
+        "cameras": [],
+        "condition": "",
+        "schedule": (plan.get("schedule") or "always").strip() or "always",
+        "at_time": "",
+        "devices": [device] if device else [],
+        "device_action": {"on": "turn_on", "off": "turn_off"}.get(op, ""),
+        "alert": True,
+    }
+    if tt == "vision":
+        obj = (plan.get("trigger_object") or "person").strip().lower()
+        parsed["condition"] = f"is there a {obj}"
+        parsed["cameras"] = [plan.get("trigger_camera") or "all"]
+    elif tt == "time":
+        parsed["at_time"] = plan.get("at") or ""
+    return parsed, tt
+
+
+async def author_scenario(plan: dict, text: str) -> dict:
+    """Deterministic scenario authoring from the router's plan — no second agent.
+    Sensor triggers aren't supported by the rule engine yet (vision + time only)."""
+    parsed, tt = _plan_to_rule(plan)
+    if tt == "sensor":
+        return _envelope(
+            "scenario",
+            "Sensor-based rules (like 'when the water level is reached') aren't "
+            "supported yet — I can trigger on what a camera sees or at a set time.",
+        )
+    return await asyncio.to_thread(_persist_scenario, parsed, text)
+
+
 def _persist_scenario(parsed: dict, request: str = "") -> dict:
     """Validate the worker's extracted fields and write the rule. Supports
     multiple cameras and multiple devices, and compiles pure time→device
@@ -1296,116 +1341,245 @@ def _cameras_configured() -> bool:
     return len(_load_cameras()) > 0
 
 
-ROUTES_FILE = DATA_DIR / "route_decisions.json"
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-ROUTER_MODEL = os.environ.get("MINDER_REASONING_MODEL", "llama3.2:3b")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
+# Routing is the minder-router topology (output_schema Plan) via route(); the
+# old route-tool / constrained-generation classifier was removed — the keyword
+# classify() is the only fallback now.
 
-_INTENTS = [
-    "scenario",
-    "vision",
-    "snapshot",
-    "video",
-    "device",
-    "device_list",
-    "camera_list",
-    "chat",
-]
 
-_INTENT_SCHEMA = {
-    "type": "object",
-    "properties": {"intent": {"type": "string", "enum": _INTENTS}},
-    "required": ["intent"],
+# Router intent -> the dispatch kind handle_message already understands.
+_ROUTER_KIND = {
+    "query": "vision",
+    "snapshot": "snapshot",
+    "video": "video",
+    "device_now": "device",
+    "scenario": "scenario",
+    "weather": "weather",
+    "camera_list": "camera_list",
+    "device_list": "device_list",
+    "setup": "setup",
+    "chat": "chat",
 }
 
-# Routing goes through the minder-router SwarmKit topology (local model,
-# HYPHEN-FREE skill id "route" — kebab-case tool names get mangled by 3B
-# models since ToolSpec(name=skill.id) passes them verbatim). If the agent
-# records no decision, this schema-constrained prompt is the fallback
-# (tested 6/6 at ~0.7s).
-_ROUTER_PROMPT = """Classify the home-assistant request into one intent.
 
-scenario = set up a FUTURE automation rule (contains a condition AND what to do later)
-vision = question about what a camera sees RIGHT NOW
-snapshot = wants a photo now
-video = wants a video clip now
-device = turn a device on/off NOW
-device_list = list the smart devices (lights, switches, fans)
-camera_list = list or name the cameras
-chat = anything else
-
-Examples:
-"when someone comes to the door alert me" -> scenario
-"if the gate is open at night turn on the light" -> scenario
-"is there anyone in the backyard" -> vision
-"how many cars are at the gate" -> vision
-"show me the porch" -> snapshot
-"send a clip of the driveway" -> video
-"turn off the heater" -> device
-"switch on the pump" -> device
-"what can you control" -> device_list
-"is the heater on right now" -> device_list
-"did you turn off the pump" -> device_list
-"list all cameras" -> camera_list
-"what cameras do we have" -> camera_list
-"name the cameras" -> camera_list
-"thanks minder" -> chat
-
-Request: "{req}" ->"""
-
-
-def _routes_since(since: float) -> list[dict]:
-    if not ROUTES_FILE.exists():
-        return []
+async def route(text: str) -> dict | None:
+    """Run the minder-router topology and parse its structured Plan. The router
+    (output_schema, no tools) understands the message and emits the whole plan in
+    one call; this is the PRIMARY path. Returns the plan dict with a mapped
+    'dispatch_kind', or None if the router is unavailable (serve down) — the
+    caller then falls back to the keyword classifier."""
     try:
-        routes = json.loads(ROUTES_FILE.read_text())
-        return [r for r in routes if r.get("ts", 0) >= since]
-    except (json.JSONDecodeError, ValueError):
-        return []
+        ctx = build_context()
+        enriched = f"{ctx}\n\n{text}" if ctx else text
+        out = await asyncio.wait_for(run_topology("minder-router", enriched), timeout=150)
+    except Exception:
+        return None
+    plan = _extract_json(out)
+    if not isinstance(plan, dict) or not plan.get("kind"):
+        return None
+    _correct_plan(plan, text)
+    plan["dispatch_kind"] = _ROUTER_KIND.get(plan["kind"], "chat")
+    return plan
 
 
-async def _route_via_agent(text: str) -> str | None:
-    """Classify an unrecognized message. SwarmKit minder-router topology
-    first (local model, hyphen-free tool name); schema-constrained
-    generation as fallback so routing never silently breaks."""
-    started = time.time()
+def _correct_plan(plan: dict, text: str) -> None:
+    """Deterministic guard on the router's intent. A scenario is, by definition,
+    a standing rule with a future TRIGGER (when/if/every/at-a-time). So a plain
+    question with no such trigger can never be a scenario — force it to query.
+    Keys on sentence structure, not keywords the 3B can wobble on. Mutates plan."""
+    t = text.strip().lower()
+    if plan.get("kind") != "scenario":
+        return
+    has_trigger = bool(re.search(r"\b(when|whenever|if|every|each|after|before)\b", t)) or bool(
+        _TIME_EXPR.search(t)
+    )
+    is_question = t.endswith("?") or bool(
+        re.match(r"(is|are|was|were|who|what|which|where|do|does|did|can|how|any)\b", t)
+    )
+    if is_question and not has_trigger:
+        plan["kind"] = "query"
+
+
+def _resolve_cameras(plan: dict) -> list[str]:
+    """Resolve the router's camera list to concrete configured names — zone-aware.
+    Expands ["all"]/"outside"/"inside" against cameras.json (zone defaults to
+    'outdoor' for security cams), validates names, drops unknowns. The tag is
+    authoritative; the model's list is a hint we re-resolve."""
+    cams = _load_cameras()
+    names = [c.get("name") or c["ip"] for c in cams]
+    req = plan.get("cameras") or []
+    if not req or any(str(x).strip().lower() in ("all", "any", "") for x in req):
+        return names
+    out: list[str] = []
+    for x in req:
+        xl = str(x).strip().lower()
+        if xl in ("outside", "outdoor"):
+            out += [c.get("name") or c["ip"] for c in cams if c.get("zone", "outdoor") == "outdoor"]
+        elif xl in ("inside", "indoor"):
+            out += [c.get("name") or c["ip"] for c in cams if c.get("zone", "outdoor") == "indoor"]
+        else:
+            m = _match_camera_name(str(x))
+            if m and m != "all":
+                out.append(m)
+            elif x in names:
+                out.append(str(x))
+    seen: set[str] = set()
+    deduped = [c for c in out if not (c in seen or seen.add(c))]
+    return deduped or names
+
+
+# ---- Deterministic vision execution ----
+# The router already parsed camera + subject; the backend runs YOLO/VLM directly.
+# No agent: small models can't reliably orchestrate the tool call (proven), but
+# YOLO and a single VLM call are deterministic code.
+
+_detector_mod: ModuleType | None = None
+
+
+def _yolo() -> ModuleType:
+    """Lazy-import the shared YOLO detector (model itself loads on first detect)."""
+    global _detector_mod
+    if _detector_mod is None:
+        sys.path.insert(0, "/app/mcp-servers/detect")
+        import detector as d
+
+        _detector_mod = d
+    return _detector_mod
+
+
+def _subject_classes(subject: str) -> set | None:
+    d = _yolo()
+    return {
+        "person": d.PERSON_CLASSES,
+        "vehicle": d.VEHICLE_CLASSES,
+        "animal": d.ANIMAL_CLASSES,
+    }.get(subject)
+
+
+def _grab_frame(camera: str) -> Path | None:
+    """Fetch the camera's current frame deterministically and save it to the
+    snapshot dir (so collect_media_since picks it up). Frigate tier → latest.jpg."""
+    cam = next(
+        (
+            c
+            for c in _load_cameras()
+            if (c.get("name") or "").lower() == camera.lower() or c.get("ip") == camera
+        ),
+        None,
+    )
+    if not cam:
+        return None
+    name = cam.get("name") or cam["ip"]
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    dest = SNAPSHOT_DIR / f"{cam['ip'].replace('.', '_')}.jpg"
     try:
-        await asyncio.wait_for(run_topology("minder-router", text), timeout=60)
-        routes = _routes_since(started)
-        if routes:
-            return routes[-1]["intent"]
+        data = urllib.request.urlopen(f"{FRIGATE_URL}/api/{slug}/latest.jpg", timeout=8).read()
+        if data[:2] == b"\xff\xd8":
+            SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+            return dest
     except Exception:
         pass
-    return await _route_constrained(text)
+    return None
 
 
-async def _route_constrained(text: str) -> str | None:
+def _grab_frames(cams: list[str]) -> list[Path]:
+    """Grab a current frame for each camera (for snapshot replies)."""
+    return [f for f in (_grab_frame(c) for c in cams) if f]
+
+
+def _vlm_answer(frame_b64: str, question: str) -> str:
+    """One direct VLM (llava-phi3, CPU) call for an open-scene question."""
+    payload = json.dumps(
+        {
+            "model": VISION_MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Look at this security camera image. {question or 'What do you see?'} "
+                    "Answer in one short, factual sentence.",
+                    "images": [frame_b64],
+                }
+            ],
+            "stream": False,
+            "think": False,
+            "keep_alive": -1,
+            "options": {"temperature": 0.1, "num_predict": 120, "num_gpu": 0},
+        }
+    ).encode()
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": ROUTER_MODEL,
-                    "prompt": _ROUTER_PROMPT.format(req=text[:300]),
-                    "format": _INTENT_SCHEMA,
-                    "stream": False,
-                    "options": {"temperature": 0},
-                },
-            )
-            resp.raise_for_status()
-            intent = json.loads(resp.json().get("response", "{}")).get("intent")
+        req = urllib.request.Request(
+            f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"}
+        )
+        r = json.loads(urllib.request.urlopen(req, timeout=200).read())
+        return (r.get("message", {}).get("content") or "").strip()
     except Exception:
-        return None
-    if intent not in _INTENTS:
-        return None
+        return ""
 
-    # Record the decision for observability
-    routes = []
-    if ROUTES_FILE.exists():
-        with contextlib.suppress(json.JSONDecodeError, ValueError):
-            routes = json.loads(ROUTES_FILE.read_text())
-    routes.append({"ts": time.time(), "intent": intent, "cleaned_request": text[:200]})
-    ROUTES_FILE.write_text(json.dumps(routes[-50:], indent=2))
-    return intent
+
+def _run_vision_checks(
+    cams: list[str], subject: str, question: str, open_scene: bool
+) -> list[dict]:
+    """Per camera: grab a frame, then YOLO (objects) or the VLM (open scene).
+    Synchronous — call via asyncio.to_thread."""
+    import base64
+
+    d = _yolo()
+    results: list[dict] = []
+    for cam in cams:
+        frame = _grab_frame(cam)
+        if not frame:
+            results.append({"camera": cam, "error": "no frame"})
+            continue
+        if open_scene:
+            ans = _vlm_answer(base64.b64encode(frame.read_bytes()).decode(), question)
+            results.append({"camera": cam, "open": True, "answer": ans})
+        else:
+            want = _subject_classes(subject) or d.classes_for_condition(question or subject)
+            res = d.detect(str(frame), want_classes=want)
+            results.append(
+                {
+                    "camera": cam,
+                    "match": res["matched"] > 0,
+                    "count": res["matched"],
+                    "scene": d.describe_counts(res["counts"]),
+                }
+            )
+    return results
+
+
+async def _dispatch_query(plan: dict, started: float) -> dict:
+    """Deterministic vision query: YOLO for person/vehicle/animal, VLM for open
+    scene questions, on the camera(s) the router resolved. No agent."""
+    cams = _resolve_cameras(plan)
+    if not cams:
+        return _envelope("vision", "No cameras are configured yet. Send /start to set them up.")
+    subject = (plan.get("subject") or "").lower()
+    question = plan.get("condition") or ""
+    open_scene = subject == "open" or (
+        subject not in ("person", "vehicle", "animal") and _subject_classes(subject) is None
+    )
+    results = await asyncio.to_thread(_run_vision_checks, cams, subject, question, open_scene)
+    media = collect_media_since(started)
+
+    if open_scene:
+        r = next((x for x in results if x.get("answer")), None)
+        cam = (r or results[0]).get("camera", "the camera")
+        ans = (r or {}).get("answer")
+        text = f"📷 {cam}: {ans}" if ans else f"📷 {cam}: I couldn't get a clear read on that."
+        return _envelope("vision", text, media=media)
+
+    subj = subject if subject in ("person", "vehicle", "animal") else "person"
+    checked = [r for r in results if "match" in r]
+    if not checked:
+        return _envelope("vision", "I couldn't capture from that camera right now.", media=media)
+    hits = [r for r in checked if r["match"]]
+    if hits:
+        where = ", ".join(r["camera"] for r in hits)
+        return _envelope("vision", f"🔴 Yes — {subj} at {where}.", media=media)
+    spot = checked[0]["camera"] if len(checked) == 1 else f"{len(checked)} cameras"
+    return _envelope("vision", f"🟢 All clear — no {subj} on {spot} right now.", media=media)
 
 
 async def handle_message(
@@ -1413,14 +1587,16 @@ async def handle_message(
 ) -> dict:
     """THE channel-neutral entry point. Classify, execute, return envelope.
 
-    Routing is hybrid: a deterministic keyword fast-path handles commands and
-    unambiguous phrasing instantly; anything that falls through goes to the
-    minder-router agent for semantic understanding, then re-dispatches here
-    with an explicit kind.
+    Routing is router-primary: the minder-router agent understands the message
+    and emits a structured plan in one call; we dispatch on its intent. The
+    keyword classifier is only the fallback for when the router is unavailable
+    (serve down). The plan's extracted entities (cameras, etc.) feed the
+    deterministic execution below.
     """
-    agent_routed = kind is not None
+    plan: dict | None = None
     if kind is None:
-        kind = classify(text)
+        plan = await route(text)
+        kind = plan["dispatch_kind"] if plan else classify(text)
     started = time.time()
 
     if kind == "setup":
@@ -1430,17 +1606,19 @@ async def handle_message(
         return await setup_cameras()
 
     if kind == "scenario":
+        # Deterministic: the router already parsed the trigger/device/schedule, so
+        # translate + persist directly (no minder-scenario agent). Fall back to
+        # the agent only if the router was unavailable.
+        if plan:
+            return await author_scenario(plan, text)
         return await create_scenario(text)
 
     if kind == "device":
-        # Device control changes real-world state — never act on a bare
-        # keyword match. Confirm the intent with the router first (~0.7s);
-        # only a confirmed "device" intent flips a switch.
-        if not agent_routed:
-            verified = await _route_via_agent(text)
-            if verified and verified != "device":
-                return await handle_message(text, source, sender, kind=verified)
-        return await asyncio.to_thread(control_device, text)
+        # The router already classified this and resolved the device + operation,
+        # so control deterministically from the plan (no text re-parse / no verify).
+        dev = plan.get("device", "") if plan else ""
+        op = plan.get("operation", "") if plan else ""
+        return await asyncio.to_thread(control_device, text, dev, op)
 
     if kind == "device_list":
         return await asyncio.to_thread(list_devices)
@@ -1459,7 +1637,34 @@ async def handle_message(
     if kind == "camera_list":
         return await asyncio.to_thread(list_cameras)
 
+    if kind == "vision" and plan:
+        # Deterministic execution: the router parsed camera + subject; run
+        # YOLO/VLM directly (no agent — proven unreliable at the tool call).
+        if not _cameras_configured():
+            return _envelope(
+                "error",
+                "No cameras configured yet. Send /start to discover cameras, "
+                "or set them up at http://minder.local",
+            )
+        return await _dispatch_query(plan, started)
+
+    if kind == "snapshot" and plan:
+        # Deterministic: grab the router's camera frame(s) directly (no agent).
+        if not _cameras_configured():
+            return _envelope(
+                "error",
+                "No cameras configured yet. Send /start to discover cameras, "
+                "or set them up at http://minder.local",
+            )
+        await asyncio.to_thread(_grab_frames, _resolve_cameras(plan)[:3])
+        media = collect_media_since(started)
+        if media:
+            return _envelope("snapshot", "", media=media)
+        return _envelope("snapshot", "Couldn't capture from that camera right now.")
+
     if kind in ("vision", "snapshot", "video"):
+        # Serve-down fallback for vision (no plan); video still goes through the
+        # agent (on-demand live clips aren't a deterministic grab yet).
         if not _cameras_configured():
             return _envelope(
                 "error",
@@ -1503,14 +1708,8 @@ async def handle_message(
             return _envelope(kind, "", media=media)
         return _envelope(kind, "Couldn't capture from that camera. Try /cameras to see names.")
 
-    # Keywords didn't recognize it — let the router agent take a look
-    # before falling back to open conversation. (Skip if an agent already
-    # routed us here, to prevent loops.)
-    if not agent_routed:
-        intent = await _route_via_agent(text)
-        if intent and intent != "chat":
-            return await handle_message(text, source, sender, kind=intent)
-
+    # kind == "chat" (router said so, or the keyword fallback did) → open
+    # conversation.
     # Conversational fallback
     prefix = f"{sender}: " if sender else ""
     context = build_context()

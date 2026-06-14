@@ -583,52 +583,6 @@ def _execute_device_action(device: str, action: str) -> str:
     return json.loads(resp.read()).get("text", "")
 
 
-ROUTES_FILE = DATA_DIR / "route_decisions.json"
-VALID_INTENTS = {
-    "scenario",
-    "vision",
-    "snapshot",
-    "video",
-    "device",
-    "device_list",
-    "camera_list",
-    "chat",
-}
-
-
-@mcp.tool()
-def route_request(
-    intent: Literal[
-        "scenario", "vision", "snapshot", "video", "device", "device_list", "camera_list", "chat"
-    ],
-    cleaned_request: str = "",
-) -> str:
-    """Record what kind of request the user made so the right specialist
-    handles it.
-
-    intent:
-      scenario    — create an automation rule ("when X happens, do Y")
-      vision      — check what a camera sees right now ("is anyone outside?")
-      snapshot    — send a photo from a camera
-      video       — send a live video clip from a camera
-      device      — turn a smart device on or off right now
-      device_list — list the smart devices (lights, switches, fans)
-      camera_list — list or name the cameras
-      chat        — anything else
-    cleaned_request: the user's request restated clearly in one sentence.
-    """
-    intent = (intent or "").strip().lower()
-    if intent not in VALID_INTENTS:
-        intent = "chat"
-    routes = []
-    if ROUTES_FILE.exists():
-        with contextlib.suppress(json.JSONDecodeError, ValueError):
-            routes = json.loads(ROUTES_FILE.read_text())
-    routes.append({"ts": time.time(), "intent": intent, "cleaned_request": cleaned_request})
-    ROUTES_FILE.write_text(json.dumps(routes[-50:], indent=2))
-    return json.dumps({"status": "ok", "intent": intent})
-
-
 def _normalize_time(s: str) -> str:
     s = (s or "").strip().lower().replace(".", ":")
     m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", s)
