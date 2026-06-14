@@ -247,3 +247,34 @@ the minute cron — they don't need this):
 
 These tighten the existing Frigate-as-perception design; they are not a rebuild.
 Sequenced after the conversation-router refactor unless reprioritised.
+
+## Addendum — VLM description quality (model, prompt, resolution)
+
+The post-match description was hallucinating: on a car-only detection it
+reported a "person in a red shirt" and "read" a licence plate ("960142") that
+isn't resolvable. Three findings, from a CPU benchmark on the real failing
+snapshot (`scripts/vlm_bench.py`):
+
+1. **Resolution is the hidden ceiling.** The stored snapshot is **352×288** —
+   Frigate detects on the camera *substream* (`subtype=1`, CIF) to keep CPU
+   detection cheap, and snapshots inherit that. The main stream is 2560×1440 but
+   isn't ingested. At 352×288 a car is ~100 px and a plate is a few pixels, so a
+   small VLM fabricates. *Fix not taken yet (kept low-res per decision):* on an
+   alert, pull one high-res frame from the main stream (`subtype=0`) just for the
+   description — detection stays cheap on the substream. `vlm_bench.grab_hires`
+   prototypes it.
+2. **Prompt is decisive.** The open prompt ("describe what's happening… anything
+   notable") reproduced the hallucination on *every* model. A **grounded** prompt
+   — anchored to YOLO's detected object, fed the alert's cause (camera + watch
+   condition), forbidding plate/text/count reading and phantom entities, one
+   sentence, temp 0.1 — removed it. See `_describe_prompt`.
+3. **Model: qwen2.5vl:3b.** On the 352×288 image + grounded prompt it gave a
+   specific, grounded line ("a dark sedan partially obscured by a garage door")
+   in ~60–70s on CPU, vs llava-phi3's vague "a car in the garage" and
+   granite3.2-vision's same quality at 141s. moondream stays out (invents people).
+   It runs on CPU (`num_gpu=0`); the 4GB GPU holds only the reasoning model — a
+   VLM can't co-reside, and GPU/CPU placement changes *latency, not* the words.
+
+The hard rule from above still holds: the VLM is an *additive hint*, never a
+record — grounded and plate/identity-forbidden so a small model cannot assert
+specifics it can't verify.
