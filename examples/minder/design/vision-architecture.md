@@ -207,3 +207,43 @@ working alerting.
   tracked by Minder.
 
 Each phase is its own PR with tests and a demo transcript.
+
+## Addendum — camera event path tightening (post-Phase 2)
+
+Phase 2 retired the snapshot loop and made Frigate the continuous stream
+detector, but Minder still **polls** Frigate's `/api/events` once a minute, so a
+camera alert can lag up to ~60s, and Frigate tracks a **fixed** object set on
+every camera. Three camera-only refinements (device/sensor/time rules stay on
+the minute cron — they don't need this):
+
+1. **Event-driven push instead of minute-polling.** Subscribe to Frigate's
+   **MQTT** event topic (currently `mqtt: enabled: false` in the generated
+   config) so the rule engine reacts the instant Frigate fires, not on the next
+   cron tick. The minute poller stays as a reconcile/backstop (catch anything
+   missed while disconnected). Net: sub-second camera alerting.
+
+2. **Rule-derived detection scope.** Instead of the fixed
+   `TRACK_OBJECTS = [person, car, dog, cat]` on every camera, derive each
+   camera's `objects.track` from the **active rules** and re-apply Frigate's
+   config (`configure_cameras`) when rules change. Union the object labels each
+   rule needs per camera; a camera no rule references can drop to a minimal set.
+   Example: rules "person at main gate" + "person on any camera at night" →
+   Frigate tracks **only `person`** on all cameras (drops car/dog/cat → less CPU,
+   fewer junk events). **Time/camera windows stay in the rule engine, never in
+   Frigate** — Frigate detects 24/7; `schedule_active` + `_camera_match` decide
+   when/where a `person` event becomes an alert. Fallback: with no rules, track
+   `person` by default (never go blind).
+
+3. **VLM as a post-match summary + soft severity — never a veto.** Run the VLM
+   **only after** a YOLO/Frigate event matches a rule (rare → affordable on CPU,
+   llava-phi3 ~5s), to add a human summary and an optional severity hint. Hard
+   rule: the alert **fires on the detector+rule match**; the VLM is appended.
+   A hallucination-prone VLM (moondream invented a person) must **never suppress
+   a real alert**, and VLM/Ollama downtime must not block alerting (graceful
+   degradation — already a principle). Any "downgrade" behaviour is explicit
+   opt-in and conservative. **Do not** put the reasoning model in the alert path
+   for prose synthesis — small models hallucinate; alert text stays
+   deterministic + the VLM summary.
+
+These tighten the existing Frigate-as-perception design; they are not a rebuild.
+Sequenced after the conversation-router refactor unless reprioritised.
