@@ -266,8 +266,9 @@ _DEVICE_STOPWORDS = {
 }
 
 
-def control_device(text: str) -> dict:
-    """Deterministic device control — no LLM."""
+def control_device(text: str, device: str = "", operation: str = "") -> dict:
+    """Deterministic device control — no LLM. When the router supplies the
+    resolved device + operation, use them directly; otherwise parse the text."""
     devices = get_ha_devices()
     if not devices:
         return _envelope(
@@ -276,18 +277,24 @@ def control_device(text: str) -> dict:
             "at http://minder.local (Devices tab).",
         )
 
-    words = re.findall(r"[a-z0-9]+", text.lower())
-    if "off" in words:
-        action = "turn_off"
-    elif "on" in words:
-        action = "turn_on"
-    elif "toggle" in words:
-        action = "toggle"
+    op = (operation or "").lower()
+    if op in ("on", "off", "toggle"):
+        action = {"on": "turn_on", "off": "turn_off", "toggle": "toggle"}[op]
     else:
-        names = ", ".join(d["name"] for d in devices[:15])
-        return _envelope("device_action", f"Tell me on or off. Devices: {names}")
+        words = re.findall(r"[a-z0-9]+", text.lower())
+        if "off" in words:
+            action = "turn_off"
+        elif "on" in words:
+            action = "turn_on"
+        elif "toggle" in words:
+            action = "toggle"
+        else:
+            names = ", ".join(d["name"] for d in devices[:15])
+            return _envelope("device_action", f"Tell me on or off. Devices: {names}")
 
-    query = set(words) - _DEVICE_STOPWORDS
+    # Match against the router's device name if given, else the message words.
+    query_src = device or text
+    query = set(re.findall(r"[a-z0-9]+", query_src.lower())) - _DEVICE_STOPWORDS
     best, best_key = None, (0, 0)
     for d in devices:
         name_words = set(re.findall(r"[a-z0-9]+", d["name"].lower()))
@@ -1564,6 +1571,11 @@ def _grab_frame(camera: str) -> Path | None:
     return None
 
 
+def _grab_frames(cams: list[str]) -> list[Path]:
+    """Grab a current frame for each camera (for snapshot replies)."""
+    return [f for f in (_grab_frame(c) for c in cams) if f]
+
+
 def _vlm_answer(frame_b64: str, question: str) -> str:
     """One direct VLM (llava-phi3, CPU) call for an open-scene question."""
     payload = json.dumps(
@@ -1689,9 +1701,11 @@ async def handle_message(
         return await create_scenario(text)
 
     if kind == "device":
-        # The router already classified this as a device action (it understands
-        # intent, not just keywords), so no separate verify step is needed.
-        return await asyncio.to_thread(control_device, text)
+        # The router already classified this and resolved the device + operation,
+        # so control deterministically from the plan (no text re-parse / no verify).
+        dev = plan.get("device", "") if plan else ""
+        op = plan.get("operation", "") if plan else ""
+        return await asyncio.to_thread(control_device, text, dev, op)
 
     if kind == "device_list":
         return await asyncio.to_thread(list_devices)
@@ -1721,9 +1735,23 @@ async def handle_message(
             )
         return await _dispatch_query(plan, started)
 
+    if kind == "snapshot" and plan:
+        # Deterministic: grab the router's camera frame(s) directly (no agent).
+        if not _cameras_configured():
+            return _envelope(
+                "error",
+                "No cameras configured yet. Send /start to discover cameras, "
+                "or set them up at http://minder.local",
+            )
+        await asyncio.to_thread(_grab_frames, _resolve_cameras(plan)[:3])
+        media = collect_media_since(started)
+        if media:
+            return _envelope("snapshot", "", media=media)
+        return _envelope("snapshot", "Couldn't capture from that camera right now.")
+
     if kind in ("vision", "snapshot", "video"):
-        # Serve-down fallback for vision (no plan); snapshot/video still go
-        # through the agent for now (Phase 3 makes them deterministic too).
+        # Serve-down fallback for vision (no plan); video still goes through the
+        # agent (on-demand live clips aren't a deterministic grab yet).
         if not _cameras_configured():
             return _envelope(
                 "error",

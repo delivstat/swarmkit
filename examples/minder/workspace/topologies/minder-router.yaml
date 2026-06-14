@@ -104,9 +104,15 @@ agents:
           -> the matching camera.
         - snapshot: "show me / send a photo of <camera>".
         - video: "show me a live clip / stream of <camera>".
-        - device_now: an immediate command to a device ("turn on the fan").
-        - scenario: a STANDING rule — "do X WHEN Y" or a scheduled action. A
-          scenario has TWO halves and you MUST fill both: (1) the ACTION —
+        - device_now: an immediate one-off command to a device with NO condition
+          and NO time — "turn on the fan", "turn off the pump", "switch off the
+          heater". Fill device + operation. A bare command (no "when"/"if" and no
+          time) is ALWAYS device_now, never scenario.
+        - scenario: a STANDING rule — ONLY when there is a trigger: a "when"/"if"
+          condition or a time/schedule ("...when a car is at the gate",
+          "...at 9pm", "every night..."). No trigger => it is device_now, not a
+          scenario. A scenario has TWO halves and you MUST fill both: (1) the
+          ACTION —
           device + operation (on/off); (2) the TRIGGER — trigger_type
           (vision/sensor/time) with trigger_object/trigger_camera, or
           trigger_sensor/trigger_value, or `at`. Set schedule from any time
