@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 import yaml
@@ -68,6 +69,12 @@ DESCRIBE_NUM_GPU = int(os.environ.get("MINDER_VISION_NUM_GPU", "0"))
 # motion segments only (not 24/7) with a short retain, so disk stays bounded.
 RECORD_ENABLED = os.environ.get("MINDER_RECORD", "on").lower() in ("on", "1", "true")
 RECORD_DAYS = int(os.environ.get("MINDER_RECORD_DAYS", "2"))
+# Media-when-ready waits. A live MQTT event fires on "new" — before Frigate has
+# written the snapshot, and the clip only exists once the event ENDS. So the text
+# alert goes out instantly and the snapshot/clip follow as soon as they exist.
+SNAPSHOT_WAIT_S = int(os.environ.get("MINDER_SNAPSHOT_WAIT", "20"))
+CLIP_WAIT_S = int(os.environ.get("MINDER_CLIP_WAIT", "90"))
+MEDIA_POLL_S = 2.0
 # Objects Frigate tracks per camera. Maps onto the same person/vehicle/animal
 # vocabulary Minder's scenarios use.
 TRACK_OBJECTS = ["person", "car", "dog", "cat"]
@@ -543,24 +550,75 @@ def _describe_snapshot(path: str) -> str:
         return ""  # graceful — no description, the alert already went out
 
 
-def _describe_async(snapshot_path: str, cam: str) -> None:
-    """Run the VLM description in the background and send it as a follow-up alert.
-    Never blocks the alert path (Frigate-style async enrichment); works for both
-    Frigate (RTSP) and HA-snapshot (cloud-locked) cameras."""
-    if not DESCRIBE_ENABLED or not snapshot_path:
+def _await_media(fetch: Callable[[], str], timeout_s: float) -> str:
+    """Poll a media fetch (returns a JSON ``{"path": ...}`` string, "" path until
+    Frigate has written the file) until it yields a path or the timeout elapses."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        with contextlib.suppress(Exception):
+            path = json.loads(fetch()).get("path", "")
+            if path:
+                return path
+        if time.monotonic() >= deadline:
+            return ""
+        time.sleep(MEDIA_POLL_S)
+
+
+def _deliver_event_media(event_id: str, cam: str) -> None:
+    """Send a Frigate event's media as follow-ups once it exists. The text alert
+    already went out; a live MQTT "new" event fires before the snapshot is written
+    and the clip only exists after the event ends, so we wait here (in a daemon
+    thread, never blocking the alert path) for each and send it when ready — the
+    boxed snapshot + VLM description, then the recorded clip. Graceful if either
+    never materialises (snapshot disabled / recording off / VLM slow or down)."""
+
+    def _run() -> None:
+        snapshot_path = _await_media(lambda: get_event_snapshot(event_id), SNAPSHOT_WAIT_S)
+        if snapshot_path:
+            # Photo only — the text alert already named the event (empty message
+            # so the bot skips a duplicate 🚨 bubble). The box is baked in.
+            write_alert("", cam, snapshot_path)
+            if DESCRIBE_ENABLED:
+                desc = _describe_snapshot(snapshot_path)
+                if desc:
+                    write_alert(f"📷 {cam}: {desc}", cam)
+        if RECORD_ENABLED:
+            video_path = _await_media(lambda: get_event_clip(event_id), CLIP_WAIT_S)
+            if video_path:
+                write_alert("", cam, "", video_path)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _deliver_ha_media(ev: dict, cam: str) -> None:
+    """HA-snapshot tier: HA pulls a live frame synchronously (no wait) and there
+    is no clip. Sent in a daemon thread so the VLM describe never blocks."""
+    ref = ev.get("snapshot_ref") or ""
+    if not ref:
         return
 
     def _run() -> None:
-        desc = _describe_snapshot(snapshot_path)
-        if desc:
-            write_alert(f"📷 {cam}: {desc}", cam)
+        MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        out = MEDIA_DIR / (ev["event_id"].replace(":", "_") + ".jpg")
+        snapshot_path = ha_camera_snapshot(ref.split("ha:", 1)[1], str(out))
+        if not snapshot_path:
+            return
+        write_alert("", cam, snapshot_path)
+        if DESCRIBE_ENABLED:
+            desc = _describe_snapshot(snapshot_path)
+            if desc:
+                write_alert(f"📷 {cam}: {desc}", cam)
 
     threading.Thread(target=_run, daemon=True).start()
 
 
 def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
     """Fire a matched rule — live writes the real alert + runs device actions;
-    shadow only logs the would-be alert for parallel-run comparison."""
+    shadow only logs the would-be alert for parallel-run comparison.
+
+    The text alert fires instantly; the snapshot and clip follow as soon as
+    Frigate has written them (see _deliver_event_media) — a live MQTT event has
+    neither ready at fire time, so attaching them inline would drop them."""
     actions = rule.get("actions") or [{"type": "alert"}]
     cam = ev["camera"]
     desc = ev.get("description")
@@ -578,19 +636,6 @@ def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
             }
         )
         return "shadow"
-    snapshot_path = ""
-    video_path = ""
-    ref = ev.get("snapshot_ref") or ""
-    if ref and ev.get("source") == "frigate":
-        snapshot_path = json.loads(get_event_snapshot(ev["event_id"])).get("path", "")
-        # The event clip (raw recording — needs Frigate recording enabled). No
-        # bbox overlay on the clip; the box is only on the snapshot.
-        if ev.get("clip_ref"):
-            video_path = json.loads(get_event_clip(ev["event_id"])).get("path", "")
-    elif ref and ev.get("source") == "ha":
-        MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-        out = MEDIA_DIR / (ev["event_id"].replace(":", "_") + ".jpg")
-        snapshot_path = ha_camera_snapshot(ref.split("ha:", 1)[1], str(out))
     notes = []
     for act in actions:
         if act.get("type") == "device":
@@ -601,10 +646,11 @@ def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
     if any(a.get("type") == "alert" for a in actions) or notes:
         if notes:
             msg += "\n" + "\n".join(notes)
-        write_alert(msg, cam, snapshot_path, video_path)
-        # Enrich with a VLM description as a non-blocking follow-up (the verdict
-        # alert already went out). Covers RTSP + HA-snapshot cameras.
-        _describe_async(snapshot_path, cam)
+        write_alert(msg, cam)  # instant text — media follows when ready
+        if ev.get("source") == "frigate" and ev.get("event_id"):
+            _deliver_event_media(ev["event_id"], cam)
+        elif ev.get("source") == "ha":
+            _deliver_ha_media(ev, cam)
     return "live"
 
 

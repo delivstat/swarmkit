@@ -332,7 +332,10 @@ async def poll_alerts(context: Any) -> None:
         data = await ops_get("/api/ops/alerts")
         alerts = data.get("alerts", [])
         for alert in alerts:
-            await context.bot.send_message(chat_id=group_chat_id, text=f"🚨 {alert['message']}")
+            # Media-only follow-ups (snapshot/clip that arrive after the text
+            # alert) carry an empty message — send just the media, no bare 🚨.
+            if alert.get("message"):
+                await context.bot.send_message(chat_id=group_chat_id, text=f"🚨 {alert['message']}")
             snap_path = alert.get("snapshot_path")
             if snap_path and Path(snap_path).exists():
                 await context.bot.send_photo(
