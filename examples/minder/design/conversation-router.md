@@ -311,3 +311,77 @@ Plus a `router_cases.json` accuracy summary (N/N correct `kind`) attached to the
 3. **CPU router latency.** `qwen2.5:7b` is ~12–19s/query warm on CPU, ~15–25s
    end-to-end with execution. Being evaluated in practice; the GPU `qwen2.5:3b`
    fallback (~1–2s) is one env var away if it feels too slow.
+
+## Governing principle (all flows)
+
+**The LLM does the language (reliably); the code does the doing
+(deterministically).** One LLM call per message — the router — parses the request
+into the Plan. Every "doing" step is deterministic code reading the Plan. **No
+second agent / tool-loop anywhere.** Proven necessary this session: small local
+models (llama3.2 and qwen2.5, CPU and GPU) reliably *understand* language but
+cannot reliably *orchestrate tools* (mangled args, schema leaked into args, "no
+tools called") or emit reliable prose. `chat` is the only flow that stays
+LLM-generated (genuine open language).
+
+## Implementation plan — deterministic execution refactor
+
+Tracked checklist. Build in order; each phase verifiable on the live box.
+
+### Phase 0 — verify the load-bearing unknowns (do first)
+- [ ] **YOLO import cost**: can the webapp import `mcp-servers/detect/detector.py`
+      directly (ultralytics + a small model) without unacceptable memory? Confirm
+      the API: `detect(path, want_classes) -> {matched, counts, best_confidence}`
+      and `classes_for_condition(text)`.
+- [ ] **Frame source per tier**: fetch a *current* frame deterministically —
+      Frigate `/api/<slug>/latest.jpg` for `tier:"frigate"` (slug = name slugified,
+      mirror `frigate/server.py:_slug`); HA `camera_proxy` for `tier:"ha-snapshot"`.
+      Add `_grab_frame(camera) -> path|bytes|None`.
+- [ ] **Direct VLM call**: a backend `_vlm_answer(frame_b64, question)` mirroring
+      `vision/server.py:_query_vision` (Ollama `/api/chat`, llava-phi3, num_gpu 0,
+      keep_alive) — for open-scene questions only.
+
+### Phase 1 — vision (query) deterministic
+- [ ] `_dispatch_query(plan)`: resolve cameras (`_resolve_cameras`, done); for each,
+      `_grab_frame`; person/vehicle/animal → YOLO; open scene → `_vlm_answer`.
+- [ ] Phrase: `_phrase_check` for objects (exists); VLM answer for open scene.
+- [ ] Multi-camera aggregation ("anyone outside" → check each outdoor cam, summarise).
+- [ ] Return the frame(s) as media.
+- [ ] Wire `kind=="vision"` in `handle_message` to `_dispatch_query`; drop the
+      `run_topology("minder-vision")` call.
+
+### Phase 2 — scenario deterministic
+- [ ] `_plan_to_rule(plan)`: map router `trigger_*`/`device`/`operation`/`schedule`
+      → the `rules.json` shape (cameras, condition, schedule, at_time, devices,
+      device_action, alert).
+- [ ] **HITL confirm** for device-control rules before persisting (the rule
+      actuates hardware) — reuse the review-queue gate.
+- [ ] Persist via `_persist_scenario` (exists); drop `run_topology("minder-scenario")`
+      from `create_scenario`.
+- [ ] Sensor triggers (`trigger_type:sensor`) → graceful "not supported yet"
+      (rule engine = vision + time only today).
+
+### Phase 3 — device_now + snapshot/video deterministic
+- [ ] device_now: execute from `plan.device`+`plan.operation` (match via
+      `_match_device_name`); drop the `control_device(text)` re-parse.
+- [ ] snapshot/video: capture the router's `plan.cameras[0]` directly via
+      `_grab_frame` / a clip; drop the `minder-snapshot`/`minder-video` agents.
+
+### Phase 4 — cleanup + tests + demo
+- [ ] Remove now-dead artifacts: `minder-vision`, `minder-scenario`,
+      `minder-snapshot`, `minder-video` topologies; `check-condition`, `route`
+      skills; `_route_via_agent`/`_route_constrained`/`_routes_since` in
+      `minder_ops.py`.
+- [ ] Look at the `chat` `send_chat` `/conversations` 404 (separate, conversational
+      path).
+- [ ] Tests: `router_cases.json` (plan extraction) + per-flow deterministic dispatch
+      unit tests + live full-pipeline for query/scenario/device/weather.
+- [ ] Demo transcript: the three failing messages + a scenario + a device action,
+      all correct end-to-end.
+
+### Notes / risks
+- weather, camera_list, device_list are already deterministic — no change.
+- Keep one LLM call per message (the router). The VLM (open scene) and YOLO are
+  not "agents" — they're called directly.
+- If YOLO can't be imported into the webapp cleanly (Phase 0 fails), fall back to a
+  thin single-purpose `minder-check` topology that takes camera+condition as
+  explicit input — but that reintroduces an agent, so only if forced.
