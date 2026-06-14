@@ -1408,19 +1408,83 @@ async def _route_constrained(text: str) -> str | None:
     return intent
 
 
+# Router intent -> the dispatch kind handle_message already understands.
+_ROUTER_KIND = {
+    "query": "vision",
+    "snapshot": "snapshot",
+    "video": "video",
+    "device_now": "device",
+    "scenario": "scenario",
+    "weather": "weather",
+    "camera_list": "camera_list",
+    "device_list": "device_list",
+    "setup": "setup",
+    "chat": "chat",
+}
+
+
+async def route(text: str) -> dict | None:
+    """Run the minder-router topology and parse its structured Plan. The router
+    (output_schema, no tools) understands the message and emits the whole plan in
+    one call; this is the PRIMARY path. Returns the plan dict with a mapped
+    'dispatch_kind', or None if the router is unavailable (serve down) — the
+    caller then falls back to the keyword classifier."""
+    try:
+        ctx = build_context()
+        enriched = f"{ctx}\n\n{text}" if ctx else text
+        out = await asyncio.wait_for(run_topology("minder-router", enriched), timeout=150)
+    except Exception:
+        return None
+    plan = _extract_json(out)
+    if not isinstance(plan, dict) or not plan.get("kind"):
+        return None
+    plan["dispatch_kind"] = _ROUTER_KIND.get(plan["kind"], "chat")
+    return plan
+
+
+def _resolve_cameras(plan: dict) -> list[str]:
+    """Resolve the router's camera list to concrete configured names — zone-aware.
+    Expands ["all"]/"outside"/"inside" against cameras.json (zone defaults to
+    'outdoor' for security cams), validates names, drops unknowns. The tag is
+    authoritative; the model's list is a hint we re-resolve."""
+    cams = _load_cameras()
+    names = [c.get("name") or c["ip"] for c in cams]
+    req = plan.get("cameras") or []
+    if not req or any(str(x).strip().lower() in ("all", "any", "") for x in req):
+        return names
+    out: list[str] = []
+    for x in req:
+        xl = str(x).strip().lower()
+        if xl in ("outside", "outdoor"):
+            out += [c.get("name") or c["ip"] for c in cams if c.get("zone", "outdoor") == "outdoor"]
+        elif xl in ("inside", "indoor"):
+            out += [c.get("name") or c["ip"] for c in cams if c.get("zone", "outdoor") == "indoor"]
+        else:
+            m = _match_camera_name(str(x))
+            if m and m != "all":
+                out.append(m)
+            elif x in names:
+                out.append(str(x))
+    seen: set[str] = set()
+    deduped = [c for c in out if not (c in seen or seen.add(c))]
+    return deduped or names
+
+
 async def handle_message(
     text: str, source: str = "default", sender: str = "", kind: str | None = None
 ) -> dict:
     """THE channel-neutral entry point. Classify, execute, return envelope.
 
-    Routing is hybrid: a deterministic keyword fast-path handles commands and
-    unambiguous phrasing instantly; anything that falls through goes to the
-    minder-router agent for semantic understanding, then re-dispatches here
-    with an explicit kind.
+    Routing is router-primary: the minder-router agent understands the message
+    and emits a structured plan in one call; we dispatch on its intent. The
+    keyword classifier is only the fallback for when the router is unavailable
+    (serve down). The plan's extracted entities (cameras, etc.) feed the
+    deterministic execution below.
     """
-    agent_routed = kind is not None
+    plan: dict | None = None
     if kind is None:
-        kind = classify(text)
+        plan = await route(text)
+        kind = plan["dispatch_kind"] if plan else classify(text)
     started = time.time()
 
     if kind == "setup":
@@ -1433,13 +1497,8 @@ async def handle_message(
         return await create_scenario(text)
 
     if kind == "device":
-        # Device control changes real-world state — never act on a bare
-        # keyword match. Confirm the intent with the router first (~0.7s);
-        # only a confirmed "device" intent flips a switch.
-        if not agent_routed:
-            verified = await _route_via_agent(text)
-            if verified and verified != "device":
-                return await handle_message(text, source, sender, kind=verified)
+        # The router already classified this as a device action (it understands
+        # intent, not just keywords), so no separate verify step is needed.
         return await asyncio.to_thread(control_device, text)
 
     if kind == "device_list":
@@ -1469,6 +1528,13 @@ async def handle_message(
 
         context = build_context()
         enriched = f"{context}\n\n{text}" if context else text
+        # The router already resolved which camera(s) the user means (zone-aware:
+        # "outside" -> outdoor cams, "the gate" -> the gate camera). Pass that
+        # through so the specialist targets the right camera instead of guessing.
+        if plan:
+            cams = _resolve_cameras(plan)
+            if cams and len(cams) < len(_load_cameras()):
+                enriched += "\n\nFocus on camera(s): " + ", ".join(cams)
         topology = {
             "vision": "minder-vision",
             "snapshot": "minder-snapshot",
@@ -1503,14 +1569,8 @@ async def handle_message(
             return _envelope(kind, "", media=media)
         return _envelope(kind, "Couldn't capture from that camera. Try /cameras to see names.")
 
-    # Keywords didn't recognize it — let the router agent take a look
-    # before falling back to open conversation. (Skip if an agent already
-    # routed us here, to prevent loops.)
-    if not agent_routed:
-        intent = await _route_via_agent(text)
-        if intent and intent != "chat":
-            return await handle_message(text, source, sender, kind=intent)
-
+    # kind == "chat" (router said so, or the keyword fallback did) → open
+    # conversation.
     # Conversational fallback
     prefix = f"{sender}: " if sender else ""
     context = build_context()
