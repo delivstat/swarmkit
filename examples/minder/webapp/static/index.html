@@ -2172,6 +2172,10 @@ function dctlColor(id, hex) {
 // Per-device-type control widgets. Bulk of the fleet is switches/lights/fans;
 // climate/cover/lock/media_player get their domain-appropriate services.
 function deviceControls(d) {
+  // An offline/ghost device can't be switched — show why instead of controls
+  // that would do nothing (and would otherwise flash a false optimistic state).
+  if (['unavailable', 'unknown'].includes(d.state))
+    return '<span class="dctl-label" style="font-style:italic">Offline — controls unavailable</span>';
   const id = d.id, a = d.attributes || {}, off = d.state === 'off';
   const on = d.state === 'on';
   const q = JSON.stringify;
