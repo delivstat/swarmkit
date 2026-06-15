@@ -106,6 +106,19 @@ async def _start_mqtt() -> None:
 
 
 @app.on_event("startup")
+async def _start_poll() -> None:
+    """Reconcile backstop: poll Frigate events every minute. Deterministic — calls
+    poll_events directly (no LLM agent), replacing the retired minder-poll topology
+    + poll-frigate cron. Shares dedup/cooldown state with the MQTT path."""
+    try:
+        from frigate_poller import start_frigate_poller
+
+        start_frigate_poller()
+    except Exception as e:
+        print(f"[poll] startup hook failed: {e}", flush=True)
+
+
+@app.on_event("startup")
 async def _startup_recovery() -> None:
     """On boot: DIAGNOSE only (never auto-fix — fixes are human-gated). If a
     precious file is corrupt/missing, raise an approval-request alert; the human
