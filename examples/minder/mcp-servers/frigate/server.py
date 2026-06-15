@@ -726,6 +726,71 @@ def _run_time_rules(active: list[dict], state: dict, now: float, live: bool) -> 
     return fired
 
 
+def _sensor_rule_matches(rule: dict, state_val: str) -> bool:
+    """True if an HA sensor's current value satisfies the rule's trigger — a
+    numeric threshold (trigger_op/trigger_threshold) or a state match
+    (trigger_state, default 'on')."""
+    op = rule.get("trigger_op")
+    thr = rule.get("trigger_threshold")
+    if op and thr is not None:
+        try:
+            v = float(state_val)
+        except (TypeError, ValueError):
+            return False
+        return {">=": v >= thr, "<=": v <= thr, ">": v > thr, "<": v < thr}.get(op, False)
+    return str(state_val).lower() == str(rule.get("trigger_state") or "on").lower()
+
+
+def _run_sensor_rules(active: list[dict], state: dict, now: float, live: bool) -> int:
+    """Fire sensor-triggered rules (trigger_entity set) by reading HA state. Edge-
+    triggered: fires on the transition INTO the matching state, not every cycle it
+    stays matched, plus the standard cooldown. Folded into the same per-minute
+    tick as the Frigate poll + time rules."""
+    sensor_rules = [r for r in active if r.get("trigger_entity")]
+    if not sensor_rules:
+        return 0
+    try:
+        states = {s.get("entity_id"): s for s in ha_states()}
+    except Exception:
+        return 0
+    matched = state.setdefault("_sensor_matched", {})
+    fired = 0
+    for rule in sensor_rules:
+        eid = rule["trigger_entity"]
+        s = states.get(eid)
+        if not s:
+            continue
+        val = s.get("state")
+        if val in (None, "unavailable", "unknown"):
+            continue
+        key = f"sensor|{eid}|{json.dumps(rule.get('actions', []))[:80]}"
+        now_match = _sensor_rule_matches(rule, val)
+        was_match = matched.get(key, False)
+        matched[key] = now_match
+        if not now_match or was_match:
+            continue  # only the rising edge (not-matched -> matched) fires
+        if now - state.get(key, 0) < ALERT_COOLDOWN_S:
+            continue
+        state[key] = now
+        notes = []
+        for act in rule.get("actions", []):
+            if act.get("type") == "device" and live:
+                try:
+                    notes.append(execute_device_action(act["device"], act["action"]))
+                except Exception as e:
+                    notes.append(f"device {act.get('device')} failed: {e}")
+        label = rule.get("trigger_sensor") or eid
+        msg = f"🔔 {label}: {val}" + (("\n" + "; ".join(notes)) if notes else "")
+        if live:
+            write_alert(msg, "")
+        else:
+            _record_shadow(
+                {"ts": now, "camera": "", "condition": f"sensor:{eid}", "would_alert": msg}
+            )
+        fired += 1
+    return fired
+
+
 def _active_rules(rules: list[dict]) -> list[dict]:
     return [
         r
@@ -842,6 +907,7 @@ def poll_events() -> str:
             fired.append(fired_one)
 
     time_fired = _run_time_rules(active, state, now, live)
+    sensor_fired = _run_sensor_rules(active, state, now, live)
     state["_frigate_seen"] = list(seen)[-500:]
     save_monitor_state(state)
     write_json_atomic(CURSOR_FILE, {"after": max_ts})
@@ -852,6 +918,7 @@ def poll_events() -> str:
             "events_seen": len(events),
             "alerts": len(fired),
             "time_rules_fired": time_fired,
+            "sensor_rules_fired": sensor_fired,
             "fired": fired,
         }
     )
