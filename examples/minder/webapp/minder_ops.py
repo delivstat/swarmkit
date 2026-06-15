@@ -1477,13 +1477,17 @@ def _correct_plan(plan: dict, text: str) -> None:
     # camera_list / device_list misfire on small talk: the 3B router sometimes
     # labels a bare greeting ("hi", "thanks", "hey there") as a list intent.
     # A genuine list request names what to list — require the noun, else it's chat.
-    if (kind == "camera_list" and not re.search(
-        r"\b(camera|cameras|cam|cams|feed|feeds|webcam)\b", t
-    )) or (kind == "device_list" and not re.search(
-        r"\b(device|devices|light|lights|fan|fans|switch|switches|plug|plugs"
-        r"|appliance|appliances|control|smart)\b",
-        t,
-    )):
+    if (
+        kind == "camera_list"
+        and not re.search(r"\b(camera|cameras|cam|cams|feed|feeds|webcam)\b", t)
+    ) or (
+        kind == "device_list"
+        and not re.search(
+            r"\b(device|devices|light|lights|fan|fans|switch|switches|plug|plugs"
+            r"|appliance|appliances|control|smart)\b",
+            t,
+        )
+    ):
         plan["kind"] = "chat"
 
 
