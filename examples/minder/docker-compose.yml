@@ -109,9 +109,9 @@ services:
       # model can't fabricate (see _describe_prompt). moondream hallucinated people
       # — fatal for security — so it's out regardless of speed.
       - MINDER_VISION_MODEL=${MINDER_VISION_MODEL:-qwen2.5vl:3b}
-      # Frigate event poller is the live alert source (Phase 2b cutover). The
-      # YOLO monitor loop (monitor-cameras trigger) is disabled; set "shadow" to
-      # roll back to parallel-run if needed.
+      # The Frigate event poller is the sole monitoring path (the old YOLO loop
+      # has been retired). "live" fires alerts; "shadow" is a dry-run that only
+      # logs would-be alerts to poller_shadow.json.
       - MINDER_POLLER_ALERTS=${MINDER_POLLER_ALERTS:-live}
       # Real-time alerts: Frigate -> mosquitto (frigate/events) -> webapp
       # subscriber. The minute poller below stays as the reconcile backstop.
