@@ -523,6 +523,19 @@
     .device-type { color: var(--text-dim); font-size: 0.8rem; }
     .device-state { font-size: 0.8rem; }
 
+    /* Inline device controls (dashboard) */
+    .device-item.controllable { flex-direction: column; align-items: stretch; gap: 0.55rem; }
+    .device-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+    .dctl-btn {
+      font-size: 0.78rem; padding: 0.3rem 0.6rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      cursor: pointer;
+    }
+    .dctl-btn:hover { background: var(--surface-hover); }
+    .dctl-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .dctl-slider { flex: 1; min-width: 110px; accent-color: var(--accent); }
+    .dctl-label { font-size: 0.75rem; color: var(--text-dim); }
+
     /* Toast */
     .toast {
       position: fixed;
@@ -2063,33 +2076,129 @@ async function loadDashDevices() {
 
   try {
     const data = await api('/ha/devices');
-    if (!data.devices?.length) {
-      el.innerHTML = `
-        <div class="dash-empty">No smart devices found yet</div>
-        <p style="color:var(--text-dim); font-size:0.85rem; text-align:center; margin-bottom:0.5rem">
-          Use the Home Assistant panel below to add SmartLife or other integrations, then refresh.
-        </p>
-        <div style="text-align:center">
-          <button class="btn btn-secondary" onclick="loadDashDevices()">Refresh Devices</button>
-        </div>
-      `;
-      return;
-    }
-    el.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem">' +
-      '<div class="dash-section-title" style="margin:0">Connected Devices</div>' +
-      '<button class="btn btn-ghost" onclick="loadDashDevices()" style="font-size:0.8rem">Refresh</button>' +
-      '</div>' +
-      data.devices.map(d => `
-      <div class="device-item">
+    state.haDevices = data.devices || [];
+    renderDashDevices();
+  } catch (e) {
+    el.innerHTML = `<div class="dash-empty">Cannot reach Home Assistant</div>`;
+  }
+}
+
+function renderDashDevices() {
+  const el = document.getElementById('dash-devices');
+  if (!el) return;
+  const devices = state.haDevices || [];
+  if (!devices.length) {
+    el.innerHTML = `
+      <div class="dash-empty">No smart devices found yet</div>
+      <p style="color:var(--text-dim); font-size:0.85rem; text-align:center; margin-bottom:0.5rem">
+        Use the Home Assistant panel below to add SmartLife or other integrations, then refresh.
+      </p>
+      <div style="text-align:center">
+        <button class="btn btn-secondary" onclick="loadDashDevices()">Refresh Devices</button>
+      </div>`;
+    return;
+  }
+  el.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem">' +
+    '<div class="dash-section-title" style="margin:0">Connected Devices</div>' +
+    '<button class="btn btn-ghost" onclick="loadDashDevices()" style="font-size:0.8rem">Refresh</button>' +
+    '</div>' +
+    devices.map(d => `
+    <div class="device-item controllable">
+      <div style="display:flex; justify-content:space-between; align-items:center; width:100%">
         <div>
           <div class="device-name">${d.name}</div>
           <div class="device-type">${d.type}</div>
         </div>
-        <span class="badge ${d.state === 'on' ? 'badge-success' : 'badge-warning'}">${d.state}</span>
+        <span class="badge ${deviceStateClass(d.state)}">${d.state}</span>
       </div>
-    `).join('');
+      <div class="device-controls">${deviceControls(d)}</div>
+    </div>
+  `).join('');
+}
+
+// "on/open/unlocked" = green, "unavailable" = red, anything else (off/closed) = amber
+function deviceStateClass(state) {
+  if (['on', 'open', 'unlocked', 'playing', 'home'].includes(state)) return 'badge-success';
+  if (state === 'unavailable' || state === 'unknown') return 'badge-error';
+  return 'badge-warning';
+}
+
+// Deterministic control: POST the exact entity + an allowlisted HA service. The
+// backend returns the (optimistic) new state — reflect it instantly so the UI
+// feels responsive even on cloud devices that report state slowly, then reconcile
+// against HA a couple of seconds later. No LLM, no fuzzy matching.
+async function dctl(id, service, data) {
+  try {
+    const res = await api('/devices/control', { method: 'POST', body: { entity_id: id, service, data: data || {} } });
+    if (res.device) {
+      const i = (state.haDevices || []).findIndex(d => d.id === id);
+      if (i >= 0) { state.haDevices[i] = res.device; renderDashDevices(); }
+    }
+    clearTimeout(window._dctlReconcile);
+    window._dctlReconcile = setTimeout(loadDashDevices, 2500);
   } catch (e) {
-    el.innerHTML = `<div class="dash-empty">Cannot reach Home Assistant</div>`;
+    toast(e.message, true);
+  }
+}
+
+function dctlColor(id, hex) {
+  const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  dctl(id, 'turn_on', { rgb_color: rgb });
+}
+
+// Per-device-type control widgets. Bulk of the fleet is switches/lights/fans;
+// climate/cover/lock/media_player get their domain-appropriate services.
+function deviceControls(d) {
+  const id = d.id, a = d.attributes || {}, off = d.state === 'off';
+  const on = d.state === 'on';
+  const q = JSON.stringify;
+  const btn = (label, service, data, active = false) =>
+    `<button class="dctl-btn ${active ? 'active' : ''}" onclick='dctl(${q(id)}, ${q(service)}, ${q(data || {})})'>${label}</button>`;
+  const onoff = (offState = 'off') => btn('On', 'turn_on', {}, on) + btn('Off', 'turn_off', {}, d.state === offState);
+  switch (d.type) {
+    case 'switch':
+      return onoff() + btn('Toggle', 'toggle', {});
+    case 'light': {
+      let h = onoff() + btn('Toggle', 'toggle', {});
+      const pct = a.brightness != null ? Math.round(a.brightness / 255 * 100) : 100;
+      h += `<span class="dctl-label">Bright</span><input class="dctl-slider" type="range" min="1" max="100" value="${pct}" onchange='dctl(${q(id)},"turn_on",{brightness_pct:+this.value})'>`;
+      if ((a.supported_color_modes || []).some(m => ['rgb', 'rgbw', 'rgbww', 'hs', 'xy'].includes(m))) {
+        const rgb = a.rgb_color || [255, 255, 255];
+        const hex = '#' + rgb.map(x => x.toString(16).padStart(2, '0')).join('');
+        h += `<input type="color" value="${hex}" title="Colour" onchange='dctlColor(${q(id)}, this.value)'>`;
+      }
+      return h;
+    }
+    case 'fan': {
+      const pct = a.percentage != null ? a.percentage : 0;
+      return onoff() + `<span class="dctl-label">Speed</span><input class="dctl-slider" type="range" min="0" max="100" value="${pct}" onchange='dctl(${q(id)},"set_percentage",{percentage:+this.value})'>`;
+    }
+    case 'climate': {
+      const cur = a.current_temperature != null ? `${a.current_temperature}°` : '—';
+      const tgt = a.temperature != null ? a.temperature : (a.min_temp != null ? a.min_temp : 20);
+      const step = a.target_temp_step || 0.5;
+      return `<span class="dctl-label">Now ${cur}</span>` +
+        btn('−', 'set_temperature', { temperature: +(tgt - step).toFixed(1) }) +
+        `<span class="dctl-label" style="color:var(--text)">${tgt}°</span>` +
+        btn('+', 'set_temperature', { temperature: +(tgt + step).toFixed(1) }) +
+        btn('On', 'turn_on', {}) + btn('Off', 'turn_off', {});
+    }
+    case 'cover': {
+      let h = btn('Open', 'open_cover', {}) + btn('Stop', 'stop_cover', {}) + btn('Close', 'close_cover', {});
+      if (a.current_position != null)
+        h += `<input class="dctl-slider" type="range" min="0" max="100" value="${a.current_position}" onchange='dctl(${q(id)},"set_cover_position",{position:+this.value})'>`;
+      return h;
+    }
+    case 'lock':
+      return btn('Lock', 'lock', {}, d.state === 'locked') + btn('Unlock', 'unlock', {}, d.state === 'unlocked');
+    case 'media_player': {
+      let h = onoff() + btn('⏯', 'media_play_pause', {});
+      if (a.volume_level != null)
+        h += `<span class="dctl-label">Vol</span><input class="dctl-slider" type="range" min="0" max="100" value="${Math.round(a.volume_level * 100)}" onchange='dctl(${q(id)},"volume_set",{volume_level:(+this.value)/100})'>`;
+      return h;
+    }
+    default:
+      return onoff();
   }
 }
 

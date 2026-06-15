@@ -420,6 +420,12 @@ class ModelPullRequest(BaseModel):
     model: str
 
 
+class DeviceControlRequest(BaseModel):
+    entity_id: str
+    service: str
+    data: dict[str, Any] = {}
+
+
 class HATokenRequest(BaseModel):
     token: str
 
@@ -1013,6 +1019,85 @@ def _get_ha_token() -> str:
     return config.get("ha_token", os.environ.get("HA_TOKEN", ""))
 
 
+# Controllable HA domains and, per domain, the services the dashboard may call
+# and the data keys each service accepts. This is an allowlist — the control
+# endpoint refuses anything not listed, so the deterministic passthrough can
+# never call an arbitrary HA service. (Domain is derived from the entity_id.)
+_DEVICE_DOMAINS = ("light", "switch", "fan", "climate", "cover", "lock", "media_player")
+# Commanded service -> the state it produces, for optimistic UI (HA's own state
+# read lags for cloud devices). Services not listed (toggle, sliders) fall back
+# to the re-read.
+_OPTIMISTIC_STATE = {
+    "turn_on": "on",
+    "turn_off": "off",
+    "lock": "locked",
+    "unlock": "unlocked",
+    "open_cover": "open",
+    "close_cover": "closed",
+}
+_CONTROL_ALLOW: dict[str, dict[str, set[str]]] = {
+    "light": {
+        "turn_on": {"brightness_pct", "rgb_color", "color_temp_kelvin"},
+        "turn_off": set(),
+        "toggle": set(),
+    },
+    "switch": {"turn_on": set(), "turn_off": set(), "toggle": set()},
+    "fan": {"turn_on": set(), "turn_off": set(), "toggle": set(), "set_percentage": {"percentage"}},
+    "climate": {
+        "turn_on": set(),
+        "turn_off": set(),
+        "set_temperature": {"temperature"},
+        "set_hvac_mode": {"hvac_mode"},
+    },
+    "cover": {
+        "open_cover": set(),
+        "close_cover": set(),
+        "stop_cover": set(),
+        "set_cover_position": {"position"},
+    },
+    "lock": {"lock": set(), "unlock": set()},
+    "media_player": {
+        "turn_on": set(),
+        "turn_off": set(),
+        "media_play_pause": set(),
+        "volume_set": {"volume_level"},
+    },
+}
+# Attributes the dashboard needs to render per-type controls (brightness slider,
+# thermostat target, cover position, …). Pulled through verbatim from HA state.
+_DEVICE_ATTRS = (
+    "brightness",
+    "rgb_color",
+    "color_temp_kelvin",
+    "supported_color_modes",
+    "percentage",
+    "current_temperature",
+    "temperature",
+    "min_temp",
+    "max_temp",
+    "target_temp_step",
+    "hvac_modes",
+    "current_position",
+    "volume_level",
+    "supported_features",
+)
+
+
+def _device_from_entity(entity: dict) -> dict | None:
+    eid = entity.get("entity_id", "")
+    domain = eid.split(".")[0] if "." in eid else ""
+    if domain not in _DEVICE_DOMAINS:
+        return None
+    attrs = entity.get("attributes", {})
+    return {
+        "id": eid,
+        "name": attrs.get("friendly_name", eid),
+        "type": domain,
+        "state": entity.get("state", "unknown"),
+        "attributes": {k: attrs[k] for k in _DEVICE_ATTRS if k in attrs},
+    }
+
+
 @app.get("/api/ha/devices")
 async def ha_devices():
     token = _get_ha_token()
@@ -1020,22 +1105,51 @@ async def ha_devices():
         return {"devices": [], "message": "No HA token configured"}
     try:
         states = _ha_api("states", token)
-        devices = []
-        for entity in states:
-            eid = entity.get("entity_id", "")
-            domain = eid.split(".")[0] if "." in eid else ""
-            if domain in ("light", "switch", "fan", "climate", "cover", "lock", "media_player"):
-                devices.append(
-                    {
-                        "id": eid,
-                        "name": entity.get("attributes", {}).get("friendly_name", eid),
-                        "type": domain,
-                        "state": entity.get("state", "unknown"),
-                    }
-                )
+        devices = [d for e in states if (d := _device_from_entity(e))]
         return {"devices": devices, "count": len(devices)}
     except Exception as e:
         return {"devices": [], "message": str(e)}
+
+
+@app.post("/api/devices/control")
+async def control_device_endpoint(req: DeviceControlRequest):
+    """Deterministic device control — call an HA service on an exact entity, with
+    no LLM and no fuzzy matching. The service + data are checked against the
+    per-domain allowlist (_CONTROL_ALLOW), so this can only do what the dashboard
+    UI exposes. Returns the entity's new state for the UI to reflect."""
+    token = _get_ha_token()
+    if not token:
+        raise HTTPException(status_code=400, detail="Home Assistant is not connected")
+    domain = req.entity_id.split(".")[0] if "." in req.entity_id else ""
+    allowed = _CONTROL_ALLOW.get(domain)
+    if allowed is None:
+        raise HTTPException(status_code=400, detail=f"Unsupported device type: {domain or '?'}")
+    if req.service not in allowed:
+        raise HTTPException(
+            status_code=400, detail=f"Service '{req.service}' not allowed for {domain}"
+        )
+    extra = set(req.data) - allowed[req.service]
+    if extra:
+        raise HTTPException(status_code=400, detail=f"Unexpected parameters: {sorted(extra)}")
+    try:
+        _ha_api(
+            f"services/{domain}/{req.service}",
+            token,
+            "POST",
+            {"entity_id": req.entity_id, **req.data},
+        )
+        # HA reports state with eventual consistency — Tuya/cloud switches can lag
+        # seconds, so a re-read here returns the STALE state. Reflect the commanded
+        # state optimistically (we know what we just did); the dashboard reconciles
+        # against HA on its next refresh. Attributes come from the (best-effort)
+        # re-read for sliders that have a real value to show.
+        state = _ha_api(f"states/{req.entity_id}", token)
+        dev = _device_from_entity(state) if isinstance(state, dict) else None
+        if dev is not None and req.service in _OPTIMISTIC_STATE:
+            dev["state"] = _OPTIMISTIC_STATE[req.service]
+        return {"status": "ok", "device": dev}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"HA control failed: {e}") from e
 
 
 # -- Step 4: Telegram --
