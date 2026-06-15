@@ -300,9 +300,12 @@ Plus a `router_cases.json` accuracy summary (N/N correct `kind`) attached to the
 
 ## Open questions
 
-1. **Sensor-condition triggers** ("water level reached") require a new trigger
-   type in Minder's rule engine + the poller (today: vision + time). Deferred to a
-   follow-up; the router schema already reserves `trigger.type: sensor`.
+1. ~~**Sensor-condition triggers** ("water level reached")~~ **(implemented)** —
+   `author_scenario` resolves the sensor description to an HA entity and persists a
+   sensor rule (`trigger_entity` + state-match or numeric threshold); the
+   deterministic poller (`frigate.server._run_sensor_rules`) reads HA state each
+   cycle and fires on the rising edge into the trigger state, with the standard
+   cooldown. Vision + time + sensor are all live now.
 2. **Framework-level synthesis.** This pattern ("intent router → validated frozen
    plan → deterministic dispatch") is composed from `design/details/*` pages but
    is not unified anywhere, and `design/SwarmKit-Design-v0.6.md` doesn't mention

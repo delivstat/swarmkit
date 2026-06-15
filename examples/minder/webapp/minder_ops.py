@@ -902,20 +902,164 @@ def _plan_to_rule(plan: dict) -> tuple[dict, str]:
         parsed["cameras"] = [plan.get("trigger_camera") or "all"]
     elif tt == "time":
         parsed["at_time"] = plan.get("at") or ""
+    elif tt == "sensor":
+        parsed["trigger_sensor"] = (plan.get("trigger_sensor") or "").strip()
+        parsed["trigger_value"] = (plan.get("trigger_value") or "").strip()
     return parsed, tt
 
 
 async def author_scenario(plan: dict, text: str) -> dict:
     """Deterministic scenario authoring from the router's plan — no second agent.
-    Sensor triggers aren't supported by the rule engine yet (vision + time only)."""
+    Vision + time triggers persist normally; sensor triggers resolve an HA sensor
+    entity and persist a sensor rule (the poller watches HA state)."""
     parsed, tt = _plan_to_rule(plan)
     if tt == "sensor":
+        return await asyncio.to_thread(_persist_sensor_rule, parsed, text)
+    return await asyncio.to_thread(_persist_scenario, parsed, text)
+
+
+# HA states that read as "active/triggered" for a binary-style sensor, and the
+# words a user might use for them. "high"/"" default to the sensor being on.
+_SENSOR_ACTIVE_WORDS = {
+    "on": "on",
+    "high": "on",
+    "active": "on",
+    "triggered": "on",
+    "detected": "on",
+    "wet": "on",
+    "open": "open",
+    "full": "on",
+    "reached": "on",
+    "": "on",
+    "off": "off",
+    "low": "off",
+    "clear": "off",
+    "dry": "off",
+    "closed": "closed",
+    "empty": "off",
+}
+
+
+def _ha_sensors() -> list[dict]:
+    """All HA binary_sensor/sensor entities as {id, name, state} — the things a
+    sensor rule can watch (motion, leak, level, door/window, temperature, ...)."""
+    token = _ha_token()
+    if not token:
+        return []
+    try:
+        req = urllib.request.Request(
+            f"{HA_URL}/api/states", headers={"Authorization": f"Bearer {token}"}
+        )
+        states = json.loads(urllib.request.urlopen(req, timeout=5).read())
+    except Exception:
+        return []
+    out = []
+    for e in states:
+        eid = e.get("entity_id", "")
+        if eid.split(".")[0] in ("binary_sensor", "sensor"):
+            out.append(
+                {
+                    "id": eid,
+                    "name": e.get("attributes", {}).get("friendly_name", eid),
+                    "state": e.get("state", ""),
+                }
+            )
+    return out
+
+
+def _match_sensor_entity(desc: str) -> dict | None:
+    """Fuzzy-match a sensor description ("water level") to an HA sensor entity by
+    friendly-name word overlap — same approach as device matching."""
+    words = set(re.findall(r"[a-z0-9]+", (desc or "").lower())) - _DEVICE_STOPWORDS
+    if not words:
+        return None
+    best, best_score = None, 0
+    for s in _ha_sensors():
+        name_words = set(re.findall(r"[a-z0-9]+", s["name"].lower()))
+        score = len(words & name_words)
+        if score > best_score:
+            best, best_score = s, score
+    return best
+
+
+def _persist_sensor_rule(parsed: dict, request: str = "") -> dict:
+    """Resolve the sensor + threshold and write a sensor-triggered rule. The
+    deterministic poller (frigate.server._run_sensor_rules) reads the HA entity
+    each cycle and fires the actions on the rising edge into the trigger state."""
+    desc = (parsed.get("trigger_sensor") or "").strip()
+    value = (parsed.get("trigger_value") or "").strip()
+    sensor = _match_sensor_entity(desc)
+    if not sensor:
+        names = ", ".join(s["name"] for s in _ha_sensors()[:12]) or "none found"
         return _envelope(
             "scenario",
-            "Sensor-based rules (like 'when the water level is reached') aren't "
-            "supported yet — I can trigger on what a camera sees or at a set time.",
+            f"I couldn't find a sensor matching '{desc}'. Available sensors: {names}.",
         )
-    return await asyncio.to_thread(_persist_scenario, parsed, text)
+
+    trigger: dict = {"trigger_entity": sensor["id"], "trigger_sensor": sensor["name"]}
+    if re.fullmatch(r"-?\d+(\.\d+)?", value):  # numeric threshold → fire at/above it
+        trigger["trigger_op"] = ">="
+        trigger["trigger_threshold"] = float(value)
+    else:  # state-match (binary/enum sensor); default "on"
+        trigger["trigger_state"] = _SENSOR_ACTIVE_WORDS.get(value.lower(), "on")
+
+    # Reuse device matching for the action (e.g. "turn off the pump").
+    actions: list[dict] = []
+    action = parsed.get("device_action")
+    if action in ("turn_on", "turn_off"):
+        for d in _coerce_str_list(parsed.get("devices"), parsed.get("device")):
+            if not _device_grounded_in_request(d, request):
+                continue
+            matched = _match_device_name(d)
+            if matched:
+                actions.append({"type": "device", "device": matched, "action": action})
+    if parsed.get("alert", True) or not actions:
+        actions.insert(0, {"type": "alert"})
+
+    schedule = (parsed.get("schedule") or "always").strip()
+    if not re.fullmatch(r"always|night|day|\d{1,2}:\d{2}-\d{1,2}:\d{2}", schedule):
+        schedule = "always"
+
+    rule = {
+        "cameras": [],
+        "condition": "",
+        "schedule": schedule,
+        "enabled": True,
+        "actions": actions,
+        "at_time": "",
+        "created_ts": time.time(),
+        "target": "minder",
+        **trigger,
+    }
+    rules = []
+    if RULES_FILE.exists():
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
+            rules = json.loads(RULES_FILE.read_text())
+    for existing in rules:
+        if (
+            existing.get("trigger_entity") == rule["trigger_entity"]
+            and existing.get("actions") == rule["actions"]
+        ):
+            return _envelope(
+                "scenario", "That sensor rule already exists.", data={"rules": [existing]}
+            )
+    rules.append(rule)
+    write_json_atomic(RULES_FILE, rules)
+
+    cond = (
+        f"≥ {trigger['trigger_threshold']}"
+        if "trigger_threshold" in trigger
+        else f"is {trigger['trigger_state']}"
+    )
+    act = ", ".join(
+        f"{a['action'].replace('_', ' ')} {a['device']}" if a["type"] == "device" else "alert"
+        for a in actions
+    )
+    return _envelope(
+        "scenario",
+        f"✅ Watching {sensor['name']} — when it {cond}, I'll {act}.",
+        data={"rules": [rule]},
+    )
 
 
 def _persist_scenario(parsed: dict, request: str = "") -> dict:
