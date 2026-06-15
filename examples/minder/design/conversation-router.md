@@ -360,20 +360,23 @@ Tracked checklist. Build in order; each phase verifiable on the live box.
       actuates hardware) — reuse the review-queue gate.
 - [ ] Persist via `_persist_scenario` (exists); drop `run_topology("minder-scenario")`
       from `create_scenario`.
-- [ ] Sensor triggers (`trigger_type:sensor`) → graceful "not supported yet"
-      (rule engine = vision + time only today).
+- [x] Sensor triggers (`trigger_type:sensor`) → **implemented**: author_scenario
+      resolves an HA sensor entity + persists a sensor rule; the poller's
+      `_run_sensor_rules` fires on the rising edge (vision + time + sensor live).
 
 ### Phase 3 — device_now + snapshot/video deterministic
-- [ ] device_now: execute from `plan.device`+`plan.operation` (match via
-      `_match_device_name`); drop the `control_device(text)` re-parse.
-- [ ] snapshot/video: capture the router's `plan.cameras[0]` directly via
-      `_grab_frame` / a clip; drop the `minder-snapshot`/`minder-video` agents.
+- [x] device_now: execute from `plan.device`+`plan.operation` (match via
+      `_match_device_name`); dropped the `control_device(text)` re-parse.
+- [x] snapshot/video: capture the router's cameras directly via `_grab_frames` /
+      `_grab_clips` (ffmpeg from RTSP); dropped the `minder-snapshot`/`minder-video`
+      agents.
 
 ### Phase 4 — cleanup + tests + demo
-- [ ] Remove now-dead artifacts: `minder-vision`, `minder-scenario`,
-      `minder-snapshot`, `minder-video` topologies; `check-condition`, `route`
-      skills; `_route_via_agent`/`_route_constrained`/`_routes_since` in
-      `minder_ops.py`.
+- [x] Removed now-dead artifacts: `minder-vision`, `minder-scenario`,
+      `minder-snapshot`, `minder-video` topologies; `check-condition` /
+      `capture-snapshot` / `capture-video` skills; the legacy YOLO loop. Only the
+      router + `minder-core` (chat) remain as LLM topologies on the conversational
+      path.
 - [ ] Look at the `chat` `send_chat` `/conversations` 404 (separate, conversational
       path).
 - [ ] Tests: `router_cases.json` (plan extraction) + per-flow deterministic dispatch
