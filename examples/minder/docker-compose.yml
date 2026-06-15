@@ -114,10 +114,16 @@ services:
       # roll back to parallel-run if needed.
       - MINDER_POLLER_ALERTS=${MINDER_POLLER_ALERTS:-live}
       # Real-time alerts: Frigate -> mosquitto (frigate/events) -> webapp
-      # subscriber. The minute poller above stays as the reconcile backstop.
+      # subscriber. The minute poller below stays as the reconcile backstop.
       - MINDER_MQTT=${MINDER_MQTT:-on}
       - MQTT_HOST=${MQTT_HOST:-localhost}
       - MQTT_PORT=${MQTT_PORT:-1883}
+      # Reconcile backstop: the webapp polls Frigate events every MINDER_POLL_INTERVAL
+      # seconds and applies the rules — DETERMINISTIC (calls poll_events directly,
+      # no LLM agent; replaced the minder-poll topology + poll-frigate cron that
+      # looped a 3B model over one deterministic tool call). Off -> MQTT only.
+      - MINDER_POLL=${MINDER_POLL:-on}
+      - MINDER_POLL_INTERVAL=${MINDER_POLL_INTERVAL:-60}
       # Recording (motion-based, short retain) so alerts can include the event
       # clip. Off -> snapshots only. Tune retain days for your disk.
       - MINDER_RECORD=${MINDER_RECORD:-on}
