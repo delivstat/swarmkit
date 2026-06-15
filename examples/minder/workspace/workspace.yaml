@@ -64,8 +64,9 @@ mcp_servers:
       MINDER_VISION_MODEL: "${MINDER_VISION_MODEL}"
       # genai crop-and-zoom enrichment (Frigate → local VLM). "on"/"off".
       MINDER_GENAI: "${MINDER_GENAI}"
-      # shadow = log would-be alerts only (parallel-run with the YOLO loop);
-      # flip to "live" at the Phase 2b cutover once shadow data confirms parity.
+      # "live" = fire alerts; "shadow" = dry-run (log would-be alerts to
+      # poller_shadow.json without firing). The Frigate poller is the sole
+      # monitoring path now (the old YOLO loop has been retired).
       MINDER_POLLER_ALERTS: "${MINDER_POLLER_ALERTS}"
       # MQTT push: the frigate config generator (_build_config) enables Frigate's
       # mqtt block pointed at the mosquitto broker on localhost.
