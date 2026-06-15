@@ -447,60 +447,6 @@ async def send_chat(message: str, source: str) -> str:
 # ---- Tool-result readers (ground truth for reply formatting) ----
 
 
-def _vision_checks_since(since: float) -> list[dict]:
-    checks_file = DATA_DIR / "vision_checks.json"
-    if not checks_file.exists():
-        return []
-    try:
-        checks = json.loads(checks_file.read_text())
-        return [c for c in checks if c.get("ts", 0) >= since]
-    except (json.JSONDecodeError, ValueError):
-        return []
-
-
-def _extract_answer(output: str | None) -> str:
-    """Pull the 'answer' field from the vision agent's structured output
-    (output_schema). Falls back to the raw text if it isn't JSON."""
-    if not output:
-        return ""
-    raw = output.strip()
-    # The agent may wrap JSON in prose or fences — find the object.
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    if m:
-        try:
-            obj = json.loads(m.group(0))
-            if isinstance(obj, dict) and obj.get("answer"):
-                return str(obj["answer"]).strip()
-        except (json.JSONDecodeError, ValueError):
-            pass
-    return raw.replace("---", "").replace("***", "**").strip()
-
-
-def _looks_unhelpful(text: str) -> bool:
-    """Detect the garbage small models emit instead of an answer, so we can
-    fall back to a deterministic reply."""
-    low = text.lower()
-    return (
-        len(text) < 2
-        or "## analysis" in low
-        or "no relevant data" in low
-        or low.startswith("{")
-        or low.startswith("[")
-        # Tool-call/instruction leakage: a confused small model echoes the
-        # skill name or the function-call shape instead of an answer.
-        or "check-camera-condition" in low
-        or "check-condition" in low
-        or "get-weather" in low
-        or "get_weather" in low
-        or "tool_use" in low
-        or "'name':" in low
-        or "'parameters'" in low
-    )
-
-
-_devices_tool_module = None
-
-
 def _devices_module() -> ModuleType:
     """Load the devices MCP server module in-process so the backend can invoke
     its tools directly (config/setup actions, and deterministic relays where the
@@ -548,32 +494,6 @@ def setup_weather(city: str = "", latitude: float = 0.0, longitude: float = 0.0)
         return {"status": "error", "message": str(e), "summary": "Weather setup failed."}
 
 
-def _phrase_check(question: str, check: dict) -> str:
-    """Deterministic, condition-aware fallback reply when the agent's own
-    text isn't usable. Phrased to what the user actually asked."""
-    cam = check.get("camera", "the camera")
-    match = check.get("match")
-    scene = check.get("answer", "")  # YOLO counts, or the VLM's scene answer
-    q = (question or "").lower()
-    if any(w in q for w in ["person", "someone", "anyone", "people", "intruder", "man", "woman"]):
-        subj = "person"
-    elif any(w in q for w in ["car", "vehicle", "truck", "bike", "van", "bus"]):
-        subj = "vehicle"
-    elif any(w in q for w in ["animal", "dog", "cat", "monkey", "pet", "bird"]):
-        subj = "animal"
-    else:
-        # Open scene question ("is the gate open", "what's in the yard"): the
-        # answer is the VLM's own description — surface it, don't force the
-        # person/object framing.
-        if scene:
-            return f"📷 {cam}: {scene.strip()}"
-        return f"📷 {cam}: I couldn't get a clear read on that."
-    if match:
-        tail = f" (I see {scene})" if scene else ""
-        return f"🔴 {cam}: yes, there's a {subj} there{tail}."
-    return f"🟢 {cam}: all clear, no {subj} right now."
-
-
 def collect_media_since(since: float) -> list[dict]:
     media = []
     if not SNAPSHOT_DIR.exists():
@@ -616,10 +536,9 @@ def build_context() -> str:
 
 # ---- Scenarios (natural language → structured rule) ----
 #
-# A SwarmKit agent (minder-scenario topology) understands the request and
-# calls the create_monitoring_rule MCP tool once with flat parameters. The
-# tool validates and writes the rule; we format the reply from the rule it
-# wrote — never from the agent's prose.
+# Deterministic: the router parses the request into a plan, then author_scenario
+# translates it to a rule and persists it (vision/time/sensor). No agent — the
+# reply is formatted from the rule that was actually written.
 
 
 RULES_FILE = DATA_DIR / "rules.json"
@@ -633,13 +552,6 @@ def _rules_created_since(since: float) -> list[dict]:
         return [r for r in rules if r.get("created_ts", 0) >= since]
     except (json.JSONDecodeError, ValueError):
         return []
-
-
-# The minder-scenario topology is a single worker agent whose output_schema
-# carries the rule fields. Schema-constrained decoding (SwarmKit >= 1.3.5)
-# makes even the 3B local model emit on-schema JSON, so the agent extracts and
-# this module validates the field values and persists the rule — the agent
-# never writes anything.
 
 
 def _normalize_time(s: str) -> str:
@@ -685,27 +597,19 @@ def _match_device_name(requested: str) -> str | None:
 
 
 async def create_scenario(text: str) -> dict:
-    """Create a rule from natural language via the minder-scenario worker
-    agent. The agent extracts on-schema fields (output_schema-constrained);
-    this module validates the values and persists the rule. The reply is
-    always formatted from the rule that was actually persisted."""
+    """Create a rule from natural language — the dashboard's scenario box posts
+    here (/api/ops/scenario). Deterministic: the router parses the text into a
+    plan, then author_scenario translates + persists it (vision/time/sensor).
+    Replaces the old minder-scenario output_schema worker agent."""
     clean = re.sub(r"^/scenario\s*", "", text.strip(), flags=re.I)
-
-    context = build_context()
-    enriched = f"{context}\n\n{clean}" if context else clean
-    try:
-        output = await asyncio.wait_for(run_topology("minder-scenario", enriched), timeout=120)
-        parsed = _extract_json(output)
-    except Exception as e:
-        return _envelope("error", f"Scenario creation failed: {e}")
-    if not parsed:
-        return _envelope(
-            "error",
-            "I couldn't understand that scenario. Try: "
-            '"when someone is outside after 10pm, turn on the porch light"',
-        )
-
-    return _persist_scenario(parsed, clean)
+    plan = await route(clean)
+    if plan and plan.get("dispatch_kind") == "scenario":
+        return await author_scenario(plan, clean)
+    return _envelope(
+        "error",
+        "I couldn't understand that scenario. Try: "
+        '"when someone is outside after 10pm, turn on the porch light"',
+    )
 
 
 def _extract_json(output: str) -> dict | None:
@@ -1784,8 +1688,8 @@ async def handle_message(
 
     if kind == "scenario":
         # Deterministic: the router already parsed the trigger/device/schedule, so
-        # translate + persist directly (no minder-scenario agent). Fall back to
-        # the agent only if the router was unavailable.
+        # translate + persist directly. If the router was unavailable (no plan),
+        # create_scenario re-routes and degrades gracefully — no agent.
         if plan:
             return await author_scenario(plan, text)
         return await create_scenario(text)
@@ -1839,51 +1743,36 @@ async def handle_message(
             return _envelope("snapshot", "", media=media)
         return _envelope("snapshot", "Couldn't capture from that camera right now.")
 
-    if kind in ("vision", "snapshot", "video"):
-        # Serve-down fallback for vision (no plan); video still goes through the
-        # agent (on-demand live clips aren't a deterministic grab yet).
+    if kind == "video":
+        # Video has no deterministic grab yet — on-demand live clips still go
+        # through the minder-video agent (the one remaining per-intent agent).
         if not _cameras_configured():
             return _envelope(
                 "error",
                 "No cameras configured yet. Send /start to discover cameras, "
                 "or set them up at http://minder.local",
             )
-
         context = build_context()
         enriched = f"{context}\n\n{text}" if context else text
-        topology = {
-            "vision": "minder-vision",
-            "snapshot": "minder-snapshot",
-            "video": "minder-video",
-        }[kind]
         try:
-            output = await asyncio.wait_for(run_topology(topology, enriched), timeout=180)
+            await asyncio.wait_for(run_topology("minder-video", enriched), timeout=180)
         except TimeoutError:
             return _envelope("error", "Request timed out — the AI model took too long. Try again.")
-
         media = collect_media_since(started)
-
-        if kind == "vision":
-            # The vision agent returns {"answer": "..."} via output_schema.
-            reply = _extract_answer(output)
-            if reply and not _looks_unhelpful(reply):
-                return _envelope("vision", reply, media=media)
-            # Fallback if the agent gave nothing usable: state the verdict
-            # from the recorded detection, phrased to what the user asked.
-            checks = _vision_checks_since(started)
-            if checks:
-                c = checks[-1]
-                return _envelope("vision", _phrase_check(text, c), media=media)
-            return _envelope(
-                "vision",
-                "I couldn't run that check. Tell me which camera, "
-                "e.g. 'is anyone at the front door'.",
-                media=media,
-            )
-
         if media:
-            return _envelope(kind, "", media=media)
-        return _envelope(kind, "Couldn't capture from that camera. Try /cameras to see names.")
+            return _envelope("video", "", media=media)
+        return _envelope("video", "Couldn't capture from that camera. Try /cameras to see names.")
+
+    if kind in ("vision", "snapshot"):
+        # Reached only when the router was unavailable (no plan) — the
+        # deterministic vision/snapshot paths above need the parsed plan. Degrade
+        # gracefully rather than spin up an unreliable agent (the retired
+        # minder-vision / minder-snapshot fallbacks).
+        return _envelope(
+            kind,
+            "I couldn't understand that just now — please try again, naming the "
+            "camera (e.g. 'is anyone at the front door').",
+        )
 
     # kind == "chat" (router said so, or the keyword fallback did) → open
     # conversation.
