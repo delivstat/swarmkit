@@ -94,6 +94,25 @@ def test_rejects_unexpected_param():
     print("ok  rejects unexpected parameters")
 
 
+def test_dedupe_drops_ghost_duplicates():
+    # the live pressure-pump (_2, "on") + its abandoned ghost (same name,
+    # unavailable) -> keep only the live one; a lone unavailable device is kept.
+    devs = [
+        {"id": "switch.pump", "name": "Pump", "type": "switch", "state": "unavailable"},
+        {"id": "switch.pump_2", "name": "Pump", "type": "switch", "state": "on"},
+        {"id": "switch.heater", "name": "Heater", "type": "switch", "state": "unavailable"},
+        {"id": "light.porch", "name": "Porch", "type": "light", "state": "off"},
+    ]
+    out = app._dedupe_devices(devs)
+    names = sorted(d["name"] for d in out)
+    assert names == ["Heater", "Porch", "Pump"], names  # one Pump, ghost dropped
+    pump = next(d for d in out if d["name"] == "Pump")
+    assert pump["id"] == "switch.pump_2" and pump["state"] == "on"  # the live one
+    heater = next(d for d in out if d["name"] == "Heater")
+    assert heater["state"] == "unavailable"  # lone offline device still shown
+    print("ok  dedupe drops ghost duplicates, keeps live + lone-offline")
+
+
 if __name__ == "__main__":
     test_switch_turn_on()
     test_light_brightness_passes_through()
@@ -101,4 +120,5 @@ if __name__ == "__main__":
     test_rejects_unknown_domain()
     test_rejects_disallowed_service()
     test_rejects_unexpected_param()
+    test_dedupe_drops_ghost_duplicates()
     print("\nALL DEVICE-CONTROL TESTS PASSED")

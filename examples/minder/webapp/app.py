@@ -1098,6 +1098,25 @@ def _device_from_entity(entity: dict) -> dict | None:
     }
 
 
+def _dedupe_devices(devices: list[dict]) -> list[dict]:
+    """Drop ghost duplicates. When an integration is re-set-up, HA abandons the
+    old entities (left permanently `unavailable`) and creates fresh ones with a
+    `_2` suffix but the SAME friendly name. So when several entities share a name,
+    keep the available one(s) and drop the unavailable twins; a name with only
+    unavailable entities keeps one (so a genuinely offline device still shows)."""
+    by_name: dict[str, list[dict]] = {}
+    for d in devices:
+        by_name.setdefault(d["name"], []).append(d)
+    out: list[dict] = []
+    for group in by_name.values():
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+        live = [d for d in group if d["state"] not in ("unavailable", "unknown")]
+        out.extend(live or group[:1])
+    return out
+
+
 @app.get("/api/ha/devices")
 async def ha_devices():
     token = _get_ha_token()
@@ -1105,7 +1124,7 @@ async def ha_devices():
         return {"devices": [], "message": "No HA token configured"}
     try:
         states = _ha_api("states", token)
-        devices = [d for e in states if (d := _device_from_entity(e))]
+        devices = _dedupe_devices([d for e in states if (d := _device_from_entity(e))])
         return {"devices": devices, "count": len(devices)}
     except Exception as e:
         return {"devices": [], "message": str(e)}
@@ -1145,7 +1164,13 @@ async def control_device_endpoint(req: DeviceControlRequest):
         # re-read for sliders that have a real value to show.
         state = _ha_api(f"states/{req.entity_id}", token)
         dev = _device_from_entity(state) if isinstance(state, dict) else None
-        if dev is not None and req.service in _OPTIMISTIC_STATE:
+        # Apply the optimistic state only if the device is actually reachable —
+        # never paint "on" over an unavailable device that didn't switch.
+        if (
+            dev is not None
+            and req.service in _OPTIMISTIC_STATE
+            and dev["state"] not in ("unavailable", "unknown")
+        ):
             dev["state"] = _OPTIMISTIC_STATE[req.service]
         return {"status": "ok", "device": dev}
     except Exception as e:
