@@ -418,6 +418,29 @@
 
     .rule-remove:hover { color: var(--error); }
 
+    .rule-edit-btn {
+      background: none; border: none; color: var(--text-dim);
+      cursor: pointer; font-size: 0.95rem; padding: 0.25rem;
+    }
+    .rule-edit-btn:hover { color: var(--accent); }
+
+    /* Inline rule editor */
+    .rule-edit { display: flex; flex-direction: column; gap: 0.55rem; }
+    .rule-edit .re-l { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.78rem; color: var(--text-dim); }
+    .rule-edit .re-l input, .rule-edit .re-l select {
+      font-size: 0.85rem; padding: 0.4rem 0.5rem; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    }
+    .rule-edit .re-sched { display: flex; gap: 0.4rem; }
+    .rule-edit .re-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; color: var(--text); }
+    .rule-edit .re-adv { font-size: 0.78rem; }
+    .rule-edit .re-adv a { color: var(--accent); text-decoration: none; }
+    .rule-edit .re-raw {
+      width: 100%; min-height: 180px; font-family: ui-monospace, monospace; font-size: 0.78rem;
+      padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--bg); color: var(--text); resize: vertical;
+    }
+
     /* Rule templates */
     .template-grid {
       display: grid;
@@ -2422,19 +2445,20 @@ async function loadDashRules() {
       return;
     }
     el.innerHTML = state.rules.map((r, i) => `
-      <div class="rule-card">
+      <div class="rule-card" id="rule-card-${i}">
         <div class="rule-header">
-          <strong style="font-size:0.9rem">${r.condition}</strong>
+          <strong style="font-size:0.9rem">${r.condition || (r.at_time ? '⏰ ' + r.at_time : 'rule')}</strong>
           <div style="display:flex;align-items:center;gap:0.5rem">
             <label class="toggle">
               <input type="checkbox" ${r.enabled !== false ? 'checked' : ''} onchange="dashToggleRule(${i}, this.checked)">
               <span class="toggle-slider"></span>
             </label>
-            <button class="rule-remove" onclick="dashRemoveRule(${i})">&times;</button>
+            <button class="rule-edit-btn" title="Edit" onclick="dashEditRule(${i})">&#9998;</button>
+            <button class="rule-remove" title="Delete" onclick="dashRemoveRule(${i})">&times;</button>
           </div>
         </div>
         <div class="rule-desc">
-          ${r.camera === 'all' ? 'All cameras' : r.camera} &bull; ${r.schedule}
+          ${ruleCamerasLabel(r)} &bull; ${r.schedule || 'always'}
           ${(r.actions || []).filter(a => a.type === 'device').map(a =>
             ` &bull; ${a.action === 'turn_on' ? '⚡ on' : '⚡ off'}: ${a.device}`).join('')}
         </div>
@@ -2496,6 +2520,108 @@ async function dashAddRule() {
   document.getElementById('dash-rule-condition').value = '';
   loadDashRules();
   toast('Rule added');
+}
+
+// ---- Rule editor (form + raw-JSON toggle) ----
+
+// A rule may store `cameras` (list) or legacy `camera` (string); show both.
+function ruleCameras(r) {
+  if (Array.isArray(r.cameras) && r.cameras.length) return r.cameras;
+  return [r.camera || 'all'];
+}
+function ruleCamerasLabel(r) {
+  const c = ruleCameras(r);
+  return c.length === 1 && c[0] === 'all' ? 'All cameras' : c.join(', ');
+}
+
+const _SCHED_PRESETS = ['always', 'day', 'night'];
+
+function dashEditRule(i) {
+  const r = state.rules[i];
+  const card = document.getElementById('rule-card-' + i);
+  if (!r || !card) return;
+  const sched = r.schedule || 'always';
+  const isPreset = _SCHED_PRESETS.includes(sched);
+  const dev = (r.actions || []).find(a => a.type === 'device') || {};
+  const hasAlert = (r.actions || []).some(a => a.type === 'alert');
+  const esc = s => (s || '').replace(/"/g, '&quot;');
+  card.innerHTML = `
+    <div class="rule-edit">
+      <label class="re-l">Cameras (comma-separated, or "all")
+        <input id="re-cams-${i}" value="${esc(ruleCameras(r).join(', '))}"></label>
+      <label class="re-l">Condition
+        <input id="re-cond-${i}" value="${esc(r.condition)}" placeholder="e.g. is there a person"></label>
+      <label class="re-l">Schedule
+        <div class="re-sched">
+          <select id="re-sched-${i}" onchange="document.getElementById('re-schedc-${i}').style.display=this.value==='custom'?'':'none'">
+            ${_SCHED_PRESETS.map(p => `<option ${sched === p ? 'selected' : ''}>${p}</option>`).join('')}
+            <option value="custom" ${!isPreset ? 'selected' : ''}>custom…</option>
+          </select>
+          <input id="re-schedc-${i}" placeholder="22:00-06:00" value="${isPreset ? '' : esc(sched)}" style="display:${isPreset ? 'none' : ''}">
+        </div></label>
+      <label class="re-l">At time (daily, optional)
+        <input id="re-at-${i}" value="${esc(r.at_time)}" placeholder="21:00"></label>
+      <label class="re-row"><input type="checkbox" id="re-alert-${i}" ${hasAlert ? 'checked' : ''}> Send alert</label>
+      <label class="re-l">Device action (optional)
+        <input id="re-dev-${i}" value="${esc(dev.device)}" placeholder="(device name)"></label>
+      <label class="re-l">Do
+        <select id="re-op-${i}">
+          <option value="" ${!dev.action ? 'selected' : ''}>(none)</option>
+          <option value="turn_on" ${dev.action === 'turn_on' ? 'selected' : ''}>turn on</option>
+          <option value="turn_off" ${dev.action === 'turn_off' ? 'selected' : ''}>turn off</option>
+        </select></label>
+      <label class="re-row"><input type="checkbox" id="re-en-${i}" ${r.enabled !== false ? 'checked' : ''}> Enabled</label>
+      <div class="re-adv"><a href="#" onclick="dashToggleRaw(${i});return false">▸ Advanced: edit raw JSON</a></div>
+      <textarea id="re-raw-${i}" class="re-raw" style="display:none" spellcheck="false">${JSON.stringify(r, null, 2)}</textarea>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="loadDashRules()">Cancel</button>
+        <button class="btn btn-primary" onclick="dashSaveRule(${i})">Save</button>
+      </div>
+    </div>`;
+}
+
+function dashToggleRaw(i) {
+  const t = document.getElementById('re-raw-' + i);
+  t.style.display = t.style.display === 'none' ? '' : 'none';
+}
+
+async function dashSaveRule(i) {
+  const raw = document.getElementById('re-raw-' + i);
+  let rule;
+  if (raw && raw.style.display !== 'none' && raw.value.trim()) {
+    // Raw JSON, when expanded, wins — full control over the whole rule object.
+    try { rule = JSON.parse(raw.value); }
+    catch (e) { toast('Invalid JSON: ' + e.message, true); return; }
+  } else {
+    // Form path: overlay edited fields onto the original so unknown fields
+    // (target, trigger_*) are preserved.
+    rule = { ...state.rules[i] };
+    const cams = document.getElementById('re-cams-' + i).value.split(',').map(s => s.trim()).filter(Boolean);
+    rule.cameras = cams.length ? cams : ['all'];
+    delete rule.camera;
+    rule.condition = document.getElementById('re-cond-' + i).value.trim();
+    const sv = document.getElementById('re-sched-' + i).value;
+    rule.schedule = sv === 'custom'
+      ? (document.getElementById('re-schedc-' + i).value.trim() || 'always') : sv;
+    rule.at_time = document.getElementById('re-at-' + i).value.trim();
+    rule.enabled = document.getElementById('re-en-' + i).checked;
+    const actions = [];
+    if (document.getElementById('re-alert-' + i).checked) actions.push({ type: 'alert' });
+    const dev = document.getElementById('re-dev-' + i).value.trim();
+    const op = document.getElementById('re-op-' + i).value;
+    if (dev && op) actions.push({ type: 'device', device: dev, action: op });
+    rule.actions = actions;
+  }
+  const prev = state.rules[i];
+  state.rules[i] = rule;
+  try {
+    await api('/rules', { method: 'POST', body: { rules: state.rules } });
+    toast('Rule saved');
+  } catch (e) {
+    state.rules[i] = prev;  // roll back on a rejected save
+    toast(e.message, true);
+  }
+  loadDashRules();
 }
 
 async function loadDashSettings() {
