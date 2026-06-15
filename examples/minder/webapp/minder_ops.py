@@ -1560,6 +1560,43 @@ def _grab_frames(cams: list[str]) -> list[Path]:
     return [f for f in (_grab_frame(c) for c in cams) if f]
 
 
+_camera_tool_module: ModuleType | None = None
+
+
+def _camera_module() -> ModuleType:
+    """Load the camera MCP server module in-process so the backend can capture
+    clips directly (deterministic video — no agent), mirroring _devices_module."""
+    global _camera_tool_module
+    if _camera_tool_module is None:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_minder_camera_tool", "/app/mcp-servers/camera/server.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _camera_tool_module = mod
+    return _camera_tool_module
+
+
+def _grab_clip(camera: str, duration: int = 8) -> Path | None:
+    """Capture a short live clip for `camera` via the camera server's
+    capture_camera_video (ffmpeg from RTSP), saved to the snapshot dir so
+    collect_media_since picks it up. Returns the path, or None on failure."""
+    try:
+        out = json.loads(_camera_module().capture_camera_video(camera, duration))
+        p = out.get("path")
+        return Path(p) if p and Path(p).exists() else None
+    except Exception:
+        return None
+
+
+def _grab_clips(cams: list[str]) -> list[Path]:
+    """Capture a clip for each camera (for video replies). Sequential — ffmpeg
+    grabs are heavy, and the dispatch caps the camera count."""
+    return [c for c in (_grab_clip(c) for c in cams) if c]
+
+
 def _vlm_answer(frame_b64: str, question: str, camera: str = "") -> str:
     """One direct VLM (llava-phi3, CPU) call for an open-scene question. Pass the
     user's ACTUAL words (not the router's condition rewrite — it mangles "describe
@@ -1746,31 +1783,26 @@ async def handle_message(
             return _envelope("snapshot", "", media=media)
         return _envelope("snapshot", "Couldn't capture from that camera right now.")
 
-    if kind == "video":
-        # Video has no deterministic grab yet — on-demand live clips still go
-        # through the minder-video agent (the one remaining per-intent agent).
+    if kind == "video" and plan:
+        # Deterministic: capture a short live clip from the router's camera(s)
+        # directly (ffmpeg from RTSP via the camera server), no agent.
         if not _cameras_configured():
             return _envelope(
                 "error",
                 "No cameras configured yet. Send /start to discover cameras, "
                 "or set them up at http://minder.local",
             )
-        context = build_context()
-        enriched = f"{context}\n\n{text}" if context else text
-        try:
-            await asyncio.wait_for(run_topology("minder-video", enriched), timeout=180)
-        except TimeoutError:
-            return _envelope("error", "Request timed out — the AI model took too long. Try again.")
+        await asyncio.to_thread(_grab_clips, _resolve_cameras(plan)[:2])
         media = collect_media_since(started)
         if media:
             return _envelope("video", "", media=media)
-        return _envelope("video", "Couldn't capture from that camera. Try /cameras to see names.")
+        return _envelope("video", "Couldn't capture a clip from that camera right now.")
 
-    if kind in ("vision", "snapshot"):
+    if kind in ("vision", "snapshot", "video"):
         # Reached only when the router was unavailable (no plan) — the
-        # deterministic vision/snapshot paths above need the parsed plan. Degrade
-        # gracefully rather than spin up an unreliable agent (the retired
-        # minder-vision / minder-snapshot fallbacks).
+        # deterministic vision/snapshot/video paths above need the parsed plan.
+        # Degrade gracefully rather than spin up an unreliable agent (the retired
+        # minder-vision / minder-snapshot / minder-video fallbacks).
         return _envelope(
             kind,
             "I couldn't understand that just now — please try again, naming the "
