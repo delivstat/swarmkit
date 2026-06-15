@@ -1455,21 +1455,40 @@ async def route(text: str) -> dict | None:
 
 
 def _correct_plan(plan: dict, text: str) -> None:
-    """Deterministic guard on the router's intent. A scenario is, by definition,
-    a standing rule with a future TRIGGER (when/if/every/at-a-time). So a plain
-    question with no such trigger can never be a scenario — force it to query.
-    Keys on sentence structure, not keywords the 3B can wobble on. Mutates plan."""
+    """Deterministic guards on the router's intent (mutates plan). Keyed on
+    sentence structure / required nouns, not keywords the 3B can wobble on."""
     t = text.strip().lower()
-    if plan.get("kind") != "scenario":
+    kind = plan.get("kind")
+
+    # A scenario is, by definition, a standing rule with a future TRIGGER
+    # (when/if/every/at-a-time). A plain question with no such trigger can never
+    # be a scenario — force it to query.
+    if kind == "scenario":
+        has_trigger = bool(re.search(r"\b(when|whenever|if|every|each|after|before)\b", t)) or bool(
+            _TIME_EXPR.search(t)
+        )
+        is_question = t.endswith("?") or bool(
+            re.match(r"(is|are|was|were|who|what|which|where|do|does|did|can|how|any)\b", t)
+        )
+        if is_question and not has_trigger:
+            plan["kind"] = "query"
         return
-    has_trigger = bool(re.search(r"\b(when|whenever|if|every|each|after|before)\b", t)) or bool(
-        _TIME_EXPR.search(t)
-    )
-    is_question = t.endswith("?") or bool(
-        re.match(r"(is|are|was|were|who|what|which|where|do|does|did|can|how|any)\b", t)
-    )
-    if is_question and not has_trigger:
-        plan["kind"] = "query"
+
+    # camera_list / device_list misfire on small talk: the 3B router sometimes
+    # labels a bare greeting ("hi", "thanks", "hey there") as a list intent.
+    # A genuine list request names what to list — require the noun, else it's chat.
+    if (
+        kind == "camera_list"
+        and not re.search(r"\b(camera|cameras|cam|cams|feed|feeds|webcam)\b", t)
+    ) or (
+        kind == "device_list"
+        and not re.search(
+            r"\b(device|devices|light|lights|fan|fans|switch|switches|plug|plugs"
+            r"|appliance|appliances|control|smart)\b",
+            t,
+        )
+    ):
+        plan["kind"] = "chat"
 
 
 def _resolve_cameras(plan: dict) -> list[str]:
