@@ -139,10 +139,42 @@ def test_camera_match_still_resolves():
     print("ok  _rule_cameras still resolves both shapes")
 
 
+def test_edited_rule_roundtrips():
+    # The dashboard rule editor's form path overlays edited fields onto the
+    # original rule (preserving unknown fields like target/trigger_*) and re-saves
+    # the whole list. Pin that contract: a sensor rule edited via overlay keeps its
+    # trigger fields and persists the new values.
+    original = {
+        "cameras": ["all"],
+        "condition": "water level high",
+        "schedule": "always",
+        "enabled": True,
+        "actions": [{"type": "device", "device": "Water Pump", "action": "turn_off"}],
+        "target": "minder",
+        "trigger_entity": "binary_sensor.water_level_high",
+    }
+    edited = {  # what the form produces: changed schedule + enabled, extras kept
+        **original,
+        "schedule": "day",
+        "enabled": False,
+    }
+    out = _roundtrip([edited])[0]
+    assert out["schedule"] == "day" and out["enabled"] is False
+    assert out["trigger_entity"] == "binary_sensor.water_level_high"  # preserved
+    assert out["actions"][0]["device"] == "Water Pump"
+
+    # The raw-JSON path can introduce a brand-new field — extra="allow" keeps it.
+    raw_edited = {**original, "note": "edited via raw JSON", "schedule": "night"}
+    out2 = _roundtrip([raw_edited])[0]
+    assert out2["note"] == "edited via raw JSON" and out2["schedule"] == "night"
+    print("ok  edited rule round-trips (form overlay + raw JSON), extras preserved")
+
+
 if __name__ == "__main__":
     test_scenario_rule_validates()
     test_lossless_fields()
     test_delete_any_rule_persists()
     test_camera_less_sensor_rule()
     test_camera_match_still_resolves()
+    test_edited_rule_roundtrips()
     print("\nALL RULES TESTS PASSED")
