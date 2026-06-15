@@ -447,6 +447,9 @@ async def send_chat(message: str, source: str) -> str:
 # ---- Tool-result readers (ground truth for reply formatting) ----
 
 
+_devices_tool_module: ModuleType | None = None
+
+
 def _devices_module() -> ModuleType:
     """Load the devices MCP server module in-process so the backend can invoke
     its tools directly (config/setup actions, and deterministic relays where the
