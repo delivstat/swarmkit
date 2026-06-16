@@ -6,14 +6,15 @@ served at MINDER_API_URL). This adapter only:
      filtering, privacy, stale messages)
   2. Forwards user text to POST /api/ops/message
   3. Renders the structured result envelope (text + media) for Telegram
-  4. Polls GET /api/ops/alerts and posts monitoring alerts to the group
+  4. Subscribes to the minder/alerts MQTT topic and posts alerts to the group
 
-A WhatsApp (or any other) adapter is the same ~250 lines against the
-same two endpoints.
+A WhatsApp/Discord (or any other) adapter is the same ~250 lines: POST
+/api/ops/message for two-way, subscribe minder/alerts for push.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -322,38 +323,29 @@ async def daily_backup(context: Any) -> None:
         log.error(f"HA volume backup error: {e}")
 
 
-async def poll_alerts(context: Any) -> None:
-    group = _load_group()
-    group_chat_id = group.get("chat_id")
+async def deliver_alert(app: Application, alert: dict) -> None:
+    """Send one alert (from the MQTT bus) to the registered group. Media-only
+    follow-ups carry an empty message — send just the media, no bare 🚨."""
+    group_chat_id = _load_group().get("chat_id")
     if not group_chat_id:
         return
-
     try:
-        data = await ops_get("/api/ops/alerts")
-        alerts = data.get("alerts", [])
-        for alert in alerts:
-            # Media-only follow-ups (snapshot/clip that arrive after the text
-            # alert) carry an empty message — send just the media, no bare 🚨.
-            if alert.get("message"):
-                await context.bot.send_message(chat_id=group_chat_id, text=f"🚨 {alert['message']}")
-            snap_path = alert.get("snapshot_path")
-            if snap_path and Path(snap_path).exists():
-                await context.bot.send_photo(
-                    chat_id=group_chat_id,
-                    photo=Path(snap_path).open("rb"),
-                    caption=alert.get("camera", ""),
-                )
-            video_path = alert.get("video_path")
-            if video_path and Path(video_path).exists():
-                await context.bot.send_video(
-                    chat_id=group_chat_id,
-                    video=Path(video_path).open("rb"),
-                    supports_streaming=True,
-                )
-        if alerts:
-            log.info(f"Sent {len(alerts)} alert(s) to group")
+        if alert.get("message"):
+            await app.bot.send_message(chat_id=group_chat_id, text=f"🚨 {alert['message']}")
+        snap_path = alert.get("snapshot_path")
+        if snap_path and Path(snap_path).exists():
+            await app.bot.send_photo(
+                chat_id=group_chat_id,
+                photo=Path(snap_path).open("rb"),
+                caption=alert.get("camera", ""),
+            )
+        video_path = alert.get("video_path")
+        if video_path and Path(video_path).exists():
+            await app.bot.send_video(
+                chat_id=group_chat_id, video=Path(video_path).open("rb"), supports_streaming=True
+            )
     except Exception as e:
-        log.error(f"Alert poll error: {e}")
+        log.error(f"Alert delivery error: {e}")
 
 
 # ---- Bot setup ----
@@ -382,8 +374,15 @@ async def post_init(app: Application) -> None:
     except Exception as e:
         log.warning("set_my_commands failed (non-fatal, continuing): %s", e)
 
-    app.job_queue.run_repeating(poll_alerts, interval=10, first=5)
-    log.info("Alert polling started (every 10s)")
+    # Alerts arrive over MQTT (durable per-subscriber session), not polling.
+    try:
+        from alert_bus import start_alert_subscriber
+
+        loop = asyncio.get_running_loop()
+        start_alert_subscriber("minder-telegram", loop, lambda a: deliver_alert(app, a))
+        log.info("Alert subscriber started (MQTT minder/alerts)")
+    except Exception as e:
+        log.warning("alert subscriber failed to start: %s", e)
 
     app.job_queue.run_repeating(daily_backup, interval=86400, first=3600)
     log.info("Daily state backup scheduled")

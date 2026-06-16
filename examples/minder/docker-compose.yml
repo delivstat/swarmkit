@@ -20,6 +20,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      # Persist per-subscriber session queues across broker restarts.
+      - mosquitto-data:/mosquitto/data
 
   # Seeds the generic Frigate template into the config volume on first boot
   # only (never overwrites). Keeps the committed template pristine — the real
@@ -151,6 +153,9 @@ services:
       - SWARMKIT_MAX_PER_TOOL=${SWARMKIT_MAX_PER_TOOL:-2}
       - SWARMKIT_MAX_PER_READ_TOOL=${SWARMKIT_MAX_PER_READ_TOOL:-2}
       - MINDER_TELEGRAM_TOKEN=${MINDER_TELEGRAM_TOKEN:-}
+      # Discord adapter — runs alongside Telegram if set (multi-channel; the
+      # ?channel= alert fan-out gives each channel every alert once).
+      - MINDER_DISCORD_TOKEN=${MINDER_DISCORD_TOKEN:-}
       - OLLAMA_URL=http://localhost:11434
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - HA_URL=http://localhost:8123
@@ -164,3 +169,4 @@ volumes:
   ha-config:
   frigate-media:
   frigate-config:
+  mosquitto-data:

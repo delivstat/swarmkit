@@ -38,5 +38,10 @@ else
   echo "[minder] MINDER_TELEGRAM_TOKEN not set — configure via http://minder.local"
 fi
 
+if [ -n "$MINDER_DISCORD_TOKEN" ]; then
+  echo "[minder] Starting Discord bot..."
+  supervise discord-bot python3 /app/discord_bot.py
+fi
+
 echo "[minder] All services started (supervised)."
 wait
