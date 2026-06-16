@@ -27,7 +27,8 @@ RUN uv pip install --system \
     fastapi \
     uvicorn[standard] \
     qrcode[pil] \
-    "paho-mqtt==2.1.0"
+    "paho-mqtt==2.1.0" \
+    "discord.py==2.4.0"
 
 # Object detection (YOLO) — CPU-only torch to keep the image lean and avoid
 # CUDA in-container. Pre-download the nano weights so first run is offline.

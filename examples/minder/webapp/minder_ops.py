@@ -1394,18 +1394,9 @@ async def setup_cameras(subnet: str = "") -> dict:
     )
 
 
-def pending_alerts() -> list[dict]:
-    """Read and clear pending monitoring alerts (channel adapters poll this)."""
-    alert_file = DATA_DIR / "pending_alerts.json"
-    if not alert_file.exists():
-        return []
-    try:
-        alerts = json.loads(alert_file.read_text())
-    except (json.JSONDecodeError, ValueError):
-        return []
-    if alerts:
-        alert_file.write_text("[]")
-    return alerts
+# Alerts are no longer polled — write_alert publishes them to the MQTT topic
+# minder/alerts and channel adapters subscribe (durable per-subscriber sessions).
+# events.json remains the durable dashboard record.
 
 
 def _cameras_configured() -> bool:

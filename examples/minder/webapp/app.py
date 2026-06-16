@@ -177,10 +177,9 @@ async def ops_setup_cameras(req: OpsSetupCamerasRequest):
     return await minder_ops.setup_cameras(req.subnet)
 
 
-@app.get("/api/ops/alerts")
-async def ops_alerts():
-    """Pending monitoring alerts — read-and-clear. Channel adapters poll this."""
-    return {"alerts": minder_ops.pending_alerts()}
+# Alerts are delivered over MQTT (topic minder/alerts) now, not polled — adapters
+# subscribe as durable per-subscriber sessions. The /api/ops/alerts poll endpoint
+# was retired with that change.
 
 
 class ScenarioRequest(BaseModel):

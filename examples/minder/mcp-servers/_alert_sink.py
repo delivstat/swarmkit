@@ -31,6 +31,24 @@ OPS_URL = os.environ.get("MINDER_API_URL", "http://localhost:80")
 INTERNAL_TOKEN_FILE = DATA_DIR / "internal_token"
 _ALERT_LOCK_FILE = DATA_DIR / ".alert.lock"
 
+# Channel adapters (Telegram, Discord, ...) subscribe to this MQTT topic as
+# durable persistent-session consumers; publishing here fans out to all of them.
+ALERTS_TOPIC = "minder/alerts"
+MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+
+
+def _publish_alert(alert: dict) -> None:
+    """Publish an alert to the MQTT topic every channel adapter subscribes to.
+    Fan-out is the broker's job (durable per-subscriber sessions). Graceful: a
+    broker hiccup never fails the alert — events.json is the durable record."""
+    try:
+        from paho.mqtt import publish
+
+        publish.single(ALERTS_TOPIC, json.dumps(alert), qos=1, hostname=MQTT_HOST, port=MQTT_PORT)
+    except Exception:
+        pass
+
 
 @contextlib.contextmanager
 def _alert_lock() -> Iterator[None]:
@@ -57,30 +75,22 @@ def write_alert(
     video_path: str = "",
     event_id: str | None = None,
 ) -> str:
-    """Write one alert to the Telegram queue (pending_alerts.json) and the
-    dashboard log (events.json), using pre-captured media paths. Media capture
+    """Fan out one alert to channel adapters via the MQTT topic, and append it to
+    the dashboard log (events.json), using pre-captured media paths. Media capture
     is the caller's job — the YOLO path captures fresh RTSP frames, the Frigate
     path passes Frigate's snapshot/clip. Returns the event id."""
     ts = datetime.datetime.now(datetime.UTC)
     event_id = event_id or uuid.uuid4().hex[:8]
+    alert = {
+        "message": message,
+        "camera": camera,
+        "timestamp": ts.isoformat(),
+        "snapshot_path": snapshot_path,
+        "video_path": video_path,
+        "event_id": event_id,
+    }
 
     with _alert_lock():
-        alert_file = DATA_DIR / "pending_alerts.json"
-        alerts = []
-        if alert_file.exists():
-            with contextlib.suppress(json.JSONDecodeError, ValueError):
-                alerts = json.loads(alert_file.read_text())
-        alerts.append(
-            {
-                "message": message,
-                "camera": camera,
-                "timestamp": ts.isoformat(),
-                "snapshot_path": snapshot_path,
-                "video_path": video_path,
-            }
-        )
-        write_json_atomic(alert_file, alerts)
-
         events_file = DATA_DIR / "events.json"
         events = []
         if events_file.exists():
@@ -100,6 +110,9 @@ def write_alert(
             },
         )
         write_json_atomic(events_file, events[:500])
+
+    # Live fan-out to channel adapters (outside the lock — it's a network call).
+    _publish_alert(alert)
     return event_id
 
 
