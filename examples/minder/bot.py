@@ -362,19 +362,25 @@ async def poll_alerts(context: Any) -> None:
 async def post_init(app: Application) -> None:
     from telegram import BotCommand
 
-    await app.bot.set_my_commands(
-        [
-            BotCommand("start", "Discover cameras on your network"),
-            BotCommand("cameras", "Show all cameras with snapshots"),
-            BotCommand("check", "Check a condition (e.g. /check is anyone at the gate)"),
-            BotCommand("snap", "Snapshot from a camera (e.g. /snap porch)"),
-            BotCommand("video", "Live video clip (e.g. /video main-door)"),
-            BotCommand("health", "Show appliance health"),
-            BotCommand("approvals", "Show repairs awaiting your approval"),
-            BotCommand("reset", "Start a fresh conversation"),
-        ]
-    )
-    log.info("Telegram command menu registered")
+    # Cosmetic command-menu registration. A transient Telegram timeout here must
+    # NOT abort startup — it did once (set_my_commands TimedOut), and with no
+    # restart loop the bot stayed dead. Best-effort, never fatal.
+    try:
+        await app.bot.set_my_commands(
+            [
+                BotCommand("start", "Discover cameras on your network"),
+                BotCommand("cameras", "Show all cameras with snapshots"),
+                BotCommand("check", "Check a condition (e.g. /check is anyone at the gate)"),
+                BotCommand("snap", "Snapshot from a camera (e.g. /snap porch)"),
+                BotCommand("video", "Live video clip (e.g. /video main-door)"),
+                BotCommand("health", "Show appliance health"),
+                BotCommand("approvals", "Show repairs awaiting your approval"),
+                BotCommand("reset", "Start a fresh conversation"),
+            ]
+        )
+        log.info("Telegram command menu registered")
+    except Exception as e:
+        log.warning("set_my_commands failed (non-fatal, continuing): %s", e)
 
     app.job_queue.run_repeating(poll_alerts, interval=10, first=5)
     log.info("Alert polling started (every 10s)")
