@@ -43,43 +43,69 @@ Adding a channel adds an adapter; the brain doesn't change.
    Telegram        Discord         WhatsApp         (future) Minder app
       │               │               │                     │
   bot.py        discord_bot.py   wa-sidecar (Node)      app adapter
-      └───────────────┴───────┬───────┴─────────────────────┘
-                              │  receive → POST /api/ops/message
-                              │  poll    → GET  /api/ops/alerts?channel=X
-                              ▼
+      │ two-way        │               │                     │
+      ├── POST /api/ops/message ───────┴─────────────────────┤  (request/response)
+      │                                                       │
+      └── SUBSCRIBE minder/alerts (mosquitto, durable) ───────┘  (push, fan-out)
+                              ▲
+        write_alert ─ PUBLISH minder/alerts ─┘   (producer: frigate/camera/webapp)
+                              │
                     ops API (minder_ops) — CHANNEL-NEUTRAL BRAIN
                     router → deterministic execution → envelope
 ```
 
-Each adapter:
-- receives a message → strips channel cruft → `POST /api/ops/message {text, source, sender}`
-  → renders the returned envelope (text + media) in that channel's idioms.
-- delivers alerts → `GET /api/ops/alerts?channel=<id>` → posts text + snapshot + clip.
+Each adapter does two things:
+- **Two-way chat (request/response):** receive a message → strip channel cruft →
+  `POST /api/ops/message {text, source, sender}` → render the returned envelope
+  (text + media) in that channel's idioms. (Unchanged; per-channel, synchronous.)
+- **Alerts (push, fan-out):** **subscribe** to the MQTT topic `minder/alerts` and
+  post each one (text + snapshot + clip). No polling, no per-channel bookkeeping.
 - registers its own target (the group/channel/chat to talk in) under
   `/data/channels/<id>.json` (generalises today's `telegram_group.json`).
 
 The entrypoint supervises one process per enabled adapter (the `supervise` helper
 already added), each gated on its credential.
 
-## The one real backend change: alert fan-out
+## Alert fan-out via MQTT durable per-subscriber queues
 
-Today `GET /api/ops/alerts` is **read-and-clear** — fine for one adapter, but with
-two adapters they'd **race**: whoever polls first clears the alert, the other
-never sees it. Multi-channel needs each alert delivered to **every enabled
-channel**.
+The original draft of this note used per-channel delivery tracking on a polled
+`pending_alerts.json`. **Replaced** with MQTT pub/sub — we already run mosquitto
+(Frigate uses it), and pub/sub *is* fan-out, so there's no app-side bookkeeping.
 
-Design: per-channel delivery tracking on the alert queue.
-- Each `pending_alerts.json` entry gains `delivered: [channel_ids]`.
-- `GET /api/ops/alerts?channel=X` returns entries where `X ∉ delivered`, then adds
-  `X` to each returned entry's `delivered`.
-- An entry is pruned once `delivered ⊇ enabled_channels`, or after a TTL
-  (e.g. keep ≤200 entries / 1 h) so a disabled/blocked channel can't pin the queue
-  forever.
-- Back-compat: no `channel` param → legacy read-and-clear (until all adapters pass
-  their id).
+The robust pattern is **topic → a durable queue per subscriber**: publish once;
+the broker copies into each subscriber's durable queue; subscribers consume their
+own queue; because the queues are durable, a subscriber that's **down loses
+nothing** — it drains its backlog on reconnect. MQTT realises this with
+**persistent sessions** (no separate queue object, same effect):
 
-`write_alert` is unchanged (one entry); fan-out lives entirely in the read path.
-This stays deterministic — no LLM, flock-guarded like today.
+- **Topic:** `minder/alerts`. `write_alert` (the existing producer in
+  `_alert_sink`, run by the frigate/camera servers + webapp) **publishes** the
+  alert JSON there at **QoS 1**. It keeps writing `events.json` (the durable
+  dashboard record — see durability below).
+- **Each adapter = a persistent-session subscriber:** fixed `client_id`
+  (`minder-telegram`, `minder-discord`, …), `clean_session=False`, subscribe
+  `minder/alerts` QoS 1. The broker keeps that client's **offline queue** and
+  redelivers on reconnect — the durable-queue-per-consumer the family pattern
+  describes.
+- **mosquitto `persistence=true`** (+ a persist volume) so those session queues
+  survive a *broker* restart too, and `max_queued_messages` bounds a down
+  subscriber's backlog. (Was `persistence false`.)
+- A new adapter just connects with its own `client_id` and subscribes — nothing
+  else changes. No `?channel=` endpoint, no `delivered` tracking.
+
+**Why MQTT, not RabbitMQ:** RabbitMQ is the textbook topic-exchange→durable-queues
+fit, but it's a heavyweight second broker (Erlang/RAM) on the edge box. mosquitto
+is already here, lightweight, and persistent sessions give the same
+durable-fan-out semantics for this volume. Don't add a broker.
+
+### Durability (it's a security system)
+- **Live delivery + offline catch-up:** QoS 1 persistent sessions — a briefly-down
+  adapter (the supervisor restarts it in ~5 s) drains its queue on reconnect.
+- **Durable record regardless of MQTT:** `events.json` still logs every alert, and
+  the dashboard shows it — so even a "broker down at the exact publish instant"
+  alert is visible there. mosquitto persistence narrows that window further.
+- `write_alert` stays flock-guarded for `events.json`; the MQTT publish is
+  additive and graceful (a broker hiccup never fails the alert write).
 
 ## Provider config + selection (onboarding + settings)
 
@@ -150,20 +176,25 @@ Per-channel **status** is what the earlier health-monitor idea should report:
 ## API shape
 
 ```
-POST /api/ops/message                     (unchanged) any adapter → brain
-GET  /api/ops/alerts?channel=<id>         per-channel fan-out (new param)
+POST /api/ops/message                     (unchanged) two-way: adapter → brain
+MQTT minder/alerts (publish/subscribe)    alert fan-out (NOT an HTTP endpoint)
 GET/POST /api/ops/channels                list / enable / configure providers
 POST /api/ops/channels/<id>/register      set the target group/channel/chat
 GET  /api/ops/channels/<id>/status        connected | blocked | unconfigured
 ```
 
+`GET /api/ops/alerts` (the old poll endpoint) is retired in favour of the MQTT
+topic.
+
 ## Phased plan (each its own PR)
 
-1. **Alert fan-out + per-channel registration** — `?channel` delivery tracking,
-   `/data/channels/<id>.json`; Telegram bot passes `channel=telegram`. (Backend;
-   unblocks running two adapters at once.)
-2. **Discord adapter + supervision** — `discord_bot.py`, entrypoint supervises it
-   when `MINDER_DISCORD_TOKEN` is set. *(Building now.)*
+1. **Alert fan-out over MQTT** — `write_alert` publishes `minder/alerts` (QoS 1);
+   adapters subscribe with persistent sessions; mosquitto `persistence=true` +
+   persist volume; retire the `/api/ops/alerts` poll + `pending_alerts.json`
+   fan-out. Telegram bot switched to subscribe. *(Building now.)*
+2. **Discord adapter + supervision** — `discord_bot.py` (subscribes `minder/alerts`
+   as `minder-discord`), entrypoint supervises it when `MINDER_DISCORD_TOKEN` set.
+   *(Building now, with phase 1.)*
 3. **Provider selection UI** — onboarding Messaging step + Settings → Channels
    (enable/configure/status).
 4. **WhatsApp Baileys sidecar** — Node sidecar + thin adapter + the honest
