@@ -56,6 +56,46 @@ VLMs are unreliable at exact counts and consistent yes/no rule calls, so the liv
 decision must be a trained detector + deterministic compare, never "ask the VLM
 each frame.")
 
+## Recognizer types (not everything is object detection)
+
+"Object detection" answers *"where are the Xs?"* — perfect for boxes, people, PPE,
+litter. But many real questions aren't that shape, and forcing them into detection
+either fails or wastes effort. A Scenario picks the **lightest recognizer that
+answers its question**; Studio supports a small family of them, and the capture →
+label → review → train → deploy → rule flow is shared across all (only the model
+type and the labelling UI differ).
+
+| Recognizer | Answers | Good for | Cost / notes |
+| --- | --- | --- | --- |
+| **Object detection** | "where are the Xs, how many?" | count, presence, PPE, spills, intrusion | the default; one box per object |
+| **State classification** | "what state is this region in?" | gate open/closed, light on/off, door up/down, valve position | tiny — a 2–3 class classifier on a fixed ROI; very reliable in a fixed scene |
+| **Anomaly / embedding** | "does this look different from normal?" | "street clean or not", "is anything out of place" | learn a clean baseline, flag large embedding distance; fuzzier, needs a threshold |
+| **Temporal composition** | "did a sequence happen over time?" | hand-wash proxy, loitering, queue too long | not a model — detection + `dwell`/`cross`/sequence + sensors (the condition grammar) |
+| **Action recognition** | "is this *activity* happening?" | true hand-washing, falls, fighting | video model; needs clip training data; heavy — a future tier |
+| **VLM escalation** | "is this subjectively OK?" | the rare nuanced/edge call | slow; on a *flagged candidate* only, never 24/7 |
+
+How the recurring example questions actually map:
+
+- **"Is the gate open or closed?"** → **state classification** on the gate ROI (or
+  even the embedding trick: compare to an enrolled "open"/"closed" reference). One
+  of the *easiest* scenarios — fixed object, two states, a handful of examples.
+- **"Is the street clean?"** → **anomaly/embedding** vs a clean baseline, *or*
+  bound it as **object detection** of known litter where "clean = zero detections
+  in the zone". Pick detection when the failure modes are finite, anomaly when
+  they're open-ended.
+- **"Did the employee wash their hands?"** → **temporal**, not single-frame.
+  Object detection alone *cannot* decide this. Feasible today as a **composition
+  proxy**: `person in sink-zone` + `dwell ≥ N s` (+ optional tap/flow sensor via
+  the existing sensor-trigger rules) ≈ washed. True verification needs **action
+  recognition** (a heavier future tier) or pose estimation — stated plainly so the
+  proxy isn't oversold as proof.
+
+Rule of thumb: **fixed thing, few states → classify; bounded bad-things → detect;
+open-ended "looks wrong" → anomaly; "happened over time" → compose; genuine
+activity → action model; subjective edge → escalate to the VLM.** Most useful
+scenarios land in the first four (cheap, deterministic); only the last two are
+heavy, and they stay rare.
+
 ## Concept: a Scenario is a composable spec
 
 ```yaml
