@@ -1208,6 +1208,73 @@ async def verify_telegram(req: TelegramVerifyRequest):
         raise HTTPException(status_code=400, detail=f"Invalid token: {e}") from e
 
 
+# ---- Messaging channels (multi-adapter: Telegram, Discord, ...) ----
+#
+# Each adapter idles until its token is configured here (alert_bus.wait_for_token
+# reads minder-config.json), so enabling a channel needs no container restart.
+CHANNELS = [
+    {
+        "id": "telegram",
+        "name": "Telegram",
+        "help": "Create a bot with @BotFather, paste its token, then add the bot "
+        "to your family group and send /start there.",
+    },
+    {
+        "id": "discord",
+        "name": "Discord",
+        "help": "Create a bot in the Discord Developer Portal, enable the Message "
+        "Content intent, invite it to your server, then paste its token and "
+        "@mention it in the channel you want Minder to use.",
+    },
+]
+
+
+def _channel_token_set(config: dict[str, Any], cid: str) -> bool:
+    ch = (config.get("channels") or {}).get(cid) or {}
+    legacy = config.get("telegram_token") if cid == "telegram" else ""
+    return bool(ch.get("token") or legacy or os.environ.get(f"MINDER_{cid.upper()}_TOKEN"))
+
+
+@app.get("/api/ops/channels")
+async def list_channels():
+    """Messaging providers + their config status (drives Settings -> Channels)."""
+    config = _load_config()
+    out = []
+    for c in CHANNELS:
+        ch = (config.get("channels") or {}).get(c["id"]) or {}
+        configured = _channel_token_set(config, c["id"])
+        out.append({**c, "enabled": ch.get("enabled", configured), "configured": configured})
+    return {"channels": out}
+
+
+class ChannelConfigRequest(BaseModel):
+    token: str = ""
+    enabled: bool = True
+
+
+@app.post("/api/ops/channels/{channel_id}")
+async def configure_channel(channel_id: str, req: ChannelConfigRequest):
+    """Enable/configure a messaging channel. Writes the token to config; the
+    adapter (idling on wait_for_token) picks it up within ~15s — no restart."""
+    if channel_id not in {c["id"] for c in CHANNELS}:
+        raise HTTPException(status_code=404, detail="unknown channel")
+    config = _load_config()
+    channels = config.setdefault("channels", {})
+    ch = channels.setdefault(channel_id, {})
+    if req.token:
+        if channel_id == "telegram":  # verify the bot token up front
+            try:
+                config["telegram_bot"] = await asyncio.to_thread(_verify_telegram_token, req.token)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid token: {e}") from e
+            config["telegram_token"] = req.token
+        ch["token"] = req.token
+    ch["enabled"] = req.enabled
+    _save_config(config)
+    _write_env_file(config)
+    return {"status": "ok", "channel": channel_id, "configured": bool(ch.get("token"))}
+
+
 # -- Step 4b: Authorized users --
 
 
@@ -1375,8 +1442,10 @@ async def complete_setup(req: CompleteRequest):
 def _write_env_file(config: dict[str, Any]) -> None:
     """Generate .env from the collected config."""
     creds = config.get("camera_credentials", {})
+    channels = config.get("channels", {})
     lines = [
         f"MINDER_TELEGRAM_TOKEN={config.get('telegram_token', '')}",
+        f"MINDER_DISCORD_TOKEN={(channels.get('discord') or {}).get('token', '')}",
         f"OPENROUTER_API_KEY={config.get('openrouter_key', '')}",
         f"HA_TOKEN={config.get('ha_token', '')}",
         f"MINDER_SUBNET={creds.get('subnet', '192.168.0')}",

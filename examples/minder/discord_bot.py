@@ -156,10 +156,10 @@ async def _deliver_alert(alert: dict) -> None:
 
 
 def main() -> None:
-    token = os.environ.get("MINDER_DISCORD_TOKEN")
-    if not token:
-        log.error("MINDER_DISCORD_TOKEN not set")
-        raise SystemExit(1)
+    from alert_bus import wait_for_token
+
+    # Idle until a token is configured (dashboard or env) — no restart to enable.
+    token = wait_for_token("discord")
     log.info("Minder Discord bot starting as thin adapter...")
     client.run(token, log_handler=None)
 

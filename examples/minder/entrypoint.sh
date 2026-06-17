@@ -31,17 +31,12 @@ sleep 2
 echo "[minder] Starting onboarding webapp on :${MINDER_WEBAPP_PORT:-80}..."
 supervise webapp python3 /app/webapp/app.py
 
-if [ -n "$MINDER_TELEGRAM_TOKEN" ]; then
-  echo "[minder] Starting Telegram bot..."
-  supervise telegram-bot python3 /app/bot.py
-else
-  echo "[minder] MINDER_TELEGRAM_TOKEN not set — configure via http://minder.local"
-fi
-
-if [ -n "$MINDER_DISCORD_TOKEN" ]; then
-  echo "[minder] Starting Discord bot..."
-  supervise discord-bot python3 /app/discord_bot.py
-fi
+# Channel adapters are always supervised; each idles until its token is
+# configured (dashboard Settings -> Channels, or a MINDER_<CH>_TOKEN env var),
+# so enabling a channel needs no container restart.
+echo "[minder] Starting channel adapters (Telegram, Discord)..."
+supervise telegram-bot python3 /app/bot.py
+supervise discord-bot python3 /app/discord_bot.py
 
 echo "[minder] All services started (supervised)."
 wait

@@ -2705,6 +2705,12 @@ async function loadDashSettings() {
       ` : ''}
     </div>
 
+    <div class="dash-section-title" style="margin-top:1.5rem">Messaging Channels</div>
+    <p style="color:var(--text-dim); font-size:0.82rem; margin:0 0 0.5rem">
+      Minder can talk over multiple apps at once — alerts fan out to all of them.
+      Add or update a channel here; it activates within ~15s, no restart.</p>
+    <div id="dash-channels"><span style="color:var(--text-dim)">Loading channels…</span></div>
+
     <div class="dash-section-title" style="margin-top:1.5rem">Home Assistant</div>
     <div class="card">
       <div class="card-row" style="margin-bottom:0.5rem">
@@ -2791,6 +2797,45 @@ async function loadDashSettings() {
     });
   }
   loadSystemHealth();
+  loadChannels();
+}
+
+// ---- Messaging channels (multi-adapter: Telegram, Discord, ...) ----
+async function loadChannels() {
+  const el = document.getElementById('dash-channels');
+  if (!el) return;
+  try {
+    const data = await api('/ops/channels');
+    el.innerHTML = (data.channels || []).map(c => `
+      <div class="card" style="margin-bottom:0.75rem">
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <strong>${c.name}</strong>
+          <span class="badge ${c.configured ? 'badge-success' : 'badge-warning'}">${c.configured ? 'configured' : 'not set up'}</span>
+        </div>
+        <div style="font-size:0.82rem; color:var(--text-dim); margin:0.5rem 0">${c.help}</div>
+        <div class="form-group">
+          <input type="password" id="ch-token-${c.id}" style="font-family:monospace"
+                 placeholder="${c.configured ? '•••••• (set — paste to replace)' : 'paste the bot token'}">
+        </div>
+        <button class="btn btn-primary" onclick="saveChannel('${c.id}', '${c.name}')">${c.configured ? 'Update' : 'Connect'} ${c.name}</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="dash-empty">Couldn't load channels</div>`;
+  }
+}
+
+async function saveChannel(id, name) {
+  const input = document.getElementById('ch-token-' + id);
+  const token = (input?.value || '').trim();
+  if (!token) { toast('Paste the ' + name + ' token first', true); return; }
+  try {
+    await api('/ops/channels/' + id, { method: 'POST', body: { token, enabled: true } });
+    toast(name + ' connected — activates within ~15s');
+    loadChannels();
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 async function loadSystemHealth() {
