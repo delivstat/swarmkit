@@ -389,10 +389,10 @@ async def post_init(app: Application) -> None:
 
 
 def main() -> None:
-    token = os.environ.get("MINDER_TELEGRAM_TOKEN")
-    if not token:
-        log.error("MINDER_TELEGRAM_TOKEN not set")
-        raise SystemExit(1)
+    from alert_bus import wait_for_token
+
+    # Idle until a token is configured (dashboard or env) — no restart to enable.
+    token = wait_for_token("telegram")
 
     # concurrent_updates: handle messages from multiple people at once instead
     # of strictly one-at-a-time. Non-model work (RTSP capture, YOLO, HA calls)
