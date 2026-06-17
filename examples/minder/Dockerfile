@@ -54,8 +54,10 @@ COPY discovery-service/ /app/discovery/
 # Copy onboarding webapp
 COPY webapp/ /app/webapp/
 
-# Copy bot
+# Copy the channel adapters + shared alert bus
 COPY bot.py /app/bot.py
+COPY discord_bot.py /app/discord_bot.py
+COPY alert_bus.py /app/alert_bus.py
 
 # Copy entrypoint
 COPY entrypoint.sh /app/entrypoint.sh
