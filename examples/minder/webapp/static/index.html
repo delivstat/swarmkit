@@ -248,6 +248,16 @@
       border-top: 1px solid var(--border);
     }
 
+    /* Provider picker tabs (onboarding messaging step) */
+    .provider-tabs { display: flex; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+    .provider-tab {
+      flex: 1; padding: 0.6rem; border-radius: 8px; cursor: pointer;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-dim);
+      font-size: 0.9rem; font-weight: 600;
+    }
+    .provider-tab:hover { background: var(--surface-hover); }
+    .provider-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
     /* Status badges */
     .badge {
       display: inline-flex;
@@ -830,11 +840,17 @@
       </div>
     </div>
 
-    <!-- Step 4: Telegram -->
-    <div class="step" id="step-4" data-title="Telegram">
-      <h2>Telegram Bot</h2>
-      <p class="subtitle">Connect Minder to Telegram so you can chat with your home.</p>
+    <!-- Step 4: Messaging (provider picker) -->
+    <div class="step" id="step-4" data-title="Messaging">
+      <h2>Messaging</h2>
+      <p class="subtitle">Connect a messaging app to chat with your home and get alerts. Set up one or both — or skip and add them later in Settings.</p>
 
+      <div class="provider-tabs">
+        <button id="onb-tab-telegram" class="provider-tab active" onclick="onbChannel('telegram')">Telegram</button>
+        <button id="onb-tab-discord" class="provider-tab" onclick="onbChannel('discord')">Discord</button>
+      </div>
+
+      <div id="onb-telegram">
       <!-- Step 4a: Open BotFather -->
       <div class="card" style="text-align:center; padding:1.5rem" id="tg-step-create">
         <p style="font-size:0.9rem; margin-bottom:1rem">Scan this QR code on your phone to open BotFather in Telegram:</p>
@@ -889,6 +905,29 @@
       </div>
 
       <div id="tg-result" style="display:none; margin-top:1rem"></div>
+      </div><!-- /onb-telegram -->
+
+      <div id="onb-discord" style="display:none">
+        <div class="card" style="margin-top:1rem">
+          <div style="font-size:0.85rem; font-weight:600; color:var(--text-dim); margin-bottom:0.75rem">
+            Set up a Discord bot (works where Telegram is blocked):
+          </div>
+          <div style="display:flex; flex-direction:column; gap:0.6rem; font-size:0.85rem">
+            <div>1. Open the <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent); text-decoration:none">Discord Developer Portal</a> → <strong>New Application</strong>.</div>
+            <div>2. <strong>Bot</strong> → enable <strong>Message Content Intent</strong>, then Reset &amp; copy the bot <strong>Token</strong>.</div>
+            <div>3. <strong>OAuth2 → URL Generator</strong> → scope <code>bot</code>, perms <em>Send Messages</em> + <em>Attach Files</em> → open the generated URL to invite it to your server.</div>
+            <div>4. Paste the token below, then <strong>@mention</strong> the bot in the channel Minder should use.</div>
+          </div>
+        </div>
+        <div style="margin-top:1.25rem">
+          <div class="form-group">
+            <label>Paste the Discord bot token</label>
+            <input type="text" id="dc-token" placeholder="MTA1Njc4..." style="font-family:monospace">
+          </div>
+          <button class="btn btn-primary" id="btn-verify-dc" onclick="connectDiscord()">Connect Discord</button>
+        </div>
+        <div id="dc-result" style="display:none; margin-top:1rem"></div>
+      </div>
 
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="goStep(3)">Back</button>
@@ -1448,7 +1487,39 @@ async function checkHADevices() {
   }
 }
 
-// ---- Step 4: Telegram ----
+// ---- Step 4: Messaging (provider picker) ----
+
+function onbChannel(which) {
+  document.getElementById('onb-telegram').style.display = which === 'telegram' ? '' : 'none';
+  document.getElementById('onb-discord').style.display = which === 'discord' ? '' : 'none';
+  document.getElementById('onb-tab-telegram').classList.toggle('active', which === 'telegram');
+  document.getElementById('onb-tab-discord').classList.toggle('active', which === 'discord');
+}
+
+async function connectDiscord() {
+  const token = document.getElementById('dc-token').value.trim();
+  if (!token) { toast('Paste the Discord bot token', true); return; }
+  const btn = document.getElementById('btn-verify-dc');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Connecting...';
+  try {
+    await api('/ops/channels/discord', { method: 'POST', body: { token, enabled: true } });
+    const el = document.getElementById('dc-result');
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div class="card" style="border-color:var(--success)">
+        <span class="badge badge-success"><span class="dot dot-green"></span>Discord Connected</span>
+        <div style="font-size:0.85rem; color:var(--text-dim); margin-top:0.5rem">
+          @mention the bot in your server channel to start chatting. Alerts arrive there too.
+        </div>
+      </div>`;
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Connect Discord';
+  }
+}
 
 async function verifyTelegram() {
   const token = document.getElementById('tg-token').value.trim();
