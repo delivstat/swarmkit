@@ -2914,19 +2914,27 @@ async function loadSystemHealth() {
   if (!el) return;
   try {
     const h = await api('/ops/health');
-    const dot = ok => `<span style="color:${ok ? 'var(--accent)' : '#e05'}">${ok ? '●' : '●'}</span>`;
+    const dot = ok => `<span style="color:${ok ? 'var(--accent)' : '#e05'}">●</span>`;
+    const compDot = s => {
+      const col = s === 'ok' ? 'var(--accent)' : s === 'down' ? '#e05' : s === 'degraded' ? '#f5a623' : '#888';
+      return `<span style="color:${col}">●</span>`;
+    };
     let rows = '';
     for (const [name, st] of Object.entries(h.files || {})) {
       const ok = (st === 'ok' || st === 'empty');
       rows += `<div class="card-row" style="margin-bottom:0.3rem"><span class="card-label">${name}</span><span>${dot(ok)} ${st}</span></div>`;
     }
+    const comps = (h.components || []).map(c => `
+      <div class="card-row" style="margin-bottom:0.3rem">
+        <span class="card-label">${c.name}</span>
+        <span title="${(c.detail || '').replace(/"/g, '&quot;')}">${compDot(c.state)} ${c.state}</span>
+      </div>`).join('');
     el.innerHTML = `
       <div class="card-row" style="margin-bottom:0.5rem"><span class="card-label">Status</span>
         <strong>${dot(h.healthy)} ${h.healthy ? 'Healthy' : 'Needs attention'}</strong></div>
-      ${rows}
-      <div class="card-row" style="margin-bottom:0.3rem"><span class="card-label">Home Assistant</span><span>${dot(h.ha)} ${h.ha ? 'reachable' : 'down'}</span></div>
-      <div class="card-row" style="margin-bottom:0.3rem"><span class="card-label">Frigate</span><span>${dot(h.frigate)} ${h.frigate ? 'reachable' : 'down'}</span></div>
-      <div class="card-row" style="margin-bottom:0.3rem"><span class="card-label">State backups</span><span>${h.backups} (latest ${h.latest_backup || 'none'})</span></div>
+      ${comps ? '<div style="font-size:0.78rem; color:var(--text-dim); margin:0.4rem 0 0.2rem">Services &amp; channels</div>' + comps : ''}
+      ${rows ? '<div style="font-size:0.78rem; color:var(--text-dim); margin:0.5rem 0 0.2rem">Files</div>' + rows : ''}
+      <div class="card-row" style="margin-bottom:0.3rem; margin-top:0.5rem"><span class="card-label">State backups</span><span>${h.backups} (latest ${h.latest_backup || 'none'})</span></div>
       <div class="card-row"><span class="card-label">HA volume backups</span><span>${h.ha_volume_backups || 0}</span></div>`;
   } catch (e) {
     el.innerHTML = `<span style="color:#e05">Couldn't read health: ${e.message}</span>`;

@@ -119,6 +119,18 @@ async def _start_poll() -> None:
 
 
 @app.on_event("startup")
+async def _start_health_monitor() -> None:
+    """Active, report-only health monitor: probes services/deps/channels and
+    surfaces status on the dashboard + transition alerts on the MQTT bus."""
+    try:
+        from health_monitor import start_health_monitor
+
+        start_health_monitor()
+    except Exception as e:
+        print(f"[health] startup hook failed: {e}", flush=True)
+
+
+@app.on_event("startup")
 async def _startup_recovery() -> None:
     """On boot: DIAGNOSE only (never auto-fix — fixes are human-gated). If a
     precious file is corrupt/missing, raise an approval-request alert; the human
