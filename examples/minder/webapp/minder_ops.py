@@ -1213,17 +1213,26 @@ def health() -> dict:
         pass
     backups = list_backups()
     ha_tars = sorted(BACKUP_DIR.glob("ha-config-*.tar.gz")) if BACKUP_DIR.exists() else []
+    # Live component snapshot from the active health monitor (health_monitor.py).
+    components: list[dict] = []
+    health_file = DATA_DIR / "health.json"
+    if health_file.exists():
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
+            components = json.loads(health_file.read_text()).get("components", [])
+    files_ok = not any(_is_problem(n, s) for n, s in files.items())
+    components_ok = all(c.get("state") != "down" for c in components)
     return {
         "files": files,
+        "components": components,
         "ha": bool(_ha_token()),
         "frigate": frigate_ok,
         "backups": len(backups),
         "latest_backup": backups[0]["ts"] if backups else None,
         "ha_volume_backups": len(ha_tars),
         "latest_ha_volume_backup": ha_tars[-1].name if ha_tars else None,
-        # Healthy unless a file is a genuine fault. Missing-on-fresh-install
-        # (no backup yet) is "not set up", not unhealthy.
-        "healthy": not any(_is_problem(n, s) for n, s in files.items()),
+        # Healthy unless a precious file is a genuine fault (missing-on-fresh-
+        # install is "not set up", not unhealthy) or a monitored component is down.
+        "healthy": files_ok and components_ok,
     }
 
 
