@@ -1540,6 +1540,58 @@ async def save_zones(camera: str, req: ZonesRequest):
     return {"status": "ok", "camera": camera, "zones": len(zones), "frigate": frigate}
 
 
+# ---- Scenario Studio: custom-detector dataset pipeline (Phase 2/3, slice 1) ----
+
+
+class DatasetRequest(BaseModel):
+    name: str
+    prompt: str = ""
+    class_name: str = ""
+    camera: str = ""
+
+
+class CaptureRequest(BaseModel):
+    count: int = 10
+
+
+@app.get("/api/studio/datasets")
+async def studio_list_datasets():
+    import dataset as ds
+
+    return {"datasets": ds.list_datasets(), "cloud_label": bool(ds.OPENROUTER_KEY)}
+
+
+@app.post("/api/studio/datasets")
+async def studio_create_dataset(req: DatasetRequest):
+    import dataset as ds
+
+    return ds.create_dataset(req.name, req.prompt, req.class_name, req.camera)
+
+
+@app.post("/api/studio/datasets/{name}/capture")
+async def studio_capture(name: str, req: CaptureRequest):
+    import dataset as ds
+
+    return await asyncio.to_thread(ds.capture_frames, name, req.count)
+
+
+@app.post("/api/studio/datasets/{name}/autolabel")
+async def studio_autolabel(name: str):
+    import dataset as ds
+
+    return await asyncio.to_thread(ds.autolabel, name)
+
+
+@app.get("/api/studio/datasets/{name}/export")
+async def studio_export(name: str):
+    import dataset as ds
+
+    res = await asyncio.to_thread(ds.export, name)
+    if res.get("error") or not res.get("zip"):
+        raise HTTPException(status_code=404, detail=res.get("error", "export failed"))
+    return FileResponse(res["zip"], media_type="application/zip", filename=Path(res["zip"]).name)
+
+
 # -- Step 7: Complete --
 
 
