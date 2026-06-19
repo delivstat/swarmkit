@@ -1136,6 +1136,7 @@
             <select id="dash-rule-type" onchange="dashRuleTypeChanged()">
               <option value="presence">Presence — something appears</option>
               <option value="count">Count threshold — too many (or few) objects</option>
+              <option value="cross">Cross — enters or leaves a region</option>
             </select>
           </div>
           <div class="form-group">
@@ -1183,6 +1184,34 @@
                 <select id="dash-count-zone"><option value="">Whole frame</option></select>
               </div>
             </div>
+          </div>
+          <div id="dash-rule-cross-fields" style="display:none">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Object</label>
+                <select id="dash-cross-object">
+                  <option value="">anything</option>
+                  <option value="person">person</option>
+                  <option value="car">car / vehicle</option>
+                  <option value="dog">dog</option>
+                  <option value="cat">cat</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Direction</label>
+                <select id="dash-cross-direction">
+                  <option value="enter">enters</option>
+                  <option value="leave">leaves</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Region</label>
+                <select id="dash-cross-zone"><option value="">(draw a region first)</option></select>
+              </div>
+            </div>
+            <p style="font-size:0.78rem; color:var(--text-dim)">
+              Draw a thin region across the boundary (below) — crossing it = entering/leaving.
+            </p>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -2662,14 +2691,17 @@ async function loadZones() {
   } catch (e) { state.zones = {}; }
 }
 
-// Populate the count-rule "Region" dropdown from the selected camera's zones.
+// Populate the count + cross "Region" dropdowns from the selected camera's zones.
 function populateRuleZones() {
-  const sel = document.getElementById('dash-count-zone');
-  if (!sel) return;
   const cam = document.getElementById('dash-rule-camera').value;
   const zones = (state.zones && state.zones[cam]) || [];
-  sel.innerHTML = '<option value="">Whole frame</option>'
-    + zones.map(z => `<option value="${z.name}">${z.name}</option>`).join('');
+  const opts = zones.map(z => `<option value="${z.name}">${z.name}</option>`).join('');
+  const countSel = document.getElementById('dash-count-zone');
+  if (countSel) countSel.innerHTML = '<option value="">Whole frame</option>' + opts;
+  const crossSel = document.getElementById('dash-cross-zone');
+  if (crossSel) {
+    crossSel.innerHTML = zones.length ? opts : '<option value="">(draw a region first)</option>';
+  }
 }
 
 function _zoneCamIp(name) {
@@ -2815,9 +2847,10 @@ async function dashRemoveRule(index) {
 }
 
 function dashRuleTypeChanged() {
-  const isCount = document.getElementById('dash-rule-type').value === 'count';
-  document.getElementById('dash-rule-count-fields').style.display = isCount ? '' : 'none';
-  document.getElementById('dash-rule-presence-fields').style.display = isCount ? 'none' : '';
+  const t = document.getElementById('dash-rule-type').value;
+  document.getElementById('dash-rule-count-fields').style.display = t === 'count' ? '' : 'none';
+  document.getElementById('dash-rule-cross-fields').style.display = t === 'cross' ? '' : 'none';
+  document.getElementById('dash-rule-presence-fields').style.display = t === 'presence' ? '' : 'none';
 }
 
 const _COUNT_OP_WORDS = { '>': 'more than', '>=': 'at least', '<': 'fewer than', '<=': 'at most' };
@@ -2843,6 +2876,17 @@ async function dashAddRule() {
       actions: [{ type: 'alert' }],
     };
     if (zone) rule.zone = zone;
+  } else if (type === 'cross') {
+    const object = document.getElementById('dash-cross-object').value;
+    const direction = document.getElementById('dash-cross-direction').value;
+    const zone = document.getElementById('dash-cross-zone').value;
+    if (!zone) { toast('Draw a region, then pick it here', true); return; }
+    const dirWord = direction === 'leave' ? 'leaves' : 'enters';
+    rule = {
+      condition: `${object || 'anything'} ${dirWord} ${zone}`,
+      camera, condition_type: 'cross', object, direction, zone,
+      schedule, enabled: true, actions: [{ type: 'alert' }],
+    };
   } else {
     const condition = document.getElementById('dash-rule-condition').value.trim();
     if (!condition) { toast('Enter a condition', true); return; }
