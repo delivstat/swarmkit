@@ -1,147 +1,111 @@
-# Scenario Studio Phase 2 — Quick Mode (open-vocab "detect anything") — Design Note
+# Scenario Studio Phase 2/3 — Custom Local Detectors (cloud-assisted authoring) — Design Note
 
-**Scope:** `examples/minder` — detect **any object described in words** ("cardboard
-box", "hard hat", "puddle") with **zero training**, so a scenario can watch for
-site-specific things the stock Frigate model (person/car/dog/cat) doesn't know.
-Builds on the deterministic condition grammar (count/zones/cross) — quick mode is a
-new *detection source*; the rules + matchers are unchanged.
-**Design references:** parent [[scenario-studio]] (§"Phased plan" item 2, §"Quick
-mode", §"Resource reality", Open Question 2); the count/zone/cross matchers; the VLM
-runtime decision ([[project_minder_vision_runtime]]).
-**Status:** proposal. **Runtime decided: cloud VLM via OpenRouter (opt-in, on-demand)**
-— on-box open-vocab is too heavy even for the prod appliance, so the hard perception is
-offloaded to a cloud VLM. Needs an OpenRouter API key + model choice to implement +
-validate.
+**Scope:** `examples/minder` — let a user teach Minder to detect a **site-specific
+object** the stock Frigate model doesn't know ("cardboard box", "hard hat", "puddle"),
+producing a **tiny detector that runs 24/7 fully on-device**. Cloud touches only the
+**one-time setup** (labeling), and **training happens off-box** — so the 24/7
+monitoring loop stays 100% local. Builds on the deterministic grammar (count/zones/
+cross) — the trained detector is a new *detection source*; the matchers are unchanged.
+**Design references:** parent [[scenario-studio]] (§"On-site workflow", §"Resource
+reality", Open Questions 1–2); the VLM runtime decision ([[project_minder_vision_runtime]]).
+**Status:** proposal. **Confirmed direction: cloud-assisted labeling + off-box training
++ local inference.**
 
-## Goal
+## The key decision (confirmed)
 
-"Quick mode" from the parent design: an **open-vocabulary detector** (YOLO-World /
-Grounding-DINO / YOLOE) run from a text prompt, no capture/label/train. The user
-types what to watch for ("cardboard box on the belt") and Minder detects + counts it
-immediately — lower accuracy than a trained model, but instant and on-box. The
-trained-model pipeline (capture → label → train) is Phases 3–4; quick mode is the
-prototype tier that the design says to "lead with."
+On-box open-vocab inference (YOLO-World/Grounding-DINO) is too heavy even for the prod
+appliance, and a cloud VLM *in the monitoring loop* breaks "no cloud in the loop". So
+instead: **use the cloud once, at setup, to help build a local model**, then run that
+model locally forever. The expensive understanding happens once; the 24/7 loop is a
+tiny deterministic detector. This is exactly the design's tiered philosophy.
 
-## The hard reality (why this is the careful phase)
+Two distinct cloud/compute jobs (an important correction — OpenRouter is inference-only):
+- **Auto-labeling = OpenRouter (a cloud VLM).** Captured frames → a cloud VLM returns
+  rough boxes for the prompted object → a human corrects them. One-time, at setup,
+  never in the loop. Replaces the heavy local auto-labeler (Grounding-DINO/SAM) the box
+  can't run.
+- **Training = off-box GPU (NOT OpenRouter).** OpenRouter can't run training. The
+  labeled dataset is exported and trained on a free Colab / rented GPU / the user's
+  machine (we ship a one-click script), producing a `.pt` imported back to the box.
+  Keeps the *running* system cloud-free.
 
-The reference appliance is a **4 GB GTX 1050 Ti** that is **already at capacity**, and
-the project has already learned the GPU thrashes:
-- **VRAM holds only the qwen2.5:3b router.** Everything vision is deliberately on CPU:
-  Frigate's detector (`detectors: {cpu1: {type: cpu}}`), the VLM (`num_gpu: 0`), the
-  describe path (`num_gpu: 0`). This was a hard-won decision (GPU thrash → moved off).
-- An open-vocab detector (YOLO-World-s ≈ a YOLOv8 backbone **+ a CLIP text encoder**)
-  is bigger than the stock YOLO and, on GPU, would contend with / OOM against the 3B.
-
-So "GPU frontier" is a slight misnomer for *this* box: **the only safe on-box place
-for open-vocab is the CPU, on-demand** — exactly the pattern the VLM already uses.
-Putting it on the GPU is the contention risk the parent design flags as Open Question 2.
-
-## Decision (confirmed): cloud VLM via OpenRouter, on-demand, opt-in
-
-On-box open-vocab is too heavy even for the prod appliance, so quick mode offloads the
-hard perception to a **cloud VLM via OpenRouter** instead of running a detector locally.
-Important reframing this implies:
-
-- **OpenRouter serves VLMs, not object detectors.** So quick mode is **"send a snapshot
-  + a question to a cloud VLM"** ("is there a cardboard box?", "is the gate open?",
-  "anyone without a hard hat?"), not open-vocab box detection. This is *better* for
-  nuanced / state questions, and reuses Minder's existing `_vlm_answer` pattern almost
-  verbatim — just pointed at OpenRouter (an OpenAI-compatible endpoint) instead of local
-  Ollama. Fits SwarmKit's `ModelProvider` abstraction (OpenRouter = another provider).
-- **Model:** a cheap vision model on OpenRouter (e.g. `google/gemini-2.0-flash`,
-  `openai/gpt-4o-mini`, a Qwen-VL) — configurable (`MINDER_CLOUD_VISION_MODEL`).
-- **On-demand only:** evaluated on a cadence / Frigate-motion trigger (default ~60 s,
-  motion-triggered preferred), **never 24/7**.
-- **Opt-in + key-gated:** off unless an OpenRouter API key is configured
-  (`MINDER_OPENROUTER_KEY`, read from env/config — **never committed**); graceful no-op
-  without a key.
-
-### Guardrails (non-negotiable)
-
-- **Presence / state, not precise counts.** The design's core warning stands — VLMs
-  miscount. Quick mode answers *presence / state / scene-judgment*; any count it returns
-  is **approximate** (fine for "roughly more than N", never an exact tally). Precise
-  counting stays on the local deterministic detector (stock or, later, trained).
-- **Privacy — footage leaves the box.** This is the one real tension with Minder's
-  "fully local, no cloud in the loop" promise: an armed cloud scenario sends camera
-  snapshots to a third-party API. Defensible because it's **opt-in, on-demand, and
-  per-scenario** (the 24/7 monitoring loop stays fully local; only the specific armed
-  cloud-scenario transmits frames) — but the UI **must say so plainly** at arm time.
-
-## Architecture
+## Pipeline
 
 ```
-cloud quick-mode scenario (prompt question + presence/state rule)
-        │  on a cadence / on Frigate motion   (opt-in, key-gated)
-        ▼
-  _grab_frame(camera)  ──►  OpenRouter VLM (snapshot + prompt → structured {present, note, count?})
-        │                         │
-        ▼                         ▼
-  presence/state verdict ──► existing alert path (write_alert + actions)
+capture frames (box)
+  → auto-label via cloud VLM / OpenRouter (one-time, opt-in, key-gated)
+  → human review/correct (box, browser canvas)        ← the quality gate
+  → export YOLO dataset + a training script (box)
+  → train YOLOv8-n OFF-BOX (Colab / GPU), import the .pt   ← cloud/GPU touches setup only
+  → deploy to Frigate + arm a rule
+  → run 24/7 FULLY LOCAL (feeds the existing count/zone/cross matchers)
 ```
 
-- A cloud-VLM provider call (reuse the `_vlm_answer` shape; OpenRouter base URL +
-  `Authorization: Bearer <key>`; OpenAI-compatible chat/vision payload). Structured
-  output: `{present: bool, note: str, count?: int}`.
-- A quick-mode evaluator (like `frigate_poller`/`mqtt_listener`): for each armed cloud
-  scenario, grab a frame on its cadence, ask the VLM the prompt, fire on the verdict
-  through the existing alert path.
-- The rule carries `detector: "cloud"` + `prompt: "..."`; presence/state verdict feeds
-  the existing alert path (counts, if requested, flagged approximate).
+## What's local vs cloud (the principle, kept)
 
-## Studio UI (minimal — define → prompt → rule → arm)
+| Step | Where | Cloud? |
+| --- | --- | --- |
+| Capture frames | box | no |
+| Auto-label (bootstrap boxes) | OpenRouter VLM | **yes — one-time, opt-in** |
+| Review/correct labels | box (browser) | no |
+| Export dataset + train script | box | no |
+| Train the detector | off-box GPU (Colab/own machine) | **GPU one-time, user-run** |
+| Run the detector 24/7 | box | **no — fully local** |
 
-The rule builder gains a cloud quick-mode toggle: type a **question/prompt** ("is the
-gate open?"), pick camera + cadence + action; a **clear "sends snapshots to OpenRouter"
-notice** + a **Test** button (one live call showing the verdict) before arming.
+The monitoring loop never calls the cloud. Snapshots leave the box **only** during the
+one-time auto-label step, and only for the frames the user captured for training — not
+live footage. (Air-gapped alternative: skip auto-label, label fully by hand.)
 
-## Cost + accuracy + honesty
+## Build slices (each its own PR)
 
-- **Cost:** per-call cloud billing — bounded by on-demand cadence + opt-in; surfaced
-  (model + rough per-call cost) in the UI.
-- **Accuracy:** stronger than on-box open-vocab for nuanced/state questions; **counts
-  approximate**; prompt-sensitive — the Test button lets the user check before arming.
+1. **Dataset pipeline (this slice):** capture frames into a per-detector dataset;
+   cloud auto-label via OpenRouter (key-gated, graceful, mock-tested); export a
+   YOLO-format dataset + a self-contained off-box `train.py` / Colab instructions.
+   Backend + minimal UI. *Produces a training-ready dataset + script.*
+2. **Review canvas:** browser box-drawing to correct the auto-labels (reuses the
+   zone-draw canvas), frame-by-frame — the quality gate.
+3. **Import + deploy:** import the trained `.pt`; wire it into Frigate. **Frigate runs
+   one detector model** (Open Question 1) → resolve via a combined model, a second
+   detection sidecar, or a dedicated-camera model. The fiddliest integration.
+4. **Arm:** a rule on the custom class, feeding the existing count/zone/cross matchers.
 
-## Phases 3–4 (after quick mode proves out) — the trainer
+## Components / config
 
-Capture frames → auto-label (a foundation model, transient) → review canvas → train
-YOLOv8-n → register + deploy. **Training is the genuinely heavy GPU job** the parent
-design flags: on a 4 GB card it's slow and contends hard with the 3B. The design's
-recommendation stands — **lead with quick mode + import-a-model**, and treat on-box
-training as an opt-in "appliance with a real GPU" tier, not the default. (Detailed in
-the parent note; its own design note when we get there.)
+- **Capture:** reuse the Frigate snapshot grab; store under
+  `/data/datasets/<name>/{images,labels}` + a `meta.json` (prompt, class, camera).
+- **Auto-label:** a cloud-VLM call (OpenRouter, OpenAI-compatible chat/vision; reuses
+  the `_vlm_answer` shape) asking for boxes as JSON → YOLO `labels/*.txt`. Gated on
+  `MINDER_OPENROUTER_KEY` (env/config, **never committed**), model
+  `MINDER_CLOUD_VISION_MODEL` (e.g. `google/gemini-2.0-flash`); graceful no-op without
+  a key.
+- **Export:** YOLO `data.yaml` + images + labels, zipped, plus a generated `train.py`
+  (ultralytics) and Colab-ready steps.
+- **Whole feature is opt-in** (a setup tool, not the loop) — merely shipping it never
+  touches the live monitoring path.
 
-## Non-goals
+## Honest hard parts
 
-- Open-vocab as the 24/7 Frigate detector (it's on-demand only).
-- On-box training (Phases 3–4).
-- Replacing the stock Frigate detection (this adds a parallel prompt-driven source).
+- **VLM box quality is rough** — a *bootstrap*, not final; review is essential (the
+  manual effort, though correcting beats drawing from scratch).
+- **Training needs a GPU somewhere** — off-box import is the clean answer for this box;
+  on-box training stays an opt-in "real GPU" tier.
+- **Frigate single-detector-model** (Open Question 1) — the deploy step's core
+  challenge; default to a dedicated-camera model, offer a combined model for mixed cams.
+- **Cost** — auto-label is a handful of VLM calls per dataset (one-time); bounded +
+  surfaced.
 
 ## Test / demo plan
 
-- **Unit:** `detect_prompt` returns boxes for a known prompt on a fixed test image;
-  the quick-mode evaluator feeds the count/zone matchers (reuse the count/zone tests
-  with a synthetic detector). Graceful no-op when deps/model absent.
-- **Live (opt-in, off the critical path):** enable `MINDER_QUICKMODE`, arm a "cardboard
-  box on the belt, count > 0" quick-mode scenario, place a box in view → alert; measure
-  CPU inference time + confirm the 3B/Frigate stay responsive. Run this **deliberately,
-  with the user**, given it loads a new model on the live box.
+- **Unit (this slice):** dataset create/capture (mock frame grab); auto-label parse
+  (mock OpenRouter boxes → YOLO labels); export writes a valid `data.yaml` + label
+  files + `train.py`. Graceful no-op without a key.
+- **Live:** capture frames from a camera → export → confirm a valid YOLO dataset; with
+  a key, auto-label a few frames and inspect the boxes. Training + deploy validated in
+  later slices.
 
-## What's needed to implement + validate
+## Open questions
 
-1. **An OpenRouter API key** (added to the box's `.env` as `MINDER_OPENROUTER_KEY` —
-   **never committed**); the feature is a no-op without it.
-2. **A model choice** — recommend a cheap vision model (`google/gemini-2.0-flash` or
-   `openai/gpt-4o-mini`); configurable.
-3. **Cadence** — fixed interval vs Frigate-motion-triggered (motion preferred, cheaper).
-
-The implementation can be built + unit-tested with a **mocked OpenRouter response**;
-live validation needs the key (done deliberately with the user, off the critical path).
-
-## Alternative (noted, not chosen): local YOLO-World on CPU
-
-If staying cloud-free ever matters more than capability, the on-box option is
-ultralytics **YOLO-World-s** on **CPU**, on-demand (mirroring the VLM) — true open-vocab
-*detection* (so usable for counts), but ~1–5 s/inference and prototype accuracy, and it
-adds the ultralytics-world + CLIP dependency. Kept as a fallback tier for an air-gapped
-or privacy-strict deployment.
+1. **Frigate single-model deploy** — combined vs sidecar vs dedicated-camera (slice 3).
+2. **Auto-label box format per model** — which OpenRouter VLM returns the most usable
+   boxes (Gemini vs GPT-4o vs Qwen-VL); the export is model-agnostic regardless.
+3. **On-box training** as an opt-in later tier for beefier appliances.
