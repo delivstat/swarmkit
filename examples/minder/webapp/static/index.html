@@ -1051,6 +1051,7 @@
         <button onclick="dashTab('cameras')">Cameras</button>
         <button onclick="dashTab('devices')">Devices</button>
         <button onclick="dashTab('rules')">Rules</button>
+        <button onclick="dashTab('studio')">Studio</button>
         <button onclick="dashTab('settings')" id="nav-settings" style="position:relative">
           Settings
           <span id="approval-badge" style="display:none; position:absolute; top:2px; right:4px; width:18px; height:18px; background:var(--error); color:#fff; border-radius:50%; font-size:0.65rem; line-height:18px; text-align:center"></span>
@@ -1262,6 +1263,59 @@
             </div>
             <div id="zone-list" style="margin:0.5rem 0"></div>
             <button class="btn btn-primary" onclick="saveZones()" id="zone-save-btn">Save zones</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Studio tab: train a custom detector (capture -> auto-label -> review -> export) -->
+      <div class="dash-tab" id="tab-studio">
+        <div class="card" style="margin-bottom:1rem; border-color:var(--accent)">
+          <div style="font-size:0.9rem; font-weight:600; margin-bottom:0.5rem">Train a custom detector</div>
+          <p style="color:var(--text-dim); font-size:0.85rem; margin-bottom:0.75rem">
+            Teach Minder to spot something the stock model doesn't know (a cardboard box, a hard hat).
+            Capture frames → auto-label (cloud, one-time) → correct them below → export &amp; train off-box.
+            The trained detector runs on-device; the cloud is used only for one-time labeling.
+          </p>
+          <div class="form-row">
+            <div class="form-group"><label>Name</label><input type="text" id="ds-name" placeholder="e.g. belt boxes"></div>
+            <div class="form-group"><label>What to detect</label><input type="text" id="ds-prompt" placeholder="e.g. cardboard box"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Camera</label><select id="ds-camera"></select></div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+              <button class="btn btn-primary" onclick="studioCreate()" style="width:100%">Create dataset</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Dataset</label>
+          <select id="ds-select" onchange="studioSelectDataset()"><option value="">Select a dataset…</option></select>
+        </div>
+
+        <div id="studio-workbench" style="display:none">
+          <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem">
+            <button class="btn btn-secondary" onclick="studioCapture()" id="ds-capture-btn">📸 Capture 10 frames</button>
+            <button class="btn btn-secondary" onclick="studioAutolabel()" id="ds-autolabel-btn">✨ Auto-label (cloud)</button>
+            <button class="btn btn-primary" onclick="studioExport()">⬇ Export dataset + train script</button>
+            <span id="ds-counts" style="font-size:0.82rem; color:var(--text-dim); align-self:center"></span>
+          </div>
+          <div id="ds-cloud-note" style="display:none; font-size:0.78rem; color:var(--warning); margin-bottom:0.5rem"></div>
+
+          <div id="ds-review" style="display:none">
+            <div class="dash-section-title">Review labels — drag to draw a box around each object</div>
+            <div style="position:relative; display:inline-block; max-width:100%">
+              <img id="ds-img" alt="frame" style="max-width:100%; border-radius:8px; display:block; background:#000">
+              <canvas id="ds-canvas" style="position:absolute; left:0; top:0; cursor:crosshair; touch-action:none"></canvas>
+            </div>
+            <div style="display:flex; gap:0.4rem; align-items:center; margin-top:0.5rem; flex-wrap:wrap">
+              <button class="btn btn-ghost" onclick="studioFrame(-1)">‹ Prev</button>
+              <span id="ds-frame-pos" style="font-size:0.85rem; color:var(--text-dim)"></span>
+              <button class="btn btn-ghost" onclick="studioFrame(1)">Next ›</button>
+              <button class="btn btn-ghost" onclick="studioUndoBox()">↶ Undo box</button>
+              <button class="btn btn-ghost" onclick="studioClearBoxes()">Clear</button>
+              <button class="btn btn-primary" onclick="studioSaveLabels()" style="margin-left:auto">Save labels</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1996,6 +2050,7 @@ function dashTab(name) {
   if (name === 'cameras') loadDashCameras();
   if (name === 'devices') loadDashDevices();
   if (name === 'rules') loadDashRules();
+  if (name === 'studio') loadStudio();
   if (name === 'settings') { loadDashSettings(); mountAllWeather(); }
 }
 
@@ -2810,6 +2865,162 @@ async function saveZones() {
     await loadZones(); populateRuleZones();
   } catch (e) { toast(e.message, true); }
   finally { btn.disabled = false; btn.textContent = 'Save zones'; }
+}
+
+// ---- Scenario Studio: custom-detector training (capture -> auto-label -> review -> export) ----
+
+const studio = { name: '', images: [], idx: 0, boxes: [], rect: null, cloud: false };
+
+async function loadStudio() {
+  // cameras for the create form
+  if (!state.cameras || !state.cameras.length) {
+    try { state.cameras = (await api('/cameras')).cameras || []; } catch (e) { state.cameras = []; }
+  }
+  const camSel = document.getElementById('ds-camera');
+  camSel.innerHTML = state.cameras.map(c => `<option value="${c.name || c.ip}">${c.name || c.ip}</option>`).join('');
+  try {
+    const data = await api('/studio/datasets');
+    studio.cloud = data.cloud_label;
+    const sel = document.getElementById('ds-select');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Select a dataset…</option>'
+      + (data.datasets || []).map(d => `<option value="${d.slug}">${d.name} (${d.images} imgs, ${d.labeled} labeled)</option>`).join('');
+    sel.value = cur;
+  } catch (e) { toast('Could not load datasets', true); }
+}
+
+async function studioCreate() {
+  const name = document.getElementById('ds-name').value.trim();
+  const prompt = document.getElementById('ds-prompt').value.trim();
+  const camera = document.getElementById('ds-camera').value;
+  if (!name || !prompt) { toast('Name it and say what to detect', true); return; }
+  try {
+    const meta = await api('/studio/datasets', { method: 'POST', body: { name, prompt, class_name: prompt, camera } });
+    document.getElementById('ds-name').value = ''; document.getElementById('ds-prompt').value = '';
+    await loadStudio();
+    document.getElementById('ds-select').value = meta.slug;
+    studioSelectDataset();
+    toast('Dataset created — capture some frames');
+  } catch (e) { toast(e.message, true); }
+}
+
+function studioSelectDataset() {
+  studio.name = document.getElementById('ds-select').value;
+  const wb = document.getElementById('studio-workbench');
+  wb.style.display = studio.name ? '' : 'none';
+  const note = document.getElementById('ds-cloud-note');
+  note.style.display = studio.cloud ? 'none' : '';
+  note.textContent = '⚠ No OpenRouter key configured — auto-label is off; draw the boxes by hand below (or set OPENROUTER_API_KEY).';
+  if (studio.name) studioLoadImages();
+}
+
+async function studioLoadImages() {
+  try {
+    studio.images = (await api(`/studio/datasets/${studio.name}/images`)).images || [];
+  } catch (e) { studio.images = []; }
+  studio.idx = 0;
+  document.getElementById('ds-counts').textContent = `${studio.images.length} frames captured`;
+  const rev = document.getElementById('ds-review');
+  rev.style.display = studio.images.length ? '' : 'none';
+  if (studio.images.length) studioLoadFrame();
+}
+
+async function studioCapture() {
+  const btn = document.getElementById('ds-capture-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Capturing…';
+  try {
+    const r = await api(`/studio/datasets/${studio.name}/capture`, { method: 'POST', timeout: 60000, body: { count: 10 } });
+    toast(`Captured ${r.captured} frames`);
+    await studioLoadImages();
+  } catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; btn.textContent = '📸 Capture 10 frames'; }
+}
+
+async function studioAutolabel() {
+  const btn = document.getElementById('ds-autolabel-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Labeling…';
+  try {
+    const r = await api(`/studio/datasets/${studio.name}/autolabel`, { method: 'POST', timeout: 300000 });
+    toast(r.error ? r.error : `Auto-labeled ${r.labeled} frames — review + correct them`);
+    if (studio.images.length) studioLoadFrame();
+  } catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; btn.textContent = '✨ Auto-label (cloud)'; }
+}
+
+function studioExport() {
+  if (!studio.name) return;
+  window.open(`/api/studio/datasets/${studio.name}/export`, '_blank');
+}
+
+// --- review canvas ---
+
+async function studioLoadFrame() {
+  studio.rect = null;
+  const file = studio.images[studio.idx];
+  document.getElementById('ds-frame-pos').textContent = `${studio.idx + 1} / ${studio.images.length}`;
+  try { studio.boxes = (await api(`/studio/datasets/${studio.name}/labels/${file}`)).boxes || []; }
+  catch (e) { studio.boxes = []; }
+  const img = document.getElementById('ds-img');
+  img.onload = _studioInitCanvas;
+  img.src = `/api/studio/datasets/${studio.name}/image/${file}?t=${Date.now()}`;
+}
+
+function _studioInitCanvas() {
+  const img = document.getElementById('ds-img'), cv = document.getElementById('ds-canvas');
+  cv.width = img.clientWidth; cv.height = img.clientHeight;
+  cv.style.width = img.clientWidth + 'px'; cv.style.height = img.clientHeight + 'px';
+  if (!cv._bound) {
+    cv._bound = true;
+    let start = null;
+    const pos = e => {
+      const r = cv.getBoundingClientRect(), t = e.touches && e.touches[0] ? e.touches[0] : e;
+      return [Math.min(1, Math.max(0, (t.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (t.clientY - r.top) / r.height))];
+    };
+    cv.onmousedown = e => { start = pos(e); e.preventDefault(); };
+    cv.onmousemove = e => { if (!start) return; studio.rect = [start, pos(e)]; _studioDraw(); };
+    cv.onmouseup = e => {
+      if (!start) return;
+      const [a, b] = [start, pos(e)];
+      const x1 = Math.min(a[0], b[0]), x2 = Math.max(a[0], b[0]), y1 = Math.min(a[1], b[1]), y2 = Math.max(a[1], b[1]);
+      if (x2 - x1 > 0.02 && y2 - y1 > 0.02) studio.boxes.push([x1, y1, x2, y2]);
+      start = null; studio.rect = null; _studioDraw();
+    };
+  }
+  _studioDraw();
+}
+
+function _studioDraw() {
+  const cv = document.getElementById('ds-canvas'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineWidth = 2;
+  (studio.boxes || []).forEach(b => {
+    ctx.strokeStyle = 'rgba(0,200,255,0.95)'; ctx.fillStyle = 'rgba(0,200,255,0.12)';
+    ctx.fillRect(b[0] * W, b[1] * H, (b[2] - b[0]) * W, (b[3] - b[1]) * H);
+    ctx.strokeRect(b[0] * W, b[1] * H, (b[2] - b[0]) * W, (b[3] - b[1]) * H);
+  });
+  if (studio.rect) {
+    const [a, b] = studio.rect;
+    ctx.strokeStyle = 'rgba(255,180,0,0.95)';
+    ctx.strokeRect(a[0] * W, a[1] * H, (b[0] - a[0]) * W, (b[1] - a[1]) * H);
+  }
+}
+
+function studioUndoBox() { (studio.boxes || []).pop(); _studioDraw(); }
+function studioClearBoxes() { studio.boxes = []; _studioDraw(); }
+
+function studioFrame(dir) {
+  if (!studio.images.length) return;
+  studio.idx = (studio.idx + dir + studio.images.length) % studio.images.length;
+  studioLoadFrame();
+}
+
+async function studioSaveLabels() {
+  const file = studio.images[studio.idx];
+  try {
+    const r = await api(`/studio/datasets/${studio.name}/labels/${file}`, { method: 'POST', body: { boxes: studio.boxes } });
+    toast(`Saved ${r.saved} box${r.saved === 1 ? '' : 'es'}`);
+    loadStudio();  // refresh labeled count
+  } catch (e) { toast(e.message, true); }
 }
 
 async function dashCreateScenario() {
