@@ -111,6 +111,11 @@ services:
       # model can't fabricate (see _describe_prompt). moondream hallucinated people
       # — fatal for security — so it's out regardless of speed.
       - MINDER_VISION_MODEL=${MINDER_VISION_MODEL:-qwen2.5vl:3b}
+      # Scenario Studio custom-detector auto-labeling (one-time setup only, NOT the
+      # monitoring loop). Off unless an OpenRouter key is set; cloud is used only to
+      # bootstrap training labels — the trained detector runs fully local.
+      - MINDER_OPENROUTER_KEY=${MINDER_OPENROUTER_KEY:-}
+      - MINDER_CLOUD_VISION_MODEL=${MINDER_CLOUD_VISION_MODEL:-google/gemini-2.0-flash}
       # The Frigate event poller is the sole monitoring path (the old YOLO loop
       # has been retired). "live" fires alerts; "shadow" is a dry-run that only
       # logs would-be alerts to poller_shadow.json.
