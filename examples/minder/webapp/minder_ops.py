@@ -606,6 +606,10 @@ async def create_scenario(text: str) -> dict:
     Replaces the old minder-scenario output_schema worker agent."""
     clean = re.sub(r"^/scenario\s*", "", text.strip(), flags=re.I)
     plan = await route(clean)
+    # A count scenario ("more than 3 cars …") is authored deterministically even if
+    # the 3B router mis-classified it (it rarely tags count phrasing as a scenario).
+    if _parse_count_scenario(clean):
+        return await author_scenario(plan or {}, clean)
     if plan and plan.get("dispatch_kind") == "scenario":
         return await author_scenario(plan, clean)
     return _envelope(
@@ -815,10 +819,166 @@ def _plan_to_rule(plan: dict) -> tuple[dict, str]:
     return parsed, tt
 
 
+# ---- NL authoring of count scenarios ----
+# "alert if more than 3 cars in the driveway" -> a count rule. The phrasing is
+# regular, so parse it deterministically (the 3B router doesn't emit count fields
+# reliably) — code does the doing. Checked first in author_scenario, so it covers
+# both the dashboard scenario box and chat-authored scenarios.
+
+_COUNT_OP_PHRASES = [
+    (r"\b(?:no more than|not more than|at most|maximum(?: of)?|up to)\b", "<="),
+    (r"\b(?:at least|minimum(?: of)?|no fewer than|no less than)\b", ">="),
+    (r"\b(?:more than|greater than|over|above|exceeds?)\b", ">"),
+    (r"\b(?:fewer than|less than|under|below)\b", "<"),
+    (r"\b(?:exactly|precisely|equals?)\b", "=="),
+]
+_COUNT_OBJECTS = [
+    ("car", r"\b(?:cars?|vehicles?|trucks?|vans?|buses)\b"),
+    ("person", r"\b(?:persons?|people|humans?|visitors?)\b"),
+    ("dog", r"\b(?:dogs?)\b"),
+    ("cat", r"\b(?:cats?)\b"),
+]
+_NUM_WORDS = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
+_COUNT_OP_WORDS = {
+    ">": "more than",
+    ">=": "at least",
+    "<": "fewer than",
+    "<=": "at most",
+    "==": "exactly",
+}
+
+
+def _parse_count_scenario(text: str) -> dict | None:
+    """Parse 'more than N <object>' phrasing into count fields, or None if it isn't
+    a count scenario."""
+    t = (text or "").lower()
+    op = next((o for pat, o in _COUNT_OP_PHRASES if re.search(pat, t)), None)
+    if not op:
+        return None
+    obj = next((label for label, pat in _COUNT_OBJECTS if re.search(pat, t)), "")
+    if not obj:
+        return None
+    m = re.search(r"\b(\d+)\b", t)
+    value = (
+        int(m.group(1))
+        if m
+        else next((v for w, v in _NUM_WORDS.items() if re.search(rf"\b{w}\b", t)), None)
+    )
+    if value is None:
+        return None
+    return {"count_object": obj, "count_op": op, "count_value": value}
+
+
+def _match_camera_in_text(text: str) -> str:
+    """Find a configured camera named in the text (all its words present), most
+    specific wins. Fallback when the 3B router didn't extract the camera itself."""
+    t = (text or "").lower()
+    matches: list[tuple[int, str]] = []
+    for c in _load_cameras():
+        name = c.get("name") or c.get("ip") or ""
+        words = re.findall(r"[a-z0-9]+", name.lower())
+        if words and all(re.search(rf"\b{re.escape(w)}\b", t) for w in words):
+            matches.append((len(words), name))
+    return max(matches)[1] if matches else ""
+
+
+def _load_zone_names(cameras: list[str]) -> list[str]:
+    """Zone names configured for the given cameras (for matching a zone in the text)."""
+    zfile = DATA_DIR / "zones.json"
+    if not zfile.exists():
+        return []
+    try:
+        data = json.loads(zfile.read_text())
+    except (json.JSONDecodeError, ValueError):
+        return []
+    names: list[str] = []
+    for cam, zones in (data or {}).items():
+        if "all" in cameras or cam in cameras:
+            names += [z.get("name", "") for z in (zones or []) if z.get("name")]
+    return names
+
+
+def _persist_count_rule(count: dict, request: str, plan: dict | None) -> dict:
+    """Build + persist a count rule from parsed NL, resolving the camera (from the
+    router's extraction) and an optional zone named in the text."""
+    requested = _coerce_str_list((plan or {}).get("cameras"), (plan or {}).get("camera"))
+    cameras: list[str] = []
+    for c in requested:
+        m = _match_camera_name(c)
+        if m == "all":
+            cameras = ["all"]
+            break
+        if m and m not in cameras:
+            cameras.append(m)
+    if not cameras:
+        # the router didn't extract a camera — try to find one named in the text
+        in_text = _match_camera_in_text(request)
+        cameras = [in_text] if in_text else ["all"]
+    zone = next(
+        (
+            zn
+            for zn in _load_zone_names(cameras)
+            if re.search(rf"\b{re.escape(zn.lower())}\b", request.lower())
+        ),
+        "",
+    )
+    where = zone or (cameras[0] if cameras != ["all"] else "any camera")
+    rule = {
+        "cameras": cameras,
+        "condition": f"{_COUNT_OP_WORDS.get(count['count_op'], count['count_op'])} "
+        f"{count['count_value']} {count['count_object']} in {where}",
+        "condition_type": "count",
+        "count_object": count["count_object"],
+        "count_op": count["count_op"],
+        "count_value": count["count_value"],
+        "debounce_s": 3,
+        "schedule": "always",
+        "enabled": True,
+        "actions": [{"type": "alert"}],
+        "created_ts": time.time(),
+        "target": "minder",
+    }
+    if zone:
+        rule["zone"] = zone
+    rules: list[dict] = []
+    if RULES_FILE.exists():
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
+            rules = json.loads(RULES_FILE.read_text())
+    for ex in rules:
+        if (
+            ex.get("condition_type") == "count"
+            and ex.get("count_object") == rule["count_object"]
+            and ex.get("count_op") == rule["count_op"]
+            and ex.get("count_value") == rule["count_value"]
+            and sorted(_rule_cameras(ex)) == sorted(cameras)
+            and (ex.get("zone") or "") == zone
+        ):
+            return _envelope("scenario", "That scenario already exists.", data={"rules": [ex]})
+    rules.append(rule)
+    write_json_atomic(RULES_FILE, rules)
+    return _format_scenario_reply([rule])
+
+
 async def author_scenario(plan: dict, text: str) -> dict:
     """Deterministic scenario authoring from the router's plan — no second agent.
-    Vision + time triggers persist normally; sensor triggers resolve an HA sensor
-    entity and persist a sensor rule (the poller watches HA state)."""
+    A count scenario ("more than 3 cars …") is parsed deterministically into a count
+    rule; vision + time triggers persist normally; sensor triggers resolve an HA
+    sensor entity and persist a sensor rule (the poller watches HA state)."""
+    count = _parse_count_scenario(text)
+    if count:
+        return await asyncio.to_thread(_persist_count_rule, count, text, plan)
     parsed, tt = _plan_to_rule(plan)
     if tt == "sensor":
         return await asyncio.to_thread(_persist_sensor_rule, parsed, text)
