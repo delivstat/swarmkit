@@ -854,8 +854,8 @@ def _match_and_fire_event(
     for rule in active:
         if rule.get("at_time"):
             continue  # time rules handled separately
-        if rule.get("condition_type") == "count":
-            continue  # count rules fire from zone-count updates, not per-event presence
+        if rule.get("condition_type") in ("count", "cross"):
+            continue  # count/cross fire from their own paths, not per-event presence
         if not _camera_match(_rule_cameras(rule), ev["camera"]):
             continue
         rule_zone = (rule.get("zone") or "").strip()
@@ -992,6 +992,79 @@ def handle_count_update(source_key: str, obj: str, count: int) -> dict | None:
     return fired
 
 
+# ---- Scenario Studio: cross conditions (zone enter / leave) ----
+# A line crossing is modelled as a tracked object ENTERING or LEAVING a (thin) zone
+# drawn over the boundary — "forklift crosses into the pedestrian lane" = forklift
+# enters that zone. Directional (enter vs leave), which is what distinguishes it from
+# presence ("is currently in"). Detected from the per-object zone-membership
+# transitions in Frigate's live event stream — deterministic, no LLM. Real-time
+# (MQTT) only: the per-minute REST poll can't see transitions.
+
+_CROSS_STATE_TTL_S = 600.0  # forget a tracked object's zone membership after 10 min
+
+
+def _cross_direction_match(direction: str, entered: list, left: list, zkey: str) -> bool:
+    d = (direction or "enter").lower()
+    if d in ("leave", "exit", "out"):
+        return zkey in left
+    if d in ("any", "both", "cross"):
+        return zkey in entered or zkey in left
+    return zkey in entered  # default: enter / in
+
+
+def handle_cross_event(after: dict, active: list[dict], state: dict, now: float, live: bool):
+    """Detect zone enter/leave for one tracked object (one Frigate event 'after') and
+    fire matching cross rules. Tracks per-object zone membership across updates, so it
+    runs on EVERY event (before the presence dedup). Returns fired info or None."""
+    cross_rules = [r for r in active if r.get("condition_type") == "cross"]
+    if not cross_rules:
+        return None
+    event_id = after.get("id", "")
+    current = list(after.get("current_zones") or [])
+    cstate = state.setdefault("_cross_zones", {})
+    prev = (cstate.get(event_id) or {}).get("zones", [])
+    entered = [z for z in current if z not in prev]
+    left = [z for z in prev if z not in current]
+    cstate[event_id] = {"zones": current, "ts": now}
+    for k in [k for k, v in cstate.items() if now - v.get("ts", now) > _CROSS_STATE_TTL_S]:
+        cstate.pop(k, None)
+    if not entered and not left:
+        return None
+    cam_name = _slug_to_name().get(after.get("camera", ""), after.get("camera", ""))
+    obj_label = _count_object_label(after.get("label", ""))
+    for rule in cross_rules:
+        want = (rule.get("object") or "").strip()
+        if want and _count_object_label(want) != obj_label:
+            continue
+        if not _camera_match(_rule_cameras(rule), cam_name):
+            continue
+        rzone = (rule.get("zone") or "").strip()
+        if not rzone:
+            continue
+        zkey = _zone_key(cam_name, rzone)
+        if not _cross_direction_match(rule.get("direction"), entered, left, zkey):
+            continue
+        key = f"cross|{cam_name}|{zkey}|{rule.get('direction', 'enter')}"
+        if now - state.get(key, 0) < ALERT_COOLDOWN_S:
+            continue
+        state[key] = now
+        d = (rule.get("direction") or "enter").lower()
+        verb = "left" if d in ("leave", "exit", "out") else "entered"
+        ev = {
+            "camera": cam_name,
+            "label": f"{obj_label} {verb} {rzone}",
+            "source": "cross",
+            "description": f"{obj_label or 'object'} {verb} {rzone}",
+        }
+        return {
+            "camera": cam_name,
+            "zone": rzone,
+            "direction": d,
+            "mode": _fire(rule, ev, now, live),
+        }
+    return None
+
+
 def _normalize_mqtt(after: dict, slug2name: dict[str, str]) -> dict:
     """Frigate's MQTT 'after' object → the normalized event shape (_normalize
     expects REST field names; MQTT uses current_zones instead of zones)."""
@@ -1020,14 +1093,17 @@ def handle_live_event(after: dict) -> dict | None:
         return None
     ev = _normalize_mqtt(after, _slug_to_name())
     state = load_monitor_state()
+    # Cross runs on EVERY event (it tracks zone-membership transitions); presence is
+    # deduped to fire once per object.
+    cross_fired = handle_cross_event(after, active, state, now, live)
+    presence_fired = None
     seen = set(state.get("_frigate_seen", []))
-    if ev["event_id"] in seen:
-        return None
-    seen.add(ev["event_id"])
-    fired = _match_and_fire_event(ev, active, state, now, live)
-    state["_frigate_seen"] = list(seen)[-500:]
+    if ev["event_id"] not in seen:
+        seen.add(ev["event_id"])
+        presence_fired = _match_and_fire_event(ev, active, state, now, live)
+        state["_frigate_seen"] = list(seen)[-500:]
     save_monitor_state(state)
-    return fired
+    return cross_fired or presence_fired
 
 
 @mcp.tool()
