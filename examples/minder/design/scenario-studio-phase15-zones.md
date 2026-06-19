@@ -72,7 +72,9 @@ A new store `/data/zones.json`, keyed by **camera name** (what rules already use
 
 ## Not in this phase (follow-ups)
 
-- Freeform polygon drawing (v1 is rectangles).
+- ~~Freeform polygon drawing (v1 is rectangles).~~ **Done** — the zone editor now
+  uses click/tap-to-drop-vertices for arbitrary polygons (≥3 points); the backend
+  already handled N points, so this was a UI change + a ≥3-point guard.
 - `cross` (line-crossing) and richer spatial conditions.
 - `absence_on` / co-occurrence (PPE/hygiene) — still its own later phase.
 - Per-zone live preview overlay (the Studio wizard's running verdict).

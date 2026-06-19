@@ -46,6 +46,25 @@ def test_build_config_includes_zones():
     print("ok  _build_config emits zones with flattened normalized coordinates")
 
 
+def test_freeform_polygon_coords():
+    # A zone may be any polygon (>=3 points), not just a rectangle.
+    tri = {"Office": [{"name": "desk", "points": [[0.2, 0.3], [0.7, 0.25], [0.5, 0.8]]}]}
+    f._load_zones = lambda: tri  # type: ignore
+    cfg = f._build_config([{"name": "Office", "ip": "192.168.0.109"}])
+    z = cfg["cameras"]["office"]["zones"]["office__desk"]
+    assert z["coordinates"] == "0.2000,0.3000,0.7000,0.2500,0.5000,0.8000", z
+    print("ok  freeform polygon (3+ points) flattens to Frigate coordinates")
+
+
+def test_degenerate_polygon_skipped():
+    # Fewer than 3 points is not a polygon -> not emitted to Frigate.
+    bad = {"Office": [{"name": "line", "points": [[0.1, 0.1], [0.9, 0.9]]}]}
+    f._load_zones = lambda: bad  # type: ignore
+    cfg = f._build_config([{"name": "Office", "ip": "192.168.0.109"}])
+    assert "zones" not in cfg["cameras"]["office"], cfg["cameras"]["office"]
+    print("ok  a <3-point region is skipped (not a valid polygon)")
+
+
 def _write_rules(rules):
     tmp = Path(tempfile.mkdtemp()) / "rules.json"
     tmp.write_text(json.dumps(rules))
@@ -142,6 +161,8 @@ def test_presence_in_zone():
 if __name__ == "__main__":
     test_zone_key_and_index()
     test_build_config_includes_zones()
+    test_freeform_polygon_coords()
+    test_degenerate_polygon_skipped()
     test_count_in_zone_fires_only_on_its_zone_topic()
     test_whole_frame_rule_ignores_zone_topic()
     test_presence_in_zone()
