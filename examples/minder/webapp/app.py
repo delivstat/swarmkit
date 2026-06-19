@@ -42,6 +42,7 @@ CONFIG_FILE = DATA_DIR / "minder-config.json"
 CAMERAS_FILE = DATA_DIR / "cameras.json"
 SNAPSHOT_DIR = DATA_DIR / "snapshots"
 RULES_FILE = DATA_DIR / "rules.json"
+ZONES_FILE = DATA_DIR / "zones.json"  # Scenario Studio zones, keyed by camera name
 AUTH_FILE = DATA_DIR / "authorized_users.json"
 EVENTS_FILE = DATA_DIR / "events.json"
 WEBAPP_AUTH_FILE = DATA_DIR / "webapp_auth.json"
@@ -456,6 +457,17 @@ class MonitoringRule(BaseModel):
 
 class RulesRequest(BaseModel):
     rules: list[MonitoringRule]
+
+
+class Zone(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str
+    points: list[list[float]] = []  # normalized [[x,y],...] (0..1)
+
+
+class ZonesRequest(BaseModel):
+    zones: list[Zone] = []
 
 
 class ModelPullRequest(BaseModel):
@@ -1477,6 +1489,55 @@ async def save_rules(req: RulesRequest):
     rules = [r.model_dump() for r in req.rules]
     RULES_FILE.write_text(json.dumps(rules, indent=2))
     return {"status": "ok", "count": len(rules)}
+
+
+# ---- Scenario Studio zones (drawn regions) ----
+
+
+def _reconfigure_frigate() -> dict:
+    """Regenerate + apply the Frigate config (cameras + zones). Imports the frigate
+    MCP server module for its shared, validated apply path."""
+    import sys
+
+    sys.path.insert(0, "/app/mcp-servers")
+    sys.path.insert(0, "/app/mcp-servers/frigate")
+    import server as fr
+
+    return fr.reconfigure_frigate()
+
+
+@app.get("/api/zones")
+async def list_zones():
+    """All drawn zones, keyed by camera name (drives the zone editor + rule targeting)."""
+    if ZONES_FILE.exists():
+        try:
+            data = json.loads(ZONES_FILE.read_text())
+            return {"zones": data if isinstance(data, dict) else {}}
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {"zones": {}}
+
+
+@app.post("/api/zones/{camera}")
+async def save_zones(camera: str, req: ZonesRequest):
+    """Replace the zone list for one camera, then reconfigure Frigate so it tracks
+    + publishes per-zone counts. An empty list clears the camera's zones."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    data: dict = {}
+    if ZONES_FILE.exists():
+        try:
+            loaded = json.loads(ZONES_FILE.read_text())
+            data = loaded if isinstance(loaded, dict) else {}
+        except (json.JSONDecodeError, ValueError):
+            data = {}
+    zones = [z.model_dump() for z in req.zones]
+    if zones:
+        data[camera] = zones
+    else:
+        data.pop(camera, None)
+    ZONES_FILE.write_text(json.dumps(data, indent=2))
+    frigate = await asyncio.to_thread(_reconfigure_frigate)
+    return {"status": "ok", "camera": camera, "zones": len(zones), "frigate": frigate}
 
 
 # -- Step 7: Complete --

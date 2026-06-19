@@ -47,6 +47,7 @@ FRIGATE_URL = os.environ.get("FRIGATE_URL", "http://localhost:5000").rstrip("/")
 RULES_FILE = DATA_DIR / "rules.json"
 CURSOR_FILE = DATA_DIR / "frigate_cursor.json"
 SHADOW_FILE = DATA_DIR / "poller_shadow.json"
+ZONES_FILE = DATA_DIR / "zones.json"  # Scenario Studio zones, keyed by camera name
 # "shadow" = log would-be alerts only (parallel-run safety); "live" = fire them.
 POLLER_MODE = os.environ.get("MINDER_POLLER_ALERTS", "shadow").lower()
 # MQTT event push: Frigate publishes to mosquitto; the webapp subscribes and
@@ -121,6 +122,46 @@ def _load_cameras() -> list[dict]:
         return []
 
 
+# ---- Scenario Studio zones (drawn regions) ----
+# Stored in /data/zones.json keyed by camera NAME (what rules use); points are
+# normalized [0..1] (x,y) pairs so the draw canvas is resolution-independent. The
+# global Frigate zone key is camera-prefixed because Frigate zone names are global
+# in MQTT (frigate/<zone>/<object>) and must be unique across cameras.
+
+
+def _load_zones() -> dict:
+    if not ZONES_FILE.exists():
+        return {}
+    try:
+        data = json.loads(ZONES_FILE.read_text())
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _zone_key(camera: str, zone_name: str) -> str:
+    return f"{_slug(camera)}__{_slug(zone_name)}"
+
+
+def _zone_index() -> dict[str, dict]:
+    """Map global zone key -> {camera, name} across all configured zones."""
+    idx: dict[str, dict] = {}
+    for cam, zones in _load_zones().items():
+        for z in zones or []:
+            if z.get("name"):
+                idx[_zone_key(cam, z["name"])] = {"camera": cam, "name": z["name"]}
+    return idx
+
+
+def _zone_coords(points: list) -> str:
+    """Flatten normalized [[x,y],...] to Frigate's 'x1,y1,x2,y2,…' (4 dp)."""
+    flat: list[str] = []
+    for p in points:
+        if isinstance(p, (list, tuple)) and len(p) == 2:
+            flat += [f"{float(p[0]):.4f}", f"{float(p[1]):.4f}"]
+    return ",".join(flat)
+
+
 def _frigate_cameras() -> list[dict]:
     """Cameras that belong on the Frigate tier. Prefers the explicit `tier`
     field; falls back to 'has RTSP + ONVIF' for inventories written before
@@ -149,8 +190,10 @@ def _build_config(cameras: list[dict]) -> dict:
     snapshots, whole-frame (no zones — see design Open Question 1)."""
     streams: dict = {}
     cams: dict = {}
+    zones_by_cam = _load_zones()
     for cam in cameras:
         key = _slug(cam.get("name") or cam["ip"])
+        cam_name = cam.get("name") or cam["ip"]
         streams[key] = [_substream_url(cam)]
         objects: dict = {"track": list(TRACK_OBJECTS)}
         if GENAI_ENABLED:
@@ -180,6 +223,13 @@ def _build_config(cameras: list[dict]) -> dict:
             "record": {"enabled": RECORD_ENABLED},
             "objects": objects,
         }
+        zdefs = {
+            _zone_key(cam_name, z["name"]): {"coordinates": _zone_coords(z["points"])}
+            for z in zones_by_cam.get(cam_name, [])
+            if z.get("name") and z.get("points")
+        }
+        if zdefs:
+            cams[key]["zones"] = zdefs
     config: dict = {
         # Publish tracked-object events to mosquitto so Minder reacts in real time
         # (the webapp MQTT subscriber), instead of waiting for the minute poller.
@@ -232,17 +282,16 @@ def _http(
         return 0, str(e).encode()
 
 
-@mcp.tool()
-def configure_cameras() -> str:
-    """Generate Frigate's config from the frigate-tier cameras in the inventory
-    and apply it (validated save + restart). Run this after camera discovery or
-    whenever the camera list changes. Returns the cameras configured."""
+def reconfigure_frigate() -> dict:
+    """Regenerate Frigate's config (cameras + zones) and apply it (validated save +
+    restart). Plain function so the webapp can trigger a reconfigure directly (e.g.
+    after a zone is drawn) without going through the MCP tool. Frigate validates the
+    config and only applies if valid (400 otherwise), so a bad config can never take
+    detection down."""
     cameras = _frigate_cameras()
     if not cameras:
-        return json.dumps({"status": "error", "message": "No frigate-tier cameras"})
+        return {"status": "error", "message": "No frigate-tier cameras"}
     config_yaml = yaml.safe_dump(_build_config(cameras), sort_keys=False)
-    # Frigate validates the config and only applies if valid (400 otherwise),
-    # so a bad config can never take detection down.
     status, raw = _http(
         "POST",
         "/api/config/save?save_option=restart",
@@ -251,21 +300,16 @@ def configure_cameras() -> str:
     )
     keys = [_slug(c.get("name") or c["ip"]) for c in cameras]
     if status not in (200, 201):
-        return json.dumps(
-            {
-                "status": "error",
-                "http": status,
-                "message": raw.decode(errors="replace")[:400],
-            }
-        )
-    return json.dumps(
-        {
-            "status": "ok",
-            "cameras_configured": len(cameras),
-            "cameras": keys,
-            "reloaded": True,
-        }
-    )
+        return {"status": "error", "http": status, "message": raw.decode(errors="replace")[:400]}
+    return {"status": "ok", "cameras_configured": len(cameras), "cameras": keys, "reloaded": True}
+
+
+@mcp.tool()
+def configure_cameras() -> str:
+    """Generate Frigate's config from the frigate-tier cameras in the inventory
+    and apply it (validated save + restart). Run this after camera discovery or
+    whenever the camera list changes. Returns the cameras configured."""
+    return json.dumps(reconfigure_frigate())
 
 
 def _slug_to_name() -> dict[str, str]:
@@ -814,6 +858,9 @@ def _match_and_fire_event(
             continue  # count rules fire from zone-count updates, not per-event presence
         if not _camera_match(_rule_cameras(rule), ev["camera"]):
             continue
+        rule_zone = (rule.get("zone") or "").strip()
+        if rule_zone and (ev.get("zone") or "") != _zone_key(ev["camera"], rule_zone):
+            continue  # zone presence rule: the event must be inside that zone
         labels = _condition_to_labels(rule.get("condition", ""))
         if not labels:
             continue  # non-object condition → not answerable from the stream
@@ -902,7 +949,12 @@ def handle_count_update(source_key: str, obj: str, count: int) -> dict | None:
     active = [r for r in _active_rules(rules) if r.get("condition_type") == "count"]
     if not active:
         return None
-    cam_name = _slug_to_name().get(source_key, source_key)
+    # source_key is either a zone key (frigate/<zone>/<obj>) or a camera slug
+    # (frigate/<camera>/<obj>). A zone key resolves to (camera, zone); otherwise it's
+    # a whole-frame camera-level count.
+    zinfo = _zone_index().get(source_key)
+    update_zone = zinfo["name"] if zinfo else None
+    cam_name = zinfo["camera"] if zinfo else _slug_to_name().get(source_key, source_key)
     obj_label = _count_object_label(obj)
     now = time.time()
     live = POLLER_MODE == "live"
@@ -911,17 +963,30 @@ def handle_count_update(source_key: str, obj: str, count: int) -> dict | None:
     for rule in active:
         if _count_object_label(rule.get("count_object", "")) != obj_label:
             continue
+        rule_zone = (rule.get("zone") or "").strip()
+        if rule_zone:
+            # Zone rule: fire only on its own zone's count topic, on a matching camera.
+            if update_zone is None or _slug(update_zone) != _slug(rule_zone):
+                continue
+        elif update_zone is not None:
+            continue  # whole-frame rule ignores zone topics (camera topic is its source)
         if not _camera_match(_rule_cameras(rule), cam_name):
             continue
         if _eval_count_rule(rule, count, now, state):
+            where = f" in {update_zone}" if update_zone else ""
             ev = {
                 "camera": cam_name,
                 "label": f"{count} {obj_label}",
                 "source": "count",
-                "description": f"{count} {obj_label} (limit {rule.get('count_op', '>')}"
+                "description": f"{count} {obj_label}{where} (limit {rule.get('count_op', '>')}"
                 f"{rule.get('count_value')})",
             }
-            fired = {"camera": cam_name, "count": count, "mode": _fire(rule, ev, now, live)}
+            fired = {
+                "camera": cam_name,
+                "zone": update_zone,
+                "count": count,
+                "mode": _fire(rule, ev, now, live),
+            }
             break
     save_monitor_state(state)
     return fired
