@@ -1744,7 +1744,7 @@ async def _dispatch_query(plan: dict, started: float, text: str = "") -> dict:
     )
     # Open-scene runs the slow CPU VLM once PER camera; when the user didn't name a
     # specific camera this would fan a single question across every camera serially
-    # (N × VLM) and blow past the channel read timeout. Cap it to one camera —
+    # (N x VLM) and blow past the channel read timeout. Cap it to one camera —
     # object queries (fast YOLO) still check them all.
     if open_scene and len(cams) > 1:
         cams = cams[:1]
