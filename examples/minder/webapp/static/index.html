@@ -1211,9 +1211,16 @@
             <select id="zone-camera" onchange="loadZoneCanvas()"><option value="">Select a camera…</option></select>
           </div>
           <div id="zone-canvas-wrap" style="display:none">
+            <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:0.4rem">
+              Click/tap to drop points around the region (any shape, at least 3). Use Undo to drop the last point.
+            </p>
             <div style="position:relative; display:inline-block; max-width:100%">
               <img id="zone-snap" alt="camera snapshot" style="max-width:100%; border-radius:8px; display:block; background:#000">
               <canvas id="zone-canvas" style="position:absolute; left:0; top:0; cursor:crosshair; touch-action:none"></canvas>
+            </div>
+            <div style="display:flex; gap:0.4rem; margin-top:0.4rem">
+              <button class="btn btn-ghost" onclick="undoZonePoint()" type="button">↶ Undo point</button>
+              <button class="btn btn-ghost" onclick="clearZonePoints()" type="button">Clear points</button>
             </div>
             <div class="form-row" style="margin-top:0.6rem">
               <div class="form-group">
@@ -2677,7 +2684,7 @@ function loadZoneCanvas() {
   wrap.style.display = '';
   // working copy of this camera's saved zones (edited locally until Save)
   state._drawZones = JSON.parse(JSON.stringify((state.zones && state.zones[cam]) || []));
-  state._rect = null;
+  state._poly = [];  // vertices of the polygon currently being drawn
   const img = document.getElementById('zone-snap');
   img.onload = _initZoneCanvas;
   img.src = `/api/cameras/${encodeURIComponent(_zoneCamIp(cam))}/snapshot?t=${Date.now()}`;
@@ -2695,51 +2702,55 @@ function _initZoneCanvas() {
 
 function _bindZoneCanvas(cv) {
   if (cv._bound) return; cv._bound = true;
-  let start = null;
   const pos = e => {
     const r = cv.getBoundingClientRect();
-    const t = e.touches && e.touches[0] ? e.touches[0] : e;
-    return {
-      x: Math.min(1, Math.max(0, (t.clientX - r.left) / r.width)),
-      y: Math.min(1, Math.max(0, (t.clientY - r.top) / r.height)),
-    };
+    const t = e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : e;
+    return [
+      Math.min(1, Math.max(0, (t.clientX - r.left) / r.width)),
+      Math.min(1, Math.max(0, (t.clientY - r.top) / r.height)),
+    ];
   };
-  const down = e => { start = pos(e); e.preventDefault(); };
-  const move = e => { if (!start) return; state._rect = [start, pos(e)]; _drawZoneOverlay(); e.preventDefault(); };
-  const up = e => { if (!start) return; state._rect = [start, pos(e)]; start = null; _drawZoneOverlay(); };
-  cv.onmousedown = down; cv.onmousemove = move; cv.onmouseup = up;
-  cv.ontouchstart = down; cv.ontouchmove = move; cv.ontouchend = up;
+  // Click / tap drops a polygon vertex (freeform — any number of points).
+  const add = e => { state._poly.push(pos(e)); _drawZoneOverlay(); e.preventDefault(); };
+  cv.onclick = add;
+  cv.ontouchend = add;
 }
 
-function _strokePoly(ctx, pts, W, H, stroke, fill, label) {
+function _strokePoly(ctx, pts, W, H, stroke, fill, label, close) {
   if (!pts || !pts.length) return;
   ctx.beginPath(); ctx.moveTo(pts[0][0] * W, pts[0][1] * H);
-  pts.slice(1).forEach(p => ctx.lineTo(p[0] * W, p[1] * H)); ctx.closePath();
-  ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke();
+  pts.slice(1).forEach(p => ctx.lineTo(p[0] * W, p[1] * H));
+  if (close) { ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); }
+  ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke();
   if (label) { ctx.fillStyle = stroke; ctx.font = '12px sans-serif'; ctx.fillText(label, pts[0][0] * W + 4, pts[0][1] * H + 14); }
 }
 
 function _drawZoneOverlay() {
   const cv = document.getElementById('zone-canvas');
   const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height);
+  const W = cv.width, H = cv.height;
+  // saved/working zones — filled, closed polygons
   (state._drawZones || []).forEach(z =>
-    _strokePoly(ctx, z.points, cv.width, cv.height, 'rgba(0,200,255,0.9)', 'rgba(0,200,255,0.15)', z.name));
-  if (state._rect) {
-    const [a, b] = state._rect;
-    _strokePoly(ctx, [[a.x, a.y], [b.x, a.y], [b.x, b.y], [a.x, b.y]],
-      cv.width, cv.height, 'rgba(255,180,0,0.95)', 'rgba(255,180,0,0.2)', '');
+    _strokePoly(ctx, z.points, W, H, 'rgba(0,200,255,0.9)', 'rgba(0,200,255,0.15)', z.name, true));
+  // in-progress polygon — open polyline + vertex dots (closes only at >=3 points)
+  const poly = state._poly || [];
+  if (poly.length) {
+    _strokePoly(ctx, poly, W, H, 'rgba(255,180,0,0.95)', 'rgba(255,180,0,0.2)', '', poly.length >= 3);
+    ctx.fillStyle = 'rgba(255,180,0,0.95)';
+    poly.forEach(p => { ctx.beginPath(); ctx.arc(p[0] * W, p[1] * H, 4, 0, 2 * Math.PI); ctx.fill(); });
   }
 }
+
+function undoZonePoint() { (state._poly || []).pop(); _drawZoneOverlay(); }
+function clearZonePoints() { state._poly = []; _drawZoneOverlay(); }
 
 function addDrawnZone() {
   const name = document.getElementById('zone-name').value.trim();
   if (!name) { toast('Name the region', true); return; }
-  if (!state._rect) { toast('Draw a region on the image first', true); return; }
-  const [a, b] = state._rect;
-  const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x), y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
-  if (Math.abs(x2 - x1) < 0.02 || Math.abs(y2 - y1) < 0.02) { toast('Region too small', true); return; }
-  state._drawZones.push({ name, points: [[x1, y1], [x2, y1], [x2, y2], [x1, y2]] });
-  state._rect = null;
+  const poly = state._poly || [];
+  if (poly.length < 3) { toast('Drop at least 3 points to make a region', true); return; }
+  state._drawZones.push({ name, points: poly.map(p => [p[0], p[1]]) });
+  state._poly = [];
   document.getElementById('zone-name').value = '';
   renderZoneList(); _drawZoneOverlay();
 }

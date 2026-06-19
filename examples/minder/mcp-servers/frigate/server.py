@@ -226,7 +226,7 @@ def _build_config(cameras: list[dict]) -> dict:
         zdefs = {
             _zone_key(cam_name, z["name"]): {"coordinates": _zone_coords(z["points"])}
             for z in zones_by_cam.get(cam_name, [])
-            if z.get("name") and z.get("points")
+            if z.get("name") and len(z.get("points") or []) >= 3  # a polygon needs >=3 points
         }
         if zdefs:
             cams[key]["zones"] = zdefs
