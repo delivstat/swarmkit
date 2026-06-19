@@ -27,7 +27,7 @@ class _FakeResp(io.BytesIO):
 def _patch_urlopen(payload: dict):
     captured = {}
 
-    def fake(req, timeout=0):  # noqa: ANN001
+    def fake(req, timeout=0):
         captured["auth"] = req.get_header("Authorization")
         captured["url"] = req.full_url
         return _FakeResp(json.dumps(payload).encode())
