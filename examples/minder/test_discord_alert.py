@@ -23,7 +23,7 @@ class _FakeChannel:
         self.texts: list[str] = []
         self.files: list[str] = []
 
-    async def send(self, content=None, file=None):  # noqa: ANN001
+    async def send(self, content=None, file=None):
         if file is not None:
             self.files.append(str(file))
         elif content is not None:
