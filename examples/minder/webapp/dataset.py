@@ -245,3 +245,52 @@ def export(name: str) -> dict:
         "images": len(list((d / "images").glob("*.jpg"))),
         "labeled": n_lab,
     }
+
+
+# ---- Review canvas: per-image label read/write (correct the auto-labels) ----
+
+
+def _yolo_to_boxes(text: str) -> list[list[float]]:
+    """YOLO 'class cx cy w h' lines -> normalized [x1,y1,x2,y2] (canvas-friendly)."""
+    boxes = []
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if len(parts) != 5:
+            continue
+        try:
+            _, cx, cy, w, h = (float(p) for p in parts)
+        except ValueError:
+            continue
+        boxes.append([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2])
+    return boxes
+
+
+def image_path(name: str, file: str) -> Path | None:
+    """Resolve a dataset image path, guarding against traversal."""
+    safe = Path(file).name
+    p = _dir(name) / "images" / safe
+    return p if p.exists() else None
+
+
+def list_images(name: str) -> list[str]:
+    d = _dir(name) / "images"
+    return [p.name for p in sorted(d.glob("*.jpg"))] if d.exists() else []
+
+
+def get_labels(name: str, file: str) -> list[list[float]]:
+    """Current boxes for an image as normalized [x1,y1,x2,y2] (empty if none)."""
+    f = _dir(name) / "labels" / f"{Path(file).stem}.txt"
+    return _yolo_to_boxes(f.read_text()) if f.exists() else []
+
+
+def save_labels(name: str, file: str, boxes: list) -> dict:
+    """Write corrected boxes (normalized [x1,y1,x2,y2]) as a YOLO label file."""
+    if not _meta(name):
+        return {"error": "unknown dataset"}
+    labels = _dir(name) / "labels"
+    labels.mkdir(parents=True, exist_ok=True)
+    clean = [
+        b for b in boxes if isinstance(b, list) and len(b) == 4 and b[2] > b[0] and b[3] > b[1]
+    ]
+    (labels / f"{Path(file).stem}.txt").write_text(_to_yolo(clean))
+    return {"saved": len(clean), "file": Path(file).name}

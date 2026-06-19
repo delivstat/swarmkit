@@ -92,6 +92,35 @@ def test_list_datasets():
     print("ok  list_datasets reports image/label counts")
 
 
+def test_label_roundtrip():
+    _tmp()
+    ds.create_dataset("rev", "box", "box", "Porch-1")
+    ds.capture_frames("rev", count=1, _grab=lambda cam: b"x" * 2000)
+    file = ds.list_images("rev")[0]
+    # no labels yet
+    assert ds.get_labels("rev", file) == []
+    # save corrected boxes (normalized x1y1x2y2) -> persisted as YOLO -> read back
+    res = ds.save_labels("rev", file, [[0.1, 0.2, 0.5, 0.6], [0.0, 0.0, 0.2, 0.2]])
+    assert res["saved"] == 2, res
+    back = ds.get_labels("rev", file)
+    # round-trips through YOLO cx/cy/w/h, so compare within float tolerance
+    flat = [round(v, 4) for box in back for v in box]
+    assert flat == [0.1, 0.2, 0.5, 0.6, 0.0, 0.0, 0.2, 0.2], back
+    # degenerate boxes are dropped on save
+    assert ds.save_labels("rev", file, [[0.5, 0.5, 0.4, 0.4]])["saved"] == 0
+    assert ds.get_labels("rev", file) == []
+    print("ok  per-image label save/read round-trips (YOLO <-> x1y1x2y2), drops degenerate")
+
+
+def test_image_path_guards_traversal():
+    _tmp()
+    ds.create_dataset("g", "box", "box", "Porch-1")
+    ds.capture_frames("g", count=1, _grab=lambda cam: b"x" * 2000)
+    assert ds.image_path("g", "../../etc/passwd") is None  # traversal stripped -> not found
+    assert ds.image_path("g", ds.list_images("g")[0]) is not None
+    print("ok  image_path resolves real frames + blocks path traversal")
+
+
 if __name__ == "__main__":
     test_create_and_capture()
     test_parse_boxes_and_yolo()
@@ -99,4 +128,6 @@ if __name__ == "__main__":
     test_autolabel_no_key_noop()
     test_export_yolo_zip()
     test_list_datasets()
+    test_label_roundtrip()
+    test_image_path_guards_traversal()
     print("\nALL DATASET TESTS PASSED")

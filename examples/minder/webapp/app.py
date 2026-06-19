@@ -1592,6 +1592,44 @@ async def studio_export(name: str):
     return FileResponse(res["zip"], media_type="application/zip", filename=Path(res["zip"]).name)
 
 
+class LabelsRequest(BaseModel):
+    boxes: list[list[float]] = []  # normalized [x1,y1,x2,y2]
+
+
+@app.get("/api/studio/datasets/{name}/images")
+async def studio_images(name: str):
+    import dataset as ds
+
+    return {"images": ds.list_images(name)}
+
+
+@app.get("/api/studio/datasets/{name}/image/{file}")
+async def studio_image(name: str, file: str):
+    import dataset as ds
+
+    p = ds.image_path(name, file)
+    if not p:
+        raise HTTPException(status_code=404, detail="image not found")
+    return FileResponse(str(p), media_type="image/jpeg")
+
+
+@app.get("/api/studio/datasets/{name}/labels/{file}")
+async def studio_get_labels(name: str, file: str):
+    import dataset as ds
+
+    return {"boxes": ds.get_labels(name, file)}
+
+
+@app.post("/api/studio/datasets/{name}/labels/{file}")
+async def studio_save_labels(name: str, file: str, req: LabelsRequest):
+    import dataset as ds
+
+    res = await asyncio.to_thread(ds.save_labels, name, file, req.boxes)
+    if res.get("error"):
+        raise HTTPException(status_code=404, detail=res["error"])
+    return res
+
+
 # -- Step 7: Complete --
 
 
