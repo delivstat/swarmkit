@@ -1132,12 +1132,51 @@
         <div class="dash-section-title">Add Rule Manually</div>
         <div class="card">
           <div class="form-group">
+            <label>Type</label>
+            <select id="dash-rule-type" onchange="dashRuleTypeChanged()">
+              <option value="presence">Presence — something appears</option>
+              <option value="count">Count threshold — too many (or few) objects</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Camera</label>
             <select id="dash-rule-camera"><option value="all">All cameras</option></select>
           </div>
-          <div class="form-group">
-            <label>Condition</label>
-            <input type="text" id="dash-rule-condition" placeholder="e.g. person at the gate">
+          <div id="dash-rule-presence-fields">
+            <div class="form-group">
+              <label>Condition</label>
+              <input type="text" id="dash-rule-condition" placeholder="e.g. person at the gate">
+            </div>
+          </div>
+          <div id="dash-rule-count-fields" style="display:none">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Object</label>
+                <select id="dash-count-object">
+                  <option value="person">person</option>
+                  <option value="car">car / vehicle</option>
+                  <option value="dog">dog</option>
+                  <option value="cat">cat</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>When count is</label>
+                <select id="dash-count-op">
+                  <option value="&gt;">more than</option>
+                  <option value="&gt;=">at least</option>
+                  <option value="&lt;">fewer than</option>
+                  <option value="&lt;=">at most</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Value</label>
+                <input type="number" id="dash-count-value" value="3" min="0" style="width:5rem">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Hold for (seconds, avoids flicker)</label>
+              <input type="number" id="dash-count-debounce" value="3" min="0" style="width:6rem">
+            </div>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -2597,13 +2636,40 @@ async function dashRemoveRule(index) {
   toast('Rule removed');
 }
 
+function dashRuleTypeChanged() {
+  const isCount = document.getElementById('dash-rule-type').value === 'count';
+  document.getElementById('dash-rule-count-fields').style.display = isCount ? '' : 'none';
+  document.getElementById('dash-rule-presence-fields').style.display = isCount ? 'none' : '';
+}
+
+const _COUNT_OP_WORDS = { '>': 'more than', '>=': 'at least', '<': 'fewer than', '<=': 'at most' };
+
 async function dashAddRule() {
   const camera = document.getElementById('dash-rule-camera').value;
-  const condition = document.getElementById('dash-rule-condition').value.trim();
   const schedule = document.getElementById('dash-rule-schedule').value;
-  if (!condition) { toast('Enter a condition', true); return; }
+  const type = document.getElementById('dash-rule-type').value;
 
-  state.rules.push({ camera, condition, schedule, enabled: true });
+  let rule;
+  if (type === 'count') {
+    const object = document.getElementById('dash-count-object').value;
+    const op = document.getElementById('dash-count-op').value;
+    const value = parseInt(document.getElementById('dash-count-value').value, 10);
+    const debounce = parseInt(document.getElementById('dash-count-debounce').value, 10) || 0;
+    if (isNaN(value)) { toast('Enter a count value', true); return; }
+    const where = camera === 'all' ? 'any camera' : camera;
+    rule = {
+      condition: `${_COUNT_OP_WORDS[op] || op} ${value} ${object} on ${where}`,
+      camera, condition_type: 'count', count_object: object, count_op: op,
+      count_value: value, debounce_s: debounce, schedule, enabled: true,
+      actions: [{ type: 'alert' }],
+    };
+  } else {
+    const condition = document.getElementById('dash-rule-condition').value.trim();
+    if (!condition) { toast('Enter a condition', true); return; }
+    rule = { camera, condition, schedule, enabled: true };
+  }
+
+  state.rules.push(rule);
   await api('/rules', { method: 'POST', body: { rules: state.rules } });
   document.getElementById('dash-rule-condition').value = '';
   loadDashRules();

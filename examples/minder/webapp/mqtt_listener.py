@@ -36,10 +36,38 @@ def _frigate_mod() -> ModuleType:
 
 def _on_connect(client, userdata, flags, reason_code, properties=None) -> None:
     client.subscribe("frigate/events")
-    print(f"[mqtt] connected ({reason_code}); subscribed to frigate/events", flush=True)
+    # Object-count topics (frigate/<camera|zone>/<object> = integer count) drive
+    # Scenario Studio count conditions ("> 3 cars on the driveway"). frigate/+/+ is
+    # 3-level so it never matches the 2-level frigate/events; non-count topics
+    # (motion ON/OFF, etc.) are filtered by the integer-payload check below.
+    client.subscribe("frigate/+/+")
+    print(
+        f"[mqtt] connected ({reason_code}); subscribed to frigate/events + frigate/+/+ (counts)",
+        flush=True,
+    )
+
+
+def _on_count_message(topic: str, payload: bytes) -> None:
+    """frigate/<camera|zone>/<object> with an integer payload -> a count update."""
+    text = payload.decode("utf-8", "ignore").strip()
+    if not (text.isdigit() or (text[:1] == "-" and text[1:].isdigit())):
+        return  # not a count (motion ON/OFF, snapshot bytes, JSON, …)
+    parts = topic.split("/")
+    if len(parts) != 3:
+        return
+    _, source_key, obj = parts
+    try:
+        fired = _frigate_mod().handle_count_update(source_key, obj, int(text))
+        if fired:
+            print(f"[mqtt] count alert fired: {fired}", flush=True)
+    except Exception as e:
+        print(f"[mqtt] handle_count_update error: {e}", flush=True)
 
 
 def _on_message(client, userdata, msg) -> None:
+    if msg.topic != "frigate/events":
+        _on_count_message(msg.topic, msg.payload)
+        return
     try:
         payload = json.loads(msg.payload.decode())
     except Exception:
