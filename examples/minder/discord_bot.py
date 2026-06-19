@@ -81,9 +81,9 @@ async def _render(channel: discord.abc.Messageable, result: dict) -> None:
         if chunk.strip():
             await channel.send(chunk)
     for item in result.get("media", []):
-        p = Path(item.get("path", ""))
-        if p.exists():
-            await channel.send(file=discord.File(str(p)))
+        path = item.get("path") or ""
+        if path and Path(path).exists():
+            await channel.send(file=discord.File(path))
 
 
 intents = discord.Intents.default()
@@ -147,10 +147,14 @@ async def _deliver_alert(alert: dict) -> None:
         msg = alert.get("message")
         if msg:
             await channel.send(f"🚨 {msg}")
+        # Guard against empty paths: Path("") == Path(".") and Path(".").exists()
+        # is True, so an empty snapshot_path/video_path would try to upload the cwd
+        # (raising) — and on a clip-only alert that raise happened BEFORE the clip
+        # was sent, so clips never arrived. Skip empty strings explicitly.
         for key in ("snapshot_path", "video_path"):
-            p = Path(alert.get(key) or "")
-            if p.exists():
-                await channel.send(file=discord.File(str(p)))
+            path = alert.get(key) or ""
+            if path and Path(path).exists():
+                await channel.send(file=discord.File(path))
     except Exception as e:
         log.error("alert delivery error: %s", e)
 
