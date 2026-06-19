@@ -810,6 +810,8 @@ def _match_and_fire_event(
     for rule in active:
         if rule.get("at_time"):
             continue  # time rules handled separately
+        if rule.get("condition_type") == "count":
+            continue  # count rules fire from zone-count updates, not per-event presence
         if not _camera_match(_rule_cameras(rule), ev["camera"]):
             continue
         labels = _condition_to_labels(rule.get("condition", ""))
@@ -823,6 +825,106 @@ def _match_and_fire_event(
         state[key] = now
         return {"camera": ev["camera"], "label": ev["label"], "mode": _fire(rule, ev, now, live)}
     return None
+
+
+# ---- Scenario Studio Phase 1: count conditions ----
+# A count rule fires when count(object on a camera) {op} value, held for debounce_s.
+# Source is Frigate's retained object-count MQTT topics (frigate/<camera>/<object>),
+# evaluated deterministically here — no LLM at match time (design scenario-studio.md
+# §"Condition grammar"). Whole-frame per-camera counts for now; per-zone counts
+# (frigate/<zone>/<object>) slot into the same path once zones are configured.
+
+_COUNT_OPS: dict[str, Callable[[float, float], bool]] = {
+    ">": lambda n, v: n > v,
+    ">=": lambda n, v: n >= v,
+    "<": lambda n, v: n < v,
+    "<=": lambda n, v: n <= v,
+    "==": lambda n, v: n == v,
+    "=": lambda n, v: n == v,
+}
+DEFAULT_COUNT_DEBOUNCE_S = 3.0
+
+
+def _count_object_label(obj: str) -> str:
+    """Normalize a rule's count object (or an MQTT topic segment) to a canonical
+    Frigate label using the same synonym table presence uses (vehicle->car, …)."""
+    w = {(obj or "").lower().strip()}
+    if "animal" in w or "pet" in w:
+        return "dog"  # animal group maps to dog/cat; counts compare per-label
+    for label, syns in _LABEL_WORDS.items():
+        if w & syns or (obj or "").lower().strip() == label:
+            return label
+    return (obj or "").lower().strip()
+
+
+def _count_compares(op: str, count: float, value: float) -> bool:
+    fn = _COUNT_OPS.get((op or ">").strip())
+    return bool(fn and fn(count, value))
+
+
+def _eval_count_rule(rule: dict, count: int, now: float, state: dict) -> bool:
+    """Decide whether a count rule should fire NOW, mutating its debounce/cooldown
+    state. Fires once when the condition has held for debounce_s, re-arms only after
+    the condition goes false again, and never re-fires within ALERT_COOLDOWN_S."""
+    op = rule.get("count_op", ">")
+    value = rule.get("count_value", 0)
+    debounce = float(rule.get("debounce_s", DEFAULT_COUNT_DEBOUNCE_S))
+    cstate = state.setdefault("_count", {})
+    key = f"count|{_rule_cameras(rule)}|{rule.get('count_object')}|{op}|{value}"
+    st = cstate.setdefault(key, {"true_since": None, "last_fired": 0.0})
+
+    if not _count_compares(op, count, value):
+        st["true_since"] = None  # condition cleared -> re-arm
+        return False
+    if st["true_since"] is None:
+        st["true_since"] = now
+    held = now - st["true_since"]
+    if held < debounce:
+        return False
+    last = st.get("last_fired", 0.0)
+    if last and now - last < ALERT_COOLDOWN_S:
+        return False
+    st["last_fired"] = now
+    return True
+
+
+def handle_count_update(source_key: str, obj: str, count: int) -> dict | None:
+    """Evaluate active count rules against one Frigate object-count update
+    (camera/zone slug + object label + current count). Fires matching rules.
+    Shared, testable core called by the MQTT count subscriber. Returns fired info
+    or None."""
+    if not RULES_FILE.exists():
+        return None
+    try:
+        rules = json.loads(RULES_FILE.read_text())
+    except (json.JSONDecodeError, ValueError):
+        return None
+    active = [r for r in _active_rules(rules) if r.get("condition_type") == "count"]
+    if not active:
+        return None
+    cam_name = _slug_to_name().get(source_key, source_key)
+    obj_label = _count_object_label(obj)
+    now = time.time()
+    live = POLLER_MODE == "live"
+    state = load_monitor_state()
+    fired = None
+    for rule in active:
+        if _count_object_label(rule.get("count_object", "")) != obj_label:
+            continue
+        if not _camera_match(_rule_cameras(rule), cam_name):
+            continue
+        if _eval_count_rule(rule, count, now, state):
+            ev = {
+                "camera": cam_name,
+                "label": f"{count} {obj_label}",
+                "source": "count",
+                "description": f"{count} {obj_label} (limit {rule.get('count_op', '>')}"
+                f"{rule.get('count_value')})",
+            }
+            fired = {"camera": cam_name, "count": count, "mode": _fire(rule, ev, now, live)}
+            break
+    save_monitor_state(state)
+    return fired
 
 
 def _normalize_mqtt(after: dict, slug2name: dict[str, str]) -> dict:
