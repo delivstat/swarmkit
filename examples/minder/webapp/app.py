@@ -364,6 +364,37 @@ def _verify_telegram_token(token: str) -> dict[str, Any]:
     return data["result"]
 
 
+# Channel perms requested by the Discord invite (bitfield): View Channel (1024) +
+# Send Messages (2048) + Embed Links (16384) + Attach Files (32768) +
+# Read Message History (65536). Message Content Intent is a gateway intent set in
+# the Developer Portal, not an OAuth permission.
+DISCORD_BOT_PERMS = 117760
+
+
+def _verify_discord_token(token: str) -> dict[str, Any]:
+    """Verify a Discord bot token (the analog of Telegram's getMe) and return the
+    bot user object. Its `id` is the application/client_id the invite URL needs."""
+    req = urllib.request.Request(
+        "https://discord.com/api/v10/users/@me",
+        method="GET",
+        headers={"Authorization": f"Bot {token}", "User-Agent": "Minder (https://minder, 1.0)"},
+    )
+    resp = urllib.request.urlopen(req, timeout=10)
+    data = json.loads(resp.read())
+    if not data.get("id"):
+        raise ValueError("Invalid token")
+    return data
+
+
+def _discord_invite_url(client_id: str) -> str:
+    """Build the OAuth2 bot-authorization URL — scanning its QR opens the Discord
+    app's 'Add to Server' picker (the analog of t.me/<bot>?startgroup=)."""
+    return (
+        "https://discord.com/oauth2/authorize"
+        f"?client_id={client_id}&scope=bot&permissions={DISCORD_BOT_PERMS}"
+    )
+
+
 # ---- Ollama helpers ----
 
 
@@ -1255,7 +1286,11 @@ async def list_channels():
     for c in CHANNELS:
         ch = (config.get("channels") or {}).get(c["id"]) or {}
         configured = _channel_token_set(config, c["id"])
-        out.append({**c, "enabled": ch.get("enabled", configured), "configured": configured})
+        entry = {**c, "enabled": ch.get("enabled", configured), "configured": configured}
+        if c["id"] == "discord" and configured:
+            # Surface the saved invite URL so Settings can render the add-to-server QR.
+            entry["invite_url"] = config.get("discord_invite_url", "")
+        out.append(entry)
     return {"channels": out}
 
 
@@ -1273,6 +1308,7 @@ async def configure_channel(channel_id: str, req: ChannelConfigRequest):
     config = _load_config()
     channels = config.setdefault("channels", {})
     ch = channels.setdefault(channel_id, {})
+    invite_url = ""
     if req.token:
         if channel_id == "telegram":  # verify the bot token up front
             try:
@@ -1280,11 +1316,25 @@ async def configure_channel(channel_id: str, req: ChannelConfigRequest):
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Invalid token: {e}") from e
             config["telegram_token"] = req.token
+        elif channel_id == "discord":  # verify + derive the invite URL from the bot id
+            try:
+                bot = await asyncio.to_thread(_verify_discord_token, req.token)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid token: {e}") from e
+            config["discord_bot"] = bot
+            invite_url = _discord_invite_url(str(bot["id"]))
+            config["discord_invite_url"] = invite_url
         ch["token"] = req.token
     ch["enabled"] = req.enabled
     _save_config(config)
     _write_env_file(config)
-    return {"status": "ok", "channel": channel_id, "configured": bool(ch.get("token"))}
+    return {
+        "status": "ok",
+        "channel": channel_id,
+        "configured": bool(ch.get("token")),
+        "bot": config.get("discord_bot") if channel_id == "discord" else None,
+        "invite_url": invite_url or config.get("discord_invite_url", ""),
+    }
 
 
 # -- Step 4b: Authorized users --
