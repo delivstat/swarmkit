@@ -915,8 +915,8 @@
           <div style="display:flex; flex-direction:column; gap:0.6rem; font-size:0.85rem">
             <div>1. Open the <a href="https://discord.com/developers/applications" target="_blank" style="color:var(--accent); text-decoration:none">Discord Developer Portal</a> → <strong>New Application</strong>.</div>
             <div>2. <strong>Bot</strong> → enable <strong>Message Content Intent</strong>, then Reset &amp; copy the bot <strong>Token</strong>.</div>
-            <div>3. <strong>OAuth2 → URL Generator</strong> → scope <code>bot</code>, perms <em>Send Messages</em> + <em>Attach Files</em> → open the generated URL to invite it to your server.</div>
-            <div>4. Paste the token below, then <strong>@mention</strong> the bot in the channel Minder should use.</div>
+            <div>3. Paste the token below — Minder shows a <strong>QR code</strong>. Scan it on your phone to add the bot to your server (no manual invite URL needed).</div>
+            <div>4. Then <strong>@mention</strong> the bot in the channel Minder should use.</div>
           </div>
         </div>
         <div style="margin-top:1.25rem">
@@ -1503,14 +1503,27 @@ async function connectDiscord() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Connecting...';
   try {
-    await api('/ops/channels/discord', { method: 'POST', body: { token, enabled: true } });
+    const data = await api('/ops/channels/discord', { method: 'POST', body: { token, enabled: true } });
+    const botName = data.bot?.username ? '@' + data.bot.username : 'the bot';
+    const inviteUrl = data.invite_url || '';
+    const qr = inviteUrl
+      ? `<div style="text-align:center; margin-top:0.85rem">
+           <p style="font-size:0.85rem; margin-bottom:0.6rem">Scan to add ${botName} to your Discord server:</p>
+           <img src="/api/qrcode?url=${encodeURIComponent(inviteUrl)}"
+                style="width:200px; height:200px; border-radius:8px; background:#fff; padding:6px">
+           <div style="margin-top:0.6rem">
+             <a href="${inviteUrl}" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.85rem">Or open the invite link →</a>
+           </div>
+         </div>`
+      : '';
     const el = document.getElementById('dc-result');
     el.style.display = 'block';
     el.innerHTML = `
       <div class="card" style="border-color:var(--success)">
-        <span class="badge badge-success"><span class="dot dot-green"></span>Discord Connected</span>
-        <div style="font-size:0.85rem; color:var(--text-dim); margin-top:0.5rem">
-          @mention the bot in your server channel to start chatting. Alerts arrive there too.
+        <span class="badge badge-success"><span class="dot dot-green"></span>Discord Connected (${botName})</span>
+        ${qr}
+        <div style="font-size:0.85rem; color:var(--text-dim); margin-top:0.6rem">
+          After adding it, @mention the bot in the channel Minder should use — alerts arrive there too.
         </div>
       </div>`;
   } catch (e) {
@@ -2877,20 +2890,30 @@ async function loadChannels() {
   if (!el) return;
   try {
     const data = await api('/ops/channels');
-    el.innerHTML = (data.channels || []).map(c => `
+    el.innerHTML = (data.channels || []).map(c => {
+      const invite = (c.id === 'discord' && c.configured && c.invite_url)
+        ? `<div style="text-align:center; margin:0.75rem 0; padding-top:0.75rem; border-top:1px solid var(--border)">
+             <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:0.5rem">Scan to add the bot to a Discord server:</p>
+             <img src="/api/qrcode?url=${encodeURIComponent(c.invite_url)}"
+                  style="width:160px; height:160px; border-radius:8px; background:#fff; padding:6px">
+             <div style="margin-top:0.5rem"><a href="${c.invite_url}" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.8rem">Open invite link →</a></div>
+           </div>`
+        : '';
+      return `
       <div class="card" style="margin-bottom:0.75rem">
         <div style="display:flex; justify-content:space-between; align-items:center">
           <strong>${c.name}</strong>
           <span class="badge ${c.configured ? 'badge-success' : 'badge-warning'}">${c.configured ? 'configured' : 'not set up'}</span>
         </div>
         <div style="font-size:0.82rem; color:var(--text-dim); margin:0.5rem 0">${c.help}</div>
+        ${invite}
         <div class="form-group">
           <input type="password" id="ch-token-${c.id}" style="font-family:monospace"
                  placeholder="${c.configured ? '•••••• (set — paste to replace)' : 'paste the bot token'}">
         </div>
         <button class="btn btn-primary" onclick="saveChannel('${c.id}', '${c.name}')">${c.configured ? 'Update' : 'Connect'} ${c.name}</button>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   } catch (e) {
     el.innerHTML = `<div class="dash-empty">Couldn't load channels</div>`;
   }
