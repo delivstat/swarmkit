@@ -1414,6 +1414,11 @@ def _cameras_configured() -> bool:
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
+# Hard cap on a single interactive VLM call. The CPU VLM can take ~tens of seconds;
+# this keeps an open-scene query well under the channel adapters' read timeout (200s)
+# so the request always returns a reply (a graceful "couldn't read" on timeout)
+# rather than hanging the whole /api/ops/message round-trip.
+VLM_TIMEOUT_S = int(os.environ.get("MINDER_VLM_TIMEOUT", "90"))
 # Routing is the minder-router topology (output_schema Plan) via route(); the
 # old route-tool / constrained-generation classifier was removed — the keyword
 # classify() is the only fallback now.
@@ -1454,6 +1459,38 @@ async def route(text: str) -> dict | None:
     return plan
 
 
+# Nouns that map a query to a YOLO subject. The 3B router frequently returns a
+# null/empty `subject` even for an obvious object question ("is there a car in the
+# porch"); without this the query falls through to open_scene and hits the slow
+# CPU VLM (per camera!) instead of fast YOLO. Aligned with detector class groups.
+_SUBJECT_NOUNS: list[tuple[str, str]] = [
+    (
+        "person",
+        r"\b(person|people|someone|anyone|somebody|man|woman|men|women"
+        r"|child|kid|kids|intruder|visitor|stranger|guy|human|humans)\b",
+    ),
+    (
+        "vehicle",
+        r"\b(car|cars|vehicle|vehicles|truck|trucks|van|vans|bus|buses"
+        r"|bike|bikes|bicycle|bicycles|motorcycle|motorbike|scooter|auto)\b",
+    ),
+    (
+        "animal",
+        r"\b(animal|animals|dog|dogs|cat|cats|bird|birds|cow|cows|horse"
+        r"|sheep|goat|pet|pets)\b",
+    ),
+]
+
+
+def _infer_subject(text: str) -> str:
+    """Deterministically map a query's text to a YOLO subject, or '' if none."""
+    t = text.lower()
+    for subject, pattern in _SUBJECT_NOUNS:
+        if re.search(pattern, t):
+            return subject
+    return ""
+
+
 def _correct_plan(plan: dict, text: str) -> None:
     """Deterministic guards on the router's intent (mutates plan). Keyed on
     sentence structure / required nouns, not keywords the 3B can wobble on."""
@@ -1462,7 +1499,8 @@ def _correct_plan(plan: dict, text: str) -> None:
 
     # A scenario is, by definition, a standing rule with a future TRIGGER
     # (when/if/every/at-a-time). A plain question with no such trigger can never
-    # be a scenario — force it to query.
+    # be a scenario — force it to query. (The 3B loves to mis-tag "is there a car
+    # in the porch" as a scenario, emitting trigger_object/trigger_camera fields.)
     if kind == "scenario":
         has_trigger = bool(re.search(r"\b(when|whenever|if|every|each|after|before)\b", t)) or bool(
             _TIME_EXPR.search(t)
@@ -1472,7 +1510,6 @@ def _correct_plan(plan: dict, text: str) -> None:
         )
         if is_question and not has_trigger:
             plan["kind"] = "query"
-        return
 
     # camera_list / device_list misfire on small talk: the 3B router sometimes
     # labels a bare greeting ("hi", "thanks", "hey there") as a list intent.
@@ -1489,6 +1526,20 @@ def _correct_plan(plan: dict, text: str) -> None:
         )
     ):
         plan["kind"] = "chat"
+
+    # Normalize a (now-finalized) query's vision fields. Runs LAST so it sees the
+    # corrected kind — a scenario just demoted to query gets normalized too. The 3B
+    # is wildly inconsistent about field names: it leaves `subject`/`cameras` null and
+    # instead emits scenario-style `trigger_object`/`trigger_camera`. Without this the
+    # query falls through to the slow open-scene VLM (per camera) instead of fast YOLO.
+    if plan.get("kind") == "query":
+        if not (plan.get("subject") or "").strip():
+            # Prefer the text (most reliable), then the router's trigger_object.
+            plan["subject"] = _infer_subject(t) or _infer_subject(
+                str(plan.get("trigger_object") or "")
+            )
+        if not plan.get("cameras") and plan.get("trigger_camera"):
+            plan["cameras"] = [plan["trigger_camera"]]
 
 
 def _resolve_cameras(plan: dict) -> list[str]:
@@ -1648,7 +1699,7 @@ def _vlm_answer(frame_b64: str, question: str, camera: str = "") -> str:
         req = urllib.request.Request(
             f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"}
         )
-        r = json.loads(urllib.request.urlopen(req, timeout=200).read())
+        r = json.loads(urllib.request.urlopen(req, timeout=VLM_TIMEOUT_S).read())
         return (r.get("message", {}).get("content") or "").strip()
     except Exception:
         return ""
@@ -1700,6 +1751,12 @@ async def _dispatch_query(plan: dict, started: float, text: str = "") -> dict:
     open_scene = subject == "open" or (
         subject not in ("person", "vehicle", "animal") and _subject_classes(subject) is None
     )
+    # Open-scene runs the slow CPU VLM once PER camera; when the user didn't name a
+    # specific camera this would fan a single question across every camera serially
+    # (N x VLM) and blow past the channel read timeout. Cap it to one camera —
+    # object queries (fast YOLO) still check them all.
+    if open_scene and len(cams) > 1:
+        cams = cams[:1]
     results = await asyncio.to_thread(_run_vision_checks, cams, subject, question, open_scene)
     media = collect_media_since(started)
 
