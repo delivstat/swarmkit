@@ -1464,12 +1464,21 @@ async def route(text: str) -> dict | None:
 # porch"); without this the query falls through to open_scene and hits the slow
 # CPU VLM (per camera!) instead of fast YOLO. Aligned with detector class groups.
 _SUBJECT_NOUNS: list[tuple[str, str]] = [
-    ("person", r"\b(person|people|someone|anyone|somebody|man|woman|men|women"
-               r"|child|kid|kids|intruder|visitor|stranger|guy|human|humans)\b"),
-    ("vehicle", r"\b(car|cars|vehicle|vehicles|truck|trucks|van|vans|bus|buses"
-                r"|bike|bikes|bicycle|bicycles|motorcycle|motorbike|scooter|auto)\b"),
-    ("animal", r"\b(animal|animals|dog|dogs|cat|cats|bird|birds|cow|cows|horse"
-               r"|sheep|goat|pet|pets)\b"),
+    (
+        "person",
+        r"\b(person|people|someone|anyone|somebody|man|woman|men|women"
+        r"|child|kid|kids|intruder|visitor|stranger|guy|human|humans)\b",
+    ),
+    (
+        "vehicle",
+        r"\b(car|cars|vehicle|vehicles|truck|trucks|van|vans|bus|buses"
+        r"|bike|bikes|bicycle|bicycles|motorcycle|motorbike|scooter|auto)\b",
+    ),
+    (
+        "animal",
+        r"\b(animal|animals|dog|dogs|cat|cats|bird|birds|cow|cows|horse"
+        r"|sheep|goat|pet|pets)\b",
+    ),
 ]
 
 
