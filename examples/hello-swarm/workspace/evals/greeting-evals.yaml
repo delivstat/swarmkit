@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: EvalSet
+metadata:
+  id: greeting-evals
+  description: The hello swarm should produce a non-empty greeting addressed to the named audience.
+target: hello
+cases:
+  - id: greets-and-not-empty
+    input: Greet the engineering team
+    expect:
+      not_empty: true
+  - id: addresses-the-audience
+    input: Greet the engineering team
+    expect:
+      regex: "(?i)engineer|team|hello|hi|greet"

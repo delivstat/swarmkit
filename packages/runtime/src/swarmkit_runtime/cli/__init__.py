@@ -799,6 +799,87 @@ def _execute_resume(
         raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
 
 
+# ---- eval (score a topology against an eval-set) -------------------------
+
+
+@app.command(name="eval")
+def eval_(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root (containing workspace.yaml).", show_default=False),
+    ],
+    eval_set: Annotated[
+        str,
+        typer.Argument(help="Eval-set id (under evals/) or a path to an eval-set YAML."),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Also write the JSON report here."),
+    ] = None,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Only print the summary line."),
+    ] = False,
+) -> None:
+    """Run an eval-set and score the topology (design §M15).
+
+    Exit code 0 if every case passes, 1 if any case fails — so CI can gate on it.
+    """
+    import datetime  # noqa: PLC0415
+
+    from swarmkit_runtime.eval import (  # noqa: PLC0415
+        EvalCaseResult,
+        EvalError,
+        load_eval_set,
+        run_eval_set,
+    )
+
+    ws_root = workspace_path.resolve()
+    try:
+        runtime = WorkspaceRuntime.from_workspace_path(workspace_path)
+    except ResolutionErrors as exc:
+        _emit_errors(list(exc.errors), json_mode=False, workspace_root=ws_root, color=False)
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    except MissingMCPServerError as exc:
+        for skill_id, server_id in exc.missing:
+            _stderr(f"error: skill '{skill_id}' targets unconfigured MCP server '{server_id}'.")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    try:
+        spec = load_eval_set(ws_root, eval_set)
+    except EvalError as exc:
+        _stderr(f"error: {exc}")
+        raise typer.Exit(_EXIT_USAGE) from exc
+
+    def _on_case(c: EvalCaseResult) -> None:
+        if not quiet:
+            mark = "PASS" if c.passed else "FAIL"
+            typer.echo(f"  [{mark}] {c.case_id}")
+            if not c.passed:
+                for ck in c.checks:
+                    if not ck.passed:
+                        typer.echo(f"         ✗ {ck.name}: {ck.detail}")
+                if c.error:
+                    typer.echo(f"         ✗ error: {c.error}")
+
+    if not quiet:
+        typer.echo(f"eval: {spec.metadata.id} → topology '{spec.target}' ({len(spec.cases)} cases)")
+    report = asyncio.run(run_eval_set(runtime, spec, on_case=_on_case))
+
+    report_dir = ws_root / ".swarmkit" / "eval-results"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
+    stored = report_dir / f"{spec.metadata.id}-{stamp}.json"
+    payload = json.dumps(report.to_dict(), indent=2)
+    stored.write_text(payload, encoding="utf-8")
+    if output is not None:
+        output.write_text(payload, encoding="utf-8")
+
+    typer.echo(f"{report.passed}/{report.total} passed ({report.pass_rate:.0%}) · report: {stored}")
+    if report.failed:
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR)
+
+
 # ---- chat (multi-turn conversation) --------------------------------------
 
 

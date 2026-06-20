@@ -22,6 +22,7 @@ from langgraph.graph.state import CompiledStateGraph
 from swarmkit_runtime.audit import AuditProvider, SQLiteAuditProvider
 from swarmkit_runtime.governance import (
     DecisionSkillBinding,
+    DecisionSkillResult,
     GovernanceProvider,
     merge_decision_skills,
 )
@@ -536,6 +537,27 @@ class WorkspaceRuntime:
                 if isinstance(v, str)
             },
             events=events,
+        )
+
+    async def judge(
+        self,
+        *,
+        skill_id: str,
+        content: str,
+        trigger: str = "eval",
+    ) -> DecisionSkillResult:
+        """Score ``content`` against a decision skill, reusing the wired judge.
+
+        Delegates to ``GovernanceProvider.evaluate_decision_skill`` — the
+        SkillBackedGovernanceProvider already has a resolved model provider/model, so
+        no extra plumbing. Used by the eval harness's LLM rubric tier. Returns a
+        default "pass" if no decision-skill evaluator is configured.
+        """
+        return await self._governance.evaluate_decision_skill(
+            skill_id=skill_id,
+            trigger=trigger,
+            agent_id="eval-runner",
+            content=content,
         )
 
     async def _persist_events_to_audit(self, events: list[RunEvent], topology_name: str) -> None:
