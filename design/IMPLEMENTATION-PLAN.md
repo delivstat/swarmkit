@@ -600,16 +600,22 @@ plane and a human-gated self-improvement loop. Self-hostable + OSS (invariant #4
 Rynko is an optional managed backend, never required. See
 `design/details/fleet-control-plane.md` and `design/details/adk-lessons.md`.
 
-### M15 — Eval harness (NEW, proposed)
+### M15 — Eval harness (slice 1 ✅)
 
 Standalone value (no fleet needed); the "test" gate in growth-through-authoring and
 the "Measure" signal for self-improvement. Borrowed from ADK; reuses decision-skill judges.
+See `design/details/eval-harness.md`.
 
-- [ ] Eval-set schema (data artifact): `input → expected trajectory + expected response`.
-- [ ] `swarmkit eval <topology> <eval-set>` — run + score via Tier 2/3 decision skills.
-- [ ] Result storage + regression comparison across runs/versions.
+- [x] Eval-set (runtime pydantic model; `workspace/evals/*.yaml`) — `target` topology + cases.
+- [x] Deterministic checks (contains/not_contains/regex/equals/not_empty) + LLM rubric
+      judge (`judge: <decision-skill-id>` → `WorkspaceRuntime.judge` → `evaluate_decision_skill`).
+- [x] `swarmkit eval <workspace> <eval-set>` — runs + scores; exit 1 if any case fails (CI-gatable).
+- [x] Result storage (`.swarmkit/eval-results/<id>-<ts>.json`).
+- [ ] Promote eval-set to a schema artifact kind (dual codegen + workspace discovery). *(slice 2)*
+- [ ] Inline `rubric:` string + trajectory checks + regression comparison view. *(slice 2)*
 
-**Exit demo:** an eval set scores a reference topology; a regression run flags a drop.
+**Exit demo:** `swarmkit eval examples/hello-swarm/workspace greeting-evals` scores the
+`hello` topology and prints a pass rate; a failing case flips the exit code to 1.
 
 ### M16 — Fleet aggregation (NEW, proposed)
 
