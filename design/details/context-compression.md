@@ -1,6 +1,6 @@
 ---
 title: Context compression — a pluggable ContextCompressor seam (with a Sterling spike)
-description: Cut tokens on the read-side (tool/MCP/RAG/log/history) via a pluggable, reversible, governed ContextCompressor at the tool-output boundary. NOT on the audit or structured inter-agent paths. Measured on real Sterling CDT data: ~1.5x incremental even after ingestion.
+description: Cut tokens on the read-side (tool/MCP/RAG/log/history) via a pluggable, reversible, governed ContextCompressor at the tool-output boundary. NOT on the audit or structured inter-agent paths. Measured on Sterling's real consolidated JSON: 57%/2.3x lossless, of which 29% is free (just minify).
 tags: [cost, tokens, compression, mcp, governance, sterling, rag]
 status: proposal (spiked)
 ---
@@ -58,51 +58,52 @@ MCP/tool result ─▶ GovernanceProvider (gate) ─▶ ContextCompressor (compr
 stable so provider KV-caches actually hit. Pure win, no lossy risk — fits M14 (cost
 optimization) independent of any compressor backend.
 
-## Spike: Sterling CDT data (real measurement)
+## Spike: Sterling — the REAL consolidated JSON (measured)
 
-Sterling is the densest tool-output workload (1006 javadocs, log dumps, 495-table CDT
-XML, ChromaDB+FTS5 RAG), so it's the right spike target. Measured with `tiktoken`
-(`cl100k_base`) over **183 populated CDT tables / 34,727 rows / 5.5M raw tokens** from a
-real MC1 CDT dump. CDT rows repeat every attribute *name* per record (plus empty attrs)
-— classic array-of-dicts redundancy.
+Ran Sterling's actual ingestion — `examples/sterling-oms/workspace/scripts/ingest-cdt.py
+<cdt-dir> --output <out>` (via `ingest-all.py --only cdt`) — on a real MC1 CDT dump, then
+measured the **consolidated JSON it emits** (the LLM-facing artifact, not the raw XML)
+with `tiktoken` (`cl100k_base`). `ingest-cdt.py` is a *semantic* consolidator (services /
+pipelines / transactions / statuses / common-codes / per-table JSON), so its output is
+already domain-distilled.
 
-| Form | Tokens | vs raw |
+**503 consolidated JSON files, 23.4M tokens as-written:**
+
+| Form | Tokens | vs as-written |
 | --- | --- | --- |
-| Raw CDT XML | 5,525,061 | — |
-| Array-of-dicts JSON (≈ what ingestion emits) | 4,838,641 | **12%** off |
-| **Columnar JSON** (keys declared once) | 3,174,297 | **43%** off |
+| As-written (pretty-printed, indent=2) | 23,375,381 | — |
+| **Minified** (strip whitespace only) | 16,490,773 | **29% off** |
+| **Minified + columnar** (array-of-dicts → keys-once) | 10,123,441 | **57% off (2.3x)** |
 
-**Key finding (honest):** Sterling's ingestion already consolidates XML→JSON, but that
-only removes ~12% of the *tokens*. A content-aware **columnar** compressor cuts a
-**further 34% (1.52×) on top of the consolidated JSON** — and it's **lossless on the
-field values** (it only declares keys once instead of per-row). That incremental ~1.5×
-on config data is the real value of the seam; it is *more modest* than headroom's
-60–95% headlines, which come from code/log/RAG content that compresses harder.
+**Two findings, both real + lossless:**
 
-Caveats:
-- This measured the raw CDT XML + an *approximation* of Sterling's consolidated JSON.
-  The Sterling **workspace ingestion scripts** (which emit the actual consolidated JSON)
-  weren't reachable from this session — **re-run the script below on the real
-  consolidated JSON for the production number** (and on javadocs/logs/RAG chunks, which
-  should compress more).
-- The ~1.5× columnar gain is **lossless**. Going further (learned/semantic, lossy)
-  risks corrupting **config values Sterling needs exact** — so for CDT/config, stop at
-  lossless columnar; reserve lossy+retrieve for logs/RAG prose.
+1. **The biggest single win is free: minify.** Sterling's ingestion writes pretty-printed
+   JSON, so **~29% of the tokens are indentation/whitespace.** If that JSON reaches the
+   model as-written, `json.dumps(…, separators=(",",":"))` recovers 29% at zero risk — a
+   **one-line change in the ingestion / serving path**, no ContextCompressor needed.
+   *(Take this regardless of the seam.)*
+2. **Content-aware columnar adds another 1.63x on top of minified** (38.6%), for
+   **57% / 2.3x off as-written** — lossless (arrays-of-uniform-dicts rewritten to
+   `{columns, rows}`, values preserved). This is the seam's value on Sterling config, and
+   it's *stronger* than the earlier raw-XML approximation suggested.
 
-### Reproducible spike (run on the real consolidated JSON)
+Caveat: beyond lossless columnar, learned/semantic (lossy) compression risks corrupting
+**config values Sterling needs exact** — stop at lossless for CDT; reserve lossy+retrieve
+for logs / RAG prose / javadocs (which should compress more, per headroom's benchmarks).
 
-```python
-# uv run --with tiktoken python this.py <glob-of-consolidated-json-or-cdt-xml>
-# Measures raw vs array-of-dicts vs columnar token counts; reports incremental gain.
-# (CDT-XML variant used for the numbers above; point it at consolidated JSON for prod.)
-```
-(Full script in the PR description / spike notes — ~30 lines: parse rows → union keys →
-columnar JSON → tiktoken counts.)
+### Reproducible spike
+
+`ingest-cdt.py <cdt-dir> --output /tmp/cdt-index`, then for each `*.json`,
+`tiktoken`-count as-written vs minified vs a recursive `columnar()` rewrite of
+arrays-of-uniform-dicts (script ~25 lines, in the PR body). Re-run on javadocs/logs for
+those surfaces.
 
 ## Per-project applicability
 
-- **Sterling → yes.** ~1.5× lossless on CDT config even post-ingestion; likely more on
-  javadocs/logs/RAG. Best first integration. Spike the real consolidated JSON next.
+- **Sterling → yes (measured on the real consolidated JSON).** **57% / 2.3x off
+  as-written**, lossless — of which **29% is free** (the ingestion emits pretty-printed
+  JSON; just minify). Best first integration; do the free minify now, columnar via the
+  seam, and re-spike javadocs/logs (should compress more).
 - **Vedanta → medium, cautious.** RAG-chunk *selection* (score filtering) helps; the
   content is **scripture**, so *lossy* prose compression risks theological precision —
   prefer lossless selection, keep retrieve, avoid lossy value compression.
@@ -120,14 +121,18 @@ above) needs no heavy deps and delivers the lossless tier.
 
 ## Recommendation
 
-1. Build the **pluggable `ContextCompressor` seam** at the tool-output/RAG boundary —
+1. **Minify first (free, lossless, now).** Sterling's consolidated JSON is
+   pretty-printed → ~29% of tokens are whitespace; emit/serve it compact
+   (`separators=(",",":")`). One-line ingestion fix, no seam required. Audit other
+   workspaces for the same pretty-print waste.
+2. Build the **pluggable `ContextCompressor` seam** at the tool-output/RAG boundary —
    reversible, governed, audited; never on the audit or structured-comms paths.
-2. Ship a **built-in deterministic columnar/JSON compactor** (lossless, ~1.5× on
-   Sterling config, zero heavy deps) as the default; headroom-style learned/lossy as an
-   optional backend for lossy-tolerant surfaces (logs/RAG) only.
-3. Adopt **KV-cache prefix stability** independently (lossless, M14).
-4. **Spike the real Sterling consolidated JSON** (and javadocs/logs) before committing
-   to a backend.
+3. Ship a **built-in deterministic columnar/JSON compactor** (lossless; on Sterling,
+   1.63x over minified / 2.3x over as-written; zero heavy deps) as the default;
+   headroom-style learned/lossy as an optional backend for lossy-tolerant surfaces
+   (logs/RAG/javadocs) only.
+4. Adopt **KV-cache prefix stability** independently (lossless, M14).
+5. Re-spike **javadocs / logs** (the lossy-tolerant surfaces) before picking a lossy backend.
 
 ## Open questions
 
