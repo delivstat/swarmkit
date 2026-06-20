@@ -593,6 +593,60 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 
 ---
 
+## Phase 5 — Fleet & self-improvement (PROPOSED)
+
+Turns the mature observability + governance foundation into a cross-instance control
+plane and a human-gated self-improvement loop. Self-hostable + OSS (invariant #4);
+Rynko is an optional managed backend, never required. See
+`design/details/fleet-control-plane.md` and `design/details/adk-lessons.md`.
+
+### M15 — Eval harness (NEW, proposed)
+
+Standalone value (no fleet needed); the "test" gate in growth-through-authoring and
+the "Measure" signal for self-improvement. Borrowed from ADK; reuses decision-skill judges.
+
+- [ ] Eval-set schema (data artifact): `input → expected trajectory + expected response`.
+- [ ] `swarmkit eval <topology> <eval-set>` — run + score via Tier 2/3 decision skills.
+- [ ] Result storage + regression comparison across runs/versions.
+
+**Exit demo:** an eval set scores a reference topology; a regression run flags a drop.
+
+### M16 — Fleet aggregation (NEW, proposed)
+
+Read-only cross-instance observability. Builds on `distributed-architecture.md`
+(centralized OTel collector) + `opentelemetry-observability.md`.
+
+- [ ] Instance/tenant resource tagging (`service.instance.id`, `deployment`/tenant).
+- [ ] Documented OTel Collector + backend deployment (Tempo/Jaeger/Grafana or Rynko).
+- [ ] Semantic-summary ingest (aggregated audit + eval + skill-gap signals) into a
+      control-plane store.
+
+**Exit demo:** two `swarmkit serve` instances → one fleet view, correctly tagged.
+
+### M17 — Self-improvement cockpit (NEW, proposed)
+
+Closes the loop: observe → measure → propose → approve → distribute.
+
+- [ ] Fleet trace/eval views (the `swarmkit-control-plane` surface, distinct from the
+      v1.1 composer UI per §15.3).
+- [ ] Plan generator: gap-mining across instances → proposed authoring changes.
+- [ ] Approval queue gated by the existing §8.7 reserved scopes (`skills:activate`,
+      `topologies:modify`).
+- [ ] Signed, versioned artifact distribution (pull) → instances apply approved
+      skills/topologies as data; provenance verified.
+
+**Exit demo:** a repeated fleet gap → proposed skill → human approves → it distributes
+→ a target instance picks it up. Control plane down → instances keep running.
+
+### M18 — Workflow archetypes + cross-instance interop (NEW, proposed, small)
+
+- [ ] Sequential / Parallel / Loop as named topology archetypes (deterministic
+      orchestration; "LLM does language, code does the doing").
+- [ ] A2A agent / sub-swarm / another instance's swarm modelled as a **coordination
+      skill** (builds on the A2A adapter + §18).
+
+---
+
 ## Rynko Platform (separate plan)
 
 The commercial Rynko platform — UI dashboard, cloud telemetry, team features, self-learning intelligence — is out of scope for this plan. It has its own implementation plan in the Rynko repository.
@@ -626,6 +680,8 @@ Every design note under `design/details/` and where it appears in this plan:
 
 | Design note | Milestone |
 |-------------|-----------|
+| `fleet-control-plane.md` | M15–M18 (proposed) |
+| `adk-lessons.md` | M15, M18 (proposed) |
 | `archetype-schema-v1.md` | M0 ✅ |
 | `ci-pipeline.md` | Cross-cutting ✅ |
 | `cli-unimplemented-stubs.md` | M11 |
