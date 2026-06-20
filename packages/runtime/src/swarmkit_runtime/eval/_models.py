@@ -23,8 +23,10 @@ class ExpectSpec(BaseModel):
     regex: str | None = None
     equals: str | None = None
     not_empty: bool = False
+    used_skills: list[str] = Field(default_factory=list)  # skill ids that must be invoked
     judge: str | None = None  # a decision-skill id to score the output (LLM rubric)
-    min_confidence: float = 0.5  # judge must pass with at least this confidence
+    rubric: str | None = None  # an inline rubric string judged by the LLM (no skill needed)
+    min_confidence: float = 0.5  # judge/rubric must pass with at least this confidence
 
 
 class EvalCase(BaseModel):

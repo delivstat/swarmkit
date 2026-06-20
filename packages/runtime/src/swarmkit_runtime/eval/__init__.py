@@ -8,6 +8,7 @@ rubric judge (a decision skill). The "test" gate of growth-through-authoring and
 from __future__ import annotations
 
 from swarmkit_runtime.eval._checks import deterministic_checks
+from swarmkit_runtime.eval._compare import ReportDiff, diff_report, latest_prior_report
 from swarmkit_runtime.eval._errors import (
     EvalError,
     EvalSetInvalidError,
@@ -34,7 +35,10 @@ __all__ = [
     "EvalSetInvalidError",
     "EvalSetNotFoundError",
     "ExpectSpec",
+    "ReportDiff",
     "deterministic_checks",
+    "diff_report",
+    "latest_prior_report",
     "list_eval_sets",
     "load_eval_set",
     "run_eval_set",
