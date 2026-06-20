@@ -690,6 +690,7 @@ Every design note under `design/details/` and where it appears in this plan:
 |-------------|-----------|
 | `fleet-control-plane.md` | M15–M18 (proposed) |
 | `adk-lessons.md` | M15, M18 (proposed) |
+| `context-compression.md` | Cost / M14 follow-on (proposed, spiked) |
 | `archetype-schema-v1.md` | M0 ✅ |
 | `ci-pipeline.md` | Cross-cutting ✅ |
 | `cli-unimplemented-stubs.md` | M11 |
