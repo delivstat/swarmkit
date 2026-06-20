@@ -121,6 +121,18 @@ def test_image_path_guards_traversal():
     print("ok  image_path resolves real frames + blocks path traversal")
 
 
+def test_import_model():
+    _tmp()
+    ds.create_dataset("m", "box", "box", "Porch-1")
+    assert ds.has_model("m") is False
+    assert "doesn't look like" in ds.import_model("m", b"tiny").get("error", "")  # too small
+    res = ds.import_model("m", b"P" * 5000)  # stand-in bytes
+    assert res.get("imported") and ds.has_model("m")
+    assert ds._meta("m").get("model") == "model.pt"
+    assert any(d["slug"] == "m" and d["model"] for d in ds.list_datasets())
+    print("ok  import_model stores the .pt + flags the dataset (rejects junk)")
+
+
 if __name__ == "__main__":
     test_create_and_capture()
     test_parse_boxes_and_yolo()
@@ -130,4 +142,5 @@ if __name__ == "__main__":
     test_list_datasets()
     test_label_roundtrip()
     test_image_path_guards_traversal()
+    test_import_model()
     print("\nALL DATASET TESTS PASSED")
