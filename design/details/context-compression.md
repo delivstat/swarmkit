@@ -98,12 +98,41 @@ for logs / RAG prose / javadocs (which should compress more, per headroom's benc
 arrays-of-uniform-dicts (script ~25 lines, in the PR body). Re-run on javadocs/logs for
 those surfaces.
 
+## Docs / RAG surface (Confluence + product/project docs) — a *different* profile
+
+The other big Sterling token sink is doc content fetched into context (Confluence pages,
+product/project docs). It's **prose**, not array-of-dicts — so the **lossless 2.3× from
+CDT does NOT transfer.** Measured the reachable `data-model/*.md` corpus: **856 files,
+824K tokens**, and the content is overwhelmingly *unique* prose (per-column descriptions)
+— cross-file boilerplate is only ~9 repeated header lines. There's no structural
+redundancy to dedup losslessly.
+
+So docs need different levers (and `ingest-docs.py` already does the easy lossless ones —
+HTML→text strip + chunking into ChromaDB, so there's no query-time HTML win left):
+
+1. **Retrieval selection — the biggest lever, and lossless.** The per-query cost is
+   `K chunks × chunk size`. Feeding fewer, higher-signal chunks (better top-K, score
+   filtering — headroom's "intelligent context") cuts tokens *with zero information loss*
+   because you simply retrieve less. This is a RAG-tuning win, not a compressor, and it's
+   where most of the doc savings live.
+2. **Lossy prose compression of the *retrieved* chunks** (headroom's learned model) —
+   a moderate further cut, but **lossy on technical descriptions** (dropping a nuance in
+   an API/column description can mislead). Use **only with reversible retrieve** so the
+   agent can pull the full chunk back. This is the lossy-tolerant surface the seam
+   reserves lossy for.
+
+Honest gap: I didn't put a single "% off" on lossy prose — it needs the learned model
+(not runnable here, git+Rust+ONNX). The measurable truths are: the corpus is large (and
+product/Confluence is likely larger than data-model's 824K), lossless-structural is
+~nil on prose, and the dominant lossless lever is **retrieval selection**.
+
 ## Per-project applicability
 
-- **Sterling → yes (measured on the real consolidated JSON).** **57% / 2.3x off
-  as-written**, lossless — of which **29% is free** (the ingestion emits pretty-printed
-  JSON; just minify). Best first integration; do the free minify now, columnar via the
-  seam, and re-spike javadocs/logs (should compress more).
+- **Sterling → yes, two surfaces.** *Config (CDT JSON):* **57% / 2.3x off as-written**,
+  lossless — of which **29% is free** (the ingestion pretty-prints; just minify). *Docs
+  (Confluence + product/project, RAG):* a large prose corpus (data-model alone ~824K
+  tokens) where the win is **retrieval selection (lossless) + reversible lossy chunk
+  compression**, not structural. Best first integration overall.
 - **Vedanta → medium, cautious.** RAG-chunk *selection* (score filtering) helps; the
   content is **scripture**, so *lossy* prose compression risks theological precision —
   prefer lossless selection, keep retrieve, avoid lossy value compression.
@@ -131,8 +160,13 @@ above) needs no heavy deps and delivers the lossless tier.
    1.63x over minified / 2.3x over as-written; zero heavy deps) as the default;
    headroom-style learned/lossy as an optional backend for lossy-tolerant surfaces
    (logs/RAG/javadocs) only.
-4. Adopt **KV-cache prefix stability** independently (lossless, M14).
-5. Re-spike **javadocs / logs** (the lossy-tolerant surfaces) before picking a lossy backend.
+4. **Docs/RAG: tune retrieval first (lossless), then reversible lossy chunk compression.**
+   The biggest doc win is feeding fewer/higher-signal chunks per query (score filtering),
+   which loses no information; lossy prose compression of retrieved chunks is the
+   secondary, reversible lever for that surface.
+5. Adopt **KV-cache prefix stability** independently (lossless, M14).
+6. Re-spike **javadocs / logs / Confluence** (the lossy-tolerant surfaces) before picking
+   a lossy backend.
 
 ## Open questions
 
