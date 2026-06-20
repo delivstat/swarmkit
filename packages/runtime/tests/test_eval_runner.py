@@ -13,22 +13,41 @@ from swarmkit_runtime.governance import DecisionSkillResult
 class _FakeRuntime:
     """Stands in for WorkspaceRuntime: scripted output + judge verdict."""
 
-    def __init__(self, output: str, *, verdict: str = "pass", confidence: float = 0.9) -> None:
+    def __init__(
+        self,
+        output: str,
+        *,
+        verdict: str = "pass",
+        confidence: float = 0.9,
+        skills: list[str] | None = None,
+    ) -> None:
         self._output = output
         self._verdict = verdict
         self._confidence = confidence
+        self._skills = skills or []
         self.raise_on_run = False
 
     async def run(self, topology_name: str, user_input: str) -> object:
         if self.raise_on_run:
             raise RuntimeError("boom")
-        return SimpleNamespace(output=self._output)
+        events = [SimpleNamespace(skill_id=s, event_type="skill") for s in self._skills]
+        return SimpleNamespace(output=self._output, events=events)
 
     async def judge(
         self, *, skill_id: str, content: str, trigger: str = "eval"
     ) -> DecisionSkillResult:
         return DecisionSkillResult(
             skill_id=skill_id,
+            verdict=self._verdict,  # type: ignore[arg-type]
+            confidence=self._confidence,
+            reasoning="fake",
+        )
+
+    async def judge_rubric(
+        self, *, rubric: str, content: str, trigger: str = "eval"
+    ) -> DecisionSkillResult:
+        return DecisionSkillResult(
+            skill_id="inline-rubric",
             verdict=self._verdict,  # type: ignore[arg-type]
             confidence=self._confidence,
             reasoning="fake",
@@ -80,6 +99,27 @@ async def test_no_expectations_is_smoke_test() -> None:
     es = _set(EvalCase(id="smoke", input="x", expect=ExpectSpec()))
     report = await run_eval_set(_FakeRuntime("whatever"), es)
     assert report.passed == 1
+
+
+@pytest.mark.asyncio
+async def test_inline_rubric() -> None:
+    rubric = ExpectSpec(rubric="be polite", min_confidence=0.6)
+    es = _set(EvalCase(id="r", input="x", expect=rubric))
+    assert (await run_eval_set(_FakeRuntime("hi", verdict="pass", confidence=0.9), es)).passed == 1
+    assert (await run_eval_set(_FakeRuntime("hi", verdict="fail", confidence=0.9), es)).passed == 0
+    # pass but low confidence -> fail
+    assert (await run_eval_set(_FakeRuntime("hi", verdict="pass", confidence=0.4), es)).passed == 0
+
+
+@pytest.mark.asyncio
+async def test_trajectory_used_skills() -> None:
+    es = _set(EvalCase(id="tr", input="x", expect=ExpectSpec(used_skills=["search", "summarize"])))
+    # both skills invoked -> pass
+    assert (await run_eval_set(_FakeRuntime("out", skills=["search", "summarize"]), es)).passed == 1
+    # one missing -> fail
+    rep = await run_eval_set(_FakeRuntime("out", skills=["search"]), es)
+    assert rep.passed == 0
+    assert any(not c.passed and "summarize" in c.detail for c in rep.cases[0].checks)
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@
 title: Eval harness (M15) — score a topology against an eval-set
 description: Run a topology over a set of cases and score each with deterministic checks + an LLM rubric judge (reusing decision skills). The "test" gate of growth-through-authoring and the "measure" signal for the fleet control plane.
 tags: [eval, testing, governance, decision-skills, self-improvement]
-status: implemented (slice 1)
+status: implemented (slices 1 + 2)
 ---
 
 # Eval harness (M15)
@@ -67,12 +67,22 @@ later regression comparison (the comparison view is a follow-up; the data lands 
   `evaluate_decision_skill` (existing path; no new model plumbing).
 - **Checks:** pure functions in `eval/_checks.py` (fully unit-testable, no model).
 
-## Not in this slice (follow-ups)
+## Slice 2 (added)
 
-- Promote eval-set to a schema artifact kind (+ `swarmkit validate` coverage).
-- Inline `rubric:` string (auto-wrapped into a transient decision skill).
-- Trajectory checks (which skills/tools were called — over `RunResult.events`).
-- Regression comparison view + the fleet "measure" feed (M16/M17).
+- **Inline `rubric:`** — judge against an inline rubric string (no separate decision
+  skill needed). `WorkspaceRuntime.judge_rubric` resolves a provider like authoring
+  does, asks for the decision-skill verdict shape, and reuses the decision-skill parser
+  — so the verdict is identical to `judge:`.
+- **Trajectory checks** — `used_skills: [id, …]` asserts which skills were invoked,
+  read from the run's events (`RunEvent.skill_id`).
+- **Regression comparison** — `swarmkit eval --compare` diffs against the previous
+  stored report: pass-rate delta + regressed / fixed / new cases.
+
+## Not in these slices (follow-ups)
+
+- Promote eval-set to a first-class schema artifact kind (dual codegen + workspace
+  discovery + resolver + `swarmkit validate` coverage). *(next slice)*
+- Trajectory checks for **tools** (not just skills); the fleet "measure" feed (M16/M17).
 
 ## Test plan
 

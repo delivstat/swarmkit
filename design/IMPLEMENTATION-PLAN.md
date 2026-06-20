@@ -611,8 +611,10 @@ See `design/details/eval-harness.md`.
       judge (`judge: <decision-skill-id>` → `WorkspaceRuntime.judge` → `evaluate_decision_skill`).
 - [x] `swarmkit eval <workspace> <eval-set>` — runs + scores; exit 1 if any case fails (CI-gatable).
 - [x] Result storage (`.swarmkit/eval-results/<id>-<ts>.json`).
-- [ ] Promote eval-set to a schema artifact kind (dual codegen + workspace discovery). *(slice 2)*
-- [ ] Inline `rubric:` string + trajectory checks + regression comparison view. *(slice 2)*
+- [x] **(slice 2)** Inline `rubric:` (`WorkspaceRuntime.judge_rubric`), trajectory checks
+      (`used_skills` via `RunEvent.skill_id`), and regression comparison (`--compare`).
+- [ ] Promote eval-set to a schema artifact kind (dual codegen + workspace discovery). *(slice 3)*
+- [ ] Trajectory checks for tools; fleet "measure" feed (M16/M17).
 
 **Exit demo:** `swarmkit eval examples/hello-swarm/workspace greeting-evals` scores the
 `hello` topology and prints a pass rate; a failing case flips the exit code to 1.

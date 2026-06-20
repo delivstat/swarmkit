@@ -560,6 +560,43 @@ class WorkspaceRuntime:
             content=content,
         )
 
+    async def judge_rubric(
+        self,
+        *,
+        rubric: str,
+        content: str,
+        trigger: str = "eval",
+    ) -> DecisionSkillResult:
+        """Score ``content`` against an inline rubric (no decision skill needed).
+
+        Used by the eval harness's inline-``rubric:`` tier. Resolves a model provider
+        the same way authoring does, asks for the decision-skill verdict shape, and
+        reuses the decision-skill parser — so the result is identical to ``judge``.
+        """
+        from swarmkit_runtime.governance._decision_evaluator import _parse_result  # noqa: PLC0415
+        from swarmkit_runtime.model_providers import CompletionRequest, Message  # noqa: PLC0415
+
+        provider, model = resolve_authoring_provider(self._provider_registry)
+        system = (
+            "You are an evaluation judge. Decide whether the CONTENT satisfies the "
+            'RUBRIC. Respond with ONLY a JSON object: {"verdict": "pass" or "fail", '
+            '"confidence": a number from 0.0 to 1.0, "reasoning": "one sentence"}.\n\n'
+            f"RUBRIC:\n{rubric}"
+        )
+        user = f"Trigger: {trigger}\n\n--- CONTENT TO EVALUATE ---\n{content}\n--- END CONTENT ---"
+        response = await provider.complete(
+            CompletionRequest(
+                model=model,
+                messages=(Message(role="user", content=user),),
+                system=system,
+            )
+        )
+        text = (
+            "\n".join(b.text for b in response.content if b.type == "text" and b.text)
+            or "(no response)"
+        )
+        return _parse_result("inline-rubric", text)
+
     async def _persist_events_to_audit(self, events: list[RunEvent], topology_name: str) -> None:
         """Write extracted events to the AuditProvider with redaction applied."""
         from datetime import UTC, datetime  # noqa: PLC0415

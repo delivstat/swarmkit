@@ -820,6 +820,10 @@ def eval_(
         bool,
         typer.Option("--quiet", "-q", help="Only print the summary line."),
     ] = False,
+    compare: Annotated[
+        bool,
+        typer.Option("--compare", help="Diff against the previous run (regressions/fixes)."),
+    ] = False,
 ) -> None:
     """Run an eval-set and score the topology (design §M15).
 
@@ -830,6 +834,8 @@ def eval_(
     from swarmkit_runtime.eval import (  # noqa: PLC0415
         EvalCaseResult,
         EvalError,
+        diff_report,
+        latest_prior_report,
         load_eval_set,
         run_eval_set,
     )
@@ -862,6 +868,9 @@ def eval_(
                 if c.error:
                     typer.echo(f"         ✗ error: {c.error}")
 
+    # Capture the previous run BEFORE writing the new report (so it's the prior one).
+    prior = latest_prior_report(ws_root, spec.metadata.id) if compare else None
+
     if not quiet:
         typer.echo(f"eval: {spec.metadata.id} → topology '{spec.target}' ({len(spec.cases)} cases)")
     report = asyncio.run(run_eval_set(runtime, spec, on_case=_on_case))
@@ -876,6 +885,19 @@ def eval_(
         output.write_text(payload, encoding="utf-8")
 
     typer.echo(f"{report.passed}/{report.total} passed ({report.pass_rate:.0%}) · report: {stored}")
+
+    if compare:
+        if prior is None:
+            typer.echo("compare: no prior run to compare against.")
+        else:
+            d = diff_report(prior, report)
+            typer.echo(
+                f"compare: pass rate {d.prev_pass_rate:.0%} → {d.curr_pass_rate:.0%}"
+                + (f" · regressed: {', '.join(d.regressed)}" if d.regressed else "")
+                + (f" · fixed: {', '.join(d.fixed)}" if d.fixed else "")
+                + (f" · new: {', '.join(d.new)}" if d.new else "")
+            )
+
     if report.failed:
         raise typer.Exit(_EXIT_RESOLUTION_ERROR)
 
