@@ -1317,6 +1317,45 @@
               <button class="btn btn-primary" onclick="studioSaveLabels()" style="margin-left:auto">Save labels</button>
             </div>
           </div>
+
+          <div class="dash-section-title">Deploy the trained detector</div>
+          <div class="card">
+            <p style="color:var(--text-dim); font-size:0.82rem; margin-bottom:0.6rem">
+              Train off-box (Export gives you a Colab notebook + scripts), then import
+              <code>minder_model.pt</code> here. It runs on the appliance — no cloud, no GPU.
+            </p>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Trained model (.pt)</label>
+                <input type="file" id="ds-model-file" accept=".pt">
+              </div>
+              <div class="form-group" style="display:flex;align-items:flex-end">
+                <button class="btn btn-secondary" onclick="studioImportModel()" id="ds-import-btn" style="width:100%">Import model</button>
+              </div>
+            </div>
+            <div id="ds-deploy-armed" style="display:none">
+              <div style="display:flex; gap:0.4rem; align-items:center; margin:0.5rem 0">
+                <button class="btn btn-ghost" onclick="studioTest()" id="ds-test-btn">🔍 Test on a live frame</button>
+                <span id="ds-test-result" style="font-size:0.85rem; color:var(--text-dim)"></span>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Alert when count is</label>
+                  <select id="ds-arm-op">
+                    <option value="&gt;">more than</option>
+                    <option value="&gt;=">at least</option>
+                    <option value="&lt;">fewer than</option>
+                    <option value="&lt;=">at most</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Value</label><input type="number" id="ds-arm-value" value="0" min="0" style="width:5rem"></div>
+                <div class="form-group" style="display:flex;align-items:flex-end">
+                  <button class="btn btn-primary" onclick="studioArm()" style="width:100%">Arm detector</button>
+                </div>
+              </div>
+              <p style="font-size:0.78rem; color:var(--text-dim)">Value 0 with "more than" = alert on any detection. Runs every ~60s on a live frame.</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2881,10 +2920,11 @@ async function loadStudio() {
   try {
     const data = await api('/studio/datasets');
     studio.cloud = data.cloud_label;
+    studio.datasets = data.datasets || [];
     const sel = document.getElementById('ds-select');
     const cur = sel.value;
     sel.innerHTML = '<option value="">Select a dataset…</option>'
-      + (data.datasets || []).map(d => `<option value="${d.slug}">${d.name} (${d.images} imgs, ${d.labeled} labeled)</option>`).join('');
+      + studio.datasets.map(d => `<option value="${d.slug}">${d.name} (${d.images} imgs, ${d.labeled} labeled${d.model ? ', ✓model' : ''})</option>`).join('');
     sel.value = cur;
   } catch (e) { toast('Could not load datasets', true); }
 }
@@ -2911,6 +2951,8 @@ function studioSelectDataset() {
   const note = document.getElementById('ds-cloud-note');
   note.style.display = studio.cloud ? 'none' : '';
   note.textContent = '⚠ No OpenRouter key configured — auto-label is off; draw the boxes by hand below (or set OPENROUTER_API_KEY).';
+  const meta = (studio.datasets || []).find(d => d.slug === studio.name) || {};
+  studioShowDeployState(!!meta.model);
   if (studio.name) studioLoadImages();
 }
 
@@ -3020,6 +3062,59 @@ async function studioSaveLabels() {
     const r = await api(`/studio/datasets/${studio.name}/labels/${file}`, { method: 'POST', body: { boxes: studio.boxes } });
     toast(`Saved ${r.saved} box${r.saved === 1 ? '' : 'es'}`);
     loadStudio();  // refresh labeled count
+  } catch (e) { toast(e.message, true); }
+}
+
+// --- deploy: import the off-box-trained model, test, arm ---
+
+function studioShowDeployState(hasModel) {
+  document.getElementById('ds-deploy-armed').style.display = hasModel ? '' : 'none';
+}
+
+async function studioImportModel() {
+  const input = document.getElementById('ds-model-file');
+  if (!input.files || !input.files[0]) { toast('Choose the trained .pt file', true); return; }
+  const btn = document.getElementById('ds-import-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Importing…';
+  try {
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    const resp = await fetch(`/api/studio/datasets/${studio.name}/model`, { method: 'POST', body: fd });
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).detail || 'Import failed');
+    toast('Model imported — test it, then arm');
+    studioShowDeployState(true);
+  } catch (e) { toast(e.message, true); }
+  finally { btn.disabled = false; btn.textContent = 'Import model'; }
+}
+
+async function studioTest() {
+  const btn = document.getElementById('ds-test-btn'), out = document.getElementById('ds-test-result');
+  btn.disabled = true; out.textContent = 'detecting…';
+  try {
+    const r = await api(`/studio/datasets/${studio.name}/test`, { method: 'POST', timeout: 60000 });
+    out.textContent = `detected ${r.count} on a live frame`;
+  } catch (e) { out.textContent = e.message; }
+  finally { btn.disabled = false; }
+}
+
+async function studioArm() {
+  const op = document.getElementById('ds-arm-op').value;
+  const value = parseInt(document.getElementById('ds-arm-value').value, 10) || 0;
+  const meta = (await api('/studio/datasets')).datasets.find(d => d.slug === studio.name) || {};
+  const words = { '>': 'more than', '>=': 'at least', '<': 'fewer than', '<=': 'at most' };
+  const cls = meta.class_name || studio.name;
+  const cam = meta.camera || 'all';
+  const rule = {
+    condition: `${words[op] || op} ${value} ${cls} on ${cam}`,
+    camera: cam, condition_type: 'custom', dataset: studio.name,
+    count_op: op, count_value: value, debounce_s: 3, enabled: true,
+    schedule: 'always', actions: [{ type: 'alert' }],
+  };
+  try {
+    const rules = (await api('/rules')).rules || [];
+    rules.push(rule);
+    await api('/rules', { method: 'POST', body: { rules } });
+    toast('Detector armed — it runs on a live frame every ~60s. See it in Rules.');
   } catch (e) { toast(e.message, true); }
 }
 

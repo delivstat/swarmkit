@@ -29,7 +29,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import Cookie, FastAPI, HTTPException, Request
+from fastapi import Cookie, FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
@@ -129,6 +129,18 @@ async def _start_health_monitor() -> None:
         start_health_monitor()
     except Exception as e:
         print(f"[health] startup hook failed: {e}", flush=True)
+
+
+@app.on_event("startup")
+async def _start_custom_detector() -> None:
+    """Run armed custom detectors (Scenario Studio trained models) on a cadence —
+    on-device, only while a custom rule is armed."""
+    try:
+        from custom_detector import start_custom_detector
+
+        start_custom_detector()
+    except Exception as e:
+        print(f"[custom] startup hook failed: {e}", flush=True)
 
 
 @app.on_event("startup")
@@ -1627,6 +1639,38 @@ async def studio_save_labels(name: str, file: str, req: LabelsRequest):
     res = await asyncio.to_thread(ds.save_labels, name, file, req.boxes)
     if res.get("error"):
         raise HTTPException(status_code=404, detail=res["error"])
+    return res
+
+
+@app.post("/api/studio/datasets/{name}/model")
+async def studio_import_model(name: str, file: UploadFile):
+    """Import an off-box-trained .pt for a dataset (Studio -> Deploy)."""
+    import dataset as ds
+
+    data = await file.read()
+    res = await asyncio.to_thread(ds.import_model, name, data)
+    if res.get("error"):
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res
+
+
+@app.post("/api/studio/datasets/{name}/test")
+async def studio_test_detect(name: str):
+    """Run the imported detector once on a live snapshot — preview before arming."""
+    import dataset as ds
+
+    def _run() -> dict:
+        if not ds.has_model(name):
+            return {"error": "no trained model imported"}
+        cam = ds._meta(name).get("camera", "")
+        img = ds._grab_snapshot(cam)
+        if not img:
+            return {"error": f"couldn't grab a frame from {cam}"}
+        return ds.detect_custom(name, img)
+
+    res = await asyncio.to_thread(_run)
+    if res.get("error"):
+        raise HTTPException(status_code=400, detail=res["error"])
     return res
 
 
