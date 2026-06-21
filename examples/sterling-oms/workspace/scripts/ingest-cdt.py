@@ -923,15 +923,17 @@ def main() -> None:  # noqa: PLR0915
     print("  Enriching pipelines with resolved names...")
     _enrich_pipelines(pipelines, transactions, statuses)
 
-    # Write structured indexes
-    (output_dir / "services.json").write_text(json.dumps(services, indent=2))
-    (output_dir / "pipelines.json").write_text(json.dumps(pipelines, indent=2))
-    (output_dir / "transactions.json").write_text(json.dumps(transactions, indent=2))
-    (output_dir / "statuses.json").write_text(json.dumps(statuses, indent=2))
-    (output_dir / "common_codes.json").write_text(json.dumps(common_codes, indent=2))
-    (output_dir / "user_exits.json").write_text(json.dumps(user_exits, indent=2))
-    (output_dir / "hold_types.json").write_text(json.dumps(hold_types, indent=2))
-    (output_dir / "monitor_rules.json").write_text(json.dumps(monitor_rules, indent=2))
+    # Write structured indexes. These are LLM-consumed (RAG / MCP), not read by humans,
+    # so emit COMPACT JSON — pretty-printing was ~29% of the tokens (measured on a real
+    # CDT dump; lossless to drop). See design/details/context-compression.md.
+    (output_dir / "services.json").write_text(json.dumps(services, separators=(",", ":")))
+    (output_dir / "pipelines.json").write_text(json.dumps(pipelines, separators=(",", ":")))
+    (output_dir / "transactions.json").write_text(json.dumps(transactions, separators=(",", ":")))
+    (output_dir / "statuses.json").write_text(json.dumps(statuses, separators=(",", ":")))
+    (output_dir / "common_codes.json").write_text(json.dumps(common_codes, separators=(",", ":")))
+    (output_dir / "user_exits.json").write_text(json.dumps(user_exits, separators=(",", ":")))
+    (output_dir / "hold_types.json").write_text(json.dumps(hold_types, separators=(",", ":")))
+    (output_dir / "monitor_rules.json").write_text(json.dumps(monitor_rules, separators=(",", ":")))
 
     # Parse all remaining tables generically
     print("  Parsing all CDT tables...")
@@ -940,9 +942,9 @@ def main() -> None:  # noqa: PLR0915
         table_name, rows = _parse_cdt(cdt_file)
         meta[table_name] = {"file": cdt_file.name, "records": len(rows)}
         table_json = tables_dir / f"{table_name}.json"
-        table_json.write_text(json.dumps(rows, indent=2))
+        table_json.write_text(json.dumps(rows, separators=(",", ":")))
 
-    (output_dir / "meta.json").write_text(json.dumps(meta, indent=2))
+    (output_dir / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))
     print(f"    {len(meta)} tables")
 
     print(f"\nIngestion complete → {output_dir}")
