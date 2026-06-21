@@ -186,12 +186,27 @@ def _get_corpus(root: Path) -> list[dict[str, Any]]:
 # ---- MCP tools -----------------------------------------------------------
 
 
+# Relative cutoff: drop results scoring below this fraction of the top hit. The biggest
+# lossless token win for RAG is feeding fewer, higher-signal chunks — see
+# design/details/context-compression.md (doc/RAG surface).
+_RELATIVE_CUTOFF = 0.25
+
+
 @server.tool()
-def search_docs(query: str, max_results: int = 5, domain: str = "") -> list[dict[str, str]]:
+def search_docs(
+    query: str,
+    max_results: int = 5,
+    domain: str = "",
+    min_score: float = 0.0,
+) -> list[dict[str, str]]:
     """Search SwarmKit design docs, schemas, and notes by keyword.
 
     Optional domain filter reduces cross-domain contamination.
     Valid domains: design, schema, docs. Empty string searches all.
+
+    Retrieval-selection (lossless token lever): results scoring below ``min_score`` are
+    dropped, and low-signal tail results far below the top hit are pruned, so the caller
+    gets fewer, higher-signal sections rather than a padded list.
     """
     root = _get_repo_root()
     corpus = _get_corpus(root)
@@ -208,6 +223,8 @@ def search_docs(query: str, max_results: int = 5, domain: str = "") -> list[dict
         if score > 0:
             if domain and entry.get("domain") == domain:
                 score *= _DOMAIN_BOOST
+            if score < min_score:
+                continue
             snippet = entry["content"][:300]
             scored.append(
                 (
@@ -223,6 +240,9 @@ def search_docs(query: str, max_results: int = 5, domain: str = "") -> list[dict
             )
 
     scored.sort(key=lambda x: x[0], reverse=True)
+    if scored:
+        floor = scored[0][0] * _RELATIVE_CUTOFF
+        scored = [s for s in scored if s[0] >= floor]
     return [item for _, item in scored[:max_results]]
 
 

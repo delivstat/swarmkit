@@ -1196,6 +1196,16 @@ def _print_run_summary(result: RunResult) -> None:
         for v in validation_fails:
             typer.echo(f"    {v.agent_id}: {v.payload.get('error', '')}")
 
+    usage = result.usage
+    if usage is not None and usage.compression_calls > 0 and usage.compression_bytes_in > 0:
+        saved = usage.compression_bytes_in - usage.compression_bytes_out
+        pct = 100 * saved / usage.compression_bytes_in
+        typer.echo(
+            f"  context compression: {usage.compression_bytes_in:,} -> "
+            f"{usage.compression_bytes_out:,} chars "
+            f"({pct:.0f}% off, {usage.compression_calls} results)"
+        )
+
     typer.echo(f"  total events: {len(result.events)}")
 
 

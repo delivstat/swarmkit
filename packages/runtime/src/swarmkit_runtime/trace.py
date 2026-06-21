@@ -66,6 +66,25 @@ class RunTrace:
     agent_steps: list[AgentStep] = field(default_factory=list)
     token_by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
     token_by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Context compression savings (read-side). bytes are characters.
+    compression_bytes_in: int = 0
+    compression_bytes_out: int = 0
+    compression_calls: int = 0
+    compression_by_backend: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    def record_compression(
+        self, tool_name: str, backend: str, bytes_in: int, bytes_out: int
+    ) -> None:
+        """Record one read-side compression of a tool result."""
+        self.compression_bytes_in += bytes_in
+        self.compression_bytes_out += bytes_out
+        self.compression_calls += 1
+        by = self.compression_by_backend.setdefault(
+            backend, {"calls": 0, "bytes_in": 0, "bytes_out": 0}
+        )
+        by["calls"] += 1
+        by["bytes_in"] += bytes_in
+        by["bytes_out"] += bytes_out
 
     def record_llm_call(
         self,

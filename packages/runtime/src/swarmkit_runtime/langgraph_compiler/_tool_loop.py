@@ -250,6 +250,72 @@ def _handle_read_task_result(block: Any, agent_id: str) -> str:  # noqa: PLR0911
     return content
 
 
+async def _handle_context_retrieve(
+    block: Any, governance: GovernanceProvider | None, agent_id: str
+) -> str:
+    """Recall a window of original content that a reversible compressor elided.
+
+    Retrieval reads back content already delivered to this agent (compressed), so it is not
+    a privilege escalation — no grantable scope gates it. We still route through governance
+    with an empty scope set so the recall is recorded in the audit trail. Returns a ranged
+    window so a large original can be paged without re-hitting the result-truncation cap.
+    """
+    import json as _json  # noqa: PLC0415
+
+    from swarmkit_runtime.compression import get_original  # noqa: PLC0415
+
+    args = block.tool_input
+    if isinstance(args, str):
+        try:
+            args = _json.loads(args)
+        except (ValueError, TypeError):
+            args = {}
+    if not isinstance(args, dict):
+        args = {}
+
+    ref = str(args.get("ref", "")).strip()
+    if not ref:
+        return "[context_retrieve] error: 'ref' is required"
+
+    if governance is not None:
+        try:
+            decision = await governance.evaluate_action(
+                agent_id=agent_id,
+                action=f"context:retrieve:{ref}",
+                scopes_required=frozenset(),
+                context={"ref": ref},
+            )
+            if not decision.allowed:
+                return f"[context_retrieve] DENIED: {decision.reason}"
+        except Exception:  # auditing must not block a legitimate read
+            pass
+
+    original = get_original(ref)
+    if original is None:
+        return (
+            f"[context_retrieve] no stashed content for ref '{ref}' "
+            "(unknown ref, or it expired earlier in this run)"
+        )
+
+    def _as_int(value: Any, fallback: int) -> int:
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return fallback
+
+    offset = max(0, _as_int(args.get("offset", 0), 0))
+    limit = max(1, _as_int(args.get("limit", 4000), 4000))
+    window = original[offset : offset + limit]
+    end = offset + len(window)
+    remaining = len(original) - end
+    _progress(f"  [{agent_id}] context_retrieve '{ref}' [{offset}:{end}] of {len(original)}")
+    suffix = f"\n…[{remaining} more chars — call again with offset={end}]" if remaining > 0 else ""
+    return (
+        f"[context_retrieve ref={ref} bytes={len(original)} window={offset}:{end}]\n"
+        f"{window}{suffix}"
+    )
+
+
 _DEFAULT_READ_PREFIXES = "read-,get-,list-,download-,describe-,explain-,render-"
 
 
@@ -346,7 +412,7 @@ def _apply_tool_guards(
     return modified, hit_limit
 
 
-async def _handle_skill_tool_calls(  # noqa: PLR0912
+async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
     response: CompletionResponse,
     agent: ResolvedAgent,
     model_provider: ModelProviderProtocol,
@@ -411,6 +477,17 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
                 )
             )
             continue
+        if block.tool_name == "context_retrieve":
+            result_text = await _handle_context_retrieve(block, governance, agent.id)
+            results.append(
+                ToolCallResult(
+                    tool_use_id=block.tool_use_id or f"call_{len(results)}",
+                    tool_name=block.tool_name,
+                    result=result_text,
+                    image_blocks=[],
+                )
+            )
+            continue
         skill = skill_map.get(block.tool_name)
         if skill is None:
             continue
@@ -442,10 +519,10 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
             text_result, images = raw_result
         else:
             text_result, images = raw_result, []
-        # Read-side context compression (opt-in, off by default; lossless columnar).
-        # Applied here so the agent's context holds the compact form. Never on the
-        # audit log (recorded separately) or the inter-agent contract.
-        text_result = maybe_compress_tool_result(text_result or "")
+        # Read-side context compression (opt-in, off by default). Per-surface policy keyed
+        # by tool name. Applied here so the agent's context holds the compact form. Never on
+        # the audit log (recorded separately) or the inter-agent contract.
+        text_result = maybe_compress_tool_result(text_result or "", block.tool_name)
         _record_tool_call(
             tool_name=block.tool_name,
             arguments=block.tool_input if isinstance(block.tool_input, dict) else {},

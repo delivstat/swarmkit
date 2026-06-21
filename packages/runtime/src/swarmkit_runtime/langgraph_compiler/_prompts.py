@@ -629,4 +629,39 @@ def _build_tools(
                 )
             )
 
+    # Offer the recall tool only when a reversible (lossy) compressor is active for this
+    # run — otherwise it's a misleading tool nothing produces refs for.
+    from swarmkit_runtime.compression import get_active_policy  # noqa: PLC0415
+
+    _policy = get_active_policy()
+    if _policy is not None and _policy.any_reversible:
+        tools.append(
+            ToolSpec(
+                name="context_retrieve",
+                description=(
+                    "Recall the full original content that was elided from a compressed "
+                    "tool result. Pass the ref from the '…elided…' marker. Returns a "
+                    "window; page with offset/limit for large content."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "ref": {
+                            "type": "string",
+                            "description": "The ref string from the elision marker.",
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Start character offset into the original (default 0).",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max characters to return (default 4000).",
+                        },
+                    },
+                    "required": ["ref"],
+                },
+            )
+        )
+
     return tools

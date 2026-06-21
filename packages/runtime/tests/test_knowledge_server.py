@@ -56,6 +56,23 @@ def test_search_max_results_respected() -> None:
     assert len(results) <= 2
 
 
+def test_search_min_score_filters_low_signal() -> None:
+    # A high min_score returns fewer (or equal) results than no floor — the lossless
+    # retrieval-selection lever. See design/details/context-compression.md.
+    loose = search_docs("governance provider", max_results=50)
+    strict = search_docs("governance provider", max_results=50, min_score=5.0)
+    assert len(strict) <= len(loose)
+    assert all(float(r["score"]) >= 5.0 for r in strict)
+
+
+def test_search_relative_cutoff_prunes_tail() -> None:
+    # Results far below the top hit are pruned even without an explicit min_score.
+    results = search_docs("governance provider", max_results=50)
+    if results:
+        top = float(results[0]["score"])
+        assert all(float(r["score"]) >= top * 0.25 for r in results)
+
+
 # ---- get_schema ---------------------------------------------------------
 
 
