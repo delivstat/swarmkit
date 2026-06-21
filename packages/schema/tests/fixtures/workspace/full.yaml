@@ -54,3 +54,9 @@ storage:
 context_compression:
   backend: columnar
   min_bytes: 2000
+  overrides:
+    - match: "get-logs*"
+      backend: headtail
+      min_bytes: 4000
+    - match: "search-*"
+      backend: "off"
