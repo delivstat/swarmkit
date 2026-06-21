@@ -571,18 +571,22 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 
 **Exit demo:** vedanta chat shows per-message tokens with dual model breakdown (e.g., "16,946 tok · kimi-k2.5 13,675, deepseek-v4-pro 3,271").
 
-**M14 follow-on — context compression (slices 1–2 ✅):** opt-in read-side compression of
+**M14 follow-on — context compression (slices 1–3 ✅):** opt-in read-side compression of
 bulk tool/MCP output via a pluggable `ContextCompressor` seam (`swarmkit_runtime.compression`),
 wired at the tool-output boundary and active per-run (mirrors `set_active_trace`). Built-in
 lossless `ColumnarCompressor` (minify + array-of-uniform-dicts → `{columns, rows}`; ~1.6x on
 Sterling JSON). Off by default; the gate never inflates and never raises into a run; never
 applied to audit or inter-agent paths. Sterling ingestion already minified separately (29% free).
-**Slice 2** adds the declarative `context_compression:` workspace-schema block (`backend`,
-`min_bytes`) — full dual-surface schema change (JSON Schema + bundled copy + regenerated pydantic
-& TS + fixtures), resolved per-run with env (`SWARMKIT_CONTEXT_COMPRESSION` /
-`…_MIN_BYTES`) overriding the block. See `design/details/context-compression.md`.
-Deferred (slice 3+): per-surface lossy/reversible policy, lossy backends + reversible retrieve,
-OTel spans, doc-retrieval lossless lever.
+**Slice 2**: declarative `context_compression:` workspace-schema block (full dual-surface change),
+env overriding the block. **Slice 3**: per-surface `overrides` (tool-name glob → `CompressionPolicy`);
+reversible-lossy `headtail` backend (keep head+tail, elide middle) + per-run original store + a
+governed, audited `context_retrieve(ref, offset, limit)` built-in tool (offered only when a
+reversible backend is active); OTel metrics (`swarmkit.compression.*`) + RunTrace savings +
+CLI run-summary line; `knowledge.search_docs` `min_score`/relative-cutoff lossless retrieval lever.
+Resolves the design note's open questions #2 (retrieve governance) and #3 (per-surface policy).
+See `design/details/context-compression.md`.
+Deferred (slice 4+): learned/LLM lossy backends, durable cross-process original store for `serve`,
+eject codegen for the policy.
 
 ### M11 — Launch prep
 
@@ -703,7 +707,7 @@ Every design note under `design/details/` and where it appears in this plan:
 |-------------|-----------|
 | `fleet-control-plane.md` | M15–M18 (proposed) |
 | `adk-lessons.md` | M15, M18 (proposed) |
-| `context-compression.md` | Cost / M14 follow-on (slices 1–2 built) |
+| `context-compression.md` | Cost / M14 follow-on (slices 1–3 built) |
 | `archetype-schema-v1.md` | M0 ✅ |
 | `ci-pipeline.md` | Cross-cutting ✅ |
 | `cli-unimplemented-stubs.md` | M11 |
