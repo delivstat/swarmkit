@@ -1,0 +1,9 @@
+# context_compression.min_bytes must be >= 0.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+context_compression:
+  backend: columnar
+  min_bytes: -1

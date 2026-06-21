@@ -33,14 +33,15 @@ packages/schema/
 Every time you change anything under `packages/schema/schemas/`:
 
 1. **Edit the `.schema.json` file.** That's the change.
-2. **Add or update fixtures** under `packages/schema/tests/fixtures/<artifact>/` — at least one valid fixture exercising the new surface, and where relevant one invalid fixture that the new rule would reject.
-3. **Do not touch `validate` or `getSchema` wrappers unless the public API shape changes.** They re-read the schema on every call or via import-time load — the new shape is picked up automatically.
-4. **Regenerate pydantic models AND TS types.** `just schema-codegen` runs both regenerators. Commit the regenerated output in the same PR as the schema change. CI's `schema codegen drift` job runs both regens and fails on either drift.
-5. **Run the matching demo target:**
+2. **Sync the bundled copy.** Copy the edited file to `packages/schema/python/src/swarmkit_schema/_schemas/<artifact>.schema.json`. The Python validator prefers `_schemas/` (the wheel-bundled copy) over `schemas/` and it exists in the tree, so in dev/test mode an un-synced copy means tests validate against the **old** shape. There is no auto-sync script — do it by hand and keep the two byte-identical.
+3. **Add or update fixtures** under `packages/schema/tests/fixtures/<artifact>/` — at least one valid fixture exercising the new surface, and where relevant one invalid fixture that the new rule would reject.
+4. **Do not touch `validate` or `getSchema` wrappers unless the public API shape changes.** They re-read the schema on every call or via import-time load — the new shape is picked up automatically.
+5. **Regenerate pydantic models AND TS types.** `just schema-codegen` runs both regenerators. Commit the regenerated output in the same PR as the schema change. CI's `schema codegen drift` job runs both regens and fails on either drift.
+6. **Run the matching demo target:**
    - `just demo-topology-schema` for topology changes
    - `just demo-schema` for a combined run across every artifact
    - `just demo-codegen` to see a typed object loaded through the generated pydantic models and the generated TS types
-6. **Design note.** If the change is non-trivial, add or update `design/details/<artifact>-schema-v1.md`. If the change is a cosmetic fix (typo, description rewording), a PR without a design note is fine.
+7. **Design note.** If the change is non-trivial, add or update `design/details/<artifact>-schema-v1.md`. If the change is a cosmetic fix (typo, description rewording), a PR without a design note is fine.
 
 ### Shape vs full validation
 

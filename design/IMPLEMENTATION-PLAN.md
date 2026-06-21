@@ -571,15 +571,18 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 
 **Exit demo:** vedanta chat shows per-message tokens with dual model breakdown (e.g., "16,946 tok · kimi-k2.5 13,675, deepseek-v4-pro 3,271").
 
-**M14 follow-on — context compression (slice 1 ✅):** opt-in read-side compression of
+**M14 follow-on — context compression (slices 1–2 ✅):** opt-in read-side compression of
 bulk tool/MCP output via a pluggable `ContextCompressor` seam (`swarmkit_runtime.compression`),
 wired at the tool-output boundary and active per-run (mirrors `set_active_trace`). Built-in
 lossless `ColumnarCompressor` (minify + array-of-uniform-dicts → `{columns, rows}`; ~1.6x on
-Sterling JSON). Off by default; enable with `SWARMKIT_CONTEXT_COMPRESSION=columnar`. The gate
-never inflates and never raises into a run; never applied to audit or inter-agent paths. Sterling
-ingestion already minified separately (29% free). See `design/details/context-compression.md`.
-Deferred (slice 2+): workspace-schema `context_compression:` block, lossy backends + reversible
-retrieve, OTel spans, doc-retrieval lossless lever.
+Sterling JSON). Off by default; the gate never inflates and never raises into a run; never
+applied to audit or inter-agent paths. Sterling ingestion already minified separately (29% free).
+**Slice 2** adds the declarative `context_compression:` workspace-schema block (`backend`,
+`min_bytes`) — full dual-surface schema change (JSON Schema + bundled copy + regenerated pydantic
+& TS + fixtures), resolved per-run with env (`SWARMKIT_CONTEXT_COMPRESSION` /
+`…_MIN_BYTES`) overriding the block. See `design/details/context-compression.md`.
+Deferred (slice 3+): per-surface lossy/reversible policy, lossy backends + reversible retrieve,
+OTel spans, doc-retrieval lossless lever.
 
 ### M11 — Launch prep
 
@@ -700,7 +703,7 @@ Every design note under `design/details/` and where it appears in this plan:
 |-------------|-----------|
 | `fleet-control-plane.md` | M15–M18 (proposed) |
 | `adk-lessons.md` | M15, M18 (proposed) |
-| `context-compression.md` | Cost / M14 follow-on (slice 1 built) |
+| `context-compression.md` | Cost / M14 follow-on (slices 1–2 built) |
 | `archetype-schema-v1.md` | M0 ✅ |
 | `ci-pipeline.md` | Cross-cutting ✅ |
 | `cli-unimplemented-stubs.md` | M11 |

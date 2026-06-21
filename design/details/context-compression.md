@@ -2,7 +2,7 @@
 title: Context compression — a pluggable ContextCompressor seam (with a Sterling spike)
 description: Cut tokens on the read-side (tool/MCP/RAG/log/history) via a pluggable, reversible, governed ContextCompressor at the tool-output boundary. NOT on the audit or structured inter-agent paths. Measured on Sterling's real consolidated JSON: 57%/2.3x lossless, of which 29% is free (just minify).
 tags: [cost, tokens, compression, mcp, governance, sterling, rag]
-status: slice 1 built (seam + lossless columnar, opt-in, off by default)
+status: slice 2 built (seam + lossless columnar + workspace-schema config, opt-in, off by default)
 ---
 
 # Context compression
@@ -160,7 +160,9 @@ above) needs no heavy deps and delivers the lossless tier.
    **Done (slice 1)** — `swarmkit_runtime.compression`: `ContextCompressor` Protocol +
    `maybe_compress_tool_result` gate wired into the tool loop, active per-run via
    `set_active_compressor`/`build_compressor` (mirrors `set_active_trace`). Opt-in,
-   off by default; the gate never inflates and never raises into a run.
+   off by default; the gate never inflates and never raises into a run. **Slice 2** adds
+   the declarative `context_compression:` workspace-schema block (env overrides) — see
+   Config below.
 3. Ship a **built-in deterministic columnar/JSON compactor** (lossless; on Sterling,
    1.63x over minified / 2.3x over as-written; zero heavy deps) as the default;
    headroom-style learned/lossy as an optional backend for lossy-tolerant surfaces
@@ -175,15 +177,32 @@ above) needs no heavy deps and delivers the lossless tier.
 6. Re-spike **javadocs / logs / Confluence** (the lossy-tolerant surfaces) before picking
    a lossy backend.
 
-## Slice 1 config (built)
+## Config (built)
 
-- `SWARMKIT_CONTEXT_COMPRESSION` — `columnar` (built-in lossless) | `off` (default).
-  Unknown values resolve to off (safe).
-- `SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES` — payloads below this are left untouched
-  (default 2000). Avoids columnar overhead on small results.
-- A workspace-schema `context_compression:` block + per-surface lossy/reversible policy
-  are deferred to slice 2 (workspace schema is `extra="forbid"`, so env is the slice-1
-  knob); env keeps it operator-controlled and per-deployment in the meantime.
+Declarative per workspace (**slice 2**), with env overriding per deployment.
+
+```yaml
+# workspace.yaml
+context_compression:
+  backend: columnar   # off (default) | columnar
+  min_bytes: 2000     # payloads smaller than this are left untouched
+```
+
+- `SWARMKIT_CONTEXT_COMPRESSION` — `columnar` | `off`. **Overrides** the workspace
+  `backend`. Unknown values resolve to off (safe).
+- `SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES` — **overrides** the workspace `min_bytes`.
+
+Precedence (both knobs): **env → workspace block → default (off / 2000)**. Env keeps it
+operator-controllable per deployment regardless of the committed workspace.yaml; the
+workspace block makes the intent declarative and ejectable (topology-as-data). Resolved
+once per run in `WorkspaceRuntime.run` via `build_compressor(cfg)` / `resolve_min_bytes(cfg)`
+and held in the active-compression module globals.
+
+### Per-surface lossy/reversible policy — deferred (slice 3+)
+
+The current block is a single workspace-wide lossless backend. Per-surface policy
+(which tool/RAG/log surfaces tolerate lossy + reversible `*_retrieve`), lossy backends,
+and OTel spans for compression remain deferred.
 
 ## Open questions
 

@@ -16,16 +16,35 @@ from swarmkit_runtime.compression import (
     build_compressor,
     get_active_compressor,
     maybe_compress_tool_result,
+    resolve_min_bytes,
     set_active_compressor,
+    set_active_min_bytes,
 )
 
 
 @pytest.fixture(autouse=True)
 def _reset_active() -> Iterator[None]:
-    """Each test starts with no active compressor and clears it afterwards."""
+    """Each test starts with no active compression state and clears it afterwards."""
     set_active_compressor(None)
+    set_active_min_bytes(None)
     yield
     set_active_compressor(None)
+    set_active_min_bytes(None)
+
+
+class _Backend:
+    """Stand-in for the generated pydantic backend enum (exposes .value)."""
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
+class _CompressionCfg:
+    """Stand-in for the generated ContextCompression pydantic model."""
+
+    def __init__(self, backend: str | None = None, min_bytes: int | None = None) -> None:
+        self.backend = _Backend(backend) if backend is not None else None
+        self.min_bytes = min_bytes
 
 
 # --- ColumnarCompressor: losslessness ---------------------------------------
@@ -177,3 +196,53 @@ def test_set_get_active_compressor() -> None:
     c = ColumnarCompressor()
     set_active_compressor(c)
     assert get_active_compressor() is c
+
+
+# --- workspace-config resolution (slice 2) ----------------------------------
+
+
+def test_build_compressor_from_workspace_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION", raising=False)
+    cfg = _CompressionCfg(backend="columnar")
+    assert isinstance(build_compressor(cfg), ColumnarCompressor)
+
+
+def test_build_compressor_workspace_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION", raising=False)
+    assert build_compressor(_CompressionCfg(backend="off")) is None
+
+
+def test_env_overrides_workspace_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    # workspace says off, operator forces columnar via env
+    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", "columnar")
+    assert isinstance(build_compressor(_CompressionCfg(backend="off")), ColumnarCompressor)
+
+
+def test_env_off_overrides_workspace_columnar(monkeypatch: pytest.MonkeyPatch) -> None:
+    # workspace says columnar, operator forces off via env
+    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", "off")
+    assert build_compressor(_CompressionCfg(backend="columnar")) is None
+
+
+def test_resolve_min_bytes_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES", raising=False)
+    assert resolve_min_bytes(None) == 2000
+
+
+def test_resolve_min_bytes_from_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES", raising=False)
+    assert resolve_min_bytes(_CompressionCfg(backend="columnar", min_bytes=500)) == 500
+
+
+def test_resolve_min_bytes_env_overrides_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES", "9999")
+    assert resolve_min_bytes(_CompressionCfg(min_bytes=500)) == 9999
+
+
+def test_active_min_bytes_drives_the_gate() -> None:
+    set_active_compressor(ColumnarCompressor())
+    set_active_min_bytes(100_000)
+    text = _big_json_array()
+    assert maybe_compress_tool_result(text) == text  # below the active threshold
+    set_active_min_bytes(0)
+    assert len(maybe_compress_tool_result(text)) < len(text)  # threshold lowered

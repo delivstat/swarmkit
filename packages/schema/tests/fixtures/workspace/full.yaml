@@ -51,3 +51,6 @@ storage:
     retention_days: 365
   knowledge_bases:
     default_backend: sqlite
+context_compression:
+  backend: columnar
+  min_bytes: 2000
