@@ -2,7 +2,7 @@
 title: Context compression — a pluggable ContextCompressor seam (with a Sterling spike)
 description: Cut tokens on the read-side (tool/MCP/RAG/log/history) via a pluggable, reversible, governed ContextCompressor at the tool-output boundary. NOT on the audit or structured inter-agent paths. Measured on Sterling's real consolidated JSON: 57%/2.3x lossless, of which 29% is free (just minify).
 tags: [cost, tokens, compression, mcp, governance, sterling, rag]
-status: proposal (spiked)
+status: slice 1 built (seam + lossless columnar, opt-in, off by default)
 ---
 
 # Context compression
@@ -153,13 +153,20 @@ above) needs no heavy deps and delivers the lossless tier.
 1. **Minify first (free, lossless, now).** Sterling's consolidated JSON is
    pretty-printed → ~29% of tokens are whitespace; emit/serve it compact
    (`separators=(",",":")`). One-line ingestion fix, no seam required. Audit other
-   workspaces for the same pretty-print waste.
+   workspaces for the same pretty-print waste. **Done** — Sterling ingestion minified
+   (29% banked).
 2. Build the **pluggable `ContextCompressor` seam** at the tool-output/RAG boundary —
    reversible, governed, audited; never on the audit or structured-comms paths.
+   **Done (slice 1)** — `swarmkit_runtime.compression`: `ContextCompressor` Protocol +
+   `maybe_compress_tool_result` gate wired into the tool loop, active per-run via
+   `set_active_compressor`/`build_compressor` (mirrors `set_active_trace`). Opt-in,
+   off by default; the gate never inflates and never raises into a run.
 3. Ship a **built-in deterministic columnar/JSON compactor** (lossless; on Sterling,
    1.63x over minified / 2.3x over as-written; zero heavy deps) as the default;
    headroom-style learned/lossy as an optional backend for lossy-tolerant surfaces
-   (logs/RAG/javadocs) only.
+   (logs/RAG/javadocs) only. **Done (slice 1)** — `ColumnarCompressor`
+   (minify + array-of-uniform-dicts → `{columns, rows}`), enabled with
+   `SWARMKIT_CONTEXT_COMPRESSION=columnar`.
 4. **Docs/RAG: tune retrieval first (lossless), then reversible lossy chunk compression.**
    The biggest doc win is feeding fewer/higher-signal chunks per query (score filtering),
    which loses no information; lossy prose compression of retrieved chunks is the
@@ -168,9 +175,20 @@ above) needs no heavy deps and delivers the lossless tier.
 6. Re-spike **javadocs / logs / Confluence** (the lossy-tolerant surfaces) before picking
    a lossy backend.
 
+## Slice 1 config (built)
+
+- `SWARMKIT_CONTEXT_COMPRESSION` — `columnar` (built-in lossless) | `off` (default).
+  Unknown values resolve to off (safe).
+- `SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES` — payloads below this are left untouched
+  (default 2000). Avoids columnar overhead on small results.
+- A workspace-schema `context_compression:` block + per-surface lossy/reversible policy
+  are deferred to slice 2 (workspace schema is `extra="forbid"`, so env is the slice-1
+  knob); env keeps it operator-controlled and per-deployment in the meantime.
+
 ## Open questions
 
-1. Compressor placement: tool-loop hook vs ModelProvider boundary vs external proxy
-   (lean tool-loop hook — governable + auditable).
+1. ~~Compressor placement: tool-loop hook vs ModelProvider boundary vs external proxy.~~
+   **Resolved** — tool-loop hook (`maybe_compress_tool_result` at the tool-output
+   boundary), governable + auditable.
 2. Retrieve-tool governance: scope + audit shape for `*_retrieve` recall.
 3. Per-content-type policy: which surfaces are lossless-only vs lossy-ok, as workspace config.

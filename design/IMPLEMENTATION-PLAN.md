@@ -571,6 +571,16 @@ Design note: `design/details/canary-deployments.md`. User guide: `docs/reference
 
 **Exit demo:** vedanta chat shows per-message tokens with dual model breakdown (e.g., "16,946 tok · kimi-k2.5 13,675, deepseek-v4-pro 3,271").
 
+**M14 follow-on — context compression (slice 1 ✅):** opt-in read-side compression of
+bulk tool/MCP output via a pluggable `ContextCompressor` seam (`swarmkit_runtime.compression`),
+wired at the tool-output boundary and active per-run (mirrors `set_active_trace`). Built-in
+lossless `ColumnarCompressor` (minify + array-of-uniform-dicts → `{columns, rows}`; ~1.6x on
+Sterling JSON). Off by default; enable with `SWARMKIT_CONTEXT_COMPRESSION=columnar`. The gate
+never inflates and never raises into a run; never applied to audit or inter-agent paths. Sterling
+ingestion already minified separately (29% free). See `design/details/context-compression.md`.
+Deferred (slice 2+): workspace-schema `context_compression:` block, lossy backends + reversible
+retrieve, OTel spans, doc-retrieval lossless lever.
+
 ### M11 — Launch prep
 
 **Goal:** public launch of SwarmKit as an open-source project.
@@ -690,7 +700,7 @@ Every design note under `design/details/` and where it appears in this plan:
 |-------------|-----------|
 | `fleet-control-plane.md` | M15–M18 (proposed) |
 | `adk-lessons.md` | M15, M18 (proposed) |
-| `context-compression.md` | Cost / M14 follow-on (proposed, spiked) |
+| `context-compression.md` | Cost / M14 follow-on (slice 1 built) |
 | `archetype-schema-v1.md` | M0 ✅ |
 | `ci-pipeline.md` | Cross-cutting ✅ |
 | `cli-unimplemented-stubs.md` | M11 |
