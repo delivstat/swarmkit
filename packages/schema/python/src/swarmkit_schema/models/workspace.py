@@ -291,6 +291,35 @@ class Storage(BaseModel):
     knowledge_bases: KnowledgeBases | None = None
 
 
+class Backend3(Enum):
+    """
+    Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}.
+    """
+
+    off = "off"
+    columnar = "columnar"
+
+
+class ContextCompression(BaseModel):
+    """
+    Opt-in read-side compression of bulk tool/MCP output before it re-enters an agent's context. Off by default. Never applied to the audit log or the inter-agent contract. Env vars SWARMKIT_CONTEXT_COMPRESSION and SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES override these values per deployment. See design/details/context-compression.md.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    backend: Backend3 | None = Field(
+        "off",
+        description="Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}.",
+    )
+    min_bytes: int | None = Field(
+        2000,
+        description="Payloads smaller than this (in characters) are left untouched — avoids columnar overhead on small results.",
+        ge=0,
+    )
+
+
 class Planning(BaseModel):
     """
     Default planning behavior for all topologies in this workspace. Topology-level planning overrides these defaults.
@@ -546,6 +575,7 @@ class SwarmKitWorkspace(BaseModel):
     credentials: dict[str, CredentialRef] | None = None
     mcp_servers: list[McpServer] | None = None
     storage: Storage | None = None
+    context_compression: ContextCompression | None = None
     planning: Planning | None = None
     synthesis: Synthesis | None = None
     server: ServerConfig | None = None

@@ -11,7 +11,9 @@ from swarmkit_runtime.compression._base import (
     build_compressor,
     get_active_compressor,
     maybe_compress_tool_result,
+    resolve_min_bytes,
     set_active_compressor,
+    set_active_min_bytes,
 )
 from swarmkit_runtime.compression._columnar import ColumnarCompressor
 
@@ -21,5 +23,7 @@ __all__ = [
     "build_compressor",
     "get_active_compressor",
     "maybe_compress_tool_result",
+    "resolve_min_bytes",
     "set_active_compressor",
+    "set_active_min_bytes",
 ]

@@ -7,23 +7,49 @@
  * See design §9.3 and design/details/workspace-schema-v1.md.
  */
 export interface SwarmKitWorkspace {
-    apiVersion:       APIVersion;
-    credentials?:     { [key: string]: CredentialValue };
-    governance?:      Governance;
-    identity?:        Identity;
-    kind:             Kind;
-    mcp_servers?:     MCPServerElement[];
-    metadata:         Metadata;
-    model_providers?: ModelProviderElement[];
-    organisation?:    Organisation;
-    planning?:        Planning;
-    server?:          Server;
-    storage?:         Storage;
-    synthesis?:       Synthesis;
-    team?:            Organisation;
+    apiVersion:           APIVersion;
+    context_compression?: ContextCompression;
+    credentials?:         { [key: string]: CredentialValue };
+    governance?:          Governance;
+    identity?:            Identity;
+    kind:                 Kind;
+    mcp_servers?:         MCPServerElement[];
+    metadata:             Metadata;
+    model_providers?:     ModelProviderElement[];
+    organisation?:        Organisation;
+    planning?:            Planning;
+    server?:              Server;
+    storage?:             Storage;
+    synthesis?:           Synthesis;
+    team?:                Organisation;
 }
 
 export type APIVersion = "swarmkit/v1";
+
+/**
+ * Opt-in read-side compression of bulk tool/MCP output before it re-enters an agent's
+ * context. Off by default. Never applied to the audit log or the inter-agent contract. Env
+ * vars SWARMKIT_CONTEXT_COMPRESSION and SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES override
+ * these values per deployment. See design/details/context-compression.md.
+ */
+export interface ContextCompression {
+    /**
+     * Compression backend. off (default): no compression. columnar: built-in lossless JSON
+     * minify + array-of-uniform-dicts rewrite to {columns, rows}.
+     */
+    backend?: ContextCompressionBackend;
+    /**
+     * Payloads smaller than this (in characters) are left untouched — avoids columnar overhead
+     * on small results.
+     */
+    min_bytes?: number;
+}
+
+/**
+ * Compression backend. off (default): no compression. columnar: built-in lossless JSON
+ * minify + array-of-uniform-dicts rewrite to {columns, rows}.
+ */
+export type ContextCompressionBackend = "off" | "columnar";
 
 export interface CredentialValue {
     /**

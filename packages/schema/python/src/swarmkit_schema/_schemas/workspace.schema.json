@@ -27,6 +27,7 @@
       "items": { "$ref": "#/$defs/mcp_server" }
     },
     "storage": { "$ref": "#/$defs/storage" },
+    "context_compression": { "$ref": "#/$defs/context_compression" },
     "planning": { "$ref": "#/$defs/planning" },
     "synthesis": { "$ref": "#/$defs/synthesis" },
     "server": { "$ref": "#/$defs/server_config" }
@@ -273,6 +274,24 @@
           "properties": {
             "default_backend": { "enum": ["sqlite", "postgres"] }
           }
+        }
+      }
+    },
+    "context_compression": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Opt-in read-side compression of bulk tool/MCP output before it re-enters an agent's context. Off by default. Never applied to the audit log or the inter-agent contract. Env vars SWARMKIT_CONTEXT_COMPRESSION and SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES override these values per deployment. See design/details/context-compression.md.",
+      "properties": {
+        "backend": {
+          "enum": ["off", "columnar"],
+          "default": "off",
+          "description": "Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}."
+        },
+        "min_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2000,
+          "description": "Payloads smaller than this (in characters) are left untouched — avoids columnar overhead on small results."
         }
       }
     },

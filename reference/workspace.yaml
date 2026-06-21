@@ -29,3 +29,9 @@ storage:
   checkpoints:
     backend: sqlite
     path: ./.swarmkit/state
+# Opt-in read-side compression of bulk tool/MCP output (off by default). The built-in
+# columnar backend is lossless. Env vars override per deployment. See
+# design/details/context-compression.md.
+context_compression:
+  backend: "off" # quoted — bare off is YAML boolean false; "columnar" to enable
+  min_bytes: 2000
