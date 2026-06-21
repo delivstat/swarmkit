@@ -10,6 +10,7 @@ import os
 import sys
 from typing import Any
 
+from swarmkit_runtime.compression import maybe_compress_tool_result
 from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.model_providers import CompletionResponse, ContentBlock, Message
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
@@ -441,6 +442,10 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
             text_result, images = raw_result
         else:
             text_result, images = raw_result, []
+        # Read-side context compression (opt-in, off by default; lossless columnar).
+        # Applied here so the agent's context holds the compact form. Never on the
+        # audit log (recorded separately) or the inter-agent contract.
+        text_result = maybe_compress_tool_result(text_result or "")
         _record_tool_call(
             tool_name=block.tool_name,
             arguments=block.tool_input if isinstance(block.tool_input, dict) else {},

@@ -386,6 +386,10 @@ class WorkspaceRuntime:
         """
         from uuid import uuid4  # noqa: PLC0415
 
+        from swarmkit_runtime.compression import (  # noqa: PLC0415
+            build_compressor,
+            set_active_compressor,
+        )
         from swarmkit_runtime.langgraph_compiler._compiler import set_active_trace  # noqa: PLC0415
         from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
 
@@ -396,6 +400,8 @@ class WorkspaceRuntime:
         trace = RunTrace()
         trace.start(run_thread, topology_name)
         set_active_trace(trace)
+        # Opt-in read-side context compression for this run (off unless env-configured).
+        set_active_compressor(build_compressor())
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
 
@@ -436,6 +442,7 @@ class WorkspaceRuntime:
                 },
             )
         finally:
+            set_active_compressor(None)
             if owns_mcp and self._mcp_manager is not None:
                 await self._mcp_manager.close_all()
 
