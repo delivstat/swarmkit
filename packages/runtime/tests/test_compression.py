@@ -8,6 +8,7 @@ into a run, and stay off unless explicitly enabled.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
 from types import SimpleNamespace
@@ -47,10 +48,17 @@ class _Backend:
 
 class CompressionOverride:
     def __init__(
-        self, match: str, backend: str | None = None, min_bytes: int | None = None
+        self,
+        match: str | None = None,
+        backend: str | None = None,
+        min_bytes: int | None = None,
+        match_server: str | None = None,
+        backend_class: str | None = None,
     ) -> None:
         self.match = match
+        self.match_server = match_server
         self.backend = _Backend(backend) if backend is not None else None
+        self.backend_class = backend_class
         self.min_bytes = min_bytes
 
 
@@ -60,8 +68,10 @@ class ContextCompression:
         backend: str | None = None,
         min_bytes: int | None = None,
         overrides: list[CompressionOverride] | None = None,
+        backend_class: str | None = None,
     ) -> None:
         self.backend = _Backend(backend) if backend is not None else None
+        self.backend_class = backend_class
         self.min_bytes = min_bytes
         self.overrides = overrides
 
@@ -366,3 +376,91 @@ def test_retrieve_tool_offered_only_when_reversible() -> None:
     set_active_policy(None)
     names = {t.name for t in _build_tools(_bare_agent())}
     assert "context_retrieve" not in names
+
+
+# --- server-id surface matching ---------------------------------------------
+
+
+def test_resolve_by_server_id() -> None:
+    cfg = ContextCompression(
+        backend="off",
+        overrides=[CompressionOverride(match_server="frigate", backend="headtail")],
+    )
+    policy = build_policy(cfg)
+    assert policy is not None
+    # matches by server id regardless of tool name
+    assert policy.resolve("get-events", "frigate").backend == "headtail"
+    # non-matching server → default (off)
+    assert policy.resolve("get-events", "other").compressor is None
+
+
+def test_server_override_in_gate() -> None:
+    set_active_policy(
+        build_policy(
+            ContextCompression(
+                backend="off",
+                overrides=[
+                    CompressionOverride(match_server="logs-*", backend="headtail", min_bytes=0)
+                ],
+            )
+        )
+    )
+    big = "L" * 50_000
+    assert maybe_compress_tool_result(big, "anything", "other-server") == big
+    out = maybe_compress_tool_result(big, "anything", "logs-prod")
+    assert len(out) < len(big)
+
+
+# --- pluggable backend seam -------------------------------------------------
+
+
+def test_plugin_backend_loads_class_path() -> None:
+    # Any importable ContextCompressor works; reuse the built-in headtail via its class path
+    # to exercise the loader without sys.path fragility.
+    policy = build_policy(
+        ContextCompression(
+            backend="plugin",
+            backend_class="swarmkit_runtime.compression._headtail.HeadTailCompressor",
+            min_bytes=0,
+        )
+    )
+    assert policy is not None
+    assert policy.default.backend == "headtail"
+    assert policy.default.reversible is True
+
+
+def test_plugin_backend_bad_class_is_safe_off() -> None:
+    policy = build_policy(
+        ContextCompression(backend="plugin", backend_class="nope.DoesNotExist", min_bytes=0)
+    )
+    # unresolvable plugin → no compressor → policy is None (fast no-op), never raises
+    assert policy is None
+
+
+def test_plugin_backend_non_compressor_class_is_safe_off() -> None:
+    # a class that isn't a ContextCompressor (no compress/reversible) → safe-off
+    policy = build_policy(
+        ContextCompression(backend="plugin", backend_class="pathlib.Path", min_bytes=0)
+    )
+    assert policy is None
+
+
+# --- per-run isolation (contextvars) ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_policy_isolated_across_concurrent_contexts() -> None:
+    async def run_with(backend: str, probe: str) -> str:
+        # set_active_policy sets a ContextVar; each task has its own copy of the context,
+        # so concurrent runs must not see each other's policy.
+        set_active_policy(build_policy(ContextCompression(backend=backend, min_bytes=0)))
+        await asyncio.sleep(0.01)  # yield so the tasks interleave
+        return maybe_compress_tool_result(probe, "tool")
+
+    big = _big_json_array()
+    columnar_out, off_out = await asyncio.gather(
+        asyncio.create_task(run_with("columnar", big)),
+        asyncio.create_task(run_with("off", big)),
+    )
+    assert len(columnar_out) < len(big)  # columnar context compressed
+    assert off_out == big  # off context untouched — no clobber

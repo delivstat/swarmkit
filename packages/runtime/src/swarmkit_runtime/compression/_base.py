@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import Any, Protocol, runtime_checkable
 
@@ -49,8 +50,31 @@ class ContextCompressor(Protocol):
     def compress(self, text: str, ref: str | None = None) -> str: ...
 
 
-def _make_compressor(name: str) -> ContextCompressor | None:
-    """Instantiate a backend by name, or None for off/unknown (safe)."""
+def _load_plugin_compressor(class_path: str) -> ContextCompressor | None:
+    """Import and instantiate a custom backend from a fully-qualified class path.
+
+    The pluggable seam: third-party / learned backends register without a runtime edit,
+    same shape as model_providers' class-path config. Returns None (safe-off) on any
+    import/instantiation failure or if the result isn't a ContextCompressor.
+    """
+    if not class_path or "." not in class_path:
+        return None
+    import importlib  # noqa: PLC0415
+
+    module_path, _, cls_name = class_path.rpartition(".")
+    try:
+        module = importlib.import_module(module_path)
+        cls = getattr(module, cls_name)
+        instance = cls()
+    except Exception:  # a bad plugin must not break a run; resolve to off
+        return None
+    if not isinstance(instance, ContextCompressor):
+        return None
+    return instance
+
+
+def _make_compressor(name: str, backend_class: str = "") -> ContextCompressor | None:
+    """Instantiate a backend by name (or class path for ``plugin``), or None for off/unknown."""
     n = (name or "").strip().lower()
     if not n or n in _OFF_EXPLICIT:
         return None
@@ -64,6 +88,8 @@ def _make_compressor(name: str) -> ContextCompressor | None:
         from swarmkit_runtime.compression._headtail import HeadTailCompressor  # noqa: PLC0415
 
         return HeadTailCompressor()
+    if n == "plugin":
+        return _load_plugin_compressor(backend_class)
     return None
 
 
@@ -81,25 +107,39 @@ class CompressionRule:
 
 
 @dataclass(frozen=True)
+class SurfaceOverride:
+    """A per-surface rule plus the globs that select it (by tool name and/or server id)."""
+
+    tool_glob: str
+    server_glob: str
+    rule: CompressionRule
+
+    def matches(self, tool_name: str, server_id: str) -> bool:
+        if self.tool_glob and fnmatch(tool_name, self.tool_glob):
+            return True
+        return bool(self.server_glob and server_id and fnmatch(server_id, self.server_glob))
+
+
+@dataclass(frozen=True)
 class CompressionPolicy:
-    """A default rule plus tool-name-glob overrides. ``resolve`` picks the rule for a tool."""
+    """A default rule plus per-surface overrides. ``resolve`` picks the rule for a call."""
 
     default: CompressionRule
-    overrides: tuple[tuple[str, CompressionRule], ...] = ()
+    overrides: tuple[SurfaceOverride, ...] = ()
 
-    def resolve(self, tool_name: str) -> CompressionRule:
-        for glob, rule in self.overrides:
-            if glob and fnmatch(tool_name, glob):
-                return rule
+    def resolve(self, tool_name: str, server_id: str = "") -> CompressionRule:
+        for ov in self.overrides:
+            if ov.matches(tool_name, server_id):
+                return ov.rule
         return self.default
 
     @property
     def any_reversible(self) -> bool:
-        return self.default.reversible or any(r.reversible for _, r in self.overrides)
+        return self.default.reversible or any(ov.rule.reversible for ov in self.overrides)
 
 
-def _make_rule(backend_name: str, min_bytes: int) -> CompressionRule:
-    comp = _make_compressor(backend_name)
+def _make_rule(backend_name: str, min_bytes: int, backend_class: str = "") -> CompressionRule:
+    comp = _make_compressor(backend_name, backend_class)
     return CompressionRule(
         backend=comp.name if comp else "off",
         compressor=comp,
@@ -135,6 +175,11 @@ def _cfg_min_bytes(cfg: Any) -> int | None:
     return mb if isinstance(mb, int) else None
 
 
+def _cfg_str(cfg: Any, attr: str) -> str:
+    val = getattr(cfg, attr, None) if cfg is not None else None
+    return val.strip() if isinstance(val, str) else ""
+
+
 def _cfg_overrides(cfg: Any) -> list[Any]:
     ov = getattr(cfg, "overrides", None) if cfg is not None else None
     return list(ov) if isinstance(ov, list) else []
@@ -146,82 +191,106 @@ def build_policy(workspace_cfg: Any = None) -> CompressionPolicy | None:
     Precedence for the default rule: ``SWARMKIT_CONTEXT_COMPRESSION`` /
     ``…_MIN_BYTES`` env vars, then the workspace ``context_compression`` block, then off /
     2000. An explicit env ``off`` disables compression entirely (including overrides).
-    Per-surface ``overrides`` come from the workspace block only.
+    Per-surface ``overrides`` (matched by tool-name and/or server-id glob) come from the
+    workspace block only.
     """
     env_b = _env_backend()
     if env_b in _OFF_EXPLICIT:
         return None  # operator force-off
 
     default_backend = env_b or _cfg_backend(workspace_cfg) or "off"
+    default_class = _cfg_str(workspace_cfg, "backend_class")
     default_min = _env_min_bytes()
     if default_min is None:
         default_min = _cfg_min_bytes(workspace_cfg)
     if default_min is None:
         default_min = DEFAULT_MIN_BYTES
-    default_rule = _make_rule(default_backend, default_min)
+    default_rule = _make_rule(default_backend, default_min, default_class)
 
-    overrides: list[tuple[str, CompressionRule]] = []
+    overrides: list[SurfaceOverride] = []
     for ov in _cfg_overrides(workspace_cfg):
-        match = getattr(ov, "match", None)
-        if not isinstance(match, str) or not match:
+        tool_glob = _cfg_str(ov, "match")
+        server_glob = _cfg_str(ov, "match_server")
+        if not tool_glob and not server_glob:
             continue
         ov_backend = _cfg_backend(ov) or default_backend
+        ov_class = _cfg_str(ov, "backend_class") or default_class
         ov_min = _cfg_min_bytes(ov)
         if ov_min is None:
             ov_min = default_min
-        overrides.append((match, _make_rule(ov_backend, ov_min)))
+        overrides.append(
+            SurfaceOverride(
+                tool_glob=tool_glob,
+                server_glob=server_glob,
+                rule=_make_rule(ov_backend, ov_min, ov_class),
+            )
+        )
 
-    if default_rule.compressor is None and not any(r.compressor for _, r in overrides):
+    if default_rule.compressor is None and not any(ov.rule.compressor for ov in overrides):
         return None  # nothing to compress — fast no-op
     return CompressionPolicy(default=default_rule, overrides=tuple(overrides))
 
 
 # --- active policy + per-run original store ---------------------------------
 
-_active_policy: CompressionPolicy | None = None
-_original_store: dict[str, str] = {}
-_ref_counter: int = 0
+
+@dataclass
+class _RunState:
+    """Per-run compression state: the policy + the reversible original store + ref counter."""
+
+    policy: CompressionPolicy | None
+    store: dict[str, str] = field(default_factory=dict)
+    counter: int = 0
+
+
+# ContextVar (not a module global): asyncio copies the context when a task is created, so
+# concurrent runs in one process — e.g. jobs under `swarmkit serve` — each see their own
+# policy and original store instead of clobbering a shared global. Mirrors _active_trace.
+_run_state_var: ContextVar[_RunState | None] = ContextVar(
+    "swarmkit_compression_state", default=None
+)
 
 
 def set_active_policy(policy: CompressionPolicy | None) -> None:
-    """Install (or clear) the policy for the current run and reset the original store."""
-    global _active_policy, _ref_counter  # noqa: PLW0603
-    _active_policy = policy
-    _ref_counter = 0
-    _original_store.clear()
+    """Install (or clear) the policy for the current run context, with a fresh original store."""
+    _run_state_var.set(_RunState(policy=policy) if policy is not None else None)
 
 
 def get_active_policy() -> CompressionPolicy | None:
-    return _active_policy
+    state = _run_state_var.get()
+    return state.policy if state is not None else None
 
 
 def get_original(ref: str) -> str | None:
     """Return the stashed pre-compression original for a ref, or None if unknown/expired."""
-    return _original_store.get(ref)
+    state = _run_state_var.get()
+    return state.store.get(ref) if state is not None else None
 
 
-def _make_ref(tool_name: str) -> str:
-    global _ref_counter  # noqa: PLW0603
-    _ref_counter += 1
+def _next_ref(state: _RunState, tool_name: str) -> str:
+    state.counter += 1
     safe = re.sub(r"[^a-z0-9_-]", "-", (tool_name or "ctx").lower())[:40]
-    return f"{safe}-{_ref_counter}"
+    return f"{safe}-{state.counter}"
 
 
-def _stash_original(ref: str, text: str) -> None:
-    _original_store[ref] = text
-    if len(_original_store) > _MAX_STASH:
+def _stash_original(state: _RunState, ref: str, text: str) -> None:
+    state.store[ref] = text
+    if len(state.store) > _MAX_STASH:
         # drop oldest (dict preserves insertion order)
-        for key in list(_original_store)[: len(_original_store) - _MAX_STASH]:
-            del _original_store[key]
+        for key in list(state.store)[: len(state.store) - _MAX_STASH]:
+            del state.store[key]
 
 
 def _record_compression(tool_name: str, backend: str, bytes_in: int, bytes_out: int) -> None:
     """Best-effort: record savings into the active trace + OTel. Never raises."""
     try:
-        from swarmkit_runtime.langgraph_compiler._compiler import _active_trace  # noqa: PLC0415
+        from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
+            get_active_trace,
+        )
 
-        if _active_trace is not None:
-            _active_trace.record_compression(tool_name, backend, bytes_in, bytes_out)
+        trace = get_active_trace()
+        if trace is not None:
+            trace.record_compression(tool_name, backend, bytes_in, bytes_out)
     except Exception:  # telemetry must never break a run
         pass
     try:
@@ -232,17 +301,17 @@ def _record_compression(tool_name: str, backend: str, bytes_in: int, bytes_out: 
         pass
 
 
-def maybe_compress_tool_result(text: str, tool_name: str = "") -> str:
+def maybe_compress_tool_result(text: str, tool_name: str = "", server_id: str = "") -> str:
     """Compress a tool/MCP result per the active policy if the payload is worth it.
 
-    Resolves the per-surface rule for ``tool_name``. For reversible backends, stashes the
-    original under a fresh ref so ``context_retrieve`` can recall it. Never inflates, never
-    raises — returns the original on any miss/error.
+    Resolves the per-surface rule for ``tool_name`` / ``server_id``. For reversible backends,
+    stashes the original under a fresh ref so ``context_retrieve`` can recall it. Never
+    inflates, never raises — returns the original on any miss/error.
     """
-    policy = _active_policy
-    if policy is None or not text:
+    state = _run_state_var.get()
+    if state is None or state.policy is None or not text:
         return text
-    rule = policy.resolve(tool_name)
+    rule = state.policy.resolve(tool_name, server_id)
     comp = rule.compressor
     if comp is None or len(text) < rule.min_bytes:
         return text
@@ -250,7 +319,7 @@ def maybe_compress_tool_result(text: str, tool_name: str = "") -> str:
     ref: str | None = None
     try:
         if rule.reversible:
-            ref = _make_ref(tool_name)
+            ref = _next_ref(state, tool_name)
             out = comp.compress(text, ref)
         else:
             out = comp.compress(text)
@@ -260,7 +329,7 @@ def maybe_compress_tool_result(text: str, tool_name: str = "") -> str:
         return text  # no benefit (or inflated) — keep the original
 
     if rule.reversible and ref is not None:
-        _stash_original(ref, text)
+        _stash_original(state, ref, text)
     _record_compression(tool_name, rule.backend, len(text), len(out))
 
     if os.environ.get("SWARMKIT_VERBOSE"):

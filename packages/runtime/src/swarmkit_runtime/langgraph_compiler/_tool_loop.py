@@ -23,11 +23,12 @@ from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomp
 def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResponse) -> None:
     """Record tokens from a tool-loop LLM call into the active trace."""
     from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
-        _active_trace,
+        get_active_trace,
     )
 
-    if _active_trace is not None:
-        _active_trace.record_llm_call(
+    trace = get_active_trace()
+    if trace is not None:
+        trace.record_llm_call(
             agent_id=agent_id,
             model=model,
             input_tokens=response.usage.input_tokens,
@@ -44,15 +45,16 @@ def _record_tool_call(
 ) -> None:
     """Record a tool/MCP call into the active trace's current step."""
     from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
-        _active_trace,
+        get_active_trace,
     )
     from swarmkit_runtime.trace import ToolCall  # noqa: PLC0415
 
-    if _active_trace is None:
+    trace = get_active_trace()
+    if trace is None:
         return
-    if not _active_trace.agent_steps:
+    if not trace.agent_steps:
         return
-    _active_trace.agent_steps[-1].tool_calls.append(
+    trace.agent_steps[-1].tool_calls.append(
         ToolCall(
             tool_name=tool_name,
             arguments=arguments,
@@ -316,6 +318,13 @@ async def _handle_context_retrieve(
     )
 
 
+def _skill_server_id(skill: Any) -> str:
+    """The MCP server id behind a skill, or '' for non-MCP skills (for compression overrides)."""
+    impl = getattr(getattr(skill, "raw", None), "implementation", None)
+    server = impl.get("server", "") if isinstance(impl, dict) else getattr(impl, "server", "")
+    return server if isinstance(server, str) else ""
+
+
 _DEFAULT_READ_PREFIXES = "read-,get-,list-,download-,describe-,explain-,render-"
 
 
@@ -520,9 +529,12 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
         else:
             text_result, images = raw_result, []
         # Read-side context compression (opt-in, off by default). Per-surface policy keyed
-        # by tool name. Applied here so the agent's context holds the compact form. Never on
-        # the audit log (recorded separately) or the inter-agent contract.
-        text_result = maybe_compress_tool_result(text_result or "", block.tool_name)
+        # by tool name and (for MCP tools) server id. Applied here so the agent's context
+        # holds the compact form. Never on the audit log (recorded separately) or the
+        # inter-agent contract.
+        text_result = maybe_compress_tool_result(
+            text_result or "", block.tool_name, _skill_server_id(skill)
+        )
         _record_tool_call(
             tool_name=block.tool_name,
             arguments=block.tool_input if isinstance(block.tool_input, dict) else {},

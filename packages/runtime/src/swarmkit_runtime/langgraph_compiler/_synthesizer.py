@@ -242,10 +242,11 @@ def _record_trace(
 ) -> None:
     """Record synthesizer call in the active run trace."""
 
-    from swarmkit_runtime.langgraph_compiler._compiler import _active_trace  # noqa: PLC0415
+    from swarmkit_runtime.langgraph_compiler._compiler import get_active_trace  # noqa: PLC0415
     from swarmkit_runtime.trace import AgentStep  # noqa: PLC0415
 
-    if _active_trace is None:
+    trace = get_active_trace()
+    if trace is None:
         return
 
     input_tokens = getattr(usage, "input_tokens", 0) or 0
@@ -264,7 +265,7 @@ def _record_trace(
         total_tokens=input_tokens + output_tokens,
         result_length=result_length,
     )
-    _active_trace.add_step(step)
+    trace.add_step(step)
 
     _progress(
         f"[synthesizer] tokens: {input_tokens:,} in / {output_tokens:,} out / "
