@@ -58,5 +58,7 @@ context_compression:
     - match: "get-logs*"
       backend: headtail
       min_bytes: 4000
+    - match_server: "frigate"
+      backend: headtail
     - match: "search-*"
       backend: "off"

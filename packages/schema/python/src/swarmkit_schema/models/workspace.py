@@ -293,17 +293,18 @@ class Storage(BaseModel):
 
 class CompressionBackend(Enum):
     """
-    Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy — keep head+tail, elide the middle, recallable via the context_retrieve tool (for lossy-tolerant surfaces like logs).
+    Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy — keep head+tail, elide the middle, recallable via the context_retrieve tool (for lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by backend_class.
     """
 
     off = "off"
     columnar = "columnar"
     headtail = "headtail"
+    plugin = "plugin"
 
 
-class CompressionOverride(BaseModel):
+class CompressionOverride1(BaseModel):
     """
-    A per-surface compression rule.
+    A per-surface compression rule. At least one of match / match_server is required.
     """
 
     model_config = ConfigDict(
@@ -315,7 +316,47 @@ class CompressionOverride(BaseModel):
         description="Glob matched against the tool/skill name (e.g. 'get-logs', 'frigate*').",
         min_length=1,
     )
+    match_server: str | None = Field(
+        None,
+        description="Glob matched against the MCP server id backing the tool (e.g. 'frigate', 'logs-*').",
+        min_length=1,
+    )
     backend: CompressionBackend | None = "off"
+    backend_class: str | None = Field(
+        None,
+        description="Fully-qualified Python class path of a custom ContextCompressor (used when backend=plugin), e.g. 'my_pkg.compressors.LearnedCompressor'.",
+    )
+    min_bytes: int | None = Field(
+        2000,
+        description="Payloads smaller than this (in characters) are left untouched — avoids overhead on small results.",
+        ge=0,
+    )
+
+
+class CompressionOverride2(BaseModel):
+    """
+    A per-surface compression rule. At least one of match / match_server is required.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    match: str | None = Field(
+        None,
+        description="Glob matched against the tool/skill name (e.g. 'get-logs', 'frigate*').",
+        min_length=1,
+    )
+    match_server: str = Field(
+        ...,
+        description="Glob matched against the MCP server id backing the tool (e.g. 'frigate', 'logs-*').",
+        min_length=1,
+    )
+    backend: CompressionBackend | None = "off"
+    backend_class: str | None = Field(
+        None,
+        description="Fully-qualified Python class path of a custom ContextCompressor (used when backend=plugin), e.g. 'my_pkg.compressors.LearnedCompressor'.",
+    )
     min_bytes: int | None = Field(
         2000,
         description="Payloads smaller than this (in characters) are left untouched — avoids overhead on small results.",
@@ -492,14 +533,18 @@ class ContextCompression(BaseModel):
         populate_by_name=True,
     )
     backend: CompressionBackend | None = "off"
+    backend_class: str | None = Field(
+        None,
+        description="Fully-qualified Python class path of a custom ContextCompressor (used when backend=plugin), e.g. 'my_pkg.compressors.LearnedCompressor'.",
+    )
     min_bytes: int | None = Field(
         2000,
         description="Payloads smaller than this (in characters) are left untouched — avoids overhead on small results.",
         ge=0,
     )
-    overrides: list[CompressionOverride] | None = Field(
+    overrides: list[CompressionOverride1 | CompressionOverride2] | None = Field(
         None,
-        description="Per-surface rules matched by tool-name glob. The first override whose 'match' globs the tool name wins; otherwise the top-level backend/min_bytes apply.",
+        description="Per-surface rules matched by tool-name and/or server-id glob. The first override that matches wins; otherwise the top-level backend/min_bytes apply.",
     )
 
 

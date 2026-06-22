@@ -58,6 +58,7 @@ SHAPE_ONLY_INVALID: set[tuple[str, str]] = {
     ("skill-invalid", "decision-missing-reasoning.yaml"),
     ("skill-invalid", "decision-reasoning-wrong-type.yaml"),
     ("workspace-invalid", "credential-plugin-missing-provider-id.yaml"),
+    ("workspace-invalid", "context-compression-plugin-missing-class.yaml"),
     ("workspace-invalid", "mcp-http-missing-endpoint.yaml"),
     ("workspace-invalid", "mcp-stdio-missing-command.yaml"),
     ("trigger-invalid", "cron-missing-config.yaml"),

@@ -1,0 +1,8 @@
+# backend=plugin requires backend_class.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+context_compression:
+  backend: plugin

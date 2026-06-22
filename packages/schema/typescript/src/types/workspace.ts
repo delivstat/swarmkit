@@ -33,11 +33,12 @@ export type APIVersion = "swarmkit/v1";
  * default per deployment. See design/details/context-compression.md.
  */
 export interface ContextCompression {
-    backend?:   ContextCompressionBackend;
-    min_bytes?: number;
+    backend?:       ContextCompressionBackend;
+    backend_class?: string;
+    min_bytes?:     number;
     /**
-     * Per-surface rules matched by tool-name glob. The first override whose 'match' globs the
-     * tool name wins; otherwise the top-level backend/min_bytes apply.
+     * Per-surface rules matched by tool-name and/or server-id glob. The first override that
+     * matches wins; otherwise the top-level backend/min_bytes apply.
      */
     overrides?: OverrideElement[];
 }
@@ -46,20 +47,26 @@ export interface ContextCompression {
  * Compression backend. off (default): no compression. columnar: built-in lossless JSON
  * minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy —
  * keep head+tail, elide the middle, recallable via the context_retrieve tool (for
- * lossy-tolerant surfaces like logs).
+ * lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by
+ * backend_class.
  */
-export type ContextCompressionBackend = "off" | "columnar" | "headtail";
+export type ContextCompressionBackend = "off" | "columnar" | "headtail" | "plugin";
 
 /**
- * A per-surface compression rule.
+ * A per-surface compression rule. At least one of match / match_server is required.
  */
 export interface OverrideElement {
-    backend?: ContextCompressionBackend;
+    backend?:       ContextCompressionBackend;
+    backend_class?: string;
     /**
      * Glob matched against the tool/skill name (e.g. 'get-logs', 'frigate*').
      */
-    match:      string;
-    min_bytes?: number;
+    match?: string;
+    /**
+     * Glob matched against the MCP server id backing the tool (e.g. 'frigate', 'logs-*').
+     */
+    match_server?: string;
+    min_bytes?:    number;
 }
 
 export interface CredentialValue {
