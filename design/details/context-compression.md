@@ -2,7 +2,7 @@
 title: Context compression — a pluggable ContextCompressor seam (with a Sterling spike)
 description: Cut tokens on the read-side (tool/MCP/RAG/log/history) via a pluggable, reversible, governed ContextCompressor at the tool-output boundary. NOT on the audit or structured inter-agent paths. Measured on Sterling's real consolidated JSON: 57%/2.3x lossless, of which 29% is free (just minify).
 tags: [cost, tokens, compression, mcp, governance, sterling, rag]
-status: slice 2 built (seam + lossless columnar + workspace-schema config, opt-in, off by default)
+status: slice 3 built (per-surface policy + reversible headtail + context_retrieve + OTel + doc lever)
 ---
 
 # Context compression
@@ -179,35 +179,104 @@ above) needs no heavy deps and delivers the lossless tier.
 
 ## Config (built)
 
-Declarative per workspace (**slice 2**), with env overriding per deployment.
+Declarative per workspace, with env overriding the default per deployment.
 
 ```yaml
 # workspace.yaml
 context_compression:
-  backend: columnar   # off (default) | columnar
-  min_bytes: 2000     # payloads smaller than this are left untouched
+  backend: columnar           # off (default) | columnar (lossless) | headtail (reversible-lossy) | plugin
+  min_bytes: 2000             # payloads smaller than this are left untouched
+  overrides:                  # per-surface rules, matched by tool-name and/or server-id glob
+    - match: "get-logs*"      # by tool name — logs tolerate lossy + recall
+      backend: headtail
+      min_bytes: 4000
+    - match_server: "frigate" # by MCP server id — applies to every tool on that server
+      backend: headtail
+    - match: "search-*"       # never compress search results
+      backend: "off"
+    - match: "*"              # custom/learned backend by class path
+      backend: plugin
+      backend_class: "my_pkg.compressors.LearnedCompressor"
 ```
 
-- `SWARMKIT_CONTEXT_COMPRESSION` — `columnar` | `off`. **Overrides** the workspace
-  `backend`. Unknown values resolve to off (safe).
-- `SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES` — **overrides** the workspace `min_bytes`.
+- `SWARMKIT_CONTEXT_COMPRESSION` — `columnar` | `headtail` | `off`. **Overrides** the
+  workspace default `backend`. An explicit `off` disables compression entirely (including
+  overrides). Unknown values resolve to off (safe).
+- `SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES` — **overrides** the default `min_bytes`.
 
-Precedence (both knobs): **env → workspace block → default (off / 2000)**. Env keeps it
-operator-controllable per deployment regardless of the committed workspace.yaml; the
-workspace block makes the intent declarative and ejectable (topology-as-data). Resolved
-once per run in `WorkspaceRuntime.run` via `build_compressor(cfg)` / `resolve_min_bytes(cfg)`
-and held in the active-compression module globals.
+Precedence (default rule): **env → workspace block → default (off / 2000)**. Per-surface
+`overrides` come from the workspace block; the first whose `match` (tool-name glob) **or**
+`match_server` (MCP-server-id glob) matches wins. Resolved once per run in
+`WorkspaceRuntime.run` into a `CompressionPolicy` (`build_policy(cfg)` → `set_active_policy`).
 
-### Per-surface lossy/reversible policy — deferred (slice 3+)
+### Per-run isolation
 
-The current block is a single workspace-wide lossless backend. Per-surface policy
-(which tool/RAG/log surfaces tolerate lossy + reversible `*_retrieve`), lossy backends,
-and OTel spans for compression remain deferred.
+The active policy + original store live in a **`ContextVar`**, not a module global —
+asyncio copies the context when a task is created, so concurrent runs in one process
+(e.g. jobs under `swarmkit serve`) each see their own policy and store instead of
+clobbering shared state. `_active_trace` was migrated to the same `ContextVar` pattern for
+consistency (it had the same latent limitation).
+
+### Backends
+
+- **`columnar`** (lossless) — minify + array-of-uniform-dicts → `{columns, rows}`. The
+  agent reads the compact form directly; round-trips to the same records.
+- **`headtail`** (reversible-lossy, slice 3) — keep head + tail, elide the middle behind a
+  `context_retrieve(ref, offset, limit)` marker. The seam stashes the original in a
+  per-run in-memory store keyed by the ref. Lossy *at the point of read* but no information
+  is destroyed — recall is deferred. For lossy-tolerant surfaces (logs, verbose dumps).
+- **`plugin`** (slice 3) — a custom `ContextCompressor` named by `backend_class` (a
+  fully-qualified Python class path, same shape as `model_providers`). Imported and
+  instantiated at policy-build time; if the class is missing or isn't a `ContextCompressor`,
+  it resolves to off (safe). This is how learned/LLM backends register without a runtime
+  edit — the Protocol is the extension seam.
+
+### `context_retrieve` — governance + audit (resolves open question #2)
+
+Retrieval reads back content **already delivered** to the agent (compressed), so it is not
+a privilege escalation — no grantable scope gates it. The handler still routes through
+`governance.evaluate_action(action="context:retrieve:<ref>", scopes_required=∅)` so every
+recall is recorded in the audit trail. The tool is only offered to agents when a reversible
+backend is active for the run (otherwise it's a misleading tool nothing produces refs for),
+and it returns a ranged window so a large original can be paged without re-hitting the
+result-truncation cap.
+
+### Observability (slice 3)
+
+Per-result savings are recorded into `RunTrace` (`compression_bytes_in/out`,
+`compression_by_backend`), surfaced in the CLI run summary
+(`context compression: X -> Y chars (N% off)`), and emitted as OTel metrics
+(`swarmkit.compression.bytes_saved.total` counter, `swarmkit.compression.ratio`
+histogram).
+
+### Doc/RAG lossless lever (slice 3)
+
+`knowledge.search_docs` gained a `min_score` floor + a relative top-score cutoff so it
+returns fewer, higher-signal sections — the lossless retrieval-selection lever (the
+biggest doc/RAG win; loses no information).
+
+### Deferred
+
+- **Eject codegen for the policy** — blocked: `swarmkit eject` is itself an
+  M9 `_not_implemented` stub; there is no eject pipeline to wire the policy into yet.
+- **A concrete learned/LLM lossy backend** — the `plugin` seam + `headtail` reference
+  backend are in place; shipping an actual LLM-summarizer backend needs an async
+  compression boundary + cost accounting and is its own slice. (The seam is async-agnostic;
+  the current `maybe_compress_tool_result` is sync.)
+- **Durable (cross-process) original store** — the in-memory store is per-run and correct
+  within a process (including `serve`, now that state is `ContextVar`-isolated). A durable
+  store is only needed if recall must survive a process boundary, which a single run never
+  crosses today.
 
 ## Open questions
 
 1. ~~Compressor placement: tool-loop hook vs ModelProvider boundary vs external proxy.~~
    **Resolved** — tool-loop hook (`maybe_compress_tool_result` at the tool-output
    boundary), governable + auditable.
-2. Retrieve-tool governance: scope + audit shape for `*_retrieve` recall.
-3. Per-content-type policy: which surfaces are lossless-only vs lossy-ok, as workspace config.
+2. ~~Retrieve-tool governance: scope + audit shape for `*_retrieve` recall.~~
+   **Resolved** — recall of already-delivered content is not privilege escalation, so no
+   grantable scope gates it; it is audited via an empty-scope `evaluate_action` call. See
+   "context_retrieve" above.
+3. ~~Per-content-type policy: which surfaces are lossless-only vs lossy-ok, as workspace
+   config.~~ **Resolved (slice 3)** — `context_compression.overrides`, matched by tool-name
+   glob. Surface classification finer than tool-name globs is deferred.

@@ -23,11 +23,12 @@ from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomp
 def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResponse) -> None:
     """Record tokens from a tool-loop LLM call into the active trace."""
     from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
-        _active_trace,
+        get_active_trace,
     )
 
-    if _active_trace is not None:
-        _active_trace.record_llm_call(
+    trace = get_active_trace()
+    if trace is not None:
+        trace.record_llm_call(
             agent_id=agent_id,
             model=model,
             input_tokens=response.usage.input_tokens,
@@ -44,15 +45,16 @@ def _record_tool_call(
 ) -> None:
     """Record a tool/MCP call into the active trace's current step."""
     from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
-        _active_trace,
+        get_active_trace,
     )
     from swarmkit_runtime.trace import ToolCall  # noqa: PLC0415
 
-    if _active_trace is None:
+    trace = get_active_trace()
+    if trace is None:
         return
-    if not _active_trace.agent_steps:
+    if not trace.agent_steps:
         return
-    _active_trace.agent_steps[-1].tool_calls.append(
+    trace.agent_steps[-1].tool_calls.append(
         ToolCall(
             tool_name=tool_name,
             arguments=arguments,
@@ -250,6 +252,79 @@ def _handle_read_task_result(block: Any, agent_id: str) -> str:  # noqa: PLR0911
     return content
 
 
+async def _handle_context_retrieve(
+    block: Any, governance: GovernanceProvider | None, agent_id: str
+) -> str:
+    """Recall a window of original content that a reversible compressor elided.
+
+    Retrieval reads back content already delivered to this agent (compressed), so it is not
+    a privilege escalation — no grantable scope gates it. We still route through governance
+    with an empty scope set so the recall is recorded in the audit trail. Returns a ranged
+    window so a large original can be paged without re-hitting the result-truncation cap.
+    """
+    import json as _json  # noqa: PLC0415
+
+    from swarmkit_runtime.compression import get_original  # noqa: PLC0415
+
+    args = block.tool_input
+    if isinstance(args, str):
+        try:
+            args = _json.loads(args)
+        except (ValueError, TypeError):
+            args = {}
+    if not isinstance(args, dict):
+        args = {}
+
+    ref = str(args.get("ref", "")).strip()
+    if not ref:
+        return "[context_retrieve] error: 'ref' is required"
+
+    if governance is not None:
+        try:
+            decision = await governance.evaluate_action(
+                agent_id=agent_id,
+                action=f"context:retrieve:{ref}",
+                scopes_required=frozenset(),
+                context={"ref": ref},
+            )
+            if not decision.allowed:
+                return f"[context_retrieve] DENIED: {decision.reason}"
+        except Exception:  # auditing must not block a legitimate read
+            pass
+
+    original = get_original(ref)
+    if original is None:
+        return (
+            f"[context_retrieve] no stashed content for ref '{ref}' "
+            "(unknown ref, or it expired earlier in this run)"
+        )
+
+    def _as_int(value: Any, fallback: int) -> int:
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return fallback
+
+    offset = max(0, _as_int(args.get("offset", 0), 0))
+    limit = max(1, _as_int(args.get("limit", 4000), 4000))
+    window = original[offset : offset + limit]
+    end = offset + len(window)
+    remaining = len(original) - end
+    _progress(f"  [{agent_id}] context_retrieve '{ref}' [{offset}:{end}] of {len(original)}")
+    suffix = f"\n…[{remaining} more chars — call again with offset={end}]" if remaining > 0 else ""
+    return (
+        f"[context_retrieve ref={ref} bytes={len(original)} window={offset}:{end}]\n"
+        f"{window}{suffix}"
+    )
+
+
+def _skill_server_id(skill: Any) -> str:
+    """The MCP server id behind a skill, or '' for non-MCP skills (for compression overrides)."""
+    impl = getattr(getattr(skill, "raw", None), "implementation", None)
+    server = impl.get("server", "") if isinstance(impl, dict) else getattr(impl, "server", "")
+    return server if isinstance(server, str) else ""
+
+
 _DEFAULT_READ_PREFIXES = "read-,get-,list-,download-,describe-,explain-,render-"
 
 
@@ -346,7 +421,7 @@ def _apply_tool_guards(
     return modified, hit_limit
 
 
-async def _handle_skill_tool_calls(  # noqa: PLR0912
+async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
     response: CompletionResponse,
     agent: ResolvedAgent,
     model_provider: ModelProviderProtocol,
@@ -411,6 +486,17 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
                 )
             )
             continue
+        if block.tool_name == "context_retrieve":
+            result_text = await _handle_context_retrieve(block, governance, agent.id)
+            results.append(
+                ToolCallResult(
+                    tool_use_id=block.tool_use_id or f"call_{len(results)}",
+                    tool_name=block.tool_name,
+                    result=result_text,
+                    image_blocks=[],
+                )
+            )
+            continue
         skill = skill_map.get(block.tool_name)
         if skill is None:
             continue
@@ -442,10 +528,13 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912
             text_result, images = raw_result
         else:
             text_result, images = raw_result, []
-        # Read-side context compression (opt-in, off by default; lossless columnar).
-        # Applied here so the agent's context holds the compact form. Never on the
-        # audit log (recorded separately) or the inter-agent contract.
-        text_result = maybe_compress_tool_result(text_result or "")
+        # Read-side context compression (opt-in, off by default). Per-surface policy keyed
+        # by tool name and (for MCP tools) server id. Applied here so the agent's context
+        # holds the compact form. Never on the audit log (recorded separately) or the
+        # inter-agent contract.
+        text_result = maybe_compress_tool_result(
+            text_result or "", block.tool_name, _skill_server_id(skill)
+        )
         _record_tool_call(
             tool_name=block.tool_name,
             arguments=block.tool_input if isinstance(block.tool_input, dict) else {},

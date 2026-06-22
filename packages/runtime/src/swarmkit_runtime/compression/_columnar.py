@@ -20,8 +20,10 @@ class ColumnarCompressor:
     """Lossless JSON minify + columnar rewrite."""
 
     name = "columnar"
+    reversible = False  # information-preserving — no recall needed
 
-    def compress(self, text: str) -> str:
+    def compress(self, text: str, ref: str | None = None) -> str:
+        # ref is unused: lossless output is self-contained.
         try:
             obj = json.loads(text)
         except (json.JSONDecodeError, ValueError):

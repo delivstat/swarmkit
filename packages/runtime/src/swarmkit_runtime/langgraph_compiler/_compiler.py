@@ -6,6 +6,7 @@ See ``design/details/langgraph-compiler.md``.
 from __future__ import annotations
 
 import os
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
@@ -41,14 +42,21 @@ from ._prompts import (
 )
 from ._state import PlanningConfig, SwarmState
 
-_active_trace: RunTrace | None = None
+# Per-run active state. ContextVar (not a module global) so concurrent runs in one
+# process — e.g. several jobs under `swarmkit serve` — don't clobber each other: asyncio
+# copies the context when a task is created, so each run sees its own trace.
+_active_trace_var: ContextVar[RunTrace | None] = ContextVar("swarmkit_active_trace", default=None)
 _current_parent_agent: str | None = None
 
 
 def set_active_trace(trace: RunTrace | None) -> None:
-    """Set the active run trace for the current execution."""
-    global _active_trace  # noqa: PLW0603
-    _active_trace = trace
+    """Set the active run trace for the current execution context."""
+    _active_trace_var.set(trace)
+
+
+def get_active_trace() -> RunTrace | None:
+    """Return the active run trace for the current execution context, if any."""
+    return _active_trace_var.get()
 
 
 def compile_topology(
@@ -344,8 +352,9 @@ def _build_agent_node(  # noqa: PLR0915
             output_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
         )
-        if _active_trace is not None:
-            _active_trace.add_step(_trace_step)
+        _trace = get_active_trace()
+        if _trace is not None:
+            _trace.add_step(_trace_step)
         _prev_parent = _current_parent_agent
         _current_parent_agent = agent_id
 

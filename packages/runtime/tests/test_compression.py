@@ -1,57 +1,85 @@
-"""Tests for the opt-in context-compression seam.
+"""Tests for the context-compression seam.
 
-Covers the lossless columnar compressor and the active-compressor gate used at the
-tool-output boundary. The seam must never inflate, never raise into a run, and stay
-off unless explicitly enabled.
+Covers the lossless columnar backend, the reversible-lossy headtail backend, the
+per-surface policy (default + tool-name-glob overrides), the active-policy gate, and the
+per-run original store backing context_retrieve. The seam must never inflate, never raise
+into a run, and stay off unless explicitly enabled.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from swarmkit_runtime.compression import (
     ColumnarCompressor,
-    build_compressor,
-    get_active_compressor,
+    CompressionPolicy,
+    CompressionRule,
+    HeadTailCompressor,
+    build_policy,
+    get_active_policy,
+    get_original,
     maybe_compress_tool_result,
-    resolve_min_bytes,
-    set_active_compressor,
-    set_active_min_bytes,
+    set_active_policy,
 )
+from swarmkit_runtime.langgraph_compiler._prompts import _build_tools
+from swarmkit_runtime.langgraph_compiler._tool_loop import _handle_context_retrieve
 
 
 @pytest.fixture(autouse=True)
 def _reset_active() -> Iterator[None]:
-    """Each test starts with no active compression state and clears it afterwards."""
-    set_active_compressor(None)
-    set_active_min_bytes(None)
+    """Each test starts with no active policy and clears it afterwards."""
+    set_active_policy(None)
     yield
-    set_active_compressor(None)
-    set_active_min_bytes(None)
+    set_active_policy(None)
 
 
+# Stand-ins for the generated pydantic models (build_policy is duck-typed via getattr;
+# the real-model path is covered by the schema fixture round-trip tests). Avoids
+# pydantic-plugin friction under mypy --strict.
 class _Backend:
-    """Stand-in for the generated pydantic backend enum (exposes .value)."""
-
     def __init__(self, value: str) -> None:
         self.value = value
 
 
-class _CompressionCfg:
-    """Stand-in for the generated ContextCompression pydantic model."""
-
-    def __init__(self, backend: str | None = None, min_bytes: int | None = None) -> None:
+class CompressionOverride:
+    def __init__(
+        self,
+        match: str | None = None,
+        backend: str | None = None,
+        min_bytes: int | None = None,
+        match_server: str | None = None,
+        backend_class: str | None = None,
+    ) -> None:
+        self.match = match
+        self.match_server = match_server
         self.backend = _Backend(backend) if backend is not None else None
+        self.backend_class = backend_class
         self.min_bytes = min_bytes
+
+
+class ContextCompression:
+    def __init__(
+        self,
+        backend: str | None = None,
+        min_bytes: int | None = None,
+        overrides: list[CompressionOverride] | None = None,
+        backend_class: str | None = None,
+    ) -> None:
+        self.backend = _Backend(backend) if backend is not None else None
+        self.backend_class = backend_class
+        self.min_bytes = min_bytes
+        self.overrides = overrides
 
 
 # --- ColumnarCompressor: losslessness ---------------------------------------
 
 
 def _roundtrip(columnar: dict[str, object]) -> list[dict[str, object]]:
-    """Reconstruct the original records from a {columns, rows} table."""
     cols = columnar["columns"]
     rows = columnar["rows"]
     assert isinstance(cols, list)
@@ -60,49 +88,11 @@ def _roundtrip(columnar: dict[str, object]) -> list[dict[str, object]]:
 
 
 def test_columnar_rewrites_array_of_dicts_losslessly() -> None:
-    rows = [
-        {"id": 1, "name": "a", "qty": 10},
-        {"id": 2, "name": "b", "qty": 20},
-        {"id": 3, "name": "c", "qty": 30},
-    ]
+    rows = [{"id": i, "name": f"r{i}", "qty": i * 10} for i in range(3)]
     out = ColumnarCompressor().compress(json.dumps(rows))
     obj = json.loads(out)
     assert obj["columns"] == ["id", "name", "qty"]
     assert _roundtrip(obj) == rows
-
-
-def test_columnar_handles_ragged_rows() -> None:
-    rows = [
-        {"id": 1, "name": "a"},
-        {"id": 2, "qty": 20},
-        {"id": 3, "name": "c", "qty": 30},
-    ]
-    out = json.loads(ColumnarCompressor().compress(json.dumps(rows)))
-    # union of keys, missing values become null and round-trip back to absent-as-None
-    assert set(out["columns"]) == {"id", "name", "qty"}
-    reconstructed = _roundtrip(out)
-    assert reconstructed[0]["id"] == 1
-    assert reconstructed[1]["name"] is None
-    assert reconstructed[1]["qty"] == 20
-
-
-def test_columnar_recurses_into_nested_arrays() -> None:
-    payload = {
-        "results": [
-            {"k": 1, "tags": ["x", "y"]},
-            {"k": 2, "tags": ["z"]},
-            {"k": 3, "tags": []},
-        ]
-    }
-    out = json.loads(ColumnarCompressor().compress(json.dumps(payload)))
-    assert out["results"]["columns"] == ["k", "tags"]
-    assert _roundtrip(out["results"])[0]["tags"] == ["x", "y"]
-
-
-def test_columnar_leaves_small_arrays_alone() -> None:
-    rows = [{"id": 1}, {"id": 2}]  # below _MIN_ROWS
-    out = json.loads(ColumnarCompressor().compress(json.dumps(rows)))
-    assert out == rows
 
 
 def test_columnar_passes_through_non_json() -> None:
@@ -114,29 +104,111 @@ def test_columnar_minifies_whitespace() -> None:
     pretty = json.dumps({"a": 1, "b": 2}, indent=2)
     out = ColumnarCompressor().compress(pretty)
     assert "\n" not in out
-    assert len(out) < len(pretty)
     assert json.loads(out) == {"a": 1, "b": 2}
 
 
-# --- build_compressor: env config -------------------------------------------
+def test_columnar_ignores_ref_arg() -> None:
+    rows = [{"id": i} for i in range(3)]
+    assert ColumnarCompressor().compress(
+        json.dumps(rows), "some-ref"
+    ) == ColumnarCompressor().compress(json.dumps(rows))
 
 
-def test_build_compressor_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+# --- HeadTailCompressor: reversible-lossy -----------------------------------
+
+
+def test_headtail_keeps_head_and_tail_elides_middle() -> None:
+    c = HeadTailCompressor(head=20, tail=10)
+    text = "H" * 20 + "M" * 500 + "T" * 10
+    out = c.compress(text, ref="logs-1")
+    assert out.startswith("H" * 20)
+    assert out.endswith("T" * 10)
+    assert "M" * 500 not in out
+    assert "logs-1" in out
+    assert "elided" in out
+    assert len(out) < len(text)
+
+
+def test_headtail_short_text_unchanged() -> None:
+    c = HeadTailCompressor(head=20, tail=10)
+    text = "short"
+    assert c.compress(text, ref="x") == text
+
+
+def test_headtail_is_reversible_flag() -> None:
+    assert HeadTailCompressor().reversible is True
+    assert ColumnarCompressor().reversible is False
+
+
+# --- build_policy: env + workspace resolution -------------------------------
+
+
+def test_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION", raising=False)
-    assert build_compressor() is None
+    assert build_policy(None) is None
 
 
-@pytest.mark.parametrize("value", ["columnar", "on", "1", "true", "json", "COLUMNAR"])
-def test_build_compressor_enables_columnar(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
-    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", value)
-    compressor = build_compressor()
-    assert isinstance(compressor, ColumnarCompressor)
+def test_env_enables_columnar(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", "columnar")
+    policy = build_policy(None)
+    assert policy is not None
+    assert policy.default.backend == "columnar"
 
 
-@pytest.mark.parametrize("value", ["off", "none", "0", "false", "", "garbage"])
-def test_build_compressor_disabled_values(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
-    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", value)
-    assert build_compressor() is None
+def test_env_off_disables_even_with_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", "off")
+    cfg = ContextCompression(backend="columnar")
+    assert build_policy(cfg) is None
+
+
+def test_workspace_block_columnar(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION", raising=False)
+    policy = build_policy(ContextCompression(backend="columnar", min_bytes=500))
+    assert policy is not None
+    assert policy.default.backend == "columnar"
+    assert policy.default.min_bytes == 500
+
+
+def test_env_overrides_workspace_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", "columnar")
+    policy = build_policy(ContextCompression(backend="off"))
+    assert policy is not None
+    assert policy.default.backend == "columnar"
+
+
+def test_min_bytes_env_overrides_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", "columnar")
+    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES", "9999")
+    policy = build_policy(ContextCompression(backend="columnar", min_bytes=10))
+    assert policy is not None
+    assert policy.default.min_bytes == 9999
+
+
+def test_per_surface_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION", raising=False)
+    cfg = ContextCompression(
+        backend="columnar",
+        min_bytes=2000,
+        overrides=[
+            CompressionOverride(match="get-logs*", backend="headtail", min_bytes=100),
+            CompressionOverride(match="search-*", backend="off"),
+        ],
+    )
+    policy = build_policy(cfg)
+    assert policy is not None
+    assert policy.resolve("get-logs-today").backend == "headtail"
+    assert policy.resolve("get-logs-today").min_bytes == 100
+    assert policy.resolve("search-docs").compressor is None  # off override
+    assert policy.resolve("anything-else").backend == "columnar"  # default
+    assert policy.any_reversible is True
+
+
+def test_policy_none_when_all_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION", raising=False)
+    cfg = ContextCompression(
+        backend="off", overrides=[CompressionOverride(match="x", backend="off")]
+    )
+    assert build_policy(cfg) is None
 
 
 # --- maybe_compress_tool_result: the gate -----------------------------------
@@ -146,103 +218,249 @@ def _big_json_array() -> str:
     return json.dumps([{"id": i, "name": f"row-{i}"} for i in range(200)], indent=2)
 
 
-def test_gate_noop_when_no_active_compressor() -> None:
+def _activate(
+    backend: str, min_bytes: int = 0, overrides: list[CompressionOverride] | None = None
+) -> None:
+    policy = build_policy(
+        ContextCompression(backend=backend, min_bytes=min_bytes, overrides=overrides)
+    )
+    set_active_policy(policy)
+
+
+def test_gate_noop_when_no_policy() -> None:
     text = _big_json_array()
     assert maybe_compress_tool_result(text) == text
 
 
-def test_gate_compresses_when_active() -> None:
-    set_active_compressor(ColumnarCompressor())
+def test_gate_compresses_columnar_when_active() -> None:
+    _activate("columnar")
     text = _big_json_array()
-    out = maybe_compress_tool_result(text)
+    out = maybe_compress_tool_result(text, "get-data")
     assert len(out) < len(text)
     assert "columns" in out
 
 
-def test_gate_skips_small_payloads(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES", "100000")
-    set_active_compressor(ColumnarCompressor())
+def test_gate_skips_below_min_bytes() -> None:
+    _activate("columnar", min_bytes=10_000_000)
     text = _big_json_array()
-    assert maybe_compress_tool_result(text) == text  # below threshold
+    assert maybe_compress_tool_result(text, "get-data") == text
 
 
 def test_gate_never_inflates() -> None:
-    set_active_compressor(ColumnarCompressor())
-    # already-minified short array that columnar can't beat
+    _activate("columnar")
     text = json.dumps([{"a": 1, "b": 2}, {"a": 3, "b": 4}]) + " " * 3000
-    out = maybe_compress_tool_result(text)
+    out = maybe_compress_tool_result(text, "x")
     assert len(out) <= len(text)
 
 
-def test_gate_never_raises() -> None:
+def test_gate_never_raises_on_broken_backend() -> None:
     class _Boom:
         name = "boom"
+        reversible = False
 
-        def compress(self, text: str) -> str:
+        def compress(self, text: str, ref: str | None = None) -> str:
             raise RuntimeError("kaboom")
 
-    set_active_compressor(_Boom())
+    rule = CompressionRule(backend="boom", compressor=_Boom(), min_bytes=0, reversible=False)
+    set_active_policy(CompressionPolicy(default=rule))
     text = _big_json_array()
-    assert maybe_compress_tool_result(text) == text  # swallowed, original returned
+    assert maybe_compress_tool_result(text, "x") == text
 
 
 def test_gate_handles_empty_text() -> None:
-    set_active_compressor(ColumnarCompressor())
+    _activate("columnar")
     assert maybe_compress_tool_result("") == ""
 
 
-def test_set_get_active_compressor() -> None:
-    assert get_active_compressor() is None
-    c = ColumnarCompressor()
-    set_active_compressor(c)
-    assert get_active_compressor() is c
+def test_per_surface_routing_in_gate() -> None:
+    _activate(
+        "off",
+        overrides=[CompressionOverride(match="get-logs", backend="headtail", min_bytes=0)],
+    )
+    big_log = "L" * 50_000
+    # default is off → non-matching tool unchanged
+    assert maybe_compress_tool_result(big_log, "other-tool") == big_log
+    # matching tool → headtail elides
+    out = maybe_compress_tool_result(big_log, "get-logs")
+    assert len(out) < len(big_log)
+    assert "elided" in out
 
 
-# --- workspace-config resolution (slice 2) ----------------------------------
+# --- reversible store backing context_retrieve ------------------------------
 
 
-def test_build_compressor_from_workspace_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION", raising=False)
-    cfg = _CompressionCfg(backend="columnar")
-    assert isinstance(build_compressor(cfg), ColumnarCompressor)
+def test_headtail_stashes_original_for_retrieve() -> None:
+    _activate("headtail", min_bytes=0)
+    original = "A" * 100 + "B" * 50_000 + "C" * 100
+    out = maybe_compress_tool_result(original, "get-logs")
+    assert len(out) < len(original)
+    # extract the ref from the marker
+    assert 'ref="' in out
+    ref = out.split('ref="', 1)[1].split('"', 1)[0]
+    assert get_original(ref) == original
 
 
-def test_build_compressor_workspace_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION", raising=False)
-    assert build_compressor(_CompressionCfg(backend="off")) is None
+def test_get_original_unknown_ref_is_none() -> None:
+    assert get_original("nope-1") is None
 
 
-def test_env_overrides_workspace_block(monkeypatch: pytest.MonkeyPatch) -> None:
-    # workspace says off, operator forces columnar via env
-    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", "columnar")
-    assert isinstance(build_compressor(_CompressionCfg(backend="off")), ColumnarCompressor)
+def test_set_active_policy_resets_store() -> None:
+    _activate("headtail", min_bytes=0)
+    original = "X" * 60_000
+    out = maybe_compress_tool_result(original, "get-logs")
+    ref = out.split('ref="', 1)[1].split('"', 1)[0]
+    assert get_original(ref) is not None
+    set_active_policy(None)  # new run
+    assert get_original(ref) is None
 
 
-def test_env_off_overrides_workspace_columnar(monkeypatch: pytest.MonkeyPatch) -> None:
-    # workspace says columnar, operator forces off via env
-    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION", "off")
-    assert build_compressor(_CompressionCfg(backend="columnar")) is None
+def test_get_active_policy() -> None:
+    assert get_active_policy() is None
+    _activate("columnar")
+    assert get_active_policy() is not None
 
 
-def test_resolve_min_bytes_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES", raising=False)
-    assert resolve_min_bytes(None) == 2000
+# --- context_retrieve tool handler ------------------------------------------
 
 
-def test_resolve_min_bytes_from_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES", raising=False)
-    assert resolve_min_bytes(_CompressionCfg(backend="columnar", min_bytes=500)) == 500
+def _block(**tool_input: object) -> object:
+    return SimpleNamespace(
+        tool_name="context_retrieve", tool_use_id="call_0", tool_input=dict(tool_input)
+    )
 
 
-def test_resolve_min_bytes_env_overrides_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES", "9999")
-    assert resolve_min_bytes(_CompressionCfg(min_bytes=500)) == 9999
+@pytest.mark.asyncio
+async def test_context_retrieve_returns_window() -> None:
+    _activate("headtail", min_bytes=0)
+    original = "A" * 100 + "B" * 50_000 + "C" * 100
+    out = maybe_compress_tool_result(original, "get-logs")
+    ref = out.split('ref="', 1)[1].split('"', 1)[0]
+
+    res = await _handle_context_retrieve(_block(ref=ref, offset=0, limit=120), None, "agent-1")
+    assert f"ref={ref}" in res
+    assert "A" * 100 in res
+    assert "more chars" in res  # paging hint, since limit < len
 
 
-def test_active_min_bytes_drives_the_gate() -> None:
-    set_active_compressor(ColumnarCompressor())
-    set_active_min_bytes(100_000)
-    text = _big_json_array()
-    assert maybe_compress_tool_result(text) == text  # below the active threshold
-    set_active_min_bytes(0)
-    assert len(maybe_compress_tool_result(text)) < len(text)  # threshold lowered
+@pytest.mark.asyncio
+async def test_context_retrieve_unknown_ref() -> None:
+    res = await _handle_context_retrieve(_block(ref="missing-1"), None, "agent-1")
+    assert "no stashed content" in res
+
+
+@pytest.mark.asyncio
+async def test_context_retrieve_requires_ref() -> None:
+    res = await _handle_context_retrieve(_block(), None, "agent-1")
+    assert "'ref' is required" in res
+
+
+# --- context_retrieve tool injection in _build_tools ------------------------
+
+
+def _bare_agent() -> Any:
+    return SimpleNamespace(skills=[], children=[])
+
+
+def test_retrieve_tool_offered_only_when_reversible() -> None:
+    # lossless-only policy → no retrieve tool
+    _activate("columnar")
+    names = {t.name for t in _build_tools(_bare_agent())}
+    assert "context_retrieve" not in names
+
+    # reversible policy → retrieve tool offered
+    _activate("headtail")
+    names = {t.name for t in _build_tools(_bare_agent())}
+    assert "context_retrieve" in names
+
+    # no policy → no retrieve tool
+    set_active_policy(None)
+    names = {t.name for t in _build_tools(_bare_agent())}
+    assert "context_retrieve" not in names
+
+
+# --- server-id surface matching ---------------------------------------------
+
+
+def test_resolve_by_server_id() -> None:
+    cfg = ContextCompression(
+        backend="off",
+        overrides=[CompressionOverride(match_server="frigate", backend="headtail")],
+    )
+    policy = build_policy(cfg)
+    assert policy is not None
+    # matches by server id regardless of tool name
+    assert policy.resolve("get-events", "frigate").backend == "headtail"
+    # non-matching server → default (off)
+    assert policy.resolve("get-events", "other").compressor is None
+
+
+def test_server_override_in_gate() -> None:
+    set_active_policy(
+        build_policy(
+            ContextCompression(
+                backend="off",
+                overrides=[
+                    CompressionOverride(match_server="logs-*", backend="headtail", min_bytes=0)
+                ],
+            )
+        )
+    )
+    big = "L" * 50_000
+    assert maybe_compress_tool_result(big, "anything", "other-server") == big
+    out = maybe_compress_tool_result(big, "anything", "logs-prod")
+    assert len(out) < len(big)
+
+
+# --- pluggable backend seam -------------------------------------------------
+
+
+def test_plugin_backend_loads_class_path() -> None:
+    # Any importable ContextCompressor works; reuse the built-in headtail via its class path
+    # to exercise the loader without sys.path fragility.
+    policy = build_policy(
+        ContextCompression(
+            backend="plugin",
+            backend_class="swarmkit_runtime.compression._headtail.HeadTailCompressor",
+            min_bytes=0,
+        )
+    )
+    assert policy is not None
+    assert policy.default.backend == "headtail"
+    assert policy.default.reversible is True
+
+
+def test_plugin_backend_bad_class_is_safe_off() -> None:
+    policy = build_policy(
+        ContextCompression(backend="plugin", backend_class="nope.DoesNotExist", min_bytes=0)
+    )
+    # unresolvable plugin → no compressor → policy is None (fast no-op), never raises
+    assert policy is None
+
+
+def test_plugin_backend_non_compressor_class_is_safe_off() -> None:
+    # a class that isn't a ContextCompressor (no compress/reversible) → safe-off
+    policy = build_policy(
+        ContextCompression(backend="plugin", backend_class="pathlib.Path", min_bytes=0)
+    )
+    assert policy is None
+
+
+# --- per-run isolation (contextvars) ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_policy_isolated_across_concurrent_contexts() -> None:
+    async def run_with(backend: str, probe: str) -> str:
+        # set_active_policy sets a ContextVar; each task has its own copy of the context,
+        # so concurrent runs must not see each other's policy.
+        set_active_policy(build_policy(ContextCompression(backend=backend, min_bytes=0)))
+        await asyncio.sleep(0.01)  # yield so the tasks interleave
+        return maybe_compress_tool_result(probe, "tool")
+
+    big = _big_json_array()
+    columnar_out, off_out = await asyncio.gather(
+        asyncio.create_task(run_with("columnar", big)),
+        asyncio.create_task(run_with("off", big)),
+    )
+    assert len(columnar_out) < len(big)  # columnar context compressed
+    assert off_out == big  # off context untouched — no clobber

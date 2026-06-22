@@ -29,27 +29,45 @@ export type APIVersion = "swarmkit/v1";
 /**
  * Opt-in read-side compression of bulk tool/MCP output before it re-enters an agent's
  * context. Off by default. Never applied to the audit log or the inter-agent contract. Env
- * vars SWARMKIT_CONTEXT_COMPRESSION and SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES override
- * these values per deployment. See design/details/context-compression.md.
+ * vars SWARMKIT_CONTEXT_COMPRESSION and SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES override the
+ * default per deployment. See design/details/context-compression.md.
  */
 export interface ContextCompression {
+    backend?:       ContextCompressionBackend;
+    backend_class?: string;
+    min_bytes?:     number;
     /**
-     * Compression backend. off (default): no compression. columnar: built-in lossless JSON
-     * minify + array-of-uniform-dicts rewrite to {columns, rows}.
+     * Per-surface rules matched by tool-name and/or server-id glob. The first override that
+     * matches wins; otherwise the top-level backend/min_bytes apply.
      */
-    backend?: ContextCompressionBackend;
-    /**
-     * Payloads smaller than this (in characters) are left untouched — avoids columnar overhead
-     * on small results.
-     */
-    min_bytes?: number;
+    overrides?: OverrideElement[];
 }
 
 /**
  * Compression backend. off (default): no compression. columnar: built-in lossless JSON
- * minify + array-of-uniform-dicts rewrite to {columns, rows}.
+ * minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy —
+ * keep head+tail, elide the middle, recallable via the context_retrieve tool (for
+ * lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by
+ * backend_class.
  */
-export type ContextCompressionBackend = "off" | "columnar";
+export type ContextCompressionBackend = "off" | "columnar" | "headtail" | "plugin";
+
+/**
+ * A per-surface compression rule. At least one of match / match_server is required.
+ */
+export interface OverrideElement {
+    backend?:       ContextCompressionBackend;
+    backend_class?: string;
+    /**
+     * Glob matched against the tool/skill name (e.g. 'get-logs', 'frigate*').
+     */
+    match?: string;
+    /**
+     * Glob matched against the MCP server id backing the tool (e.g. 'frigate', 'logs-*').
+     */
+    match_server?: string;
+    min_bytes?:    number;
+}
 
 export interface CredentialValue {
     /**

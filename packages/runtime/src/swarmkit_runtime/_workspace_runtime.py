@@ -70,6 +70,10 @@ class UsageSummary:
     total_tokens: int = 0
     by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
     by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Read-side context compression savings (characters). Zero when off.
+    compression_bytes_in: int = 0
+    compression_bytes_out: int = 0
+    compression_calls: int = 0
 
 
 @dataclass(frozen=True)
@@ -387,10 +391,8 @@ class WorkspaceRuntime:
         from uuid import uuid4  # noqa: PLC0415
 
         from swarmkit_runtime.compression import (  # noqa: PLC0415
-            build_compressor,
-            resolve_min_bytes,
-            set_active_compressor,
-            set_active_min_bytes,
+            build_policy,
+            set_active_policy,
         )
         from swarmkit_runtime.langgraph_compiler._compiler import set_active_trace  # noqa: PLC0415
         from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
@@ -403,11 +405,10 @@ class WorkspaceRuntime:
         trace.start(run_thread, topology_name)
         set_active_trace(trace)
         # Opt-in read-side context compression for this run. Resolved from the workspace
-        # `context_compression:` block, with env vars overriding per deployment. Off unless
-        # configured.
+        # `context_compression:` block (default backend + per-surface overrides), with env
+        # vars overriding the default per deployment. Off unless configured.
         compression_cfg = getattr(self._workspace.raw, "context_compression", None)
-        set_active_compressor(build_compressor(compression_cfg))
-        set_active_min_bytes(resolve_min_bytes(compression_cfg))
+        set_active_policy(build_policy(compression_cfg))
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
 
@@ -448,8 +449,7 @@ class WorkspaceRuntime:
                 },
             )
         finally:
-            set_active_compressor(None)
-            set_active_min_bytes(None)
+            set_active_policy(None)
             if owns_mcp and self._mcp_manager is not None:
                 await self._mcp_manager.close_all()
 
@@ -469,6 +469,9 @@ class WorkspaceRuntime:
             total_tokens=trace.total_input_tokens + trace.total_output_tokens,
             by_agent=dict(trace.token_by_agent),
             by_model=dict(trace.token_by_model),
+            compression_bytes_in=trace.compression_bytes_in,
+            compression_bytes_out=trace.compression_bytes_out,
+            compression_calls=trace.compression_calls,
         )
 
         trace_summary = {

@@ -280,19 +280,58 @@
     "context_compression": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Opt-in read-side compression of bulk tool/MCP output before it re-enters an agent's context. Off by default. Never applied to the audit log or the inter-agent contract. Env vars SWARMKIT_CONTEXT_COMPRESSION and SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES override these values per deployment. See design/details/context-compression.md.",
+      "description": "Opt-in read-side compression of bulk tool/MCP output before it re-enters an agent's context. Off by default. Never applied to the audit log or the inter-agent contract. Env vars SWARMKIT_CONTEXT_COMPRESSION and SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES override the default per deployment. See design/details/context-compression.md.",
       "properties": {
-        "backend": {
-          "enum": ["off", "columnar"],
-          "default": "off",
-          "description": "Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}."
-        },
-        "min_bytes": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 2000,
-          "description": "Payloads smaller than this (in characters) are left untouched — avoids columnar overhead on small results."
+        "backend": { "$ref": "#/$defs/compression_backend" },
+        "backend_class": { "$ref": "#/$defs/compression_backend_class" },
+        "min_bytes": { "$ref": "#/$defs/compression_min_bytes" },
+        "overrides": {
+          "type": "array",
+          "description": "Per-surface rules matched by tool-name and/or server-id glob. The first override that matches wins; otherwise the top-level backend/min_bytes apply.",
+          "items": { "$ref": "#/$defs/compression_override" }
         }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "backend": { "const": "plugin" } }, "required": ["backend"] },
+          "then": { "required": ["backend_class"] }
+        }
+      ]
+    },
+    "compression_backend": {
+      "enum": ["off", "columnar", "headtail", "plugin"],
+      "default": "off",
+      "description": "Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy — keep head+tail, elide the middle, recallable via the context_retrieve tool (for lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by backend_class."
+    },
+    "compression_backend_class": {
+      "type": "string",
+      "description": "Fully-qualified Python class path of a custom ContextCompressor (used when backend=plugin), e.g. 'my_pkg.compressors.LearnedCompressor'."
+    },
+    "compression_min_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 2000,
+      "description": "Payloads smaller than this (in characters) are left untouched — avoids overhead on small results."
+    },
+    "compression_override": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A per-surface compression rule. At least one of match / match_server is required.",
+      "anyOf": [{ "required": ["match"] }, { "required": ["match_server"] }],
+      "properties": {
+        "match": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Glob matched against the tool/skill name (e.g. 'get-logs', 'frigate*')."
+        },
+        "match_server": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Glob matched against the MCP server id backing the tool (e.g. 'frigate', 'logs-*')."
+        },
+        "backend": { "$ref": "#/$defs/compression_backend" },
+        "backend_class": { "$ref": "#/$defs/compression_backend_class" },
+        "min_bytes": { "$ref": "#/$defs/compression_min_bytes" }
       }
     },
     "planning": {
