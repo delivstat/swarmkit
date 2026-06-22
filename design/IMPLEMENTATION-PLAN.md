@@ -578,15 +578,18 @@ lossless `ColumnarCompressor` (minify + array-of-uniform-dicts → `{columns, ro
 Sterling JSON). Off by default; the gate never inflates and never raises into a run; never
 applied to audit or inter-agent paths. Sterling ingestion already minified separately (29% free).
 **Slice 2**: declarative `context_compression:` workspace-schema block (full dual-surface change),
-env overriding the block. **Slice 3**: per-surface `overrides` (tool-name glob → `CompressionPolicy`);
+env overriding the block. **Slice 3**: per-surface `overrides` (tool-name **and** server-id glob → `CompressionPolicy`);
 reversible-lossy `headtail` backend (keep head+tail, elide middle) + per-run original store + a
 governed, audited `context_retrieve(ref, offset, limit)` built-in tool (offered only when a
-reversible backend is active); OTel metrics (`swarmkit.compression.*`) + RunTrace savings +
-CLI run-summary line; `knowledge.search_docs` `min_score`/relative-cutoff lossless retrieval lever.
-Resolves the design note's open questions #2 (retrieve governance) and #3 (per-surface policy).
-See `design/details/context-compression.md`.
-Deferred (slice 4+): learned/LLM lossy backends, durable cross-process original store for `serve`,
-eject codegen for the policy.
+reversible backend is active); a `plugin` backend (custom `ContextCompressor` by class path);
+per-run isolation via `ContextVar` (policy + store, and `_active_trace` migrated for consistency —
+fixes a latent serve-concurrency clobber); OTel metrics (`swarmkit.compression.*`) + RunTrace
+savings + CLI run-summary line; `knowledge.search_docs` `min_score`/relative-cutoff lossless
+retrieval lever. Resolves the design note's open questions #2 (retrieve governance) and #3
+(per-surface policy). See `design/details/context-compression.md`.
+Deferred: eject codegen (blocked on M9 eject stub); a concrete LLM-summarizer lossy backend
+(needs an async compression boundary); durable cross-process original store (only needed across a
+process boundary, which a single run never crosses).
 
 ### M11 — Launch prep
 

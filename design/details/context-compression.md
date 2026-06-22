@@ -184,14 +184,19 @@ Declarative per workspace, with env overriding the default per deployment.
 ```yaml
 # workspace.yaml
 context_compression:
-  backend: columnar       # off (default) | columnar (lossless) | headtail (reversible-lossy)
-  min_bytes: 2000         # payloads smaller than this are left untouched
-  overrides:              # per-surface rules, matched by tool-name glob (slice 3)
-    - match: "get-logs*"  # logs tolerate lossy + recall
+  backend: columnar           # off (default) | columnar (lossless) | headtail (reversible-lossy) | plugin
+  min_bytes: 2000             # payloads smaller than this are left untouched
+  overrides:                  # per-surface rules, matched by tool-name and/or server-id glob
+    - match: "get-logs*"      # by tool name — logs tolerate lossy + recall
       backend: headtail
       min_bytes: 4000
-    - match: "search-*"   # never compress search results
+    - match_server: "frigate" # by MCP server id — applies to every tool on that server
+      backend: headtail
+    - match: "search-*"       # never compress search results
       backend: "off"
+    - match: "*"              # custom/learned backend by class path
+      backend: plugin
+      backend_class: "my_pkg.compressors.LearnedCompressor"
 ```
 
 - `SWARMKIT_CONTEXT_COMPRESSION` — `columnar` | `headtail` | `off`. **Overrides** the
@@ -200,10 +205,17 @@ context_compression:
 - `SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES` — **overrides** the default `min_bytes`.
 
 Precedence (default rule): **env → workspace block → default (off / 2000)**. Per-surface
-`overrides` come from the workspace block; the first whose `match` globs the tool name
-wins. Resolved once per run in `WorkspaceRuntime.run` into a `CompressionPolicy`
-(`build_policy(cfg)` → `set_active_policy`), held in the active-policy module global
-(mirrors `set_active_trace`).
+`overrides` come from the workspace block; the first whose `match` (tool-name glob) **or**
+`match_server` (MCP-server-id glob) matches wins. Resolved once per run in
+`WorkspaceRuntime.run` into a `CompressionPolicy` (`build_policy(cfg)` → `set_active_policy`).
+
+### Per-run isolation
+
+The active policy + original store live in a **`ContextVar`**, not a module global —
+asyncio copies the context when a task is created, so concurrent runs in one process
+(e.g. jobs under `swarmkit serve`) each see their own policy and store instead of
+clobbering shared state. `_active_trace` was migrated to the same `ContextVar` pattern for
+consistency (it had the same latent limitation).
 
 ### Backends
 
@@ -213,7 +225,11 @@ wins. Resolved once per run in `WorkspaceRuntime.run` into a `CompressionPolicy`
   `context_retrieve(ref, offset, limit)` marker. The seam stashes the original in a
   per-run in-memory store keyed by the ref. Lossy *at the point of read* but no information
   is destroyed — recall is deferred. For lossy-tolerant surfaces (logs, verbose dumps).
-  Learned/LLM backends plug into the same `ContextCompressor` Protocol.
+- **`plugin`** (slice 3) — a custom `ContextCompressor` named by `backend_class` (a
+  fully-qualified Python class path, same shape as `model_providers`). Imported and
+  instantiated at policy-build time; if the class is missing or isn't a `ContextCompressor`,
+  it resolves to off (safe). This is how learned/LLM backends register without a runtime
+  edit — the Protocol is the extension seam.
 
 ### `context_retrieve` — governance + audit (resolves open question #2)
 
@@ -239,10 +255,18 @@ histogram).
 returns fewer, higher-signal sections — the lossless retrieval-selection lever (the
 biggest doc/RAG win; loses no information).
 
-### Deferred (slice 4+)
+### Deferred
 
-Learned/LLM lossy backends; durable (cross-process) original store for `serve`; surface
-classification beyond tool-name globs; eject codegen for the policy.
+- **Eject codegen for the policy** — blocked: `swarmkit eject` is itself an
+  M9 `_not_implemented` stub; there is no eject pipeline to wire the policy into yet.
+- **A concrete learned/LLM lossy backend** — the `plugin` seam + `headtail` reference
+  backend are in place; shipping an actual LLM-summarizer backend needs an async
+  compression boundary + cost accounting and is its own slice. (The seam is async-agnostic;
+  the current `maybe_compress_tool_result` is sync.)
+- **Durable (cross-process) original store** — the in-memory store is per-run and correct
+  within a process (including `serve`, now that state is `ContextVar`-isolated). A durable
+  store is only needed if recall must survive a process boundary, which a single run never
+  crosses today.
 
 ## Open questions
 
