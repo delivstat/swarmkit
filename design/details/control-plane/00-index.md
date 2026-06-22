@@ -30,6 +30,7 @@ what the fleet panel surfaces/aggregates/manages*.
 | 08 | [CLI surface](08-cli.md) | every `swarmkit` command + status (implemented vs stub) |
 | 09 | [UI](09-ui.md) | pages, the api.ts→serve coupling, composer reality, gaps vs design |
 | 10 | [Capability map (synthesis)](10-capability-map.md) | current → control-plane responsibility, per feature |
+| 11 | [Phase 1: Architecture](11-architecture.md) | goal/non-goals, the three planes, multi-instance + connection model, data model, trust boundaries, decisions needed |
 
 ## Cross-cutting findings (read these first)
 
