@@ -68,7 +68,7 @@ list the control plane incorporates. Rows are grouped by the fleet proposal's th
   reserved-for-human scopes stay un-grantable; no `evaluate_action` bypass; audit append-only.
 - **Don't rebuild generic observability** ([06](06-observability-eval.md)) — aggregate via OTel;
   build only the SwarmKit-specific signal views.
-- **OSS vs commercial line** ([09](09-ui.md), `product-architecture.md`): the polished fleet panel
-  is the Rynko surface; keep the OSS on-ramp (CLI + single-instance dashboard + serve) intact.
+- **Separate-app boundary** ([09](09-ui.md)): the fleet panel is a **separate standalone
+  application**; keep the single-instance dashboard + CLI + serve on-ramp intact.
 - **`eject` is an M9 stub** ([01](01-runtime-core.md), [08](08-cli.md)) — no policy-as-code export
   until it lands.
