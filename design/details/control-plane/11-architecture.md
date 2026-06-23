@@ -30,7 +30,7 @@ independently; `serve` becomes a thin authenticated **connector**.
 | # | Decision | Resolution |
 |---|---|---|
 | D1 | **What it is** | The control plane is **its own separate, standalone, self-hostable application** — separate from the existing single-instance SwarmKit UI and not coupled to any other product. *(Repo placement — its own repo vs a new `packages/` member in this monorepo — is a minor follow-up; recommend its own deployable app/codebase. It depends on `@swarmkit/schema` + the serve connector contract.)* |
-| D2 | **Connection model** | **Hybrid**: panel→instance **pull** for control (REST over the existing serve API); instance→collector **push** for observability (OTLP) + lightweight instance→panel **heartbeat**. |
+| D2 | **Connection model** | **Hybrid**: logically **pull** for control; observability is **push** (OTLP + heartbeat). The control transport has two per-instance modes ([13](13-connector-registry.md)): **Mode A direct** (panel → serve REST; needs reachability) and **Mode B poll connector** (instance polls the panel for commands, outbound-only; for NAT'd/edge instances like Minder). |
 | D3 | **Aggregation store** | **OTel collector** for traces/metrics; **central Postgres** for audit + eval results + usage + registry metadata; federated live-query (call serve) for current jobs. |
 | D4 | **UI split** | Subsumed by D1: the existing Next.js app stays the **single-instance OSS dashboard**; the **fleet panel is the separate application** (D1), reusing `lib/api.ts` patterns + `@swarmkit/schema`. |
 

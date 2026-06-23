@@ -37,28 +37,70 @@ reached for the initial pull (below) — deferred unless needed.
 
 ## Registry data model (`Instance`)
 
-`instance_id` · `name` · `endpoint` · token refs (by tier) · `schema_version` · `capabilities`
-(snapshot) · `health` (healthy / stale / unreachable) · `last_heartbeat` · `enrolled_at` ·
-`labels` (env/region/owner). Extends [11](11-architecture.md) §5.
+`instance_id` · `name` · `endpoint` (Mode A) · `connection` (`direct` | `poll`) · token refs
+(by tier) · `schema_version` · `capabilities` (snapshot) · `health` (healthy / stale / unreachable) ·
+`last_heartbeat` (or `last_poll` in Mode B) · `enrolled_at` · `labels` (env/region/owner). Extends
+[11](11-architecture.md) §5.
 
 ## Health model
 
 Heartbeat interval + miss threshold → `healthy` → `stale` (missed) → `unreachable` (probe `/health`
 fails). The panel surfaces state and suppresses control actions to unreachable instances.
 
-## Reachability constraint (important, pull model)
+## Connection modes (control edge)
 
-The hybrid model ([11](11-architecture.md) D2) has the panel **pull** control over serve REST —
-which requires the panel to **reach** the instance. Edge/home instances behind NAT/firewall
-(e.g. Minder on a home router) are **not reachable** by an outbound pull.
+The control edge ([11](11-architecture.md) D2) is logically **pull** — the panel is the source of
+truth for what should happen on an instance. But the *transport direction* has two modes, chosen
+per instance at enrollment (`Instance.connection`). Observability is always push (OTLP + heartbeat)
+in both, and works through NAT regardless.
 
-- **v1 assumption:** instances are reachable — public endpoint, VPN, or **Tailscale**/equivalent.
-  (Tailscale is the cleanest for edge boxes and aligns with the earlier serve-access guidance.)
-- **Deferred option:** a reverse channel — the instance opens a persistent connection / polls the
-  panel for commands — for instances that can't accept inbound. Flagged, not in v1.
+### Mode A — direct (panel → serve REST)
 
-This is a real boundary on which instances the v1 panel can *control* (vs merely *observe* via
-push). Observability (push/heartbeat) works through NAT; control (pull) does not.
+The panel calls the instance's serve API directly ([02](02-serve-api.md)). Simplest (reuses serve
+as-is, lowest latency), but **requires the panel to reach the instance** — public endpoint, VPN, or
+Tailscale. Right for datacenter / reachable instances.
+
+### Mode B — poll connector (instance → panel, outbound only)
+
+For instances that can't accept inbound (NAT'd / home / edge — e.g. **Minder on a home router**), a
+lightweight **poll connector** runs alongside serve and makes **outbound HTTPS only** — no inbound
+port, no VPN. It inverts the transport while keeping the panel as the decider (the runner pattern,
+à la CI self-hosted runners). *Named "connector," not "agent," to avoid clashing with swarm agents;*
+*CLI sketch: `swarmkit connect <panel-url>`.*
+
+Protocol (per-instance **command queue** on the panel):
+
+1. `POST /instances/{id}/poll` (long-poll, ~30s) with `{status, schema_version, capabilities_hash}`
+   → returns `{commands: [{cmd_id, verb, args}]}`. **Heartbeat + capability refresh fold into the
+   poll** — no separate heartbeat needed in this mode.
+2. The connector executes each command against **local serve over loopback** (trusted): `verb`
+   maps to a serve call (`run`, `cancel`, `validate`, `api.*` CRUD, `reload`, `usage`, `capabilities`).
+3. `POST /instances/{id}/commands/{cmd_id}/result` with `{status, output|error}`. Idempotent by
+   `cmd_id`; at-least-once with dedup; run progress streamed as incremental results (or the panel
+   enqueues a follow-up `job-status` command).
+
+Auth is the same token model ([12](12-auth.md)) with the **direction inverted**: the connector
+authenticates *to the panel* with the per-instance token; the panel authorizes which commands it
+enqueues, **bounded by the instance's granted tier** (`read`/`run`/`admin`), and the connector
+**re-validates** each command is within tier (defense in depth). Loopback serve calls use local
+trust.
+
+**Separation of powers holds** ([05](05-identity-governance-iam.md)): a `deploy` command is only
+enqueued *after* its human-gated approval ([15](15-artifact-registry.md), [17](17-growth-loop.md));
+the connector executes an already-approved action, and the run still passes through `evaluate_action`
+on the instance. Both sides audit (panel: enqueue + result; instance: execution).
+
+### Choosing a mode
+
+| | Mode A (direct) | Mode B (poll connector) |
+|---|---|---|
+| Reachability | needs inbound (VPN/Tailscale/public) | **outbound-only — works through NAT** |
+| Latency | lower (direct REST) | poll/long-poll bounded |
+| Moving parts | none (reuse serve) | + connector process + command queue |
+| Best for | datacenter / reachable | edge / home / NAT (Minder) |
+
+Per-instance, operator-selected. This removes the earlier "control needs reachability" limitation:
+**edge instances get full control via Mode B**, not just observe-only.
 
 ## Security
 
@@ -68,14 +110,17 @@ compromise of a `run`/`admin` token is scoped to one instance.
 
 ## What Phase 3 builds
 
-`GET /capabilities` on serve; the instance heartbeat client + the panel `POST /heartbeat`; the panel
-instance registry (CRUD + health) + enrollment flow + token minting; capability-aware routing
-(pick instances that can serve a requested provider/model); schema-skew warnings. Auth ([12](12-auth.md))
-is a hard prerequisite.
+`GET /capabilities` on serve; the instance heartbeat client + the panel `POST /heartbeat`
+(Mode A); **the poll connector (`swarmkit connect`) + the panel command-queue endpoints
+(`/poll`, `/commands/{id}/result`) (Mode B)**; the panel instance registry (CRUD + health +
+`connection` mode) + enrollment flow + token minting; capability-aware routing; schema-skew
+warnings. Auth ([12](12-auth.md)) is a hard prerequisite for both modes.
 
 ## Open questions
 
 - Panel-initiated vs instance-initiated enrollment (start panel-initiated).
-- mTLS as a stronger panel↔instance option (vs bearer).
-- Reverse channel for unreachable instances (deferred; revisit if edge fleets need control, not just
-  observability).
+- mTLS as a stronger panel↔instance option for Mode A (vs bearer).
+- Poll connector: long-poll vs short-poll interval default; command-queue durability (in-memory vs
+  Postgres-backed); how run-progress streaming maps onto the result channel.
+- Whether the poll connector is a separate process or a `serve` sub-mode (lean: a thin separate
+  process so it can run where serve can't bind, but shares the workspace + token).

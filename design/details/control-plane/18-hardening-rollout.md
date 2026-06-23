@@ -22,10 +22,12 @@ These are the first real fleet. Per instance: enroll ([13](13-connector-registry
 `server.auth` tokens → point `telemetry.endpoint` at the fleet collector → register current
 artifacts in the registry ([15](15-artifact-registry.md)).
 
-- **Minder** is loopback (`127.0.0.1:8321`) and behind a home network → stays `none`-auth-OK locally;
-  to be *controlled* by the panel it needs reachability (Tailscale/VPN) + a token, or it remains
-  **observe-only** via push/heartbeat ([13](13-connector-registry.md) reachability constraint).
-- Sterling / vedanta: enroll with tokens; if reachable, full control; else observe-only.
+- **Minder** is loopback (`127.0.0.1:8321`) behind a home network → enroll in **Mode B (poll
+  connector)**: run `swarmkit connect` alongside it (outbound-only, no Tailscale/inbound needed),
+  serve stays loopback `none`-auth locally, and the panel gets **full control** through the
+  connector ([13](13-connector-registry.md)).
+- Sterling / vedanta: **Mode A (direct)** if reachable (token + bind), else **Mode B**. Either way
+  full control — no observe-only fallback now that the poll connector exists.
 
 ## The breaking change (communicate)
 
