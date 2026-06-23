@@ -1,20 +1,22 @@
 ---
-title: Control plane — runtime platform inventory (source of truth)
-description: Phase 0 of the central control plane + auth program. A comprehensive inventory of what SwarmKit already is as a runtime platform — every subsystem, its public interface, the data it produces/consumes, its extension seams, and what a multi-instance control plane would surface, aggregate, manage, or version. This is the catalog the control plane builds against; later phases (architecture, auth, connector, registry, UI) key off it.
-status: phase 0 — inventory (draft, source of truth)
+title: Control plane + auth — design (inventory → architecture → phase designs)
+description: The central control plane + auth program. A comprehensive inventory of what SwarmKit already is as a runtime platform (docs 00–10), then the full design — architecture (11), auth (12), connector/registry (13), aggregation (14), artifact registry (15), fleet UI (16), growth loop (17), hardening/rollout (18). Design complete through Phase 8; implementation pending.
+status: design complete (phases 0–8); implementation pending
 ---
 
-# Control plane — runtime platform inventory
+# Control plane + auth — design
 
-This is **Phase 0** of the control-plane + auth program (see `design/details/fleet-control-plane.md`
-for the originating proposal and the program task list in the PR description). It answers one
-question exhaustively: **what does SwarmKit already provide as a runtime platform?** — so the
-control plane is designed against reality, not memory.
+The central control plane + auth program (originating proposal: `design/details/fleet-control-plane.md`).
+**Docs 00–10** are the Phase 0 inventory — *what does SwarmKit already provide as a runtime platform?*
+— so the design is built against reality, not memory. **Docs 11–18** are the phase designs
+(architecture → auth → connector → aggregation → registry → UI → growth loop → hardening).
+**The design is complete through Phase 8; implementation has not started.**
 
-Each subsystem doc uses the same structure: *purpose · public interface (HTTP routes / CLI /
+Each inventory doc uses the same structure: *purpose · public interface (HTTP routes / CLI /
 config / env) · data produced & consumed · extension seams · key file refs · control-plane
 implications*. Doc 10 is the synthesis — the per-feature map of *single-instance today →
-what the fleet panel surfaces/aggregates/manages*.
+what the fleet panel surfaces/aggregates/manages*. Docs 11–18 each state goal · components/flows ·
+data model · decisions · what-the-phase-builds · open questions.
 
 ## Table of contents
 
@@ -32,6 +34,12 @@ what the fleet panel surfaces/aggregates/manages*.
 | 10 | [Capability map (synthesis)](10-capability-map.md) | current → control-plane responsibility, per feature |
 | 11 | [Phase 1: Architecture](11-architecture.md) | goal/non-goals, the three planes, multi-instance + connection model, data model, trust boundaries, locked decisions |
 | 12 | [Phase 2: Auth design + `server.auth` spec](12-auth.md) | threat model, three identity layers, two edges (token tiers / OIDC), the `server.auth` schema spec, default-secure, separation-of-powers |
+| 13 | [Phase 3: Connector + instance registry](13-connector-registry.md) | `GET /capabilities`, heartbeat, enrollment, registry model, health, the pull-model reachability constraint |
+| 14 | [Phase 4: Aggregation](14-aggregation.md) | OTel-collector for traces/metrics; central Postgres for audit/eval/usage; federated live-query; SwarmKit-specific signal views |
+| 15 | [Phase 5: Artifact registry + versioning](15-artifact-registry.md) | content-hash + provenance versioning for all artifact types; governed push/pull sync; drift; schema-compat gate |
+| 16 | [Phase 6: Fleet UI](16-fleet-ui.md) | the separate standalone app; pages; reuse `lib/api.ts`; OIDC + instance selector; conversational authoring; embed-vs-build |
+| 17 | [Phase 7: Growth / self-improvement loop](17-growth-loop.md) | gap → propose → test → approve → publish → deploy; human-gated; proposal-only (no auto-activate) |
+| 18 | [Phase 8: Hardening + rollout](18-hardening-rollout.md) | security review, migrating Minder/Sterling/vedanta, the default-secure breaking change, runbooks, GA criteria |
 
 ## Cross-cutting findings (read these first)
 
