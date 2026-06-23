@@ -60,7 +60,7 @@ Built-in grounding skills: grounding-verifier, contradiction-detector, citation-
 
 `swarmkit review list|show|approve|reject` over `FileReviewQueue` (`.swarmkit/reviews/`). Inline
 `prompt_human_review()` (approve/reject/show; Ctrl+C → `HITLDeferredError` → resumable). Full
-interactive TUI deferred to the commercial UI.
+interactive TUI deferred to a future dedicated UI.
 
 ## Control-plane implications
 
