@@ -25,16 +25,16 @@ independently; `serve` becomes a thin authenticated **connector**.
   ([05](05-identity-governance-iam.md)).
 - **Not** a secrets store — secrets stay *references*; the panel coordinates, never holds values.
 
-## 2. Decisions needed from you (load-bearing)
+## 2. Decisions (locked)
 
-| # | Decision | Recommendation | Why it matters |
-|---|---|---|---|
-| D1 | **OSS ↔ commercial cut** | **Self-hostable OSS core** (registry + aggregation + connector + token auth + minimal fleet UI in this repo); commercial Rynko = hosted multi-tenant, teams/SSO at scale, advanced analytics, SLA. | Determines what lives in this repo vs Rynko, and whether the fleet idea is paywalled. The #356 proposal said "self-hostable" — but `product-architecture.md` carves UI/cloud/teams to Rynko. Genuinely your call. |
-| D2 | **Connection model** | **Hybrid**: panel→instance **pull** for control (REST over the existing serve API, request/response, easy auth); instance→collector **push** for observability (OTLP) + lightweight instance→panel **heartbeat**. | Pull keeps control simple + auditable and reuses serve as-is; push fits high-volume telemetry. Pure-push control would mean inventing a reverse channel; pure-pull telemetry doesn't scale. |
-| D3 | **Aggregation store** | **OTel collector** for traces/metrics; **central Postgres** for audit + eval results + usage + registry metadata; federated live-query (call serve) for current jobs. | Avoids a giant central data lake while keeping compliance-grade audit + reproducible artifacts central. |
-| D4 | **UI** | **Two surfaces**: keep the existing Next.js app as the **single-instance OSS dashboard**; build the **fleet panel** as a distinct app reusing `lib/api.ts` patterns + `@swarmkit/schema`. | The existing UI is single-instance/zero-auth ([09](09-ui.md)); retrofitting tenancy/auth/instance-selection into it is messier than a clean panel that talks to the control-plane API. |
+| # | Decision | Resolution |
+|---|---|---|
+| D1 | **What it is** | The control plane is **its own separate, standalone, self-hostable application** — **independent of the commercial Rynko platform** and separate from the existing single-instance SwarmKit UI. It is not bundled into Rynko and not a paywalled tier. *(Repo placement — its own repo vs a new `packages/` member in this monorepo — is a minor follow-up; recommend its own deployable app/codebase. It depends on `@swarmkit/schema` + the serve connector contract, not on Rynko.)* |
+| D2 | **Connection model** | **Hybrid**: panel→instance **pull** for control (REST over the existing serve API); instance→collector **push** for observability (OTLP) + lightweight instance→panel **heartbeat**. |
+| D3 | **Aggregation store** | **OTel collector** for traces/metrics; **central Postgres** for audit + eval results + usage + registry metadata; federated live-query (call serve) for current jobs. |
+| D4 | **UI split** | Subsumed by D1: the existing Next.js app stays the **single-instance OSS dashboard**; the **fleet panel is the separate application** (D1), reusing `lib/api.ts` patterns + `@swarmkit/schema`. |
 
-The rest of this doc assumes the recommended answers; flag changes and I'll revise.
+The rest of this doc reflects these decisions.
 
 ## 3. The three planes (concretized)
 
@@ -139,4 +139,5 @@ topologies already have canary `(name, version)` which the registry subsumes. `c
 - **Schema-version skew** across instances ([07](07-schema.md)) — the registry must refuse to push
   artifacts an instance's `swarmkit-schema` can't validate; needs a compatibility matrix.
 - **Push-schedule dedup** deferred — panel-owned schedules avoid it; instance-local cron stays local.
-- **D1 (OSS/commercial)** gates how much of §3–§5 is built in this repo vs Rynko.
+- **Repo placement of the standalone app** (D1) — own repo vs new `packages/` member — to confirm
+  before Phase 6 (UI); does not block Phase 2–5.
