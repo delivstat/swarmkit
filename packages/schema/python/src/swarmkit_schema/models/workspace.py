@@ -468,6 +468,55 @@ class Mcp(BaseModel):
     )
 
 
+class Provider2(Enum):
+    """
+    none: open access (default; only safe on loopback). api_key: bearer tokens from a static key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS).
+    """
+
+    none = "none"
+    api_key = "api_key"
+    jwt = "jwt"
+
+
+class Tier(Enum):
+    """
+    Transport scope tier: read (observe) | run (+ execute) | admin (+ mutate artifacts/rollout). Expands to serve:* scopes.
+    """
+
+    read = "read"
+    run = "run"
+    admin = "admin"
+
+
+class ServerAuthKey(BaseModel):
+    """
+    One API key. Grant scopes via a tier (read/run/admin → serve:* scopes) OR explicit scopes — not both.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    key_ref: str = Field(
+        ...,
+        description="Reference to the secret, never a literal: 'env:VAR' or a credentials entry. Resolved at startup.",
+    )
+    client_id: str = Field(
+        ..., description="Stable id for this caller (appears in audit).", min_length=1
+    )
+    client_name: str | None = Field(
+        None, description="Human-readable name. Defaults to client_id."
+    )
+    tier: Tier | None = Field(
+        None,
+        description="Transport scope tier: read (observe) | run (+ execute) | admin (+ mutate artifacts/rollout). Expands to serve:* scopes.",
+    )
+    scopes: list[str] | None = Field(
+        None,
+        description="Explicit scopes, as an alternative to tier (e.g. ['serve:read','serve:run']).",
+    )
+
+
 class PromoteCriteria(BaseModel):
     """
     Conditions that must ALL be met for auto-promotion of a canary version.
@@ -548,6 +597,31 @@ class ContextCompression(BaseModel):
     )
 
 
+class ServerAuthConfig(BaseModel):
+    """
+    Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim for jwt.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    keys: list[ServerAuthKey] | None = Field(
+        None, description="API key registry (provider: api_key)."
+    )
+    issuer: str | None = Field(None, description="OIDC issuer URL (provider: jwt).")
+    audience: str | None = Field(
+        None, description="Expected token audience (provider: jwt). Default: swarmkit."
+    )
+    jwks_url: str | None = Field(
+        None,
+        description="JWKS URL (provider: jwt). Defaults to {issuer}/.well-known/jwks.json.",
+    )
+    scopes_claim: str | None = Field(
+        None, description="JWT claim holding scopes (provider: jwt). Default: scope."
+    )
+
+
 class CanaryVersion(BaseModel):
     """
     A single version in a canary route with its traffic weight and optional promotion criteria.
@@ -572,6 +646,26 @@ class CanaryVersion(BaseModel):
         None,
         description="Auto-promotion criteria. When all conditions are met, this version is promoted to 100% traffic.",
     )
+
+
+class ServerAuth(BaseModel):
+    """
+    HTTP authentication for swarmkit serve. Off by default (provider: none). For a non-loopback bind, leaving provider=none refuses to start unless require_on_nonloopback is false (default-secure). See design/details/control-plane/12-auth.md.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    provider: Provider2 | None = Field(
+        "none",
+        description="none: open access (default; only safe on loopback). api_key: bearer tokens from a static key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS).",
+    )
+    require_on_nonloopback: bool | None = Field(
+        True,
+        description="When true (default), a non-loopback bind (--host other than 127.0.0.1/::1) with provider=none refuses to start. Set false to allow an open non-loopback bind (not recommended).",
+    )
+    config: ServerAuthConfig | None = None
 
 
 class CanaryRoute(BaseModel):
@@ -622,6 +716,7 @@ class ServerConfig(BaseModel):
         None,
         description="Canary deployment configuration. Routes traffic between topology versions by weight with optional auto-promotion. See design/details/canary-deployments.md.",
     )
+    auth: ServerAuth | None = None
 
 
 class SwarmKitWorkspace(BaseModel):

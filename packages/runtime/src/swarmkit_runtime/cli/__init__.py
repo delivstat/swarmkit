@@ -2034,6 +2034,18 @@ def checkpoints(
 # ---- auth helper ---------------------------------------------------------
 
 
+def _auth_requires_secure(workspace_path: Path) -> bool:
+    """Read server.auth.require_on_nonloopback (default True)."""
+    ws_yaml_path = workspace_path / "workspace.yaml"
+    if not ws_yaml_path.exists():
+        return True
+    import yaml  # noqa: PLC0415
+
+    data = yaml.safe_load(ws_yaml_path.read_text()) or {}
+    auth = (data.get("server", {}) or {}).get("auth", {}) or {}
+    return bool(auth.get("require_on_nonloopback", True))
+
+
 def _build_auth_provider(workspace_path: Path) -> AuthProvider:
     """Build auth provider from workspace.yaml ``server.auth`` config."""
     from swarmkit_runtime.auth import (  # noqa: PLC0415
@@ -2087,19 +2099,44 @@ def serve(
         str,
         typer.Option("--host", help="Host to bind to."),
     ] = "0.0.0.0",
+    insecure: Annotated[
+        bool,
+        typer.Option("--insecure", help="Allow a non-loopback bind with no auth (unsafe)."),
+    ] = False,
 ) -> None:
     """Start the SwarmKit HTTP server (design §14.1).
 
     Loads the workspace and exposes topology execution via REST API.
     Endpoints: GET /health, GET /topologies, GET /skills, POST /run/{topology}.
+
+    Default-secure: a non-loopback bind with auth provider 'none' refuses to start unless
+    --insecure is given or server.auth.require_on_nonloopback is false.
     """
     _print_banner()
     _suppress_noisy_logs()
     import uvicorn  # noqa: PLC0415
 
+    from swarmkit_runtime.auth import NoneAuthProvider  # noqa: PLC0415
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
     auth_provider = _build_auth_provider(workspace_path.resolve())
+
+    # Default-secure: refuse an open non-loopback bind unless explicitly allowed.
+    _loopback = {"127.0.0.1", "::1", "localhost"}
+    if (
+        host not in _loopback
+        and isinstance(auth_provider, NoneAuthProvider)
+        and not insecure
+        and _auth_requires_secure(workspace_path.resolve())
+    ):
+        typer.echo(
+            f"refusing to bind {host}:{port} with auth provider 'none' (open access).\n"
+            "Configure server.auth (api_key/jwt), bind to 127.0.0.1, pass --insecure, or set "
+            "server.auth.require_on_nonloopback: false.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
     app_instance = create_app(workspace_path.resolve(), auth_provider=auth_provider)
     uvicorn.run(app_instance, host=host, port=port)
 

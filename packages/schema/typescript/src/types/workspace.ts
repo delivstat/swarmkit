@@ -284,6 +284,7 @@ export interface Planning {
  * lifecycle, and canary deployments.
  */
 export interface Server {
+    auth?: Auth;
     /**
      * Canary deployment configuration. Routes traffic between topology versions by weight with
      * optional auto-promotion. See design/details/canary-deployments.md.
@@ -292,6 +293,94 @@ export interface Server {
     jobs?:   Jobs;
     mcp?:    MCP;
 }
+
+/**
+ * HTTP authentication for swarmkit serve. Off by default (provider: none). For a
+ * non-loopback bind, leaving provider=none refuses to start unless require_on_nonloopback
+ * is false (default-secure). See design/details/control-plane/12-auth.md.
+ */
+export interface Auth {
+    config?: Config;
+    /**
+     * none: open access (default; only safe on loopback). api_key: bearer tokens from a static
+     * key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS).
+     */
+    provider?: AuthProvider;
+    /**
+     * When true (default), a non-loopback bind (--host other than 127.0.0.1/::1) with
+     * provider=none refuses to start. Set false to allow an open non-loopback bind (not
+     * recommended).
+     */
+    require_on_nonloopback?: boolean;
+}
+
+/**
+ * Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim
+ * for jwt.
+ */
+export interface Config {
+    /**
+     * Expected token audience (provider: jwt). Default: swarmkit.
+     */
+    audience?: string;
+    /**
+     * OIDC issuer URL (provider: jwt).
+     */
+    issuer?: string;
+    /**
+     * JWKS URL (provider: jwt). Defaults to {issuer}/.well-known/jwks.json.
+     */
+    jwks_url?: string;
+    /**
+     * API key registry (provider: api_key).
+     */
+    keys?: KeyElement[];
+    /**
+     * JWT claim holding scopes (provider: jwt). Default: scope.
+     */
+    scopes_claim?: string;
+}
+
+/**
+ * One API key. Grant scopes via a tier (read/run/admin → serve:* scopes) OR explicit scopes
+ * — not both.
+ */
+export interface KeyElement {
+    /**
+     * Stable id for this caller (appears in audit).
+     */
+    client_id: string;
+    /**
+     * Human-readable name. Defaults to client_id.
+     */
+    client_name?: string;
+    /**
+     * Reference to the secret, never a literal: 'env:VAR' or a credentials entry. Resolved at
+     * startup.
+     */
+    key_ref: string;
+    /**
+     * Explicit scopes, as an alternative to tier (e.g. ['serve:read','serve:run']).
+     */
+    scopes?: string[];
+    /**
+     * Transport scope tier: read (observe) | run (+ execute) | admin (+ mutate
+     * artifacts/rollout). Expands to serve:* scopes.
+     */
+    tier?: Tier;
+}
+
+/**
+ * Transport scope tier: read (observe) | run (+ execute) | admin (+ mutate
+ * artifacts/rollout). Expands to serve:* scopes.
+ */
+export type Tier = "read" | "run" | "admin";
+
+/**
+ * none: open access (default; only safe on loopback). api_key: bearer tokens from a static
+ * key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS).
+ */
+export type AuthProvider = "none" | "api_key" | "jwt";
 
 /**
  * Canary deployment configuration. Routes traffic between topology versions by weight with

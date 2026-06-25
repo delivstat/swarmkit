@@ -62,3 +62,13 @@ context_compression:
       backend: headtail
     - match: "search-*"
       backend: "off"
+server:
+  auth:
+    provider: api_key
+    require_on_nonloopback: true
+    config:
+      keys:
+        - key_ref: env:PANEL_TOKEN
+          client_id: control-plane
+          client_name: Fleet control plane
+          tier: run

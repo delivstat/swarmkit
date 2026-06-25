@@ -1166,6 +1166,27 @@ def _register_crud_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa: 
         return _validate_workspace()
 
 
+# ---- route authorization ----------------------------------------------------
+
+
+def _required_action(method: str, path: str) -> str | None:
+    """The serve:* tier action a route requires, or None for auth-exempt.
+
+    read = all GETs (observe); admin = artifact mutation (/api/* writes) + canary
+    promote/rollback; run = every other write (run/hooks/conversations/mcp). See
+    design/details/control-plane/12-auth.md §4.
+    """
+    if path == "/health":
+        return None
+    if method.upper() == "GET":
+        return "read"
+    if path.startswith("/api/"):
+        return "admin"
+    if path.startswith("/canary/") and (path.endswith("/promote") or path.endswith("/rollback")):
+        return "admin"
+    return "run"
+
+
 # ---- app factory ------------------------------------------------------------
 
 
@@ -1290,6 +1311,20 @@ def create_app(  # noqa: PLR0915
             return JSONResponse(
                 status_code=exc.status_code,
                 content={"error": str(exc)},
+            )
+
+        # Per-route authorization: each route requires a serve:* tier scope.
+        required = _required_action(request.method, request.url.path)
+        if required is not None and not await _auth.authorize(identity, "serve", required):
+            logger.warning(
+                "authz.denied client_id=%s path=%s required=serve:%s",
+                identity.client_id,
+                request.url.path,
+                required,
+            )
+            return JSONResponse(
+                status_code=403,
+                content={"error": f"Insufficient scope: requires serve:{required}"},
             )
 
         return await call_next(request)

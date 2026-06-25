@@ -204,8 +204,9 @@ def test_server_api_key_rejects() -> None:
 
 
 def test_server_api_key_accepts() -> None:
-    """Server with APIKeyAuthProvider accepts valid bearer token."""
-    provider = _api_key_provider()
+    """Server with APIKeyAuthProvider accepts a valid bearer token carrying serve:read."""
+    # GET routes require the serve:read transport scope (per-route enforcement).
+    provider = _api_key_provider(scopes=["serve:read"])
     client = _make_server_client(provider)
     with client:
         resp = client.get(
@@ -223,3 +224,14 @@ def test_health_skips_auth() -> None:
         resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+
+def test_server_insufficient_scope_403() -> None:
+    """Authenticated but under-scoped token is 403'd by per-route enforcement."""
+    # serve:read token may GET, but an admin route (POST /api/reload) must 403.
+    provider = _api_key_provider(scopes=["serve:read"])
+    client = _make_server_client(provider)
+    hdr = {"Authorization": "Bearer test-secret-key"}
+    with client:
+        assert client.get("/topologies", headers=hdr).status_code == 200
+        assert client.post("/api/reload", headers=hdr).status_code == 403
