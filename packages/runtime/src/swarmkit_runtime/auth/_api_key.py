@@ -17,6 +17,7 @@ from swarmkit_runtime.auth._provider import (
     AuthProvider,
     AuthRequest,
 )
+from swarmkit_runtime.auth._scopes import expand_tier, reserved_violations
 
 
 @dataclass(frozen=True)
@@ -51,13 +52,23 @@ class APIKeyAuthProvider(AuthProvider):
         self._keys: dict[str, _KeyEntry] = {}
         for cfg in keys:
             raw_ref: str = cfg["key_ref"]
+            # Scopes come from a tier (read|run|admin) or explicit scopes — not both.
+            tier = cfg.get("tier")
+            scopes = expand_tier(tier) if tier else frozenset(cfg.get("scopes", []))
+            # A transport token must never carry a reserved-for-human governance scope (§8.7).
+            violations = reserved_violations(scopes)
+            if violations:
+                raise ValueError(
+                    f"API key '{cfg.get('client_id', '?')}' grants reserved governance "
+                    f"scope(s) {sorted(violations)} — transport tokens hold only serve:* scopes."
+                )
             secret = self._resolve_ref(raw_ref)
             if secret:
                 entry = _KeyEntry(
                     secret=secret,
                     client_id=cfg["client_id"],
                     client_name=cfg.get("client_name", cfg["client_id"]),
-                    scopes=frozenset(cfg.get("scopes", [])),
+                    scopes=scopes,
                 )
                 self._keys[secret] = entry
 

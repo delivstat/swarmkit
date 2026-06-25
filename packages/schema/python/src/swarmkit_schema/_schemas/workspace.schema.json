@@ -446,6 +446,75 @@
               "items": { "$ref": "#/$defs/canary_route" }
             }
           }
+        },
+        "auth": { "$ref": "#/$defs/server_auth" }
+      }
+    },
+    "server_auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "HTTP authentication for swarmkit serve. Off by default (provider: none). For a non-loopback bind, leaving provider=none refuses to start unless require_on_nonloopback is false (default-secure). See design/details/control-plane/12-auth.md.",
+      "properties": {
+        "provider": {
+          "enum": ["none", "api_key", "jwt"],
+          "default": "none",
+          "description": "none: open access (default; only safe on loopback). api_key: bearer tokens from a static key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS)."
+        },
+        "require_on_nonloopback": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true (default), a non-loopback bind (--host other than 127.0.0.1/::1) with provider=none refuses to start. Set false to allow an open non-loopback bind (not recommended)."
+        },
+        "config": { "$ref": "#/$defs/server_auth_config" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "provider": { "const": "api_key" } }, "required": ["provider"] },
+          "then": { "required": ["config"], "properties": { "config": { "required": ["keys"] } } }
+        },
+        {
+          "if": { "properties": { "provider": { "const": "jwt" } }, "required": ["provider"] },
+          "then": { "required": ["config"], "properties": { "config": { "required": ["issuer"] } } }
+        }
+      ]
+    },
+    "server_auth_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim for jwt.",
+      "properties": {
+        "keys": {
+          "type": "array",
+          "description": "API key registry (provider: api_key).",
+          "items": { "$ref": "#/$defs/server_auth_key" }
+        },
+        "issuer": { "type": "string", "description": "OIDC issuer URL (provider: jwt)." },
+        "audience": { "type": "string", "description": "Expected token audience (provider: jwt). Default: swarmkit." },
+        "jwks_url": { "type": "string", "description": "JWKS URL (provider: jwt). Defaults to {issuer}/.well-known/jwks.json." },
+        "scopes_claim": { "type": "string", "description": "JWT claim holding scopes (provider: jwt). Default: scope." }
+      }
+    },
+    "server_auth_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_ref", "client_id"],
+      "description": "One API key. Grant scopes via a tier (read/run/admin → serve:* scopes) OR explicit scopes — not both.",
+      "not": { "required": ["tier", "scopes"] },
+      "properties": {
+        "key_ref": {
+          "type": "string",
+          "description": "Reference to the secret, never a literal: 'env:VAR' or a credentials entry. Resolved at startup."
+        },
+        "client_id": { "type": "string", "minLength": 1, "description": "Stable id for this caller (appears in audit)." },
+        "client_name": { "type": "string", "description": "Human-readable name. Defaults to client_id." },
+        "tier": {
+          "enum": ["read", "run", "admin"],
+          "description": "Transport scope tier: read (observe) | run (+ execute) | admin (+ mutate artifacts/rollout). Expands to serve:* scopes."
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Explicit scopes, as an alternative to tier (e.g. ['serve:read','serve:run'])."
         }
       }
     },

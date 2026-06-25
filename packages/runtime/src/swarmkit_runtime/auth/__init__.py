@@ -21,8 +21,20 @@ from swarmkit_runtime.auth._provider import (
     AuthRequest,
 )
 from swarmkit_runtime.auth._registry import AuthProviderRegistry, default_registry
+from swarmkit_runtime.auth._scopes import (
+    RESERVED_SCOPES,
+    SERVE_ADMIN,
+    SERVE_READ,
+    SERVE_RUN,
+    expand_tier,
+    reserved_violations,
+)
 
 __all__ = [
+    "RESERVED_SCOPES",
+    "SERVE_ADMIN",
+    "SERVE_READ",
+    "SERVE_RUN",
     "APIKeyAuthProvider",
     "AuthError",
     "AuthIdentity",
@@ -32,4 +44,6 @@ __all__ = [
     "JWTAuthProvider",
     "NoneAuthProvider",
     "default_registry",
+    "expand_tier",
+    "reserved_violations",
 ]

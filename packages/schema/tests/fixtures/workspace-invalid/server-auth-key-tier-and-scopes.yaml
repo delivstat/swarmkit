@@ -1,0 +1,15 @@
+# A server.auth key may set tier OR scopes, not both.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+server:
+  auth:
+    provider: api_key
+    config:
+      keys:
+        - key_ref: env:TOK
+          client_id: cp
+          tier: run
+          scopes: [serve:read]

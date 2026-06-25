@@ -1,0 +1,10 @@
+# provider: api_key requires config.keys.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: broken
+  name: Broken
+server:
+  auth:
+    provider: api_key
+    config: {}
