@@ -408,6 +408,48 @@ def init(
 author_app = typer.Typer(help="Conversational authoring for topologies, skills, archetypes.")
 app.add_typer(author_app, name="author")
 
+auth_app = typer.Typer(help="Manage serve API auth (token minting).")
+app.add_typer(auth_app, name="auth")
+
+
+@auth_app.command("token")
+def auth_token(
+    client_id: Annotated[str, typer.Argument(help="Stable id for the caller (appears in audit).")],
+    tier: Annotated[str, typer.Option("--tier", help="Scope tier: read | run | admin.")] = "read",
+    client_name: Annotated[
+        str, typer.Option("--client-name", help="Human-readable name. Defaults to client-id.")
+    ] = "",
+    env_var: Annotated[
+        str, typer.Option("--env-var", help="Env var name to hold the secret.")
+    ] = "",
+) -> None:
+    """Mint a serve API token: generate a strong secret and print the config to wire it.
+
+    Nothing is stored — the secret is shown once. Set the env var, paste the YAML under
+    server.auth.config.keys, and restart serve.
+    """
+    import secrets as _secrets  # noqa: PLC0415
+
+    if tier not in ("read", "run", "admin"):
+        typer.echo(f"invalid tier '{tier}' — use read | run | admin", err=True)
+        raise typer.Exit(code=2)
+    slug = "".join(c if (c.isalnum() or c == "-") else "-" for c in client_id.lower())
+    name = env_var or f"{slug.upper().replace('-', '_')}_TOKEN"
+    secret = _secrets.token_urlsafe(32)
+    cname = client_name or client_id
+
+    typer.echo("# 1. Export the secret (shown once — store it securely):")
+    typer.echo(f"export {name}={secret}\n")
+    typer.echo("# 2. Add this under server.auth.config.keys in workspace.yaml:")
+    typer.echo(
+        f"        - key_ref: env:{name}\n"
+        f"          client_id: {client_id}\n"
+        f"          client_name: {cname}\n"
+        f"          tier: {tier}\n"
+    )
+    typer.echo("# 3. Restart `swarmkit serve` (auth config is read at startup).")
+    typer.echo(f"# Callers send:  Authorization: Bearer {secret}")
+
 
 def _run_authoring(
     mode: AuthoringMode,
@@ -2064,10 +2106,11 @@ def _build_auth_provider(workspace_path: Path) -> AuthProvider:
     server_config = ws_data.get("server", {}) or {}
     auth_config = server_config.get("auth", {}) or {}
     provider_name = auth_config.get("provider", "none")
+    credentials = ws_data.get("credentials", {}) or {}
 
     if provider_name == "api_key":
         config = auth_config.get("config", {}) or {}
-        return APIKeyAuthProvider(keys=config.get("keys", []))
+        return APIKeyAuthProvider(keys=config.get("keys", []), credentials=credentials)
 
     if provider_name == "jwt":
         config = auth_config.get("config", {}) or {}

@@ -59,11 +59,24 @@ CREATE TABLE IF NOT EXISTS run_usage (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS serve_access (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    action TEXT,
+    status INTEGER,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
 CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
 CREATE INDEX IF NOT EXISTS idx_run_usage_job ON run_usage(job_id);
 CREATE INDEX IF NOT EXISTS idx_run_usage_conv ON run_usage(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_serve_access_created ON serve_access(created_at);
+CREATE INDEX IF NOT EXISTS idx_serve_access_client ON serve_access(client_id);
 """
 
 
@@ -321,6 +334,36 @@ class SqliteStore:
                     now,
                 ),
             )
+
+    def record_access(
+        self,
+        *,
+        client_id: str,
+        provider: str,
+        method: str,
+        path: str,
+        action: str | None,
+        status: int,
+    ) -> None:
+        """Append a serve access-audit record (who called what over the API)."""
+        now = datetime.now(UTC).isoformat()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """INSERT INTO serve_access
+                   (client_id, provider, method, path, action, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (client_id, provider, method, path, action, status, now),
+            )
+
+    def list_access(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Return recent serve access-audit records, newest first."""
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT client_id, provider, method, path, action, status, created_at "
+                "FROM serve_access ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def get_usage_summary(
         self,

@@ -40,7 +40,10 @@ def _default_registry() -> AuthProviderRegistry:
 
     registry = AuthProviderRegistry()
     registry.register("none", lambda **_kw: NoneAuthProvider())
-    registry.register("api_key", lambda **kw: APIKeyAuthProvider(keys=kw.get("keys", [])))
+    registry.register(
+        "api_key",
+        lambda **kw: APIKeyAuthProvider(keys=kw.get("keys", []), credentials=kw.get("credentials")),
+    )
     registry.register(
         "jwt",
         lambda **kw: JWTAuthProvider(
