@@ -1187,6 +1187,24 @@ def _required_action(method: str, path: str) -> str | None:
     return "run"
 
 
+def _record_serve_access(request: Any, identity: Any, action: str | None, status: int) -> None:
+    """Append a serve access-audit record (best-effort; never breaks the request)."""
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        return
+    try:
+        store.record_access(
+            client_id=identity.client_id,
+            provider=identity.provider,
+            method=request.method,
+            path=request.url.path,
+            action=action,
+            status=status,
+        )
+    except Exception:  # audit must not break serving
+        logger.debug("serve access-audit write failed", exc_info=True)
+
+
 # ---- app factory ------------------------------------------------------------
 
 
@@ -1322,12 +1340,17 @@ def create_app(  # noqa: PLR0915
                 request.url.path,
                 required,
             )
+            _record_serve_access(request, identity, required, 403)
             return JSONResponse(
                 status_code=403,
                 content={"error": f"Insufficient scope: requires serve:{required}"},
             )
 
-        return await call_next(request)
+        response = await call_next(request)
+        # Audit mutating calls (run/admin) with the acting client_id.
+        if required in ("run", "admin"):
+            _record_serve_access(request, identity, required, response.status_code)
+        return response
 
     # Routes
     _register_introspection_routes(app)

@@ -33,9 +33,13 @@ Hardening the existing `auth/` seam. Slices:
       `topologies:modify`/`iam:modify`/`audit:*`)
 - [x] tests (tier expansion, route enforcement, default-secure, schema fixtures) + runtime → 1.9.0
 
-### Slice 2 — audit + docs
-- [ ] audit the acting `client_id` on authenticated mutating calls
-- [ ] operator docs for `server.auth` (api_key + jwt/OIDC) + the default-secure breaking change
+### Slice 2 — audit, secret resolution, mint, docs ✅ (PR #372, runtime 1.10.0)
+- [x] audit the acting `client_id` on authenticated mutating calls (`serve_access` table + middleware)
+- [x] `key_ref` secret resolution: `env:` / `file:` / `credentials:NAME` (env+file sources; cloud
+      sources raise until a SecretsProvider is wired)
+- [x] token mint helper — `swarmkit auth token <client-id> --tier`
+- [x] operator docs — `docs/guides/serve-auth.md` (api_key + jwt/OIDC, tiers, key_ref, rotate/revoke,
+      default-secure)
 
 ## Phase 3 — Connector + registry (doc [13](13-connector-registry.md))
 - [ ] `GET /capabilities` on serve
@@ -46,3 +50,6 @@ Hardening the existing `auth/` seam. Slices:
 ## Changelog
 - **#371** — Phase 3 auth slice 1: `server.auth` schema + `serve:*` tiers + per-route authorize
   enforcement + default-secure bind + reserved-scope guard. runtime 1.9.0 / schema 1.6.0.
+- **#372** — Phase 3 auth slice 2: serve access-audit (`client_id` on mutating calls), `key_ref`
+  resolution (`env:`/`file:`/`credentials:NAME`), `swarmkit auth token` mint helper, operator
+  docs. runtime 1.10.0.

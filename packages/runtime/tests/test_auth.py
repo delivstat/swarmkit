@@ -235,3 +235,20 @@ def test_server_insufficient_scope_403() -> None:
     with client:
         assert client.get("/topologies", headers=hdr).status_code == 200
         assert client.post("/api/reload", headers=hdr).status_code == 403
+
+
+def test_server_records_access_audit() -> None:
+    """Authenticated mutating calls are recorded with the acting client_id."""
+    provider = _api_key_provider(scopes=["serve:read"])  # read-only → admin call 403s
+    client = _make_server_client(provider)
+    hdr = {"Authorization": "Bearer test-secret-key"}
+    with client:
+        client.get("/topologies", headers=hdr)  # read — not audited
+        client.post("/api/reload", headers=hdr)  # admin — audited (as a 403)
+        store = client.app.state.store  # type: ignore[attr-defined]
+        rows = store.list_access(limit=10)
+    # the mutating call is recorded with the client id; the read GET is not
+    paths = {(r["path"], r["status"]) for r in rows}
+    assert ("/api/reload", 403) in paths
+    assert all(r["client_id"] == "test-client" for r in rows)
+    assert "/topologies" not in {r["path"] for r in rows}

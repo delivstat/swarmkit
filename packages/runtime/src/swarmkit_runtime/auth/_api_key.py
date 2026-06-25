@@ -7,7 +7,6 @@ client identity and scope set.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,6 +17,7 @@ from swarmkit_runtime.auth._provider import (
     AuthRequest,
 )
 from swarmkit_runtime.auth._scopes import expand_tier, reserved_violations
+from swarmkit_runtime.auth._secrets import resolve_secret_ref
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,9 @@ class APIKeyAuthProvider(AuthProvider):
     variables at init time. Plain strings are used as-is.
     """
 
-    def __init__(self, keys: list[dict[str, Any]]) -> None:
+    def __init__(
+        self, keys: list[dict[str, Any]], credentials: dict[str, Any] | None = None
+    ) -> None:
         self._keys: dict[str, _KeyEntry] = {}
         for cfg in keys:
             raw_ref: str = cfg["key_ref"]
@@ -62,7 +64,7 @@ class APIKeyAuthProvider(AuthProvider):
                     f"API key '{cfg.get('client_id', '?')}' grants reserved governance "
                     f"scope(s) {sorted(violations)} — transport tokens hold only serve:* scopes."
                 )
-            secret = self._resolve_ref(raw_ref)
+            secret = resolve_secret_ref(raw_ref, credentials)
             if secret:
                 entry = _KeyEntry(
                     secret=secret,
@@ -71,14 +73,6 @@ class APIKeyAuthProvider(AuthProvider):
                     scopes=scopes,
                 )
                 self._keys[secret] = entry
-
-    @staticmethod
-    def _resolve_ref(ref: str) -> str | None:
-        """Resolve a key reference to a concrete secret string."""
-        if ref.startswith("env:"):
-            var_name = ref[4:]
-            return os.environ.get(var_name)
-        return ref
 
     async def authenticate(self, request: AuthRequest) -> AuthIdentity:
         token = self._extract_bearer(request.headers)

@@ -19,8 +19,10 @@ from swarmkit_runtime.auth import (
     expand_tier,
     reserved_violations,
 )
-from swarmkit_runtime.cli import _auth_requires_secure
+from swarmkit_runtime.auth._secrets import resolve_secret_ref
+from swarmkit_runtime.cli import _auth_requires_secure, app
 from swarmkit_runtime.server import _required_action
+from typer.testing import CliRunner
 
 # --- tier expansion ---------------------------------------------------------
 
@@ -139,3 +141,69 @@ def test_auth_requires_secure_opt_out(tmp_path: Path) -> None:
         "server:\n  auth:\n    provider: none\n    require_on_nonloopback: false\n"
     )
     assert _auth_requires_secure(tmp_path) is False
+
+
+# --- key_ref secret resolution ----------------------------------------------
+
+
+def test_resolve_env_ref(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MY_TOK", "s3cr3t")
+    assert resolve_secret_ref("env:MY_TOK") == "s3cr3t"
+    monkeypatch.delenv("MY_TOK", raising=False)
+    assert resolve_secret_ref("env:MY_TOK") is None
+
+
+def test_resolve_file_ref(tmp_path: Path) -> None:
+    f = tmp_path / "tok"
+    f.write_text("file-secret\n")  # trailing newline stripped
+    assert resolve_secret_ref(f"file:{f}") == "file-secret"
+    assert resolve_secret_ref(f"file:{tmp_path / 'missing'}") is None
+
+
+def test_resolve_credentials_env_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CRED_VAR", "from-cred")
+    creds = {"panel": {"source": "env", "config": {"env": "CRED_VAR"}}}
+    assert resolve_secret_ref("credentials:panel", creds) == "from-cred"
+
+
+def test_resolve_credentials_file_source(tmp_path: Path) -> None:
+    f = tmp_path / "c"
+    f.write_text("cred-file")
+    creds = {"panel": {"source": "file", "config": {"path": str(f)}}}
+    assert resolve_secret_ref("credentials:panel", creds) == "cred-file"
+
+
+def test_resolve_credentials_cloud_source_raises() -> None:
+    creds = {"v": {"source": "hashicorp-vault", "config": {}}}
+    with pytest.raises(NotImplementedError, match="SecretsProvider"):
+        resolve_secret_ref("credentials:v", creds)
+
+
+def test_resolve_literal_passthrough() -> None:
+    assert resolve_secret_ref("just-a-literal") == "just-a-literal"
+
+
+def test_api_key_resolves_credentials_ref(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CRED_VAR", "the-secret")
+    p = APIKeyAuthProvider(
+        keys=[{"key_ref": "credentials:panel", "client_id": "cp", "tier": "read"}],
+        credentials={"panel": {"source": "env", "config": {"env": "CRED_VAR"}}},
+    )
+    assert "the-secret" in p._keys
+
+
+# --- token mint command -----------------------------------------------------
+
+
+def test_auth_token_mint() -> None:
+    result = CliRunner().invoke(app, ["auth", "token", "control-plane", "--tier", "run"])
+    assert result.exit_code == 0
+    assert "key_ref: env:CONTROL_PLANE_TOKEN" in result.stdout
+    assert "client_id: control-plane" in result.stdout
+    assert "tier: run" in result.stdout
+    assert "Bearer " in result.stdout
+
+
+def test_auth_token_invalid_tier() -> None:
+    result = CliRunner().invoke(app, ["auth", "token", "cp", "--tier", "superuser"])
+    assert result.exit_code == 2
