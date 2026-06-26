@@ -237,6 +237,29 @@ def test_server_insufficient_scope_403() -> None:
         assert client.post("/api/reload", headers=hdr).status_code == 403
 
 
+def test_capabilities_endpoint() -> None:
+    """GET /capabilities advertises the instance's capabilities (serve:read tier)."""
+    provider = _api_key_provider(scopes=["serve:read"])
+    client = _make_server_client(provider)
+    with client:
+        resp = client.get("/capabilities", headers={"Authorization": "Bearer test-secret-key"})
+    assert resp.status_code == 200
+    body = resp.json()
+    for key in (
+        "serve_version",
+        "schema_version",
+        "workspace_id",
+        "topologies",
+        "model_providers",
+        "governance_provider",
+        "features",
+    ):
+        assert key in body
+    assert isinstance(body["topologies"], list)
+    assert isinstance(body["model_providers"], list)
+    assert {"auth", "compression", "canary"} <= set(body["features"])
+
+
 def test_server_records_access_audit() -> None:
     """Authenticated mutating calls are recorded with the acting client_id."""
     provider = _api_key_provider(scopes=["serve:read"])  # read-only → admin call 403s
@@ -246,9 +269,12 @@ def test_server_records_access_audit() -> None:
         client.get("/topologies", headers=hdr)  # read — not audited
         client.post("/api/reload", headers=hdr)  # admin — audited (as a 403)
         store = client.app.state.store  # type: ignore[attr-defined]
-        rows = store.list_access(limit=10)
-    # the mutating call is recorded with the client id; the read GET is not
-    paths = {(r["path"], r["status"]) for r in rows}
-    assert ("/api/reload", 403) in paths
-    assert all(r["client_id"] == "test-client" for r in rows)
-    assert "/topologies" not in {r["path"] for r in rows}
+        rows = store.list_access(limit=50)
+    # The mutating call is recorded with the acting client_id. (Store is shared on disk
+    # across tests, so assert the row exists rather than asserting the whole table.)
+    assert any(
+        r["path"] == "/api/reload" and r["status"] == 403 and r["client_id"] == "test-client"
+        for r in rows
+    )
+    # Reads are never audited — no GET /topologies row is ever written.
+    assert all(r["path"] != "/topologies" for r in rows)

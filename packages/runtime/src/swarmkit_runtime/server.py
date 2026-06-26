@@ -399,6 +399,11 @@ def _register_introspection_routes(app: FastAPI) -> None:
             "archetypes": sorted(ws.archetypes.keys()),
         }
 
+    @app.get("/capabilities")
+    async def capabilities(request: Request) -> dict[str, Any]:
+        """What this instance can do — the control plane reads this at enroll/refresh."""
+        return _build_capabilities(_get_runtime(request))
+
     @app.get("/triggers")
     async def list_triggers(request: Request) -> list[dict[str, Any]]:
         trigger_configs: list[dict[str, Any]] = getattr(request.app.state, "trigger_configs", [])
@@ -1185,6 +1190,47 @@ def _required_action(method: str, path: str) -> str | None:
     if path.startswith("/canary/") and (path.endswith("/promote") or path.endswith("/rollback")):
         return "admin"
     return "run"
+
+
+def _pkg_version(name: str) -> str:
+    """Installed package version, or 'unknown'."""
+    from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
+
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def _enum_value(obj: Any, attr: str, default: str = "") -> str:
+    """Read a (possibly Enum-valued) attribute as its string, or default."""
+    val = getattr(obj, attr, None)
+    val = getattr(val, "value", val)  # pydantic Enum -> str
+    return val if isinstance(val, str) else default
+
+
+def _build_capabilities(rt: Any) -> dict[str, Any]:
+    """Advertise what this instance can do — consumed by the control plane at enroll/refresh.
+
+    See design/details/control-plane/13-connector-registry.md.
+    """
+    ws = rt.workspace
+    raw = ws.raw
+    server_raw = getattr(raw, "server", None)
+    canary = getattr(server_raw, "canary", None)
+    return {
+        "serve_version": _pkg_version("swarmkit-runtime"),
+        "schema_version": _pkg_version("swarmkit-schema"),
+        "workspace_id": str(raw.metadata.id),
+        "topologies": sorted(ws.topologies.keys()),
+        "model_providers": rt.provider_registry.provider_ids,
+        "governance_provider": _enum_value(getattr(raw, "governance", None), "provider", "mock"),
+        "features": {
+            "auth": _enum_value(getattr(server_raw, "auth", None), "provider", "none"),
+            "compression": _enum_value(getattr(raw, "context_compression", None), "backend", "off"),
+            "canary": bool(getattr(canary, "routes", None)),
+        },
+    }
 
 
 def _record_serve_access(request: Any, identity: Any, action: str | None, status: int) -> None:

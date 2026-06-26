@@ -42,10 +42,18 @@ Hardening the existing `auth/` seam. Slices:
       default-secure)
 
 ## Phase 3 — Connector + registry (doc [13](13-connector-registry.md))
-- [ ] `GET /capabilities` on serve
-- [ ] Mode A heartbeat (instance→panel) + panel `POST /instances/{id}/heartbeat`
-- [ ] Mode B poll connector (`swarmkit connect`) + panel command-queue endpoints
-- [ ] panel instance registry (CRUD + health + `connection` mode) + enrollment + token minting
+- [x] `GET /capabilities` on serve (PR #373) — serve_version, schema_version, topologies,
+      model_providers, governance_provider, features (auth/compression/canary)
+- [-] Mode A heartbeat (instance→panel) + panel `POST /instances/{id}/heartbeat` — **needs the
+      panel app** (the receiver). Instance-side heartbeat client lands with the panel.
+- [-] Mode B poll connector (`swarmkit connect`) + panel command-queue endpoints — **needs the
+      panel app** (the command queue to poll).
+- [-] panel instance registry (CRUD + health + `connection` mode) + enrollment + token minting —
+      **the panel app itself** (separate standalone application, D1).
+
+> The remaining connector pieces all require the standalone control-plane **panel** (the other end
+> of the connection). `/capabilities` + the serve-side auth/audit are the instance-side surface the
+> panel will consume. Next real step is **scaffolding the panel app** (decide repo placement first).
 
 ## Changelog
 - **#371** — Phase 3 auth slice 1: `server.auth` schema + `serve:*` tiers + per-route authorize
@@ -53,3 +61,5 @@ Hardening the existing `auth/` seam. Slices:
 - **#372** — Phase 3 auth slice 2: serve access-audit (`client_id` on mutating calls), `key_ref`
   resolution (`env:`/`file:`/`credentials:NAME`), `swarmkit auth token` mint helper, operator
   docs. runtime 1.10.0.
+- **#373** — Phase 3 connector: `GET /capabilities` (instance capability advertisement, the
+  enrollment-verify surface). runtime 1.11.0.
