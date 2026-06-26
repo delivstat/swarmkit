@@ -1,0 +1,29 @@
+[project]
+name = "swarmkit-control-plane"
+version = "0.1.0"
+description = "SwarmKit control plane — connect, observe, and manage multiple SwarmKit instances."
+readme = { text = "SwarmKit control plane (fleet panel API + instance registry). See https://github.com/delivstat/swarmkit", content-type = "text/markdown" }
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Srijith Kartha" }]
+keywords = ["swarmkit", "control-plane", "fleet", "multi-agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "httpx>=0.27",
+    "uvicorn>=0.30",
+    "typer>=0.12",
+]
+
+[project.scripts]
+swarmkit-control-plane = "swarmkit_control_plane.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/swarmkit_control_plane"]

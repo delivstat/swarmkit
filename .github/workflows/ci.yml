@@ -41,7 +41,7 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Typecheck (mypy)
-        run: uv run mypy packages/runtime packages/schema/python
+        run: uv run mypy packages/runtime packages/schema/python packages/control-plane
 
       - name: Test (pytest)
         run: uv run pytest
