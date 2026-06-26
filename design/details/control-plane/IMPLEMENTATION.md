@@ -15,7 +15,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (PR #) · `[-]` deferred/b
 | 3 | **Auth implementation** + connector/registry | ✅ #368/#369/#370 | **active** |
 | 4 | Aggregation | ✅ #369 | not started |
 | 5 | Artifact registry + versioning | ✅ #369 | not started |
-| 6 | Fleet UI | ✅ #369 | not started |
+| 6 | Fleet UI | ✅ #369 | **active** (slice 1 below) |
 | 7 | Growth loop | ✅ #369 | not started |
 | 8 | Hardening + rollout | ✅ #369/#370 | not started |
 
@@ -52,10 +52,27 @@ Hardening the existing `auth/` seam. Slices:
 - [ ] Mode B poll command-queue (`/instances/{id}/poll` + `/commands/{id}/result`) + the
       `swarmkit connect` instance-side connector
 - [ ] token minting in the panel (enrollment currently takes an operator-supplied `token_ref`)
-- [ ] aggregation, artifact registry, fleet UI — Phases 4–6
+- [ ] aggregation, artifact registry — Phases 4–5
 
-> Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI will be
-> a sibling package). Next: the Mode B poll command-queue + `swarmkit connect`.
+> Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
+> sibling package `packages/control-plane-ui`). Remaining connector work: the Mode B poll
+> command-queue + `swarmkit connect`.
+
+## Phase 6 — Fleet UI (doc [16](16-fleet-ui.md))
+
+### Slice 1 — app shell + fleet/instances views ✅ (PR #375)
+- [x] new sibling package `packages/control-plane-ui` — Next.js 15 + React 19 + Tailwind v4 +
+      shadcn/ui (zinc theme, class-based dark mode), wired into the pnpm workspace + JS CI
+      (biome / tsc)
+- [x] dashboard + sidebar shell; sidebar nav follows the doc-16 page set (Fleet, Instances live;
+      Runs/Evals/Artifacts/Approvals/Authoring/Settings shown muted until their slices land)
+- [x] `/dashboard` (Fleet) — stat cards (total / healthy / direct / poll) + instance list
+- [x] `/instances` — registry table (health + connection-mode badges, schema, last-seen)
+- [x] typed API client (`lib/api.ts`) over the panel API, `Instance` type mirrors
+      `public_dict()`, `usePoll` refresh
+- [ ] OIDC login + instance selector + 401 handling (later slice)
+- [ ] per-instance views — runs, evals, artifact registry, approvals, conversational authoring
+      (Phases 4–7 surfaces)
 
 ## Changelog
 - **#371** — Phase 3 auth slice 1: `server.auth` schema + `serve:*` tiers + per-route authorize
