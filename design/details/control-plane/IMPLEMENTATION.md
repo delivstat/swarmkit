@@ -42,18 +42,20 @@ Hardening the existing `auth/` seam. Slices:
       default-secure)
 
 ## Phase 3 — Connector + registry (doc [13](13-connector-registry.md))
-- [x] `GET /capabilities` on serve (PR #373) — serve_version, schema_version, topologies,
-      model_providers, governance_provider, features (auth/compression/canary)
-- [-] Mode A heartbeat (instance→panel) + panel `POST /instances/{id}/heartbeat` — **needs the
-      panel app** (the receiver). Instance-side heartbeat client lands with the panel.
-- [-] Mode B poll connector (`swarmkit connect`) + panel command-queue endpoints — **needs the
-      panel app** (the command queue to poll).
-- [-] panel instance registry (CRUD + health + `connection` mode) + enrollment + token minting —
-      **the panel app itself** (separate standalone application, D1).
+- [x] `GET /capabilities` on serve (PR #373)
+- [x] **control-plane app scaffold** — new monorepo package `packages/control-plane`
+      (`swarmkit-control-plane`): FastAPI panel API + sqlite instance registry, wired into the
+      uv workspace + CI (PR #374)
+- [x] panel instance registry (CRUD + health + `connection` mode) + enrollment (Mode A pull-verify
+      via the instance's `/capabilities`) (PR #374)
+- [x] heartbeat receiver — `POST /instances/{id}/heartbeat` (Mode A + Mode B liveness) (PR #374)
+- [ ] Mode B poll command-queue (`/instances/{id}/poll` + `/commands/{id}/result`) + the
+      `swarmkit connect` instance-side connector
+- [ ] token minting in the panel (enrollment currently takes an operator-supplied `token_ref`)
+- [ ] aggregation, artifact registry, fleet UI — Phases 4–6
 
-> The remaining connector pieces all require the standalone control-plane **panel** (the other end
-> of the connection). `/capabilities` + the serve-side auth/audit are the instance-side surface the
-> panel will consume. Next real step is **scaffolding the panel app** (decide repo placement first).
+> Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI will be
+> a sibling package). Next: the Mode B poll command-queue + `swarmkit connect`.
 
 ## Changelog
 - **#371** — Phase 3 auth slice 1: `server.auth` schema + `serve:*` tiers + per-route authorize
@@ -63,3 +65,6 @@ Hardening the existing `auth/` seam. Slices:
   docs. runtime 1.10.0.
 - **#373** — Phase 3 connector: `GET /capabilities` (instance capability advertisement, the
   enrollment-verify surface). runtime 1.11.0.
+- **#374** — control-plane app scaffold: new `packages/control-plane` package (panel API + sqlite
+  instance registry + enrollment with Mode A pull-verify + heartbeat receiver), wired into the uv
+  workspace + CI. swarmkit-control-plane 0.1.0.
