@@ -49,14 +49,15 @@ Hardening the existing `auth/` seam. Slices:
 - [x] panel instance registry (CRUD + health + `connection` mode) + enrollment (Mode A pull-verify
       via the instance's `/capabilities`) (PR #374)
 - [x] heartbeat receiver — `POST /instances/{id}/heartbeat` (Mode A + Mode B liveness) (PR #374)
-- [ ] Mode B poll command-queue (`/instances/{id}/poll` + `/commands/{id}/result`) + the
-      `swarmkit connect` instance-side connector
+- [x] Mode B poll command-queue (panel: `POST /instances/{id}/commands`, `POST /poll`,
+      `POST /commands/{id}/result`, `GET /commands`) + the `swarmkit connect` instance-side
+      connector + granted-tier bounds on enqueue (panel) and re-validation (connector) (PR #377)
 - [ ] token minting in the panel (enrollment currently takes an operator-supplied `token_ref`)
 - [ ] aggregation, artifact registry — Phases 4–5
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
-> sibling package `packages/control-plane-ui`). Remaining connector work: the Mode B poll
-> command-queue + `swarmkit connect`.
+> sibling package `packages/control-plane-ui`). Both connection modes now exist end-to-end; the
+> remaining connector work is panel-side token minting.
 
 ## Phase 6 — Fleet UI (doc [16](16-fleet-ui.md))
 
@@ -85,3 +86,9 @@ Hardening the existing `auth/` seam. Slices:
 - **#374** — control-plane app scaffold: new `packages/control-plane` package (panel API + sqlite
   instance registry + enrollment with Mode A pull-verify + heartbeat receiver), wired into the uv
   workspace + CI. swarmkit-control-plane 0.1.0.
+- **#375** — Phase 6 fleet UI slice 1: new `packages/control-plane-ui` (Next.js + shadcn dashboard;
+  Fleet + Instances views over the panel API).
+- **#377** — Phase 3 Mode B: panel command-queue (`/commands`, `/poll`, `/commands/{id}/result`)
+  with granted-tier enqueue bounds + idempotent results, and the `swarmkit connect` poll connector
+  (outbound-only, executes verbs against loopback serve with tier re-validation).
+  swarmkit-control-plane 0.2.0 / runtime 1.12.0.
