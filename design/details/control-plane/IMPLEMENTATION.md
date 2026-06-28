@@ -97,4 +97,6 @@ Hardening the existing `auth/` seam. Slices:
 - **#378** — Phase 3 token minting: `POST /instances/{id}/mint-token` (per-instance, per-tier serve
   token; secret returned once, panel stores only `key_ref` + fingerprint + metadata) + a
   `server.auth` snippet, `POST /instances/{id}/verify` (Mode A re-pull), and enroll-then-mint
-  (direct enroll without a token enrolls unverified). swarmkit-control-plane 0.3.0.
+  (direct enroll without a token enrolls unverified). Also: panel **CORS** — any localhost origin
+  allowed by default + extra origins via `--cors-origin` / `$SWARMKIT_CONTROL_PLANE_CORS_ORIGINS`,
+  so the fleet UI can call the panel cross-origin. swarmkit-control-plane 0.3.0.

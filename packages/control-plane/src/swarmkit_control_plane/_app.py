@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
@@ -23,6 +24,10 @@ from swarmkit_control_plane._tokens import mint_token
 from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_tier
 
 VerifyFn = Callable[[str, str], Awaitable[dict[str, Any]]]
+
+# Any localhost origin is allowed by default so the fleet UI works in local dev without config.
+# Additional production origins are passed explicitly to create_app (CLI: --cors-origin).
+_LOCALHOST_ORIGIN_RE = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
 
 
 class EnrollRequest(BaseModel):
@@ -61,9 +66,25 @@ class MintTokenRequest(BaseModel):
     client_name: str = ""
 
 
-def create_app(registry: SqliteRegistry, *, verify: VerifyFn = fetch_capabilities) -> FastAPI:
-    """Build the control-plane API. *verify* is injectable for testing."""
+def create_app(
+    registry: SqliteRegistry,
+    *,
+    verify: VerifyFn = fetch_capabilities,
+    cors_origins: list[str] | None = None,
+) -> FastAPI:
+    """Build the control-plane API. *verify* is injectable for testing.
+
+    *cors_origins* are extra exact browser origins allowed to call the panel (the fleet UI in a
+    split-origin deploy). Any localhost origin is always allowed for local dev.
+    """
     app = FastAPI(title="SwarmKit control plane")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins or [],
+        allow_origin_regex=_LOCALHOST_ORIGIN_RE,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     async def health() -> dict[str, str]:
