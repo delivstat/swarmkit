@@ -2184,6 +2184,70 @@ def serve(
     uvicorn.run(app_instance, host=host, port=port)
 
 
+@app.command()
+def connect(
+    panel_url: Annotated[
+        str,
+        typer.Argument(help="Control-plane panel base URL.", show_default=False),
+    ],
+    instance_id: Annotated[
+        str,
+        typer.Option("--instance-id", help="Instance id from enrollment.", show_default=False),
+    ],
+    panel_token: Annotated[
+        str | None,
+        typer.Option("--panel-token", help="Token ref for the panel (env:/file:/literal)."),
+    ] = None,
+    serve_url: Annotated[
+        str,
+        typer.Option("--serve-url", help="Local serve base URL (loopback)."),
+    ] = "http://127.0.0.1:8000",
+    serve_token: Annotated[
+        str | None,
+        typer.Option("--serve-token", help="Token ref for local serve, if it requires auth."),
+    ] = None,
+    tier: Annotated[
+        str,
+        typer.Option("--tier", help="Granted tier (read|run|admin) — re-validated per command."),
+    ] = "read",
+    interval: Annotated[
+        float,
+        typer.Option("--interval", help="Seconds between polls."),
+    ] = 5.0,
+    once: Annotated[
+        bool,
+        typer.Option("--once", help="Run a single poll cycle and exit (for testing)."),
+    ] = False,
+) -> None:
+    """Run the Mode B poll connector for a NAT'd / edge instance (design §13).
+
+    Reaches the control-plane panel over outbound HTTPS only, drains its per-instance command
+    queue, and executes each command against local serve over loopback. No inbound port required.
+    """
+    import asyncio  # noqa: PLC0415
+
+    from swarmkit_runtime.auth._secrets import resolve_secret_ref  # noqa: PLC0415
+    from swarmkit_runtime.connect import run_connector  # noqa: PLC0415
+
+    resolved_panel = resolve_secret_ref(panel_token) if panel_token else None
+    resolved_serve = resolve_secret_ref(serve_token) if serve_token else None
+
+    typer.echo(f"connector: polling {panel_url} as instance {instance_id} (tier={tier})")
+    asyncio.run(
+        run_connector(
+            panel_url=panel_url,
+            instance_id=instance_id,
+            panel_token=resolved_panel,
+            serve_url=serve_url,
+            serve_token=resolved_serve,
+            granted_tier=tier,
+            interval=interval,
+            once=once,
+            log=typer.echo,
+        )
+    )
+
+
 @app.command(name="mcp-serve")
 def mcp_serve(
     workspace_paths: Annotated[

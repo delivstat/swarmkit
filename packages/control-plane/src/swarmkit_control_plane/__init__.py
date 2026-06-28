@@ -8,7 +8,7 @@ See design/details/control-plane/ (11-architecture, 13-connector-registry).
 """
 
 from swarmkit_control_plane._app import create_app
-from swarmkit_control_plane._models import Instance
+from swarmkit_control_plane._models import Command, Instance
 from swarmkit_control_plane._registry import SqliteRegistry
 
-__all__ = ["Instance", "SqliteRegistry", "create_app"]
+__all__ = ["Command", "Instance", "SqliteRegistry", "create_app"]
