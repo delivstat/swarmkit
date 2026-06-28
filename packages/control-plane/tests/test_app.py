@@ -49,7 +49,11 @@ def test_enroll_direct_verification_failure_502(tmp_path: Path) -> None:
         raise ConnectorError("unreachable")
 
     client = _client(tmp_path, verify=boom)
-    resp = client.post("/instances", json={"name": "x", "endpoint": "http://x"})
+    # A token_ref is supplied, so enrollment pull-verifies (and fails). Without one, a direct
+    # instance enrolls unverified for the mint-then-verify flow (see test_tokens.py).
+    resp = client.post(
+        "/instances", json={"name": "x", "endpoint": "http://x", "token_ref": "env:T"}
+    )
     assert resp.status_code == 502
     assert client.get("/instances").json() == []  # not stored
 

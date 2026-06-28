@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS instances (
     connection TEXT NOT NULL DEFAULT 'direct',
     token_ref TEXT NOT NULL DEFAULT '',
     tier TEXT NOT NULL DEFAULT 'read',
+    token_fingerprint TEXT NOT NULL DEFAULT '',
+    token_minted_at TEXT,
     schema_version TEXT NOT NULL DEFAULT '',
     capabilities TEXT NOT NULL DEFAULT '{}',
     health TEXT NOT NULL DEFAULT 'unknown',
@@ -61,6 +63,11 @@ class SqliteRegistry:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(instances)").fetchall()}
         if "tier" not in cols:
             conn.execute("ALTER TABLE instances ADD COLUMN tier TEXT NOT NULL DEFAULT 'read'")
+        if "token_fingerprint" not in cols:
+            conn.execute(
+                "ALTER TABLE instances ADD COLUMN token_fingerprint TEXT NOT NULL DEFAULT ''"
+            )
+            conn.execute("ALTER TABLE instances ADD COLUMN token_minted_at TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path), timeout=10)
@@ -73,9 +80,9 @@ class SqliteRegistry:
         with self._lock, self._connect() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO instances
-                   (id, name, endpoint, connection, token_ref, tier, schema_version,
-                    capabilities, health, last_seen, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, name, endpoint, connection, token_ref, tier, token_fingerprint,
+                    token_minted_at, schema_version, capabilities, health, last_seen, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     instance.id,
                     instance.name,
@@ -83,6 +90,8 @@ class SqliteRegistry:
                     instance.connection,
                     instance.token_ref,
                     instance.tier,
+                    instance.token_fingerprint,
+                    instance.token_minted_at,
                     instance.schema_version,
                     json.dumps(instance.capabilities),
                     instance.health,
@@ -99,6 +108,8 @@ class SqliteRegistry:
             connection=row["connection"],
             token_ref=row["token_ref"],
             tier=row["tier"],
+            token_fingerprint=row["token_fingerprint"],
+            token_minted_at=row["token_minted_at"],
             schema_version=row["schema_version"],
             capabilities=json.loads(row["capabilities"]),
             health=row["health"],
@@ -141,6 +152,18 @@ class SqliteRegistry:
         params.append(instance_id)
         with self._lock, self._connect() as conn:
             conn.execute(f"UPDATE instances SET {', '.join(sets)} WHERE id = ?", params)
+
+    def set_token(
+        self, instance_id: str, *, token_ref: str, fingerprint: str, tier: str, minted_at: str
+    ) -> None:
+        """Record a freshly minted token's reference + metadata — never the secret itself."""
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """UPDATE instances
+                   SET token_ref = ?, token_fingerprint = ?, tier = ?, token_minted_at = ?
+                   WHERE id = ?""",
+                (token_ref, fingerprint, tier, minted_at, instance_id),
+            )
 
     # --- Mode B command queue -------------------------------------------------
 

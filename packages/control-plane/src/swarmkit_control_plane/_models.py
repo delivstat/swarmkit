@@ -20,6 +20,8 @@ class Instance:
     connection: ConnectionMode = "direct"
     token_ref: str = ""  # how the panel authenticates to the instance (env:/file:/literal)
     tier: str = "read"  # granted transport tier — bounds which commands may be enqueued (Mode B)
+    token_fingerprint: str = ""  # fingerprint of the active minted token (never the secret)
+    token_minted_at: str | None = None
     schema_version: str = ""
     capabilities: dict[str, Any] = field(default_factory=dict)
     health: Health = "unknown"
@@ -34,6 +36,8 @@ class Instance:
             "endpoint": self.endpoint,
             "connection": self.connection,
             "tier": self.tier,
+            "token_fingerprint": self.token_fingerprint,
+            "token_minted_at": self.token_minted_at,
             "schema_version": self.schema_version,
             "capabilities": self.capabilities,
             "health": self.health,

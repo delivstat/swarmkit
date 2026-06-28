@@ -52,12 +52,14 @@ Hardening the existing `auth/` seam. Slices:
 - [x] Mode B poll command-queue (panel: `POST /instances/{id}/commands`, `POST /poll`,
       `POST /commands/{id}/result`, `GET /commands`) + the `swarmkit connect` instance-side
       connector + granted-tier bounds on enqueue (panel) and re-validation (connector) (PR #377)
-- [ ] token minting in the panel (enrollment currently takes an operator-supplied `token_ref`)
+- [x] token minting in the panel — `POST /instances/{id}/mint-token` (per-instance, per-tier;
+      secret shown once, only a `key_ref` + fingerprint + metadata stored) + `POST /verify`
+      (Mode A re-pull) + enroll-then-mint (direct enroll without a token is unverified) (PR #378)
 - [ ] aggregation, artifact registry — Phases 4–5
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
-> sibling package `packages/control-plane-ui`). Both connection modes now exist end-to-end; the
-> remaining connector work is panel-side token minting.
+> sibling package `packages/control-plane-ui`). The connector + registry + enrollment + token
+> minting are complete; next is Phase 4 (observability aggregation).
 
 ## Phase 6 — Fleet UI (doc [16](16-fleet-ui.md))
 
@@ -92,3 +94,9 @@ Hardening the existing `auth/` seam. Slices:
   with granted-tier enqueue bounds + idempotent results, and the `swarmkit connect` poll connector
   (outbound-only, executes verbs against loopback serve with tier re-validation).
   swarmkit-control-plane 0.2.0 / runtime 1.12.0.
+- **#378** — Phase 3 token minting: `POST /instances/{id}/mint-token` (per-instance, per-tier serve
+  token; secret returned once, panel stores only `key_ref` + fingerprint + metadata) + a
+  `server.auth` snippet, `POST /instances/{id}/verify` (Mode A re-pull), and enroll-then-mint
+  (direct enroll without a token enrolls unverified). Also: panel **CORS** — any localhost origin
+  allowed by default + extra origins via `--cors-origin` / `$SWARMKIT_CONTROL_PLANE_CORS_ORIGINS`,
+  so the fleet UI can call the panel cross-origin. swarmkit-control-plane 0.3.0.

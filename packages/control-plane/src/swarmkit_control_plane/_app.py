@@ -9,18 +9,25 @@ design/details/control-plane/13-connector-registry.md.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
 from swarmkit_control_plane._models import Instance
 from swarmkit_control_plane._registry import SqliteRegistry
+from swarmkit_control_plane._tokens import mint_token
 from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_tier
 
 VerifyFn = Callable[[str, str], Awaitable[dict[str, Any]]]
+
+# Any localhost origin is allowed by default so the fleet UI works in local dev without config.
+# Additional production origins are passed explicitly to create_app (CLI: --cors-origin).
+_LOCALHOST_ORIGIN_RE = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
 
 
 class EnrollRequest(BaseModel):
@@ -54,9 +61,30 @@ class CommandResultRequest(BaseModel):
     error: str | None = None
 
 
-def create_app(registry: SqliteRegistry, *, verify: VerifyFn = fetch_capabilities) -> FastAPI:
-    """Build the control-plane API. *verify* is injectable for testing."""
+class MintTokenRequest(BaseModel):
+    tier: str | None = None  # defaults to the instance's granted tier
+    client_name: str = ""
+
+
+def create_app(
+    registry: SqliteRegistry,
+    *,
+    verify: VerifyFn = fetch_capabilities,
+    cors_origins: list[str] | None = None,
+) -> FastAPI:
+    """Build the control-plane API. *verify* is injectable for testing.
+
+    *cors_origins* are extra exact browser origins allowed to call the panel (the fleet UI in a
+    split-origin deploy). Any localhost origin is always allowed for local dev.
+    """
     app = FastAPI(title="SwarmKit control plane")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins or [],
+        allow_origin_regex=_LOCALHOST_ORIGIN_RE,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -76,9 +104,10 @@ def create_app(registry: SqliteRegistry, *, verify: VerifyFn = fetch_capabilitie
             connection=req.connection,  # type: ignore[arg-type]
             tier=req.tier.strip().lower(),
         )
-        # Mode A: verify by pulling the instance's capabilities. Mode B can't be pulled
-        # (the instance polls us), so it enrolls unverified and reports via heartbeat.
-        if req.connection == "direct":
+        # Mode A with a token already supplied: verify by pulling the instance's capabilities.
+        # Without a token (mint-then-install flow) or in Mode B (the instance polls us), enroll
+        # unverified — verify later via POST /verify (Mode A) or the first heartbeat/poll (Mode B).
+        if req.connection == "direct" and req.token_ref:
             try:
                 caps = await verify(req.endpoint, req.token_ref)
             except ConnectorError as exc:
@@ -118,8 +147,72 @@ def create_app(registry: SqliteRegistry, *, verify: VerifyFn = fetch_capabilitie
         )
         return {"status": "ok"}
 
+    _mount_token_routes(app, registry, verify)
     _mount_command_queue(app, registry)
     return app
+
+
+def _mount_token_routes(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -> None:
+    """Per-instance token minting + Mode A re-verification (doc 12 §6, doc 13 enrollment)."""
+
+    @app.post("/instances/{instance_id}/mint-token")
+    async def mint_instance_token(instance_id: str, req: MintTokenRequest) -> dict[str, Any]:
+        """Mint a per-instance serve token. The secret is returned ONCE and never stored."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        tier = (req.tier or inst.tier).strip().lower()
+        if tier_rank(tier) < 0:
+            raise HTTPException(400, "tier must be 'read', 'run', or 'admin'")
+        try:
+            minted = mint_token(instance_id, tier=tier, client_name=req.client_name)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        # Persist the reference + fingerprint + metadata only — never the token value.
+        registry.set_token(
+            instance_id,
+            token_ref=minted.key_ref,
+            fingerprint=minted.fingerprint,
+            tier=tier,
+            minted_at=datetime.now(UTC).isoformat(),
+        )
+        return {
+            "token": minted.token,  # shown once
+            "client_id": minted.client_id,
+            "client_name": minted.client_name,
+            "tier": minted.tier,
+            "key_ref": minted.key_ref,
+            "fingerprint": minted.fingerprint,
+            "server_auth_snippet": minted.server_auth_snippet(),
+            "instructions": (
+                f"Set {minted.key_ref.removeprefix('env:')}=<token> on the instance host and on "
+                "the panel host, paste server_auth_snippet under the instance workspace.yaml, then "
+                "reload serve and call POST /instances/{id}/verify."
+            ),
+        }
+
+    @app.post("/instances/{instance_id}/verify")
+    async def verify_instance(instance_id: str) -> dict[str, Any]:
+        """Re-run the Mode A pull-verify against the instance's stored token_ref."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            raise HTTPException(409, "verify pulls capabilities — only valid for direct (Mode A)")
+        try:
+            caps = await verify(inst.endpoint, inst.token_ref)
+        except ConnectorError as exc:
+            registry.update_health(instance_id, health="unreachable")
+            raise HTTPException(502, f"verification failed: {exc}") from exc
+        registry.update_health(
+            instance_id,
+            health="healthy",
+            schema_version=str(caps.get("schema_version", "")),
+            capabilities=caps,
+        )
+        updated = registry.get(instance_id)
+        assert updated is not None
+        return updated.public_dict()
 
 
 def _mount_command_queue(app: FastAPI, registry: SqliteRegistry) -> None:
