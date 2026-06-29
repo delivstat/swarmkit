@@ -32,7 +32,7 @@ const NAV: NavItem[] = [
 	{ href: "/instances", label: "Instances", icon: Server },
 	{ href: "/runs", label: "Runs", icon: PlayCircle },
 	{ href: "/evals", label: "Evals", icon: BarChart3 },
-	{ href: "/artifacts", label: "Artifacts", icon: Package, planned: true },
+	{ href: "/artifacts", label: "Artifacts", icon: Package },
 	{ href: "/approvals", label: "Approvals", icon: BadgeCheck, planned: true },
 	{
 		href: "/authoring",
