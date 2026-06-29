@@ -13,7 +13,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (PR #) · `[-]` deferred/b
 | 1 | Architecture | ✅ #366 | n/a |
 | 2 | Auth design + `server.auth` spec | ✅ #368 | **in progress** (Phase 3 below) |
 | 3 | **Auth implementation** + connector/registry | ✅ #368/#369/#370 | **active** |
-| 4 | Aggregation | ✅ #369 | not started |
+| 4 | Aggregation | ✅ #369 | **active** (push API + rollups below) |
 | 5 | Artifact registry + versioning | ✅ #369 | not started |
 | 6 | Fleet UI | ✅ #369 | **active** (slice 1 below) |
 | 7 | Growth loop | ✅ #369 | not started |
@@ -65,7 +65,22 @@ Hardening the existing `auth/` seam. Slices:
 - [x] UI OIDC login flow — browser PKCE auth-code (react-oidc-context), opt-in via
       `NEXT_PUBLIC_OIDC_*`; gates the app behind sign-in, sends the token as `Authorization: Bearer`
       on every panel call, re-initiates login on 401, sign-out in the sidebar (PR #383)
-- [ ] aggregation, artifact registry — Phases 4–5
+- [ ] artifact registry — Phase 5
+
+## Phase 4 — Aggregation (doc [14](14-aggregation.md))
+
+### Slice 1 — push API + central store + rollups (PR #385)
+- [x] `AggregationStore` (sqlite, append-only, deduped by `(instance_id, kind, record_id)`) for the
+      three pushed signals — audit / eval / usage
+- [x] `POST /aggregate/{audit|eval|usage}` ingestion — connectors push as themselves (instance_id
+      from the principal, no spoofing); operators/open-mode name the instance in the body
+- [x] SwarmKit-specific rollups: `GET /usage` (tokens/cost by model+provider), `GET /eval`
+      (pass-rate by eval_set+topology), `GET /audit` (recent fleet events)
+- [x] auth: connectors may push `/aggregate/*`; reads are operator-only
+- [ ] federated live-job query (`GET /instances/{id}/jobs` → pull serve `/jobs`)
+- [ ] collector wiring (set instance `telemetry.endpoint` at enroll) for raw traces/metrics (BYO)
+- [ ] UI Runs/Evals pages over these rollups
+- cost analytics stays blocked until ModelProviders populate `cost_usd` (doc 14, carried forward)
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
 > sibling package `packages/control-plane-ui`). The connector + registry + enrollment + token
@@ -139,3 +154,6 @@ Hardening the existing `auth/` seam. Slices:
 - **#384** — OIDC login e2e in the suite: Playwright drives the real browser PKCE flow against a
   fake OIDC IdP + the OIDC-enabled panel + the UI (`e2e/`, `playwright.config.ts`), asserting the
   panel accepts the issued token. New CI `e2e` job. UI-only.
+- **#385** — Phase 4 aggregation slice 1: `AggregationStore` (append-only, deduped) + push API
+  `POST /aggregate/{audit|eval|usage}` (connector-scoped) + rollups `GET /usage` (by model/provider),
+  `GET /eval` (pass-rate), `GET /audit` (recent fleet). swarmkit-control-plane 0.7.0.

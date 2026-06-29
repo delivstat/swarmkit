@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from swarmkit_control_plane._aggregation import KINDS, AggregationStore
 from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
 from swarmkit_control_plane._models import Instance
@@ -65,6 +66,12 @@ class MintTokenRequest(BaseModel):
     client_name: str = ""
 
 
+class AggregateRequest(BaseModel):
+    records: list[dict[str, Any]]
+    # Only used by operators / open mode; connectors are scoped to their own id via the principal.
+    instance_id: str | None = None
+
+
 def create_app(
     registry: SqliteRegistry,
     *,
@@ -72,6 +79,7 @@ def create_app(
     cors_origins: list[str] | None = None,
     operator_tokens: list[str] | None = None,
     oidc: OidcVerifier | None = None,
+    aggregation: AggregationStore | None = None,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -86,6 +94,7 @@ def create_app(
     operator). When neither is set, the panel runs open (no auth) for local dev.
     """
     app = FastAPI(title="SwarmKit control plane")
+    agg = aggregation or AggregationStore(registry.db_path)
     ops = [t for t in (operator_tokens or []) if t]
 
     # Auth is registered before CORS so CORS stays the outermost layer (preflight + 401/403
@@ -107,6 +116,7 @@ def create_app(
                 return JSONResponse(
                     {"detail": "this token is not allowed to call that route"}, status_code=403
                 )
+            request.state.principal = principal  # let handlers scope writes to the caller
             return await call_next(request)
 
     if cors_origins:
@@ -180,7 +190,40 @@ def create_app(
 
     _mount_token_routes(app, registry, verify)
     _mount_command_queue(app, registry)
+    _mount_aggregation(app, agg)
     return app
+
+
+def _mount_aggregation(app: FastAPI, agg: AggregationStore) -> None:
+    """Push-aggregation API + SwarmKit-specific rollups (doc 14). Instances push their own audit/
+    eval/usage; operators read the fleet rollups."""
+
+    @app.post("/aggregate/{kind}")
+    async def aggregate(kind: str, req: AggregateRequest, request: Request) -> dict[str, int]:
+        if kind not in KINDS:
+            raise HTTPException(404, f"unknown signal '{kind}' — use {'/'.join(KINDS)}")
+        # A connector pushes as itself (id from the authenticated principal — no spoofing); an
+        # operator (or open-mode caller) must name the instance in the body.
+        principal = getattr(request.state, "principal", None)
+        if principal is not None and principal.kind == "connector":
+            instance_id = principal.instance_id
+        else:
+            instance_id = req.instance_id
+        if not instance_id:
+            raise HTTPException(400, "instance_id required (omit only when pushing as a connector)")
+        return agg.ingest(instance_id, kind, req.records)
+
+    @app.get("/usage")
+    async def usage() -> list[dict[str, Any]]:
+        return agg.usage_rollup()
+
+    @app.get("/eval")
+    async def eval_summary() -> list[dict[str, Any]]:
+        return agg.eval_summary()
+
+    @app.get("/audit")
+    async def audit(limit: int = 100) -> list[dict[str, Any]]:
+        return agg.recent_audit(limit)
 
 
 def _mount_token_routes(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -> None:

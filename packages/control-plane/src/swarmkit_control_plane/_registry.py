@@ -59,6 +59,11 @@ class SqliteRegistry:
             conn.executescript(_SCHEMA)
             self._migrate(conn)
 
+    @property
+    def db_path(self) -> Path:
+        """Backing sqlite path — shared with the AggregationStore."""
+        return self._db_path
+
     def _migrate(self, conn: sqlite3.Connection) -> None:
         """Add columns introduced after the initial schema (pre-existing DBs)."""
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(instances)").fetchall()}
