@@ -77,9 +77,18 @@ Hardening the existing `auth/` seam. Slices:
 - [x] SwarmKit-specific rollups: `GET /usage` (tokens/cost by model+provider), `GET /eval`
       (pass-rate by eval_set+topology), `GET /audit` (recent fleet events)
 - [x] auth: connectors may push `/aggregate/*`; reads are operator-only
+
+### Slice 2 — observability bundle (PR #386)
+- [x] turnkey OTel stack at `deploy/observability/` (docker-compose): OTel Collector → Jaeger
+      (traces) + Prometheus → Grafana with a prebuilt **SwarmKit Fleet** dashboard. Resolves doc 14's
+      "recommended bundle vs BYO" open question (ship a default; stay BYO-friendly). Verified e2e:
+      OTLP → collector → Jaeger, Prometheus scraping the collector, dashboard provisioned.
+- [x] documented fan-out (one instance → one collector → many backends) — answers "multiple
+      collectors"; native multi-endpoint export from the instance is a noted future runtime option
+- [ ] panel observability config (`--collector-endpoint`/`--jaeger-url`/`--grafana-url` + `GET
+      /observability`) + collector wiring at enroll
+- [ ] fleet-UI links to the dashboards (Jaeger/Grafana) + UI Runs/Evals pages over the rollups
 - [ ] federated live-job query (`GET /instances/{id}/jobs` → pull serve `/jobs`)
-- [ ] collector wiring (set instance `telemetry.endpoint` at enroll) for raw traces/metrics (BYO)
-- [ ] UI Runs/Evals pages over these rollups
 - cost analytics stays blocked until ModelProviders populate `cost_usd` (doc 14, carried forward)
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
@@ -157,3 +166,6 @@ Hardening the existing `auth/` seam. Slices:
 - **#385** — Phase 4 aggregation slice 1: `AggregationStore` (append-only, deduped) + push API
   `POST /aggregate/{audit|eval|usage}` (connector-scoped) + rollups `GET /usage` (by model/provider),
   `GET /eval` (pass-rate), `GET /audit` (recent fleet). swarmkit-control-plane 0.7.0.
+- **#386** — Phase 4 observability bundle: `deploy/observability/` turnkey docker-compose (OTel
+  Collector → Jaeger + Prometheus → Grafana w/ a prebuilt SwarmKit dashboard); fan-out documented as
+  the multi-backend pattern. Infra/docs only (no package change).

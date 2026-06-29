@@ -1,0 +1,78 @@
+{
+  "uid": "swarmkit-fleet",
+  "title": "SwarmKit Fleet",
+  "tags": ["swarmkit"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Instance (service.name)",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "swarmkit-prometheus" },
+        "query": "label_values(swarmkit_runs_total, service_name)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Runs (rate)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "swarmkit-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service_name) (rate(swarmkit_runs_total{service_name=~\"$service\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Agent steps (rate)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "swarmkit-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service_name) (rate(swarmkit_agent_steps_total{service_name=~\"$service\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Tool calls (rate)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "swarmkit-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service_name) (rate(swarmkit_tool_calls_total{service_name=~\"$service\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Total runs",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "swarmkit-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(swarmkit_runs_total{service_name=~\"$service\"})"
+        }
+      ]
+    }
+  ]
+}
