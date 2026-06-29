@@ -59,7 +59,10 @@ Hardening the existing `auth/` seam. Slices:
       operator tokens (full access, `--operator-token` / env) and connector tokens (a Mode B
       instance's minted token, matched by stored hash, scoped to its own poll + result routes).
       Open (no-auth) when no operator tokens are set. (PR #381)
-- [ ] human→panel OIDC login + UI 401 handling — later slice
+- [x] human→panel OIDC (doc [12](12-auth.md) §3, backend) — the panel verifies OIDC JWTs
+      (RS256/ES256 + JWKS, validate iss/aud/exp/sub) and authenticates the caller as an operator;
+      `--oidc-issuer` / `--oidc-audience` / `--oidc-jwks-url` / env (PR #382)
+- [ ] UI OIDC login flow (auth-code redirect, token storage, Authorization header) + 401 handling
 - [ ] aggregation, artifact registry — Phases 4–5
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
@@ -124,3 +127,7 @@ Hardening the existing `auth/` seam. Slices:
   connector tokens (Mode B instance, matched by stored SHA-256, scoped to its own poll + result
   routes); open when no operator tokens configured. The minted per-instance token doubles as the
   connector→panel credential (no connector change). swarmkit-control-plane 0.5.0.
+- **#382** — Phase 3 OIDC (human→panel, backend): the panel verifies OIDC JWTs (PyJWT, RS256/ES256
+  + JWKS discovery, iss/aud/exp/sub) as a third auth path → operator principal carrying the subject;
+  `--oidc-issuer`/`--oidc-audience`/`--oidc-jwks-url` + env. swarmkit-control-plane 0.6.0. (UI login
+  redirect flow is the next slice.)

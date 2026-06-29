@@ -19,6 +19,7 @@ import hmac
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from swarmkit_control_plane._oidc import OidcVerifier
 from swarmkit_control_plane._registry import SqliteRegistry
 from swarmkit_control_plane._tokens import token_hash
 
@@ -27,12 +28,21 @@ from swarmkit_control_plane._tokens import token_hash
 class Principal:
     kind: str  # "operator" | "connector"
     instance_id: str | None = None  # set for connectors
+    subject: str | None = None  # OIDC subject, for operators authenticated via a JWT
 
 
 def authenticate(
-    token: str, operator_tokens: Iterable[str], registry: SqliteRegistry
+    token: str,
+    operator_tokens: Iterable[str],
+    registry: SqliteRegistry,
+    oidc: OidcVerifier | None = None,
 ) -> Principal | None:
-    """Resolve a bearer token to a Principal, or None if it matches nothing."""
+    """Resolve a bearer token to a Principal, or None if it matches nothing.
+
+    Order: static operator token, then a Mode B instance's connector token (by hash), then an
+    OIDC JWT (human→panel). The first two are cheap local checks; OIDC is tried last (it may hit
+    the JWKS cache). A valid OIDC token authenticates as an operator carrying its subject.
+    """
     if not token:
         return None
     for op in operator_tokens:
@@ -41,6 +51,10 @@ def authenticate(
     inst = registry.get_by_token_hash(token_hash(token))
     if inst is not None:
         return Principal("connector", inst.id)
+    if oidc is not None:
+        subject = oidc.verify(token)
+        if subject is not None:
+            return Principal("operator", subject=subject)
     return None
 
 

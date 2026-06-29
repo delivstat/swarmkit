@@ -12,6 +12,7 @@ app = typer.Typer(help="SwarmKit control plane — fleet panel API + instance re
 
 _CORS_ENV = "SWARMKIT_CONTROL_PLANE_CORS_ORIGINS"
 _OPERATOR_TOKENS_ENV = "SWARMKIT_CONTROL_PLANE_OPERATOR_TOKENS"
+_OIDC_ISSUER_ENV = "SWARMKIT_CONTROL_PLANE_OIDC_ISSUER"
 
 
 @app.command()
@@ -43,11 +44,27 @@ def serve(
             ),
         ),
     ] = None,
+    oidc_issuer: Annotated[
+        str | None,
+        typer.Option(
+            "--oidc-issuer",
+            help="OIDC issuer URL. When set, valid JWTs from it authenticate as operators.",
+        ),
+    ] = None,
+    oidc_audience: Annotated[
+        str,
+        typer.Option("--oidc-audience", help="Expected `aud` claim on OIDC tokens."),
+    ] = "swarmkit-control-plane",
+    oidc_jwks_url: Annotated[
+        str | None,
+        typer.Option("--oidc-jwks-url", help="JWKS URL (defaults to the issuer's discovery path)."),
+    ] = None,
 ) -> None:
     """Start the control-plane API."""
     import uvicorn  # noqa: PLC0415
 
     from swarmkit_control_plane._app import create_app  # noqa: PLC0415
+    from swarmkit_control_plane._oidc import OidcVerifier  # noqa: PLC0415
     from swarmkit_control_plane._registry import SqliteRegistry  # noqa: PLC0415
 
     origins = list(cors_origin or [])
@@ -58,15 +75,22 @@ def serve(
         t.strip() for t in os.environ.get(_OPERATOR_TOKENS_ENV, "").split(",") if t.strip()
     ]
 
+    issuer = oidc_issuer or os.environ.get(_OIDC_ISSUER_ENV, "").strip()
+    oidc = (
+        OidcVerifier(issuer=issuer, audience=oidc_audience, jwks_url=oidc_jwks_url)
+        if issuer
+        else None
+    )
+
     registry = SqliteRegistry(data_dir / "registry.sqlite")
-    if not op_tokens:
+    if not op_tokens and oidc is None:
         typer.echo(
-            "warning: no operator tokens set — panel API is UNAUTHENTICATED. "
-            f"Set --operator-token or ${_OPERATOR_TOKENS_ENV} to require auth.",
+            "warning: no operator tokens or OIDC issuer set — panel API is UNAUTHENTICATED. "
+            f"Set --operator-token / ${_OPERATOR_TOKENS_ENV} or --oidc-issuer to require auth.",
             err=True,
         )
     uvicorn.run(
-        create_app(registry, cors_origins=origins, operator_tokens=op_tokens),
+        create_app(registry, cors_origins=origins, operator_tokens=op_tokens, oidc=oidc),
         host=host,
         port=port,
     )
