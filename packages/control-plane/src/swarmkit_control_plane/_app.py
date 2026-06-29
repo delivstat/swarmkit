@@ -80,6 +80,7 @@ def create_app(
     operator_tokens: list[str] | None = None,
     oidc: OidcVerifier | None = None,
     aggregation: AggregationStore | None = None,
+    observability: dict[str, str] | None = None,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -191,7 +192,21 @@ def create_app(
     _mount_token_routes(app, registry, verify)
     _mount_command_queue(app, registry)
     _mount_aggregation(app, agg)
+    _mount_observability(app, observability or {})
     return app
+
+
+def _mount_observability(app: FastAPI, config: dict[str, str]) -> None:
+    """Expose the configured collector + dashboard URLs for the fleet UI to link out (doc 14)."""
+
+    @app.get("/observability")
+    async def observability() -> dict[str, str]:
+        # The collector endpoint instances send OTLP to; the Jaeger/Grafana URLs the UI deep-links.
+        return {
+            "collector_endpoint": config.get("collector_endpoint", ""),
+            "jaeger_url": config.get("jaeger_url", ""),
+            "grafana_url": config.get("grafana_url", ""),
+        }
 
 
 def _mount_aggregation(app: FastAPI, agg: AggregationStore) -> None:

@@ -85,9 +85,13 @@ Hardening the existing `auth/` seam. Slices:
       OTLP → collector → Jaeger, Prometheus scraping the collector, dashboard provisioned.
 - [x] documented fan-out (one instance → one collector → many backends) — answers "multiple
       collectors"; native multi-endpoint export from the instance is a noted future runtime option
-- [ ] panel observability config (`--collector-endpoint`/`--jaeger-url`/`--grafana-url` + `GET
-      /observability`) + collector wiring at enroll
-- [ ] fleet-UI links to the dashboards (Jaeger/Grafana) + UI Runs/Evals pages over the rollups
+- [x] panel observability config — `--collector-endpoint`/`--jaeger-url`/`--grafana-url` + env +
+      `GET /observability`; fleet-UI **Observability card** deep-links Jaeger/Grafana + shows the
+      collector endpoint (PR #387). Also fixed the bundle's collector to promote `service.name` →
+      `service_name` label (`resource_to_telemetry_conversion`) so the Grafana dashboard filters
+      per instance — verified end-to-end with real runtime telemetry (Jaeger swarmkit.* traces +
+      dashboard data).
+- [ ] UI Runs/Evals pages over the rollups
 - [ ] federated live-job query (`GET /instances/{id}/jobs` → pull serve `/jobs`)
 - cost analytics stays blocked until ModelProviders populate `cost_usd` (doc 14, carried forward)
 
@@ -169,3 +173,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#386** — Phase 4 observability bundle: `deploy/observability/` turnkey docker-compose (OTel
   Collector → Jaeger + Prometheus → Grafana w/ a prebuilt SwarmKit dashboard); fan-out documented as
   the multi-backend pattern. Infra/docs only (no package change).
+- **#387** — Phase 4 observability links: panel `--collector-endpoint`/`--jaeger-url`/`--grafana-url` + `GET /observability`; fleet-UI Observability card deep-links the dashboards. Also fixes the bundle collector to label metrics with `service_name` so the Grafana dashboard filters per instance. swarmkit-control-plane 0.8.0.
