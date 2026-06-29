@@ -14,7 +14,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (PR #) · `[-]` deferred/b
 | 2 | Auth design + `server.auth` spec | ✅ #368 | **in progress** (Phase 3 below) |
 | 3 | **Auth implementation** + connector/registry | ✅ #368/#369/#370 | **active** |
 | 4 | Aggregation | ✅ #369 | **active** (push API + rollups below) |
-| 5 | Artifact registry + versioning | ✅ #369 | not started |
+| 5 | Artifact registry + versioning | ✅ #369 | **active** (registry + drift below) |
 | 6 | Fleet UI | ✅ #369 | **active** (slice 1 below) |
 | 7 | Growth loop | ✅ #369 | not started |
 | 8 | Hardening + rollout | ✅ #369/#370 | not started |
@@ -97,6 +97,22 @@ Hardening the existing `auth/` seam. Slices:
 - [ ] federated live-job query (`GET /instances/{id}/jobs` → pull serve `/jobs`)
 - cost analytics stays blocked until ModelProviders populate `cost_usd` (doc 14, carried forward)
 
+## Phase 5 — Artifact registry (doc [15](15-artifact-registry.md))
+
+### Slice 1 — registry store + versioning + deployments + drift (PR #389)
+- [x] `ArtifactStore` (sqlite) — versioned artifacts (topology/skill/archetype/workspace/trigger)
+      with `content_hash` + provenance (`authored_by`, `created_at`, `schema_version`); identical
+      content is idempotent, changed content is a new version (never a silent overwrite)
+- [x] API: `POST /artifacts/{kind}/{id}/versions`, `GET /artifacts`, `GET …/versions[/{version}]`
+- [x] deployments (registry-intended version per instance): `PUT/GET /instances/{id}/deployments`
+- [x] **drift detection**: `POST /instances/{id}/artifacts/report` (connector-scoped) + `GET
+      /instances/{id}/drift` (intended vs reported → ok / drift / missing)
+- [ ] governed push to instances (validate → `/api/*` write) — legislative, `serve:admin` + human
+      approval gate (ties to Phase 7 growth loop)
+- [ ] schema-compatibility gate (refuse pushing an artifact an instance can't validate)
+- [ ] UI artifact-registry surface
+- storage is sqlite for now; design's git-backed content store + Postgres is the later swap
+
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
 > sibling package `packages/control-plane-ui`). The connector + registry + enrollment + token
 > minting are complete; next is Phase 4 (observability aggregation).
@@ -177,3 +193,4 @@ Hardening the existing `auth/` seam. Slices:
   the multi-backend pattern. Infra/docs only (no package change).
 - **#387** — Phase 4 observability links: panel `--collector-endpoint`/`--jaeger-url`/`--grafana-url` + `GET /observability`; fleet-UI Observability card deep-links the dashboards. Also fixes the bundle collector to label metrics with `service_name` so the Grafana dashboard filters per instance. swarmkit-control-plane 0.8.0.
 - **#388** — Phase 6 fleet UI: `/runs` (fleet usage by model/provider + recent audit activity) and `/evals` (pass-rate by eval_set/topology, color-coded) over the aggregation rollups; Runs + Evals sidebar items activated. UI-only.
+- **#389** — Phase 5 artifact registry slice 1: `ArtifactStore` (versioned artifacts + content-hash + provenance, idempotent re-register) + API (`/artifacts/*`), per-instance deployments, and drift detection (`/instances/{id}/artifacts/report` + `/drift`). swarmkit-control-plane 0.9.0.
