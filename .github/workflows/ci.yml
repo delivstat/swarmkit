@@ -74,6 +74,41 @@ jobs:
       - name: Test (vitest)
         run: pnpm -r run test
 
+  e2e:
+    name: e2e (control-plane oidc login)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages --group dev
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm --filter @swarmkit/control-plane-ui exec playwright install --with-deps chromium
+
+      # Drives the real browser PKCE flow against a fake OIDC IdP + the OIDC-enabled panel + the UI
+      # (all started by playwright.config.ts). Verifies the panel accepts the issued token.
+      - name: Run OIDC login e2e
+        run: pnpm --filter @swarmkit/control-plane-ui run e2e
+
   schema-validity:
     name: schema validity (json-schema draft 2020-12)
     runs-on: ubuntu-latest
