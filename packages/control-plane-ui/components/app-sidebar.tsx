@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { SignOut } from "@/components/auth-gate";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +99,7 @@ export function AppSidebar() {
 				})}
 			</nav>
 
+			<SignOut />
 			<div className="border-t p-3 text-xs text-muted-foreground">
 				Fleet control plane
 			</div>

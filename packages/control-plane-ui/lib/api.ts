@@ -1,3 +1,4 @@
+import { getAccessToken, handleUnauthorized } from "./token-store";
 import type { Command, Instance, MintResult } from "./types";
 
 /**
@@ -17,11 +18,21 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+	const token = getAccessToken();
 	const res = await fetch(`${API_BASE}${path}`, {
 		...init,
-		headers: { "Content-Type": "application/json", ...init?.headers },
+		headers: {
+			"Content-Type": "application/json",
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+			...init?.headers,
+		},
 		cache: "no-store",
 	});
+	if (res.status === 401 && token) {
+		// We sent a token and it was rejected (expired/invalid) — re-initiate login. Guarded on
+		// `token` so a pre-auth request never triggers a redirect loop.
+		handleUnauthorized();
+	}
 	if (!res.ok) {
 		throw new ApiError(
 			`${init?.method ?? "GET"} ${path} → ${res.status}`,

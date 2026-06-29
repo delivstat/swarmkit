@@ -22,8 +22,16 @@ routes are wired to the API, planned routes are shown muted until their slice la
 | Route | Status |
 | --- | --- |
 | `/dashboard` (Fleet) | live — fleet overview + stat cards |
-| `/instances` | live — registry table |
+| `/instances` | live — registry table, enroll form, per-instance detail (mint/verify/delete/commands) |
 | Runs, Evals, Artifacts, Approvals, Authoring, Settings | planned |
+
+## Authentication
+
+OIDC login is **opt-in**. With no `NEXT_PUBLIC_OIDC_AUTHORITY` set the UI runs open (matching the
+panel's open-by-default). Set the `NEXT_PUBLIC_OIDC_*` vars (see `.env.example`) to gate the UI
+behind sign-in: it runs the browser PKCE auth-code flow, sends the resulting token as
+`Authorization: Bearer` on every panel call, and re-initiates login on a 401. The panel must be
+started with a matching `--oidc-issuer` / `--oidc-audience`.
 
 ## Develop
 
