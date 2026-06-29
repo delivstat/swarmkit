@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
 from swarmkit_control_plane._models import Instance
+from swarmkit_control_plane._oidc import OidcVerifier
 from swarmkit_control_plane._registry import SqliteRegistry
 from swarmkit_control_plane._tokens import mint_token
 from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_tier
@@ -70,6 +71,7 @@ def create_app(
     verify: VerifyFn = fetch_capabilities,
     cors_origins: list[str] | None = None,
     operator_tokens: list[str] | None = None,
+    oidc: OidcVerifier | None = None,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -78,16 +80,17 @@ def create_app(
     (CLI: --cors-origin / $SWARMKIT_CONTROL_PLANE_CORS_ORIGINS). For local dev, pass the UI's
     origin explicitly, e.g. --cors-origin http://localhost:3000.
 
-    *operator_tokens* enable panel auth. When set, every route except /health requires a bearer:
-    an operator token (full access) or a Mode B instance's per-instance token (scoped to its own
-    poll + command-result routes). When empty, the panel runs open (no auth) for local dev.
+    Auth is enabled when *operator_tokens* and/or *oidc* are configured; then every route except
+    /health requires a bearer — an operator token (full access), a Mode B instance's per-instance
+    token (scoped to its poll + result routes), or an OIDC JWT (human→panel, authenticates as an
+    operator). When neither is set, the panel runs open (no auth) for local dev.
     """
     app = FastAPI(title="SwarmKit control plane")
     ops = [t for t in (operator_tokens or []) if t]
 
     # Auth is registered before CORS so CORS stays the outermost layer (preflight + 401/403
     # responses still carry the configured CORS headers for the browser to read).
-    if ops:
+    if ops or oidc is not None:
 
         @app.middleware("http")
         async def auth_middleware(
@@ -97,7 +100,7 @@ def create_app(
                 return await call_next(request)
             header = request.headers.get("Authorization", "")
             token = header[7:] if header.startswith("Bearer ") else ""
-            principal = authenticate(token, ops, registry)
+            principal = authenticate(token, ops, registry, oidc)
             if principal is None:
                 return JSONResponse({"detail": "missing or invalid bearer token"}, status_code=401)
             if not authorize(principal, request.method, request.url.path):
