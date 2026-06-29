@@ -43,9 +43,10 @@ function Gate({ children }: { children: React.ReactNode }) {
 	const auth = useAuth();
 	const token = auth.user?.access_token ?? null;
 
-	useEffect(() => {
-		setAccessToken(token);
-	}, [token]);
+	// Sync the token into the store DURING render — child effects (usePoll) fire before parent
+	// effects, so an effect here would let the first API call race ahead without the token (401 →
+	// spurious re-login loop). Setting an external store in render is idempotent and safe.
+	setAccessToken(token);
 
 	useEffect(() => {
 		// A 401 from the panel re-initiates login (e.g. after token expiry).

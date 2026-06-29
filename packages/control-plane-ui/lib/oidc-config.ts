@@ -19,11 +19,15 @@ export interface OidcSettings {
 /** Build oidc-client-ts settings. Must run client-side (reads window.location). */
 export function oidcSettings(): OidcSettings {
 	const origin = typeof window !== "undefined" ? window.location.origin : "";
+	// Return to the current client route so the AuthProvider there processes the callback. Using the
+	// bare origin would land on "/", which server-redirects and would drop the ?code&state.
+	const pathname =
+		typeof window !== "undefined" ? window.location.pathname : "";
 	const audience = process.env.NEXT_PUBLIC_OIDC_AUDIENCE;
 	return {
 		authority: process.env.NEXT_PUBLIC_OIDC_AUTHORITY ?? "",
 		client_id: process.env.NEXT_PUBLIC_OIDC_CLIENT_ID ?? "",
-		redirect_uri: origin,
+		redirect_uri: `${origin}${pathname}`,
 		post_logout_redirect_uri: origin,
 		scope: process.env.NEXT_PUBLIC_OIDC_SCOPE ?? "openid profile email",
 		// Some IdPs (e.g. Auth0) need an explicit audience to issue an API-scoped access token

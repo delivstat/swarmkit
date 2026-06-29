@@ -28,8 +28,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 		},
 		cache: "no-store",
 	});
-	if (res.status === 401) {
-		// Token missing/expired — let the auth layer re-initiate login.
+	if (res.status === 401 && token) {
+		// We sent a token and it was rejected (expired/invalid) — re-initiate login. Guarded on
+		// `token` so a pre-auth request never triggers a redirect loop.
 		handleUnauthorized();
 	}
 	if (!res.ok) {
