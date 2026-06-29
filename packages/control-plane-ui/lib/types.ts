@@ -94,6 +94,17 @@ export interface ArtifactVersion {
 	content?: unknown;
 }
 
+export type DriftStatus = "ok" | "drift" | "missing";
+
+/** Row of GET /instances/{id}/drift — registry-intended vs the instance's reported actual. */
+export interface DriftRow {
+	kind: string;
+	id: string;
+	intended_version: string;
+	actual_version: string | null;
+	status: DriftStatus;
+}
+
 /** Configured observability endpoints (GET /observability). Empty strings when unconfigured. */
 export interface Observability {
 	collector_endpoint: string;

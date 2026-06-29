@@ -4,6 +4,7 @@ import type {
 	ArtifactVersion,
 	AuditRow,
 	Command,
+	DriftRow,
 	EvalRow,
 	Instance,
 	MintResult,
@@ -84,6 +85,17 @@ export const api = {
 	getInstance: (id: string) => request<Instance>(`/instances/${id}`),
 	deleteInstance: (id: string) =>
 		request<{ deleted: string }>(`/instances/${id}`, { method: "DELETE" }),
+	drift: (id: string) => request<DriftRow[]>(`/instances/${id}/drift`),
+	setDeployment: (
+		id: string,
+		kind: string,
+		artifactId: string,
+		version: string,
+	) =>
+		request<{ status: string }>(
+			`/instances/${id}/deployments/${kind}/${encodeURIComponent(artifactId)}`,
+			{ method: "PUT", body: JSON.stringify({ version }) },
+		),
 	mintToken: (id: string, body: { tier?: string; client_name?: string } = {}) =>
 		request<MintResult>(`/instances/${id}/mint-token`, {
 			method: "POST",

@@ -113,6 +113,8 @@ Hardening the existing `auth/` seam. Slices:
 - [x] UI artifact-registry surface — `/artifacts` (list by kind/id + latest/versions/hash) and
       `/artifacts/[kind]/[id]` (version history + provenance + content viewer); Artifacts sidebar
       item now live (PR #390)
+- [x] UI per-instance **Deployments & drift** card on the instance detail page — set the intended
+      version + a drift table (intended vs actual → ok/drift/missing, color-coded) (PR #391)
 - storage is sqlite for now; design's git-backed content store + Postgres is the later swap
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
@@ -197,3 +199,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#388** — Phase 6 fleet UI: `/runs` (fleet usage by model/provider + recent audit activity) and `/evals` (pass-rate by eval_set/topology, color-coded) over the aggregation rollups; Runs + Evals sidebar items activated. UI-only.
 - **#389** — Phase 5 artifact registry slice 1: `ArtifactStore` (versioned artifacts + content-hash + provenance, idempotent re-register) + API (`/artifacts/*`), per-instance deployments, and drift detection (`/instances/{id}/artifacts/report` + `/drift`). swarmkit-control-plane 0.9.0.
 - **#390** — Phase 5 artifact-registry UI: `/artifacts` (registry list) + `/artifacts/[kind]/[id]` (version history, provenance, content viewer); Artifacts sidebar item activated. UI-only.
+- **#391** — Phase 5 UI: per-instance Deployments & drift card on the instance detail page — set the intended version + a color-coded drift table (intended vs reported actual). UI-only.
