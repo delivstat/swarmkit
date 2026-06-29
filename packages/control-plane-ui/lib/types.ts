@@ -45,6 +45,34 @@ export interface MintResult {
 	instructions: string;
 }
 
+/** Row of GET /usage — token/cost totals per model+provider across the fleet. */
+export interface UsageRow {
+	model: string | null;
+	provider: string | null;
+	input_tokens: number;
+	output_tokens: number;
+	cost_usd: number;
+	records: number;
+}
+
+/** Row of GET /eval — pass-rate per eval_set+topology across the fleet. */
+export interface EvalRow {
+	eval_set: string | null;
+	topology: string | null;
+	passed: number;
+	total: number;
+	runs: number;
+	pass_rate: number | null;
+}
+
+/** Row of GET /audit — a recent fleet event, tagged with its instance. */
+export interface AuditRow {
+	instance_id: string;
+	ts?: string;
+	action?: string;
+	[key: string]: unknown;
+}
+
 /** Configured observability endpoints (GET /observability). Empty strings when unconfigured. */
 export interface Observability {
 	collector_endpoint: string;
