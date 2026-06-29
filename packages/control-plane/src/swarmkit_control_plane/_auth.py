@@ -65,7 +65,11 @@ def authorize(principal: Principal, method: str, path: str) -> bool:
     iid = principal.instance_id
     if not iid:
         return False
-    # A connector may only long-poll and report results for its own instance.
+    # A connector may push its own observability signals (instance_id is taken from the principal,
+    # so it can't push as another instance — see the aggregation handler).
+    if path.startswith("/aggregate/"):
+        return True
+    # ...and long-poll + report results for its own instance.
     if path == f"/instances/{iid}/poll":
         return True
     return path.startswith(f"/instances/{iid}/commands/") and path.endswith("/result")
