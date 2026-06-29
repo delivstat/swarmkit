@@ -2,15 +2,55 @@
 
 export type ConnectionMode = "direct" | "poll";
 export type Health = "healthy" | "stale" | "unreachable" | "unknown";
+export type CommandStatus = "queued" | "dispatched" | "done" | "error";
 
 export interface Instance {
 	id: string;
 	name: string;
 	endpoint: string;
 	connection: ConnectionMode;
+	tier: string;
+	token_fingerprint: string;
+	token_minted_at: string | null;
 	schema_version: string;
 	capabilities: Record<string, unknown>;
 	health: Health;
 	last_seen: string | null;
 	created_at: string;
 }
+
+/** Mirrors `Command.public_dict()`. */
+export interface Command {
+	cmd_id: string;
+	instance_id: string;
+	verb: string;
+	args: Record<string, unknown>;
+	status: CommandStatus;
+	output: Record<string, unknown> | null;
+	error: string | null;
+	created_at: string;
+	dispatched_at: string | null;
+	result_at: string | null;
+}
+
+/** Response of POST /instances/{id}/mint-token — the token is shown once. */
+export interface MintResult {
+	token: string;
+	client_id: string;
+	client_name: string;
+	tier: string;
+	key_ref: string;
+	fingerprint: string;
+	server_auth_snippet: string;
+	instructions: string;
+}
+
+/** Command verbs the panel may enqueue, with the tier each requires (mirrors _verbs.py). */
+export const KNOWN_VERBS: { verb: string; tier: string }[] = [
+	{ verb: "capabilities", tier: "read" },
+	{ verb: "usage", tier: "read" },
+	{ verb: "job-status", tier: "read" },
+	{ verb: "validate", tier: "read" },
+	{ verb: "run", tier: "run" },
+	{ verb: "reload", tier: "admin" },
+];

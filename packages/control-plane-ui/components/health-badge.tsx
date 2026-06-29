@@ -1,5 +1,5 @@
 import { Badge, type BadgeProps } from "@/components/ui/badge";
-import type { ConnectionMode, Health } from "@/lib/types";
+import type { CommandStatus, ConnectionMode, Health } from "@/lib/types";
 
 const HEALTH_VARIANT: Record<Health, BadgeProps["variant"]> = {
 	healthy: "success",
@@ -20,4 +20,15 @@ export function ConnectionBadge({
 			{connection === "poll" ? "poll (Mode B)" : "direct (Mode A)"}
 		</Badge>
 	);
+}
+
+const COMMAND_VARIANT: Record<CommandStatus, BadgeProps["variant"]> = {
+	queued: "muted",
+	dispatched: "warning",
+	done: "success",
+	error: "destructive",
+};
+
+export function CommandStatusBadge({ status }: { status: CommandStatus }) {
+	return <Badge variant={COMMAND_VARIANT[status]}>{status}</Badge>;
 }

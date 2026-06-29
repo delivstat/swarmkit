@@ -1,8 +1,10 @@
-import type { Instance } from "./types";
+import type { Command, Instance, MintResult } from "./types";
 
-/** Base URL of the swarmkit-control-plane API (default: local dev on :8800). */
-const API_BASE =
-	process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "http://localhost:8800";
+/**
+ * Base URL of the swarmkit-control-plane API. Configured via NEXT_PUBLIC_CONTROL_PLANE_API;
+ * defaults to same-origin (relative requests) when unset — no host is hardcoded.
+ */
+const API_BASE = process.env.NEXT_PUBLIC_CONTROL_PLANE_API ?? "";
 
 export class ApiError extends Error {
 	constructor(
@@ -35,4 +37,20 @@ export const api = {
 	getInstance: (id: string) => request<Instance>(`/instances/${id}`),
 	deleteInstance: (id: string) =>
 		request<{ deleted: string }>(`/instances/${id}`, { method: "DELETE" }),
+	mintToken: (id: string, body: { tier?: string; client_name?: string } = {}) =>
+		request<MintResult>(`/instances/${id}/mint-token`, {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+	verifyInstance: (id: string) =>
+		request<Instance>(`/instances/${id}/verify`, { method: "POST" }),
+	listCommands: (id: string) => request<Command[]>(`/instances/${id}/commands`),
+	enqueueCommand: (
+		id: string,
+		body: { verb: string; args?: Record<string, unknown> },
+	) =>
+		request<Command>(`/instances/${id}/commands`, {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
 };

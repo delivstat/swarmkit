@@ -1,6 +1,7 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
+import Link from "next/link";
 
 import { ConnectionBadge, HealthBadge } from "@/components/health-badge";
 import { PageHeader } from "@/components/page-header";
@@ -64,7 +65,14 @@ export default function InstancesPage() {
 								<TableBody>
 									{instances.map((inst) => (
 										<TableRow key={inst.id}>
-											<TableCell className="font-medium">{inst.name}</TableCell>
+											<TableCell className="font-medium">
+												<Link
+													href={`/instances/${inst.id}`}
+													className="hover:underline"
+												>
+													{inst.name}
+												</Link>
+											</TableCell>
 											<TableCell className="font-mono text-xs text-muted-foreground">
 												{inst.endpoint}
 											</TableCell>

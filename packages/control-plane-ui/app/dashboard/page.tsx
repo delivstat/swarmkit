@@ -100,7 +100,7 @@ export default function DashboardPage() {
 							instances.map((inst) => (
 								<Link
 									key={inst.id}
-									href={`/instances?id=${inst.id}`}
+									href={`/instances/${inst.id}`}
 									className="flex items-center justify-between rounded-md border p-3 transition-colors hover:bg-accent"
 								>
 									<div className="space-y-0.5">
