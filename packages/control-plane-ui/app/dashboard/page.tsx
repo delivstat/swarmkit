@@ -4,6 +4,7 @@ import { Activity, Radio, Server, ServerCog } from "lucide-react";
 import Link from "next/link";
 
 import { ConnectionBadge, HealthBadge } from "@/components/health-badge";
+import { ObservabilityCard } from "@/components/observability-card";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
@@ -121,6 +122,8 @@ export default function DashboardPage() {
 						)}
 					</CardContent>
 				</Card>
+
+				<ObservabilityCard />
 			</div>
 		</>
 	);

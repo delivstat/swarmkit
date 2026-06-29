@@ -21,9 +21,13 @@ exporters:
     endpoint: jaeger:4317
     tls:
       insecure: true
-  # Metrics → exposed for Prometheus to scrape.
+  # Metrics → exposed for Prometheus to scrape. resource_to_telemetry_conversion promotes resource
+  # attributes (notably service.name → service_name) to metric labels, so the dashboard can filter
+  # per instance.
   prometheus:
     endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
   # Example fan-out target — uncomment and list under a pipeline to also ship to a second backend:
   # otlphttp/honeycomb:
   #   endpoint: https://api.honeycomb.io

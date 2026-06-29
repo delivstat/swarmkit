@@ -59,6 +59,24 @@ def serve(
         str | None,
         typer.Option("--oidc-jwks-url", help="JWKS URL (defaults to the issuer's discovery path)."),
     ] = None,
+    collector_endpoint: Annotated[
+        str,
+        typer.Option(
+            "--collector-endpoint", help="OTLP collector endpoint to advertise to instances."
+        ),
+    ] = "",
+    jaeger_url: Annotated[
+        str,
+        typer.Option(
+            "--jaeger-url", help="Jaeger UI base URL — the fleet UI deep-links traces here."
+        ),
+    ] = "",
+    grafana_url: Annotated[
+        str,
+        typer.Option(
+            "--grafana-url", help="Grafana base URL — the fleet UI deep-links metrics here."
+        ),
+    ] = "",
 ) -> None:
     """Start the control-plane API."""
     import uvicorn  # noqa: PLC0415
@@ -89,8 +107,21 @@ def serve(
             f"Set --operator-token / ${_OPERATOR_TOKENS_ENV} or --oidc-issuer to require auth.",
             err=True,
         )
+    observability = {
+        "collector_endpoint": collector_endpoint
+        or os.environ.get("SWARMKIT_CONTROL_PLANE_COLLECTOR_ENDPOINT", ""),
+        "jaeger_url": jaeger_url or os.environ.get("SWARMKIT_CONTROL_PLANE_JAEGER_URL", ""),
+        "grafana_url": grafana_url or os.environ.get("SWARMKIT_CONTROL_PLANE_GRAFANA_URL", ""),
+    }
+
     uvicorn.run(
-        create_app(registry, cors_origins=origins, operator_tokens=op_tokens, oidc=oidc),
+        create_app(
+            registry,
+            cors_origins=origins,
+            operator_tokens=op_tokens,
+            oidc=oidc,
+            observability=observability,
+        ),
         host=host,
         port=port,
     )

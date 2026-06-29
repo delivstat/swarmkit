@@ -45,6 +45,13 @@ export interface MintResult {
 	instructions: string;
 }
 
+/** Configured observability endpoints (GET /observability). Empty strings when unconfigured. */
+export interface Observability {
+	collector_endpoint: string;
+	jaeger_url: string;
+	grafana_url: string;
+}
+
 /** Command verbs the panel may enqueue, with the tier each requires (mirrors _verbs.py). */
 export const KNOWN_VERBS: { verb: string; tier: string }[] = [
 	{ verb: "capabilities", tier: "read" },
