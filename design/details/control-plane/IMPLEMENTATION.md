@@ -62,7 +62,9 @@ Hardening the existing `auth/` seam. Slices:
 - [x] human→panel OIDC (doc [12](12-auth.md) §3, backend) — the panel verifies OIDC JWTs
       (RS256/ES256 + JWKS, validate iss/aud/exp/sub) and authenticates the caller as an operator;
       `--oidc-issuer` / `--oidc-audience` / `--oidc-jwks-url` / env (PR #382)
-- [ ] UI OIDC login flow (auth-code redirect, token storage, Authorization header) + 401 handling
+- [x] UI OIDC login flow — browser PKCE auth-code (react-oidc-context), opt-in via
+      `NEXT_PUBLIC_OIDC_*`; gates the app behind sign-in, sends the token as `Authorization: Bearer`
+      on every panel call, re-initiates login on 401, sign-out in the sidebar (PR #383)
 - [ ] aggregation, artifact registry — Phases 4–5
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
@@ -129,5 +131,8 @@ Hardening the existing `auth/` seam. Slices:
   connector→panel credential (no connector change). swarmkit-control-plane 0.5.0.
 - **#382** — Phase 3 OIDC (human→panel, backend): the panel verifies OIDC JWTs (PyJWT, RS256/ES256
   + JWKS discovery, iss/aud/exp/sub) as a third auth path → operator principal carrying the subject;
-  `--oidc-issuer`/`--oidc-audience`/`--oidc-jwks-url` + env. swarmkit-control-plane 0.6.0. (UI login
-  redirect flow is the next slice.)
+  `--oidc-issuer`/`--oidc-audience`/`--oidc-jwks-url` + env. swarmkit-control-plane 0.6.0.
+- **#383** — Phase 6 fleet UI OIDC login: browser PKCE auth-code (react-oidc-context + oidc-client-ts),
+  opt-in via `NEXT_PUBLIC_OIDC_*`. Gates the app behind sign-in, attaches the token as
+  `Authorization: Bearer` on panel calls, re-initiates login on 401, sign-out in the sidebar; open
+  (no login) when unconfigured. Closes the human→panel loop with #382. UI-only.
