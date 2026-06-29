@@ -90,10 +90,13 @@ export default function DashboardPage() {
 							<p className="text-sm text-muted-foreground">Loading…</p>
 						) : total === 0 ? (
 							<p className="text-sm text-muted-foreground">
-								No instances enrolled yet. Enroll one with{" "}
-								<code className="rounded bg-muted px-1 py-0.5 text-xs">
-									POST /instances
-								</code>
+								No instances enrolled yet.{" "}
+								<Link
+									href="/instances/new"
+									className="text-foreground underline"
+								>
+									Enroll one
+								</Link>
 								.
 							</p>
 						) : (

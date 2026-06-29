@@ -31,9 +31,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	return (await res.json()) as T;
 }
 
+export interface EnrollBody {
+	name: string;
+	endpoint: string;
+	connection: "direct" | "poll";
+	tier: string;
+	token_ref?: string;
+}
+
 export const api = {
 	health: () => request<{ status: string }>("/health"),
 	listInstances: () => request<Instance[]>("/instances"),
+	enrollInstance: (body: EnrollBody) =>
+		request<Instance>("/instances", {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
 	getInstance: (id: string) => request<Instance>(`/instances/${id}`),
 	deleteInstance: (id: string) =>
 		request<{ deleted: string }>(`/instances/${id}`, { method: "DELETE" }),
