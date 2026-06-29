@@ -136,3 +136,6 @@ Hardening the existing `auth/` seam. Slices:
   opt-in via `NEXT_PUBLIC_OIDC_*`. Gates the app behind sign-in, attaches the token as
   `Authorization: Bearer` on panel calls, re-initiates login on 401, sign-out in the sidebar; open
   (no login) when unconfigured. Closes the human→panel loop with #382. UI-only.
+- **#384** — OIDC login e2e in the suite: Playwright drives the real browser PKCE flow against a
+  fake OIDC IdP + the OIDC-enabled panel + the UI (`e2e/`, `playwright.config.ts`), asserting the
+  panel accepts the issued token. New CI `e2e` job. UI-only.

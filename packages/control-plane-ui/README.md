@@ -33,6 +33,14 @@ behind sign-in: it runs the browser PKCE auth-code flow, sends the resulting tok
 `Authorization: Bearer` on every panel call, and re-initiates login on a 401. The panel must be
 started with a matching `--oidc-issuer` / `--oidc-audience`.
 
+## Tests
+
+`pnpm --filter @swarmkit/control-plane-ui e2e` runs the Playwright OIDC-login e2e. It starts a fake
+OIDC IdP (`e2e/fake-idp.py`), the panel with `--oidc-issuer`, and this UI (all via
+`playwright.config.ts`), then drives the real browser PKCE flow and asserts the panel accepts the
+issued token. Needs the browser once: `pnpm --filter @swarmkit/control-plane-ui exec playwright
+install chromium`. Runs in CI as the `e2e` job.
+
 ## Develop
 
 ```bash
