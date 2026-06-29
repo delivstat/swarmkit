@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 import { ConnectionBadge, HealthBadge } from "@/components/health-badge";
@@ -31,10 +31,18 @@ export default function InstancesPage() {
 				title="Instances"
 				description="Every swarmkit serve deployment registered with this control plane."
 				actions={
-					<Button variant="outline" size="sm" onClick={refresh}>
-						<RefreshCw />
-						Refresh
-					</Button>
+					<>
+						<Button variant="outline" size="sm" onClick={refresh}>
+							<RefreshCw />
+							Refresh
+						</Button>
+						<Button asChild size="sm">
+							<Link href="/instances/new">
+								<Plus />
+								Enroll instance
+							</Link>
+						</Button>
+					</>
 				}
 			/>
 			<div className="p-6">

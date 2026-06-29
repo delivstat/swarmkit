@@ -81,6 +81,8 @@ Hardening the existing `auth/` seam. Slices:
       (tier-bounded verb select)
 - [x] config-driven hosts: no hardcoded localhost — panel CORS is config-only
       (`--cors-origin` / env), UI base URL defaults to same-origin
+- [x] enroll-instance form (`/instances/new`) — name/endpoint/connection/tier/token-ref →
+      `POST /instances` → redirect to the new instance's detail page (PR #380)
 - [ ] OIDC login + instance selector + 401 handling (later slice)
 - [ ] per-instance views — runs, evals, artifact registry, approvals, conversational authoring
       (Phases 4–7 surfaces)
@@ -111,3 +113,5 @@ Hardening the existing `auth/` seam. Slices:
   mint-token panel with once-shown secret + snippet, verify + delete, and a live command-queue
   view for poll instances). Also **removes hardcoded localhost**: panel CORS is config-only (no
   localhost default) and the UI base URL defaults to same-origin. swarmkit-control-plane 0.4.0.
+- **#380** — Phase 6 fleet UI: enroll-instance form (`/instances/new`) — name/endpoint/connection/
+  tier/token-ref → `POST /instances` → redirect to the new instance's detail page. UI-only.
