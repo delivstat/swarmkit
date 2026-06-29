@@ -1,5 +1,13 @@
 import { getAccessToken, handleUnauthorized } from "./token-store";
-import type { Command, Instance, MintResult, Observability } from "./types";
+import type {
+	AuditRow,
+	Command,
+	EvalRow,
+	Instance,
+	MintResult,
+	Observability,
+	UsageRow,
+} from "./types";
 
 /**
  * Base URL of the swarmkit-control-plane API. Configured via NEXT_PUBLIC_CONTROL_PLANE_API;
@@ -54,6 +62,9 @@ export const api = {
 	health: () => request<{ status: string }>("/health"),
 	listInstances: () => request<Instance[]>("/instances"),
 	observability: () => request<Observability>("/observability"),
+	usage: () => request<UsageRow[]>("/usage"),
+	evals: () => request<EvalRow[]>("/eval"),
+	audit: (limit = 100) => request<AuditRow[]>(`/audit?limit=${limit}`),
 	enrollInstance: (body: EnrollBody) =>
 		request<Instance>("/instances", {
 			method: "POST",

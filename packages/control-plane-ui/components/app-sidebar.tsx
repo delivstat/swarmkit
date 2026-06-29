@@ -30,8 +30,8 @@ interface NavItem {
 const NAV: NavItem[] = [
 	{ href: "/dashboard", label: "Fleet", icon: LayoutDashboard },
 	{ href: "/instances", label: "Instances", icon: Server },
-	{ href: "/runs", label: "Runs", icon: PlayCircle, planned: true },
-	{ href: "/evals", label: "Evals", icon: BarChart3, planned: true },
+	{ href: "/runs", label: "Runs", icon: PlayCircle },
+	{ href: "/evals", label: "Evals", icon: BarChart3 },
 	{ href: "/artifacts", label: "Artifacts", icon: Package, planned: true },
 	{ href: "/approvals", label: "Approvals", icon: BadgeCheck, planned: true },
 	{

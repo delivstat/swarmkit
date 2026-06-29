@@ -91,7 +91,9 @@ Hardening the existing `auth/` seam. Slices:
       `service_name` label (`resource_to_telemetry_conversion`) so the Grafana dashboard filters
       per instance — verified end-to-end with real runtime telemetry (Jaeger swarmkit.* traces +
       dashboard data).
-- [ ] UI Runs/Evals pages over the rollups
+- [x] UI Runs/Evals pages over the rollups — `/runs` (usage by model/provider + recent audit
+      activity) and `/evals` (pass-rate by eval_set/topology, color-coded); both sidebar items now
+      live (PR #388)
 - [ ] federated live-job query (`GET /instances/{id}/jobs` → pull serve `/jobs`)
 - cost analytics stays blocked until ModelProviders populate `cost_usd` (doc 14, carried forward)
 
@@ -174,3 +176,4 @@ Hardening the existing `auth/` seam. Slices:
   Collector → Jaeger + Prometheus → Grafana w/ a prebuilt SwarmKit dashboard); fan-out documented as
   the multi-backend pattern. Infra/docs only (no package change).
 - **#387** — Phase 4 observability links: panel `--collector-endpoint`/`--jaeger-url`/`--grafana-url` + `GET /observability`; fleet-UI Observability card deep-links the dashboards. Also fixes the bundle collector to label metrics with `service_name` so the Grafana dashboard filters per instance. swarmkit-control-plane 0.8.0.
+- **#388** — Phase 6 fleet UI: `/runs` (fleet usage by model/provider + recent audit activity) and `/evals` (pass-rate by eval_set/topology, color-coded) over the aggregation rollups; Runs + Evals sidebar items activated. UI-only.
