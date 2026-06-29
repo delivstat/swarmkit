@@ -1,5 +1,7 @@
 import { getAccessToken, handleUnauthorized } from "./token-store";
 import type {
+	ArtifactSummary,
+	ArtifactVersion,
 	AuditRow,
 	Command,
 	EvalRow,
@@ -65,6 +67,15 @@ export const api = {
 	usage: () => request<UsageRow[]>("/usage"),
 	evals: () => request<EvalRow[]>("/eval"),
 	audit: (limit = 100) => request<AuditRow[]>(`/audit?limit=${limit}`),
+	artifacts: () => request<ArtifactSummary[]>("/artifacts"),
+	artifactVersions: (kind: string, id: string) =>
+		request<ArtifactVersion[]>(
+			`/artifacts/${kind}/${encodeURIComponent(id)}/versions`,
+		),
+	artifactVersion: (kind: string, id: string, version: string) =>
+		request<ArtifactVersion>(
+			`/artifacts/${kind}/${encodeURIComponent(id)}/versions/${version}`,
+		),
 	enrollInstance: (body: EnrollBody) =>
 		request<Instance>("/instances", {
 			method: "POST",

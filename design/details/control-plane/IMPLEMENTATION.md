@@ -110,7 +110,9 @@ Hardening the existing `auth/` seam. Slices:
 - [ ] governed push to instances (validate → `/api/*` write) — legislative, `serve:admin` + human
       approval gate (ties to Phase 7 growth loop)
 - [ ] schema-compatibility gate (refuse pushing an artifact an instance can't validate)
-- [ ] UI artifact-registry surface
+- [x] UI artifact-registry surface — `/artifacts` (list by kind/id + latest/versions/hash) and
+      `/artifacts/[kind]/[id]` (version history + provenance + content viewer); Artifacts sidebar
+      item now live (PR #390)
 - storage is sqlite for now; design's git-backed content store + Postgres is the later swap
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
@@ -194,3 +196,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#387** — Phase 4 observability links: panel `--collector-endpoint`/`--jaeger-url`/`--grafana-url` + `GET /observability`; fleet-UI Observability card deep-links the dashboards. Also fixes the bundle collector to label metrics with `service_name` so the Grafana dashboard filters per instance. swarmkit-control-plane 0.8.0.
 - **#388** — Phase 6 fleet UI: `/runs` (fleet usage by model/provider + recent audit activity) and `/evals` (pass-rate by eval_set/topology, color-coded) over the aggregation rollups; Runs + Evals sidebar items activated. UI-only.
 - **#389** — Phase 5 artifact registry slice 1: `ArtifactStore` (versioned artifacts + content-hash + provenance, idempotent re-register) + API (`/artifacts/*`), per-instance deployments, and drift detection (`/instances/{id}/artifacts/report` + `/drift`). swarmkit-control-plane 0.9.0.
+- **#390** — Phase 5 artifact-registry UI: `/artifacts` (registry list) + `/artifacts/[kind]/[id]` (version history, provenance, content viewer); Artifacts sidebar item activated. UI-only.

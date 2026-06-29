@@ -73,6 +73,27 @@ export interface AuditRow {
 	[key: string]: unknown;
 }
 
+/** Row of GET /artifacts — one per (kind, id) with its latest version. */
+export interface ArtifactSummary {
+	kind: string;
+	id: string;
+	versions: number;
+	latest_version: string;
+	latest_hash: string;
+}
+
+/** A registered artifact version (GET /artifacts/{kind}/{id}/versions[/{version}]). */
+export interface ArtifactVersion {
+	kind: string;
+	id: string;
+	version: string;
+	content_hash: string;
+	authored_by: string;
+	schema_version: string;
+	created_at: string;
+	content?: unknown;
+}
+
 /** Configured observability endpoints (GET /observability). Empty strings when unconfigured. */
 export interface Observability {
 	collector_endpoint: string;
