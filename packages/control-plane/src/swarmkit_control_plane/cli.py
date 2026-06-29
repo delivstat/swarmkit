@@ -25,8 +25,9 @@ def serve(
         typer.Option(
             "--cors-origin",
             help=(
-                "Extra browser origin allowed to call the panel (repeatable). Any localhost "
-                f"origin is always allowed. Also read from ${_CORS_ENV} (comma-separated)."
+                "Browser origin allowed to call the panel (repeatable). CORS is config-only — "
+                "pass the fleet UI's origin (e.g. its dev URL). Also read from "
+                f"${_CORS_ENV} (comma-separated)."
             ),
         ),
     ] = None,

@@ -25,10 +25,6 @@ from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_
 
 VerifyFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 
-# Any localhost origin is allowed by default so the fleet UI works in local dev without config.
-# Additional production origins are passed explicitly to create_app (CLI: --cors-origin).
-_LOCALHOST_ORIGIN_RE = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
-
 
 class EnrollRequest(BaseModel):
     name: str
@@ -74,17 +70,19 @@ def create_app(
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
-    *cors_origins* are extra exact browser origins allowed to call the panel (the fleet UI in a
-    split-origin deploy). Any localhost origin is always allowed for local dev.
+    *cors_origins* are the exact browser origins allowed to call the panel (the fleet UI in a
+    split-origin deploy). CORS is entirely config-driven — no origin is allowed unless listed here
+    (CLI: --cors-origin / $SWARMKIT_CONTROL_PLANE_CORS_ORIGINS). For local dev, pass the UI's
+    origin explicitly, e.g. --cors-origin http://localhost:3000.
     """
     app = FastAPI(title="SwarmKit control plane")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins or [],
-        allow_origin_regex=_LOCALHOST_ORIGIN_RE,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     @app.get("/health")
     async def health() -> dict[str, str]:

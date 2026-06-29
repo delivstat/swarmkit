@@ -73,6 +73,14 @@ Hardening the existing `auth/` seam. Slices:
 - [x] `/instances` — registry table (health + connection-mode badges, schema, last-seen)
 - [x] typed API client (`lib/api.ts`) over the panel API, `Instance` type mirrors
       `public_dict()`, `usePoll` refresh
+
+### Slice 2 — instance detail + actions (PR #379)
+- [x] `/instances/[id]` detail page — overview grid, capabilities, mint-token panel (secret
+      shown once + `server.auth` snippet + copy), verify (Mode A) + delete actions
+- [x] command-queue view for poll (Mode B) instances — live status table + enqueue form
+      (tier-bounded verb select)
+- [x] config-driven hosts: no hardcoded localhost — panel CORS is config-only
+      (`--cors-origin` / env), UI base URL defaults to same-origin
 - [ ] OIDC login + instance selector + 401 handling (later slice)
 - [ ] per-instance views — runs, evals, artifact registry, approvals, conversational authoring
       (Phases 4–7 surfaces)
@@ -97,6 +105,9 @@ Hardening the existing `auth/` seam. Slices:
 - **#378** — Phase 3 token minting: `POST /instances/{id}/mint-token` (per-instance, per-tier serve
   token; secret returned once, panel stores only `key_ref` + fingerprint + metadata) + a
   `server.auth` snippet, `POST /instances/{id}/verify` (Mode A re-pull), and enroll-then-mint
-  (direct enroll without a token enrolls unverified). Also: panel **CORS** — any localhost origin
-  allowed by default + extra origins via `--cors-origin` / `$SWARMKIT_CONTROL_PLANE_CORS_ORIGINS`,
-  so the fleet UI can call the panel cross-origin. swarmkit-control-plane 0.3.0.
+  (direct enroll without a token enrolls unverified). Also: panel **CORS** for the fleet UI via
+  `--cors-origin` / `$SWARMKIT_CONTROL_PLANE_CORS_ORIGINS`. swarmkit-control-plane 0.3.0.
+- **#379** — Phase 6 fleet UI slice 2: `/instances/[id]` detail page (overview, capabilities,
+  mint-token panel with once-shown secret + snippet, verify + delete, and a live command-queue
+  view for poll instances). Also **removes hardcoded localhost**: panel CORS is config-only (no
+  localhost default) and the UI base URL defaults to same-origin. swarmkit-control-plane 0.4.0.

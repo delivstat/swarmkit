@@ -31,13 +31,15 @@ routes are wired to the API, planned routes are shown muted until their slice la
 pnpm --filter @swarmkit/control-plane-ui dev   # http://localhost:3000
 ```
 
-Point it at a running control plane (defaults to `http://localhost:8800`):
+Point it at a running control plane. `NEXT_PUBLIC_CONTROL_PLANE_API` configures the panel base
+URL (no host is hardcoded — it defaults to same-origin when unset). The panel's CORS is
+config-only, so pass this UI's origin to the panel via `--cors-origin`:
 
 ```bash
-# terminal 1 — the panel API
-swarmkit-control-plane serve
+# terminal 1 — the panel API (allow this UI's origin)
+swarmkit-control-plane --cors-origin http://localhost:3000
 
-# terminal 2 — this UI
+# terminal 2 — this UI, pointed at the panel
 NEXT_PUBLIC_CONTROL_PLANE_API=http://localhost:8800 pnpm --filter @swarmkit/control-plane-ui dev
 ```
 
