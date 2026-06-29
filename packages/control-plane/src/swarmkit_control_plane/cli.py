@@ -11,6 +11,7 @@ import typer
 app = typer.Typer(help="SwarmKit control plane — fleet panel API + instance registry.")
 
 _CORS_ENV = "SWARMKIT_CONTROL_PLANE_CORS_ORIGINS"
+_OPERATOR_TOKENS_ENV = "SWARMKIT_CONTROL_PLANE_OPERATOR_TOKENS"
 
 
 @app.command()
@@ -31,6 +32,17 @@ def serve(
             ),
         ),
     ] = None,
+    operator_token: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--operator-token",
+            help=(
+                "Operator bearer token granting full panel access (repeatable). When set, the "
+                "panel requires auth on every route except /health; otherwise it runs open. Also "
+                f"read from ${_OPERATOR_TOKENS_ENV} (comma-separated)."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Start the control-plane API."""
     import uvicorn  # noqa: PLC0415
@@ -39,11 +51,25 @@ def serve(
     from swarmkit_control_plane._registry import SqliteRegistry  # noqa: PLC0415
 
     origins = list(cors_origin or [])
-    env_origins = os.environ.get(_CORS_ENV, "")
-    origins += [o.strip() for o in env_origins.split(",") if o.strip()]
+    origins += [o.strip() for o in os.environ.get(_CORS_ENV, "").split(",") if o.strip()]
+
+    op_tokens = list(operator_token or [])
+    op_tokens += [
+        t.strip() for t in os.environ.get(_OPERATOR_TOKENS_ENV, "").split(",") if t.strip()
+    ]
 
     registry = SqliteRegistry(data_dir / "registry.sqlite")
-    uvicorn.run(create_app(registry, cors_origins=origins), host=host, port=port)
+    if not op_tokens:
+        typer.echo(
+            "warning: no operator tokens set — panel API is UNAUTHENTICATED. "
+            f"Set --operator-token or ${_OPERATOR_TOKENS_ENV} to require auth.",
+            err=True,
+        )
+    uvicorn.run(
+        create_app(registry, cors_origins=origins, operator_tokens=op_tokens),
+        host=host,
+        port=port,
+    )
 
 
 if __name__ == "__main__":

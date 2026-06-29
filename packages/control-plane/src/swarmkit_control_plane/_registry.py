@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS instances (
     token_ref TEXT NOT NULL DEFAULT '',
     tier TEXT NOT NULL DEFAULT 'read',
     token_fingerprint TEXT NOT NULL DEFAULT '',
+    token_hash TEXT NOT NULL DEFAULT '',
     token_minted_at TEXT,
     schema_version TEXT NOT NULL DEFAULT '',
     capabilities TEXT NOT NULL DEFAULT '{}',
@@ -68,6 +69,8 @@ class SqliteRegistry:
                 "ALTER TABLE instances ADD COLUMN token_fingerprint TEXT NOT NULL DEFAULT ''"
             )
             conn.execute("ALTER TABLE instances ADD COLUMN token_minted_at TEXT")
+        if "token_hash" not in cols:
+            conn.execute("ALTER TABLE instances ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path), timeout=10)
@@ -81,8 +84,9 @@ class SqliteRegistry:
             conn.execute(
                 """INSERT OR REPLACE INTO instances
                    (id, name, endpoint, connection, token_ref, tier, token_fingerprint,
-                    token_minted_at, schema_version, capabilities, health, last_seen, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    token_hash, token_minted_at, schema_version, capabilities, health, last_seen,
+                    created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     instance.id,
                     instance.name,
@@ -91,6 +95,7 @@ class SqliteRegistry:
                     instance.token_ref,
                     instance.tier,
                     instance.token_fingerprint,
+                    instance.token_hash,
                     instance.token_minted_at,
                     instance.schema_version,
                     json.dumps(instance.capabilities),
@@ -109,6 +114,7 @@ class SqliteRegistry:
             token_ref=row["token_ref"],
             tier=row["tier"],
             token_fingerprint=row["token_fingerprint"],
+            token_hash=row["token_hash"],
             token_minted_at=row["token_minted_at"],
             schema_version=row["schema_version"],
             capabilities=json.loads(row["capabilities"]),
@@ -154,16 +160,34 @@ class SqliteRegistry:
             conn.execute(f"UPDATE instances SET {', '.join(sets)} WHERE id = ?", params)
 
     def set_token(
-        self, instance_id: str, *, token_ref: str, fingerprint: str, tier: str, minted_at: str
+        self,
+        instance_id: str,
+        *,
+        token_ref: str,
+        fingerprint: str,
+        token_hash: str,
+        tier: str,
+        minted_at: str,
     ) -> None:
-        """Record a freshly minted token's reference + metadata — never the secret itself."""
+        """Record a freshly minted token's reference + hash + metadata — never the secret itself."""
         with self._lock, self._connect() as conn:
             conn.execute(
                 """UPDATE instances
-                   SET token_ref = ?, token_fingerprint = ?, tier = ?, token_minted_at = ?
+                   SET token_ref = ?, token_fingerprint = ?, token_hash = ?, tier = ?,
+                       token_minted_at = ?
                    WHERE id = ?""",
-                (token_ref, fingerprint, tier, minted_at, instance_id),
+                (token_ref, fingerprint, token_hash, tier, minted_at, instance_id),
             )
+
+    def get_by_token_hash(self, token_hash: str) -> Instance | None:
+        """Find the instance whose minted connector→panel token has this hash (auth lookup)."""
+        if not token_hash:
+            return None
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM instances WHERE token_hash = ?", (token_hash,)
+            ).fetchone()
+        return self._row_to_instance(row) if row else None
 
     # --- Mode B command queue -------------------------------------------------
 

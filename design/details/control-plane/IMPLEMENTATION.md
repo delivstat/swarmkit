@@ -55,6 +55,11 @@ Hardening the existing `auth/` seam. Slices:
 - [x] token minting in the panel — `POST /instances/{id}/mint-token` (per-instance, per-tier;
       secret shown once, only a `key_ref` + fingerprint + metadata stored) + `POST /verify`
       (Mode A re-pull) + enroll-then-mint (direct enroll without a token is unverified) (PR #378)
+- [x] **panel authentication** (doc [12](12-auth.md) §3) — bearer auth with two principals:
+      operator tokens (full access, `--operator-token` / env) and connector tokens (a Mode B
+      instance's minted token, matched by stored hash, scoped to its own poll + result routes).
+      Open (no-auth) when no operator tokens are set. (PR #381)
+- [ ] human→panel OIDC login + UI 401 handling — later slice
 - [ ] aggregation, artifact registry — Phases 4–5
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
@@ -115,3 +120,7 @@ Hardening the existing `auth/` seam. Slices:
   localhost default) and the UI base URL defaults to same-origin. swarmkit-control-plane 0.4.0.
 - **#380** — Phase 6 fleet UI: enroll-instance form (`/instances/new`) — name/endpoint/connection/
   tier/token-ref → `POST /instances` → redirect to the new instance's detail page. UI-only.
+- **#381** — Phase 3 panel auth: bearer auth on the panel API — operator tokens (full access) +
+  connector tokens (Mode B instance, matched by stored SHA-256, scoped to its own poll + result
+  routes); open when no operator tokens configured. The minted per-instance token doubles as the
+  connector→panel credential (no connector change). swarmkit-control-plane 0.5.0.

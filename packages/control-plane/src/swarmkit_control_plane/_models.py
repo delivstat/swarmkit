@@ -20,7 +20,9 @@ class Instance:
     connection: ConnectionMode = "direct"
     token_ref: str = ""  # how the panel authenticates to the instance (env:/file:/literal)
     tier: str = "read"  # granted transport tier — bounds which commands may be enqueued (Mode B)
-    token_fingerprint: str = ""  # fingerprint of the active minted token (never the secret)
+    token_fingerprint: str = ""  # short display id of the active minted token (never the secret)
+    # full SHA-256 of the connector→panel token; for auth lookup, never exposed via public_dict
+    token_hash: str = ""
     token_minted_at: str | None = None
     schema_version: str = ""
     capabilities: dict[str, Any] = field(default_factory=dict)

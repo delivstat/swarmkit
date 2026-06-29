@@ -19,9 +19,18 @@ from dataclasses import dataclass
 _TIERS = ("read", "run", "admin")
 
 
+def token_hash(token: str) -> str:
+    """Full SHA-256 hex of a token — stored for authenticating a connector to the panel.
+
+    The token itself is high-entropy (256-bit), so a plain hash is sufficient (no per-token salt
+    needed): an attacker can't second-preimage the full digest, and nothing reversible is stored.
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
 def fingerprint(token: str) -> str:
-    """Short, non-reversible identifier for a token (for rotation/audit, never the secret)."""
-    return hashlib.sha256(token.encode()).hexdigest()[:12]
+    """Short display identifier for a token (rotation/audit UI), never used for authentication."""
+    return token_hash(token)[:12]
 
 
 def env_var_for(instance_id: str) -> str:
@@ -38,7 +47,8 @@ class MintedToken:
     client_name: str
     tier: str
     key_ref: str  # env:VAR — what both sides reference, never the literal
-    fingerprint: str
+    fingerprint: str  # short display id
+    token_hash: str  # full SHA-256, stored to authenticate the connector to the panel
 
     def server_auth_snippet(self) -> str:
         """The ``server.auth`` YAML to paste on the instance's workspace.yaml."""
@@ -68,4 +78,5 @@ def mint_token(instance_id: str, *, tier: str, client_name: str = "") -> MintedT
         tier=tier,
         key_ref=f"env:{env_var_for(instance_id)}",
         fingerprint=fingerprint(token),
+        token_hash=token_hash(token),
     )
