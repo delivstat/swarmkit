@@ -13,10 +13,12 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
 from swarmkit_control_plane._models import Instance
 from swarmkit_control_plane._registry import SqliteRegistry
@@ -67,6 +69,7 @@ def create_app(
     *,
     verify: VerifyFn = fetch_capabilities,
     cors_origins: list[str] | None = None,
+    operator_tokens: list[str] | None = None,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -74,8 +77,35 @@ def create_app(
     split-origin deploy). CORS is entirely config-driven — no origin is allowed unless listed here
     (CLI: --cors-origin / $SWARMKIT_CONTROL_PLANE_CORS_ORIGINS). For local dev, pass the UI's
     origin explicitly, e.g. --cors-origin http://localhost:3000.
+
+    *operator_tokens* enable panel auth. When set, every route except /health requires a bearer:
+    an operator token (full access) or a Mode B instance's per-instance token (scoped to its own
+    poll + command-result routes). When empty, the panel runs open (no auth) for local dev.
     """
     app = FastAPI(title="SwarmKit control plane")
+    ops = [t for t in (operator_tokens or []) if t]
+
+    # Auth is registered before CORS so CORS stays the outermost layer (preflight + 401/403
+    # responses still carry the configured CORS headers for the browser to read).
+    if ops:
+
+        @app.middleware("http")
+        async def auth_middleware(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ) -> Response:
+            if request.url.path == "/health" or request.method == "OPTIONS":
+                return await call_next(request)
+            header = request.headers.get("Authorization", "")
+            token = header[7:] if header.startswith("Bearer ") else ""
+            principal = authenticate(token, ops, registry)
+            if principal is None:
+                return JSONResponse({"detail": "missing or invalid bearer token"}, status_code=401)
+            if not authorize(principal, request.method, request.url.path):
+                return JSONResponse(
+                    {"detail": "this token is not allowed to call that route"}, status_code=403
+                )
+            return await call_next(request)
+
     if cors_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -171,6 +201,7 @@ def _mount_token_routes(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn
             instance_id,
             token_ref=minted.key_ref,
             fingerprint=minted.fingerprint,
+            token_hash=minted.token_hash,
             tier=tier,
             minted_at=datetime.now(UTC).isoformat(),
         )
