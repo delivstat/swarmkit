@@ -69,7 +69,10 @@ def authorize(principal: Principal, method: str, path: str) -> bool:
     # so it can't push as another instance — see the aggregation handler).
     if path.startswith("/aggregate/"):
         return True
-    # ...and long-poll + report results for its own instance.
+    # ...long-poll + report results for its own instance...
     if path == f"/instances/{iid}/poll":
         return True
-    return path.startswith(f"/instances/{iid}/commands/") and path.endswith("/result")
+    if path.startswith(f"/instances/{iid}/commands/") and path.endswith("/result"):
+        return True
+    # ...and report its own active artifact versions for drift detection.
+    return path == f"/instances/{iid}/artifacts/report"
