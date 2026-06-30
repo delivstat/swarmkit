@@ -20,6 +20,43 @@ from ._types import (
 
 _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-", "o4-")
 
+# Per-model ``options`` are vendor-shaped. These keys are Ollama-specific runtime
+# knobs (context window, GPU layers, keep-alive, sampler extras) that the OpenAI
+# SDK's ``create()`` rejects as unknown kwargs — fatal when a topology authored for
+# Ollama runs on an OpenAI-compatible provider (e.g. OpenRouter). Drop them rather
+# than crash; an OpenAI-compatible backend manages context/placement itself. Options
+# the OpenAI API does accept (top_p, frequency_penalty, presence_penalty, seed,
+# stop, logit_bias, …) pass through untouched. Runtime ``extra`` is never filtered.
+_OLLAMA_ONLY_OPTIONS = frozenset(
+    {
+        "num_ctx",
+        "num_gpu",
+        "num_predict",
+        "num_thread",
+        "num_keep",
+        "num_batch",
+        "main_gpu",
+        "low_vram",
+        "numa",
+        "f16_kv",
+        "use_mmap",
+        "use_mlock",
+        "vocab_only",
+        "keep_alive",
+        "think",
+        "top_k",
+        "min_p",
+        "tfs_z",
+        "typical_p",
+        "repeat_penalty",
+        "repeat_last_n",
+        "penalize_newline",
+        "mirostat",
+        "mirostat_eta",
+        "mirostat_tau",
+    }
+)
+
 
 class OpenAIModelProvider:
     """ModelProvider for OpenAI's GPT / o-series models."""
@@ -75,10 +112,11 @@ def _to_openai_kwargs(request: CompletionRequest) -> dict[str, Any]:
         ]
     if request.response_format is not None:
         kwargs["response_format"] = request.response_format
-    # Per-model options (top_p, frequency_penalty, seed, ...) as top-level
-    # call params; runtime ``extra`` is applied last so it stays authoritative.
+    # Per-model options (top_p, frequency_penalty, seed, ...) as top-level call
+    # params, minus Ollama-only knobs the OpenAI SDK would reject. Runtime ``extra``
+    # is applied last (and never filtered) so it stays authoritative.
     if request.options:
-        kwargs.update(request.options)
+        kwargs.update({k: v for k, v in request.options.items() if k not in _OLLAMA_ONLY_OPTIONS})
     if request.extra:
         kwargs.update(request.extra)
     return kwargs
