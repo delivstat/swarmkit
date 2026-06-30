@@ -113,6 +113,16 @@ export interface Proposal {
 	decided_at: string | null;
 }
 
+/** A live job from an instance's serve /jobs (federated via GET /instances/{id}/jobs). */
+export interface Job {
+	job_id: string;
+	topology: string;
+	version?: string;
+	status: string;
+	created_at: string;
+	completed_at?: string | null;
+}
+
 export type DriftStatus = "ok" | "drift" | "missing";
 
 /** Row of GET /instances/{id}/drift — registry-intended vs the instance's reported actual. */
