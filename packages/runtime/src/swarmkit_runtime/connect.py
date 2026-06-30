@@ -29,6 +29,13 @@ _VERB_ROUTES: dict[str, tuple[str, str, str]] = {
     "reload": ("POST", "/api/reload", "admin"),
 }
 
+# `deploy` (governed artifact push) resolves its route from the command's `kind` arg.
+_DEPLOY_PLURAL: dict[str, str] = {
+    "topology": "topologies",
+    "skill": "skills",
+    "archetype": "archetypes",
+}
+
 _TIER_RANK: dict[str, int] = {"read": 0, "run": 1, "admin": 2}
 
 
@@ -40,7 +47,7 @@ def _tier_rank(tier: str) -> int:
     return _TIER_RANK.get(tier.strip().lower(), -1)
 
 
-async def execute_command(
+async def execute_command(  # noqa: PLR0911 — branchy command dispatch; each error reports back
     serve_client: httpx.AsyncClient,
     *,
     serve_url: str,
@@ -54,10 +61,17 @@ async def execute_command(
     status is 'done' on success or 'error' on any failure (unknown verb, tier breach, missing arg,
     serve error). The connector never raises on a bad command — it reports the error back.
     """
-    route = _VERB_ROUTES.get(verb)
-    if route is None:
-        return ("error", None, f"unknown verb: {verb}")
-    method, path_template, required_tier = route
+    if verb == "deploy":
+        # Push an artifact version to local serve: PUT /api/{collection}/{id} with the content.
+        plural = _DEPLOY_PLURAL.get(str(args.get("kind")))
+        if plural is None:
+            return ("error", None, f"deploy: undeployable kind '{args.get('kind')}'")
+        method, path_template, required_tier = ("PUT", f"/api/{plural}/{{id}}", "admin")
+    else:
+        route = _VERB_ROUTES.get(verb)
+        if route is None:
+            return ("error", None, f"unknown verb: {verb}")
+        method, path_template, required_tier = route
     if _tier_rank(granted_tier) < _tier_rank(required_tier):
         return ("error", None, f"verb '{verb}' exceeds granted tier '{granted_tier}'")
     try:

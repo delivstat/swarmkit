@@ -19,6 +19,7 @@ VERB_TIERS: dict[str, str] = {
     "validate": "read",
     "run": "run",
     "reload": "admin",
+    "deploy": "admin",  # push an artifact version to local serve (Mode B governed deploy)
 }
 
 _TIER_RANK: dict[str, int] = {"read": 0, "run": 1, "admin": 2}
