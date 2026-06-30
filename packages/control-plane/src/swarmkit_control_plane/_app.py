@@ -25,6 +25,7 @@ from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
 from swarmkit_control_plane._models import Instance
 from swarmkit_control_plane._oidc import OidcVerifier
+from swarmkit_control_plane._proposals import ProposalStore
 from swarmkit_control_plane._registry import SqliteRegistry
 from swarmkit_control_plane._tokens import mint_token
 from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_tier
@@ -89,6 +90,20 @@ class ReportArtifactsRequest(BaseModel):
     records: list[dict[str, Any]]
 
 
+class ProposalRequest(BaseModel):
+    kind: str
+    artifact_id: str
+    content: Any
+    proposed_by: str = ""
+    signal: str = ""  # gap | eval_regression | drift | …
+    eval_summary: dict[str, Any] = {}
+
+
+class DecisionRequest(BaseModel):
+    approved_by: str = ""
+    reason: str = ""
+
+
 def create_app(
     registry: SqliteRegistry,
     *,
@@ -99,6 +114,7 @@ def create_app(
     aggregation: AggregationStore | None = None,
     observability: dict[str, str] | None = None,
     artifacts: ArtifactStore | None = None,
+    proposals: ProposalStore | None = None,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -115,6 +131,7 @@ def create_app(
     app = FastAPI(title="SwarmKit control plane")
     agg = aggregation or AggregationStore(registry.db_path)
     arts = artifacts or ArtifactStore(registry.db_path)
+    props = proposals or ProposalStore(registry.db_path)
     ops = [t for t in (operator_tokens or []) if t]
 
     # Auth is registered before CORS so CORS stays the outermost layer (preflight + 401/403
@@ -150,6 +167,19 @@ def create_app(
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    _mount_instances(app, registry, verify)
+    _mount_token_routes(app, registry, verify)
+    _mount_command_queue(app, registry)
+    _mount_aggregation(app, agg)
+    _mount_observability(app, observability or {})
+    _mount_artifacts(app, arts)
+    _mount_proposals(app, props, arts)
+    return app
+
+
+def _mount_instances(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -> None:
+    """Instance registry CRUD + enrollment + heartbeat (doc 13)."""
 
     @app.post("/instances")
     async def enroll(req: EnrollRequest) -> dict[str, Any]:
@@ -208,12 +238,75 @@ def create_app(
         )
         return {"status": "ok"}
 
-    _mount_token_routes(app, registry, verify)
-    _mount_command_queue(app, registry)
-    _mount_aggregation(app, agg)
-    _mount_observability(app, observability or {})
-    _mount_artifacts(app, arts)
-    return app
+
+def _mount_proposals(app: FastAPI, store: ProposalStore, artifacts: ArtifactStore) -> None:
+    """Growth-loop approval queue (doc 17). Approving a proposal publishes it to the registry —
+    the human gate. Nothing auto-approves; approve/reject are operator-only (machines can't)."""
+
+    @app.post("/proposals")
+    async def create_proposal(req: ProposalRequest) -> dict[str, Any]:
+        if req.kind not in ARTIFACT_KINDS:
+            raise HTTPException(404, f"unknown kind '{req.kind}'")
+        return store.create(
+            kind=req.kind,
+            artifact_id=req.artifact_id,
+            content=req.content,
+            proposed_by=req.proposed_by,
+            signal=req.signal,
+            eval_summary=req.eval_summary,
+        )
+
+    @app.get("/proposals")
+    async def list_proposals(status: str | None = None) -> list[dict[str, Any]]:
+        return store.list(status)
+
+    @app.get("/proposals/{proposal_id}")
+    async def get_proposal(proposal_id: str) -> dict[str, Any]:
+        found = store.get(proposal_id)
+        if found is None:
+            raise HTTPException(404, "proposal not found")
+        return found
+
+    @app.post("/proposals/{proposal_id}/approve")
+    async def approve_proposal(
+        proposal_id: str, req: DecisionRequest, request: Request
+    ) -> dict[str, Any]:
+        prop = store.get(proposal_id)
+        if prop is None:
+            raise HTTPException(404, "proposal not found")
+        # The approver: an OIDC human's subject when available, else the named operator.
+        principal = getattr(request.state, "principal", None)
+        approver = (getattr(principal, "subject", None) or "") if principal else ""
+        approver = approver or req.approved_by
+        # Approval IS publication: the proposed content becomes a new registry version (provenance
+        # carries both the proposer and the approving human).
+        published = artifacts.register_version(
+            prop["kind"],
+            prop["artifact_id"],
+            content=prop["content"],
+            authored_by=f"{prop['proposed_by']} (approved by {approver})".strip(),
+        )
+        try:
+            return store.mark_approved(
+                proposal_id, approved_by=approver, published_version=published["version"]
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/proposals/{proposal_id}/reject")
+    async def reject_proposal(
+        proposal_id: str, req: DecisionRequest, request: Request
+    ) -> dict[str, Any]:
+        principal = getattr(request.state, "principal", None)
+        approver = (
+            (getattr(principal, "subject", None) or "") if principal else ""
+        ) or req.approved_by
+        try:
+            return store.mark_rejected(proposal_id, approved_by=approver, reason=req.reason)
+        except KeyError as exc:
+            raise HTTPException(404, "proposal not found") from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
 
 def _mount_artifacts(app: FastAPI, store: ArtifactStore) -> None:
