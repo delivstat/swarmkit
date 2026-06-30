@@ -4,6 +4,7 @@ import type {
 	ArtifactVersion,
 	AuditRow,
 	Command,
+	Config,
 	DriftRow,
 	EvalRow,
 	Instance,
@@ -65,6 +66,7 @@ export interface EnrollBody {
 
 export const api = {
 	health: () => request<{ status: string }>("/health"),
+	config: () => request<Config>("/config"),
 	listInstances: () => request<Instance[]>("/instances"),
 	observability: () => request<Observability>("/observability"),
 	usage: () => request<UsageRow[]>("/usage"),
