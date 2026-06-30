@@ -131,7 +131,8 @@ Hardening the existing `auth/` seam. Slices:
 - [ ] cross-instance skill-gap aggregation + ranking (signal → surface)
 - [ ] authoring-swarm draft + eval-harness test stages (propose → test)
 - [ ] governed deploy of an approved version to target instances (publish → deploy)
-- [ ] Approvals UI (queue + approve/reject)
+- [x] Approvals UI — `/approvals` queue (proposed content + provenance + signal; pending-only/all
+      filter) with approve-&-publish / reject actions; Approvals sidebar item now live (PR #393)
 
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
 > sibling package `packages/control-plane-ui`). The connector + registry + enrollment + token
@@ -217,3 +218,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#390** — Phase 5 artifact-registry UI: `/artifacts` (registry list) + `/artifacts/[kind]/[id]` (version history, provenance, content viewer); Artifacts sidebar item activated. UI-only.
 - **#391** — Phase 5 UI: per-instance Deployments & drift card on the instance detail page — set the intended version + a color-coded drift table (intended vs reported actual). UI-only.
 - **#392** — Phase 7 approval gate slice 1: `ProposalStore` + proposal pipeline (`/proposals` open/list/get/approve/reject). Approval is the human gate — it publishes the proposed content as a new registry version; nothing auto-approves and connectors (machines) are denied. swarmkit-control-plane 0.10.0.
+- **#393** — Phase 7 Approvals UI: `/approvals` proposal queue (content + provenance + signal, pending/all filter) with approve-&-publish / reject; Approvals sidebar item activated. UI-only.

@@ -94,6 +94,25 @@ export interface ArtifactVersion {
 	content?: unknown;
 }
 
+export type ProposalStatus = "pending" | "approved" | "rejected";
+
+/** A growth-loop proposal (GET /proposals) — a drafted artifact change awaiting human approval. */
+export interface Proposal {
+	id: string;
+	kind: string;
+	artifact_id: string;
+	content: unknown;
+	status: ProposalStatus;
+	proposed_by: string;
+	signal: string;
+	eval_summary: Record<string, unknown>;
+	approved_by: string;
+	reason: string;
+	published_version: string;
+	created_at: string;
+	decided_at: string | null;
+}
+
 export type DriftStatus = "ok" | "drift" | "missing";
 
 /** Row of GET /instances/{id}/drift — registry-intended vs the instance's reported actual. */

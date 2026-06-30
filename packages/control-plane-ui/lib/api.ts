@@ -9,6 +9,7 @@ import type {
 	Instance,
 	MintResult,
 	Observability,
+	Proposal,
 	UsageRow,
 } from "./types";
 
@@ -68,6 +69,18 @@ export const api = {
 	usage: () => request<UsageRow[]>("/usage"),
 	evals: () => request<EvalRow[]>("/eval"),
 	audit: (limit = 100) => request<AuditRow[]>(`/audit?limit=${limit}`),
+	proposals: (status?: string) =>
+		request<Proposal[]>(`/proposals${status ? `?status=${status}` : ""}`),
+	approveProposal: (id: string) =>
+		request<Proposal>(`/proposals/${id}/approve`, {
+			method: "POST",
+			body: "{}",
+		}),
+	rejectProposal: (id: string, reason: string) =>
+		request<Proposal>(`/proposals/${id}/reject`, {
+			method: "POST",
+			body: JSON.stringify({ reason }),
+		}),
 	artifacts: () => request<ArtifactSummary[]>("/artifacts"),
 	artifactVersions: (kind: string, id: string) =>
 		request<ArtifactVersion[]>(
