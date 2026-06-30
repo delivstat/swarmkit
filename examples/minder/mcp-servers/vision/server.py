@@ -35,6 +35,15 @@ VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
 # thrashes (100-240s cold) because llama3.2 owns the VRAM, while CPU loads
 # straight into RAM. >0 to use the GPU on an appliance with its own headroom.
 VISION_NUM_GPU = int(os.environ.get("MINDER_VISION_NUM_GPU", "0"))
+# Describe provider: "ollama" (local, default — zero cloud) or "openrouter" (a cloud
+# VLM for higher-fidelity scene answers; opt-in, for testing the quality ceiling).
+# Cloud failure falls back to the local VLM, so behaviour degrades gracefully.
+DESCRIBE_PROVIDER = os.environ.get("MINDER_DESCRIBE_PROVIDER", "ollama").lower()
+CLOUD_VISION_MODEL = os.environ.get("MINDER_CLOUD_VISION_MODEL", "google/gemini-2.5-flash")
+OPENROUTER_URL = os.environ.get("OPENROUTER_URL", "https://openrouter.ai/api/v1").rstrip("/")
+OPENROUTER_KEY = os.environ.get("MINDER_OPENROUTER_KEY", "") or os.environ.get(
+    "OPENROUTER_API_KEY", ""
+)
 
 
 # Keep the VLM resident in RAM so only the first query pays the cold-load cost
@@ -72,7 +81,54 @@ def _record_check(camera: str, condition: str, match: bool, answer: str) -> None
     CHECKS_FILE.write_text(json.dumps(checks[-50:], indent=2))
 
 
+def _query_vision_cloud(image_b64: str, prompt: str) -> dict | None:
+    """Answer with a cloud VLM (OpenRouter, OpenAI-compatible chat). Returns None
+    without a key or on ANY error so the caller falls back to the local VLM."""
+    if not OPENROUTER_KEY:
+        return None
+    payload = json.dumps(
+        {
+            "model": CLOUD_VISION_MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0.1,
+            "max_tokens": 256,
+        }
+    ).encode()
+    try:
+        req = urllib.request.Request(
+            f"{OPENROUTER_URL}/chat/completions",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json",
+            },
+        )
+        start = time.monotonic()
+        result = json.loads(urllib.request.urlopen(req, timeout=180).read())
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+    except Exception:
+        return None
+    content = (result.get("choices") or [{}])[0].get("message", {}).get("content", "")
+    return {"response": content or "", "latency_ms": elapsed_ms}
+
+
 def _query_vision(image_b64: str, prompt: str) -> dict:
+    if DESCRIBE_PROVIDER == "openrouter" and OPENROUTER_KEY:
+        cloud = _query_vision_cloud(image_b64, prompt)
+        if cloud and cloud.get("response"):
+            return cloud
+        # cloud miss/failure → fall through to the local VLM
     # num_gpu=0 pins the VLM to CPU/RAM so it never contends with the reasoning
     # model for VRAM. On a shared box the on-demand VLM is occasional, so a
     # slower CPU pass beats minutes of GPU model-swapping/thrash. Set
