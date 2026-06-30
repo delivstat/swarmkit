@@ -16,7 +16,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (PR #) · `[-]` deferred/b
 | 4 | Aggregation | ✅ #369 | **active** (push API + rollups below) |
 | 5 | Artifact registry + versioning | ✅ #369 | **active** (registry + drift below) |
 | 6 | Fleet UI | ✅ #369 | **active** (slice 1 below) |
-| 7 | Growth loop | ✅ #369 | not started |
+| 7 | Growth loop | ✅ #369 | **active** (approval gate below) |
 | 8 | Hardening + rollout | ✅ #369/#370 | not started |
 
 ## Phase 3 — Auth implementation (doc [12](12-auth.md) §9)
@@ -117,6 +117,22 @@ Hardening the existing `auth/` seam. Slices:
       version + a drift table (intended vs actual → ok/drift/missing, color-coded) (PR #391)
 - storage is sqlite for now; design's git-backed content store + Postgres is the later swap
 
+## Phase 7 — Growth loop / approval gates (doc [17](17-growth-loop.md))
+
+### Slice 1 — proposal pipeline + human approval gate (PR #392)
+- [x] `ProposalStore` (sqlite) — the approval queue. A proposal (signal → drafted artifact change)
+      starts `pending`; **nothing auto-approves** (no code path leaves `pending` except explicit
+      approve/reject — a hard, tested invariant)
+- [x] API: `POST /proposals` (open), `GET /proposals[?status]`, `GET /proposals/{id}`,
+      `POST /proposals/{id}/approve`, `POST /proposals/{id}/reject`
+- [x] **the human gate**: approving publishes the proposed content as a new **registry version**
+      (provenance carries proposer + approving human); approve/reject are operator-only — a
+      connector (machine token) is denied (separation of powers §8.7)
+- [ ] cross-instance skill-gap aggregation + ranking (signal → surface)
+- [ ] authoring-swarm draft + eval-harness test stages (propose → test)
+- [ ] governed deploy of an approved version to target instances (publish → deploy)
+- [ ] Approvals UI (queue + approve/reject)
+
 > Repo placement decided: **new monorepo package** (`packages/control-plane`; the fleet UI is the
 > sibling package `packages/control-plane-ui`). The connector + registry + enrollment + token
 > minting are complete; next is Phase 4 (observability aggregation).
@@ -200,3 +216,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#389** — Phase 5 artifact registry slice 1: `ArtifactStore` (versioned artifacts + content-hash + provenance, idempotent re-register) + API (`/artifacts/*`), per-instance deployments, and drift detection (`/instances/{id}/artifacts/report` + `/drift`). swarmkit-control-plane 0.9.0.
 - **#390** — Phase 5 artifact-registry UI: `/artifacts` (registry list) + `/artifacts/[kind]/[id]` (version history, provenance, content viewer); Artifacts sidebar item activated. UI-only.
 - **#391** — Phase 5 UI: per-instance Deployments & drift card on the instance detail page — set the intended version + a color-coded drift table (intended vs reported actual). UI-only.
+- **#392** — Phase 7 approval gate slice 1: `ProposalStore` + proposal pipeline (`/proposals` open/list/get/approve/reject). Approval is the human gate — it publishes the proposed content as a new registry version; nothing auto-approves and connectors (machines) are denied. swarmkit-control-plane 0.10.0.
