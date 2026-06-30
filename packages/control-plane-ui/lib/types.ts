@@ -94,6 +94,21 @@ export interface ArtifactVersion {
 	content?: unknown;
 }
 
+/** Read-only panel config (GET /config) — flags + URLs, never secrets. */
+export interface Config {
+	version: string;
+	auth: {
+		operator_tokens: boolean;
+		oidc: { enabled: boolean; issuer: string; audience: string };
+	};
+	cors_origins: string[];
+	observability: {
+		collector_endpoint: string;
+		jaeger_url: string;
+		grafana_url: string;
+	};
+}
+
 export type ProposalStatus = "pending" | "approved" | "rejected";
 
 /** A growth-loop proposal (GET /proposals) — a drafted artifact change awaiting human approval. */

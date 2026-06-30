@@ -165,6 +165,9 @@ Hardening the existing `auth/` seam. Slices:
       (`--cors-origin` / env), UI base URL defaults to same-origin
 - [x] enroll-instance form (`/instances/new`) — name/endpoint/connection/tier/token-ref →
       `POST /instances` → redirect to the new instance's detail page (PR #380)
+- [x] **Settings** page (`/settings`) — read-only view of panel + UI config over `GET /config`
+      (version, auth flags, observability links, CORS origins; flags/URLs only, never secrets);
+      Settings sidebar item now live (PR #397)
 - [ ] OIDC login + instance selector + 401 handling (later slice)
 - [ ] per-instance views — runs, evals, artifact registry, approvals, conversational authoring
       (Phases 4–7 surfaces)
@@ -227,3 +230,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#394** — Phase 5/7 governed deploy: `POST /instances/{id}/deploy` (operator-only, audited) pushes a published registry version to an instance — Mode A PUTs to serve `/api`, Mode B enqueues a `deploy` command + new connector `deploy` verb. Closes publish→deploy. swarmkit-control-plane 0.11.0 / runtime 1.13.0.
 - **#395** — Phase 5 schema-compat gate: governed deploy refuses an artifact an instance can't validate (`_compat.schema_compatible`: same major + instance schema ≥ artifact schema; unknown → allowed) → 409. swarmkit-control-plane 0.12.0.
 - **#396** — Phase 4 federated live-jobs: `GET /instances/{id}/jobs` pulls the instance's serve `/jobs` on demand (Mode A; poll → 409), not stored; fleet-UI **Live jobs** card on the instance detail page. swarmkit-control-plane 0.13.0.
+- **#397** — Phase 6 fleet UI Settings: panel `GET /config` (read-only — version + auth flags + observability links + CORS origins; flags/URLs only, never token values, operator-only under auth) + a `/settings` page (Panel / Authentication / Observability / CORS cards, open-mode warning); Settings sidebar item activated. swarmkit-control-plane 0.14.0.

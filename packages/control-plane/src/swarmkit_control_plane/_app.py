@@ -190,7 +190,40 @@ def create_app(
     _mount_artifacts(app, arts)
     _mount_proposals(app, props, arts)
     _mount_deploy(app, registry, arts, agg, deploy)
+    _mount_config(
+        app,
+        {
+            "version": _cp_version(),
+            "auth": {
+                "operator_tokens": bool(ops),
+                "oidc": {
+                    "enabled": oidc is not None,
+                    "issuer": oidc.issuer if oidc else "",
+                    "audience": oidc.audience if oidc else "",
+                },
+            },
+            "cors_origins": cors_origins or [],
+            "observability": observability or {},
+        },
+    )
     return app
+
+
+def _cp_version() -> str:
+    from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
+
+    try:
+        return version("swarmkit-control-plane")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def _mount_config(app: FastAPI, config: dict[str, Any]) -> None:
+    """Read-only panel config for the fleet UI's Settings page (no secrets — only flags + URLs)."""
+
+    @app.get("/config")
+    async def get_config() -> dict[str, Any]:
+        return config
 
 
 def _mount_deploy(

@@ -40,7 +40,7 @@ const NAV: NavItem[] = [
 		icon: BotMessageSquare,
 		planned: true,
 	},
-	{ href: "/settings", label: "Settings", icon: Settings, planned: true },
+	{ href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppSidebar() {
