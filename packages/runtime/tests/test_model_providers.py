@@ -495,6 +495,40 @@ def test_openai_passes_json_schema_through() -> None:
     assert kwargs["response_format"] == _JSON_SCHEMA_RF
 
 
+def test_openai_drops_ollama_only_options() -> None:
+    # Options authored for Ollama (num_ctx, num_gpu, keep_alive, top_k, ...) must NOT
+    # reach the OpenAI SDK's create() — it rejects unknown kwargs, which broke routing
+    # when an Ollama-tuned topology was pointed at OpenRouter (num_ctx 8192).
+    req = CompletionRequest(
+        model="moonshotai/kimi-k2.6",
+        messages=(Message(role="user", content="hi"),),
+        options={
+            "num_ctx": 8192,
+            "num_gpu": 0,
+            "keep_alive": -1,
+            "top_k": 40,
+            "top_p": 0.9,  # genuine OpenAI param — must survive
+            "seed": 7,  # genuine OpenAI param — must survive
+        },
+    )
+    kwargs = _to_openai_kwargs(req)
+    for dropped in ("num_ctx", "num_gpu", "keep_alive", "top_k"):
+        assert dropped not in kwargs, f"{dropped} leaked into the OpenAI call"
+    assert kwargs["top_p"] == 0.9
+    assert kwargs["seed"] == 7
+
+
+def test_openai_extra_is_never_filtered() -> None:
+    # Runtime ``extra`` is authoritative passthrough (e.g. base_url, OpenRouter
+    # headers) — even an Ollama-looking key there is intentional and kept.
+    req = CompletionRequest(
+        model="m",
+        messages=(Message(role="user", content="hi"),),
+        extra={"num_ctx": 4096},
+    )
+    assert _to_openai_kwargs(req)["num_ctx"] == 4096
+
+
 def test_google_json_schema_sets_response_schema() -> None:
     config = _to_google_config(_req(_JSON_SCHEMA_RF))
     assert config.response_mime_type == "application/json"
