@@ -8,6 +8,7 @@ import { useCallback, useState } from "react";
 import { CommandQueue } from "@/components/command-queue";
 import { DeploymentsCard } from "@/components/deployments-card";
 import { ConnectionBadge, HealthBadge } from "@/components/health-badge";
+import { LiveJobsCard } from "@/components/live-jobs-card";
 import { MintPanel } from "@/components/mint-panel";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -174,7 +175,9 @@ export default function InstanceDetailPage() {
 
 				{instance.connection === "poll" ? (
 					<CommandQueue instanceId={instance.id} tier={instance.tier} />
-				) : null}
+				) : (
+					<LiveJobsCard instanceId={instance.id} />
+				)}
 
 				<DeploymentsCard instanceId={instance.id} />
 

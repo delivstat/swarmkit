@@ -53,3 +53,24 @@ async def fetch_capabilities(endpoint: str, token_ref: str) -> dict[str, Any]:
         raise ConnectorError(f"/capabilities returned {caps.status_code}")
     body: dict[str, Any] = caps.json()
     return body
+
+
+async def fetch_jobs(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
+    """Federated live-query of an instance's current jobs (GET /jobs). Mode A only — not stored.
+
+    Returns the parsed /jobs list. Raises ConnectorError on any failure.
+    """
+    base = endpoint.rstrip("/")
+    token = resolve_token(token_ref)
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{base}/jobs", headers=headers)
+    except httpx.HTTPError as exc:
+        raise ConnectorError(f"cannot reach {base}: {exc}") from exc
+    if resp.status_code in (401, 403):
+        raise ConnectorError(f"/jobs auth failed ({resp.status_code}) — check the token")
+    if resp.status_code != 200:
+        raise ConnectorError(f"/jobs returned {resp.status_code}")
+    jobs: list[dict[str, Any]] = resp.json()
+    return jobs

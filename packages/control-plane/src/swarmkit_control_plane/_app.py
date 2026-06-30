@@ -23,7 +23,7 @@ from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._compat import incompatibility
-from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
+from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities, fetch_jobs
 from swarmkit_control_plane._deploy import DEPLOYABLE, DeployError, push_artifact
 from swarmkit_control_plane._models import Instance
 from swarmkit_control_plane._oidc import OidcVerifier
@@ -35,6 +35,8 @@ from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_
 VerifyFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref, kind, artifact_id, content) -> serve response
 DeployFn = Callable[[str, str, str, str, Any], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref) -> serve /jobs list
+JobsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 
 
 class EnrollRequest(BaseModel):
@@ -126,6 +128,7 @@ def create_app(
     artifacts: ArtifactStore | None = None,
     proposals: ProposalStore | None = None,
     deploy: DeployFn = push_artifact,
+    jobs: JobsFn = fetch_jobs,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -179,7 +182,7 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    _mount_instances(app, registry, verify)
+    _mount_instances(app, registry, verify, jobs)
     _mount_token_routes(app, registry, verify)
     _mount_command_queue(app, registry)
     _mount_aggregation(app, agg)
@@ -261,8 +264,10 @@ def _mount_deploy(
         return {"status": "ok", "version": req.version, **outcome}
 
 
-def _mount_instances(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -> None:
-    """Instance registry CRUD + enrollment + heartbeat (doc 13)."""
+def _mount_instances(
+    app: FastAPI, registry: SqliteRegistry, verify: VerifyFn, jobs: JobsFn
+) -> None:
+    """Instance registry CRUD + enrollment + heartbeat + federated live jobs (docs 13, 14)."""
 
     @app.post("/instances")
     async def enroll(req: EnrollRequest) -> dict[str, Any]:
@@ -320,6 +325,20 @@ def _mount_instances(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -
             capabilities=req.capabilities,
         )
         return {"status": "ok"}
+
+    @app.get("/instances/{instance_id}/jobs")
+    async def instance_jobs(instance_id: str) -> list[dict[str, Any]]:
+        """Federated live query of an instance's current jobs (not stored — pulled on demand)."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            # The panel can't reach a NAT'd poll instance directly; a live query needs Mode A.
+            raise HTTPException(409, "live jobs require a directly-reachable (Mode A) instance")
+        try:
+            return await jobs(inst.endpoint, inst.token_ref)
+        except ConnectorError as exc:
+            raise HTTPException(502, f"could not query jobs: {exc}") from exc
 
 
 def _mount_proposals(app: FastAPI, store: ProposalStore, artifacts: ArtifactStore) -> None:

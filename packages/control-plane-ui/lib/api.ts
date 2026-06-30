@@ -7,6 +7,7 @@ import type {
 	DriftRow,
 	EvalRow,
 	Instance,
+	Job,
 	MintResult,
 	Observability,
 	Proposal,
@@ -98,6 +99,7 @@ export const api = {
 	getInstance: (id: string) => request<Instance>(`/instances/${id}`),
 	deleteInstance: (id: string) =>
 		request<{ deleted: string }>(`/instances/${id}`, { method: "DELETE" }),
+	instanceJobs: (id: string) => request<Job[]>(`/instances/${id}/jobs`),
 	drift: (id: string) => request<DriftRow[]>(`/instances/${id}/drift`),
 	setDeployment: (
 		id: string,

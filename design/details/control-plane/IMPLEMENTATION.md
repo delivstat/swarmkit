@@ -94,7 +94,9 @@ Hardening the existing `auth/` seam. Slices:
 - [x] UI Runs/Evals pages over the rollups — `/runs` (usage by model/provider + recent audit
       activity) and `/evals` (pass-rate by eval_set/topology, color-coded); both sidebar items now
       live (PR #388)
-- [ ] federated live-job query (`GET /instances/{id}/jobs` → pull serve `/jobs`)
+- [x] federated live-job query — `GET /instances/{id}/jobs` pulls the instance's serve `/jobs` live
+      (Mode A; poll instances → 409, not reachable); not stored. Fleet-UI **Live jobs** card on the
+      instance detail page (direct instances), color-coded status (PR #396)
 - cost analytics stays blocked until ModelProviders populate `cost_usd` (doc 14, carried forward)
 
 ## Phase 5 — Artifact registry (doc [15](15-artifact-registry.md))
@@ -224,3 +226,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#393** — Phase 7 Approvals UI: `/approvals` proposal queue (content + provenance + signal, pending/all filter) with approve-&-publish / reject; Approvals sidebar item activated. UI-only.
 - **#394** — Phase 5/7 governed deploy: `POST /instances/{id}/deploy` (operator-only, audited) pushes a published registry version to an instance — Mode A PUTs to serve `/api`, Mode B enqueues a `deploy` command + new connector `deploy` verb. Closes publish→deploy. swarmkit-control-plane 0.11.0 / runtime 1.13.0.
 - **#395** — Phase 5 schema-compat gate: governed deploy refuses an artifact an instance can't validate (`_compat.schema_compatible`: same major + instance schema ≥ artifact schema; unknown → allowed) → 409. swarmkit-control-plane 0.12.0.
+- **#396** — Phase 4 federated live-jobs: `GET /instances/{id}/jobs` pulls the instance's serve `/jobs` on demand (Mode A; poll → 409), not stored; fleet-UI **Live jobs** card on the instance detail page. swarmkit-control-plane 0.13.0.
