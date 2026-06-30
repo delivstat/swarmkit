@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-control-plane"
-version = "0.11.0"
+version = "0.12.0"
 description = "SwarmKit control plane — connect, observe, and manage multiple SwarmKit instances."
 readme = { text = "SwarmKit control plane (fleet panel API + instance registry). See https://github.com/delivstat/swarmkit", content-type = "text/markdown" }
 requires-python = ">=3.11"
