@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 import { CommandQueue } from "@/components/command-queue";
+import { DeploymentsCard } from "@/components/deployments-card";
 import { ConnectionBadge, HealthBadge } from "@/components/health-badge";
 import { MintPanel } from "@/components/mint-panel";
 import { PageHeader } from "@/components/page-header";
@@ -174,6 +175,8 @@ export default function InstanceDetailPage() {
 				{instance.connection === "poll" ? (
 					<CommandQueue instanceId={instance.id} tier={instance.tier} />
 				) : null}
+
+				<DeploymentsCard instanceId={instance.id} />
 
 				<Card>
 					<CardHeader>
