@@ -577,13 +577,21 @@ def _match_camera_name(requested: str) -> str:
     if requested in ("", "all", "any", "all cameras"):
         return "all"
     req_words = set(re.findall(r"[a-z0-9]+", requested))
-    best, best_score = "all", 0
+    # Rank by (matching words, fraction of the camera name matched). The coverage
+    # tie-breaker makes a full single-word match win over a partial multi-word one:
+    # "in front of the office" matched both Office (office) and Front-Right (front)
+    # with one word each, but Office covers 1/1 vs Front-Right's 1/2 — so "front" in
+    # the preposition no longer hijacks the query onto the Front-Right camera.
+    best, best_key = "all", (0, 0.0)
     for c in _load_cameras():
         name = c.get("name") or c["ip"]
         words = set(re.findall(r"[a-z0-9]+", name.lower()))
-        score = len(req_words & words)
-        if score > best_score:
-            best, best_score = name, score
+        inter = len(req_words & words)
+        if not inter:
+            continue
+        key = (inter, inter / len(words))
+        if key > best_key:
+            best, best_key = name, key
     return best
 
 
@@ -1993,12 +2001,15 @@ async def _dispatch_query(plan: dict, started: float, text: str = "") -> dict:
         or (subject not in ("person", "vehicle", "animal") and _subject_classes(subject) is None)
         or _wants_description(text)
     )
-    # Open-scene runs the slow CPU VLM once PER camera; when the user didn't name a
-    # specific camera this would fan a single question across every camera serially
-    # (N x VLM) and blow past the channel read timeout. Cap it to one camera —
-    # object queries (fast YOLO) still check them all.
+    # Open-scene runs the slow VLM once PER camera; when the user didn't name a
+    # specific camera this would fan across every camera serially and blow the
+    # channel read timeout. Cap to one. Reaching here with many means the router's
+    # camera was empty/unmatched and _resolve_cameras fell back to ALL — so DON'T
+    # answer about an arbitrary first camera (that silently described the porch).
+    # Recover the camera the user named in their text; only then take the first.
     if open_scene and len(cams) > 1:
-        cams = cams[:1]
+        named = _match_camera_name(text)
+        cams = [named] if named != "all" and named in cams else cams[:1]
     results = await asyncio.to_thread(_run_vision_checks, cams, subject, question, open_scene)
     media = collect_media_since(started)
 

@@ -79,9 +79,29 @@ def test_vlm_answer_falls_back_to_local_on_cloud_miss():
     print("ok  _vlm_answer falls back to the local VLM when Layer 2 cloud misses")
 
 
+def test_camera_match_prefers_full_coverage_over_partial():
+    # "in front of the office": "office" fully matches the Office cam; "front" only
+    # partially matches Front-Right. Office must win — the preposition "front" must
+    # not hijack a describe query onto the Front-Right camera (the porch-bug class).
+    orig = ops._load_cameras
+    ops._load_cameras = lambda: [
+        {"name": "Porch-1", "ip": "192.168.0.101"},
+        {"name": "Front-Right", "ip": "192.168.0.106"},
+        {"name": "Office", "ip": "192.168.0.109"},
+    ]
+    try:
+        assert ops._match_camera_name("what is the person doing in front of the office") == "Office"
+        assert ops._match_camera_name("front right camera") == "Front-Right"
+        assert ops._match_camera_name("anything unmatched") == "all"
+    finally:
+        ops._load_cameras = orig
+    print("ok  camera match prefers full coverage (office) over partial (front)")
+
+
 if __name__ == "__main__":
     test_describe_intent_vs_presence()
     test_layer2_cloud_parses_multimodal_reply()
     test_layer2_cloud_no_key_is_empty()
     test_vlm_answer_falls_back_to_local_on_cloud_miss()
+    test_camera_match_prefers_full_coverage_over_partial()
     print("\nALL TWO-LAYER TESTS PASSED")
