@@ -22,6 +22,7 @@ from swarmkit_control_plane._aggregation import KINDS, AggregationStore
 from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._auth import authenticate, authorize
+from swarmkit_control_plane._compat import incompatibility
 from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
 from swarmkit_control_plane._deploy import DEPLOYABLE, DeployError, push_artifact
 from swarmkit_control_plane._models import Instance
@@ -216,6 +217,11 @@ def _mount_deploy(
         ver = artifacts.get_version(req.kind, req.artifact_id, req.version)
         if ver is None:
             raise HTTPException(404, f"no such version {req.kind}/{req.artifact_id}@{req.version}")
+
+        # Schema-compatibility gate: refuse deploying what the instance can't validate (doc 15).
+        reason = incompatibility(str(ver.get("schema_version", "")), inst.schema_version)
+        if reason is not None:
+            raise HTTPException(409, f"schema-incompatible deploy: {reason}")
 
         # Record the registry-intended version (the deployment), then push.
         artifacts.set_deployment(instance_id, req.kind, req.artifact_id, req.version)
