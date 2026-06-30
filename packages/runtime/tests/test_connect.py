@@ -60,6 +60,56 @@ async def test_execute_run_substitutes_path_and_body() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_deploy_puts_artifact_to_api() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["method"] = request.method
+        seen["body"] = request.read().decode()
+        return httpx.Response(200, json={"updated": "hello"})
+
+    async with _serve_client(handler) as client:
+        status, output, _ = await execute_command(
+            client,
+            serve_url="http://127.0.0.1:8000",
+            serve_token="tok",
+            granted_tier="admin",
+            verb="deploy",
+            args={"kind": "topology", "id": "hello", "body": {"nodes": ["root"]}},
+        )
+    assert status == "done"
+    assert seen["method"] == "PUT" and seen["path"] == "/api/topologies/hello"
+    assert '"nodes"' in seen["body"]
+    assert output == {"updated": "hello"}
+
+
+@pytest.mark.asyncio
+async def test_execute_deploy_needs_admin_and_known_kind() -> None:
+    async with _serve_client(lambda r: httpx.Response(200, json={})) as client:
+        # deploy requires admin
+        s1, _, e1 = await execute_command(
+            client,
+            serve_url="http://x",
+            serve_token=None,
+            granted_tier="run",
+            verb="deploy",
+            args={"kind": "topology", "id": "hello", "body": {}},
+        )
+        # an undeployable kind is rejected
+        s2, _, e2 = await execute_command(
+            client,
+            serve_url="http://x",
+            serve_token=None,
+            granted_tier="admin",
+            verb="deploy",
+            args={"kind": "workspace", "id": "w", "body": {}},
+        )
+    assert s1 == "error" and e1 is not None and "exceeds granted tier" in e1
+    assert s2 == "error" and e2 is not None and "undeployable kind" in e2
+
+
+@pytest.mark.asyncio
 async def test_execute_rejects_verb_above_granted_tier() -> None:
     called = False
 

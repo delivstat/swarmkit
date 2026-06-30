@@ -107,8 +107,9 @@ Hardening the existing `auth/` seam. Slices:
 - [x] deployments (registry-intended version per instance): `PUT/GET /instances/{id}/deployments`
 - [x] **drift detection**: `POST /instances/{id}/artifacts/report` (connector-scoped) + `GET
       /instances/{id}/drift` (intended vs reported → ok / drift / missing)
-- [ ] governed push to instances (validate → `/api/*` write) — legislative, `serve:admin` + human
-      approval gate (ties to Phase 7 growth loop)
+- [x] governed push to instances — `POST /instances/{id}/deploy` (operator-only, audited): Mode A
+      PUTs to the instance's serve `/api`, Mode B enqueues a `deploy` command the connector applies;
+      records the registry-intended version. Deploys only what's already published (PR #394)
 - [ ] schema-compatibility gate (refuse pushing an artifact an instance can't validate)
 - [x] UI artifact-registry surface — `/artifacts` (list by kind/id + latest/versions/hash) and
       `/artifacts/[kind]/[id]` (version history + provenance + content viewer); Artifacts sidebar
@@ -130,7 +131,8 @@ Hardening the existing `auth/` seam. Slices:
       connector (machine token) is denied (separation of powers §8.7)
 - [ ] cross-instance skill-gap aggregation + ranking (signal → surface)
 - [ ] authoring-swarm draft + eval-harness test stages (propose → test)
-- [ ] governed deploy of an approved version to target instances (publish → deploy)
+- [x] governed deploy of an approved version to target instances (publish → deploy) — see Phase 5
+      `POST /instances/{id}/deploy` + the connector `deploy` verb (PR #394)
 - [x] Approvals UI — `/approvals` queue (proposed content + provenance + signal; pending-only/all
       filter) with approve-&-publish / reject actions; Approvals sidebar item now live (PR #393)
 
@@ -219,3 +221,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#391** — Phase 5 UI: per-instance Deployments & drift card on the instance detail page — set the intended version + a color-coded drift table (intended vs reported actual). UI-only.
 - **#392** — Phase 7 approval gate slice 1: `ProposalStore` + proposal pipeline (`/proposals` open/list/get/approve/reject). Approval is the human gate — it publishes the proposed content as a new registry version; nothing auto-approves and connectors (machines) are denied. swarmkit-control-plane 0.10.0.
 - **#393** — Phase 7 Approvals UI: `/approvals` proposal queue (content + provenance + signal, pending/all filter) with approve-&-publish / reject; Approvals sidebar item activated. UI-only.
+- **#394** — Phase 5/7 governed deploy: `POST /instances/{id}/deploy` (operator-only, audited) pushes a published registry version to an instance — Mode A PUTs to serve `/api`, Mode B enqueues a `deploy` command + new connector `deploy` verb. Closes publish→deploy. swarmkit-control-plane 0.11.0 / runtime 1.13.0.

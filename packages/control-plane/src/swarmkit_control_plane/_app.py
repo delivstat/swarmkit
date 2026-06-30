@@ -23,6 +23,7 @@ from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities
+from swarmkit_control_plane._deploy import DEPLOYABLE, DeployError, push_artifact
 from swarmkit_control_plane._models import Instance
 from swarmkit_control_plane._oidc import OidcVerifier
 from swarmkit_control_plane._proposals import ProposalStore
@@ -31,6 +32,8 @@ from swarmkit_control_plane._tokens import mint_token
 from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_tier
 
 VerifyFn = Callable[[str, str], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref, kind, artifact_id, content) -> serve response
+DeployFn = Callable[[str, str, str, str, Any], Awaitable[dict[str, Any]]]
 
 
 class EnrollRequest(BaseModel):
@@ -104,6 +107,12 @@ class DecisionRequest(BaseModel):
     reason: str = ""
 
 
+class DeployRequest(BaseModel):
+    kind: str
+    artifact_id: str
+    version: str
+
+
 def create_app(
     registry: SqliteRegistry,
     *,
@@ -115,6 +124,7 @@ def create_app(
     observability: dict[str, str] | None = None,
     artifacts: ArtifactStore | None = None,
     proposals: ProposalStore | None = None,
+    deploy: DeployFn = push_artifact,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -175,7 +185,74 @@ def create_app(
     _mount_observability(app, observability or {})
     _mount_artifacts(app, arts)
     _mount_proposals(app, props, arts)
+    _mount_deploy(app, registry, arts, agg, deploy)
     return app
+
+
+def _mount_deploy(
+    app: FastAPI,
+    registry: SqliteRegistry,
+    artifacts: ArtifactStore,
+    agg: AggregationStore,
+    deploy: DeployFn,
+) -> None:
+    """Governed deploy of a published registry version onto an instance (doc 15 / doc 17 step 7).
+
+    Operator-only (legislative; the version was already human-approved to publish). Mode A pushes to
+    the instance's serve /api; Mode B enqueues a `deploy` command for the connector. Always audited.
+    """
+
+    @app.post("/instances/{instance_id}/deploy")
+    async def deploy_artifact(
+        instance_id: str, req: DeployRequest, request: Request
+    ) -> dict[str, Any]:
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if req.kind not in DEPLOYABLE:
+            raise HTTPException(
+                400, f"kind '{req.kind}' is not deployable — use {'/'.join(DEPLOYABLE)}"
+            )
+        ver = artifacts.get_version(req.kind, req.artifact_id, req.version)
+        if ver is None:
+            raise HTTPException(404, f"no such version {req.kind}/{req.artifact_id}@{req.version}")
+
+        # Record the registry-intended version (the deployment), then push.
+        artifacts.set_deployment(instance_id, req.kind, req.artifact_id, req.version)
+        content = ver["content"]
+
+        if inst.connection == "direct":
+            try:
+                result = await deploy(
+                    inst.endpoint, inst.token_ref, req.kind, req.artifact_id, content
+                )
+            except DeployError as exc:
+                raise HTTPException(502, f"deploy failed: {exc}") from exc
+            outcome: dict[str, Any] = {"mode": "direct", "result": result}
+        else:
+            cmd = registry.enqueue(
+                instance_id, "deploy", {"kind": req.kind, "id": req.artifact_id, "body": content}
+            )
+            outcome = {"mode": "poll", "command_id": cmd.cmd_id}
+
+        principal = getattr(request.state, "principal", None)
+        by = (getattr(principal, "subject", None) or "") if principal else ""
+        agg.ingest(
+            instance_id,
+            "audit",
+            [
+                {
+                    "id": uuid4().hex,
+                    "ts": datetime.now(UTC).isoformat(),
+                    "action": "artifact.deploy",
+                    "kind": req.kind,
+                    "artifact_id": req.artifact_id,
+                    "version": req.version,
+                    "by": by,
+                }
+            ],
+        )
+        return {"status": "ok", "version": req.version, **outcome}
 
 
 def _mount_instances(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -> None:
