@@ -66,6 +66,16 @@ VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
 DESCRIBE_ENABLED = os.environ.get("MINDER_DESCRIBE", "on").lower() in ("on", "1", "true")
 DESCRIBE_TIMEOUT = int(os.environ.get("MINDER_DESCRIBE_TIMEOUT", "90"))
 DESCRIBE_NUM_GPU = int(os.environ.get("MINDER_VISION_NUM_GPU", "0"))
+# Describe provider: "ollama" (local VLM, default — keeps the box zero-cloud) or
+# "openrouter" (a cloud VLM for higher-fidelity descriptions; opt-in, for testing
+# the quality ceiling). The cloud model is MINDER_CLOUD_VISION_MODEL and reuses the
+# OpenRouter key the rest of Minder already uses. Cloud failure falls back to local.
+DESCRIBE_PROVIDER = os.environ.get("MINDER_DESCRIBE_PROVIDER", "ollama").lower()
+CLOUD_VISION_MODEL = os.environ.get("MINDER_CLOUD_VISION_MODEL", "google/gemini-2.5-flash")
+OPENROUTER_URL = os.environ.get("OPENROUTER_URL", "https://openrouter.ai/api/v1").rstrip("/")
+OPENROUTER_KEY = os.environ.get("MINDER_OPENROUTER_KEY", "") or os.environ.get(
+    "OPENROUTER_API_KEY", ""
+)
 # Recording: needed for event clips (Minder attaches the clip to alerts). Records
 # motion segments only (not 24/7) with a short retain, so disk stays bounded.
 RECORD_ENABLED = os.environ.get("MINDER_RECORD", "on").lower() in ("on", "1", "true")
@@ -589,17 +599,62 @@ def _describe_prompt(label: str, cam: str = "", condition: str = "") -> str:
     )
 
 
+def _describe_via_cloud(img_b64: str, prompt: str) -> str:
+    """Describe a snapshot with a cloud VLM (OpenRouter, OpenAI-compatible chat).
+    Empty string without a key or on ANY error — same graceful contract as the
+    local path, so the caller can fall back to Ollama."""
+    if not OPENROUTER_KEY:
+        return ""
+    payload = json.dumps(
+        {
+            "model": CLOUD_VISION_MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0.1,
+            "max_tokens": 200,
+        }
+    ).encode()
+    try:
+        req = urllib.request.Request(
+            f"{OPENROUTER_URL}/chat/completions",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json",
+            },
+        )
+        r = json.loads(urllib.request.urlopen(req, timeout=DESCRIBE_TIMEOUT).read())
+        return ((r.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+    except Exception:
+        return ""  # graceful — caller falls back to the local VLM
+
+
 def _describe_snapshot(path: str, label: str = "", cam: str = "", condition: str = "") -> str:
-    """Describe an alert snapshot with the local VLM (Ollama), grounded in the
-    object YOLO detected (`label`) and the alert's cause (`cam` + watch `condition`).
-    Mirrors Frigate's genai handling: a generous timeout, graceful empty string on
-    ANY failure (the alert already fired — the description is additive). Runs on CPU
-    by default."""
+    """Describe an alert snapshot, grounded in the object YOLO detected (`label`) and
+    the alert's cause (`cam` + watch `condition`). Uses the cloud VLM when
+    MINDER_DESCRIBE_PROVIDER=openrouter (falling back to local on failure), else the
+    local VLM (Ollama). Graceful empty string on ANY failure (the alert already fired
+    — the description is additive). Runs on CPU by default."""
     try:
         img = base64.b64encode(Path(path).read_bytes()).decode()
     except Exception:
         return ""
     prompt = _describe_prompt(label, cam, condition)
+    if DESCRIBE_PROVIDER == "openrouter" and OPENROUTER_KEY:
+        cloud = _describe_via_cloud(img, prompt)
+        if cloud:
+            return cloud
+        # cloud miss/failure → fall through to the local VLM (never drop the description)
     payload = json.dumps(
         {
             "model": VISION_MODEL,

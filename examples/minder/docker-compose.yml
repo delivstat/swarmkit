@@ -115,7 +115,13 @@ services:
       # monitoring loop). Off unless an OpenRouter key is set; cloud is used only to
       # bootstrap training labels — the trained detector runs fully local.
       - MINDER_OPENROUTER_KEY=${MINDER_OPENROUTER_KEY:-}
-      - MINDER_CLOUD_VISION_MODEL=${MINDER_CLOUD_VISION_MODEL:-google/gemini-2.0-flash}
+      - MINDER_CLOUD_VISION_MODEL=${MINDER_CLOUD_VISION_MODEL:-google/gemini-2.5-flash}
+      # Describe provider for the "what it sees" paths (alert enrichment +
+      # interactive scene answers): "ollama" (local VLM, default — keeps the box
+      # zero-cloud) or "openrouter" (route descriptions to MINDER_CLOUD_VISION_MODEL
+      # for the quality ceiling; opt-in, needs an OpenRouter key). Cloud failure
+      # falls back to the local VLM, so the alert never loses its description.
+      - MINDER_DESCRIBE_PROVIDER=${MINDER_DESCRIBE_PROVIDER:-ollama}
       # The Frigate event poller is the sole monitoring path (the old YOLO loop
       # has been retired). "live" fires alerts; "shadow" is a dry-run that only
       # logs would-be alerts to poller_shadow.json.
