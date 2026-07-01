@@ -577,13 +577,21 @@ def _match_camera_name(requested: str) -> str:
     if requested in ("", "all", "any", "all cameras"):
         return "all"
     req_words = set(re.findall(r"[a-z0-9]+", requested))
-    best, best_score = "all", 0
+    # Rank by (matching words, fraction of the camera name matched). The coverage
+    # tie-breaker makes a full single-word match win over a partial multi-word one:
+    # "in front of the office" matched both Office (office) and Front-Right (front)
+    # with one word each, but Office covers 1/1 vs Front-Right's 1/2 — so "front" in
+    # the preposition no longer hijacks the query onto the Front-Right camera.
+    best, best_key = "all", (0, 0.0)
     for c in _load_cameras():
         name = c.get("name") or c["ip"]
         words = set(re.findall(r"[a-z0-9]+", name.lower()))
-        score = len(req_words & words)
-        if score > best_score:
-            best, best_score = name, score
+        inter = len(req_words & words)
+        if not inter:
+            continue
+        key = (inter, inter / len(words))
+        if key > best_key:
+            best, best_key = name, key
     return best
 
 
@@ -1579,6 +1587,36 @@ VISION_MODEL = os.environ.get("MINDER_VISION_MODEL", "llava-phi3")
 # so the request always returns a reply (a graceful "couldn't read" on timeout)
 # rather than hanging the whole /api/ops/message round-trip.
 VLM_TIMEOUT_S = int(os.environ.get("MINDER_VLM_TIMEOUT", "90"))
+# Layer 2 (interactive queries + complex questions): the capable model that READS
+# and JUDGES a scene ("what is the person doing", "is there danger"). "ollama" =
+# local VLM (default, zero-cloud); "openrouter" = a multimodal cloud model
+# (MINDER_QUERY_MODEL, e.g. moonshotai/kimi-k2.6 — reasons + sees in one call).
+# Cloud failure falls back to the local VLM. Distinct from Layer 1 (per-alert
+# enrichment in the frigate poller), which stays local by default.
+QUERY_PROVIDER = os.environ.get("MINDER_QUERY_PROVIDER", "ollama").lower()
+QUERY_MODEL = os.environ.get("MINDER_QUERY_MODEL", "") or VISION_MODEL
+OPENROUTER_URL = os.environ.get("OPENROUTER_URL", "https://openrouter.ai/api/v1").rstrip("/")
+OPENROUTER_KEY = os.environ.get("MINDER_OPENROUTER_KEY", "") or os.environ.get(
+    "OPENROUTER_API_KEY", ""
+)
+
+# Describe-intent: phrasings that want the scene READ/JUDGED (Layer 2 VLM), not a
+# yes/no presence check (fast YOLO). "what is the person doing" must reach the VLM
+# even though it names a tracked object; "is anyone there" stays on YOLO.
+_DESCRIBE_INTENT = re.compile(
+    r"\b(doing|happening|going on|describe|description|wearing|carrying|holding|"
+    r"danger|dangerous|threat|suspicious|wrong|unusual|look(s|ing)?\s+like|"
+    r"what'?s|what\s+is|what\s+are|who'?s|who\s+is)\b",
+    re.IGNORECASE,
+)
+
+
+def _wants_description(text: str) -> bool:
+    """True when the query asks to read/judge the scene (Layer 2), not just whether
+    an object is present (Layer 1/YOLO)."""
+    return bool(_DESCRIBE_INTENT.search(text or ""))
+
+
 # Routing is the minder-router topology (output_schema Plan) via route(); the
 # old route-tool / constrained-generation classifier was removed — the keyword
 # classify() is the only fallback now.
@@ -1827,10 +1865,51 @@ def _grab_clips(cams: list[str]) -> list[Path]:
     return [c for c in (_grab_clip(c) for c in cams) if c]
 
 
+def _vlm_answer_cloud(frame_b64: str, prompt: str) -> str:
+    """Layer 2: answer an open-scene question with a multimodal cloud model
+    (OpenRouter, e.g. Kimi K2.6 — reasons + sees in one call). Empty string without
+    a key or on ANY error so the caller falls back to the local VLM."""
+    if not OPENROUTER_KEY:
+        return ""
+    payload = json.dumps(
+        {
+            "model": QUERY_MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{frame_b64}"},
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0.1,
+            "max_tokens": 300,
+        }
+    ).encode()
+    try:
+        req = urllib.request.Request(
+            f"{OPENROUTER_URL}/chat/completions",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json",
+            },
+        )
+        r = json.loads(urllib.request.urlopen(req, timeout=VLM_TIMEOUT_S).read())
+        return ((r.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+    except Exception:
+        return ""
+
+
 def _vlm_answer(frame_b64: str, question: str, camera: str = "") -> str:
-    """One direct VLM (llava-phi3, CPU) call for an open-scene question. Pass the
-    user's ACTUAL words (not the router's condition rewrite — it mangles "describe
-    the scene" into a yes/no), and instruct the model to answer or describe."""
+    """One VLM call for an open-scene question. Pass the user's ACTUAL words (not the
+    router's condition rewrite — it mangles "describe the scene" into a yes/no), and
+    instruct the model to answer or describe. Uses the Layer 2 cloud model when
+    MINDER_QUERY_PROVIDER=openrouter (falling back to the local VLM), else local."""
     where = f" of the {camera}" if camera else ""
     q = (question or "").strip() or "What do you see?"
     _content = (
@@ -1839,6 +1918,11 @@ def _vlm_answer(frame_b64: str, question: str, camera: str = "") -> str:
         "based only on what you see. If they asked you to describe the scene or what's "
         "there, describe what you see (people, vehicles, anything notable)."
     )
+    if QUERY_PROVIDER == "openrouter" and OPENROUTER_KEY:
+        cloud = _vlm_answer_cloud(frame_b64, _content)
+        if cloud:
+            return cloud
+        # cloud miss/failure → fall through to the local VLM
     payload = json.dumps(
         {
             "model": VISION_MODEL,
@@ -1908,15 +1992,24 @@ async def _dispatch_query(plan: dict, started: float, text: str = "") -> dict:
         return _envelope("vision", "No cameras are configured yet. Send /start to set them up.")
     subject = (plan.get("subject") or "").lower()
     question = text or plan.get("condition") or ""
-    open_scene = subject == "open" or (
-        subject not in ("person", "vehicle", "animal") and _subject_classes(subject) is None
+    # Open-scene (Layer 2 VLM) when the subject isn't a YOLO class OR the user asked
+    # to READ/JUDGE the scene ("what is the person doing", "is there danger") — those
+    # need a description even though they name a tracked object, so don't let them
+    # collapse into a yes/no YOLO presence check.
+    open_scene = (
+        subject == "open"
+        or (subject not in ("person", "vehicle", "animal") and _subject_classes(subject) is None)
+        or _wants_description(text)
     )
-    # Open-scene runs the slow CPU VLM once PER camera; when the user didn't name a
-    # specific camera this would fan a single question across every camera serially
-    # (N x VLM) and blow past the channel read timeout. Cap it to one camera —
-    # object queries (fast YOLO) still check them all.
+    # Open-scene runs the slow VLM once PER camera; when the user didn't name a
+    # specific camera this would fan across every camera serially and blow the
+    # channel read timeout. Cap to one. Reaching here with many means the router's
+    # camera was empty/unmatched and _resolve_cameras fell back to ALL — so DON'T
+    # answer about an arbitrary first camera (that silently described the porch).
+    # Recover the camera the user named in their text; only then take the first.
     if open_scene and len(cams) > 1:
-        cams = cams[:1]
+        named = _match_camera_name(text)
+        cams = [named] if named != "all" and named in cams else cams[:1]
     results = await asyncio.to_thread(_run_vision_checks, cams, subject, question, open_scene)
     media = collect_media_since(started)
 
