@@ -168,6 +168,10 @@ Hardening the existing `auth/` seam. Slices:
 - [x] **Settings** page (`/settings`) — read-only view of panel + UI config over `GET /config`
       (version, auth flags, observability links, CORS origins; flags/URLs only, never secrets);
       Settings sidebar item now live (PR #397)
+- [x] **Authoring** page (`/authoring`) — conversational front-end to an instance's authoring
+      swarm: chat → drafted-artifact preview → **Propose for approval** (into the growth-loop
+      queue). Panel `POST /instances/{id}/author` (operator-only, Mode A) drives the swarm via
+      serve and extracts a `{kind,id,content}` draft; **last stubbed sidebar item now live** (PR #401)
 - [ ] OIDC login + instance selector + 401 handling (later slice)
 - [ ] per-instance views — runs, evals, artifact registry, approvals, conversational authoring
       (Phases 4–7 surfaces)
@@ -231,3 +235,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#395** — Phase 5 schema-compat gate: governed deploy refuses an artifact an instance can't validate (`_compat.schema_compatible`: same major + instance schema ≥ artifact schema; unknown → allowed) → 409. swarmkit-control-plane 0.12.0.
 - **#396** — Phase 4 federated live-jobs: `GET /instances/{id}/jobs` pulls the instance's serve `/jobs` on demand (Mode A; poll → 409), not stored; fleet-UI **Live jobs** card on the instance detail page. swarmkit-control-plane 0.13.0.
 - **#397** — Phase 6 fleet UI Settings: panel `GET /config` (read-only — version + auth flags + observability links + CORS origins; flags/URLs only, never token values, operator-only under auth) + a `/settings` page (Panel / Authentication / Observability / CORS cards, open-mode warning); Settings sidebar item activated. swarmkit-control-plane 0.14.0.
+- **#401** — Phase 6 fleet UI Authoring: conversational front-end to an instance's authoring swarm — panel `POST /instances/{id}/author` (operator-only, Mode A: runs the authoring topology on serve + extracts a `{kind,id,content}` draft) and an `/authoring` page (chat → drafted-artifact preview → **Propose for approval** into the growth-loop queue). Last stubbed sidebar item now live; the whole doc-16 page set ships. Demo: `packages/control-plane/demos/authoring_swarm.py`. swarmkit-control-plane 0.15.0.

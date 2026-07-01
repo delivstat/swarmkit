@@ -109,6 +109,19 @@ export interface Config {
 	};
 }
 
+/** A drafted artifact the authoring swarm emitted (POST /instances/{id}/author). */
+export interface DraftArtifact {
+	kind: string;
+	id: string;
+	content: unknown;
+}
+
+/** Response of POST /instances/{id}/author — the swarm's reply + any drafted artifact. */
+export interface AuthorResult {
+	reply: string;
+	artifact: DraftArtifact | null;
+}
+
 export type ProposalStatus = "pending" | "approved" | "rejected";
 
 /** A growth-loop proposal (GET /proposals) — a drafted artifact change awaiting human approval. */

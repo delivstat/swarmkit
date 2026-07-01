@@ -8,6 +8,7 @@ design/details/control-plane/13-connector-registry.md.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -23,7 +24,12 @@ from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._compat import incompatibility
-from swarmkit_control_plane._connector import ConnectorError, fetch_capabilities, fetch_jobs
+from swarmkit_control_plane._connector import (
+    ConnectorError,
+    fetch_capabilities,
+    fetch_jobs,
+    run_authoring,
+)
 from swarmkit_control_plane._deploy import DEPLOYABLE, DeployError, push_artifact
 from swarmkit_control_plane._models import Instance
 from swarmkit_control_plane._oidc import OidcVerifier
@@ -37,6 +43,30 @@ VerifyFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 DeployFn = Callable[[str, str, str, str, Any], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref) -> serve /jobs list
 JobsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
+# (endpoint, token_ref, topology, message) -> {"reply", "status"}
+AuthorFn = Callable[[str, str, str, str], Awaitable[dict[str, Any]]]
+
+
+def _extract_artifact(reply: str) -> dict[str, Any] | None:
+    """Best-effort parse of a drafted artifact from an authoring reply. The authoring
+    swarm may end its turn with a JSON envelope {kind, id, content}; if the reply parses
+    to one (tolerating text around it), return {kind, id, content} for the UI to preview
+    and propose. Otherwise the reply is just conversation and this returns None."""
+    text = (reply or "").strip()
+    if not text:
+        return None
+    candidates = [text]
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        candidates.append(text[start : end + 1])
+    for chunk in candidates:
+        try:
+            obj = json.loads(chunk)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(obj, dict) and obj.get("kind") in ARTIFACT_KINDS and obj.get("id"):
+            return {"kind": obj["kind"], "id": obj["id"], "content": obj.get("content")}
+    return None
 
 
 class EnrollRequest(BaseModel):
@@ -116,6 +146,11 @@ class DeployRequest(BaseModel):
     version: str
 
 
+class AuthorRequest(BaseModel):
+    message: str
+    topology: str = "authoring"
+
+
 def create_app(
     registry: SqliteRegistry,
     *,
@@ -129,6 +164,7 @@ def create_app(
     proposals: ProposalStore | None = None,
     deploy: DeployFn = push_artifact,
     jobs: JobsFn = fetch_jobs,
+    author: AuthorFn = run_authoring,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -182,7 +218,7 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    _mount_instances(app, registry, verify, jobs)
+    _mount_instances(app, registry, verify, jobs, author)
     _mount_token_routes(app, registry, verify)
     _mount_command_queue(app, registry)
     _mount_aggregation(app, agg)
@@ -298,7 +334,7 @@ def _mount_deploy(
 
 
 def _mount_instances(
-    app: FastAPI, registry: SqliteRegistry, verify: VerifyFn, jobs: JobsFn
+    app: FastAPI, registry: SqliteRegistry, verify: VerifyFn, jobs: JobsFn, author: AuthorFn
 ) -> None:
     """Instance registry CRUD + enrollment + heartbeat + federated live jobs (docs 13, 14)."""
 
@@ -372,6 +408,25 @@ def _mount_instances(
             return await jobs(inst.endpoint, inst.token_ref)
         except ConnectorError as exc:
             raise HTTPException(502, f"could not query jobs: {exc}") from exc
+
+    @app.post("/instances/{instance_id}/author")
+    async def author_turn(instance_id: str, req: AuthorRequest) -> dict[str, Any]:
+        """Conversational authoring (doc 16): drive the instance's authoring swarm for one
+        turn and return its reply, plus any drafted artifact the swarm emitted (a JSON
+        {kind, id, content} envelope) so the UI can preview it and propose it for approval.
+        Operator-only (authorize denies connector tokens); Mode A only — driving a swarm
+        needs a directly-reachable instance."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            raise HTTPException(409, "authoring requires a directly-reachable (Mode A) instance")
+        try:
+            result = await author(inst.endpoint, inst.token_ref, req.topology, req.message)
+        except ConnectorError as exc:
+            raise HTTPException(502, f"authoring run failed: {exc}") from exc
+        reply = result.get("reply") or ""
+        return {"reply": reply, "artifact": _extract_artifact(reply)}
 
 
 def _mount_proposals(app: FastAPI, store: ProposalStore, artifacts: ArtifactStore) -> None:
