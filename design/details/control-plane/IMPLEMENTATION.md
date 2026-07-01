@@ -11,12 +11,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (PR #) · `[-]` deferred/b
 |---|---|---|---|
 | 0 | Inventory | ✅ #365 | n/a |
 | 1 | Architecture | ✅ #366 | n/a |
-| 2 | Auth design + `server.auth` spec | ✅ #368 | **in progress** (Phase 3 below) |
-| 3 | **Auth implementation** + connector/registry | ✅ #368/#369/#370 | **active** |
-| 4 | Aggregation | ✅ #369 | **active** (push API + rollups below) |
-| 5 | Artifact registry + versioning | ✅ #369 | **active** (registry + drift below) |
-| 6 | Fleet UI | ✅ #369 | **active** (slice 1 below) |
-| 7 | Growth loop | ✅ #369 | **active** (approval gate below) |
+| 2 | Auth design + `server.auth` spec | ✅ #368 | ✅ (realised in Phase 3) |
+| 3 | **Auth implementation** + connector/registry | ✅ #368/#369/#370 | ✅ #371–#384 |
+| 4 | Aggregation | ✅ #369 | ✅ #385–#388, #396 |
+| 5 | Artifact registry + versioning | ✅ #369 | ✅ #389–#391, #394–#395 |
+| 6 | Fleet UI | ✅ #369 | ✅ #375–#401 (full page set) |
+| 7 | Growth loop | ✅ #369 | **manual path done** (#392/#393/#401); automation pending |
 | 8 | Hardening + rollout | ✅ #369/#370 | not started |
 
 ## Phase 3 — Auth implementation (doc [12](12-auth.md) §9)
@@ -65,7 +65,7 @@ Hardening the existing `auth/` seam. Slices:
 - [x] UI OIDC login flow — browser PKCE auth-code (react-oidc-context), opt-in via
       `NEXT_PUBLIC_OIDC_*`; gates the app behind sign-in, sends the token as `Authorization: Bearer`
       on every panel call, re-initiates login on 401, sign-out in the sidebar (PR #383)
-- [ ] artifact registry — Phase 5
+- [x] artifact registry — done in Phase 5 (PR #389)
 
 ## Phase 4 — Aggregation (doc [14](14-aggregation.md))
 
@@ -172,9 +172,9 @@ Hardening the existing `auth/` seam. Slices:
       swarm: chat → drafted-artifact preview → **Propose for approval** (into the growth-loop
       queue). Panel `POST /instances/{id}/author` (operator-only, Mode A) drives the swarm via
       serve and extracts a `{kind,id,content}` draft; **last stubbed sidebar item now live** (PR #401)
-- [ ] OIDC login + instance selector + 401 handling (later slice)
-- [ ] per-instance views — runs, evals, artifact registry, approvals, conversational authoring
-      (Phases 4–7 surfaces)
+- [x] OIDC login + 401 handling (PR #383/#384); the Phase 4–7 surfaces shipped as top-level pages
+      — Runs + Evals (#388), Artifacts (#390), Approvals (#393), Authoring (#401)
+- [ ] a **global instance selector** (each page currently resolves its own instance)
 
 ## Changelog
 - **#371** — Phase 3 auth slice 1: `server.auth` schema + `serve:*` tiers + per-route authorize
