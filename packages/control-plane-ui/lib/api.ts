@@ -3,6 +3,7 @@ import type {
 	ArtifactSummary,
 	ArtifactVersion,
 	AuditRow,
+	AuthorResult,
 	Command,
 	Config,
 	DriftRow,
@@ -72,6 +73,22 @@ export const api = {
 	usage: () => request<UsageRow[]>("/usage"),
 	evals: () => request<EvalRow[]>("/eval"),
 	audit: (limit = 100) => request<AuditRow[]>(`/audit?limit=${limit}`),
+	author: (id: string, message: string, topology?: string) =>
+		request<AuthorResult>(`/instances/${id}/author`, {
+			method: "POST",
+			body: JSON.stringify({ message, ...(topology ? { topology } : {}) }),
+		}),
+	createProposal: (body: {
+		kind: string;
+		artifact_id: string;
+		content: unknown;
+		proposed_by?: string;
+		signal?: string;
+	}) =>
+		request<Proposal>("/proposals", {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
 	proposals: (status?: string) =>
 		request<Proposal[]>(`/proposals${status ? `?status=${status}` : ""}`),
 	approveProposal: (id: string) =>
