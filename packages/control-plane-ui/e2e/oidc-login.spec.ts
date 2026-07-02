@@ -35,7 +35,11 @@ test("operator signs in via OIDC and sees fleet data", async ({ page }) => {
 		.click();
 
 	// 3. The access token reaches the panel, is verified, and the seeded instance renders.
-	await expect(page.getByText(INSTANCE)).toBeVisible({ timeout: 30_000 });
+	// Scope to the main content — the instance name also appears in the sidebar's global
+	// instance selector (an <option>), so an unscoped getByText would be ambiguous.
+	await expect(page.getByRole("main").getByText(INSTANCE)).toBeVisible({
+		timeout: 30_000,
+	});
 
 	// 4. Authenticated shell: sign-out present, and the callback params are stripped from the URL.
 	await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
@@ -47,7 +51,9 @@ test("signing out returns to the login gate", async ({ page }) => {
 	await page
 		.getByRole("button", { name: "Sign in with your identity provider" })
 		.click();
-	await expect(page.getByText(INSTANCE)).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByRole("main").getByText(INSTANCE)).toBeVisible({
+		timeout: 30_000,
+	});
 
 	await page.getByRole("button", { name: "Sign out" }).click();
 	await expect(page.getByText("Sign in to manage the fleet")).toBeVisible();

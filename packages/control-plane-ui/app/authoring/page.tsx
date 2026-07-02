@@ -1,15 +1,15 @@
 "use client";
 
 import { BotMessageSquare, Send, Sparkles } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError, api } from "@/lib/api";
-import type { DraftArtifact, Instance } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useInstances } from "@/lib/instance-context";
+import type { DraftArtifact } from "@/lib/types";
 
 const FIELD = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
@@ -21,19 +21,22 @@ interface Turn {
 }
 
 export default function AuthoringPage() {
-	const listInstances = useCallback(() => api.listInstances(), []);
-	const { data: instances } = usePoll<Instance[]>(listInstances, 30_000);
-	// Authoring drives a swarm on the instance's serve — Mode A (directly reachable) only.
-	const reachable = (instances ?? []).filter((i) => i.connection === "direct");
+	// Authoring drives a swarm on the instance's serve — Mode A (directly reachable)
+	// only. Uses the fleet-wide selection; falls back to the first reachable instance
+	// when the selected one can't author.
+	const { instances, selected } = useInstances();
+	const reachable = instances.filter((i) => i.connection === "direct");
+	const [override, setOverride] = useState("");
 
-	const [instanceId, setInstanceId] = useState("");
 	const [topology, setTopology] = useState("authoring");
 	const [input, setInput] = useState("");
 	const [turns, setTurns] = useState<Turn[]>([]);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
 
-	const target = instanceId || reachable[0]?.id || "";
+	const selectedReachable =
+		selected?.connection === "direct" ? selected.id : "";
+	const target = override || selectedReachable || reachable[0]?.id || "";
 
 	async function send() {
 		const message = input.trim();
@@ -92,7 +95,7 @@ export default function AuthoringPage() {
 						<select
 							id="instance"
 							value={target}
-							onChange={(e) => setInstanceId(e.target.value)}
+							onChange={(e) => setOverride(e.target.value)}
 							className={FIELD}
 						>
 							{reachable.length === 0 ? (

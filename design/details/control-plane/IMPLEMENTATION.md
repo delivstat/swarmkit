@@ -174,7 +174,8 @@ Hardening the existing `auth/` seam. Slices:
       serve and extracts a `{kind,id,content}` draft; **last stubbed sidebar item now live** (PR #401)
 - [x] OIDC login + 401 handling (PR #383/#384); the Phase 4–7 surfaces shipped as top-level pages
       — Runs + Evals (#388), Artifacts (#390), Approvals (#393), Authoring (#401)
-- [ ] a **global instance selector** (each page currently resolves its own instance)
+- [x] a **global instance selector** — fleet-wide `InstanceProvider` context + sidebar switcher;
+      selection persists (localStorage) and per-instance pages (e.g. Authoring) share it (PR #403)
 
 ## Changelog
 - **#371** — Phase 3 auth slice 1: `server.auth` schema + `serve:*` tiers + per-route authorize
@@ -236,3 +237,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#396** — Phase 4 federated live-jobs: `GET /instances/{id}/jobs` pulls the instance's serve `/jobs` on demand (Mode A; poll → 409), not stored; fleet-UI **Live jobs** card on the instance detail page. swarmkit-control-plane 0.13.0.
 - **#397** — Phase 6 fleet UI Settings: panel `GET /config` (read-only — version + auth flags + observability links + CORS origins; flags/URLs only, never token values, operator-only under auth) + a `/settings` page (Panel / Authentication / Observability / CORS cards, open-mode warning); Settings sidebar item activated. swarmkit-control-plane 0.14.0.
 - **#401** — Phase 6 fleet UI Authoring: conversational front-end to an instance's authoring swarm — panel `POST /instances/{id}/author` (operator-only, Mode A: runs the authoring topology on serve + extracts a `{kind,id,content}` draft) and an `/authoring` page (chat → drafted-artifact preview → **Propose for approval** into the growth-loop queue). Last stubbed sidebar item now live; the whole doc-16 page set ships. Demo: `packages/control-plane/demos/authoring_swarm.py`. swarmkit-control-plane 0.15.0.
+- **#403** — Phase 6 fleet UI global instance selector: a fleet-wide `InstanceProvider` context + sidebar switcher (selection persisted to localStorage); the Authoring page consumes the shared selection instead of its own picker. Demo: `packages/control-plane/demos/seeded_fleet.py`. UI-only.

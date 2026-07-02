@@ -15,6 +15,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { SignOut } from "@/components/auth-gate";
+import { InstanceSelector } from "@/components/instance-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,8 @@ export function AppSidebar() {
 				</Link>
 				<ThemeToggle />
 			</div>
+
+			<InstanceSelector />
 
 			<nav className="flex-1 space-y-1 overflow-y-auto p-3">
 				{NAV.map((item) => {
