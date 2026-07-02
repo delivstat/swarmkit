@@ -29,6 +29,7 @@ from swarmkit_control_plane._connector import (
     fetch_capabilities,
     fetch_jobs,
     run_authoring,
+    run_eval,
 )
 from swarmkit_control_plane._deploy import DEPLOYABLE, DeployError, push_artifact
 from swarmkit_control_plane._models import Instance
@@ -45,6 +46,8 @@ DeployFn = Callable[[str, str, str, str, Any], Awaitable[dict[str, Any]]]
 JobsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 # (endpoint, token_ref, topology, message) -> {"reply", "status"}
 AuthorFn = Callable[[str, str, str, str], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref, eval_topology, payload) -> eval summary dict
+EvalFn = Callable[[str, str, str, str], Awaitable[dict[str, Any]]]
 
 
 def _extract_artifact(reply: str) -> dict[str, Any] | None:
@@ -151,6 +154,14 @@ class AuthorRequest(BaseModel):
     topology: str = "authoring"
 
 
+class GapProposeRequest(BaseModel):
+    instance_id: str  # which instance's authoring swarm drafts the fix (Mode A)
+    capability: str  # the gap to close (from GET /gaps)
+    description: str = ""
+    topology: str = "authoring"
+    eval_topology: str = "eval"
+
+
 def create_app(
     registry: SqliteRegistry,
     *,
@@ -165,6 +176,7 @@ def create_app(
     deploy: DeployFn = push_artifact,
     jobs: JobsFn = fetch_jobs,
     author: AuthorFn = run_authoring,
+    eval_run: EvalFn = run_eval,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -225,6 +237,7 @@ def create_app(
     _mount_observability(app, observability or {})
     _mount_artifacts(app, arts)
     _mount_proposals(app, props, arts)
+    _mount_growth(app, registry, props, author, eval_run)
     _mount_deploy(app, registry, arts, agg, deploy)
     _mount_config(
         app,
@@ -499,6 +512,54 @@ def _mount_proposals(app: FastAPI, store: ProposalStore, artifacts: ArtifactStor
             raise HTTPException(409, str(exc)) from exc
 
 
+def _mount_growth(
+    app: FastAPI,
+    registry: SqliteRegistry,
+    proposals: ProposalStore,
+    author: AuthorFn,
+    eval_run: EvalFn,
+) -> None:
+    """Growth-loop automation (doc 17): signal → surface → propose → test. A ranked gap
+    (GET /gaps) is turned into a *drafted, eval-tested proposal* in one operator action —
+    the authoring swarm drafts a fix, an eval topology tests it, and the result lands in
+    the approval queue as `pending`. The human gate is untouched: this only ever creates a
+    pending proposal (approve == publish, humans only). Operator-only (authorize denies
+    connector tokens); Mode A only — drafting drives a swarm on a reachable instance."""
+
+    @app.post("/gaps/propose")
+    async def propose_from_gap(req: GapProposeRequest) -> dict[str, Any]:
+        inst = registry.get(req.instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            raise HTTPException(409, "auto-draft requires a directly-reachable (Mode A) instance")
+        # Propose (draft): the authoring swarm drafts a fix for the gap.
+        prompt = (
+            f"A worker needs the capability '{req.capability}' but no skill provides it. "
+            f"{req.description} Draft a skill that closes this gap."
+        )
+        try:
+            drafted = await author(inst.endpoint, inst.token_ref, req.topology, prompt)
+        except ConnectorError as exc:
+            raise HTTPException(502, f"authoring run failed: {exc}") from exc
+        artifact = _extract_artifact(drafted.get("reply") or "")
+        if artifact is None:
+            raise HTTPException(422, "the authoring swarm did not produce a draftable artifact")
+        # Test: run an eval topology on the draft (never blocks — returns a status summary).
+        eval_summary = await eval_run(
+            inst.endpoint, inst.token_ref, req.eval_topology, json.dumps(artifact["content"])
+        )
+        # Land it in the approval queue as pending (human gate intact).
+        return proposals.create(
+            kind=artifact["kind"],
+            artifact_id=artifact["id"],
+            content=artifact["content"],
+            proposed_by="authoring-swarm",
+            signal=f"gap:{req.capability}",
+            eval_summary=eval_summary,
+        )
+
+
 def _mount_artifacts(app: FastAPI, store: ArtifactStore) -> None:
     """Artifact registry: versioned artifacts + provenance, deployments, drift (doc 15)."""
 
@@ -604,6 +665,11 @@ def _mount_aggregation(app: FastAPI, agg: AggregationStore) -> None:
     @app.get("/audit")
     async def audit(limit: int = 100) -> list[dict[str, Any]]:
         return agg.recent_audit(limit)
+
+    @app.get("/gaps")
+    async def gaps() -> list[dict[str, Any]]:
+        """Skill gaps ranked across the fleet (signal → surface, doc 17)."""
+        return agg.gap_rollup()
 
 
 def _mount_token_routes(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -> None:

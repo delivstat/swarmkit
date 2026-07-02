@@ -7,6 +7,7 @@ panel-held token. See design/details/control-plane/13-connector-registry.md.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -116,3 +117,61 @@ async def run_authoring(
     except httpx.HTTPError as exc:
         raise ConnectorError(f"cannot reach {base}: {exc}") from exc
     raise ConnectorError("authoring run did not complete in time")
+
+
+async def run_eval(  # noqa: PLR0911
+    endpoint: str, token_ref: str, eval_topology: str, payload: str
+) -> dict[str, Any]:
+    """Run an eval topology on an instance's serve to test a drafted artifact (the
+    growth loop's 'test' stage, design 17). Returns a summary dict parsed from the eval
+    topology's output — ``{passed, total, pass_rate}`` when the output is a JSON eval
+    result, else ``{"status": ...}``. Never raises: a failed/absent eval must not block
+    the human from seeing the proposal, so failures return a status rather than throw."""
+    base = endpoint.rstrip("/")
+    token = resolve_token(token_ref)
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            started = await client.post(
+                f"{base}/run/{eval_topology}", json={"input": payload}, headers=headers
+            )
+            if started.status_code == 404:
+                return {"status": "no-eval-topology", "eval_topology": eval_topology}
+            if started.status_code not in (200, 201):
+                return {"status": f"run-error-{started.status_code}"}
+            job_id = started.json().get("job_id")
+            if not job_id:
+                return {"status": "no-job-id"}
+            for _ in range(90):
+                await asyncio.sleep(2)
+                jr = await client.get(f"{base}/jobs/{job_id}", headers=headers)
+                if jr.status_code != 200:
+                    return {"status": f"poll-error-{jr.status_code}"}
+                job = jr.json()
+                if job.get("status") == "completed":
+                    return _parse_eval(job.get("output") or "")
+                if job.get("status") == "failed":
+                    return {"status": "failed", "error": job.get("error") or "unknown"}
+    except httpx.HTTPError as exc:
+        return {"status": "unreachable", "error": str(exc)}
+    return {"status": "timeout"}
+
+
+def _parse_eval(output: str) -> dict[str, Any]:
+    """Best-effort parse of an eval topology's output into {passed, total, pass_rate}."""
+    text = (output or "").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        try:
+            obj = json.loads(text[start : end + 1])
+        except (json.JSONDecodeError, ValueError):
+            obj = None
+        if isinstance(obj, dict) and "passed" in obj and "total" in obj:
+            passed, total = int(obj["passed"]), int(obj["total"])
+            return {
+                "passed": passed,
+                "total": total,
+                "pass_rate": round(passed / total, 4) if total else None,
+                "status": "completed",
+            }
+    return {"status": "unparsed", "raw": text[:200]}

@@ -8,6 +8,7 @@ import type {
 	Config,
 	DriftRow,
 	EvalRow,
+	Gap,
 	Instance,
 	Job,
 	MintResult,
@@ -86,6 +87,16 @@ export const api = {
 		signal?: string;
 	}) =>
 		request<Proposal>("/proposals", {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+	gaps: () => request<Gap[]>("/gaps"),
+	proposeFromGap: (body: {
+		instance_id: string;
+		capability: string;
+		description?: string;
+	}) =>
+		request<Proposal>("/gaps/propose", {
 			method: "POST",
 			body: JSON.stringify(body),
 		}),
