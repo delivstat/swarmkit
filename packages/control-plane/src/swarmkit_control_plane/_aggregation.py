@@ -47,6 +47,10 @@ class AggregationStore:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path), timeout=10)
         conn.row_factory = sqlite3.Row
+        # WAL lets connector pushes and operator reads proceed concurrently without
+        # blocking; busy_timeout retries under contention instead of raising "locked".
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
         return conn
 
     def ingest(self, instance_id: str, kind: str, records: list[dict[str, Any]]) -> dict[str, int]:

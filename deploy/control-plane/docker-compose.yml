@@ -1,0 +1,37 @@
+# SwarmKit control-plane rollout bundle (Phase 8, design details/control-plane/18).
+#
+#   docker compose -f deploy/control-plane/docker-compose.yml up -d --build
+#
+# Runs the panel API. The fleet UI (packages/control-plane-ui) is a static Next.js
+# frontend — build it pointed at the panel and serve it separately (see README).
+services:
+  panel:
+    build:
+      # Repo root, so the image can COPY packages/control-plane.
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile
+    image: swarmkit-control-plane
+    container_name: swarmkit-control-plane
+    restart: unless-stopped
+    ports:
+      - "8800:8800"
+    volumes:
+      # Central stores survive restarts/upgrades. Back this volume up (see README).
+      - control-plane-data:/data
+    # PRODUCTION: the panel runs OPEN (no auth) unless you configure a principal.
+    # Uncomment and set these — args here append to the image ENTRYPOINT.
+    # command:
+    #   - "--operator-token=${SWARMKIT_CP_OPERATOR_TOKEN}"
+    #   - "--cors-origin=${SWARMKIT_CP_UI_ORIGIN}"          # e.g. https://fleet.example.com
+    #   - "--collector-endpoint=${SWARMKIT_CP_COLLECTOR}"   # OTLP endpoint instances export to
+    #   - "--jaeger-url=${SWARMKIT_CP_JAEGER_URL}"
+    #   - "--grafana-url=${SWARMKIT_CP_GRAFANA_URL}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8800/health').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  control-plane-data:

@@ -17,7 +17,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (PR #) · `[-]` deferred/b
 | 5 | Artifact registry + versioning | ✅ #369 | ✅ #389–#391, #394–#395 |
 | 6 | Fleet UI | ✅ #369 | ✅ #375–#401 (full page set) |
 | 7 | Growth loop | ✅ #369 | **manual path done** (#392/#393/#401); automation pending |
-| 8 | Hardening + rollout | ✅ #369/#370 | not started |
+| 8 | Hardening + rollout | ✅ #369/#370 | **slice 1** (packaging + WAL, #405); ops/GA pending |
 
 ## Phase 3 — Auth implementation (doc [12](12-auth.md) §9)
 
@@ -180,6 +180,18 @@ Hardening the existing `auth/` seam. Slices:
 - [x] a **global instance selector** — fleet-wide `InstanceProvider` context + sidebar switcher;
       selection persists (localStorage) and per-instance pages (e.g. Authoring) share it (PR #403)
 
+## Phase 8 — Hardening + rollout (doc [18](18-hardening-rollout.md))
+
+### Slice 1 — packaging + sqlite hardening (PR #405)
+- [x] rollout bundle `deploy/control-plane/` — panel `Dockerfile` (self-contained; builds +
+      serves, verified) + `docker-compose.yml` (persistent volume, healthcheck, commented auth)
+      + operator `README.md` runbook (enroll Mode A/B, rotate/revoke, recover, roll back, audit,
+      backup/restore, the serve default-secure breaking change, security checklist, OSS↔fleet boundary)
+- [x] sqlite hardening — all four stores run in **WAL** mode + `busy_timeout` so connector pushes
+      and operator reads don't block under fleet concurrency
+- [ ] ops/GA (not code): security-review sign-off, enroll the 3 live instances, prebuilt UI image,
+      git/Postgres central-store swap, HA/replication, multi-tenant — tracked, post-slice
+
 ## Changelog
 - **#371** — Phase 3 auth slice 1: `server.auth` schema + `serve:*` tiers + per-route authorize
   enforcement + default-secure bind + reserved-scope guard. runtime 1.9.0 / schema 1.6.0.
@@ -242,3 +254,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#401** — Phase 6 fleet UI Authoring: conversational front-end to an instance's authoring swarm — panel `POST /instances/{id}/author` (operator-only, Mode A: runs the authoring topology on serve + extracts a `{kind,id,content}` draft) and an `/authoring` page (chat → drafted-artifact preview → **Propose for approval** into the growth-loop queue). Last stubbed sidebar item now live; the whole doc-16 page set ships. Demo: `packages/control-plane/demos/authoring_swarm.py`. swarmkit-control-plane 0.15.0.
 - **#403** — Phase 6 fleet UI global instance selector: a fleet-wide `InstanceProvider` context + sidebar switcher (selection persisted to localStorage); the Authoring page consumes the shared selection instead of its own picker. Demo: `packages/control-plane/demos/seeded_fleet.py`. UI-only.
 - **#404** — Phase 7 growth-loop automation: `gap` aggregation kind + `GET /gaps` (ranked cross-instance skill gaps: signal → surface) and `POST /gaps/propose` (operator-only, Mode A) which drafts a fix via the authoring swarm, runs an eval topology on it (`_connector.run_eval`, never blocks), and lands a **pending** proposal (signal → propose → test; human gate intact). Fleet-UI "Skill gaps" panel on Approvals with a "Draft a fix" action. Demo: `packages/control-plane/demos/growth_loop.py`. swarmkit-control-plane 0.16.0.
+- **#405** — Phase 8 slice 1 (hardening + rollout): rollout bundle `deploy/control-plane/` (panel Dockerfile — builds + serves, verified — + docker-compose + operator runbook README) and sqlite **WAL** + `busy_timeout` hardening across all four stores. Remaining Phase 8 (security-review sign-off, live-instance enrollment, prebuilt UI image, Postgres/git swap, HA, multi-tenant) is ops/post-slice. swarmkit-control-plane 0.17.0.
