@@ -122,6 +122,15 @@ export interface AuthorResult {
 	artifact: DraftArtifact | null;
 }
 
+/** Row of GET /gaps — a skill gap ranked across the fleet (signal → surface). */
+export interface Gap {
+	capability: string;
+	occurrences: number;
+	instances: number;
+	last_seen: string | null;
+	description: string | null;
+}
+
 export type ProposalStatus = "pending" | "approved" | "rejected";
 
 /** A growth-loop proposal (GET /proposals) — a drafted artifact change awaiting human approval. */

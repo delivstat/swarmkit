@@ -1,14 +1,15 @@
 "use client";
 
-import { Check, RefreshCw, X } from "lucide-react";
+import { Check, RefreshCw, Sparkles, X } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { PageHeader } from "@/components/page-header";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
-import type { Proposal, ProposalStatus } from "@/lib/types";
+import { ApiError, api } from "@/lib/api";
+import { useInstances } from "@/lib/instance-context";
+import type { Gap, Proposal, ProposalStatus } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
 const STATUS_VARIANT: Record<ProposalStatus, BadgeProps["variant"]> = {
@@ -101,6 +102,86 @@ function ProposalCard({ p, onChange }: { p: Proposal; onChange: () => void }) {
 	);
 }
 
+function GapsPanel({ onProposed }: { onProposed: () => void }) {
+	const { instances, selected } = useInstances();
+	const fetcher = useCallback(() => api.gaps(), []);
+	const { data, refresh } = usePoll<Gap[]>(fetcher, 30_000);
+	const gaps = data ?? [];
+	const [busy, setBusy] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	// Auto-draft drives the authoring swarm on a Mode A instance.
+	const target =
+		selected?.connection === "direct"
+			? selected
+			: instances.find((i) => i.connection === "direct");
+
+	if (gaps.length === 0) return null;
+
+	async function draft(gap: Gap) {
+		if (!target) {
+			setError("No Mode A instance available to draft a fix.");
+			return;
+		}
+		setBusy(gap.capability);
+		setError(null);
+		try {
+			await api.proposeFromGap({
+				instance_id: target.id,
+				capability: gap.capability,
+				description: gap.description ?? "",
+			});
+			refresh();
+			onProposed();
+		} catch (e) {
+			setError(e instanceof ApiError ? e.message : String(e));
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle className="flex items-center gap-2 text-base">
+					<Sparkles className="size-4" />
+					Skill gaps
+					<span className="text-xs font-normal text-muted-foreground">
+						ranked across the fleet · draft targets{" "}
+						<span className="font-mono">{target?.name ?? "—"}</span>
+					</span>
+				</CardTitle>
+			</CardHeader>
+			<CardContent className="space-y-2">
+				{error ? <p className="text-sm text-destructive">{error}</p> : null}
+				{gaps.map((g) => (
+					<div
+						key={g.capability}
+						className="flex items-center justify-between gap-3 border-b py-2 last:border-0"
+					>
+						<div className="min-w-0">
+							<span className="font-mono text-sm">{g.capability}</span>
+							<span className="ml-2 text-xs text-muted-foreground">
+								{g.occurrences}× across {g.instances} instance
+								{g.instances === 1 ? "" : "s"}
+							</span>
+						</div>
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={busy !== null || !target}
+							onClick={() => draft(g)}
+						>
+							<Sparkles />
+							{busy === g.capability ? "Drafting…" : "Draft a fix"}
+						</Button>
+					</div>
+				))}
+			</CardContent>
+		</Card>
+	);
+}
+
 export default function ApprovalsPage() {
 	const [pendingOnly, setPendingOnly] = useState(true);
 	const fetcher = useCallback(
@@ -132,6 +213,7 @@ export default function ApprovalsPage() {
 				}
 			/>
 			<div className="space-y-4 p-6">
+				<GapsPanel onProposed={refresh} />
 				{error ? (
 					<p className="text-sm text-destructive">
 						Could not reach the control plane: {error}

@@ -132,8 +132,11 @@ Hardening the existing `auth/` seam. Slices:
 - [x] **the human gate**: approving publishes the proposed content as a new **registry version**
       (provenance carries proposer + approving human); approve/reject are operator-only — a
       connector (machine token) is denied (separation of powers §8.7)
-- [ ] cross-instance skill-gap aggregation + ranking (signal → surface)
-- [ ] authoring-swarm draft + eval-harness test stages (propose → test)
+- [x] cross-instance skill-gap aggregation + ranking (signal → surface) — `gap` aggregation kind
+      + `GET /gaps` ranked by occurrences × instance-spread; fleet-UI "Skill gaps" panel (PR #404)
+- [x] authoring-swarm draft + eval-harness test stages (propose → test) — `POST /gaps/propose`
+      (operator-only, Mode A) drafts a fix via the authoring swarm, runs an eval topology on it,
+      and lands a **pending** proposal (human gate intact); "Draft a fix" action in the UI (PR #404)
 - [x] governed deploy of an approved version to target instances (publish → deploy) — see Phase 5
       `POST /instances/{id}/deploy` + the connector `deploy` verb (PR #394)
 - [x] Approvals UI — `/approvals` queue (proposed content + provenance + signal; pending-only/all
@@ -238,3 +241,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#397** — Phase 6 fleet UI Settings: panel `GET /config` (read-only — version + auth flags + observability links + CORS origins; flags/URLs only, never token values, operator-only under auth) + a `/settings` page (Panel / Authentication / Observability / CORS cards, open-mode warning); Settings sidebar item activated. swarmkit-control-plane 0.14.0.
 - **#401** — Phase 6 fleet UI Authoring: conversational front-end to an instance's authoring swarm — panel `POST /instances/{id}/author` (operator-only, Mode A: runs the authoring topology on serve + extracts a `{kind,id,content}` draft) and an `/authoring` page (chat → drafted-artifact preview → **Propose for approval** into the growth-loop queue). Last stubbed sidebar item now live; the whole doc-16 page set ships. Demo: `packages/control-plane/demos/authoring_swarm.py`. swarmkit-control-plane 0.15.0.
 - **#403** — Phase 6 fleet UI global instance selector: a fleet-wide `InstanceProvider` context + sidebar switcher (selection persisted to localStorage); the Authoring page consumes the shared selection instead of its own picker. Demo: `packages/control-plane/demos/seeded_fleet.py`. UI-only.
+- **#404** — Phase 7 growth-loop automation: `gap` aggregation kind + `GET /gaps` (ranked cross-instance skill gaps: signal → surface) and `POST /gaps/propose` (operator-only, Mode A) which drafts a fix via the authoring swarm, runs an eval topology on it (`_connector.run_eval`, never blocks), and lands a **pending** proposal (signal → propose → test; human gate intact). Fleet-UI "Skill gaps" panel on Approvals with a "Draft a fix" action. Demo: `packages/control-plane/demos/growth_loop.py`. swarmkit-control-plane 0.16.0.

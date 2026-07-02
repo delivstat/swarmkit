@@ -19,7 +19,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-KINDS = ("audit", "eval", "usage")
+KINDS = ("audit", "eval", "usage", "gap")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS agg_records (
@@ -114,3 +114,22 @@ class AggregationStore:
         with self._lock, self._connect() as conn:
             rows = conn.execute(sql, (limit,)).fetchall()
         return [{"instance_id": r["instance_id"], **json.loads(r["payload"])} for r in rows]
+
+    def gap_rollup(self) -> list[dict[str, Any]]:
+        """Skill gaps ranked across the fleet (signal → surface, design 17). Instances push
+        a gap signal (``{id, capability, description, ts}``) whenever a worker wants a
+        capability it lacks; this ranks them by how often they recur and how many distinct
+        instances hit them — the panel surfaces the top gaps for a human to turn into a
+        proposal. A frequent, fleet-wide gap ranks above a one-off."""
+        sql = """
+            SELECT json_extract(payload, '$.capability') AS capability,
+                   COUNT(*) AS occurrences,
+                   COUNT(DISTINCT instance_id) AS instances,
+                   MAX(ts) AS last_seen,
+                   MAX(json_extract(payload, '$.description')) AS description
+            FROM agg_records WHERE kind = 'gap'
+            GROUP BY capability
+            ORDER BY occurrences DESC, instances DESC
+        """
+        with self._lock, self._connect() as conn:
+            return [dict(r) for r in conn.execute(sql).fetchall()]
