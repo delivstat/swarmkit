@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { AuthGate } from "@/components/auth-gate";
+import { InstanceProvider } from "@/lib/instance-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,10 +17,14 @@ export default function RootLayout({
 		<html lang="en" className="dark">
 			<body className="antialiased">
 				<AuthGate>
-					<div className="flex">
-						<AppSidebar />
-						<main className="h-screen flex-1 overflow-y-auto">{children}</main>
-					</div>
+					<InstanceProvider>
+						<div className="flex">
+							<AppSidebar />
+							<main className="h-screen flex-1 overflow-y-auto">
+								{children}
+							</main>
+						</div>
+					</InstanceProvider>
 				</AuthGate>
 			</body>
 		</html>
