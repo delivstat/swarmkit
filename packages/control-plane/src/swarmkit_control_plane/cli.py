@@ -77,6 +77,13 @@ def serve(
             "--grafana-url", help="Grafana base URL — the fleet UI deep-links metrics here."
         ),
     ] = "",
+    insecure_no_auth: Annotated[
+        bool,
+        typer.Option(
+            "--insecure-no-auth",
+            help="Allow starting UNAUTHENTICATED on a non-loopback bind (dangerous).",
+        ),
+    ] = False,
 ) -> None:
     """Start the control-plane API."""
     import uvicorn  # noqa: PLC0415
@@ -121,6 +128,8 @@ def serve(
             operator_tokens=op_tokens,
             oidc=oidc,
             observability=observability,
+            host=host,
+            allow_open=insecure_no_auth,
         ),
         host=host,
         port=port,

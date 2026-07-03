@@ -177,6 +177,8 @@ def create_app(
     jobs: JobsFn = fetch_jobs,
     author: AuthorFn = run_authoring,
     eval_run: EvalFn = run_eval,
+    host: str = "127.0.0.1",
+    allow_open: bool = False,
 ) -> FastAPI:
     """Build the control-plane API. *verify* is injectable for testing.
 
@@ -195,6 +197,17 @@ def create_app(
     arts = artifacts or ArtifactStore(registry.db_path)
     props = proposals or ProposalStore(registry.db_path)
     ops = [t for t in (operator_tokens or []) if t]
+
+    # Default-secure: an unauthenticated panel can mint serve tokens and deploy artifacts,
+    # so refuse to serve open on a non-loopback bind unless the operator explicitly opts in
+    # (allow_open / --insecure-no-auth). Loopback dev stays open for convenience.
+    _loopback = {"127.0.0.1", "::1", "localhost", ""}
+    if not (ops or oidc is not None) and not allow_open and host not in _loopback:
+        raise RuntimeError(
+            f"refusing to start an unauthenticated control plane on a non-loopback bind "
+            f"({host!r}). Configure --operator-token and/or --oidc-*, or pass "
+            f"--insecure-no-auth to override."
+        )
 
     # Auth is registered before CORS so CORS stays the outermost layer (preflight + 401/403
     # responses still carry the configured CORS headers for the browser to read).
