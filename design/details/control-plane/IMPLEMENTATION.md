@@ -194,8 +194,12 @@ Hardening the existing `auth/` seam. Slices:
 - [x] `deploy/control-plane/Dockerfile.ui` — Next.js **standalone** image for the fleet UI
       (multi-stage pnpm build; builds + serves, verified); added to the compose bundle on `:3000`
       with same-origin default (or a bakeable `NEXT_PUBLIC_CONTROL_PLANE_API` build arg)
-- [ ] ops/GA (not code): security-review sign-off, enroll the 3 live instances,
-      git/Postgres central-store swap, HA/replication, multi-tenant — tracked, post-slice
+- [x] security-review artifact — `deploy/control-plane/SECURITY-REVIEW.md` maps every doc-18
+      control to its implementation + evidence (auth surface, separation of powers, audit
+      completeness, transport/secrets, blast radius) with a met/operator/gap status + sign-off
+      block (PR #407). The per-deployment sign-off itself is an operator step.
+- [ ] ops/GA (not code): enroll the 3 live instances, git/Postgres central-store swap,
+      HA/replication, multi-tenant — tracked, post-slice
 
 ## Changelog
 - **#371** — Phase 3 auth slice 1: `server.auth` schema + `serve:*` tiers + per-route authorize
@@ -261,3 +265,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#404** — Phase 7 growth-loop automation: `gap` aggregation kind + `GET /gaps` (ranked cross-instance skill gaps: signal → surface) and `POST /gaps/propose` (operator-only, Mode A) which drafts a fix via the authoring swarm, runs an eval topology on it (`_connector.run_eval`, never blocks), and lands a **pending** proposal (signal → propose → test; human gate intact). Fleet-UI "Skill gaps" panel on Approvals with a "Draft a fix" action. Demo: `packages/control-plane/demos/growth_loop.py`. swarmkit-control-plane 0.16.0.
 - **#405** — Phase 8 slice 1 (hardening + rollout): rollout bundle `deploy/control-plane/` (panel Dockerfile — builds + serves, verified — + docker-compose + operator runbook README) and sqlite **WAL** + `busy_timeout` hardening across all four stores. Remaining Phase 8 (security-review sign-off, live-instance enrollment, prebuilt UI image, Postgres/git swap, HA, multi-tenant) is ops/post-slice. swarmkit-control-plane 0.17.0.
 - **#406** — Phase 8 slice 2: prebuilt fleet-UI image — `deploy/control-plane/Dockerfile.ui` (Next.js standalone, multi-stage pnpm build; builds + serves, verified) added to the compose bundle on `:3000` (same-origin default or a bakeable `NEXT_PUBLIC_CONTROL_PLANE_API` build arg); `next.config` sets `output: "standalone"`. Also fixes the stale Phase 7 status-table cell. UI/deploy only.
+- **#407** — Phase 8 security-review artifact: `deploy/control-plane/SECURITY-REVIEW.md` — the GA-gate checklist mapping every doc-18 control (auth surface, separation of powers, audit completeness, transport/secrets, blast radius) to its implementation + evidence with a met/operator/gap status + sign-off block; linked from the runbook. Docs only.

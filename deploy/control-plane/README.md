@@ -70,6 +70,9 @@ this out in your own release notes.
 
 ## Security checklist (pre-GA)
 
+The full control-by-control review (implementation + evidence per control) is in
+[SECURITY-REVIEW.md](SECURITY-REVIEW.md) — the GA gate. The operator-configured rows:
+
 - [ ] operator tokens and/or OIDC configured (panel not open)
 - [ ] `--cors-origin` set to the exact UI origin (no `*`)
 - [ ] TLS on human↔panel and panel↔instance
