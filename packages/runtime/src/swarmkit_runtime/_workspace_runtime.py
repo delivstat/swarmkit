@@ -395,6 +395,7 @@ class WorkspaceRuntime:
             set_active_policy,
         )
         from swarmkit_runtime.langgraph_compiler._compiler import set_active_trace  # noqa: PLC0415
+        from swarmkit_runtime.langgraph_compiler._run_context import run_context  # noqa: PLC0415
         from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
 
         graph = self.compile(topology_name)
@@ -433,21 +434,24 @@ class WorkspaceRuntime:
                     initial_agent_results[topology.root.id] = f"__delegated__:{leader_id}"
                     initial_delegation_counts[leader_id] = 1
 
-            result = await graph.ainvoke(
-                {
-                    "input": user_input,
-                    "messages": [],
-                    "agent_results": initial_agent_results,
-                    "delegation_counts": initial_delegation_counts,
-                    "task_plan": initial_task_plan,
-                    "current_agent": "",
-                    "output": "",
-                },
-                config={
-                    "recursion_limit": effective_limit,
-                    "configurable": {"thread_id": run_thread},
-                },
-            )
+            # Scope run-state (tasks.json / scope.json / results) to this run's own
+            # directory so concurrent runs in one process don't corrupt each other.
+            with run_context(self._workspace_root, run_thread):
+                result = await graph.ainvoke(
+                    {
+                        "input": user_input,
+                        "messages": [],
+                        "agent_results": initial_agent_results,
+                        "delegation_counts": initial_delegation_counts,
+                        "task_plan": initial_task_plan,
+                        "current_agent": "",
+                        "output": "",
+                    },
+                    config={
+                        "recursion_limit": effective_limit,
+                        "configurable": {"thread_id": run_thread},
+                    },
+                )
         finally:
             set_active_policy(None)
             if owns_mcp and self._mcp_manager is not None:
@@ -456,8 +460,6 @@ class WorkspaceRuntime:
         trace.finish()
         trace.save(self._workspace_root)
         set_active_trace(None)
-
-        _archive_run_state(self._workspace_root, run_thread)
 
         events = _extract_events(self._governance)
 
@@ -902,24 +904,6 @@ def find_missing_mcp_servers(
         if server_id and server_id not in mcp_configs:
             missing.append((skill_id, server_id))
     return missing
-
-
-def _archive_run_state(workspace_root: Path, run_id: str) -> None:
-    """Move current run-state to a run-specific directory for history."""
-    import shutil  # noqa: PLC0415
-
-    current = workspace_root / ".swarmkit" / "run-state" / "current"
-    if not current.is_dir():
-        return
-    tasks_file = current / "tasks.json"
-    if not tasks_file.is_file():
-        return
-
-    short_id = run_id[:12]
-    archive = workspace_root / ".swarmkit" / "run-state" / short_id
-    if archive.exists():
-        shutil.rmtree(archive)
-    shutil.move(str(current), str(archive))
 
 
 def _compute_recursion_limit(topology: Any) -> int:
