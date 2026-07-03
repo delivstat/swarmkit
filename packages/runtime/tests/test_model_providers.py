@@ -529,6 +529,35 @@ def test_openai_extra_is_never_filtered() -> None:
     assert _to_openai_kwargs(req)["num_ctx"] == 4096
 
 
+def test_apply_options_drops_non_native_but_keeps_extra() -> None:
+    # The single source of truth every non-Ollama adapter uses. Ollama-only knobs are
+    # dropped from options; genuine cross-vendor params survive; extra is never filtered.
+    from swarmkit_runtime.model_providers._types import apply_options  # noqa: PLC0415
+
+    kwargs = apply_options(
+        {"model": "m"},
+        {"num_ctx": 8192, "keep_alive": -1, "mirostat": 2, "top_p": 0.9, "seed": 7},
+        {"num_ctx": 4096},  # extra: authoritative, kept even though it looks Ollama-only
+    )
+    for dropped in ("keep_alive", "mirostat"):
+        assert dropped not in kwargs
+    assert kwargs["top_p"] == 0.9
+    assert kwargs["seed"] == 7
+    assert kwargs["num_ctx"] == 4096  # from extra, not dropped
+
+
+def test_google_config_survives_ollama_options() -> None:
+    # Regression for the incomplete num_ctx fix: an Ollama-tuned topology repointed at
+    # Gemini must not crash GenerateContentConfig's validation on num_ctx/keep_alive.
+    req = CompletionRequest(
+        model="gemini-2.5-flash",
+        messages=(Message(role="user", content="hi"),),
+        options={"num_ctx": 8192, "keep_alive": -1, "top_p": 0.8},
+    )
+    config = _to_google_config(req)  # must not raise
+    assert config.top_p == 0.8
+
+
 def test_google_json_schema_sets_response_schema() -> None:
     config = _to_google_config(_req(_JSON_SCHEMA_RF))
     assert config.response_mime_type == "application/json"

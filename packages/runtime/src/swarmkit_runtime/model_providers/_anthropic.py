@@ -12,13 +12,17 @@ from typing import Any
 import anthropic
 
 from ._types import (
+    NON_NATIVE_OPTIONS,
     CompletionRequest,
     CompletionResponse,
     ContentBlock,
     Usage,
+    apply_options,
 )
 
 _CLAUDE_PREFIXES = ("claude-",)
+# Anthropic's messages.create accepts top_k (unlike the OpenAI chat API), so keep it.
+_DROP = NON_NATIVE_OPTIONS - frozenset({"top_k"})
 
 
 class AnthropicModelProvider:
@@ -51,10 +55,9 @@ class AnthropicModelProvider:
                 }
                 for t in request.tools
             ]
-        if request.options:
-            kwargs.update(request.options)
-        if request.extra:
-            kwargs.update(request.extra)
+        # Drop Ollama-only options the Anthropic SDK would reject (num_ctx, keep_alive, …);
+        # to force a filtered key through, use ``extra`` (never filtered).
+        apply_options(kwargs, request.options, request.extra, drop=_DROP)
 
         raw = await with_retry(
             lambda: self._client.messages.create(**kwargs),
@@ -73,8 +76,7 @@ class AnthropicModelProvider:
             kwargs["system"] = request.system
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
-        if request.options:
-            kwargs.update(request.options)
+        apply_options(kwargs, request.options, request.extra, drop=_DROP)
 
         async with self._client.messages.stream(**kwargs) as stream:
             async for text in stream.text_stream:
