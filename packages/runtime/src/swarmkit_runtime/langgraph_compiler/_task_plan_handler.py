@@ -216,12 +216,10 @@ def _load_plan(plan_data: dict[str, Any]) -> Any:
 
 
 def _scope_file_path() -> Any:
-    """Get the scope.json path."""
-    from pathlib import Path  # noqa: PLC0415
+    """Get the scope.json path for the current run."""
+    from ._run_context import run_state_dir  # noqa: PLC0415
 
-    run_state = Path(".swarmkit") / "run-state" / "current"
-    run_state.mkdir(parents=True, exist_ok=True)
-    return run_state / "scope.json"
+    return run_state_dir() / "scope.json"
 
 
 def _write_scope(args: dict[str, Any], agent_id: str) -> None:

@@ -17,24 +17,19 @@ from langchain_core.messages import AIMessage, HumanMessage
 from swarmkit_runtime.model_providers import CompletionRequest, Message, ToolSpec
 from swarmkit_runtime.resolver import ResolvedAgent
 
+from ._run_context import run_state_dir
 from ._state import SwarmState
 
 
 def _check_scope_exists() -> bool:
-    """Check if scope.json exists in run state."""
-    return Path(".swarmkit/run-state/current/scope.json").exists()
+    """Check if scope.json exists in the current run's state dir."""
+    return (run_state_dir() / "scope.json").exists()
 
 
 def _find_tasks_json() -> Path | None:
-    """Find tasks.json on disk for resume scenarios."""
-    candidates = [
-        Path(".swarmkit/run-state/current/tasks.json"),
-        Path(".swarmkit") / "run-state" / "current" / "tasks.json",
-    ]
-    for p in candidates:
-        if p.exists():
-            return p
-    return None
+    """Find tasks.json in the current run's state dir (resume scenarios)."""
+    p = run_state_dir() / "tasks.json"
+    return p if p.exists() else None
 
 
 def _build_completion_request(
@@ -284,7 +279,7 @@ def _build_system_prompt(
 
 def _read_scope_for_prompt() -> str:
     """Read scope.json and format it for injection into Phase 2 prompt."""
-    scope_path = Path(".swarmkit/run-state/current/scope.json")
+    scope_path = run_state_dir() / "scope.json"
     if not scope_path.exists():
         return ""
     try:

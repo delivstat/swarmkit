@@ -107,11 +107,9 @@ def _load_state_from_disk() -> dict[str, Any]:
 
 
 def _scope_path() -> Any:
-    from pathlib import Path as _Path  # noqa: PLC0415
+    from ._run_context import run_state_dir  # noqa: PLC0415
 
-    run_state = _Path(".swarmkit") / "run-state" / "current"
-    run_state.mkdir(parents=True, exist_ok=True)
-    return run_state / "scope.json"
+    return run_state_dir() / "scope.json"
 
 
 def _parse_tool_args(block: Any) -> dict[str, Any]:

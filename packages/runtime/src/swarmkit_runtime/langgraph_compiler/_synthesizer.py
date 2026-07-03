@@ -155,9 +155,9 @@ async def run_synthesis(
 
 
 def _get_run_state(workspace_root: Path | None) -> Path:
-    if workspace_root:
-        return workspace_root / ".swarmkit" / "run-state" / "current"
-    return Path(".swarmkit/run-state/current")
+    from ._run_context import run_state_dir  # noqa: PLC0415
+
+    return run_state_dir(workspace_root)
 
 
 def _load_all_results(run_state: Path) -> dict[str, str]:

@@ -40,13 +40,19 @@ from ._prompts import (
     _build_tools,
     _get_completed_children,
 )
+from ._run_context import (
+    current_parent_agent,
+    reset_parent_agent,
+    set_parent_agent,
+)
 from ._state import PlanningConfig, SwarmState
 
 # Per-run active state. ContextVar (not a module global) so concurrent runs in one
 # process — e.g. several jobs under `swarmkit serve` — don't clobber each other: asyncio
 # copies the context when a task is created, so each run sees its own trace.
 _active_trace_var: ContextVar[RunTrace | None] = ContextVar("swarmkit_active_trace", default=None)
-_current_parent_agent: str | None = None
+# Parent-agent attribution is a ContextVar (see _run_context), not a module global — so
+# concurrent delegated children attribute their parent correctly under asyncio.gather.
 
 
 def set_active_trace(trace: RunTrace | None) -> None:
@@ -178,7 +184,6 @@ def _build_agent_node(  # noqa: PLR0915
     _memory = memory_store
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0911, PLR0912, PLR0915
-        global _current_parent_agent  # noqa: PLW0603
         agent_id = agent.id
         _start = datetime.now(tz=UTC)
         await governance.record_event(
@@ -345,7 +350,7 @@ def _build_agent_node(  # noqa: PLR0915
         _trace_step = AgentStep(
             agent_id=agent_id,
             model=model_name,
-            parent_agent=_current_parent_agent,
+            parent_agent=current_parent_agent(),
             role=agent.role,
             start_time=_start.timestamp(),
             input_tokens=response.usage.input_tokens,
@@ -355,8 +360,7 @@ def _build_agent_node(  # noqa: PLR0915
         _trace = get_active_trace()
         if _trace is not None:
             _trace.add_step(_trace_step)
-        _prev_parent = _current_parent_agent
-        _current_parent_agent = agent_id
+        _parent_token = set_parent_agent(agent_id)
 
         if _verbose:
             _log_verbose_response(response)
@@ -405,7 +409,7 @@ def _build_agent_node(  # noqa: PLR0915
             _trace_step.delegations = delegated_to
             _trace_step.end_time = datetime.now(tz=UTC).timestamp()
             _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
-            _current_parent_agent = _prev_parent
+            reset_parent_agent(_parent_token)
             return result
 
         # Text path -- result is (final_response, final_messages).
@@ -429,7 +433,7 @@ def _build_agent_node(  # noqa: PLR0915
         _trace_step.end_time = datetime.now(tz=UTC).timestamp()
         _trace_step.duration_ms = int((_trace_step.end_time - _trace_step.start_time) * 1000)
         _trace_step.result_length = len(result_text)
-        _current_parent_agent = _prev_parent
+        reset_parent_agent(_parent_token)
 
         if drift_observer and drift_observer.config.enabled:
             if not drift_observer.anchor_text:

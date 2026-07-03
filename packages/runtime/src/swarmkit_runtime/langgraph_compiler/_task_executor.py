@@ -13,6 +13,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from swarmkit_runtime.langgraph_compiler._helpers import _progress
+from swarmkit_runtime.langgraph_compiler._run_context import run_state_dir
 from swarmkit_runtime.langgraph_compiler._task_plan import Task, TaskPlan
 from swarmkit_runtime.model_providers._registry import (
     ModelProviderProtocol,
@@ -272,10 +273,12 @@ async def _execute_child_task(
         provider_registry,
     )
 
-    import swarmkit_runtime.langgraph_compiler._compiler as _comp  # noqa: PLC0415
+    from swarmkit_runtime.langgraph_compiler._run_context import (  # noqa: PLC0415
+        reset_parent_agent,
+        set_parent_agent,
+    )
 
-    _prev_parent = _comp._current_parent_agent
-    _comp._current_parent_agent = parent_id
+    _parent_token = set_parent_agent(parent_id)
 
     child_state: SwarmState = {
         "input": task.instruction,
@@ -293,7 +296,7 @@ async def _execute_child_task(
     }
 
     result_state = await child_fn(child_state)
-    _comp._current_parent_agent = _prev_parent
+    reset_parent_agent(_parent_token)
     output = str(result_state.get("output", "(no response)"))
 
     from swarmkit_runtime.langgraph_compiler._prompts import (  # noqa: PLC0415
@@ -554,8 +557,7 @@ def _save_result(
     """Save task result to disk. Returns the file path."""
     if not workspace_root:
         return None
-    run_state = workspace_root / ".swarmkit" / "run-state" / "current"
-    run_state.mkdir(parents=True, exist_ok=True)
+    run_state = run_state_dir(workspace_root)
     path = run_state / f"{task_id}.md"
     path.write_text(result, encoding="utf-8")
     return str(path)
@@ -569,7 +571,7 @@ def _persist_plan(
     """Write tasks.json to disk."""
     if not workspace_root:
         return
-    run_state = workspace_root / ".swarmkit" / "run-state" / "current"
+    run_state = run_state_dir(workspace_root)
     plan.save(run_state)
 
 
@@ -643,7 +645,7 @@ async def _maybe_synthesize(
     if not isinstance(synthesis_config, SynthesisConfig) or not synthesis_config.model:
         return None
 
-    scope_path = Path(".swarmkit/run-state/current/scope.json")
+    scope_path = run_state_dir() / "scope.json"
     if not scope_path.exists():
         return None
 
