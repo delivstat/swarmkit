@@ -1257,10 +1257,20 @@ def create_app(  # noqa: PLR0915
     *,
     cors_origins: list[str] | None = None,
     auth_provider: AuthProvider | None = None,
+    host: str = "127.0.0.1",
+    insecure: bool = False,
 ) -> FastAPI:
     """Build the FastAPI app for a given workspace."""
 
     _auth = auth_provider or NoneAuthProvider()
+    # Default-secure lives here (not just in the CLI) so every embedder inherits it: an
+    # unauthenticated serve on a non-loopback bind refuses to start unless opted in.
+    _loopback = {"127.0.0.1", "::1", "localhost", ""}
+    if isinstance(_auth, NoneAuthProvider) and not insecure and host not in _loopback:
+        raise RuntimeError(
+            f"refusing to serve with auth provider 'none' on a non-loopback bind ({host!r}). "
+            "Configure server.auth (api_key/jwt), bind 127.0.0.1, or pass insecure=True."
+        )
     job_store = JobStore()
 
     @asynccontextmanager
@@ -1320,14 +1330,17 @@ def create_app(  # noqa: PLR0915
         lifespan=lifespan,
     )
 
-    # Middleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins or ["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # CORS is added only when origins are explicitly configured — no wildcard default, and
+    # never "*" with credentials (which the browser rejects and which opens the API to any
+    # site). Without configured origins the API is same-origin only.
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
