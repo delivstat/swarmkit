@@ -13,11 +13,16 @@ from google import genai
 from google.genai import types as gtypes
 
 from ._types import (
+    NON_NATIVE_OPTIONS,
     CompletionRequest,
     CompletionResponse,
     ContentBlock,
     Usage,
+    apply_options,
 )
+
+# GenerateContentConfig accepts top_k/top_p/seed (unlike the OpenAI chat API); keep top_k.
+_DROP = NON_NATIVE_OPTIONS - frozenset({"top_k"})
 
 _GEMINI_PREFIXES = ("gemini-",)
 
@@ -175,10 +180,11 @@ def _to_google_config(
         # the thinking phase may time out or generate incomplete tool
         # call blocks. Disable thinking when tools are present.
         kwargs["thinking_config"] = gtypes.ThinkingConfig(thinking_budget=0)
-    # Per-model options (top_p, top_k, seed, ...) become GenerateContentConfig
-    # fields, overriding the first-class settings above on conflict.
-    if request.options:
-        kwargs.update(request.options)
+    # Per-model options become GenerateContentConfig fields (overriding the first-class
+    # settings above), minus Ollama-only knobs GenerateContentConfig's validation rejects
+    # (num_ctx, keep_alive, mirostat, …). ``extra`` is not folded here — for Google it
+    # carries tool_choice semantics, handled above.
+    apply_options(kwargs, request.options, None, drop=_DROP)
     return gtypes.GenerateContentConfig(**kwargs)
 
 

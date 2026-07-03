@@ -174,6 +174,61 @@ _MEDIA_TYPES: dict[str, str] = {
 }
 
 
+# Per-model ``options`` are vendor-shaped. These keys are Ollama-specific runtime knobs
+# (context window, GPU placement, keep-alive, sampler extras) that non-Ollama SDKs reject
+# as unknown kwargs — fatal when a topology authored for Ollama is repointed at an
+# OpenAI-compatible provider, Anthropic, or Google. Every non-Ollama adapter drops them
+# via ``apply_options``; Ollama folds them natively. Genuine cross-vendor params (top_p,
+# frequency_penalty, presence_penalty, seed, stop, …) pass through untouched.
+NON_NATIVE_OPTIONS = frozenset(
+    {
+        "num_ctx",
+        "num_gpu",
+        "num_predict",
+        "num_thread",
+        "num_keep",
+        "num_batch",
+        "main_gpu",
+        "low_vram",
+        "numa",
+        "f16_kv",
+        "use_mmap",
+        "use_mlock",
+        "vocab_only",
+        "keep_alive",
+        "think",
+        "top_k",
+        "min_p",
+        "tfs_z",
+        "typical_p",
+        "repeat_penalty",
+        "repeat_last_n",
+        "penalize_newline",
+        "mirostat",
+        "mirostat_eta",
+        "mirostat_tau",
+    }
+)
+
+
+def apply_options(
+    kwargs: dict[str, Any],
+    options: dict[str, Any] | None,
+    extra: dict[str, Any] | None = None,
+    *,
+    drop: frozenset[str] = NON_NATIVE_OPTIONS,
+) -> dict[str, Any]:
+    """Fold per-model ``options`` (minus vendor-incompatible ``drop`` keys) and then the
+    runtime ``extra`` (never filtered — it is authoritative passthrough) into ``kwargs``.
+    Mutates and returns ``kwargs``. Used by every non-Ollama adapter so the drop-set lives
+    in exactly one place."""
+    if options:
+        kwargs.update({k: v for k, v in options.items() if k not in drop})
+    if extra:
+        kwargs.update(extra)
+    return kwargs
+
+
 def image_block(path: str) -> ContentBlock:
     """Create an image ContentBlock from a file path.
 
