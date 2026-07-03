@@ -10,6 +10,8 @@ import contextlib
 import json
 import os
 import sys
+from collections.abc import Callable, Iterator
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -34,14 +36,31 @@ class ToolCallResult:
     image_blocks: list[ContentBlock] = field(default_factory=list)
 
 
-_progress_listeners: list[Any] = []
+# Progress listeners are scoped to the current async context, NOT process-global — so
+# concurrent `serve` conversations don't cross-emit each other's progress. A request task
+# registers its listener via `progress_listener(...)`; `asyncio.create_task` copies the
+# context, so the run inside sees only that conversation's listener.
+_progress_listeners_var: ContextVar[tuple[Callable[[str], None], ...]] = ContextVar(
+    "_progress_listeners", default=()
+)
+
+
+@contextlib.contextmanager
+def progress_listener(callback: Callable[[str], None]) -> Iterator[None]:
+    """Register a progress listener for the current context (and tasks it spawns), then
+    remove it on exit. Isolated per async context — see `_progress_listeners_var`."""
+    token = _progress_listeners_var.set((*_progress_listeners_var.get(), callback))
+    try:
+        yield
+    finally:
+        _progress_listeners_var.reset(token)
 
 
 def _progress(msg: str) -> None:
     """Print user-facing progress. Always shown unless SWARMKIT_QUIET is set."""
     if not os.environ.get("SWARMKIT_QUIET"):
         print(msg, file=sys.stderr)
-    for listener in _progress_listeners:
+    for listener in _progress_listeners_var.get():
         with contextlib.suppress(Exception):
             listener(msg)
 

@@ -725,7 +725,7 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
 
         async def stream_response() -> AsyncGenerator[str]:
             from swarmkit_runtime.langgraph_compiler._helpers import (  # noqa: PLC0415
-                _progress_listeners,
+                progress_listener,
             )
 
             progress_lines: list[str] = []
@@ -735,20 +735,18 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
                 if text:
                     progress_lines.append(text)
 
-            _progress_listeners.append(on_progress)
-            send_task = asyncio.create_task(manager.send(conv, body.message))
-
             sent = 0
-            try:
+            # Register the listener in *this* request's context, then spawn the run — the
+            # task inherits the context, so progress stays scoped to this conversation and
+            # never bleeds into another concurrent stream.
+            with progress_listener(on_progress):
+                send_task = asyncio.create_task(manager.send(conv, body.message))
                 while not send_task.done():
                     await asyncio.sleep(0.3)
                     new_lines = progress_lines[sent:]
                     for line in new_lines:
                         yield f"data: {json.dumps({'type': 'progress', 'text': line})}\n\n"
                         sent += 1
-            finally:
-                if on_progress in _progress_listeners:
-                    _progress_listeners.remove(on_progress)
 
             for line in progress_lines[sent:]:
                 yield f"data: {json.dumps({'type': 'progress', 'text': line})}\n\n"
