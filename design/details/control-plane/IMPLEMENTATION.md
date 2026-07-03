@@ -16,7 +16,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (PR #) · `[-]` deferred/b
 | 4 | Aggregation | ✅ #369 | ✅ #385–#388, #396 |
 | 5 | Artifact registry + versioning | ✅ #369 | ✅ #389–#391, #394–#395 |
 | 6 | Fleet UI | ✅ #369 | ✅ #375–#401 (full page set) |
-| 7 | Growth loop | ✅ #369 | **manual path done** (#392/#393/#401); automation pending |
+| 7 | Growth loop | ✅ #369 | ✅ #392/#393/#401 (manual) + #404 (automation) |
 | 8 | Hardening + rollout | ✅ #369/#370 | **slice 1** (packaging + WAL, #405); ops/GA pending |
 
 ## Phase 3 — Auth implementation (doc [12](12-auth.md) §9)
@@ -189,7 +189,12 @@ Hardening the existing `auth/` seam. Slices:
       backup/restore, the serve default-secure breaking change, security checklist, OSS↔fleet boundary)
 - [x] sqlite hardening — all four stores run in **WAL** mode + `busy_timeout` so connector pushes
       and operator reads don't block under fleet concurrency
-- [ ] ops/GA (not code): security-review sign-off, enroll the 3 live instances, prebuilt UI image,
+
+### Slice 2 — prebuilt UI image (PR #406)
+- [x] `deploy/control-plane/Dockerfile.ui` — Next.js **standalone** image for the fleet UI
+      (multi-stage pnpm build; builds + serves, verified); added to the compose bundle on `:3000`
+      with same-origin default (or a bakeable `NEXT_PUBLIC_CONTROL_PLANE_API` build arg)
+- [ ] ops/GA (not code): security-review sign-off, enroll the 3 live instances,
       git/Postgres central-store swap, HA/replication, multi-tenant — tracked, post-slice
 
 ## Changelog
@@ -255,3 +260,4 @@ Hardening the existing `auth/` seam. Slices:
 - **#403** — Phase 6 fleet UI global instance selector: a fleet-wide `InstanceProvider` context + sidebar switcher (selection persisted to localStorage); the Authoring page consumes the shared selection instead of its own picker. Demo: `packages/control-plane/demos/seeded_fleet.py`. UI-only.
 - **#404** — Phase 7 growth-loop automation: `gap` aggregation kind + `GET /gaps` (ranked cross-instance skill gaps: signal → surface) and `POST /gaps/propose` (operator-only, Mode A) which drafts a fix via the authoring swarm, runs an eval topology on it (`_connector.run_eval`, never blocks), and lands a **pending** proposal (signal → propose → test; human gate intact). Fleet-UI "Skill gaps" panel on Approvals with a "Draft a fix" action. Demo: `packages/control-plane/demos/growth_loop.py`. swarmkit-control-plane 0.16.0.
 - **#405** — Phase 8 slice 1 (hardening + rollout): rollout bundle `deploy/control-plane/` (panel Dockerfile — builds + serves, verified — + docker-compose + operator runbook README) and sqlite **WAL** + `busy_timeout` hardening across all four stores. Remaining Phase 8 (security-review sign-off, live-instance enrollment, prebuilt UI image, Postgres/git swap, HA, multi-tenant) is ops/post-slice. swarmkit-control-plane 0.17.0.
+- **#406** — Phase 8 slice 2: prebuilt fleet-UI image — `deploy/control-plane/Dockerfile.ui` (Next.js standalone, multi-stage pnpm build; builds + serves, verified) added to the compose bundle on `:3000` (same-origin default or a bakeable `NEXT_PUBLIC_CONTROL_PLANE_API` build arg); `next.config` sets `output: "standalone"`. Also fixes the stale Phase 7 status-table cell. UI/deploy only.

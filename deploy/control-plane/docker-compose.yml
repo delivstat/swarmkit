@@ -2,8 +2,8 @@
 #
 #   docker compose -f deploy/control-plane/docker-compose.yml up -d --build
 #
-# Runs the panel API. The fleet UI (packages/control-plane-ui) is a static Next.js
-# frontend — build it pointed at the panel and serve it separately (see README).
+# Runs the panel API + the fleet UI (Next.js). See README for wiring the two behind a
+# single origin (recommended — no CORS, no baked panel URL).
 services:
   panel:
     build:
@@ -32,6 +32,23 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+  ui:
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile.ui
+      # NEXT_PUBLIC_* are inlined at build. Default = same-origin (empty): serve UI + panel
+      # behind one origin (reverse proxy) so the browser needs neither a baked URL nor CORS.
+      # To instead bake a fixed panel URL, uncomment and set:
+      # args:
+      #   NEXT_PUBLIC_CONTROL_PLANE_API: "${SWARMKIT_CP_PANEL_URL}"   # e.g. https://panel.example.com
+    image: swarmkit-control-plane-ui
+    container_name: swarmkit-control-plane-ui
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - panel
 
 volumes:
   control-plane-data:

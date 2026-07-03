@@ -1,0 +1,38 @@
+# SwarmKit fleet UI — Next.js standalone image.
+#
+# Build from the repo root (context must see the pnpm workspace):
+#   docker build -f deploy/control-plane/Dockerfile.ui -t swarmkit-control-plane-ui .
+FROM node:20-slim AS base
+RUN corepack enable
+WORKDIR /repo
+
+# --- deps: install against the workspace lockfile (cached until a manifest changes) ---
+FROM base AS deps
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY packages/control-plane-ui/package.json packages/control-plane-ui/
+COPY packages/ui/package.json packages/ui/
+COPY packages/schema/typescript/package.json packages/schema/typescript/
+RUN pnpm install --frozen-lockfile
+
+# --- build: compile the standalone server bundle ---
+FROM deps AS build
+COPY packages/control-plane-ui packages/control-plane-ui
+# NEXT_PUBLIC_* are inlined at build time. Default: same-origin (empty) — serve the UI
+# and panel behind one origin (reverse proxy: / → UI, /api-ish → panel). To bake a fixed
+# panel URL instead, pass --build-arg NEXT_PUBLIC_CONTROL_PLANE_API=https://panel.example.
+ARG NEXT_PUBLIC_CONTROL_PLANE_API=""
+ENV NEXT_PUBLIC_CONTROL_PLANE_API=${NEXT_PUBLIC_CONTROL_PLANE_API}
+RUN pnpm --filter @swarmkit/control-plane-ui build
+
+# --- runtime: minimal image running the standalone server ---
+FROM base AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+# The standalone bundle lays the app out under packages/control-plane-ui/ with a root
+# node_modules (traced deps); static assets are copied alongside.
+COPY --from=build /repo/packages/control-plane-ui/.next/standalone ./
+COPY --from=build /repo/packages/control-plane-ui/.next/static ./packages/control-plane-ui/.next/static
+EXPOSE 3000
+CMD ["node", "packages/control-plane-ui/server.js"]

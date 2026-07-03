@@ -27,18 +27,23 @@ Uncomment `command:` in the compose file:
 
 Put the panel behind TLS (reverse proxy). Tokens are secrets — inject via env, never commit.
 
-## Build + serve the fleet UI
+## The fleet UI
 
-The UI (`packages/control-plane-ui`) talks to the panel via `NEXT_PUBLIC_CONTROL_PLANE_API`:
+The compose bundle builds and runs the UI (`swarmkit-control-plane-ui`, a Next.js
+standalone image) alongside the panel — up on `:3000`.
 
-```bash
-cd packages/control-plane-ui
-NEXT_PUBLIC_CONTROL_PLANE_API=https://panel.example.com pnpm install && pnpm build && pnpm start
-# OIDC login (optional): also set NEXT_PUBLIC_OIDC_AUTHORITY / _CLIENT_ID
-```
+The UI reaches the panel via `NEXT_PUBLIC_CONTROL_PLANE_API`, which Next **inlines at
+build time**. Two ways to wire it:
 
-Serve the build behind the same TLS origin you listed in `--cors-origin`. (A prebuilt UI
-container image is a follow-up — see "Deferred" below.)
+- **Same origin (recommended).** Leave it empty (the default) and put a reverse proxy in
+  front so `/` serves the UI and the panel's routes are reachable at the same origin. No
+  CORS, no baked URL, and OIDC redirect URIs stay stable.
+- **Baked URL.** Set the `NEXT_PUBLIC_CONTROL_PLANE_API` build arg (compose
+  `ui.build.args`) to the panel's public URL. Then set the panel's `--cors-origin` to the
+  UI's origin, since the browser now makes cross-origin calls.
+
+OIDC login (optional): also set `NEXT_PUBLIC_OIDC_AUTHORITY` / `NEXT_PUBLIC_OIDC_CLIENT_ID`
+at build. Serve both behind TLS.
 
 ## Runbook
 
@@ -79,6 +84,6 @@ at a single box expecting the serve dashboard's per-run UX.
 
 ## Deferred (later Phase 8)
 
-Not in this bundle: a prebuilt UI container image; the git/Postgres central-store swap
-(sqlite is the current store); HA/replication of the panel; multi-tenant (`org`/`team`)
-hardening. Tracked in `design/details/control-plane/IMPLEMENTATION.md`.
+Not in this bundle: the git/Postgres central-store swap (sqlite is the current store);
+HA/replication of the panel; multi-tenant (`org`/`team`) hardening. Tracked in
+`design/details/control-plane/IMPLEMENTATION.md`.
