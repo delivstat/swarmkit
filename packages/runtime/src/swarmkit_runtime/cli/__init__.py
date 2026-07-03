@@ -2146,6 +2146,14 @@ def serve(
         bool,
         typer.Option("--insecure", help="Allow a non-loopback bind with no auth (unsafe)."),
     ] = False,
+    cors_origin: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--cors-origin",
+            help="Exact browser origin allowed to call the API (repeatable). Off by default "
+            "(same-origin only); never combined with a wildcard.",
+        ),
+    ] = None,
 ) -> None:
     """Start the SwarmKit HTTP server (design §14.1).
 
@@ -2159,28 +2167,29 @@ def serve(
     _suppress_noisy_logs()
     import uvicorn  # noqa: PLC0415
 
-    from swarmkit_runtime.auth import NoneAuthProvider  # noqa: PLC0415
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
     auth_provider = _build_auth_provider(workspace_path.resolve())
 
-    # Default-secure: refuse an open non-loopback bind unless explicitly allowed.
-    _loopback = {"127.0.0.1", "::1", "localhost"}
-    if (
-        host not in _loopback
-        and isinstance(auth_provider, NoneAuthProvider)
-        and not insecure
-        and _auth_requires_secure(workspace_path.resolve())
-    ):
+    # Default-secure now lives in create_app (so embedders inherit it). The CLI honours
+    # server.auth.require_on_nonloopback by folding it into the effective ``insecure`` flag,
+    # and maps the factory's refusal to a friendly message + exit code.
+    effective_insecure = insecure or not _auth_requires_secure(workspace_path.resolve())
+    try:
+        app_instance = create_app(
+            workspace_path.resolve(),
+            auth_provider=auth_provider,
+            cors_origins=cors_origin or None,
+            host=host,
+            insecure=effective_insecure,
+        )
+    except RuntimeError as exc:
         typer.echo(
-            f"refusing to bind {host}:{port} with auth provider 'none' (open access).\n"
-            "Configure server.auth (api_key/jwt), bind to 127.0.0.1, pass --insecure, or set "
-            "server.auth.require_on_nonloopback: false.",
+            f"{exc}\n(Configure server.auth, bind 127.0.0.1, pass --insecure, or set "
+            "server.auth.require_on_nonloopback: false.)",
             err=True,
         )
-        raise typer.Exit(code=2)
-
-    app_instance = create_app(workspace_path.resolve(), auth_provider=auth_provider)
+        raise typer.Exit(code=2) from exc
     uvicorn.run(app_instance, host=host, port=port)
 
 
