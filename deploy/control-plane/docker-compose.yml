@@ -18,8 +18,13 @@ services:
     volumes:
       # Central stores survive restarts/upgrades. Back this volume up (see README).
       - control-plane-data:/data
-    # PRODUCTION: the panel runs OPEN (no auth) unless you configure a principal.
-    # Uncomment and set these — args here append to the image ENTRYPOINT.
+    # The panel binds 0.0.0.0 in the container and now REFUSES to start unauthenticated on a
+    # non-loopback bind. This default trial command makes that choice explicit and insecure.
+    # PRODUCTION: replace it with the auth block below (auth passing the guard by itself).
+    command:
+      - "--insecure-no-auth"   # ⚠️ trial only — anyone who can reach :8800 has full control
+    # PRODUCTION: comment out --insecure-no-auth above and uncomment/set these instead —
+    # args append to the image ENTRYPOINT.
     # command:
     #   - "--operator-token=${SWARMKIT_CP_OPERATOR_TOKEN}"
     #   - "--cors-origin=${SWARMKIT_CP_UI_ORIGIN}"          # e.g. https://fleet.example.com
