@@ -529,6 +529,61 @@ def test_openai_extra_is_never_filtered() -> None:
     assert _to_openai_kwargs(req)["num_ctx"] == 4096
 
 
+def test_openai_tool_call_args_are_json_not_str() -> None:
+    # Outbound: a replayed assistant tool call must serialize arguments as JSON, not
+    # str() (which emits single-quoted, invalid JSON that breaks the OpenAI tool loop).
+    import json as _json  # noqa: PLC0415
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from swarmkit_runtime.model_providers._openai import (  # noqa: PLC0415
+        _from_openai_response,
+        _parse_tool_args,
+    )
+
+    req = CompletionRequest(
+        model="gpt-4o",
+        messages=(
+            Message(
+                role="assistant",
+                content=(
+                    ContentBlock(
+                        type="tool_use",
+                        tool_use_id="call_1",
+                        tool_name="search",
+                        tool_input={"q": "hi", "n": 3},
+                    ),
+                ),
+            ),
+        ),
+    )
+    msgs = _build_openai_messages(req)
+    args = msgs[0]["tool_calls"][0]["function"]["arguments"]
+    assert _json.loads(args) == {"q": "hi", "n": 3}  # valid JSON round-trips
+
+    # Inbound: the SDK returns arguments as a JSON *string*; tool_input must be a dict.
+    assert _parse_tool_args('{"a": 1}') == {"a": 1}
+    assert _parse_tool_args("not json") == {}  # malformed → empty dict, not a crash
+    raw = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=None,
+                    tool_calls=[
+                        SimpleNamespace(
+                            id="call_2",
+                            function=SimpleNamespace(name="search", arguments='{"q": "x"}'),
+                        )
+                    ],
+                ),
+                finish_reason="tool_calls",
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+    )
+    resp = _from_openai_response(raw)
+    assert resp.content[0].tool_input == {"q": "x"}  # parsed to dict, not left a string
+
+
 def test_apply_options_drops_non_native_but_keeps_extra() -> None:
     # The single source of truth every non-Ollama adapter uses. Ollama-only knobs are
     # dropped from options; genuine cross-vendor params survive; extra is never filtered.

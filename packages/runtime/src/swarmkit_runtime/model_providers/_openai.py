@@ -6,6 +6,7 @@ this file imports ``openai``.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -20,6 +21,30 @@ from ._types import (
 )
 
 _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-", "o4-")
+
+
+def _dump_tool_args(value: Any) -> str:
+    """OpenAI expects ``function.arguments`` as a JSON **string**. A dict must be
+    ``json.dumps``-ed (not ``str()``-ed, which emits invalid single-quoted JSON and
+    corrupts a replayed tool call); a value already a string is passed through."""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value or {})
+
+
+def _parse_tool_args(raw: Any) -> dict[str, Any]:
+    """The OpenAI SDK returns ``function.arguments`` as a JSON string, but
+    ``ContentBlock.tool_input`` is typed ``dict``. Parse it here so downstream code
+    doesn't have to string-guard; empty dict on malformed/non-object JSON."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 class OpenAIModelProvider:
@@ -102,7 +127,7 @@ def _build_openai_messages(request: CompletionRequest) -> list[dict[str, Any]]: 
                             "type": "function",
                             "function": {
                                 "name": block.tool_name or "",
-                                "arguments": str(block.tool_input or {}),
+                                "arguments": _dump_tool_args(block.tool_input),
                             },
                         }
                     )
@@ -111,7 +136,13 @@ def _build_openai_messages(request: CompletionRequest) -> list[dict[str, Any]]: 
                         {
                             "role": "tool",
                             "tool_call_id": block.tool_use_id or "",
-                            "content": str(block.tool_result) if block.tool_result else "",
+                            "content": (
+                                block.tool_result
+                                if isinstance(block.tool_result, str)
+                                else json.dumps(block.tool_result)
+                                if block.tool_result
+                                else ""
+                            ),
                         }
                     )
                 elif block.type == "image" and block.image_data:
@@ -144,7 +175,7 @@ def _from_openai_response(raw: Any) -> CompletionResponse:
                     type="tool_use",
                     tool_use_id=tc.id,
                     tool_name=tc.function.name,
-                    tool_input=tc.function.arguments,
+                    tool_input=_parse_tool_args(tc.function.arguments),
                 )
             )
 
