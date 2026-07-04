@@ -88,11 +88,13 @@ class SkillBackedGovernanceProvider(GovernanceProvider):
     ) -> DecisionSkillResult:
         skill = self._skills.get(skill_id)
         if skill is None:
+            # Fail closed: a binding that references a missing skill is a misconfigured gate;
+            # blocking (not silently approving) surfaces the error instead of hiding it.
             return DecisionSkillResult(
                 skill_id=skill_id,
-                verdict="pass",
+                verdict="fail",
                 confidence=0.0,
-                reasoning=f"Decision skill '{skill_id}' not found in workspace.",
+                reasoning=f"Decision skill '{skill_id}' not found in workspace (blocking).",
             )
 
         from swarmkit_runtime.governance._decision_evaluator import (  # noqa: PLC0415

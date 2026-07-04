@@ -55,10 +55,11 @@ class TestParseResult:
         assert result.verdict == "fail"
         assert len(result.flagged_items) == 1
 
-    def test_invalid_json_returns_pass(self) -> None:
+    def test_invalid_json_fails_closed(self) -> None:
+        # A gate that can't parse its own skill's output must block, not silently approve.
         raw = "This is not JSON at all"
         result = _parse_result("test-skill", raw)
-        assert result.verdict == "pass"
+        assert result.verdict == "fail"
         assert result.confidence == 0.0
         assert "Failed to parse" in result.reasoning
 
@@ -86,7 +87,8 @@ class TestSkillBackedGovernanceProvider:
         assert decision.allowed is True
 
     @pytest.mark.asyncio
-    async def test_missing_skill_returns_pass(self) -> None:
+    async def test_missing_skill_fails_closed(self) -> None:
+        # A binding referencing a missing skill is a misconfigured gate — block, don't approve.
         base = MockGovernanceProvider(allow_all=True)
         provider = SkillBackedGovernanceProvider(
             base=base,
@@ -100,5 +102,5 @@ class TestSkillBackedGovernanceProvider:
             agent_id="test-agent",
             content="some output",
         )
-        assert result.verdict == "pass"
+        assert result.verdict == "fail"
         assert "not found" in result.reasoning

@@ -133,9 +133,11 @@ def _parse_result(skill_id: str, raw: str) -> DecisionSkillResult:  # noqa: PLR0
             flagged_items=flagged,
         )
     except (json.JSONDecodeError, ValueError, KeyError):
+        # Fail closed: a governance gate that can't parse its own skill's output must not
+        # silently approve. Return "fail" (which the gate blocks on) + confidence 0.0.
         return DecisionSkillResult(
             skill_id=skill_id,
-            verdict="pass",
+            verdict="fail",
             confidence=0.0,
-            reasoning=f"Failed to parse decision skill output: {raw[:200]}",
+            reasoning=f"Failed to parse decision skill output (blocking): {raw[:200]}",
         )

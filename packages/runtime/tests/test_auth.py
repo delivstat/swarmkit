@@ -119,12 +119,11 @@ async def test_api_key_scopes() -> None:
 
 
 @pytest.mark.asyncio()
-async def test_api_key_wildcard_scope() -> None:
-    provider = _api_key_provider(scopes=["*"])
-    identity = await provider.authenticate(
-        _make_request(headers={"authorization": "Bearer test-secret-key"})
-    )
-    assert await provider.authorize(identity, "anything", "at_all") is True
+async def test_api_key_wildcard_scope_rejected() -> None:
+    # A transport token must not carry "*" — the authorize fast-path treats it as god-mode,
+    # bypassing the tier model + reserved-scope guard. Configuring it is a hard error.
+    with pytest.raises(ValueError, match="reserved governance scope"):
+        _api_key_provider(scopes=["*"])
 
 
 @pytest.mark.asyncio()
@@ -136,7 +135,7 @@ async def test_api_key_env_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
                 "key_ref": "env:TEST_SWARMKIT_KEY",
                 "client_id": "env-client",
                 "client_name": "Env Client",
-                "scopes": ["*"],
+                "scopes": ["serve:run"],
             }
         ]
     )
