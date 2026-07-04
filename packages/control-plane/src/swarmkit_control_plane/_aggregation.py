@@ -14,10 +14,9 @@ migration.
 from __future__ import annotations
 
 import json
-import sqlite3
-import threading
-from pathlib import Path
 from typing import Any
+
+from swarmkit_control_plane._sqlite_base import SqliteStore
 
 KINDS = ("audit", "eval", "usage", "gap")
 
@@ -34,24 +33,10 @@ CREATE INDEX IF NOT EXISTS idx_agg_kind_ts ON agg_records (kind, ts);
 """
 
 
-class AggregationStore:
+class AggregationStore(SqliteStore):
     """Thread-safe sqlite store for pushed audit/eval/usage records."""
 
-    def __init__(self, db_path: Path) -> None:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db_path = db_path
-        self._lock = threading.Lock()
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        # WAL lets connector pushes and operator reads proceed concurrently without
-        # blocking; busy_timeout retries under contention instead of raising "locked".
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=10000")
-        return conn
+    _SCHEMA = _SCHEMA
 
     def ingest(self, instance_id: str, kind: str, records: list[dict[str, Any]]) -> dict[str, int]:
         """Append records for an instance. Returns counts of ingested vs deduped (and skipped).

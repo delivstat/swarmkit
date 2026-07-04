@@ -11,32 +11,32 @@ Legend: `[ ]` todo · `[x]` done (PR #).
 
 ## P0 — correctness & security (small, high-value)
 
-- [ ] **PR-A — `apply_options` + complete the `num_ctx` fix.** Lift `_OLLAMA_ONLY_OPTIONS`
+- [x] **PR-A (#410) — `apply_options` + complete the `num_ctx` fix.** Lift `_OLLAMA_ONLY_OPTIONS`
   into `model_providers/_types.py`; add `apply_options(kwargs, options, extra, *, drop)`;
   apply the drop-set in the Anthropic and Google adapters (OpenAI already does). Tests: the
   drop-set is applied by every non-Ollama adapter; genuine params survive.
-- [ ] **PR-B — OpenAI tool-call JSON.** `_from_openai_response` parses `tool_input` to a dict
+- [x] **PR-B (#411) — OpenAI tool-call JSON.** `_from_openai_response` parses `tool_input` to a dict
   (`json.loads`, guarded); outbound tool-call args + tool-result use `json.dumps`, not
   `str()`. Tests: round-trip a tool call through the adapter.
-- [ ] **PR-C — per-run SSE progress listener.** Replace the process-global
+- [x] **PR-C (#412) — per-run SSE progress listener.** Replace the process-global
   `_progress_listeners` with a per-run listener threaded through the runtime/`ContextVar`.
   Test: two concurrent conversations don't cross-emit.
-- [ ] **PR-D — `RunContext` (run-state corruption, CRITICAL).** Namespace run-state by
+- [x] **PR-D (#413) — `RunContext` (run-state corruption, CRITICAL).** Namespace run-state by
   `run_id`/`thread_id` (drop the literal `current/`); replace the module-global parent
   pointer with a `ContextVar` stack; thread `workspace_root`+`run_id` into
   `_scope_path`/`_find_tasks_json`/`_check_scope_exists`/synthesis. Test: two concurrent
   runs keep separate scope/plan.
-- [ ] **PR-E — default-secure app factories.** Panel `create_app` refuses open off-loopback
+- [x] **PR-E (#414/#415) — default-secure app factories.** Panel `create_app` refuses open off-loopback
   unless `--insecure-no-auth`; move the runtime serve loopback/auth guard into `create_app`;
   `serve` CORS defaults to none/loopback (never `*`+credentials) with a `--cors-origin` flag.
   Tests: open-off-loopback refused; CORS default is not wildcard-with-credentials.
-- [ ] **PR-F — fail-closed governance.** Required decision-skill / missing-skill → `fail`
+- [x] **PR-F (#416) — fail-closed governance.** Required decision-skill / missing-skill → `fail`
   (not `pass`); `provider: custom` is a hard error not a silent allow-all; reject `"*"` in
   transport-token `reserved_violations`. Tests: each fail-closed path.
 
 ## P1 — structural extractions (retire the substrate duplication)
 
-- [ ] **PR-G — `_SqliteStore` base + async offload.** Shared base (connection/WAL/
+- [~] **PR-G (control-plane store base done; runtime stores pending) — `_SqliteStore` base + async offload.** Shared base (connection/WAL/
   row-mapping/migration-registry) behind a dialect seam; move blocking sqlite off the event
   loop (`asyncio.to_thread` or `def` handlers). Apply to the 9 stores across both packages
   (may split into G1 runtime / G2 control-plane). Tests: WAL+migration on every store; a
