@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from swarmkit_runtime._workspace_runtime import build_governance
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.resolver import resolve_workspace
@@ -70,8 +71,9 @@ def test_mock_governance_explicit_returns_mock(tmp_path: Path) -> None:
     assert isinstance(gov, MockGovernanceProvider)
 
 
-def test_custom_governance_falls_back_to_mock(tmp_path: Path) -> None:
-    """``governance.provider: custom`` is not yet implemented → Mock with warning."""
+def test_custom_governance_is_a_hard_error(tmp_path: Path) -> None:
+    """``governance.provider: custom`` is unsupported — fail closed, don't silently
+    downgrade an explicitly-requested provider to allow-all."""
     ws_root = tmp_path / "ws"
     ws_root.mkdir()
     (ws_root / "workspace.yaml").write_text(
@@ -85,5 +87,5 @@ def test_custom_governance_falls_back_to_mock(tmp_path: Path) -> None:
     )
 
     workspace = resolve_workspace(ws_root)
-    gov = build_governance(workspace, ws_root)
-    assert isinstance(gov, MockGovernanceProvider)
+    with pytest.raises(ValueError, match="custom is not yet supported"):
+        build_governance(workspace, ws_root)

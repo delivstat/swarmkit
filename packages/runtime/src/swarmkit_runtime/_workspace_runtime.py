@@ -12,7 +12,6 @@ architectural decision in ``memory/feedback_cli_architecture.md``.
 from __future__ import annotations
 
 import os
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -836,10 +835,13 @@ def build_governance(workspace: ResolvedWorkspace, ws_root: Path) -> GovernanceP
         )
 
     if provider_value == "custom":
-        print(
-            "warning: governance.provider=custom is not yet supported; "
-            "falling back to mock. See design §8.5 for the plugin path.",
-            file=sys.stderr,
+        # Fail closed: silently downgrading an explicitly-requested governance provider to
+        # allow-all defeats the point of asking for it. A workspace that sets provider=custom
+        # wants real governance — surface the gap instead of running ungoverned.
+        raise ValueError(
+            "governance.provider=custom is not yet supported (no plugin path wired). "
+            "Use provider: agt (or omit governance for the mock allow-all default). "
+            "See design §8.5."
         )
 
     return MockGovernanceProvider(allow_all=True)

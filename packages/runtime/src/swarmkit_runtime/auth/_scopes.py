@@ -39,7 +39,11 @@ def expand_tier(tier: str) -> frozenset[str]:
 
 
 def reserved_violations(scopes: frozenset[str]) -> frozenset[str]:
-    """Return any reserved governance scopes present in *scopes* (incl. the audit:* family)."""
+    """Return any reserved governance scopes present in *scopes* (incl. the audit:* family and
+    the wildcard). A transport (api_key/JWT) token must never carry ``*`` — the authorize
+    fast-path treats it as god-mode, bypassing the tier model + reserved-scope guard. Only the
+    built-in NoneAuthProvider (which never flows through here) may hold ``*``."""
     bad = set(scopes) & RESERVED_SCOPES
     bad |= {s for s in scopes if s.startswith("audit:")}
+    bad |= {s for s in scopes if s == "*"}
     return frozenset(bad)
