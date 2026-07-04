@@ -5,7 +5,15 @@ Execution checklist for remediating every finding in
 sequence of focused, independently-tested PRs. Each PR is branched off fresh `main` and
 merged before the next (to avoid stacked-squash conflicts). Check items off as they land.
 
-Legend: `[ ]` todo · `[x]` done (PR #).
+Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
+> **Status (end of session): all P0 merged (#410–#416); P1-G control-plane store base (#417);
+> P2-J/N/O provider + robustness + single-origin bundle (#418–#422). Deferred as dedicated
+> follow-ups (large/risky structural refactors, each multi-day): PR-H (cross-package
+> `ServeClient` + verb table — needs a shared package), PR-I (god-module split: cli 2323 /
+> server 1422 / _app 796 → routers + service layer), PR-K (compiler `ScopeStore`/`from_dict`/
+> `AgentStatus` + topology-as-data cleanup), PR-L (UI SWR migration + component kit),
+> PR-M (generated API contract), and the runtime `_SqliteStore` half of PR-G.**
+
 
 ---
 
@@ -66,11 +74,11 @@ Legend: `[ ]` todo · `[x]` done (PR #).
   path; keyboard-accessible rows; back `InstanceProvider` with the shared cache.
 - [ ] **PR-M — generated API contract.** Panel returns pydantic response models; `types.ts` +
   `KNOWN_VERBS` generated from the panel OpenAPI / `packages/schema`; CI drift check.
-- [x] **PR-N (#418, partial: audit-limit + atomic deploy) — control-plane robustness tail.** Atomic approve/deploy (record deployment only
+- [x] **PR-N (#418/#422, partial: audit-limit + atomic deploy + atomic claim; deferred: literal-token-ref reject, background propose_from_gap, audit ts) — control-plane robustness tail.** Atomic approve/deploy (record deployment only
   on push success; single-txn approve); `?limit` bounds + pagination; `claim_queued`
   conditional UPDATE; background-job `propose_from_gap` (202 + poll); reject literal
   `token_ref`; method in `authorize`; server-side audit `ts`.
-- [~] **PR-O (compose same-origin done) — infra/robustness.** Compose same-origin fix (proxy or working default) + a
+- [x] **PR-O (#420/#421: compose same-origin + smoke-tested, connector malformed-command guard, JWKS threadpool; deferred: webhook resolve_secret_ref, AGT M6 fields) — infra/robustness.** Compose same-origin fix (proxy or working default) + a
   compose smoke test; migrations for the 3 stores (covered by PR-G's migration registry);
   JWKS timeout+threadpool; connector malformed-command guard + backoff; webhook secret via
   `resolve_secret_ref`; AGT audit sink forwards M6 fields.
