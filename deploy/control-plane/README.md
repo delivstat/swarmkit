@@ -1,49 +1,40 @@
 # SwarmKit control-plane — deploy + operate
 
 Packaging and the operator runbook for self-hosting the fleet control plane (Phase 8,
-design [18](../../design/details/control-plane/18-hardening-rollout.md)). The panel is a
-self-contained FastAPI service; the fleet UI is a static Next.js frontend built against it.
+design [18](../../design/details/control-plane/18-hardening-rollout.md)). The bundle is a
+Caddy reverse proxy in front of the panel (FastAPI) and the fleet UI (Next.js), all on one
+origin.
 
-## Run the panel
+## Run it
 
 ```bash
 docker compose -f deploy/control-plane/docker-compose.yml up -d --build
-curl localhost:8800/health         # {"status":"ok"}
+curl localhost:8080/api/health     # {"status":"ok"}
+# then open http://localhost:8080  → the fleet UI
 ```
 
-The central stores (registry / aggregation / artifacts / proposals — sqlite in WAL mode)
-persist in the `control-plane-data` volume.
+The proxy (`:8080`) serves the UI at `/` and forwards `/api/*` to the panel (prefix
+stripped) — one origin, so the browser needs no CORS and no baked panel URL. The panel and
+UI are internal (not published to the host). The central stores (registry / aggregation /
+artifacts / proposals — sqlite in WAL mode) persist in the `control-plane-data` volume.
 
-> **The panel runs OPEN (no auth) until you configure a principal.** For anything but a
-> loopback dev box, set operator tokens and/or OIDC (see below) before exposing it.
+> **Trial default is insecure.** The panel runs with `--insecure-no-auth` so the bundle
+> starts out of the box; anyone who can reach `:8080` has full control. Configure a
+> principal before exposing it.
 
 ## Configure auth (production)
 
-Uncomment `command:` in the compose file:
+In the compose `panel.command`, comment out `--insecure-no-auth` and set instead:
 
 - `--operator-token=<secret>` — bearer token with full operator access (repeatable).
 - `--oidc-issuer=<url> --oidc-audience=<aud>` — verify human OIDC JWTs (the UI login path).
-- `--cors-origin=<https://fleet.example.com>` — the exact UI origin (no `*` in production).
 
-Put the panel behind TLS (reverse proxy). Tokens are secrets — inject via env, never commit.
+With auth configured the default-secure guard passes on its own. Put the proxy behind TLS;
+tokens are secrets — inject via env, never commit. (OIDC login also needs
+`NEXT_PUBLIC_OIDC_AUTHORITY` / `NEXT_PUBLIC_OIDC_CLIENT_ID` set as UI build args.)
 
-## The fleet UI
-
-The compose bundle builds and runs the UI (`swarmkit-control-plane-ui`, a Next.js
-standalone image) alongside the panel — up on `:3000`.
-
-The UI reaches the panel via `NEXT_PUBLIC_CONTROL_PLANE_API`, which Next **inlines at
-build time**. Two ways to wire it:
-
-- **Same origin (recommended).** Leave it empty (the default) and put a reverse proxy in
-  front so `/` serves the UI and the panel's routes are reachable at the same origin. No
-  CORS, no baked URL, and OIDC redirect URIs stay stable.
-- **Baked URL.** Set the `NEXT_PUBLIC_CONTROL_PLANE_API` build arg (compose
-  `ui.build.args`) to the panel's public URL. Then set the panel's `--cors-origin` to the
-  UI's origin, since the browser now makes cross-origin calls.
-
-OIDC login (optional): also set `NEXT_PUBLIC_OIDC_AUTHORITY` / `NEXT_PUBLIC_OIDC_CLIENT_ID`
-at build. Serve both behind TLS.
+The UI calls the panel at `/api` (baked build arg), which the proxy strips + forwards — so
+there's no cross-origin call and no host-specific URL in the image.
 
 ## Runbook
 

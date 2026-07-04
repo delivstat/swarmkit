@@ -1,0 +1,12 @@
+# Single-origin front door for the control-plane bundle: serves the fleet UI and proxies
+# the panel API under /api, so the browser needs neither a baked panel URL nor CORS.
+#   /api/*  -> panel:8800  (prefix stripped: /api/instances -> /instances)
+#   /*      -> ui:3000     (the Next.js app)
+:80 {
+	handle_path /api/* {
+		reverse_proxy panel:8800
+	}
+	handle {
+		reverse_proxy ui:3000
+	}
+}
