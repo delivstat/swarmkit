@@ -212,3 +212,49 @@ async def test_poll_once_executes_and_reports_result() -> None:
     assert len(results) == 1
     assert results[0]["path"] == "/instances/i1/commands/c1/result"
     assert '"done"' in results[0]["body"]
+
+
+@pytest.mark.asyncio
+async def test_poll_once_survives_a_malformed_command() -> None:
+    # A command missing verb/cmd_id must not KeyError out of the loop (which killed the
+    # connector until manual restart). A well-formed command in the same batch still runs.
+    results: list[str] = []
+
+    def panel_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/poll"):
+            return httpx.Response(
+                200,
+                json={
+                    "commands": [
+                        {"args": {}},  # malformed: no cmd_id / verb
+                        {"cmd_id": "c2"},  # malformed: no verb — reports error
+                        {"cmd_id": "c3", "verb": "capabilities", "args": {}},  # good
+                    ]
+                },
+            )
+        if request.url.path.endswith("/result"):
+            results.append(request.url.path)
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(404)  # pragma: no cover
+
+    def serve_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True})
+
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(panel_handler)) as panel,
+        _serve_client(serve_handler) as serve,
+    ):
+        handled = await poll_once(
+            panel,
+            serve,
+            panel_url="http://panel",
+            instance_id="i1",
+            granted_tier="read",
+            serve_url="http://127.0.0.1:8000",
+            serve_token=None,
+            status_body={"status": "ok"},
+        )
+    assert handled == 3  # didn't crash
+    # the two with a cmd_id reported a result; the fully-malformed one was skipped
+    assert "/instances/i1/commands/c2/result" in results
+    assert "/instances/i1/commands/c3/result" in results

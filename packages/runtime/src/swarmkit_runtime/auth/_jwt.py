@@ -10,6 +10,7 @@ extra (``pip install 'swarmkit[serve]'``).
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from swarmkit_runtime.auth._provider import (
@@ -64,7 +65,9 @@ class JWTAuthProvider(AuthProvider):
             raise AuthError("Missing or invalid Authorization header", 401)
 
         try:
-            signing_key = self._jwks_client.get_signing_key_from_jwt(token)
+            # PyJWKClient does a *blocking*, network-bound fetch (JWKS discovery / refresh);
+            # offload it so a slow IdP can't stall the whole event loop on every request.
+            signing_key = await asyncio.to_thread(self._jwks_client.get_signing_key_from_jwt, token)
         except pyjwt.PyJWKClientError as exc:
             raise AuthError(f"JWKS key resolution failed: {exc}", 401) from exc
 

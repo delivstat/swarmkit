@@ -122,18 +122,33 @@ async def poll_once(
 
     commands: list[dict[str, Any]] = resp.json().get("commands", [])
     for cmd in commands:
-        status, output, error = await execute_command(
-            serve_client,
-            serve_url=serve_url,
-            serve_token=serve_token,
-            granted_tier=granted_tier,
-            verb=cmd["verb"],
-            args=cmd.get("args", {}),
-        )
+        cmd_id = cmd.get("cmd_id")
+        verb = cmd.get("verb")
+        status: str
+        output: dict[str, Any] | None
+        error: str | None
+        # Never let one bad enqueue kill the poll loop (the "never raises on a bad command"
+        # contract): a malformed or failing command reports an error result and moves on.
+        if not cmd_id or not verb:
+            status, output, error = "error", {}, "malformed command (missing verb/cmd_id)"
+        else:
+            try:
+                status, output, error = await execute_command(
+                    serve_client,
+                    serve_url=serve_url,
+                    serve_token=serve_token,
+                    granted_tier=granted_tier,
+                    verb=verb,
+                    args=cmd.get("args", {}),
+                )
+            except Exception as exc:
+                status, output, error = "error", {}, str(exc)
+        if not cmd_id:
+            continue
         # At-least-once: if the result POST fails, the panel re-dispatches; next poll retries.
         with contextlib.suppress(httpx.HTTPError):
             await panel_client.post(
-                f"{base}/instances/{instance_id}/commands/{cmd['cmd_id']}/result",
+                f"{base}/instances/{instance_id}/commands/{cmd_id}/result",
                 json={"status": status, "output": output, "error": error},
             )
     return len(commands)
