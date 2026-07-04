@@ -122,6 +122,8 @@ def test_deploy_failure_is_502(tmp_path: Path) -> None:
         ).status_code
         == 502
     )
+    # A failed push must NOT leave a phantom "deployed v1" record (drift would misreport it).
+    assert client.get(f"/instances/{iid}/deployments").json() == []
 
 
 def test_deploy_is_operator_only(tmp_path: Path) -> None:

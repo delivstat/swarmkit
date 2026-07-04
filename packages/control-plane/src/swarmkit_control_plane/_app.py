@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -321,8 +321,6 @@ def _mount_deploy(
         if reason is not None:
             raise HTTPException(409, f"schema-incompatible deploy: {reason}")
 
-        # Record the registry-intended version (the deployment), then push.
-        artifacts.set_deployment(instance_id, req.kind, req.artifact_id, req.version)
         content = ver["content"]
 
         if inst.connection == "direct":
@@ -338,6 +336,10 @@ def _mount_deploy(
                 instance_id, "deploy", {"kind": req.kind, "id": req.artifact_id, "body": content}
             )
             outcome = {"mode": "poll", "command_id": cmd.cmd_id}
+
+        # Record the registry-intended version only AFTER the push/enqueue succeeds — a failed
+        # Mode-A push must not leave a phantom "deployed vX" record that drift then reports.
+        artifacts.set_deployment(instance_id, req.kind, req.artifact_id, req.version)
 
         principal = getattr(request.state, "principal", None)
         by = (getattr(principal, "subject", None) or "") if principal else ""
@@ -676,7 +678,9 @@ def _mount_aggregation(app: FastAPI, agg: AggregationStore) -> None:
         return agg.eval_summary()
 
     @app.get("/audit")
-    async def audit(limit: int = 100) -> list[dict[str, Any]]:
+    async def audit(limit: int = Query(100, ge=1, le=1000)) -> list[dict[str, Any]]:
+        # Bounded: sqlite treats a negative LIMIT as unbounded, so an unvalidated ?limit=-1
+        # would dump the entire append-only audit log; a huge positive value is a memory spike.
         return agg.recent_audit(limit)
 
     @app.get("/gaps")
