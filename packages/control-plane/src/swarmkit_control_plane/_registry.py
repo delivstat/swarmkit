@@ -211,22 +211,36 @@ class SqliteRegistry(SqliteStore):
         return cmd
 
     def claim_queued(self, instance_id: str, limit: int = 50) -> list[Command]:
-        """Atomically move this instance's queued commands to 'dispatched' and return them."""
+        """Atomically move this instance's queued commands to 'dispatched' and return them.
+
+        The claim (SELECT-then-UPDATE) must be atomic even across processes (multi-worker
+        uvicorn) or two concurrent polls could claim the same commands → double dispatch. The
+        in-process lock only serializes within one process, so take sqlite's write lock up
+        front with BEGIN IMMEDIATE — a concurrent claim on another connection then waits
+        (busy_timeout) instead of racing."""
         now = datetime.now(UTC).isoformat()
         with self._lock, self._connect() as conn:
-            rows = conn.execute(
-                """SELECT * FROM commands WHERE instance_id = ? AND status = 'queued'
-                   ORDER BY created_at LIMIT ?""",
-                (instance_id, limit),
-            ).fetchall()
-            cmds = [self._row_to_command(r) for r in rows]
-            for cmd in cmds:
-                conn.execute(
-                    "UPDATE commands SET status = 'dispatched', dispatched_at = ? WHERE cmd_id = ?",
-                    (now, cmd.cmd_id),
-                )
-                cmd.status = "dispatched"
-                cmd.dispatched_at = now
+            conn.isolation_level = None  # manage the transaction explicitly
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                rows = conn.execute(
+                    """SELECT * FROM commands WHERE instance_id = ? AND status = 'queued'
+                       ORDER BY created_at LIMIT ?""",
+                    (instance_id, limit),
+                ).fetchall()
+                cmds = [self._row_to_command(r) for r in rows]
+                for cmd in cmds:
+                    conn.execute(
+                        "UPDATE commands SET status = 'dispatched', dispatched_at = ? "
+                        "WHERE cmd_id = ?",
+                        (now, cmd.cmd_id),
+                    )
+                    cmd.status = "dispatched"
+                    cmd.dispatched_at = now
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
         return cmds
 
     def record_result(
