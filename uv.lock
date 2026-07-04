@@ -2820,7 +2820,7 @@ wheels = [
 
 [[package]]
 name = "swarmkit-control-plane"
-version = "0.20.0"
+version = "0.21.0"
 source = { editable = "packages/control-plane" }
 dependencies = [
     { name = "fastapi" },
