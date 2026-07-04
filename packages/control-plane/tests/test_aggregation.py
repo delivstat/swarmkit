@@ -109,6 +109,16 @@ def _client(tmp_path: Path, *, enforce: bool = False) -> TestClient:
     )
 
 
+def test_audit_limit_is_bounded(tmp_path: Path) -> None:
+    # sqlite treats a negative LIMIT as unbounded (whole-table dump); the endpoint must
+    # reject out-of-range limits rather than pass them through.
+    client = _client(tmp_path)
+    assert client.get("/audit?limit=-1").status_code == 422
+    assert client.get("/audit?limit=0").status_code == 422
+    assert client.get("/audit?limit=100000").status_code == 422
+    assert client.get("/audit?limit=50").status_code == 200
+
+
 def test_push_and_rollup_via_api(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = client.post(
