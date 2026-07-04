@@ -13,6 +13,7 @@ See ``design/details/mcp-client.md``.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json as _json
 import logging
@@ -288,7 +289,15 @@ class MCPClientManager:
         """
         session = await self.get_session(server_id)
         start = time.monotonic()
-        result = await session.call_tool(tool_name, arguments)
+        # Bounded: a wedged MCP server must not hang the whole run indefinitely (model calls
+        # already have with_retry timeouts; MCP tool calls had none). Tunable via env.
+        timeout = float(os.environ.get("SWARMKIT_MCP_TIMEOUT", "120"))
+        try:
+            result = await asyncio.wait_for(session.call_tool(tool_name, arguments), timeout)
+        except TimeoutError as exc:
+            raise RuntimeError(
+                f"MCP tool '{server_id}:{tool_name}' timed out after {timeout:.0f}s"
+            ) from exc
         elapsed_ms = int((time.monotonic() - start) * 1000)
         metadata = ToolMetadata(
             source=f"{server_id}:{tool_name}",
