@@ -2,9 +2,22 @@
 #
 #   docker compose -f deploy/control-plane/docker-compose.yml up -d --build
 #
-# Runs the panel API + the fleet UI (Next.js). See README for wiring the two behind a
-# single origin (recommended — no CORS, no baked panel URL).
+# A Caddy reverse proxy is the single front door on :8080 — it serves the fleet UI and
+# proxies the panel API under /api, so the browser uses one origin (no CORS, no baked
+# panel URL). The panel and UI are internal (not published to the host).
 services:
+  proxy:
+    image: caddy:2-alpine
+    container_name: swarmkit-control-plane-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:80"   # open http://localhost:8080
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - ui
+      - panel
+
   panel:
     build:
       # Repo root, so the image can COPY packages/control-plane.
@@ -13,21 +26,23 @@ services:
     image: swarmkit-control-plane
     container_name: swarmkit-control-plane
     restart: unless-stopped
-    ports:
-      - "8800:8800"
+    # Internal only — reached via the proxy at /api. (Add a `ports:` mapping to expose the
+    # raw API directly, but note the trial command below runs it unauthenticated.)
+    expose:
+      - "8800"
     volumes:
       # Central stores survive restarts/upgrades. Back this volume up (see README).
       - control-plane-data:/data
-    # The panel binds 0.0.0.0 in the container and now REFUSES to start unauthenticated on a
+    # The panel binds 0.0.0.0 in the container and REFUSES to start unauthenticated on a
     # non-loopback bind. This default trial command makes that choice explicit and insecure.
-    # PRODUCTION: replace it with the auth block below (auth passing the guard by itself).
+    # PRODUCTION: replace it with the auth block below (auth passes the guard by itself).
     command:
-      - "--insecure-no-auth"   # ⚠️ trial only — anyone who can reach :8800 has full control
+      - "--insecure-no-auth"   # ⚠️ trial only — anyone who reaches the panel has full control
     # PRODUCTION: comment out --insecure-no-auth above and uncomment/set these instead —
     # args append to the image ENTRYPOINT.
     # command:
     #   - "--operator-token=${SWARMKIT_CP_OPERATOR_TOKEN}"
-    #   - "--cors-origin=${SWARMKIT_CP_UI_ORIGIN}"          # e.g. https://fleet.example.com
+    #   - "--oidc-issuer=${SWARMKIT_CP_OIDC_ISSUER}"
     #   - "--collector-endpoint=${SWARMKIT_CP_COLLECTOR}"   # OTLP endpoint instances export to
     #   - "--jaeger-url=${SWARMKIT_CP_JAEGER_URL}"
     #   - "--grafana-url=${SWARMKIT_CP_GRAFANA_URL}"
@@ -42,16 +57,15 @@ services:
     build:
       context: ../..
       dockerfile: deploy/control-plane/Dockerfile.ui
-      # NEXT_PUBLIC_* are inlined at build. Default = same-origin (empty): serve UI + panel
-      # behind one origin (reverse proxy) so the browser needs neither a baked URL nor CORS.
-      # To instead bake a fixed panel URL, uncomment and set:
-      # args:
-      #   NEXT_PUBLIC_CONTROL_PLANE_API: "${SWARMKIT_CP_PANEL_URL}"   # e.g. https://panel.example.com
+      args:
+        # The UI calls the panel at /api, which the proxy strips + forwards to panel:8800.
+        # Single-origin: no CORS, no host-specific URL baked into the image.
+        NEXT_PUBLIC_CONTROL_PLANE_API: "/api"
     image: swarmkit-control-plane-ui
     container_name: swarmkit-control-plane-ui
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     depends_on:
       - panel
 

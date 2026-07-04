@@ -53,7 +53,7 @@ Legend: `[ ]` todo · `[x]` done (PR #).
 
 ## P2 — quality / DX / correctness tail
 
-- [ ] **PR-J — provider adapter shared helpers.** `tool_specs_to_openai_functions`,
+- [x] **PR-J (#419) — provider adapter shared helpers.** `tool_specs_to_openai_functions`,
   `image_to_data_url`, `map_stop_reason`, `parse_fenced_json`; fix Google double-system-prompt;
   per-adapter retry classification; MCP `call_tool` timeout + start lock; remove dead MCP cache.
 - [ ] **PR-K — compiler primitives + topology-as-data cleanup.** `ScopeStore` (one writer,
@@ -66,11 +66,11 @@ Legend: `[ ]` todo · `[x]` done (PR #).
   path; keyboard-accessible rows; back `InstanceProvider` with the shared cache.
 - [ ] **PR-M — generated API contract.** Panel returns pydantic response models; `types.ts` +
   `KNOWN_VERBS` generated from the panel OpenAPI / `packages/schema`; CI drift check.
-- [ ] **PR-N — control-plane robustness tail.** Atomic approve/deploy (record deployment only
+- [x] **PR-N (#418, partial: audit-limit + atomic deploy) — control-plane robustness tail.** Atomic approve/deploy (record deployment only
   on push success; single-txn approve); `?limit` bounds + pagination; `claim_queued`
   conditional UPDATE; background-job `propose_from_gap` (202 + poll); reject literal
   `token_ref`; method in `authorize`; server-side audit `ts`.
-- [ ] **PR-O — infra/robustness.** Compose same-origin fix (proxy or working default) + a
+- [~] **PR-O (compose same-origin done) — infra/robustness.** Compose same-origin fix (proxy or working default) + a
   compose smoke test; migrations for the 3 stores (covered by PR-G's migration registry);
   JWKS timeout+threadpool; connector malformed-command guard + backoff; webhook secret via
   `resolve_secret_ref`; AGT audit sink forwards M6 fields.
