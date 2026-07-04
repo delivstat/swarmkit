@@ -73,21 +73,10 @@ class GoogleModelProvider:
 def _to_google_contents(
     request: CompletionRequest,
 ) -> list[gtypes.Content]:
+    # The system prompt goes through Gemini's native system_instruction (see
+    # _to_google_config); do NOT also inject it as a fabricated user/model turn here, or the
+    # model receives it twice (wasted tokens + a fake dialogue turn that can confuse it).
     contents: list[gtypes.Content] = []
-
-    if request.system:
-        contents.append(
-            gtypes.Content(
-                parts=[gtypes.Part(text=request.system)],
-                role="user",
-            )
-        )
-        contents.append(
-            gtypes.Content(
-                parts=[gtypes.Part(text="Understood.")],
-                role="model",
-            )
-        )
 
     for msg in request.messages:
         if msg.role == "system":

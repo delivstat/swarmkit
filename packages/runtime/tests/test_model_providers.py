@@ -601,6 +601,22 @@ def test_apply_options_drops_non_native_but_keeps_extra() -> None:
     assert kwargs["num_ctx"] == 4096  # from extra, not dropped
 
 
+def test_google_does_not_double_send_system_prompt() -> None:
+    # The system prompt goes through the native system_instruction only — not also as a
+    # fabricated user/model turn in contents (which would send it twice).
+    from swarmkit_runtime.model_providers._google import _to_google_contents  # noqa: PLC0415
+
+    req = CompletionRequest(
+        model="gemini-2.5-flash",
+        system="You are terse.",
+        messages=(Message(role="user", content="hi"),),
+    )
+    contents = _to_google_contents(req)
+    joined = " ".join(p.text or "" for c in contents for p in (c.parts or []))
+    assert "You are terse." not in joined  # not duplicated into contents
+    assert _to_google_config(req).system_instruction == "You are terse."
+
+
 def test_google_config_survives_ollama_options() -> None:
     # Regression for the incomplete num_ctx fix: an Ollama-tuned topology repointed at
     # Gemini must not crash GenerateContentConfig's validation on num_ctx/keep_alive.
