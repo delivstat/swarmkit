@@ -16,10 +16,10 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-import threading
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
+
+from swarmkit_control_plane._sqlite_base import SqliteStore
 
 KINDS = ("topology", "skill", "archetype", "workspace", "trigger")
 
@@ -66,24 +66,10 @@ def content_hash(content: Any) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-class ArtifactStore:
+class ArtifactStore(SqliteStore):
     """Thread-safe sqlite store for versioned artifacts, deployments, and drift."""
 
-    def __init__(self, db_path: Path) -> None:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db_path = db_path
-        self._lock = threading.Lock()
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        # WAL lets connector pushes and operator reads proceed concurrently without
-        # blocking; busy_timeout retries under contention instead of raising "locked".
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=10000")
-        return conn
+    _SCHEMA = _SCHEMA
 
     def register_version(
         self,

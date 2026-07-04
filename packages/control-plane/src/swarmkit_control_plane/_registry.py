@@ -8,12 +8,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import threading
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import uuid4
 
 from swarmkit_control_plane._models import Command, CommandStatus, Health, Instance
+from swarmkit_control_plane._sqlite_base import SqliteStore
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instances (
@@ -48,21 +47,10 @@ CREATE INDEX IF NOT EXISTS idx_commands_instance ON commands (instance_id, statu
 """
 
 
-class SqliteRegistry:
+class SqliteRegistry(SqliteStore):
     """Thread-safe sqlite-backed instance registry."""
 
-    def __init__(self, db_path: Path) -> None:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db_path = db_path
-        self._lock = threading.Lock()
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
-            self._migrate(conn)
-
-    @property
-    def db_path(self) -> Path:
-        """Backing sqlite path — shared with the AggregationStore."""
-        return self._db_path
+    _SCHEMA = _SCHEMA
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
         """Add columns introduced after the initial schema (pre-existing DBs)."""
@@ -76,15 +64,6 @@ class SqliteRegistry:
             conn.execute("ALTER TABLE instances ADD COLUMN token_minted_at TEXT")
         if "token_hash" not in cols:
             conn.execute("ALTER TABLE instances ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''")
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        # WAL lets connector pushes and operator reads proceed concurrently without
-        # blocking; busy_timeout retries under contention instead of raising "locked".
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=10000")
-        return conn
 
     def add(self, instance: Instance) -> None:
         if not instance.created_at:

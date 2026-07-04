@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import threading
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+from swarmkit_control_plane._sqlite_base import SqliteStore
 
 Status = str  # "pending" | "approved" | "rejected"
 
@@ -45,24 +45,10 @@ CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals (status, created_at
 """
 
 
-class ProposalStore:
+class ProposalStore(SqliteStore):
     """Thread-safe sqlite store for the approval queue."""
 
-    def __init__(self, db_path: Path) -> None:
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._db_path = db_path
-        self._lock = threading.Lock()
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.row_factory = sqlite3.Row
-        # WAL lets connector pushes and operator reads proceed concurrently without
-        # blocking; busy_timeout retries under contention instead of raising "locked".
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=10000")
-        return conn
+    _SCHEMA = _SCHEMA
 
     def _row(self, row: sqlite3.Row) -> dict[str, Any]:
         out = dict(row)
