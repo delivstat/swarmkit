@@ -59,10 +59,15 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   `server/` package (`_config`/`_schemas`/`_jobs`/`_helpers`/`_mcp`/`_routes_*`/`_app`);
   `cli/__init__.py` (2332) → `_app` + `_common` + `_cmd_*` (flat command namespace preserved).
   Behaviour-preserving file splits; import surfaces unchanged; each validated by the existing
-  suites (107 panel / 110 server / 77 CLI) + mypy. **Follow-up (not done):** the *service-layer*
-  extraction the review also called for (`PanelService.approve/deploy` atomic, `ArtifactService`/
-  `JobService`, `WorkspaceRuntime.observability`) so business logic is unit-testable without
-  HTTP/Typer — deferred as its own PR now that the modules are separated.
+  suites (107 panel / 110 server / 77 CLI) + mypy.
+- [~] **PR-I service layer — extract business logic behind services (started #428).** The review
+  also asked for a service seam so logic is unit-testable without HTTP/Typer. **Done:**
+  `GrowthService` (#428) — growth-loop propose/approve/reject lifted out of `_routes_growth`;
+  routes are thin (map `GrowthError`→status); **approve is now atomic** (claim-first, so
+  concurrent approvals can't double-publish duplicate versions), 14 service unit tests.
+  **Remaining:** `DeployService` (panel deploy — testability, already correctly ordered);
+  `ArtifactService`/`JobService` (runtime `server/`); `WorkspaceRuntime.observability` (CLI
+  `_cmd_observability` reads audit/jsonl directly today).
 
 ## P2 — quality / DX / correctness tail
 
