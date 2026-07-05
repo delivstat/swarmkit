@@ -1,29 +1,30 @@
-"""Aggregation rollups + growth-loop proposal/gap routes (docs 14, 17)."""
+"""Aggregation rollups + growth-loop proposal/gap routes (docs 14, 17).
+
+The proposal/gap routes are thin: they read HTTP concerns (the acting principal) and delegate the
+business logic to :class:`GrowthService`, mapping its :class:`GrowthError` to a status code.
+"""
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 
 from swarmkit_control_plane._aggregation import KINDS, AggregationStore
-from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
-from swarmkit_control_plane._artifacts import ArtifactStore
-from swarmkit_control_plane._connector import ConnectorError
-from swarmkit_control_plane._fntypes import (
-    AuthorFn,
-    EvalFn,
-)
-from swarmkit_control_plane._fntypes import extract_artifact as _extract_artifact
-from swarmkit_control_plane._proposals import ProposalStore
-from swarmkit_control_plane._registry import SqliteRegistry
 from swarmkit_control_plane._schemas import (
     AggregateRequest,
     DecisionRequest,
     GapProposeRequest,
     ProposalRequest,
 )
+from swarmkit_control_plane._service import GrowthError, GrowthService
+
+
+def _approver(request: Request, fallback: str) -> str:
+    """The deciding identity: an OIDC human's subject when present, else the named operator."""
+    principal = getattr(request.state, "principal", None)
+    subject = (getattr(principal, "subject", None) or "") if principal else ""
+    return subject or fallback
 
 
 def _mount_aggregation(app: FastAPI, agg: AggregationStore) -> None:
@@ -65,119 +66,73 @@ def _mount_aggregation(app: FastAPI, agg: AggregationStore) -> None:
         return agg.gap_rollup()
 
 
-def _mount_proposals(app: FastAPI, store: ProposalStore, artifacts: ArtifactStore) -> None:
+def _mount_proposals(app: FastAPI, service: GrowthService) -> None:
     """Growth-loop approval queue (doc 17). Approving a proposal publishes it to the registry —
     the human gate. Nothing auto-approves; approve/reject are operator-only (machines can't)."""
 
     @app.post("/proposals")
     async def create_proposal(req: ProposalRequest) -> dict[str, Any]:
-        if req.kind not in ARTIFACT_KINDS:
-            raise HTTPException(404, f"unknown kind '{req.kind}'")
-        return store.create(
-            kind=req.kind,
-            artifact_id=req.artifact_id,
-            content=req.content,
-            proposed_by=req.proposed_by,
-            signal=req.signal,
-            eval_summary=req.eval_summary,
-        )
+        try:
+            return service.create_proposal(
+                kind=req.kind,
+                artifact_id=req.artifact_id,
+                content=req.content,
+                proposed_by=req.proposed_by,
+                signal=req.signal,
+                eval_summary=req.eval_summary,
+            )
+        except GrowthError as exc:
+            raise HTTPException(exc.status, str(exc)) from exc
 
     @app.get("/proposals")
     async def list_proposals(status: str | None = None) -> list[dict[str, Any]]:
-        return store.list(status)
+        return service.list_proposals(status)
 
     @app.get("/proposals/{proposal_id}")
     async def get_proposal(proposal_id: str) -> dict[str, Any]:
-        found = store.get(proposal_id)
-        if found is None:
-            raise HTTPException(404, "proposal not found")
-        return found
+        try:
+            return service.get_proposal(proposal_id)
+        except GrowthError as exc:
+            raise HTTPException(exc.status, str(exc)) from exc
 
     @app.post("/proposals/{proposal_id}/approve")
     async def approve_proposal(
         proposal_id: str, req: DecisionRequest, request: Request
     ) -> dict[str, Any]:
-        prop = store.get(proposal_id)
-        if prop is None:
-            raise HTTPException(404, "proposal not found")
-        # The approver: an OIDC human's subject when available, else the named operator.
-        principal = getattr(request.state, "principal", None)
-        approver = (getattr(principal, "subject", None) or "") if principal else ""
-        approver = approver or req.approved_by
-        # Approval IS publication: the proposed content becomes a new registry version (provenance
-        # carries both the proposer and the approving human).
-        published = artifacts.register_version(
-            prop["kind"],
-            prop["artifact_id"],
-            content=prop["content"],
-            authored_by=f"{prop['proposed_by']} (approved by {approver})".strip(),
-        )
         try:
-            return store.mark_approved(
-                proposal_id, approved_by=approver, published_version=published["version"]
-            )
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from exc
+            return service.approve(proposal_id, approver=_approver(request, req.approved_by))
+        except GrowthError as exc:
+            raise HTTPException(exc.status, str(exc)) from exc
 
     @app.post("/proposals/{proposal_id}/reject")
     async def reject_proposal(
         proposal_id: str, req: DecisionRequest, request: Request
     ) -> dict[str, Any]:
-        principal = getattr(request.state, "principal", None)
-        approver = (
-            (getattr(principal, "subject", None) or "") if principal else ""
-        ) or req.approved_by
         try:
-            return store.mark_rejected(proposal_id, approved_by=approver, reason=req.reason)
-        except KeyError as exc:
-            raise HTTPException(404, "proposal not found") from exc
-        except ValueError as exc:
-            raise HTTPException(409, str(exc)) from exc
+            return service.reject(
+                proposal_id, approver=_approver(request, req.approved_by), reason=req.reason
+            )
+        except GrowthError as exc:
+            raise HTTPException(exc.status, str(exc)) from exc
 
 
-def _mount_growth(
-    app: FastAPI,
-    registry: SqliteRegistry,
-    proposals: ProposalStore,
-    author: AuthorFn,
-    eval_run: EvalFn,
-) -> None:
+def _mount_growth(app: FastAPI, service: GrowthService) -> None:
     """Growth-loop automation (doc 17): signal → surface → propose → test. A ranked gap
     (GET /gaps) is turned into a *drafted, eval-tested proposal* in one operator action —
-    the authoring swarm drafts a fix, an eval topology tests it, and the result lands in
-    the approval queue as `pending`. The human gate is untouched: this only ever creates a
+    the authoring swarm drafts a fix, an eval topology tests it, and the result lands in the
+    approval queue as `pending`. The human gate is untouched: this only ever creates a
     pending proposal (approve == publish, humans only). Operator-only (authorize denies
     connector tokens); Mode A only — drafting drives a swarm on a reachable instance."""
 
     @app.post("/gaps/propose")
     async def propose_from_gap(req: GapProposeRequest) -> dict[str, Any]:
-        inst = registry.get(req.instance_id)
-        if inst is None:
-            raise HTTPException(404, "instance not found")
-        if inst.connection != "direct":
-            raise HTTPException(409, "auto-draft requires a directly-reachable (Mode A) instance")
-        # Propose (draft): the authoring swarm drafts a fix for the gap.
-        prompt = (
-            f"A worker needs the capability '{req.capability}' but no skill provides it. "
-            f"{req.description} Draft a skill that closes this gap."
-        )
         try:
-            drafted = await author(inst.endpoint, inst.token_ref, req.topology, prompt)
-        except ConnectorError as exc:
-            raise HTTPException(502, f"authoring run failed: {exc}") from exc
-        artifact = _extract_artifact(drafted.get("reply") or "")
-        if artifact is None:
-            raise HTTPException(422, "the authoring swarm did not produce a draftable artifact")
-        # Test: run an eval topology on the draft (never blocks — returns a status summary).
-        eval_summary = await eval_run(
-            inst.endpoint, inst.token_ref, req.eval_topology, json.dumps(artifact["content"])
-        )
-        # Land it in the approval queue as pending (human gate intact).
-        return proposals.create(
-            kind=artifact["kind"],
-            artifact_id=artifact["id"],
-            content=artifact["content"],
-            proposed_by="authoring-swarm",
-            signal=f"gap:{req.capability}",
-            eval_summary=eval_summary,
-        )
+            return await service.propose_from_gap(
+                instance_id=req.instance_id,
+                capability=req.capability,
+                description=req.description,
+                topology=req.topology,
+                eval_topology=req.eval_topology,
+            )
+        except GrowthError as exc:
+            raise HTTPException(exc.status, str(exc)) from exc
