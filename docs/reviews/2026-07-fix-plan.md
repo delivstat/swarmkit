@@ -6,13 +6,13 @@ sequence of focused, independently-tested PRs. Each PR is branched off fresh `ma
 merged before the next (to avoid stacked-squash conflicts). Check items off as they land.
 
 Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
-> **Status (end of session): all P0 merged (#410–#416); P1-G control-plane store base (#417);
+> **Status: all P0 merged (#410–#416); P1-G control-plane store base (#417); P1-I god-module
+> split complete — panel `_app.py` (#424), `server.py` (#425), `cli/__init__.py` (#426);
 > P2-J/N/O provider + robustness + single-origin bundle (#418–#422). Deferred as dedicated
-> follow-ups (large/risky structural refactors, each multi-day): PR-H (cross-package
-> `ServeClient` + verb table — needs a shared package), PR-I (god-module split: cli 2323 /
-> server 1422 / _app 796 → routers + service layer), PR-K (compiler `ScopeStore`/`from_dict`/
-> `AgentStatus` + topology-as-data cleanup), PR-L (UI SWR migration + component kit),
-> PR-M (generated API contract), and the runtime `_SqliteStore` half of PR-G.**
+> follow-ups: PR-H (cross-package `ServeClient` + verb table — needs a shared package), PR-K
+> (compiler `ScopeStore`/`from_dict`/`AgentStatus` + topology-as-data cleanup), PR-L (UI SWR
+> migration + component kit), PR-M (generated API contract), the runtime `_SqliteStore` half
+> of PR-G, and the service-layer extraction noted under PR-I below.**
 
 
 ---
@@ -54,10 +54,15 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   control-plane `_connector.py`/`_deploy.py`, `server._required_action`; UI `KNOWN_VERBS`
   aligned/generated. Delete `_connector.resolve_token` in favour of `resolve_secret_ref`.
   Test: one table drives all sides; a cross-side contract test.
-- [ ] **PR-I — split god-modules + service layer.** `_app.py` → `APIRouter`s + `PanelService`
-  (atomic approve/deploy); `server.py` → routers + `ArtifactService`/`JobService`;
-  `cli/__init__.py` → Typer sub-apps + `WorkspaceRuntime.observability`. Likely I1/I2/I3.
-  Tests: service methods unit-tested without HTTP.
+- [x] **PR-I — split the god-modules (I1 #424 / I2 #425 / I3 #426).** Panel `_app.py` (813→163)
+  → `_schemas` + `_fntypes` + `_routes_{registry,artifacts,growth}`; `server.py` (1433) →
+  `server/` package (`_config`/`_schemas`/`_jobs`/`_helpers`/`_mcp`/`_routes_*`/`_app`);
+  `cli/__init__.py` (2332) → `_app` + `_common` + `_cmd_*` (flat command namespace preserved).
+  Behaviour-preserving file splits; import surfaces unchanged; each validated by the existing
+  suites (107 panel / 110 server / 77 CLI) + mypy. **Follow-up (not done):** the *service-layer*
+  extraction the review also called for (`PanelService.approve/deploy` atomic, `ArtifactService`/
+  `JobService`, `WorkspaceRuntime.observability`) so business logic is unit-testable without
+  HTTP/Typer — deferred as its own PR now that the modules are separated.
 
 ## P2 — quality / DX / correctness tail
 
