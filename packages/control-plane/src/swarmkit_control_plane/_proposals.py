@@ -142,3 +142,19 @@ class ProposalStore(SqliteStore):
         return self._decide(
             pid, status="rejected", approved_by=approved_by, reason=reason, published_version=""
         )
+
+    def set_published_version(self, pid: str, version: str) -> dict[str, Any]:
+        """Backfill the registry version an approved proposal published.
+
+        Approval claims the proposal (pending→approved) *before* it publishes, so that two
+        concurrent approvals can't both publish — only the claim winner reaches the registry.
+        The version isn't known until that publish, so it's recorded here in a second step.
+        See ``GrowthService.approve``.
+        """
+        with self._lock, self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE proposals SET published_version = ? WHERE id = ?", (version, pid)
+            )
+            if cur.rowcount == 0:
+                raise KeyError(pid)
+            return self._get(conn, pid)
