@@ -12,6 +12,7 @@ import os
 import uuid
 
 import pytest
+from sqlalchemy import Engine
 from swarmkit_control_plane._aggregation import AggregationStore
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._engine import make_engine
@@ -20,7 +21,7 @@ from swarmkit_control_plane._proposals import ProposalStore
 from swarmkit_control_plane._registry import SqliteRegistry
 
 
-def _pg_engine():  # type: ignore[no-untyped-def]
+def _pg_engine() -> Engine:
     url = os.environ.get("SWARMKIT_TEST_POSTGRES_URL")
     if not url:
         pytest.skip("set SWARMKIT_TEST_POSTGRES_URL to run the Postgres control-plane store tests")
