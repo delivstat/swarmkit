@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from swarmkit_runtime.langgraph_compiler._helpers import _progress
 from swarmkit_runtime.langgraph_compiler._run_context import run_state_dir
+from swarmkit_runtime.langgraph_compiler._sentinels import AgentStatus
 from swarmkit_runtime.langgraph_compiler._task_plan import Task, TaskPlan
 from swarmkit_runtime.model_providers._registry import (
     ModelProviderProtocol,
@@ -177,7 +178,7 @@ async def execute_task_batch(  # noqa: PLR0915
             "current_agent": agent_id,
             "task_plan": plan.to_dict(),
             "agent_results": {
-                agent_id: "__task_plan_executing__",
+                agent_id: AgentStatus.TASK_PLAN_EXECUTING,
                 **merged_results,
             },
             "messages": messages,
@@ -658,7 +659,7 @@ def _plan_complete_state(
         "current_agent": agent_id,
         "task_plan": plan.to_dict(),
         "agent_results": {
-            agent_id: "__task_plan_complete__",
+            agent_id: AgentStatus.TASK_PLAN_COMPLETE,
             **(merged_results or {}),
         },
         "messages": (messages or [])
@@ -681,7 +682,7 @@ def _plan_blocked_state(
         "current_agent": agent_id,
         "task_plan": plan.to_dict(),
         "agent_results": {
-            agent_id: "__task_plan_blocked__",
+            agent_id: AgentStatus.TASK_PLAN_BLOCKED,
         },
         "messages": [
             AIMessage(

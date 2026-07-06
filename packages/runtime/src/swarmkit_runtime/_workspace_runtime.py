@@ -431,16 +431,24 @@ class WorkspaceRuntime:
             initial_agent_results: dict = {}  # type: ignore[type-arg]
             initial_delegation_counts: dict = {}  # type: ignore[type-arg]
             if previous_plan:
+                from swarmkit_runtime.langgraph_compiler._sentinels import (  # noqa: PLC0415
+                    AgentStatus,
+                    TaskStatus,
+                    make_delegated,
+                )
+
                 leader_ids = [c.id for c in topology.root.children]
                 if leader_ids:
                     leader_id = leader_ids[0]
                     tasks = previous_plan.get("tasks", [])
-                    all_done = all(t.get("status") in ("completed", "failed") for t in tasks)
+                    all_done = all(
+                        t.get("status") in (TaskStatus.COMPLETED, TaskStatus.FAILED) for t in tasks
+                    )
                     if all_done:
-                        initial_agent_results[leader_id] = "__task_plan_complete__"
+                        initial_agent_results[leader_id] = AgentStatus.TASK_PLAN_COMPLETE
                     else:
-                        initial_agent_results[leader_id] = "__task_plan_executing__"
-                    initial_agent_results[topology.root.id] = f"__delegated__:{leader_id}"
+                        initial_agent_results[leader_id] = AgentStatus.TASK_PLAN_EXECUTING
+                    initial_agent_results[topology.root.id] = make_delegated(leader_id)
                     initial_delegation_counts[leader_id] = 1
 
             # Scope run-state (tasks.json / scope.json / results) to this run's own

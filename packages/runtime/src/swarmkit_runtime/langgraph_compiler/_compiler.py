@@ -45,6 +45,13 @@ from ._run_context import (
     reset_parent_agent,
     set_parent_agent,
 )
+from ._sentinels import (
+    TASK_PLAN_ACTIVE,
+    AgentStatus,
+    delegated_child,
+    is_delegated,
+    is_task_plan_status,
+)
 from ._state import PlanningConfig, SwarmState
 
 # Per-run active state. ContextVar (not a module global) so concurrent runs in one
@@ -241,15 +248,10 @@ def _build_agent_node(  # noqa: PLR0915
         # ---- already-delegated fast path (resume scenarios) ------------
         _agent_result = state.get("agent_results", {}).get(agent_id, "")
         _child_has_task_plan = any(
-            isinstance(state.get("agent_results", {}).get(c.id, ""), str)
-            and state.get("agent_results", {}).get(c.id, "").startswith("__task_plan_")
+            is_task_plan_status(state.get("agent_results", {}).get(c.id, ""))
             for c in agent.children
         )
-        if (
-            isinstance(_agent_result, str)
-            and _agent_result.startswith("__delegated__:")
-            and _child_has_task_plan
-        ):
+        if is_delegated(_agent_result) and _child_has_task_plan:
             return {
                 "current_agent": agent_id,
                 "agent_results": {agent_id: _agent_result},
@@ -257,12 +259,7 @@ def _build_agent_node(  # noqa: PLR0915
             }
 
         # ---- task plan execution (structured delegation v2) -----------
-        _is_task_plan = isinstance(_agent_result, str) and _agent_result.startswith("__task_plan_")
-        if _is_task_plan and _agent_result in (
-            "__task_plan_created__",
-            "__task_plan_updated__",
-            "__task_plan_executing__",
-        ):
+        if is_task_plan_status(_agent_result) and _agent_result in TASK_PLAN_ACTIVE:
             from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
                 execute_task_batch,
                 get_plan_from_state,
@@ -389,7 +386,9 @@ def _build_agent_node(  # noqa: PLR0915
         if isinstance(result, dict):
             _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()
             _output = result.get("output", "")
-            if _output and not _output.startswith("__delegated"):
+            if _output and not (
+                is_delegated(_output) or _output == AgentStatus.DELEGATED_PARALLEL
+            ):
                 _progress(f"[{agent_id}] done ({_elapsed:.1f}s)")
             await _record_completion(
                 governance,
@@ -400,9 +399,9 @@ def _build_agent_node(  # noqa: PLR0915
             )
             delegated_to: list[str] = []
             for k, v in result.get("agent_results", {}).items():
-                if isinstance(v, str) and v.startswith("__delegated__:"):
-                    delegated_to.append(v.split(":", 1)[1])
-                elif isinstance(v, str) and v == "__delegated_parallel__":
+                if is_delegated(v):
+                    delegated_to.append(delegated_child(v))
+                elif isinstance(v, str) and v == AgentStatus.DELEGATED_PARALLEL:
                     delegated_to.extend(
                         ck for ck in result.get("agent_results", {}) if ck not in {k, agent_id}
                     )
@@ -502,7 +501,7 @@ def _add_routing_edges(
         destinations[agent.id] = agent.id
         # Route to parent when done (or END if this is root)
         _done_target = parent_id or END
-        destinations["__done__"] = _done_target
+        destinations[AgentStatus.DONE] = _done_target
 
         def router(
             state: SwarmState,
@@ -513,18 +512,18 @@ def _add_routing_edges(
             results = state.get("agent_results", {})
             agent_result = results.get(_agent_id, "")
 
-            if isinstance(agent_result, str) and agent_result.startswith("__delegated__:"):
-                target = agent_result.split(":", 1)[1]
+            if is_delegated(agent_result):
+                target = delegated_child(agent_result)
                 if target in _dests:
                     return target
 
-            if agent_result == "__delegated_parallel__":
+            if agent_result == AgentStatus.DELEGATED_PARALLEL:
                 return _agent_id
 
-            if isinstance(agent_result, str) and agent_result.startswith("__task_plan_"):
+            if is_task_plan_status(agent_result):
                 return _agent_id
 
-            return "__done__"
+            return AgentStatus.DONE
 
         graph.add_conditional_edges(agent.id, router, destinations)  # type: ignore[arg-type]
 

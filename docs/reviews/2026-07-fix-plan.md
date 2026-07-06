@@ -103,8 +103,14 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   timing/tool-call fields. **K1 (#444):** `ScopeStore` — one `scope.json` writer/reader; fixes the
   dropped `solution_approach`/`open_questions` writer + the stale-`current/`-path decision-gate
   reader. **K4a (#445):** stripped hardcoded CDT/Jira domain nouns from framework prompts/docstrings.
-  **Pending:** K3 `AgentStatus`/`TaskStatus` enum + sentinels module (replace `__task_plan_*__`/
-  `__delegated__` magic strings + bare status strings); K4b make the `self`/`document-writer`/
+  **K3 (#TBD):** `_sentinels.py` — `TaskStatus`/`AgentStatus` `StrEnum`s + delegation helpers
+  (`make_delegated`/`is_delegated`/`delegated_child`/`is_task_plan_status`/`TASK_PLAN_ACTIVE`)
+  replacing the `__task_plan_*__`/`__delegated__:`/`__delegated_parallel__`/`__done__` magic strings
+  and the bare `pending`/`in_progress`/`completed`/`failed` status literals across the compiler
+  (`_task_plan`/`_task_plan_handler`/`_task_executor`/`_delegation`/`_compiler`/`_prompts`/
+  `_tool_loop` + `_workspace_runtime`). `StrEnum` so persisted `tasks.json`/checkpoints round-trip
+  unchanged (member == literal, JSON-serialises as literal); guarded by that contract in
+  `test_sentinels.py` + the full 1080-test suite. **Pending:** K4b make the `self`/`document-writer`/
   `synthesizer` role literals topology/archetype-configurable; JSON-safe governance-flag attachment.
 - [ ] **PR-L — UI SWR kit.** `useResource` (SWR) replacing `usePoll` (fixes race/latch/dup-fetch/
   no-op-refresh); `<DataView>`/`<JsonBlock>`/form-kit/`<StatusBadge>`; operator-token client

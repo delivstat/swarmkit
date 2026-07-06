@@ -18,6 +18,7 @@ from swarmkit_runtime.resolver import ResolvedAgent
 
 from ._helpers import ToolCallResult, _extract_text, _progress, _truncate_result
 from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomplete
+from ._sentinels import TaskStatus
 
 
 def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResponse) -> None:
@@ -200,7 +201,7 @@ def _handle_read_task_result(block: Any, agent_id: str) -> str:  # noqa: PLR0911
     task = plan.get_task(task_id)
     if not task:
         return f"Task '{task_id}' not found in plan"
-    if task.status != "completed":
+    if task.status != TaskStatus.COMPLETED:
         return f"Task '{task_id}' is {task.status}, not completed"
     if not task.result_path:
         return f"Task '{task_id}' has no result file"
