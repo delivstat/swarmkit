@@ -188,31 +188,14 @@ def _parse_args(block: Any) -> dict[str, Any]:
 
 
 def _load_plan(plan_data: dict[str, Any]) -> Any:
-    """Load a TaskPlan from state data."""
-    from swarmkit_runtime.langgraph_compiler._task_plan import Task, TaskPlan  # noqa: PLC0415
+    """Load a TaskPlan from state data.
 
-    if plan_data and plan_data.get("tasks"):
-        plan = TaskPlan(
-            run_id=plan_data.get("run_id", ""),
-            topology=plan_data.get("topology", ""),
-            created_at=plan_data.get("created_at", 0.0),
-        )
-        for raw in plan_data.get("tasks", []):
-            plan.tasks.append(
-                Task(
-                    id=raw["id"],
-                    agent=raw["agent"],
-                    instruction=raw.get("instruction", ""),
-                    depends_on=raw.get("depends_on", []),
-                    status=raw.get("status", "pending"),
-                    key_findings=raw.get("key_findings", []),
-                    result_path=raw.get("result_path"),
-                    error=raw.get("error"),
-                    delegation_count=raw.get("delegation_count", 0),
-                )
-            )
-        return plan
-    return TaskPlan()
+    Delegates to ``TaskPlan.from_dict`` — which (unlike this function's former inline loop) keeps
+    the timing/tool-call fields (started_at/completed_at/duration_s/tool_calls) on reload.
+    """
+    from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan  # noqa: PLC0415
+
+    return TaskPlan.from_dict(plan_data)
 
 
 def _scope_file_path() -> Any:

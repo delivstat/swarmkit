@@ -29,30 +29,7 @@ def get_plan_from_state(state: SwarmState) -> TaskPlan | None:
     plan_data = state.get("task_plan", {})
     if not plan_data or not plan_data.get("tasks"):
         return None
-    plan = TaskPlan(
-        run_id=plan_data.get("run_id", ""),
-        topology=plan_data.get("topology", ""),
-        created_at=plan_data.get("created_at", 0.0),
-    )
-    for raw in plan_data.get("tasks", []):
-        plan.tasks.append(
-            Task(
-                id=raw["id"],
-                agent=raw["agent"],
-                instruction=raw.get("instruction", ""),
-                depends_on=raw.get("depends_on", []),
-                status=raw.get("status", "pending"),
-                started_at=raw.get("started_at"),
-                completed_at=raw.get("completed_at"),
-                duration_s=raw.get("duration_s"),
-                tool_calls=raw.get("tool_calls", 0),
-                key_findings=raw.get("key_findings", []),
-                result_path=raw.get("result_path"),
-                error=raw.get("error"),
-                delegation_count=raw.get("delegation_count", 0),
-            )
-        )
-    return plan
+    return TaskPlan.from_dict(plan_data)
 
 
 async def execute_task_batch(  # noqa: PLR0915
