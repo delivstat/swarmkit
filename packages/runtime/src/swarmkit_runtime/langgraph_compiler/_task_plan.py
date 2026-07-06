@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from swarmkit_runtime.langgraph_compiler._sentinels import TaskStatus
 from swarmkit_runtime.model_providers import ToolSpec
 from swarmkit_runtime.resolver import ResolvedAgent
 
@@ -21,7 +22,7 @@ class Task:
     agent: str
     instruction: str
     depends_on: list[str] = field(default_factory=list)
-    status: str = "pending"
+    status: TaskStatus = TaskStatus.PENDING
     started_at: float | None = None
     completed_at: float | None = None
     duration_s: float | None = None
@@ -43,7 +44,7 @@ class Task:
             agent=raw["agent"],
             instruction=raw.get("instruction", ""),
             depends_on=raw.get("depends_on", []),
-            status=raw.get("status", "pending"),
+            status=TaskStatus(raw.get("status", TaskStatus.PENDING)),
             started_at=raw.get("started_at"),
             completed_at=raw.get("completed_at"),
             duration_s=raw.get("duration_s"),
@@ -200,10 +201,10 @@ class TaskPlan:
         return fixes
 
     def get_runnable_tasks(self) -> list[Task]:
-        completed_ids = {t.id for t in self.tasks if t.status == "completed"}
+        completed_ids = {t.id for t in self.tasks if t.status == TaskStatus.COMPLETED}
         runnable = []
         for task in self.tasks:
-            if task.status != "pending":
+            if task.status != TaskStatus.PENDING:
                 continue
             deps_met = all(d in completed_ids for d in task.depends_on)
             if deps_met:
@@ -219,7 +220,7 @@ class TaskPlan:
     def mark_started(self, task_id: str) -> None:
         task = self.get_task(task_id)
         if task:
-            task.status = "in_progress"
+            task.status = TaskStatus.IN_PROGRESS
             task.started_at = time.time()
             task.delegation_count += 1
 
@@ -232,7 +233,7 @@ class TaskPlan:
     ) -> None:
         task = self.get_task(task_id)
         if task:
-            task.status = "completed"
+            task.status = TaskStatus.COMPLETED
             task.completed_at = time.time()
             if task.started_at:
                 task.duration_s = round(task.completed_at - task.started_at, 1)
@@ -243,7 +244,7 @@ class TaskPlan:
     def mark_failed(self, task_id: str, error: str) -> None:
         task = self.get_task(task_id)
         if task:
-            task.status = "failed"
+            task.status = TaskStatus.FAILED
             task.completed_at = time.time()
             task.error = error
 
@@ -254,7 +255,7 @@ class TaskPlan:
             task = self.get_task(tid)
             if not task:
                 errors.append(f"Task '{tid}' not found")
-            elif task.status != "pending":
+            elif task.status != TaskStatus.PENDING:
                 errors.append(f"Cannot remove task '{tid}' — status is '{task.status}'")
             else:
                 removable.add(tid)
@@ -269,7 +270,7 @@ class TaskPlan:
             if not task:
                 errors.append(f"Task '{tid}' not found")
                 continue
-            if task.status != "pending":
+            if task.status != TaskStatus.PENDING:
                 errors.append(f"Cannot update task '{tid}' — status is '{task.status}'")
                 continue
             if "instruction" in upd:
@@ -279,12 +280,12 @@ class TaskPlan:
         return errors
 
     def all_done(self) -> bool:
-        return all(t.status in ("completed", "failed") for t in self.tasks)
+        return all(t.status in (TaskStatus.COMPLETED, TaskStatus.FAILED) for t in self.tasks)
 
     def render_status(self) -> str:
         lines = ["TASK PLAN STATUS:\n"]
         for task in self.tasks:
-            if task.status == "completed":
+            if task.status == TaskStatus.COMPLETED:
                 dur = f"{task.duration_s:.1f}s" if task.duration_s else ""
                 calls = f"{task.tool_calls} tool calls" if task.tool_calls else ""
                 meta = ", ".join(p for p in [dur, calls] if p)
@@ -294,9 +295,9 @@ class TaskPlan:
                         lines.append(f"   - {finding}")
                 if task.result_path:
                     lines.append(f"   Full results: {task.result_path}")
-            elif task.status == "in_progress":
+            elif task.status == TaskStatus.IN_PROGRESS:
                 lines.append(f"running: {task.id} ({task.agent})")
-            elif task.status == "failed":
+            elif task.status == TaskStatus.FAILED:
                 lines.append(f"failed: {task.id} ({task.agent}) — {task.error}")
             else:
                 deps = ""

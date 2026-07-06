@@ -14,6 +14,7 @@ from swarmkit_runtime.model_providers import CompletionResponse
 from swarmkit_runtime.resolver import ResolvedAgent
 
 from ._helpers import _progress
+from ._sentinels import AgentStatus, TaskStatus
 
 
 def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
@@ -117,7 +118,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             return {
                 "current_agent": agent_id,
                 "task_plan": plan.to_dict(),
-                "agent_results": {agent_id: "__task_plan_created__"},
+                "agent_results": {agent_id: AgentStatus.TASK_PLAN_CREATED},
                 "messages": [
                     AIMessage(
                         content=f"[{agent_id}] Task plan created with {task_count} tasks.",
@@ -139,7 +140,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             fixes = plan.auto_fix_dependencies()
             upd_errors.extend(plan.validate_dependencies())
 
-            pending = sum(1 for t in plan.tasks if t.status == "pending")
+            pending = sum(1 for t in plan.tasks if t.status == TaskStatus.PENDING)
             _progress(f"[{agent_id}] updated task plan: {len(plan.tasks)} total, {pending} pending")
             for fix in fixes:
                 _progress(f"  {fix}")
@@ -150,7 +151,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
                 return {
                     "current_agent": agent_id,
                     "task_plan": plan.to_dict(),
-                    "agent_results": {agent_id: "__task_plan_complete__"},
+                    "agent_results": {agent_id: AgentStatus.TASK_PLAN_COMPLETE},
                     "messages": [
                         AIMessage(
                             content=f"[{agent_id}] Task plan marked complete. Synthesizing.",
@@ -162,7 +163,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             return {
                 "current_agent": agent_id,
                 "task_plan": plan.to_dict(),
-                "agent_results": {agent_id: "__task_plan_updated__"},
+                "agent_results": {agent_id: AgentStatus.TASK_PLAN_UPDATED},
                 "messages": [
                     AIMessage(
                         content=f"[{agent_id}] Task plan updated. {pending} tasks pending.",

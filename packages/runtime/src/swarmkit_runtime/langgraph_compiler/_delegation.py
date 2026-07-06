@@ -27,6 +27,7 @@ from ._helpers import (
     _safe_parse_json,
 )
 from ._prompts import _build_completion_request
+from ._sentinels import AgentStatus, make_delegated
 from ._state import SwarmState
 from ._task_plan_handler import _handle_task_plan_tools
 
@@ -132,7 +133,7 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
                 return {
                     "current_agent": agent_id,
                     "agent_results": {
-                        agent_id: "__delegated_parallel__",
+                        agent_id: AgentStatus.DELEGATED_PARALLEL,
                         **dag_results,
                     },
                     "messages": merged_messages,
@@ -188,7 +189,7 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
                     "current_agent": child_id,
                     "delegation_counts": _new_counts,
                     "agent_results": {
-                        agent_id: f"__delegated__:{child_id}",
+                        agent_id: make_delegated(child_id),
                     },
                     "messages": [
                         AIMessage(
@@ -270,7 +271,7 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
                 "current_agent": agent_id,
                 "delegation_counts": _par_counts,
                 "agent_results": {
-                    agent_id: "__delegated_parallel__",
+                    agent_id: AgentStatus.DELEGATED_PARALLEL,
                     **merged_results,
                 },
                 "messages": merged_messages,

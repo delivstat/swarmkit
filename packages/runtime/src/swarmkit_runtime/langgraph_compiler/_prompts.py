@@ -18,6 +18,7 @@ from swarmkit_runtime.model_providers import CompletionRequest, Message, ToolSpe
 from swarmkit_runtime.resolver import ResolvedAgent
 
 from ._run_context import run_state_dir
+from ._sentinels import is_delegated, is_task_plan_status
 from ._state import SwarmState
 
 
@@ -87,7 +88,7 @@ def _get_completed_children(
         result = agent_results[c.id]
         if not isinstance(result, str):
             continue
-        if result.startswith("__delegated__:"):
+        if is_delegated(result):
             continue
         if result.startswith("DENIED:"):
             continue
@@ -345,7 +346,7 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
 
     # ---- v2: task plan context ----------------------------------------
     agent_result = agent_results.get(agent.id, "")
-    _is_task_plan_state = isinstance(agent_result, str) and agent_result.startswith("__task_plan_")
+    _is_task_plan_state = is_task_plan_status(agent_result)
     if _is_task_plan_state:
         from swarmkit_runtime.langgraph_compiler._task_executor import (  # noqa: PLC0415
             get_plan_from_state,
@@ -445,7 +446,7 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
         for cid in [c.id for c in agent.children]
         if cid in agent_results
         and isinstance(agent_results[cid], str)
-        and not agent_results[cid].startswith("__delegated__:")
+        and not is_delegated(agent_results[cid])
     }
 
     all_children_ids = {c.id for c in agent.children}
@@ -498,7 +499,7 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
                 current_q = str(msg.content)
             elif isinstance(msg, AIMessage) and msg.content:
                 content = str(msg.content)
-                if not content.startswith("__delegated__:") and current_q:
+                if not is_delegated(content) and current_q:
                     turns.append((current_q, content))
                     current_q = ""
 
