@@ -31,6 +31,29 @@ class Task:
     error: str | None = None
     delegation_count: int = 0
 
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> Task:
+        """Build a Task from a persisted/state dict, defaulting every optional field.
+
+        The one place dict→Task reconstruction lives — three call sites previously inlined this
+        loop and one had drifted (dropped started_at/completed_at/duration_s/tool_calls on reload).
+        """
+        return cls(
+            id=raw["id"],
+            agent=raw["agent"],
+            instruction=raw.get("instruction", ""),
+            depends_on=raw.get("depends_on", []),
+            status=raw.get("status", "pending"),
+            started_at=raw.get("started_at"),
+            completed_at=raw.get("completed_at"),
+            duration_s=raw.get("duration_s"),
+            tool_calls=raw.get("tool_calls", 0),
+            key_findings=raw.get("key_findings", []),
+            result_path=raw.get("result_path"),
+            error=raw.get("error"),
+            delegation_count=raw.get("delegation_count", 0),
+        )
+
 
 @dataclass
 class TaskPlan:
@@ -38,6 +61,17 @@ class TaskPlan:
     topology: str = ""
     created_at: float = 0.0
     tasks: list[Task] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> TaskPlan:
+        """Build a TaskPlan from a persisted/state dict (empty/None → an empty plan)."""
+        data = data or {}
+        return cls(
+            run_id=data.get("run_id", ""),
+            topology=data.get("topology", ""),
+            created_at=data.get("created_at", 0.0),
+            tasks=[Task.from_dict(raw) for raw in data.get("tasks", [])],
+        )
 
     def add_tasks(self, raw_tasks: list[dict[str, Any]]) -> list[str]:
         errors: list[str] = []
@@ -291,31 +325,7 @@ class TaskPlan:
 
     @classmethod
     def load(cls, path: Path) -> TaskPlan:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        plan = cls(
-            run_id=data.get("run_id", ""),
-            topology=data.get("topology", ""),
-            created_at=data.get("created_at", 0.0),
-        )
-        for raw in data.get("tasks", []):
-            plan.tasks.append(
-                Task(
-                    id=raw["id"],
-                    agent=raw["agent"],
-                    instruction=raw.get("instruction", ""),
-                    depends_on=raw.get("depends_on", []),
-                    status=raw.get("status", "pending"),
-                    started_at=raw.get("started_at"),
-                    completed_at=raw.get("completed_at"),
-                    duration_s=raw.get("duration_s"),
-                    tool_calls=raw.get("tool_calls", 0),
-                    key_findings=raw.get("key_findings", []),
-                    result_path=raw.get("result_path"),
-                    error=raw.get("error"),
-                    delegation_count=raw.get("delegation_count", 0),
-                )
-            )
-        return plan
+        return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 def build_create_task_plan_tool(agent: ResolvedAgent) -> ToolSpec:

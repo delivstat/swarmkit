@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan
+from swarmkit_runtime.langgraph_compiler._task_plan_handler import _load_plan
 
 
 class TestTaskPlan:
@@ -190,3 +191,62 @@ class TestTaskPlan:
         assert d["run_id"] == "r1"
         assert len(d["tasks"]) == 1
         assert d["tasks"][0]["id"] == "t1"
+
+
+_FULL_PLAN = {
+    "run_id": "r1",
+    "topology": "hello",
+    "created_at": 12.5,
+    "tasks": [
+        {
+            "id": "t1",
+            "agent": "self",
+            "instruction": "do",
+            "depends_on": ["t0"],
+            "status": "completed",
+            "started_at": 1.0,
+            "completed_at": 3.0,
+            "duration_s": 2.0,
+            "tool_calls": 4,
+            "key_findings": ["a"],
+            "result_path": "/p",
+            "error": None,
+            "delegation_count": 1,
+        }
+    ],
+}
+
+
+class TestFromDict:
+    """TaskPlan.from_dict / Task.from_dict — the single dict→object loader (PR-K2)."""
+
+    def test_roundtrip_preserves_all_fields(self) -> None:
+        plan = TaskPlan.from_dict(_FULL_PLAN)
+        assert plan.run_id == "r1" and plan.topology == "hello" and plan.created_at == 12.5
+        t = plan.tasks[0]
+        # The timing/tool-call fields the drifted _load_plan used to drop:
+        assert t.started_at == 1.0 and t.completed_at == 3.0
+        assert t.duration_s == 2.0 and t.tool_calls == 4
+        assert t.status == "completed" and t.depends_on == ["t0"]
+        # to_dict is the inverse.
+        assert TaskPlan.from_dict(plan.to_dict()).tasks[0] == t
+
+    def test_empty_and_none(self) -> None:
+        assert TaskPlan.from_dict({}).tasks == []
+        assert TaskPlan.from_dict(None).tasks == []
+
+    def test_defaults_for_minimal_task(self) -> None:
+        t = TaskPlan.from_dict({"tasks": [{"id": "x", "agent": "self"}]}).tasks[0]
+        assert t.status == "pending" and t.tool_calls == 0 and t.depends_on == []
+
+    def test_save_load_roundtrip(self, tmp_path: Path) -> None:
+        plan = TaskPlan.from_dict(_FULL_PLAN)
+        plan.save(tmp_path)
+        loaded = TaskPlan.load(tmp_path / "tasks.json")
+        assert loaded.tasks[0].tool_calls == 4 and loaded.tasks[0].duration_s == 2.0
+
+    def test_handler_load_plan_keeps_timing(self) -> None:
+        # Regression: _task_plan_handler._load_plan dropped these before PR-K2.
+
+        plan = _load_plan(_FULL_PLAN)
+        assert plan.tasks[0].started_at == 1.0 and plan.tasks[0].tool_calls == 4
