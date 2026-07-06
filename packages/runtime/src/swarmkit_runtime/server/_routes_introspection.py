@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 
 from swarmkit_runtime.canary import CanaryRouter
-from swarmkit_runtime.persistence import SqliteStore
+from swarmkit_runtime.persistence import Store
 
 from ._helpers import (
     _build_capabilities,
@@ -66,7 +66,7 @@ def _register_introspection_routes(app: FastAPI) -> None:
 
     @app.get("/usage")
     async def get_usage(request: Request) -> dict[str, Any]:
-        s: SqliteStore | None = getattr(request.app.state, "store", None)
+        s: Store | None = getattr(request.app.state, "store", None)
         if s is None:
             return {"summary": {}, "by_model": []}
         return {
@@ -76,14 +76,14 @@ def _register_introspection_routes(app: FastAPI) -> None:
 
     @app.get("/usage/{job_id}")
     async def get_job_usage(job_id: str, request: Request) -> dict[str, Any]:
-        s: SqliteStore | None = getattr(request.app.state, "store", None)
+        s: Store | None = getattr(request.app.state, "store", None)
         if s is None:
             return {}
         return s.get_usage_summary(job_id=job_id)
 
     @app.get("/jobs/history")
     async def list_persisted_jobs(request: Request) -> list[dict[str, Any]]:
-        s: SqliteStore | None = getattr(request.app.state, "store", None)
+        s: Store | None = getattr(request.app.state, "store", None)
         if s is None:
             return []
         rows = s.list_jobs(limit=100)

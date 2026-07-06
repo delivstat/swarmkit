@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.canary import CanaryRouter
-from swarmkit_runtime.persistence import SqliteStore
+from swarmkit_runtime.persistence import Store
 
 from ._config import _DEFAULT_TIMEOUT_SECONDS
 
@@ -75,7 +75,7 @@ async def execute_job(
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     semaphore: asyncio.Semaphore | None = None,
     canary_router: CanaryRouter | None = None,
-    store: SqliteStore | None = None,
+    store: Store | None = None,
 ) -> None:
     """Run topology in background, updating job state.
 
@@ -142,7 +142,7 @@ def _start_job(
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS,
     semaphore: asyncio.Semaphore | None = None,
     canary_router: CanaryRouter | None = None,
-    store: SqliteStore | None = None,
+    store: Store | None = None,
 ) -> None:
     """Create a background task for a job and track it."""
     task = asyncio.create_task(

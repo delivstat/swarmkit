@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from swarmkit_runtime.persistence._sqlite import (
+from swarmkit_runtime.persistence._store import (
     SqliteStore,
     UsageRow,
 )
