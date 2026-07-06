@@ -44,11 +44,16 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
 
 ## P1 — structural extractions (retire the substrate duplication)
 
-- [~] **PR-G (control-plane store base done; runtime stores pending) — `_SqliteStore` base + async offload.** Shared base (connection/WAL/
-  row-mapping/migration-registry) behind a dialect seam; move blocking sqlite off the event
-  loop (`asyncio.to_thread` or `def` handlers). Apply to the 9 stores across both packages
-  (may split into G1 runtime / G2 control-plane). Tests: WAL+migration on every store; a
-  concurrency test that the loop isn't blocked.
+- [x] **PR-G — shared sqlite connection base, both packages (#417 control-plane, #438 runtime).**
+  Control-plane `_sqlite_base.SqliteStore` (#417); runtime `_sqlite.wal_connection`/`bootstrap`
+  shared by the persistence/audit/telemetry/notifications stores (#438). **Deferred:** the async
+  offload (blocking sqlite → `asyncio.to_thread`) — folded into the SQLAlchemy migration below,
+  which moves the async audit provider onto an async engine.
+- **Postgres backend (new, user-requested — design/details/postgres-backend.md).** SQLAlchemy Core,
+  one impl per store, SQLite default + Postgres for distributed deploys. **PR-1 (#440):** runtime
+  persistence store on SQLAlchemy Core (`_tables`/`_store`/`_factory`; `make_engine`+`normalize_url`;
+  real postgres selection; integration test on `SWARMKIT_TEST_POSTGRES_URL`). **Pending:** PR-2
+  runtime audit (async engine), PR-3 control-plane stores.
 - [x] **PR-H (#436) — canonical verb table + `ServeClient` + cross-package contract.** Runtime
   `connect._VERB_ROUTES` is now the public canonical `VERB_ROUTES` (+ `DEPLOY_PLURAL`/`DEPLOY_TIER`/
   `verb_tiers()`). Control-plane got a `ServeClient` (async; bearer/base/error-map + `ok()`) that
@@ -81,11 +86,13 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
 - [x] **PR-J (#419) — provider adapter shared helpers.** `tool_specs_to_openai_functions`,
   `image_to_data_url`, `map_stop_reason`, `parse_fenced_json`; fix Google double-system-prompt;
   per-adapter retry classification; MCP `call_tool` timeout + start lock; remove dead MCP cache.
-- [ ] **PR-K — compiler primitives + topology-as-data cleanup.** `ScopeStore` (one writer,
-  keeps `solution_approach`/`open_questions`); `Task.from_dict`/`TaskPlan.from_dict`;
-  `AgentStatus` enum + `langgraph_compiler/_errors.py` (replace string sentinels); JSON-safe
-  governance-flag attachment; move `document-writer`/synthesis-role + strip "CDT/Jira" domain
-  text out of the framework into topology/archetype metadata.
+- [~] **PR-K — compiler primitives + topology-as-data cleanup.** **K2 done (#439):**
+  `Task.from_dict`/`TaskPlan.from_dict` — one loader replacing three inlined loops, fixing a
+  reload that dropped timing/tool-call fields. **Pending:** K1 `ScopeStore` (one writer keeping
+  `solution_approach`/`open_questions` — two competing writers today, one drops those fields);
+  K3 `AgentStatus`/`TaskStatus` enum + a sentinels module (replace `__task_plan_*__`/`__delegated__`
+  magic strings + bare status strings); K4 JSON-safe governance-flag attachment + move
+  `document-writer`/synthesis-role + strip "CDT/Jira" domain text into topology/archetype metadata.
 - [ ] **PR-L — UI SWR kit.** `useResource` (SWR) replacing `usePoll` (fixes race/latch/dup-fetch/
   no-op-refresh); `<DataView>`/`<JsonBlock>`/form-kit/`<StatusBadge>`; operator-token client
   path; keyboard-accessible rows; back `InstanceProvider` with the shared cache.
