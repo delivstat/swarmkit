@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from langgraph.graph.state import CompiledStateGraph
 
-from swarmkit_runtime.audit import AuditProvider, SQLiteAuditProvider
+from swarmkit_runtime.audit import AuditProvider, SqlAuditProvider, audit_provider_for_path
 from swarmkit_runtime.governance import (
     DecisionSkillBinding,
     DecisionSkillResult,
@@ -125,9 +125,7 @@ class WorkspaceRuntime:
         self._governance = governance
         self._mcp_manager = mcp_manager
         self._memory_store = self._create_memory_store()
-        self._audit_provider = audit_provider or SQLiteAuditProvider(
-            db_path=workspace_root / ".swarmkit" / "audit.sqlite"
-        )
+        self._audit_provider = audit_provider or audit_provider_for_path(workspace_root)
         self._session_active = False
 
     def _create_memory_store(self) -> Any:
@@ -159,15 +157,13 @@ class WorkspaceRuntime:
         return MemoryStore(self._workspace_root)
 
     @staticmethod
-    def audit_provider_for(path: Path) -> SQLiteAuditProvider:
+    def audit_provider_for(path: Path) -> SqlAuditProvider:
         """Get the audit provider for a workspace without loading the full runtime.
 
-        Used by CLI commands (status, logs, notifications) that only need
-        to query events — not compile or run topologies. Same provider
-        and same database the full runtime uses.
+        Used by CLI commands (status, logs, notifications) that only need to query events — not
+        compile or run topologies. Same backend (sqlite / postgres) + database the full runtime uses.
         """
-        ws_root = path.resolve()
-        return SQLiteAuditProvider(db_path=ws_root / ".swarmkit" / "audit.sqlite")
+        return audit_provider_for_path(path)
 
     @staticmethod
     def observability(path: Path) -> Observability:

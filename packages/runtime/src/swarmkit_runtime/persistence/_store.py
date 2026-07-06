@@ -42,9 +42,16 @@ def normalize_url(url: str) -> str:
 
 
 def make_engine(url: str) -> Engine:
-    """Create a SQLAlchemy engine, enabling WAL + busy_timeout + FKs for the SQLite dialect."""
+    """Create a SQLAlchemy engine, enabling WAL + busy_timeout + FKs for the SQLite dialect.
+
+    For a SQLite *file* URL the parent directory is created if absent (matching the prior stores),
+    so ``sqlite:///{workspace}/.swarmkit/store.sqlite`` works on a fresh workspace.
+    """
     engine = create_engine(normalize_url(url))
     if engine.dialect.name == "sqlite":
+        db_file = engine.url.database
+        if db_file and db_file != ":memory:":
+            Path(db_file).parent.mkdir(parents=True, exist_ok=True)
 
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_conn: Any, _rec: Any) -> None:

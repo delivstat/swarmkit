@@ -237,3 +237,33 @@ class TestRegistry:
         assert reg.get("mock") is MockAuditProvider
         assert reg.get("sqlite") is SQLiteAuditProvider
         assert reg.get("nonexistent") is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_postgres_audit_roundtrip() -> None:
+    """The same audit provider on a real Postgres — runs only when SWARMKIT_TEST_POSTGRES_URL is
+    set (deselected by default; guards the dialect end-to-end)."""
+    import os  # noqa: PLC0415
+
+    from swarmkit_runtime.audit import PostgresAuditProvider  # noqa: PLC0415
+
+    url = os.environ.get("SWARMKIT_TEST_POSTGRES_URL")
+    if not url:
+        pytest.skip("set SWARMKIT_TEST_POSTGRES_URL to run the Postgres audit test")
+    provider = PostgresAuditProvider(url)
+    try:
+        ev = AuditEvent(
+            event_type="agent.completed",
+            agent_id="root",
+            timestamp=datetime.now(UTC),
+            run_id="pg-run-1",
+            duration_ms=7,
+        )
+        await provider.record(ev)
+        await provider.record(ev)  # duplicate PK → deduped, no raise
+        assert await provider.count(run_id="pg-run-1") == 1
+        events = [e async for e in provider.query(run_id="pg-run-1")]
+        assert events[0].agent_id == "root" and events[0].duration_ms == 7
+    finally:
+        await provider.close()
