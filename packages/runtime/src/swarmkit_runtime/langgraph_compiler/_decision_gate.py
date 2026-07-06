@@ -248,19 +248,17 @@ async def evaluate_pre_synthesis(
 
 
 def _read_scope(workspace_root: Any) -> dict[str, Any] | None:
-    """Read scope.json from run state if it exists."""
-    if workspace_root is None:
-        return None
-    from pathlib import Path  # noqa: PLC0415
+    """Read the current run's scope via the canonical ScopeStore.
 
-    scope_path = Path(workspace_root) / ".swarmkit" / "run-state" / "current" / "scope.json"
-    if not scope_path.exists():
-        return None
+    Previously this hardcoded ``run-state/current/scope.json`` — the stale ``current/`` layout that
+    broke once run-state became run-id-scoped, so the gate never saw the frozen scope. It now reads
+    the same run-scoped path every writer uses. *workspace_root* is unused but kept for callers.
+    """
+    from ._scope import read_scope  # noqa: PLC0415
+
     try:
-        import json as _json  # noqa: PLC0415
-
-        return _json.loads(scope_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
-    except (OSError, ValueError):
+        return read_scope()
+    except Exception:  # no active run context (e.g. isolated unit use) — behave as "no scope"
         return None
 
 

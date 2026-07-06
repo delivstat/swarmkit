@@ -128,23 +128,9 @@ def _parse_tool_args(block: Any) -> dict[str, Any]:
 
 def _handle_create_scope(block: Any, agent_id: str) -> str:
     """Create the scope contract — called once after reading source material."""
-    import json as _json  # noqa: PLC0415
+    from ._scope import create_scope  # noqa: PLC0415
 
-    args = _parse_tool_args(block)
-    scope_data = {
-        "source": args.get("source", ""),
-        "requirements": args.get("requirements", []),
-        "constraints": args.get("constraints", []),
-        "authoritative_sources": args.get("authoritative_sources", []),
-        "excluded": args.get("excluded", []),
-        "decisions": args.get("decisions", []),
-        "related": args.get("related", []),
-        "solution_approach": args.get("solution_approach", []),
-        "open_questions": args.get("open_questions", []),
-    }
-
-    _scope_path().write_text(_json.dumps(scope_data, indent=2), encoding="utf-8")
-
+    scope_data = create_scope(_parse_tool_args(block))
     reqs = len(scope_data["requirements"])
     constraints = len(scope_data["constraints"])
     _progress(f"[{agent_id}] scope created: {reqs} requirements, {constraints} constraints")
@@ -156,34 +142,14 @@ def _handle_create_scope(block: Any, agent_id: str) -> str:
 
 def _handle_update_scope(block: Any, agent_id: str) -> str:
     """Update the scope with new findings — additive only."""
-    import json as _json  # noqa: PLC0415
+    from ._scope import SCOPE_LIST_FIELDS, update_scope  # noqa: PLC0415
 
-    path = _scope_path()
-    if not path.exists():
+    args = _parse_tool_args(block)
+    scope_data = update_scope(args)
+    if scope_data is None:
         return "Error: no scope exists. Call create-scope first."
 
-    scope_data = _json.loads(path.read_text(encoding="utf-8"))
-    args = _parse_tool_args(block)
-
-    added: list[str] = []
-    for field, key in [
-        ("add_requirements", "requirements"),
-        ("add_constraints", "constraints"),
-        ("add_authoritative_sources", "authoritative_sources"),
-        ("add_excluded", "excluded"),
-        ("add_decisions", "decisions"),
-        ("add_related", "related"),
-        ("add_solution_approach", "solution_approach"),
-        ("add_open_questions", "open_questions"),
-    ]:
-        items = args.get(field, [])
-        if items:
-            existing = scope_data.get(key, [])
-            scope_data[key] = existing + items
-            added.append(f"{len(items)} {key}")
-
-    path.write_text(_json.dumps(scope_data, indent=2), encoding="utf-8")
-
+    added = [f"{len(args[f'add_{k}'])} {k}" for k in SCOPE_LIST_FIELDS if args.get(f"add_{k}")]
     reqs = len(scope_data.get("requirements", []))
     constraints = len(scope_data.get("constraints", []))
     _progress(f"[{agent_id}] scope updated: +{', '.join(added) if added else 'nothing'}")
@@ -197,11 +163,11 @@ def _handle_read_scope(block: Any, agent_id: str) -> str:
     """Read the current scope contract."""
     import json as _json  # noqa: PLC0415
 
-    path = _scope_path()
-    if not path.exists():
-        return "No scope exists yet. Call create-scope first."
+    from ._scope import read_scope  # noqa: PLC0415
 
-    scope_data = _json.loads(path.read_text(encoding="utf-8"))
+    scope_data = read_scope()
+    if scope_data is None:
+        return "No scope exists yet. Call create-scope first."
     _progress(f"[{agent_id}] read scope")
     return _json.dumps(scope_data, indent=2)
 
