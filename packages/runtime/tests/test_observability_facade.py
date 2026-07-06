@@ -71,7 +71,8 @@ def test_find_run_log_by_prefix(tmp_path: Path) -> None:
     _write_jsonl(logs / "hello-1.jsonl", [{"x": 1}])
     _write_jsonl(logs / "hello-2.jsonl", [{"x": 2}])
     obs = Observability(tmp_path)
-    assert obs.find_run_log("hello").name == "hello-2.jsonl"  # newest match
+    found = obs.find_run_log("hello")
+    assert found is not None and found.name == "hello-2.jsonl"  # newest match
     assert obs.find_run_log("nope") is None
 
 
@@ -83,7 +84,8 @@ def test_find_trace(tmp_path: Path) -> None:
     traces.mkdir(parents=True)
     (traces / "run-abc-123.json").write_text("{}", encoding="utf-8")
     obs = Observability(tmp_path)
-    assert obs.find_trace("run-abc").name == "run-abc-123.json"
+    trace = obs.find_trace("run-abc")
+    assert trace is not None and trace.name == "run-abc-123.json"
     assert obs.find_trace("missing") is None
     assert Observability(tmp_path / "empty").find_trace("x") is None  # no traces dir
 
