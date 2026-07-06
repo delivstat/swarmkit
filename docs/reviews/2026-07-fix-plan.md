@@ -54,7 +54,7 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   persistence store. **PR-2 (#442):** runtime audit provider (sync SQLAlchemy engine, async
   signatures kept — event-loop-safe; `SQLiteAuditProvider`/`PostgresAuditProvider`; audit follows
   the store backend via `audit_provider_for_path`). The **runtime** now runs fully on SQLite or
-  Postgres. **PR-3 (#TBD):** control-plane stores (registry/artifacts/proposals/aggregation) on
+  Postgres. **PR-3 (#447):** control-plane stores (registry/artifacts/proposals/aggregation) on
   SQLAlchemy Core — one `_tables.py` metadata + engine-holding `Store` base (`_store_base.py`,
   replaces `_sqlite_base`) shared by all four stores via one engine; `_store_factory.create_registry`
   selects the backend (`SWARMKIT_CONTROL_PLANE_STORE_BACKEND`/`DATABASE_URL`). `claim_queued` is
