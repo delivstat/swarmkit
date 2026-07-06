@@ -11,12 +11,12 @@ Storage: .swarmkit/notifications.sqlite
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from swarmkit_runtime._sqlite import bootstrap, wal_connection
 from swarmkit_runtime.notifications._provider import NotificationEvent
 
 _CREATE_TABLE = """
@@ -82,14 +82,8 @@ class NotificationStore:
 
     def __init__(self, db_path: str | Path = ".swarmkit/notifications.sqlite") -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.execute(_CREATE_TABLE)
-        for idx in _CREATE_INDEXES:
-            self._conn.execute(idx)
-        self._conn.commit()
+        self._conn = wal_connection(self._db_path, check_same_thread=False, synchronous="NORMAL")
+        bootstrap(self._conn, _CREATE_TABLE, _CREATE_INDEXES)
 
     def create(self, event: NotificationEvent) -> str:
         """Persist a notification event. Returns the notification ID."""

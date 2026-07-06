@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from swarmkit_runtime._sqlite import wal_connection
+
 logger = logging.getLogger("swarmkit.persistence")
 
 _SCHEMA = """
@@ -149,11 +151,7 @@ class SqliteStore:
             conn.executescript(_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        conn.row_factory = sqlite3.Row
-        return conn
+        return wal_connection(self._db_path, timeout=10, foreign_keys=True, row_factory=sqlite3.Row)
 
     # ---- Jobs ----------------------------------------------------------------
 
