@@ -68,7 +68,7 @@ def _build_input(
     if context and "scope" in context:
         scope_data = context["scope"]
         parts.append("")
-        parts.append("--- FROZEN SCOPE (from Jira ticket) ---")
+        parts.append("--- FROZEN SCOPE ---")
         if isinstance(scope_data, dict):
             parts.append(json.dumps(scope_data, indent=2, default=str))
         else:
