@@ -161,7 +161,7 @@ class WorkspaceRuntime:
         """Get the audit provider for a workspace without loading the full runtime.
 
         Used by CLI commands (status, logs, notifications) that only need to query events — not
-        compile or run topologies. Same backend (sqlite / postgres) + database the full runtime uses.
+        compile or run topologies. Same backend (sqlite / postgres) + DB the full runtime uses.
         """
         return audit_provider_for_path(path)
 
