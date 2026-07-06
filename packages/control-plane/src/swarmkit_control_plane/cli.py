@@ -90,7 +90,7 @@ def serve(
 
     from swarmkit_control_plane._app import create_app  # noqa: PLC0415
     from swarmkit_control_plane._oidc import OidcVerifier  # noqa: PLC0415
-    from swarmkit_control_plane._registry import SqliteRegistry  # noqa: PLC0415
+    from swarmkit_control_plane._store_factory import create_registry  # noqa: PLC0415
 
     origins = list(cors_origin or [])
     origins += [o.strip() for o in os.environ.get(_CORS_ENV, "").split(",") if o.strip()]
@@ -107,7 +107,7 @@ def serve(
         else None
     )
 
-    registry = SqliteRegistry(data_dir / "registry.sqlite")
+    registry = create_registry(data_dir)
     if not op_tokens and oidc is None:
         typer.echo(
             "warning: no operator tokens or OIDC issuer set — panel API is UNAUTHENTICATED. "

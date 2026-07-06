@@ -1,0 +1,150 @@
+"""SQLAlchemy Core table definitions for the control-plane stores.
+
+One ``MetaData`` drives both SQLite and Postgres (see postgres-backend.md). The four stores
+(registry / artifacts / proposals / aggregation) share one backing database, so their tables share
+one metadata — ``metadata.create_all(engine)`` from any store creates the full set (idempotent, and
+it only creates what is absent, so existing SQLite files keep working).
+
+Columns match the original hand-written schemas exactly. Timestamps ride as ``Text`` (ISO strings);
+JSON-ish blobs the store code (de)serialises by hand also ride as ``Text`` — except the aggregation
+``payload``, which is a real ``JSON`` column because the rollups extract fields from it in SQL
+(dialect-portable ``JSON_EXTRACT`` on SQLite, ``->>`` on Postgres) rather than in Python.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import (
+    JSON,
+    Column,
+    Index,
+    Integer,
+    MetaData,
+    PrimaryKeyConstraint,
+    Table,
+    Text,
+)
+
+metadata = MetaData()
+
+# --- registry -----------------------------------------------------------------
+
+instances = Table(
+    "instances",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("endpoint", Text, nullable=False),
+    Column("connection", Text, nullable=False, default="direct"),
+    Column("token_ref", Text, nullable=False, default=""),
+    Column("tier", Text, nullable=False, default="read"),
+    Column("token_fingerprint", Text, nullable=False, default=""),
+    Column("token_hash", Text, nullable=False, default=""),
+    Column("token_minted_at", Text),
+    Column("schema_version", Text, nullable=False, default=""),
+    Column("capabilities", Text, nullable=False, default="{}"),
+    Column("health", Text, nullable=False, default="unknown"),
+    Column("last_seen", Text),
+    Column("created_at", Text, nullable=False),
+)
+
+commands = Table(
+    "commands",
+    metadata,
+    Column("cmd_id", Text, primary_key=True),
+    Column("instance_id", Text, nullable=False),
+    Column("verb", Text, nullable=False),
+    Column("args", Text, nullable=False, default="{}"),
+    Column("status", Text, nullable=False, default="queued"),
+    Column("output", Text),
+    Column("error", Text),
+    Column("created_at", Text, nullable=False),
+    Column("dispatched_at", Text),
+    Column("result_at", Text),
+    Index("idx_commands_instance", "instance_id", "status"),
+)
+
+# --- artifacts ----------------------------------------------------------------
+
+artifact_versions = Table(
+    "artifact_versions",
+    metadata,
+    Column("kind", Text, nullable=False),
+    Column("id", Text, nullable=False),
+    Column("version", Text, nullable=False),
+    Column("content_hash", Text, nullable=False),
+    Column("content", Text, nullable=False),
+    Column("authored_by", Text, nullable=False, default=""),
+    Column("schema_version", Text, nullable=False, default=""),
+    Column("created_at", Text, nullable=False),
+    Column("seq", Integer, nullable=False),
+    PrimaryKeyConstraint("kind", "id", "version"),
+)
+
+deployments = Table(
+    "deployments",
+    metadata,
+    Column("instance_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("id", Text, nullable=False),
+    Column("version", Text, nullable=False),
+    Column("updated_at", Text, nullable=False),
+    PrimaryKeyConstraint("instance_id", "kind", "id"),
+)
+
+reported_artifacts = Table(
+    "reported_artifacts",
+    metadata,
+    Column("instance_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("id", Text, nullable=False),
+    Column("version", Text, nullable=False, default=""),
+    Column("content_hash", Text, nullable=False, default=""),
+    Column("reported_at", Text, nullable=False),
+    PrimaryKeyConstraint("instance_id", "kind", "id"),
+)
+
+# --- proposals ----------------------------------------------------------------
+
+proposals = Table(
+    "proposals",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("kind", Text, nullable=False),
+    Column("artifact_id", Text, nullable=False),
+    Column("content", Text, nullable=False),
+    Column("status", Text, nullable=False, default="pending"),
+    Column("proposed_by", Text, nullable=False, default=""),
+    Column("signal", Text, nullable=False, default=""),
+    Column("eval_summary", Text, nullable=False, default="{}"),
+    Column("approved_by", Text, nullable=False, default=""),
+    Column("reason", Text, nullable=False, default=""),
+    Column("published_version", Text, nullable=False, default=""),
+    Column("created_at", Text, nullable=False),
+    Column("decided_at", Text),
+    Index("idx_proposals_status", "status", "created_at"),
+)
+
+# --- aggregation --------------------------------------------------------------
+
+agg_records = Table(
+    "agg_records",
+    metadata,
+    Column("instance_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("record_id", Text, nullable=False),
+    Column("ts", Text, nullable=False, default=""),
+    Column("payload", JSON, nullable=False, default=dict),
+    PrimaryKeyConstraint("instance_id", "kind", "record_id"),
+    Index("idx_agg_kind_ts", "kind", "ts"),
+)
+
+__all__ = [
+    "agg_records",
+    "artifact_versions",
+    "commands",
+    "deployments",
+    "instances",
+    "metadata",
+    "proposals",
+    "reported_artifacts",
+]

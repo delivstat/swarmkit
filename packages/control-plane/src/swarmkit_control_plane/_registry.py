@@ -1,99 +1,97 @@
-"""SqliteRegistry — durable store of enrolled instances.
+"""SqliteRegistry — durable store of enrolled instances + the Mode B command queue.
 
-Sqlite for now (mirrors the runtime store); the design's central Postgres is a later swap.
-See design/details/control-plane/04-persistence-state.md, 13-connector-registry.md.
+SQLAlchemy Core over SQLite (default) or Postgres (design/details/postgres-backend.md); the class
+name is kept for its many import sites. See design/details/control-plane/04-persistence-state.md,
+13-connector-registry.md.
 """
 
 from __future__ import annotations
 
 import json
-import sqlite3
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
+from sqlalchemy import delete, inspect, select, text, update
+from sqlalchemy.engine import Connection, RowMapping
+
 from swarmkit_control_plane._models import Command, CommandStatus, Health, Instance
-from swarmkit_control_plane._sqlite_base import SqliteStore
+from swarmkit_control_plane._store_base import Store, upsert
+from swarmkit_control_plane._tables import commands, instances
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS instances (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    endpoint TEXT NOT NULL,
-    connection TEXT NOT NULL DEFAULT 'direct',
-    token_ref TEXT NOT NULL DEFAULT '',
-    tier TEXT NOT NULL DEFAULT 'read',
-    token_fingerprint TEXT NOT NULL DEFAULT '',
-    token_hash TEXT NOT NULL DEFAULT '',
-    token_minted_at TEXT,
-    schema_version TEXT NOT NULL DEFAULT '',
-    capabilities TEXT NOT NULL DEFAULT '{}',
-    health TEXT NOT NULL DEFAULT 'unknown',
-    last_seen TEXT,
-    created_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS commands (
-    cmd_id TEXT PRIMARY KEY,
-    instance_id TEXT NOT NULL,
-    verb TEXT NOT NULL,
-    args TEXT NOT NULL DEFAULT '{}',
-    status TEXT NOT NULL DEFAULT 'queued',
-    output TEXT,
-    error TEXT,
-    created_at TEXT NOT NULL,
-    dispatched_at TEXT,
-    result_at TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_commands_instance ON commands (instance_id, status);
-"""
+_INSTANCE_COLS = (
+    "name",
+    "endpoint",
+    "connection",
+    "token_ref",
+    "tier",
+    "token_fingerprint",
+    "token_hash",
+    "token_minted_at",
+    "schema_version",
+    "capabilities",
+    "health",
+    "last_seen",
+    "created_at",
+)
 
 
-class SqliteRegistry(SqliteStore):
-    """Thread-safe sqlite-backed instance registry."""
+class SqliteRegistry(Store):
+    """Thread-safe instance registry (SQLite or Postgres)."""
 
-    _SCHEMA = _SCHEMA
+    def _migrate(self, conn: Connection) -> None:
+        """Add columns introduced after the initial schema (pre-existing SQLite DBs).
 
-    def _migrate(self, conn: sqlite3.Connection) -> None:
-        """Add columns introduced after the initial schema (pre-existing DBs)."""
-        cols = {r["name"] for r in conn.execute("PRAGMA table_info(instances)").fetchall()}
+        ``create_all`` builds the full schema for a fresh DB; this only fires for a database created
+        by an older schema, where the table already exists so ``create_all`` skips it.
+        """
+        if self._engine.dialect.name != "sqlite":
+            return
+        cols = {c["name"] for c in inspect(self._engine).get_columns("instances")}
         if "tier" not in cols:
-            conn.execute("ALTER TABLE instances ADD COLUMN tier TEXT NOT NULL DEFAULT 'read'")
+            conn.execute(text("ALTER TABLE instances ADD COLUMN tier TEXT NOT NULL DEFAULT 'read'"))
         if "token_fingerprint" not in cols:
             conn.execute(
-                "ALTER TABLE instances ADD COLUMN token_fingerprint TEXT NOT NULL DEFAULT ''"
+                text("ALTER TABLE instances ADD COLUMN token_fingerprint TEXT NOT NULL DEFAULT ''")
             )
-            conn.execute("ALTER TABLE instances ADD COLUMN token_minted_at TEXT")
+            conn.execute(text("ALTER TABLE instances ADD COLUMN token_minted_at TEXT"))
         if "token_hash" not in cols:
-            conn.execute("ALTER TABLE instances ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''")
+            conn.execute(
+                text("ALTER TABLE instances ADD COLUMN token_hash TEXT NOT NULL DEFAULT ''")
+            )
 
     def add(self, instance: Instance) -> None:
         if not instance.created_at:
             instance.created_at = datetime.now(UTC).isoformat()
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """INSERT OR REPLACE INTO instances
-                   (id, name, endpoint, connection, token_ref, tier, token_fingerprint,
-                    token_hash, token_minted_at, schema_version, capabilities, health, last_seen,
-                    created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    instance.id,
-                    instance.name,
-                    instance.endpoint,
-                    instance.connection,
-                    instance.token_ref,
-                    instance.tier,
-                    instance.token_fingerprint,
-                    instance.token_hash,
-                    instance.token_minted_at,
-                    instance.schema_version,
-                    json.dumps(instance.capabilities),
-                    instance.health,
-                    instance.last_seen,
-                    instance.created_at,
-                ),
-            )
+        values = {
+            "id": instance.id,
+            "name": instance.name,
+            "endpoint": instance.endpoint,
+            "connection": instance.connection,
+            "token_ref": instance.token_ref,
+            "tier": instance.tier,
+            "token_fingerprint": instance.token_fingerprint,
+            "token_hash": instance.token_hash,
+            "token_minted_at": instance.token_minted_at,
+            "schema_version": instance.schema_version,
+            "capabilities": json.dumps(instance.capabilities),
+            "health": instance.health,
+            "last_seen": instance.last_seen,
+            "created_at": instance.created_at,
+        }
+        # INSERT OR REPLACE on the id primary key — re-enrolling refreshes every field.
+        stmt = upsert(
+            self._engine,
+            instances,
+            values,
+            index_elements=["id"],
+            set_={c: values[c] for c in _INSTANCE_COLS},
+        )
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(stmt)
 
-    def _row_to_instance(self, row: sqlite3.Row) -> Instance:
+    def _row_to_instance(self, row: RowMapping) -> Instance:
         return Instance(
             id=row["id"],
             name=row["name"],
@@ -112,19 +110,23 @@ class SqliteRegistry(SqliteStore):
         )
 
     def get(self, instance_id: str) -> Instance | None:
-        with self._lock, self._connect() as conn:
-            row = conn.execute("SELECT * FROM instances WHERE id = ?", (instance_id,)).fetchone()
+        with self._lock, self._engine.connect() as conn:
+            row = (
+                conn.execute(select(instances).where(instances.c.id == instance_id))
+                .mappings()
+                .first()
+            )
         return self._row_to_instance(row) if row else None
 
     def list_all(self) -> list[Instance]:
-        with self._lock, self._connect() as conn:
-            rows = conn.execute("SELECT * FROM instances ORDER BY created_at").fetchall()
+        with self._lock, self._engine.connect() as conn:
+            rows = conn.execute(select(instances).order_by(instances.c.created_at)).mappings().all()
         return [self._row_to_instance(r) for r in rows]
 
     def delete(self, instance_id: str) -> bool:
-        with self._lock, self._connect() as conn:
-            cur = conn.execute("DELETE FROM instances WHERE id = ?", (instance_id,))
-        return cur.rowcount > 0
+        with self._lock, self._engine.begin() as conn:
+            result = conn.execute(delete(instances).where(instances.c.id == instance_id))
+        return result.rowcount > 0
 
     def update_health(
         self,
@@ -135,17 +137,13 @@ class SqliteRegistry(SqliteStore):
         capabilities: dict[str, object] | None = None,
     ) -> None:
         now = datetime.now(UTC).isoformat()
-        sets = ["health = ?", "last_seen = ?"]
-        params: list[object] = [health, now]
+        values: dict[str, Any] = {"health": health, "last_seen": now}
         if schema_version is not None:
-            sets.append("schema_version = ?")
-            params.append(schema_version)
+            values["schema_version"] = schema_version
         if capabilities is not None:
-            sets.append("capabilities = ?")
-            params.append(json.dumps(capabilities))
-        params.append(instance_id)
-        with self._lock, self._connect() as conn:
-            conn.execute(f"UPDATE instances SET {', '.join(sets)} WHERE id = ?", params)
+            values["capabilities"] = json.dumps(capabilities)
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(update(instances).where(instances.c.id == instance_id).values(**values))
 
     def set_token(
         self,
@@ -158,28 +156,34 @@ class SqliteRegistry(SqliteStore):
         minted_at: str,
     ) -> None:
         """Record a freshly minted token's reference + hash + metadata — never the secret itself."""
-        with self._lock, self._connect() as conn:
+        with self._lock, self._engine.begin() as conn:
             conn.execute(
-                """UPDATE instances
-                   SET token_ref = ?, token_fingerprint = ?, token_hash = ?, tier = ?,
-                       token_minted_at = ?
-                   WHERE id = ?""",
-                (token_ref, fingerprint, token_hash, tier, minted_at, instance_id),
+                update(instances)
+                .where(instances.c.id == instance_id)
+                .values(
+                    token_ref=token_ref,
+                    token_fingerprint=fingerprint,
+                    token_hash=token_hash,
+                    tier=tier,
+                    token_minted_at=minted_at,
+                )
             )
 
     def get_by_token_hash(self, token_hash: str) -> Instance | None:
         """Find the instance whose minted connector→panel token has this hash (auth lookup)."""
         if not token_hash:
             return None
-        with self._lock, self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM instances WHERE token_hash = ?", (token_hash,)
-            ).fetchone()
+        with self._lock, self._engine.connect() as conn:
+            row = (
+                conn.execute(select(instances).where(instances.c.token_hash == token_hash))
+                .mappings()
+                .first()
+            )
         return self._row_to_instance(row) if row else None
 
     # --- Mode B command queue -------------------------------------------------
 
-    def _row_to_command(self, row: sqlite3.Row) -> Command:
+    def _row_to_command(self, row: RowMapping) -> Command:
         return Command(
             cmd_id=row["cmd_id"],
             instance_id=row["instance_id"],
@@ -202,45 +206,71 @@ class SqliteRegistry(SqliteStore):
             args=dict(args),
             created_at=datetime.now(UTC).isoformat(),
         )
-        with self._lock, self._connect() as conn:
+        with self._lock, self._engine.begin() as conn:
             conn.execute(
-                """INSERT INTO commands (cmd_id, instance_id, verb, args, status, created_at)
-                   VALUES (?, ?, ?, ?, 'queued', ?)""",
-                (cmd.cmd_id, cmd.instance_id, cmd.verb, json.dumps(cmd.args), cmd.created_at),
+                commands.insert().values(
+                    cmd_id=cmd.cmd_id,
+                    instance_id=cmd.instance_id,
+                    verb=cmd.verb,
+                    args=json.dumps(cmd.args),
+                    status="queued",
+                    created_at=cmd.created_at,
+                )
             )
         return cmd
 
     def claim_queued(self, instance_id: str, limit: int = 50) -> list[Command]:
         """Atomically move this instance's queued commands to 'dispatched' and return them.
 
-        The claim (SELECT-then-UPDATE) must be atomic even across processes (multi-worker
-        uvicorn) or two concurrent polls could claim the same commands → double dispatch. The
-        in-process lock only serializes within one process, so take sqlite's write lock up
-        front with BEGIN IMMEDIATE — a concurrent claim on another connection then waits
-        (busy_timeout) instead of racing."""
+        The claim (SELECT-then-UPDATE) must be atomic even across processes (multi-worker uvicorn)
+        or two concurrent polls could claim the same commands → double dispatch. Dialect-aware:
+
+        * **Postgres** — ``SELECT ... FOR UPDATE SKIP LOCKED`` locks the claimed rows and lets a
+          concurrent claim skip past them (no blocking, no double-claim).
+        * **SQLite** (no row locks) — escalate to a write transaction up front with
+          ``BEGIN IMMEDIATE`` so a concurrent claim on another connection/process waits
+          (busy_timeout) instead of racing. SQLAlchemy's implicit ``BEGIN`` is deferred and
+          wouldn't take the write lock until the UPDATE — too late — so drive it in AUTOCOMMIT mode
+          and issue the transaction control explicitly.
+        """
         now = datetime.now(UTC).isoformat()
-        with self._lock, self._connect() as conn:
-            conn.isolation_level = None  # manage the transaction explicitly
-            conn.execute("BEGIN IMMEDIATE")
-            try:
-                rows = conn.execute(
-                    """SELECT * FROM commands WHERE instance_id = ? AND status = 'queued'
-                       ORDER BY created_at LIMIT ?""",
-                    (instance_id, limit),
-                ).fetchall()
-                cmds = [self._row_to_command(r) for r in rows]
-                for cmd in cmds:
-                    conn.execute(
-                        "UPDATE commands SET status = 'dispatched', dispatched_at = ? "
-                        "WHERE cmd_id = ?",
-                        (now, cmd.cmd_id),
-                    )
-                    cmd.status = "dispatched"
-                    cmd.dispatched_at = now
-                conn.execute("COMMIT")
-            except Exception:
-                conn.execute("ROLLBACK")
-                raise
+        base = (
+            select(commands)
+            .where(commands.c.instance_id == instance_id, commands.c.status == "queued")
+            .order_by(commands.c.created_at)
+            .limit(limit)
+        )
+        if self._engine.dialect.name == "postgresql":
+            with self._lock, self._engine.begin() as conn:
+                rows = conn.execute(base.with_for_update(skip_locked=True)).mappings().all()
+                return self._dispatch(conn, rows, now)
+
+        conn = self._engine.connect().execution_options(isolation_level="AUTOCOMMIT")
+        try:
+            with self._lock:
+                conn.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    rows = conn.execute(base).mappings().all()
+                    cmds = self._dispatch(conn, rows, now)
+                    conn.exec_driver_sql("COMMIT")
+                    return cmds
+                except Exception:
+                    conn.exec_driver_sql("ROLLBACK")
+                    raise
+        finally:
+            conn.close()
+
+    def _dispatch(self, conn: Connection, rows: Sequence[RowMapping], now: str) -> list[Command]:
+        """Mark the claimed rows dispatched and return them as commands."""
+        cmds = [self._row_to_command(r) for r in rows]
+        for cmd in cmds:
+            conn.execute(
+                update(commands)
+                .where(commands.c.cmd_id == cmd.cmd_id)
+                .values(status="dispatched", dispatched_at=now)
+            )
+            cmd.status = "dispatched"
+            cmd.dispatched_at = now
         return cmds
 
     def record_result(
@@ -256,34 +286,45 @@ class SqliteRegistry(SqliteStore):
         Returns True if this call set the result, False if it was already recorded.
         """
         now = datetime.now(UTC).isoformat()
-        with self._lock, self._connect() as conn:
-            row = conn.execute("SELECT status FROM commands WHERE cmd_id = ?", (cmd_id,)).fetchone()
+        with self._lock, self._engine.begin() as conn:
+            row = (
+                conn.execute(select(commands.c.status).where(commands.c.cmd_id == cmd_id))
+                .mappings()
+                .first()
+            )
             if row is None:
                 return False
             if row["status"] in ("done", "error"):
                 return False  # at-least-once dedup: result already recorded
             conn.execute(
-                "UPDATE commands SET status = ?, output = ?, error = ?, result_at = ? "
-                "WHERE cmd_id = ?",
-                (
-                    status,
-                    json.dumps(output) if output is not None else None,
-                    error,
-                    now,
-                    cmd_id,
-                ),
+                update(commands)
+                .where(commands.c.cmd_id == cmd_id)
+                .values(
+                    status=status,
+                    output=json.dumps(output) if output is not None else None,
+                    error=error,
+                    result_at=now,
+                )
             )
         return True
 
     def get_command(self, cmd_id: str) -> Command | None:
-        with self._lock, self._connect() as conn:
-            row = conn.execute("SELECT * FROM commands WHERE cmd_id = ?", (cmd_id,)).fetchone()
+        with self._lock, self._engine.connect() as conn:
+            row = (
+                conn.execute(select(commands).where(commands.c.cmd_id == cmd_id)).mappings().first()
+            )
         return self._row_to_command(row) if row else None
 
     def list_commands(self, instance_id: str, limit: int = 100) -> list[Command]:
-        with self._lock, self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM commands WHERE instance_id = ? ORDER BY created_at DESC LIMIT ?",
-                (instance_id, limit),
-            ).fetchall()
+        with self._lock, self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    select(commands)
+                    .where(commands.c.instance_id == instance_id)
+                    .order_by(commands.c.created_at.desc())
+                    .limit(limit)
+                )
+                .mappings()
+                .all()
+            )
         return [self._row_to_command(r) for r in rows]

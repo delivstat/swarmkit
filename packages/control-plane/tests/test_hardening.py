@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import text
 from swarmkit_control_plane._aggregation import AggregationStore
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._proposals import ProposalStore
@@ -20,8 +21,8 @@ def test_stores_use_wal_journal(tmp_path: Path) -> None:
         ProposalStore(tmp_path / "prop.sqlite"),
     ]
     for store in stores:
-        with store._connect() as conn:
-            mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-            busy = conn.execute("PRAGMA busy_timeout").fetchone()[0]
-        assert mode.lower() == "wal", f"{type(store).__name__} journal_mode={mode}"
+        with store.engine.connect() as conn:
+            mode = conn.execute(text("PRAGMA journal_mode")).scalar()
+            busy = conn.execute(text("PRAGMA busy_timeout")).scalar()
+        assert str(mode).lower() == "wal", f"{type(store).__name__} journal_mode={mode}"
         assert busy == 10000, f"{type(store).__name__} busy_timeout={busy}"
