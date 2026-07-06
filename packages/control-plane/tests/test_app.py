@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from swarmkit_control_plane import SqliteRegistry, create_app
-from swarmkit_control_plane._connector import ConnectorError, resolve_token
+from swarmkit_control_plane._connector import ConnectorError, resolve_secret_ref
 
 _FAKE_CAPS = {
     "serve_version": "1.11.0",
@@ -104,6 +104,6 @@ def test_heartbeat_unknown_instance_404(tmp_path: Path) -> None:
 
 def test_connector_resolve_token_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CP_TOK", "abc")
-    assert resolve_token("env:CP_TOK") == "abc"
-    assert resolve_token("literal") == "literal"
-    assert resolve_token("") is None
+    assert resolve_secret_ref("env:CP_TOK") == "abc"
+    assert resolve_secret_ref("literal") == "literal"
+    assert resolve_secret_ref("") is None

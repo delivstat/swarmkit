@@ -12,9 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
-
-from swarmkit_control_plane._connector import resolve_token
+from swarmkit_control_plane._serve_client import ConnectorError, ServeClient
 
 # artifact kind → serve /api collection
 DEPLOYABLE: dict[str, str] = {
@@ -33,16 +31,11 @@ async def push_artifact(
 ) -> dict[str, Any]:
     """Mode A: PUT the artifact content to the instance's serve /api collection."""
     plural = DEPLOYABLE[kind]
-    base = endpoint.rstrip("/")
-    token = resolve_token(token_ref)
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.put(
-                f"{base}/api/{plural}/{artifact_id}", json=content, headers=headers
-            )
-    except httpx.HTTPError as exc:
-        raise DeployError(f"cannot reach {base}: {exc}") from exc
+        async with ServeClient(endpoint, token_ref, timeout=30) as serve:
+            resp = await serve.put(f"/api/{plural}/{artifact_id}", content)
+    except ConnectorError as exc:  # transport failure — surface as a deploy failure
+        raise DeployError(str(exc)) from exc
     if resp.status_code in (401, 403):
         raise DeployError(f"deploy unauthorized ({resp.status_code}) — needs a serve:admin token")
     if resp.status_code >= 400:

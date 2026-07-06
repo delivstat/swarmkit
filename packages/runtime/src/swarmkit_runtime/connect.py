@@ -18,9 +18,11 @@ from typing import Any
 
 import httpx
 
-# verb -> (http method, serve path template, required tier). Path placeholders are filled from the
-# command's args; a "body" arg (dict) becomes the JSON request body for writes.
-_VERB_ROUTES: dict[str, tuple[str, str, str]] = {
+# Canonical verb → (http method, serve path template, required tier). This is the source of truth
+# for the Mode B command protocol; the control-plane panel mirrors the verb→tier projection in
+# ``swarmkit_control_plane._verbs`` and a cross-package contract test keeps the two in lock-step.
+# Path placeholders are filled from the command's args; a "body" arg (dict) becomes the JSON body.
+VERB_ROUTES: dict[str, tuple[str, str, str]] = {
     "capabilities": ("GET", "/capabilities", "read"),
     "usage": ("GET", "/usage", "read"),
     "job-status": ("GET", "/jobs/{job_id}", "read"),
@@ -29,14 +31,31 @@ _VERB_ROUTES: dict[str, tuple[str, str, str]] = {
     "reload": ("POST", "/api/reload", "admin"),
 }
 
-# `deploy` (governed artifact push) resolves its route from the command's `kind` arg.
-_DEPLOY_PLURAL: dict[str, str] = {
+# `deploy` (governed artifact push) resolves its route from the command's `kind` arg; its own
+# required tier is admin. Kept here (not in VERB_ROUTES) because the route depends on the payload.
+DEPLOY_PLURAL: dict[str, str] = {
     "topology": "topologies",
     "skill": "skills",
     "archetype": "archetypes",
 }
+DEPLOY_TIER = "admin"
 
 _TIER_RANK: dict[str, int] = {"read": 0, "run": 1, "admin": 2}
+
+# Back-compat private aliases (kept while other call sites migrate to the public names).
+_VERB_ROUTES = VERB_ROUTES
+_DEPLOY_PLURAL = DEPLOY_PLURAL
+
+
+def verb_tiers() -> dict[str, str]:
+    """The verb → required-tier projection of the canonical protocol, including ``deploy``.
+
+    This is the exact contract the control-plane panel must mirror in its ``VERB_TIERS`` map; the
+    cross-package contract test asserts equality.
+    """
+    tiers = {verb: route[2] for verb, route in VERB_ROUTES.items()}
+    tiers["deploy"] = DEPLOY_TIER
+    return tiers
 
 
 class ConnectorError(Exception):
