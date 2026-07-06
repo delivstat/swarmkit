@@ -89,13 +89,14 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
 - [x] **PR-J (#419) — provider adapter shared helpers.** `tool_specs_to_openai_functions`,
   `image_to_data_url`, `map_stop_reason`, `parse_fenced_json`; fix Google double-system-prompt;
   per-adapter retry classification; MCP `call_tool` timeout + start lock; remove dead MCP cache.
-- [~] **PR-K — compiler primitives + topology-as-data cleanup.** **K2 done (#439):**
-  `Task.from_dict`/`TaskPlan.from_dict` — one loader replacing three inlined loops, fixing a
-  reload that dropped timing/tool-call fields. **Pending:** K1 `ScopeStore` (one writer keeping
-  `solution_approach`/`open_questions` — two competing writers today, one drops those fields);
-  K3 `AgentStatus`/`TaskStatus` enum + a sentinels module (replace `__task_plan_*__`/`__delegated__`
-  magic strings + bare status strings); K4 JSON-safe governance-flag attachment + move
-  `document-writer`/synthesis-role + strip "CDT/Jira" domain text into topology/archetype metadata.
+- [~] **PR-K — compiler primitives + topology-as-data cleanup.** **K2 (#439):** `Task.from_dict`/
+  `TaskPlan.from_dict` — one loader replacing three inlined loops, fixing a reload that dropped
+  timing/tool-call fields. **K1 (#444):** `ScopeStore` — one `scope.json` writer/reader; fixes the
+  dropped `solution_approach`/`open_questions` writer + the stale-`current/`-path decision-gate
+  reader. **K4a (#445):** stripped hardcoded CDT/Jira domain nouns from framework prompts/docstrings.
+  **Pending:** K3 `AgentStatus`/`TaskStatus` enum + sentinels module (replace `__task_plan_*__`/
+  `__delegated__` magic strings + bare status strings); K4b make the `self`/`document-writer`/
+  `synthesizer` role literals topology/archetype-configurable; JSON-safe governance-flag attachment.
 - [ ] **PR-L — UI SWR kit.** `useResource` (SWR) replacing `usePoll` (fixes race/latch/dup-fetch/
   no-op-refresh); `<DataView>`/`<JsonBlock>`/form-kit/`<StatusBadge>`; operator-token client
   path; keyboard-accessible rows; back `InstanceProvider` with the shared cache.
