@@ -386,9 +386,7 @@ def _build_agent_node(  # noqa: PLR0915
         if isinstance(result, dict):
             _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()
             _output = result.get("output", "")
-            if _output and not (
-                is_delegated(_output) or _output == AgentStatus.DELEGATED_PARALLEL
-            ):
+            if _output and not (is_delegated(_output) or _output == AgentStatus.DELEGATED_PARALLEL):
                 _progress(f"[{agent_id}] done ({_elapsed:.1f}s)")
             await _record_completion(
                 governance,
