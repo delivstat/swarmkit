@@ -199,25 +199,21 @@ def _load_plan(plan_data: dict[str, Any]) -> Any:
 
 
 def _scope_file_path() -> Any:
-    """Get the scope.json path for the current run."""
-    from ._run_context import run_state_dir  # noqa: PLC0415
+    """Get the scope.json path for the current run (via the canonical ScopeStore)."""
+    from ._scope import scope_path  # noqa: PLC0415
 
-    return run_state_dir() / "scope.json"
+    return scope_path()
 
 
 def _write_scope(args: dict[str, Any], agent_id: str) -> None:
-    """Write scope.json to run-state directory (create-scope)."""
-    scope_data = {
-        "source": args.get("source", ""),
-        "requirements": args.get("requirements", []),
-        "constraints": args.get("constraints", []),
-        "authoritative_sources": args.get("authoritative_sources", []),
-        "excluded": args.get("excluded", []),
-        "decisions": args.get("decisions", []),
-        "related": args.get("related", []),
-    }
+    """Write scope.json to run-state directory (create-scope).
 
-    _scope_file_path().write_text(json.dumps(scope_data, indent=2), encoding="utf-8")
+    Delegates to the ScopeStore, which keeps *every* field — this handler used to drop
+    solution_approach + open_questions, so a create-scope routed here lost the design keys.
+    """
+    from ._scope import create_scope  # noqa: PLC0415
+
+    scope_data = create_scope(args)
     _progress(
         f"[{agent_id}] scope created: {len(scope_data['requirements'])} requirements, "
         f"{len(scope_data['constraints'])} constraints"
@@ -270,26 +266,13 @@ def _enforce_two_phase(
 
 
 def _update_scope(args: dict[str, Any], agent_id: str) -> None:
-    """Update scope.json with additive changes (update-scope)."""
-    path = _scope_file_path()
-    if not path.exists():
+    """Update scope.json with additive changes (update-scope) — keeps every field via ScopeStore."""
+    from ._scope import update_scope  # noqa: PLC0415
+
+    scope_data = update_scope(args)
+    if scope_data is None:
         _progress(f"[{agent_id}] update-scope called but no scope exists")
         return
-
-    scope_data = json.loads(path.read_text(encoding="utf-8"))
-    for field, key in [
-        ("add_requirements", "requirements"),
-        ("add_constraints", "constraints"),
-        ("add_authoritative_sources", "authoritative_sources"),
-        ("add_excluded", "excluded"),
-        ("add_decisions", "decisions"),
-        ("add_related", "related"),
-    ]:
-        items = args.get(field, [])
-        if items:
-            scope_data[key] = scope_data.get(key, []) + items
-
-    path.write_text(json.dumps(scope_data, indent=2), encoding="utf-8")
     _progress(
         f"[{agent_id}] scope updated: {len(scope_data.get('requirements', []))} requirements, "
         f"{len(scope_data.get('constraints', []))} constraints"
