@@ -1,19 +1,21 @@
-"""CLI commands — logs, status, why, stop, debug, ask, trace, checkpoints."""
+"""CLI commands — logs, status, why, stop, debug, ask, trace, checkpoints.
+
+Data access (audit store + JSONL run logs + the ``.swarmkit`` layout) lives in the
+``WorkspaceRuntime.observability(...)`` facade; these commands own only the presentation
+(tables, markdown reports, the LLM prompts).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Annotated, Any
 
 import typer
 
+from swarmkit_runtime._observability import Observability
 from swarmkit_runtime._workspace_runtime import (
-    WorkspaceRuntime,
     resolve_authoring_provider,
 )
 from swarmkit_runtime.resolver import resolve_workspace
@@ -61,41 +63,16 @@ def logs(
     if the audit database has no events.
     Use --format markdown for a compliance-ready audit report.
     """
-    import asyncio  # noqa: PLC0415
-
-    ws_root = workspace_path.resolve()
-    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
-
-    if audit_db.is_file():
-        provider = WorkspaceRuntime.audit_provider_for(workspace_path)
-        count = asyncio.get_event_loop().run_until_complete(provider.count())
-        if count > 0:
-            _logs_from_audit(provider, last=last, run_id=run_id, agent=agent, fmt=format)
-            provider.close_sync()
-            return
-        provider.close_sync()
-
-    _logs_from_jsonl(ws_root, last=last, topology=topology, fmt=format)
+    obs = Observability(workspace_path)
+    events = obs.query_audit(run_id=run_id, agent=agent, limit=last * 50)
+    if events is not None:
+        _render_audit_logs(events, fmt=format)
+        return
+    _render_jsonl_logs(obs, last=last, topology=topology, fmt=format)
 
 
-def _logs_from_audit(
-    provider: Any,
-    *,
-    last: int,
-    run_id: str | None,
-    agent: str | None,
-    fmt: str,
-) -> None:
-    """Read logs from AuditProvider (SQLite)."""
-    from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
-    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
-
-    assert isinstance(provider, SQLiteAuditProvider)
-
-    events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
-        _collect_audit_events(provider.query(run_id=run_id, agent_id=agent, limit=last * 50))
-    )
-
+def _render_audit_logs(events: list[Any], *, fmt: str) -> None:
+    """Render audit events (newest-first from the store) as text or a markdown report."""
     if not events:
         typer.echo("No events found in audit store.")
         return
@@ -123,36 +100,19 @@ def _logs_from_audit(
             typer.echo(_format_log_event(evt))
 
 
-async def _collect_audit_events(aiter: Any) -> list[Any]:
-    """Collect an async iterator of AuditEvents into a list."""
-    results: list[Any] = []
-    async for item in aiter:
-        results.append(item)
-    return results
-
-
-def _logs_from_jsonl(ws_root: Path, *, last: int, topology: str | None, fmt: str) -> None:
-    """Fallback: read logs from JSONL files."""
-    log_dir = ws_root / ".swarmkit" / "logs"
-    if not log_dir.is_dir():
+def _render_jsonl_logs(obs: Observability, *, last: int, topology: str | None, fmt: str) -> None:
+    """Fallback: render logs from JSONL files."""
+    if not obs.logs_dir.is_dir():
         typer.echo("No run logs found. Run a topology with `swarmkit run` first.")
         return
 
-    log_files = sorted(log_dir.glob("*.jsonl"), reverse=True)
-    if topology:
-        log_files = [f for f in log_files if f.name.startswith(f"{topology}-")]
-    log_files = log_files[:last]
-
+    log_files = obs.run_log_files(topology=topology, limit=last)
     if not log_files:
         typer.echo("No matching run logs found.")
         return
 
     for log_file in reversed(log_files):
-        events = [
-            json.loads(line)
-            for line in log_file.read_text(encoding="utf-8").strip().split("\n")
-            if line
-        ]
+        events = obs.read_jsonl(log_file)
         if fmt == "markdown":
             typer.echo(_format_log_markdown(log_file.name, events))
         else:
@@ -244,35 +204,17 @@ def status(
 
     Reads from AuditProvider (SQLite) first, falls back to JSONL logs.
     """
-    import asyncio  # noqa: PLC0415
-
-    ws_root = workspace_path.resolve()
-    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
-
-    if audit_db.is_file():
-        provider = WorkspaceRuntime.audit_provider_for(workspace_path)
-        count = asyncio.get_event_loop().run_until_complete(provider.count())
-        if count > 0:
-            _status_from_audit(provider, last=last)
-            provider.close_sync()
-            return
-        provider.close_sync()
-
-    _status_from_jsonl(ws_root, last=last)
+    obs = Observability(workspace_path)
+    events = obs.query_audit(limit=last * 50)
+    if events is not None:
+        _render_audit_status(events, last=last)
+        return
+    _render_jsonl_status(obs, last=last)
 
 
-def _status_from_audit(provider: Any, *, last: int) -> None:
-    """Show status from AuditProvider (SQLite)."""
-    from swarmkit_runtime.audit import SQLiteAuditProvider  # noqa: PLC0415
-    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
-
-    assert isinstance(provider, SQLiteAuditProvider)
-
-    events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
-        _collect_audit_events(provider.query(limit=last * 50))
-    )
-
-    runs: dict[str, list[AuditEvent]] = {}
+def _render_audit_status(events: list[Any], *, last: int) -> None:
+    """Show status grouped by run from audit events."""
+    runs: dict[str, list[Any]] = {}
     for e in events:
         key = e.run_id or e.topology_id or "unknown"
         runs.setdefault(key, []).append(e)
@@ -291,14 +233,9 @@ def _status_from_audit(provider: Any, *, last: int) -> None:
         typer.echo(f"{topo:<20} {len(completed):<8} {total_ms:>6}ms   {issues:<8} {'audit'}")
 
 
-def _status_from_jsonl(ws_root: Path, *, last: int) -> None:
+def _render_jsonl_status(obs: Observability, *, last: int) -> None:
     """Fallback: show status from JSONL files."""
-    log_dir = ws_root / ".swarmkit" / "logs"
-    if not log_dir.is_dir():
-        typer.echo("No runs recorded yet.")
-        return
-
-    log_files = sorted(log_dir.glob("*.jsonl"), reverse=True)[:last]
+    log_files = obs.run_log_files(limit=last)
     if not log_files:
         typer.echo("No runs recorded yet.")
         return
@@ -306,7 +243,7 @@ def _status_from_jsonl(ws_root: Path, *, last: int) -> None:
     typer.echo(f"{'topology':<20} {'agents':<8} {'duration':<10} {'issues':<8} {'when'}")
     typer.echo("-" * 65)
     for lf in log_files:
-        events = [json.loads(line) for line in lf.read_text().strip().split("\n") if line]
+        events = obs.read_jsonl(lf)
         topo = lf.stem.rsplit("-", 1)[0]
         completed = [e for e in events if e.get("event_type") == "agent.completed"]
         denied = [e for e in events if "denied" in str(e.get("event_type", "")).lower()]
@@ -375,63 +312,40 @@ def why(
 
 
 def _load_events_for_why(workspace_path: Path, run_id: str) -> str:
-    """Load events as text for the why command. Tries audit store first."""
-    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+    """Load events as text for the why command. Tries audit store, then trace, then JSONL, then
+    the current run-state task plan."""
+    obs = Observability(workspace_path)
 
-    ws_root = workspace_path.resolve()
-    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
-
-    if audit_db.is_file():
-        audit_provider = WorkspaceRuntime.audit_provider_for(workspace_path)
-        events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
-            _collect_audit_events(audit_provider.query(limit=200))
-        )
-        audit_provider.close_sync()
-
-        matching = [
-            e
-            for e in events
-            if (e.topology_id and run_id in e.topology_id) or (e.run_id and run_id in e.run_id)
-        ]
+    events = obs.query_audit(limit=200)
+    if events is not None:
+        matching = obs.filter_by_run(events, run_id)
         if matching:
-            lines = []
-            for e in matching:
-                lines.append(
-                    json.dumps(
-                        {
-                            "event_type": e.event_type,
-                            "agent_id": e.agent_id,
-                            "timestamp": e.timestamp.isoformat() if e.timestamp else "",
-                            "duration_ms": e.duration_ms,
-                            "role": e.agent_role,
-                            **(e.payload or {}),
-                        }
-                    )
+            return "\n".join(
+                json.dumps(
+                    {
+                        "event_type": e.event_type,
+                        "agent_id": e.agent_id,
+                        "timestamp": e.timestamp.isoformat() if e.timestamp else "",
+                        "duration_ms": e.duration_ms,
+                        "role": e.agent_role,
+                        **(e.payload or {}),
+                    }
                 )
-            return "\n".join(lines)
+                for e in matching
+            )
 
-    traces_dir = ws_root / ".swarmkit" / "traces"
-    if traces_dir.is_dir():
-        matches = list(traces_dir.glob(f"{run_id}*.json"))
-        if matches:
-            from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
+    trace_file = obs.find_trace(run_id)
+    if trace_file is not None:
+        from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
 
-            trace = RunTrace.load(matches[0])
-            return trace.render_text()
+        return RunTrace.load(trace_file).render_text()
 
-    log_dir = ws_root / ".swarmkit" / "logs"
-    if log_dir.is_dir():
-        matches = [
-            f
-            for f in log_dir.glob("*.jsonl")
-            if f.name.startswith(run_id) or f.stem.startswith(run_id)
-        ]
-        if matches:
-            return sorted(matches, reverse=True)[0].read_text(encoding="utf-8").strip()
+    log_file = obs.find_run_log(run_id)
+    if log_file is not None:
+        return log_file.read_text(encoding="utf-8").strip()
 
-    task_plan = ws_root / ".swarmkit" / "run-state" / "current" / "tasks.json"
-    if task_plan.is_file():
-        return task_plan.read_text(encoding="utf-8").strip()
+    if obs.tasks_json.is_file():
+        return obs.tasks_json.read_text(encoding="utf-8").strip()
 
     return ""
 
@@ -492,9 +406,7 @@ def debug(
     """
     from swarmkit_runtime.telemetry import PromptRingBuffer  # noqa: PLC0415
 
-    ws_root = workspace_path.resolve()
-    db_path = ws_root / ".swarmkit" / "prompts.sqlite"
-
+    db_path = Observability(workspace_path).prompts_db
     if not db_path.is_file():
         typer.echo("No prompt ring buffer found. Run a topology first.")
         return
@@ -582,8 +494,7 @@ def ask(
     state, sends to an LLM for analysis. Use --run to scope to a specific
     run. Falls back to JSONL logs if no audit events.
     """
-    ws_root = workspace_path.resolve()
-    context_parts = _build_ask_context(ws_root, run_filter=run)
+    context_parts = _build_ask_context(workspace_path, run_filter=run)
 
     provider, model = resolve_authoring_provider()
 
@@ -618,13 +529,12 @@ def ask(
     typer.echo(result.text or "(no response)")
 
 
-def _build_ask_context(ws_root: Path, *, run_filter: str | None) -> list[str]:
-    """Build context for the ask command from workspace + audit events."""
-    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
-
+def _build_ask_context(workspace_path: Path, *, run_filter: str | None) -> list[str]:
+    """Build context for the ask command from workspace + audit events (JSONL fallback)."""
+    obs = Observability(workspace_path)
     parts = ["# Workspace state"]
     try:
-        workspace = resolve_workspace(ws_root)
+        workspace = resolve_workspace(obs.swarmkit_dir.parent)
         parts.append(f"Workspace: {workspace.raw.metadata.id}")
         parts.append(f"Topologies: {sorted(workspace.topologies.keys())}")
         parts.append(f"Skills: {sorted(workspace.skills.keys())}")
@@ -632,22 +542,9 @@ def _build_ask_context(ws_root: Path, *, run_filter: str | None) -> list[str]:
     except Exception:
         parts.append("(workspace could not be resolved)")
 
-    audit_db = ws_root / ".swarmkit" / "audit.sqlite"
-    if audit_db.is_file():
-        audit_provider = WorkspaceRuntime.audit_provider_for(ws_root)
-        events: list[AuditEvent] = asyncio.get_event_loop().run_until_complete(
-            _collect_audit_events(audit_provider.query(limit=200))
-        )
-        audit_provider.close_sync()
-
-        if run_filter:
-            events = [
-                e
-                for e in events
-                if (e.topology_id and run_filter in e.topology_id)
-                or (e.run_id and run_filter in e.run_id)
-            ]
-
+    events = obs.query_audit(limit=200)
+    if events is not None:
+        events = obs.filter_by_run(events, run_filter)
         if events:
             parts.append("\n# Audit events (structured)")
             for e in events:
@@ -666,14 +563,12 @@ def _build_ask_context(ws_root: Path, *, run_filter: str | None) -> list[str]:
                 )
             return parts
 
-    log_dir = ws_root / ".swarmkit" / "logs"
-    if log_dir.is_dir():
-        recent = sorted(log_dir.glob("*.jsonl"), reverse=True)[:3]
-        if recent:
-            parts.append("\n# Recent run logs (JSONL fallback)")
-            for lf in recent:
-                parts.append(f"\n## {lf.name}")
-                parts.append(lf.read_text(encoding="utf-8").strip()[:3000])
+    recent = obs.run_log_files(limit=3)
+    if recent:
+        parts.append("\n# Recent run logs (JSONL fallback)")
+        for lf in recent:
+            parts.append(f"\n## {lf.name}")
+            parts.append(lf.read_text(encoding="utf-8").strip()[:3000])
 
     return parts
 
@@ -704,10 +599,10 @@ def trace(
     """
     from swarmkit_runtime.trace import RunTrace, list_traces  # noqa: PLC0415
 
-    ws_root = workspace_path.resolve()
+    obs = Observability(workspace_path)
 
     if run_id is None:
-        traces = list_traces(ws_root, limit=limit)
+        traces = list_traces(obs.swarmkit_dir.parent, limit=limit)
         if not traces:
             typer.echo("No traces found. Run a topology first.")
             return
@@ -722,14 +617,12 @@ def trace(
         typer.echo(f"\nUse: swarmkit trace <run-id> -w {workspace_path}")
         return
 
-    traces_dir = ws_root / ".swarmkit" / "traces"
-    matches = list(traces_dir.glob(f"{run_id}*.json")) if traces_dir.exists() else []
-    if not matches:
+    trace_file = obs.find_trace(run_id)
+    if trace_file is None:
         _stderr(f"Trace not found: {run_id}")
         raise typer.Exit(1)
 
-    trace_data = RunTrace.load(matches[0])
-    typer.echo(trace_data.render_text())
+    typer.echo(RunTrace.load(trace_file).render_text())
 
 
 @app.command()
@@ -744,9 +637,9 @@ def checkpoints(
     Shows the last thread ID and any available checkpoint state.
     Resume a run with: swarmkit run <workspace> <topology> --resume
     """
-    ws_root = workspace_path.resolve()
-    thread_file = ws_root / ".swarmkit" / "state" / "last_thread.txt"
-    db_path = ws_root / ".swarmkit" / "state" / "checkpoints.db"
+    obs = Observability(workspace_path)
+    thread_file = obs.last_thread_file
+    db_path = obs.checkpoints_db
 
     if not thread_file.is_file():
         typer.echo("No checkpointed runs found.")
