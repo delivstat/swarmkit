@@ -103,7 +103,7 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   timing/tool-call fields. **K1 (#444):** `ScopeStore` — one `scope.json` writer/reader; fixes the
   dropped `solution_approach`/`open_questions` writer + the stale-`current/`-path decision-gate
   reader. **K4a (#445):** stripped hardcoded CDT/Jira domain nouns from framework prompts/docstrings.
-  **K3 (#TBD):** `_sentinels.py` — `TaskStatus`/`AgentStatus` `StrEnum`s + delegation helpers
+  **K3 (#448):** `_sentinels.py` — `TaskStatus`/`AgentStatus` `StrEnum`s + delegation helpers
   (`make_delegated`/`is_delegated`/`delegated_child`/`is_task_plan_status`/`TASK_PLAN_ACTIVE`)
   replacing the `__task_plan_*__`/`__delegated__:`/`__delegated_parallel__`/`__done__` magic strings
   and the bare `pending`/`in_progress`/`completed`/`failed` status literals across the compiler
