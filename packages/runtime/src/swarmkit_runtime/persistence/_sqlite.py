@@ -151,9 +151,7 @@ class SqliteStore:
             conn.executescript(_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
-        return wal_connection(
-            self._db_path, timeout=10, foreign_keys=True, row_factory=sqlite3.Row
-        )
+        return wal_connection(self._db_path, timeout=10, foreign_keys=True, row_factory=sqlite3.Row)
 
     # ---- Jobs ----------------------------------------------------------------
 
