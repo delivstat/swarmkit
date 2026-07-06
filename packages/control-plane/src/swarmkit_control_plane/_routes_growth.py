@@ -1,7 +1,7 @@
 """Aggregation rollups + growth-loop proposal/gap routes (docs 14, 17).
 
 The proposal/gap routes are thin: they read HTTP concerns (the acting principal) and delegate the
-business logic to :class:`GrowthService`, mapping its :class:`GrowthError` to a status code.
+business logic to :class:`GrowthService`, mapping its :class:`ServiceError` to a status code.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from swarmkit_control_plane._schemas import (
     GapProposeRequest,
     ProposalRequest,
 )
-from swarmkit_control_plane._service import GrowthError, GrowthService
+from swarmkit_control_plane._service import GrowthService, ServiceError
 
 
 def _approver(request: Request, fallback: str) -> str:
@@ -81,7 +81,7 @@ def _mount_proposals(app: FastAPI, service: GrowthService) -> None:
                 signal=req.signal,
                 eval_summary=req.eval_summary,
             )
-        except GrowthError as exc:
+        except ServiceError as exc:
             raise HTTPException(exc.status, str(exc)) from exc
 
     @app.get("/proposals")
@@ -92,7 +92,7 @@ def _mount_proposals(app: FastAPI, service: GrowthService) -> None:
     async def get_proposal(proposal_id: str) -> dict[str, Any]:
         try:
             return service.get_proposal(proposal_id)
-        except GrowthError as exc:
+        except ServiceError as exc:
             raise HTTPException(exc.status, str(exc)) from exc
 
     @app.post("/proposals/{proposal_id}/approve")
@@ -101,7 +101,7 @@ def _mount_proposals(app: FastAPI, service: GrowthService) -> None:
     ) -> dict[str, Any]:
         try:
             return service.approve(proposal_id, approver=_approver(request, req.approved_by))
-        except GrowthError as exc:
+        except ServiceError as exc:
             raise HTTPException(exc.status, str(exc)) from exc
 
     @app.post("/proposals/{proposal_id}/reject")
@@ -112,7 +112,7 @@ def _mount_proposals(app: FastAPI, service: GrowthService) -> None:
             return service.reject(
                 proposal_id, approver=_approver(request, req.approved_by), reason=req.reason
             )
-        except GrowthError as exc:
+        except ServiceError as exc:
             raise HTTPException(exc.status, str(exc)) from exc
 
 
@@ -134,5 +134,5 @@ def _mount_growth(app: FastAPI, service: GrowthService) -> None:
                 topology=req.topology,
                 eval_topology=req.eval_topology,
             )
-        except GrowthError as exc:
+        except ServiceError as exc:
             raise HTTPException(exc.status, str(exc)) from exc

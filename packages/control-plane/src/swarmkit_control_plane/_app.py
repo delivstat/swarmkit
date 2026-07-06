@@ -43,7 +43,7 @@ from swarmkit_control_plane._routes_registry import (
     _mount_instances,
     _mount_token_routes,
 )
-from swarmkit_control_plane._service import GrowthService
+from swarmkit_control_plane._service import DeployService, GrowthService
 
 
 def create_app(
@@ -81,6 +81,7 @@ def create_app(
     arts = artifacts or ArtifactStore(registry.db_path)
     props = proposals or ProposalStore(registry.db_path)
     growth = GrowthService(registry, props, arts, author, eval_run)
+    deploy_svc = DeployService(registry, arts, agg, deploy)
     ops = [t for t in (operator_tokens or []) if t]
 
     # Default-secure: an unauthenticated panel can mint serve tokens and deploy artifacts,
@@ -136,7 +137,7 @@ def create_app(
     _mount_artifacts(app, arts)
     _mount_proposals(app, growth)
     _mount_growth(app, growth)
-    _mount_deploy(app, registry, arts, agg, deploy)
+    _mount_deploy(app, deploy_svc)
     _mount_config(
         app,
         {

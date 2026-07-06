@@ -1,37 +1,27 @@
-"""Artifact registry, governed deploy, and observability routes (docs 14-15)."""
+"""Artifact registry, governed deploy, and observability routes (docs 14-15).
+
+The deploy route is thin: it reads the acting principal and delegates to :class:`DeployService`,
+mapping its :class:`ServiceError` to a status code.
+"""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 
-from swarmkit_control_plane._aggregation import AggregationStore
 from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
 from swarmkit_control_plane._artifacts import ArtifactStore
-from swarmkit_control_plane._compat import incompatibility
-from swarmkit_control_plane._deploy import DEPLOYABLE, DeployError
-from swarmkit_control_plane._fntypes import (
-    DeployFn,
-)
-from swarmkit_control_plane._registry import SqliteRegistry
 from swarmkit_control_plane._schemas import (
     DeploymentRequest,
     DeployRequest,
     RegisterVersionRequest,
     ReportArtifactsRequest,
 )
+from swarmkit_control_plane._service import DeployService, ServiceError
 
 
-def _mount_deploy(
-    app: FastAPI,
-    registry: SqliteRegistry,
-    artifacts: ArtifactStore,
-    agg: AggregationStore,
-    deploy: DeployFn,
-) -> None:
+def _mount_deploy(app: FastAPI, service: DeployService) -> None:
     """Governed deploy of a published registry version onto an instance (doc 15 / doc 17 step 7).
 
     Operator-only (legislative; the version was already human-approved to publish). Mode A pushes to
@@ -42,60 +32,18 @@ def _mount_deploy(
     async def deploy_artifact(
         instance_id: str, req: DeployRequest, request: Request
     ) -> dict[str, Any]:
-        inst = registry.get(instance_id)
-        if inst is None:
-            raise HTTPException(404, "instance not found")
-        if req.kind not in DEPLOYABLE:
-            raise HTTPException(
-                400, f"kind '{req.kind}' is not deployable — use {'/'.join(DEPLOYABLE)}"
-            )
-        ver = artifacts.get_version(req.kind, req.artifact_id, req.version)
-        if ver is None:
-            raise HTTPException(404, f"no such version {req.kind}/{req.artifact_id}@{req.version}")
-
-        # Schema-compatibility gate: refuse deploying what the instance can't validate (doc 15).
-        reason = incompatibility(str(ver.get("schema_version", "")), inst.schema_version)
-        if reason is not None:
-            raise HTTPException(409, f"schema-incompatible deploy: {reason}")
-
-        content = ver["content"]
-
-        if inst.connection == "direct":
-            try:
-                result = await deploy(
-                    inst.endpoint, inst.token_ref, req.kind, req.artifact_id, content
-                )
-            except DeployError as exc:
-                raise HTTPException(502, f"deploy failed: {exc}") from exc
-            outcome: dict[str, Any] = {"mode": "direct", "result": result}
-        else:
-            cmd = registry.enqueue(
-                instance_id, "deploy", {"kind": req.kind, "id": req.artifact_id, "body": content}
-            )
-            outcome = {"mode": "poll", "command_id": cmd.cmd_id}
-
-        # Record the registry-intended version only AFTER the push/enqueue succeeds — a failed
-        # Mode-A push must not leave a phantom "deployed vX" record that drift then reports.
-        artifacts.set_deployment(instance_id, req.kind, req.artifact_id, req.version)
-
         principal = getattr(request.state, "principal", None)
         by = (getattr(principal, "subject", None) or "") if principal else ""
-        agg.ingest(
-            instance_id,
-            "audit",
-            [
-                {
-                    "id": uuid4().hex,
-                    "ts": datetime.now(UTC).isoformat(),
-                    "action": "artifact.deploy",
-                    "kind": req.kind,
-                    "artifact_id": req.artifact_id,
-                    "version": req.version,
-                    "by": by,
-                }
-            ],
-        )
-        return {"status": "ok", "version": req.version, **outcome}
+        try:
+            return await service.deploy(
+                instance_id=instance_id,
+                kind=req.kind,
+                artifact_id=req.artifact_id,
+                version=req.version,
+                by=by,
+            )
+        except ServiceError as exc:
+            raise HTTPException(exc.status, str(exc)) from exc
 
 
 def _mount_artifacts(app: FastAPI, store: ArtifactStore) -> None:
