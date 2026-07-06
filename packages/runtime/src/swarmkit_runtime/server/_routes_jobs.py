@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from swarmkit_runtime.canary import CanaryRouter
-from swarmkit_runtime.persistence import SqliteStore
+from swarmkit_runtime.persistence import Store
 
 from ._config import ServerCfg
 from ._helpers import (
@@ -34,7 +34,7 @@ logger = logging.getLogger("swarmkit.server")
 
 def _app_state_run_deps(
     request: Request,
-) -> tuple[CanaryRouter | None, SqliteStore | None, ServerCfg, asyncio.Semaphore | None]:
+) -> tuple[CanaryRouter | None, Store | None, ServerCfg, asyncio.Semaphore | None]:
     """The per-request app-state a job start needs (canary router, store, config, semaphore)."""
     return (
         getattr(request.app.state, "canary_router", None),

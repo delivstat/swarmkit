@@ -23,7 +23,7 @@ import yaml
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
-from swarmkit_runtime.persistence import SqliteStore
+from swarmkit_runtime.persistence import Store
 from swarmkit_runtime.resolver import resolve_workspace
 
 from ._config import ServerCfg
@@ -84,7 +84,7 @@ class JobService:
         *,
         rt: WorkspaceRuntime,
         canary: CanaryRouter | None,
-        store: SqliteStore | None,
+        store: Store | None,
         cfg: ServerCfg,
         semaphore: Any,
         topology_name: str,

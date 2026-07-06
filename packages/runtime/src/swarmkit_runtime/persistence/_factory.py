@@ -17,19 +17,17 @@ import os
 from pathlib import Path
 from typing import Any
 
-from swarmkit_runtime.persistence._sqlite import SqliteStore
+from swarmkit_runtime.persistence._store import SqliteStore, Store, make_engine
 
 logger = logging.getLogger("swarmkit.persistence")
 
 
-def create_store(
-    workspace_path: Path,
-    workspace_raw: Any = None,
-) -> SqliteStore:
-    """Create the appropriate store backend.
+def _resolve_backend(workspace_path: Path, workspace_raw: Any = None) -> tuple[str, str]:
+    """Resolve ``(backend, url)`` from env + workspace config, applying the fallback rule.
 
-    Currently only SQLite is implemented. When Postgres is needed,
-    this factory will return a ``PostgresStore`` with the same API.
+    Pure (no DB connection) so backend selection is unit-testable. Precedence: env var, then
+    ``storage.runtime``, then the sqlite default. ``backend=postgres`` with no URL degrades to
+    sqlite (with a warning) — a misconfiguration shouldn't take the runtime down.
     """
     backend = os.environ.get("SWARMKIT_STORE_BACKEND", "").lower()
     url = os.environ.get("SWARMKIT_STORE_URL") or os.environ.get("DATABASE_URL", "")
@@ -44,23 +42,31 @@ def create_store(
                     url = getattr(runtime_cfg, "url", "") or ""
 
     backend = backend or "sqlite"
+    if backend == "postgres" and not url:
+        logger.warning(
+            "storage.runtime.backend=postgres but no URL configured. "
+            "Set DATABASE_URL or SWARMKIT_STORE_URL or storage.runtime.url. Falling back to sqlite."
+        )
+        backend = "sqlite"
+    return backend, url
 
+
+def create_store(
+    workspace_path: Path,
+    workspace_raw: Any = None,
+) -> Store:
+    """Create the persistence store for the configured backend.
+
+    SQLite (the default) lives at ``{workspace}/.swarmkit/store.sqlite``. Postgres is used when
+    ``storage.runtime.backend=postgres`` (or ``SWARMKIT_STORE_BACKEND=postgres``) *and* a URL is
+    configured — the same SQLAlchemy-Core ``Store``, just a different dialect
+    (design/details/postgres-backend.md).
+    """
+    backend, url = _resolve_backend(workspace_path, workspace_raw)
     if backend == "postgres":
-        if not url:
-            logger.warning(
-                "storage.runtime.backend=postgres but no URL configured. "
-                "Set DATABASE_URL or SWARMKIT_STORE_URL or storage.runtime.url. "
-                "Falling back to sqlite."
-            )
-            backend = "sqlite"
-        else:
-            logger.info(
-                "Postgres store requested but not yet implemented. Falling back to sqlite. URL: %s",
-                url[:30] + "...",
-            )
-            backend = "sqlite"
-
-    logger.info("Store backend: %s (path: %s)", backend, workspace_path)
+        logger.info("Store backend: postgres (%s...)", url[:30])
+        return Store(make_engine(url))
+    logger.info("Store backend: sqlite (path: %s)", workspace_path)
     return SqliteStore(workspace_path)
 
 
