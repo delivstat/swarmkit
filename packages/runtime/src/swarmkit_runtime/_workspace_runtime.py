@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langgraph.graph.state import CompiledStateGraph
 
@@ -38,6 +38,9 @@ from swarmkit_runtime.model_providers import (
     ProviderRegistry,
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
+
+if TYPE_CHECKING:
+    from swarmkit_runtime._observability import Observability
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 from swarmkit_runtime.skills import impl_get
 
@@ -165,6 +168,17 @@ class WorkspaceRuntime:
         """
         ws_root = path.resolve()
         return SQLiteAuditProvider(db_path=ws_root / ".swarmkit" / "audit.sqlite")
+
+    @staticmethod
+    def observability(path: Path) -> Observability:
+        """Read-only observability facade (audit store + JSONL run-log access) for a workspace.
+
+        Used by the observability CLI commands (logs/status/why/ask/…) that only need to read a
+        workspace's run history — not compile or run topologies.
+        """
+        from swarmkit_runtime._observability import Observability  # noqa: PLC0415
+
+        return Observability(path)
 
     @classmethod
     def from_workspace_path(cls, path: Path) -> WorkspaceRuntime:
