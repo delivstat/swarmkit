@@ -51,9 +51,12 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   which moves the async audit provider onto an async engine.
 - **Postgres backend (new, user-requested — design/details/postgres-backend.md).** SQLAlchemy Core,
   one impl per store, SQLite default + Postgres for distributed deploys. **PR-1 (#440):** runtime
-  persistence store on SQLAlchemy Core (`_tables`/`_store`/`_factory`; `make_engine`+`normalize_url`;
-  real postgres selection; integration test on `SWARMKIT_TEST_POSTGRES_URL`). **Pending:** PR-2
-  runtime audit (async engine), PR-3 control-plane stores.
+  persistence store. **PR-2 (#442):** runtime audit provider (sync SQLAlchemy engine, async
+  signatures kept — event-loop-safe; `SQLiteAuditProvider`/`PostgresAuditProvider`; audit follows
+  the store backend via `audit_provider_for_path`). The **runtime** now runs fully on SQLite or
+  Postgres. **Pending:** PR-3 control-plane stores (registry/artifacts/proposals/aggregation —
+  4 stores in the standalone package; the registry's `claim_queued` cross-process atomicity needs
+  dialect-aware care).
 - [x] **PR-H (#436) — canonical verb table + `ServeClient` + cross-package contract.** Runtime
   `connect._VERB_ROUTES` is now the public canonical `VERB_ROUTES` (+ `DEPLOY_PLURAL`/`DEPLOY_TIER`/
   `verb_tiers()`). Control-plane got a `ServeClient` (async; bearer/base/error-map + `ok()`) that
