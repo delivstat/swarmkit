@@ -60,15 +60,16 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   `cli/__init__.py` (2332) → `_app` + `_common` + `_cmd_*` (flat command namespace preserved).
   Behaviour-preserving file splits; import surfaces unchanged; each validated by the existing
   suites (107 panel / 110 server / 77 CLI) + mypy.
-- [~] **PR-I service layer — extract business logic behind services (#428, #430).** The review
-  also asked for a service seam so logic is unit-testable without HTTP/Typer. **Panel done:**
-  `GrowthService` (#428) — growth-loop propose/approve/reject; routes thin (map `ServiceError`→
-  status); **approve is now atomic** (claim-first, so concurrent approvals can't double-publish
-  duplicate versions), 14 unit tests. `DeployService` (#430) — governed deploy lifted out of
-  `_mount_deploy`, shared `ServiceError` taxonomy, ordering invariant (intent recorded only after
-  a successful push) now unit-tested, 7 unit tests. **Remaining:** runtime `ArtifactService`/
-  `JobService` (`server/`); `WorkspaceRuntime.observability` (CLI `_cmd_observability` reads
-  audit/jsonl directly today).
+- [~] **PR-I service layer — extract business logic behind services (#428, #430, #432).** The
+  review also asked for a service seam so logic is unit-testable without HTTP/Typer. **Panel done:**
+  `GrowthService` (#428) — growth-loop propose/approve/reject; **approve is now atomic**
+  (claim-first, so concurrent approvals can't double-publish duplicate versions), 14 unit tests.
+  `DeployService` (#430) — governed deploy, shared `ServiceError` taxonomy, ordering invariant
+  (intent recorded only after a successful push) now unit-tested, 7 unit tests. **Runtime done:**
+  `JobService` + `ArtifactService` (#432) — run/webhook (de-duplicated `resolve_topology`) and
+  artifact CRUD lifted out of the `server/` route closures; routes thin (map `ServiceError`→
+  status, install the returned runtime), 14 unit tests. **Remaining:** `WorkspaceRuntime.observability`
+  (CLI `_cmd_observability` reads audit/jsonl directly today).
 
 ## P2 — quality / DX / correctness tail
 
