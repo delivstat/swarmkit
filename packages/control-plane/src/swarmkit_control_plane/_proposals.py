@@ -10,47 +10,29 @@ swarm (machines) can draft but never approve. The panel enforces this by allowin
 only for operator principals — connectors (machine tokens) are denied — and by there being **no
 code path that transitions a proposal out of ``pending`` except the explicit approve/reject calls**.
 
-Sqlite for now, mirroring the other stores.
+SQLAlchemy Core over SQLite (default) or Postgres (design/details/postgres-backend.md).
 """
 
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from swarmkit_control_plane._sqlite_base import SqliteStore
+from sqlalchemy import select, update
+from sqlalchemy.engine import Connection, RowMapping
+
+from swarmkit_control_plane._store_base import Store
+from swarmkit_control_plane._tables import proposals
 
 Status = str  # "pending" | "approved" | "rejected"
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS proposals (
-    id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL,
-    artifact_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    proposed_by TEXT NOT NULL DEFAULT '',
-    signal TEXT NOT NULL DEFAULT '',
-    eval_summary TEXT NOT NULL DEFAULT '{}',
-    approved_by TEXT NOT NULL DEFAULT '',
-    reason TEXT NOT NULL DEFAULT '',
-    published_version TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    decided_at TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals (status, created_at);
-"""
 
+class ProposalStore(Store):
+    """Thread-safe store for the approval queue."""
 
-class ProposalStore(SqliteStore):
-    """Thread-safe sqlite store for the approval queue."""
-
-    _SCHEMA = _SCHEMA
-
-    def _row(self, row: sqlite3.Row) -> dict[str, Any]:
+    def _row(self, row: RowMapping) -> dict[str, Any]:
         out = dict(row)
         out["content"] = json.loads(out["content"]) if out["content"] else None
         out["eval_summary"] = json.loads(out["eval_summary"]) if out["eval_summary"] else {}
@@ -69,61 +51,73 @@ class ProposalStore(SqliteStore):
         """Open a proposal — always starts ``pending`` (never auto-approved)."""
         pid = uuid4().hex[:12]
         now = datetime.now(UTC).isoformat()
-        with self._lock, self._connect() as conn:
+        with self._lock, self._engine.begin() as conn:
             conn.execute(
-                """INSERT INTO proposals
-                   (id, kind, artifact_id, content, status, proposed_by, signal, eval_summary,
-                    created_at)
-                   VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)""",
-                (
-                    pid,
-                    kind,
-                    artifact_id,
-                    json.dumps(content),
-                    proposed_by,
-                    signal,
-                    json.dumps(eval_summary or {}),
-                    now,
-                ),
+                proposals.insert().values(
+                    id=pid,
+                    kind=kind,
+                    artifact_id=artifact_id,
+                    content=json.dumps(content),
+                    status="pending",
+                    proposed_by=proposed_by,
+                    signal=signal,
+                    eval_summary=json.dumps(eval_summary or {}),
+                    created_at=now,
+                )
             )
             return self._get(conn, pid)
 
-    def _get(self, conn: sqlite3.Connection, pid: str) -> dict[str, Any]:
-        row = conn.execute("SELECT * FROM proposals WHERE id = ?", (pid,)).fetchone()
+    def _get(self, conn: Connection, pid: str) -> dict[str, Any]:
+        row = conn.execute(select(proposals).where(proposals.c.id == pid)).mappings().first()
         if row is None:
             raise KeyError(pid)
         return self._row(row)
 
     def get(self, pid: str) -> dict[str, Any] | None:
-        with self._lock, self._connect() as conn:
-            row = conn.execute("SELECT * FROM proposals WHERE id = ?", (pid,)).fetchone()
+        with self._lock, self._engine.connect() as conn:
+            row = conn.execute(select(proposals).where(proposals.c.id == pid)).mappings().first()
         return self._row(row) if row else None
 
     def list(self, status: str | None = None) -> list[dict[str, Any]]:
-        with self._lock, self._connect() as conn:
-            if status:
-                rows = conn.execute(
-                    "SELECT * FROM proposals WHERE status = ? ORDER BY created_at DESC", (status,)
-                ).fetchall()
-            else:
-                rows = conn.execute("SELECT * FROM proposals ORDER BY created_at DESC").fetchall()
+        stmt = select(proposals).order_by(proposals.c.created_at.desc())
+        if status:
+            stmt = stmt.where(proposals.c.status == status)
+        with self._lock, self._engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
         return [self._row(r) for r in rows]
 
     def _decide(
         self, pid: str, *, status: str, approved_by: str, reason: str, published_version: str
     ) -> dict[str, Any]:
-        """Transition a pending proposal to approved/rejected. Raises if it isn't pending."""
+        """Transition a pending proposal to approved/rejected. Raises if it isn't pending.
+
+        The status read takes a row lock (``FOR UPDATE`` on Postgres; a no-op on SQLite, which
+        serialises writers via the store lock + WAL) so two concurrent decisions can't both pass the
+        pending check.
+        """
         now = datetime.now(UTC).isoformat()
-        with self._lock, self._connect() as conn:
-            current = conn.execute("SELECT status FROM proposals WHERE id = ?", (pid,)).fetchone()
+        with self._lock, self._engine.begin() as conn:
+            current = (
+                conn.execute(
+                    select(proposals.c.status).where(proposals.c.id == pid).with_for_update()
+                )
+                .mappings()
+                .first()
+            )
             if current is None:
                 raise KeyError(pid)
             if current["status"] != "pending":
                 raise ValueError(f"proposal is {current['status']}, not pending")
             conn.execute(
-                """UPDATE proposals SET status = ?, approved_by = ?, reason = ?,
-                   published_version = ?, decided_at = ? WHERE id = ?""",
-                (status, approved_by, reason, published_version, now, pid),
+                update(proposals)
+                .where(proposals.c.id == pid)
+                .values(
+                    status=status,
+                    approved_by=approved_by,
+                    reason=reason,
+                    published_version=published_version,
+                    decided_at=now,
+                )
             )
             return self._get(conn, pid)
 
@@ -151,9 +145,9 @@ class ProposalStore(SqliteStore):
         The version isn't known until that publish, so it's recorded here in a second step.
         See ``GrowthService.approve``.
         """
-        with self._lock, self._connect() as conn:
+        with self._lock, self._engine.begin() as conn:
             cur = conn.execute(
-                "UPDATE proposals SET published_version = ? WHERE id = ?", (version, pid)
+                update(proposals).where(proposals.c.id == pid).values(published_version=version)
             )
             if cur.rowcount == 0:
                 raise KeyError(pid)

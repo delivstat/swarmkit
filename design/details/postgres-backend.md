@@ -1,6 +1,6 @@
 # Postgres persistence backend
 
-Status: in progress (design + rollout). Goal: run every SwarmKit store on **either SQLite or
+Status: complete (PR-1/PR-2 runtime, PR-3 control-plane). Goal: run every SwarmKit store on **either SQLite or
 Postgres** from one config switch, so a distributed multi-node deployment (multiple runtime nodes
 + a central fleet control plane) can share a Postgres database instead of per-node SQLite files.
 
@@ -65,7 +65,11 @@ a contract test rather than shared via an import).
    `test_persistence` + `test_store_factory` pass unchanged.
 2. **PR-2 — runtime audit provider on async SQLAlchemy** (`create_async_engine`, aiosqlite/psycopg).
 3. **PR-3 — control-plane stores on SQLAlchemy Core** (registry/artifacts/proposals/aggregation),
-   folding the `_sqlite_base` connection helper into a SQLAlchemy engine.
+   folding the `_sqlite_base` connection helper into a SQLAlchemy engine (`_store_base.Store`). The
+   four stores share one engine; `claim_queued` is dialect-aware (`FOR UPDATE SKIP LOCKED` on
+   Postgres, `BEGIN IMMEDIATE` on SQLite) to preserve the cross-process no-double-dispatch guard;
+   upserts use a dialect `INSERT … ON CONFLICT` helper; the aggregation `payload` is a `JSON` column
+   so rollups extract fields in SQL portably. **Done** — both packages now run on SQLite or Postgres.
 
 ## Non-goals (this feature)
 

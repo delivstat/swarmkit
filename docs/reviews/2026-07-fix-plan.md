@@ -54,9 +54,18 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   persistence store. **PR-2 (#442):** runtime audit provider (sync SQLAlchemy engine, async
   signatures kept — event-loop-safe; `SQLiteAuditProvider`/`PostgresAuditProvider`; audit follows
   the store backend via `audit_provider_for_path`). The **runtime** now runs fully on SQLite or
-  Postgres. **Pending:** PR-3 control-plane stores (registry/artifacts/proposals/aggregation —
-  4 stores in the standalone package; the registry's `claim_queued` cross-process atomicity needs
-  dialect-aware care).
+  Postgres. **PR-3 (#TBD):** control-plane stores (registry/artifacts/proposals/aggregation) on
+  SQLAlchemy Core — one `_tables.py` metadata + engine-holding `Store` base (`_store_base.py`,
+  replaces `_sqlite_base`) shared by all four stores via one engine; `_store_factory.create_registry`
+  selects the backend (`SWARMKIT_CONTROL_PLANE_STORE_BACKEND`/`DATABASE_URL`). `claim_queued` is
+  dialect-aware — `SELECT … FOR UPDATE SKIP LOCKED` on Postgres, `BEGIN IMMEDIATE` (AUTOCOMMIT-driven)
+  on SQLite — so the cross-process no-double-dispatch guard holds on both; upserts go through a
+  dialect `INSERT … ON CONFLICT` helper; aggregation `payload` is a JSON column so rollups extract in
+  SQL on both dialects (RETURNING-based dedup counting, since psycopg reports `rowcount=-1` for
+  `ON CONFLICT`). Standalone (adds its own `sqlalchemy`+`psycopg` deps, no runtime import). The
+  **control-plane** now runs fully on SQLite or Postgres. Guarded by the existing 141-test suite +
+  a cross-process claim concurrency test + a `SWARMKIT_TEST_POSTGRES_URL`-gated integration suite
+  (verified against a real Postgres 16). The whole **Postgres backend feature is now complete**.
 - [x] **PR-H (#436) — canonical verb table + `ServeClient` + cross-package contract.** Runtime
   `connect._VERB_ROUTES` is now the public canonical `VERB_ROUTES` (+ `DEPLOY_PLURAL`/`DEPLOY_TIER`/
   `verb_tiers()`). Control-plane got a `ServeClient` (async; bearer/base/error-map + `ok()`) that

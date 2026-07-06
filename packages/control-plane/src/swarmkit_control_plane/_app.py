@@ -77,9 +77,11 @@ def create_app(
     operator). When neither is set, the panel runs open (no auth) for local dev.
     """
     app = FastAPI(title="SwarmKit control plane")
-    agg = aggregation or AggregationStore(registry.db_path)
-    arts = artifacts or ArtifactStore(registry.db_path)
-    props = proposals or ProposalStore(registry.db_path)
+    # Share the registry's engine so all four stores use one connection pool + one database
+    # (dialect-agnostic: works for both the SQLite file and a shared Postgres).
+    agg = aggregation or AggregationStore(registry.engine)
+    arts = artifacts or ArtifactStore(registry.engine)
+    props = proposals or ProposalStore(registry.engine)
     growth = GrowthService(registry, props, arts, author, eval_run)
     deploy_svc = DeployService(registry, arts, agg, deploy)
     ops = [t for t in (operator_tokens or []) if t]

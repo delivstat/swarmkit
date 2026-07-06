@@ -2898,12 +2898,14 @@ wheels = [
 
 [[package]]
 name = "swarmkit-control-plane"
-version = "0.25.0"
+version = "0.26.0"
 source = { editable = "packages/control-plane" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pyjwt", extra = ["crypto"] },
+    { name = "sqlalchemy" },
     { name = "typer" },
     { name = "uvicorn" },
 ]
@@ -2912,7 +2914,9 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8" },
+    { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
