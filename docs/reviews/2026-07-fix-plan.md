@@ -49,11 +49,16 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   loop (`asyncio.to_thread` or `def` handlers). Apply to the 9 stores across both packages
   (may split into G1 runtime / G2 control-plane). Tests: WAL+migration on every store; a
   concurrency test that the loop isn't blocked.
-- [ ] **PR-H — canonical `VERB_ROUTES` + `ServeClient`.** One verb→(method,path,tier) table +
-  a typed async serve client (header/base/error/poll once). Consumed by runtime `connect.py`,
-  control-plane `_connector.py`/`_deploy.py`, `server._required_action`; UI `KNOWN_VERBS`
-  aligned/generated. Delete `_connector.resolve_token` in favour of `resolve_secret_ref`.
-  Test: one table drives all sides; a cross-side contract test.
+- [x] **PR-H (#436) — canonical verb table + `ServeClient` + cross-package contract.** Runtime
+  `connect._VERB_ROUTES` is now the public canonical `VERB_ROUTES` (+ `DEPLOY_PLURAL`/`DEPLOY_TIER`/
+  `verb_tiers()`). Control-plane got a `ServeClient` (async; bearer/base/error-map + `ok()`) that
+  `_connector.py`/`_deploy.py` now express calls over — the 5 copy-pasted HTTP boilerplate sites
+  collapsed to one; `resolve_token`→`resolve_secret_ref` (deleted the old name). **Contract test**
+  (`test_verb_contract.py`, importorskip-guarded) asserts panel `VERB_TIERS` == runtime `verb_tiers()`
+  + `DEPLOYABLE` == `DEPLOY_PLURAL` + tier ranks — one table, enforced by CI, so they can't drift.
+  13 `ServeClient` unit tests. **Deferred:** a single `ServeClient` shared *across* the runtime↔panel
+  boundary (needs a shared published package; the panel stays standalone per D1) and UI `KNOWN_VERBS`
+  generation — the contract test already prevents drift without them.
 - [x] **PR-I — split the god-modules (I1 #424 / I2 #425 / I3 #426).** Panel `_app.py` (813→163)
   → `_schemas` + `_fntypes` + `_routes_{registry,artifacts,growth}`; `server.py` (1433) →
   `server/` package (`_config`/`_schemas`/`_jobs`/`_helpers`/`_mcp`/`_routes_*`/`_app`);
