@@ -212,7 +212,7 @@ async def evaluate_pre_synthesis(
 
     Reads scope.json from run state (if present) and passes it as
     context to the decision skill. This enables spec-conformance
-    checking against the frozen scope from the Jira ticket.
+    checking against the frozen scope.
     """
     applicable = [b for b in bindings if b.trigger == "pre_synthesis" and b.applies_to(agent_id)]
     if not applicable:

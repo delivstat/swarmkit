@@ -85,7 +85,7 @@ def extract_tool_sources(tool_results: list[Any]) -> set[str]:
 
     Scans each ``ToolCallResult.result`` for ``[source: server:tool | Nms]``
     tags appended by the skill executor (PR 1 provenance envelope).
-    Returns the set of unique source identifiers (e.g. ``{"cdt:search-config"}``).
+    Returns the set of unique source identifiers (e.g. ``{"docs:api-reference"}``).
     """
     sources: set[str] = set()
     for tr in tool_results:

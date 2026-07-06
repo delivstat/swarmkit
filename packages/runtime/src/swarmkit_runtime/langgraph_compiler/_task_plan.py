@@ -351,8 +351,8 @@ def build_create_task_plan_tool(agent: ResolvedAgent) -> ToolSpec:
             "depends_on. Self-tasks (synthesis, document writing) "
             "should ALWAYS depend on the research tasks.\n\n"
             "Example ordering:\n"
-            '  {"id":"research","agent":"jira-researcher","depends_on":[]}\n'
-            '  {"id":"config","agent":"config-analyst","depends_on":["research"]}\n'
+            '  {"id":"research","agent":"researcher","depends_on":[]}\n'
+            '  {"id":"analyze","agent":"analyst","depends_on":["research"]}\n'
             '  {"id":"synthesize","agent":"self","depends_on":["config"]}\n'
             '  {"id":"write-doc","agent":"document-writer","depends_on":["synthesize"]}\n\n'
             f"Available agents:\n{agent_list}"
