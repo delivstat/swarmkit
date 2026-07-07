@@ -128,7 +128,7 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   `<JsonBlock>` (adopted in the artifact detail page). First unit tests for the package —
   `vitest` + `@testing-library/react` (13: hook dedup/error/conditional/refresh + kit); Playwright
   OIDC e2e still green. **Deferred to PR-M:** operator-token client-path generation + `KNOWN_VERBS`.
-- [~] **PR-M (#TBD) — generated API contract (verb table done; response models deferred).** The
+- [~] **PR-M (#452) — generated API contract (verb table done; response models deferred).** The
   fleet UI's `KNOWN_VERBS` is now **generated** from the panel's canonical `_verbs.VERB_TIERS`
   (`scripts/codegen_verbs.py` → `lib/generated/verbs.ts`, re-exported from `lib/types.ts`), so it
   can't drift — it already had (the hand-written list was missing `deploy`). Completes the verb
