@@ -12,13 +12,9 @@ import re
 from pathlib import Path
 
 import pytest
-
 from swarmkit_control_plane._verbs import VERB_TIERS
 
-_VERBS_TS = (
-    Path(__file__).resolve().parents[3]
-    / "packages/control-plane-ui/lib/generated/verbs.ts"
-)
+_VERBS_TS = Path(__file__).resolve().parents[3] / "packages/control-plane-ui/lib/generated/verbs.ts"
 
 
 @pytest.mark.skipif(not _VERBS_TS.exists(), reason="control-plane-ui not in this checkout")
@@ -28,7 +24,9 @@ def test_generated_verbs_match_panel_table() -> None:
     # Every canonical verb→tier pair appears as an entry.
     for verb, tier in VERB_TIERS.items():
         entry = f'{{ verb: "{verb}", tier: "{tier}" }}'
-        assert entry in text, f"generated verbs.ts is stale — missing {entry}. Run `just codegen-verbs`."
+        assert entry in text, (
+            f"generated verbs.ts is stale — missing {entry}. Run `just codegen-verbs`."
+        )
 
     # No extra entries beyond the canonical table (count the entry literals — the `verb: "…"`
     # form, which excludes the `verb: string` field in the KnownVerb interface).
