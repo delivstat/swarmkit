@@ -187,3 +187,16 @@ jobs:
             git --no-pager diff -- packages/schema/typescript/src/types
             exit 1
           fi
+
+      - name: Regenerate control-plane UI verb contract
+        run: |
+          uv run python scripts/codegen_verbs.py
+          pnpm --filter @swarmkit/control-plane-ui exec biome format --write lib/generated/verbs.ts
+
+      - name: Fail if codegen produced uncommitted diffs (verb contract)
+        run: |
+          if ! git diff --quiet --exit-code -- packages/control-plane-ui/lib/generated/verbs.ts; then
+            echo "::error::verb-contract codegen drift — run 'just codegen-verbs' and commit"
+            git --no-pager diff -- packages/control-plane-ui/lib/generated/verbs.ts
+            exit 1
+          fi

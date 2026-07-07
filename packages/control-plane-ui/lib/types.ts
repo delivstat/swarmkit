@@ -1,5 +1,9 @@
 /** Mirrors `Instance.public_dict()` from the swarmkit-control-plane API. */
 
+// KNOWN_VERBS is generated from the panel's canonical VERB_TIERS — re-exported here so consumers
+// keep importing verbs from `@/lib/types`. Regenerate with `just codegen-verbs`.
+export { KNOWN_VERBS, type KnownVerb, type Tier } from "./generated/verbs";
+
 export type ConnectionMode = "direct" | "poll";
 export type Health = "healthy" | "stale" | "unreachable" | "unknown";
 export type CommandStatus = "queued" | "dispatched" | "done" | "error";
@@ -177,13 +181,3 @@ export interface Observability {
 	jaeger_url: string;
 	grafana_url: string;
 }
-
-/** Command verbs the panel may enqueue, with the tier each requires (mirrors _verbs.py). */
-export const KNOWN_VERBS: { verb: string; tier: string }[] = [
-	{ verb: "capabilities", tier: "read" },
-	{ verb: "usage", tier: "read" },
-	{ verb: "job-status", tier: "read" },
-	{ verb: "validate", tier: "read" },
-	{ verb: "run", tier: "run" },
-	{ verb: "reload", tier: "admin" },
-];

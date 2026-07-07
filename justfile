@@ -104,6 +104,16 @@ schema-codegen-ts-check:
     @pnpm --silent --filter @swarmkit/schema exec node scripts/codegen-types.mjs
     @git diff --quiet --exit-code -- packages/schema/typescript/src/types || (echo "ts codegen drift detected — run 'just schema-codegen-ts' and commit the result" && git --no-pager diff --stat -- packages/schema/typescript/src/types && exit 1)
 
+# Generate the control-plane UI's KNOWN_VERBS from the panel's canonical VERB_TIERS, then
+# biome-format so the committed file is byte-stable against the linter.
+codegen-verbs:
+    uv run python scripts/codegen_verbs.py
+    @pnpm --silent --filter @swarmkit/control-plane-ui exec biome format --write lib/generated/verbs.ts
+
+# Drift check — regenerate the verb contract and fail if the working tree is dirty. Used in CI.
+codegen-verbs-check: codegen-verbs
+    @git diff --quiet --exit-code -- packages/control-plane-ui/lib/generated/verbs.ts || (echo "verb-contract codegen drift detected — run 'just codegen-verbs' and commit the result" && git --no-pager diff -- packages/control-plane-ui/lib/generated/verbs.ts && exit 1)
+
 # Show a typed object loaded through the generated pydantic models.
 demo-codegen:
     @uv run python scripts/demo_codegen.py

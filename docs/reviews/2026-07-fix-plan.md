@@ -128,8 +128,15 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   `<JsonBlock>` (adopted in the artifact detail page). First unit tests for the package —
   `vitest` + `@testing-library/react` (13: hook dedup/error/conditional/refresh + kit); Playwright
   OIDC e2e still green. **Deferred to PR-M:** operator-token client-path generation + `KNOWN_VERBS`.
-- [ ] **PR-M — generated API contract.** Panel returns pydantic response models; `types.ts` +
-  `KNOWN_VERBS` generated from the panel OpenAPI / `packages/schema`; CI drift check.
+- [~] **PR-M (#TBD) — generated API contract (verb table done; response models deferred).** The
+  fleet UI's `KNOWN_VERBS` is now **generated** from the panel's canonical `_verbs.VERB_TIERS`
+  (`scripts/codegen_verbs.py` → `lib/generated/verbs.ts`, re-exported from `lib/types.ts`), so it
+  can't drift — it already had (the hand-written list was missing `deploy`). Completes the verb
+  contract chain: runtime `VERB_ROUTES` → panel `VERB_TIERS` (pinned by `test_verb_contract`) → UI
+  `KNOWN_VERBS` (generated). `just codegen-verbs`; a CI drift step (in the schema-codegen-drift job)
+  + an in-suite `test_verb_codegen` guard fail on staleness. **Deferred:** panel routes returning
+  pydantic response models + generating the response *interfaces* (`Instance`/`Command`/…) from the
+  panel OpenAPI — a larger change touching every route; the hand-written interfaces stay for now.
 - [x] **PR-N (#418/#422, partial: audit-limit + atomic deploy + atomic claim; deferred: literal-token-ref reject, background propose_from_gap, audit ts) — control-plane robustness tail.** Atomic approve/deploy (record deployment only
   on push success; single-txn approve); `?limit` bounds + pagination; `claim_queued`
   conditional UPDATE; background-job `propose_from_gap` (202 + poll); reject literal
