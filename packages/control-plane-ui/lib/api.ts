@@ -4,6 +4,7 @@ import type {
 	ArtifactVersion,
 	AuditRow,
 	AuthorResult,
+	CachedState,
 	Command,
 	Config,
 	DriftRow,
@@ -14,6 +15,7 @@ import type {
 	MintResult,
 	Observability,
 	Proposal,
+	SyncResult,
 	UsageRow,
 } from "./types";
 
@@ -130,6 +132,10 @@ export const api = {
 	deleteInstance: (id: string) =>
 		request<{ deleted: string }>(`/instances/${id}`, { method: "DELETE" }),
 	instanceJobs: (id: string) => request<Job[]>(`/instances/${id}/jobs`),
+	// Observed-state cache (design 19 Phase 1): the last full inventory the panel pulled.
+	instanceState: (id: string) => request<CachedState>(`/instances/${id}/state`),
+	syncInstance: (id: string) =>
+		request<SyncResult>(`/instances/${id}/sync`, { method: "POST" }),
 	drift: (id: string) => request<DriftRow[]>(`/instances/${id}/drift`),
 	setDeployment: (
 		id: string,

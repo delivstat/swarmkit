@@ -181,3 +181,42 @@ export interface Observability {
 	jaeger_url: string;
 	grafana_url: string;
 }
+
+/** One artifact in an instance's observed state — its content + hash (serve GET /fleet/state). */
+export interface InstanceArtifact {
+	id: string;
+	version: string;
+	content_hash: string;
+	content: unknown;
+}
+
+/** An instance's full observed state — every artifact's content, not just names (design 19). */
+export interface InstanceState {
+	apiVersion: string;
+	kind: string;
+	workspace_id: string;
+	schema_version: string;
+	generated_at?: string;
+	artifacts: {
+		topologies: InstanceArtifact[];
+		skills: InstanceArtifact[];
+		archetypes: InstanceArtifact[];
+		triggers: InstanceArtifact[];
+	};
+	providers: string[];
+	governance_provider: string;
+	health: Record<string, unknown>;
+}
+
+/** GET /instances/{id}/state — the panel's cached snapshot + when it was pulled. */
+export interface CachedState {
+	state: InstanceState;
+	synced_at: string;
+}
+
+/** POST /instances/{id}/sync — result of a fresh pull. */
+export interface SyncResult {
+	instance_id: string;
+	synced_at: string;
+	counts: Record<string, number>;
+}
