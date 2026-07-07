@@ -119,9 +119,15 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   `design/details/configurable-synthesis-roles.md`; live e2e in
   `examples/configurable-synthesis-roles/` (OpenRouter run — the `editor` task auto-wired to depend
   on research). **Pending:** JSON-safe governance-flag attachment.
-- [ ] **PR-L — UI SWR kit.** `useResource` (SWR) replacing `usePoll` (fixes race/latch/dup-fetch/
-  no-op-refresh); `<DataView>`/`<JsonBlock>`/form-kit/`<StatusBadge>`; operator-token client
-  path; keyboard-accessible rows; back `InstanceProvider` with the shared cache.
+- [x] **PR-L (#TBD) — UI SWR kit.** `lib/use-resource.ts` (`useResource`, SWR) replaces `usePoll`
+  across all 15 consumers — fixes the fetcher-identity effect thrash, adds a shared keyed cache
+  (dashboard/selector/instances page dedupe one `/instances` request), request ordering, and a
+  stable `refresh` (`mutate`); an app-wide `<SwrProvider>` backs the cache and `InstanceProvider`
+  reads it. Component kit: `<ResourceView>` (loading/error/empty four-state; named to avoid the JS
+  `DataView` global) + `SelectableRow` (keyboard-accessible clickable rows), `<StatusBadge>`,
+  `<JsonBlock>` (adopted in the artifact detail page). First unit tests for the package —
+  `vitest` + `@testing-library/react` (13: hook dedup/error/conditional/refresh + kit); Playwright
+  OIDC e2e still green. **Deferred to PR-M:** operator-token client-path generation + `KNOWN_VERBS`.
 - [ ] **PR-M — generated API contract.** Panel returns pydantic response models; `types.ts` +
   `KNOWN_VERBS` generated from the panel OpenAPI / `packages/schema`; CI drift check.
 - [x] **PR-N (#418/#422, partial: audit-limit + atomic deploy + atomic claim; deferred: literal-token-ref reject, background propose_from_gap, audit ts) — control-plane robustness tail.** Atomic approve/deploy (record deployment only

@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Observability } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 export function ObservabilityCard() {
 	const fetcher = useCallback(() => api.observability(), []);
-	const { data } = usePoll<Observability>(fetcher, 30_000);
+	const { data } = useResource<Observability>("/observability", fetcher, {
+		refreshInterval: 30_000,
+	});
 	const obs = data ?? {
 		collector_endpoint: "",
 		jaeger_url: "",

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError, api } from "@/lib/api";
 import { useInstances } from "@/lib/instance-context";
 import type { Gap, Proposal, ProposalStatus } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 const STATUS_VARIANT: Record<ProposalStatus, BadgeProps["variant"]> = {
 	pending: "warning",
@@ -105,7 +105,9 @@ function ProposalCard({ p, onChange }: { p: Proposal; onChange: () => void }) {
 function GapsPanel({ onProposed }: { onProposed: () => void }) {
 	const { instances, selected } = useInstances();
 	const fetcher = useCallback(() => api.gaps(), []);
-	const { data, refresh } = usePoll<Gap[]>(fetcher, 30_000);
+	const { data, refresh } = useResource<Gap[]>("/gaps", fetcher, {
+		refreshInterval: 30_000,
+	});
 	const gaps = data ?? [];
 	const [busy, setBusy] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -188,7 +190,11 @@ export default function ApprovalsPage() {
 		() => api.proposals(pendingOnly ? "pending" : undefined),
 		[pendingOnly],
 	);
-	const { data, error, loading, refresh } = usePoll<Proposal[]>(fetcher);
+	// Key varies with the filter so switching pending/all is a distinct cache entry.
+	const { data, error, loading, refresh } = useResource<Proposal[]>(
+		pendingOnly ? "/proposals?status=pending" : "/proposals",
+		fetcher,
+	);
 	const rows = data ?? [];
 
 	return (

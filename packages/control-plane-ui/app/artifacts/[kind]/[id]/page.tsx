@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { JsonBlock } from "@/components/ui/json-block";
 import {
 	Table,
 	TableBody,
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import type { ArtifactVersion } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 import { cn } from "@/lib/utils";
 
 export default function ArtifactDetailPage() {
@@ -27,7 +28,11 @@ export default function ArtifactDetailPage() {
 	const id = decodeURIComponent(String(params.id));
 
 	const fetcher = useCallback(() => api.artifactVersions(kind, id), [kind, id]);
-	const { data, error, loading } = usePoll<ArtifactVersion[]>(fetcher, 15_000);
+	const { data, error, loading } = useResource<ArtifactVersion[]>(
+		`/artifacts/${kind}/${encodeURIComponent(id)}/versions`,
+		fetcher,
+		{ refreshInterval: 15_000 },
+	);
 	const versions = data ?? [];
 
 	const [selected, setSelected] = useState<string | null>(null);
@@ -135,11 +140,7 @@ export default function ArtifactDetailPage() {
 							</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">
-								{typeof content.content === "string"
-									? content.content
-									: JSON.stringify(content.content, null, 2)}
-							</pre>
+							<JsonBlock value={content.content} />
 						</CardContent>
 					</Card>
 				) : null}

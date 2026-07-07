@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Instance } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 function StatCard({
 	label,
@@ -36,7 +36,9 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-	const { data, error, loading } = usePoll<Instance[]>(api.listInstances);
+	const { data, error, loading } = useResource<Instance[]>("/instances", () =>
+		api.listInstances(),
+	);
 	const instances = data ?? [];
 
 	const total = instances.length;

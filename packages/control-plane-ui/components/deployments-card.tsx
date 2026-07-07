@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import type { DriftRow, DriftStatus } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 const KINDS = ["topology", "skill", "archetype", "workspace", "trigger"];
 const FIELD = "h-9 rounded-md border border-input bg-background px-2 text-sm";
@@ -28,7 +28,11 @@ const DRIFT_VARIANT: Record<DriftStatus, BadgeProps["variant"]> = {
 
 export function DeploymentsCard({ instanceId }: { instanceId: string }) {
 	const fetcher = useCallback(() => api.drift(instanceId), [instanceId]);
-	const { data, refresh } = usePoll<DriftRow[]>(fetcher, 10_000);
+	const { data, refresh } = useResource<DriftRow[]>(
+		`/instances/${instanceId}/drift`,
+		fetcher,
+		{ refreshInterval: 10_000 },
+	);
 	const rows = data ?? [];
 
 	const [kind, setKind] = useState("topology");

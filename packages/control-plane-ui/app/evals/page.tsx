@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import type { EvalRow } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 function PassRate({ rate }: { rate: number | null }) {
 	if (rate === null) return <Badge variant="muted">—</Badge>;
@@ -28,7 +28,10 @@ function PassRate({ rate }: { rate: number | null }) {
 
 export default function EvalsPage() {
 	const fetcher = useCallback(() => api.evals(), []);
-	const { data, error, loading, refresh } = usePoll<EvalRow[]>(fetcher);
+	const { data, error, loading, refresh } = useResource<EvalRow[]>(
+		"/eval",
+		fetcher,
+	);
 	const rows = data ?? [];
 
 	return (

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Config } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 function Row({
 	label,
@@ -50,7 +50,9 @@ function ExtLink({ href }: { href: string }) {
 
 export default function SettingsPage() {
 	const fetcher = useCallback(() => api.config(), []);
-	const { data, error, loading } = usePoll<Config>(fetcher, 30_000);
+	const { data, error, loading } = useResource<Config>("/config", fetcher, {
+		refreshInterval: 30_000,
+	});
 
 	const uiApi = process.env.NEXT_PUBLIC_CONTROL_PLANE_API || "(same-origin)";
 	const uiOidc = process.env.NEXT_PUBLIC_OIDC_AUTHORITY ?? "";

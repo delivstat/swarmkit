@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import type { Job } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 function statusVariant(status: string): BadgeProps["variant"] {
 	const s = status.toLowerCase();
@@ -27,7 +27,11 @@ function statusVariant(status: string): BadgeProps["variant"] {
 
 export function LiveJobsCard({ instanceId }: { instanceId: string }) {
 	const fetcher = useCallback(() => api.instanceJobs(instanceId), [instanceId]);
-	const { data, error, loading } = usePoll<Job[]>(fetcher, 5000);
+	const { data, error, loading } = useResource<Job[]>(
+		`/instances/${instanceId}/jobs`,
+		fetcher,
+		{ refreshInterval: 5000 },
+	);
 	const jobs = data ?? [];
 
 	return (

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Instance } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 function Field({
 	label,
@@ -40,7 +40,7 @@ export default function InstanceDetailPage() {
 		error,
 		loading,
 		refresh,
-	} = usePoll<Instance>(fetcher);
+	} = useResource<Instance>(`/instances/${id}`, fetcher);
 
 	const [busy, setBusy] = useState<string | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
