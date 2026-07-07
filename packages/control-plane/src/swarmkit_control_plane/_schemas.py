@@ -44,6 +44,12 @@ class MintTokenRequest(BaseModel):
     client_name: str = ""
 
 
+class RegisterInstanceRequest(BaseModel):
+    enroll_token: str  # the one-time join code the instance owner minted
+    fleet_id: str | None = None  # defaults to the panel's fleet id
+    requested_scope: str | None = None
+
+
 class AggregateRequest(BaseModel):
     records: list[dict[str, Any]]
     # Only used by operators / open mode; connectors are scoped to their own id via the principal.

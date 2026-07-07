@@ -1,0 +1,121 @@
+"""Panel-side register handshake + encrypted credential storage (design 19, Phase 2 slice 3).
+
+The panel joins an instance with an enrollment token, stores the returned membership secret
+**encrypted at rest** (never plaintext), and caches the instance's full state — in one call.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from cryptography.fernet import Fernet
+from fastapi.testclient import TestClient
+from swarmkit_control_plane import SqliteRegistry, create_app
+from swarmkit_control_plane._credential_store import CredentialStore
+from swarmkit_control_plane._secret_box import FernetSecretBox
+from swarmkit_control_plane._tables import instance_credential
+
+_REGISTER_RESULT = {
+    "membership_id": "mem-123",
+    "credential": {
+        "type": "api_key",
+        "value": "super-secret-key",
+        "scope": "manage",
+        "fingerprint": "abc123",
+    },
+    "instance_state": {
+        "workspace_id": "sterling-oms",
+        "schema_version": "1.7.0",
+        "artifacts": {"topologies": [{"id": "t1"}], "skills": [], "archetypes": [], "triggers": []},
+    },
+}
+
+
+# --- SecretBox + CredentialStore ------------------------------------------------
+
+
+def test_secret_box_roundtrip_and_ciphertext_differs() -> None:
+    box = FernetSecretBox(Fernet.generate_key())
+    ct = box.encrypt("hunter2")
+    assert ct != "hunter2"
+    assert box.decrypt(ct) == "hunter2"
+
+
+def test_credential_store_encrypts_at_rest(tmp_path: Path) -> None:
+    box = FernetSecretBox(Fernet.generate_key())
+    store = CredentialStore(tmp_path / "cp.sqlite", secret_box=box)
+    store.put_credential(
+        "i1",
+        membership_id="m1",
+        fleet_id="f1",
+        scope="monitor",
+        fingerprint="fp",
+        secret="the-secret",
+    )
+    # the raw row holds ciphertext, not the secret.
+    from sqlalchemy import select  # noqa: PLC0415
+
+    with store.engine.connect() as conn:
+        row = conn.execute(select(instance_credential)).mappings().first()
+    assert row is not None
+    assert "the-secret" not in str(dict(row))
+    assert box.decrypt(row["ciphertext"]) == "the-secret"
+    # the store decrypts on read; metadata never exposes the secret.
+    assert store.get_secret("i1") == "the-secret"
+    assert "secret" not in store.get_metadata("i1")  # type: ignore[operator]
+    assert store.get_metadata("i1")["scope"] == "monitor"  # type: ignore[index]
+
+
+# --- the /register route --------------------------------------------------------
+
+
+def _client(tmp_path: Path) -> TestClient:
+    registry = SqliteRegistry(tmp_path / "registry.sqlite")
+
+    async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:  # pragma: no cover
+        return {}
+
+    async def register_fn(
+        endpoint: str, enroll_token: str, fleet_id: str, requested_scope: str | None
+    ) -> dict[str, Any]:
+        return _REGISTER_RESULT
+
+    return TestClient(create_app(registry, verify=verify, register_fn=register_fn))
+
+
+def _enroll(client: TestClient, connection: str = "direct") -> str:
+    r = client.post(
+        "/instances",
+        json={
+            "name": "edge",
+            "endpoint": "http://edge:8000",
+            "connection": connection,
+            "tier": "read",
+        },
+    )
+    return str(r.json()["id"])
+
+
+def test_register_stores_credential_caches_state_and_marks_healthy(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    iid = _enroll(client)
+    r = client.post(f"/instances/{iid}/register", json={"enroll_token": "join-code"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["membership_id"] == "mem-123" and body["scope"] == "manage"
+    assert body["counts"]["topologies"] == 1
+    # state cached (works offline) + instance now healthy.
+    assert client.get(f"/instances/{iid}/state").json()["state"]["workspace_id"] == "sterling-oms"
+    assert client.get(f"/instances/{iid}").json()["health"] == "healthy"
+
+
+def test_register_rejects_poll_mode(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    iid = _enroll(client, connection="poll")
+    assert client.post(f"/instances/{iid}/register", json={"enroll_token": "x"}).status_code == 409
+
+
+def test_register_unknown_instance_404(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    assert client.post("/instances/nope/register", json={"enroll_token": "x"}).status_code == 404

@@ -9,9 +9,11 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 
 from swarmkit_control_plane._connector import ConnectorError
+from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
     JobsFn,
+    RegisterFn,
     StateFn,
     VerifyFn,
 )
@@ -26,6 +28,7 @@ from swarmkit_control_plane._schemas import (
     HeartbeatRequest,
     MintTokenRequest,
     PollRequest,
+    RegisterInstanceRequest,
 )
 from swarmkit_control_plane._state_store import InstanceStateStore
 from swarmkit_control_plane._tokens import mint_token
@@ -242,6 +245,62 @@ def _mount_state(
         if cached is None:
             raise HTTPException(404, "no state cached yet — POST /instances/{id}/sync first")
         return cached  # {state, synced_at} — served from cache, works offline
+
+
+#: The panel's own fleet identity, presented to instances at register (overridable per request).
+DEFAULT_FLEET_ID = "swarmkit-fleet"
+
+
+def _mount_register(
+    app: FastAPI,
+    registry: SqliteRegistry,
+    state_store: InstanceStateStore,
+    cred_store: CredentialStore,
+    register_fn: RegisterFn,
+) -> None:
+    """The register handshake (design 19, Phase 2): the panel joins an instance with a one-time
+    enrollment token, receives a scoped membership credential (stored encrypted) + the instance's
+    full state (cached), in one call."""
+
+    @app.post("/instances/{instance_id}/register")
+    async def register_instance(instance_id: str, req: RegisterInstanceRequest) -> dict[str, Any]:
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            raise HTTPException(
+                409, "register pulls /fleet/register — only valid for direct (Mode A)"
+            )
+        fleet_id = req.fleet_id or DEFAULT_FLEET_ID
+        try:
+            result = await register_fn(
+                inst.endpoint, req.enroll_token, fleet_id, req.requested_scope
+            )
+        except ConnectorError as exc:
+            raise HTTPException(502, f"register failed: {exc}") from exc
+
+        cred = result.get("credential", {})
+        cred_store.put_credential(
+            instance_id,
+            membership_id=result["membership_id"],
+            fleet_id=fleet_id,
+            scope=str(cred.get("scope", "")),
+            fingerprint=str(cred.get("fingerprint", "")),
+            secret=str(cred.get("value", "")),  # encrypted at rest by the store
+        )
+        state = result.get("instance_state", {}) or {}
+        synced_at = state_store.put(instance_id, state)
+        registry.update_health(
+            instance_id, health="healthy", schema_version=str(state.get("schema_version", ""))
+        )
+        arts = state.get("artifacts", {}) if isinstance(state, dict) else {}
+        return {
+            "membership_id": result["membership_id"],
+            "scope": cred.get("scope", ""),
+            "fingerprint": cred.get("fingerprint", ""),
+            "synced_at": synced_at,
+            "counts": {kind: len(items) for kind, items in arts.items()},
+        }
 
 
 def _mount_command_queue(app: FastAPI, registry: SqliteRegistry) -> None:

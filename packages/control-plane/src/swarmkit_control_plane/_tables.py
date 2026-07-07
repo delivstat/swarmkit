@@ -150,6 +150,23 @@ instance_state = Table(
     Column("synced_at", Text, nullable=False),
 )
 
+# --- fleet membership credential (enrollment Phase 2) -------------------------
+
+# The membership credential the panel received from an instance's /fleet/register — the per-fleet
+# API key the panel uses to call that instance. The secret is stored ENCRYPTED (never plaintext,
+# never a file); the CredentialStore wraps a SecretBox. One row per instance.
+instance_credential = Table(
+    "instance_credential",
+    metadata,
+    Column("instance_id", Text, primary_key=True),
+    Column("membership_id", Text, nullable=False),
+    Column("fleet_id", Text, nullable=False),
+    Column("scope", Text, nullable=False),
+    Column("fingerprint", Text, nullable=False),
+    Column("ciphertext", Text, nullable=False),  # encrypted membership secret
+    Column("created_at", Text, nullable=False),
+)
+
 __all__ = [
     "agg_records",
     "artifact_versions",
