@@ -18,11 +18,14 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import type { ArtifactSummary } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 export default function ArtifactsPage() {
 	const fetcher = useCallback(() => api.artifacts(), []);
-	const { data, error, loading, refresh } = usePoll<ArtifactSummary[]>(fetcher);
+	const { data, error, loading, refresh } = useResource<ArtifactSummary[]>(
+		"/artifacts",
+		fetcher,
+	);
 	const rows = data ?? [];
 
 	return (

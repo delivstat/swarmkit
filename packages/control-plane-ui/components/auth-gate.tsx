@@ -43,9 +43,9 @@ function Gate({ children }: { children: React.ReactNode }) {
 	const auth = useAuth();
 	const token = auth.user?.access_token ?? null;
 
-	// Sync the token into the store DURING render — child effects (usePoll) fire before parent
-	// effects, so an effect here would let the first API call race ahead without the token (401 →
-	// spurious re-login loop). Setting an external store in render is idempotent and safe.
+	// Sync the token into the store DURING render — child data fetches (useResource/SWR) fire
+	// before parent effects, so an effect here would let the first API call race ahead without the
+	// token (401 → spurious re-login loop). Setting an external store in render is idempotent + safe.
 	setAccessToken(token);
 
 	useEffect(() => {

@@ -11,7 +11,7 @@ import {
 
 import { api } from "@/lib/api";
 import type { Instance } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 const STORAGE_KEY = "swarmkit.selectedInstance";
 
@@ -28,8 +28,13 @@ const InstanceContext = createContext<InstanceContextValue | null>(null);
 /** Fleet-wide instance selection. Fetches the registry once and remembers the
  * operator's choice (localStorage) so per-instance pages share one selection. */
 export function InstanceProvider({ children }: { children: React.ReactNode }) {
-	const fetcher = useCallback(() => api.listInstances(), []);
-	const { data, loading } = usePoll<Instance[]>(fetcher, 30_000);
+	// Shared "/instances" key: the dashboard, selector, and instances page all read from the same
+	// SWR cache entry, so the registry is fetched once, not once per consumer.
+	const { data, loading } = useResource<Instance[]>(
+		"/instances",
+		() => api.listInstances(),
+		{ refreshInterval: 30_000 },
+	);
 	const instances = useMemo(() => data ?? [], [data]);
 
 	const [selectedId, setSelectedIdState] = useState("");

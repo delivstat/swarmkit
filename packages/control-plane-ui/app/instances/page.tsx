@@ -17,11 +17,12 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import type { Instance } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 export default function InstancesPage() {
-	const { data, error, loading, refresh } = usePoll<Instance[]>(
-		api.listInstances,
+	const { data, error, loading, refresh } = useResource<Instance[]>(
+		"/instances",
+		() => api.listInstances(),
 	);
 	const instances = data ?? [];
 

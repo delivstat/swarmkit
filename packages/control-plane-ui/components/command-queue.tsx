@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { type Command, KNOWN_VERBS } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 const TIER_RANK: Record<string, number> = { read: 0, run: 1, admin: 2 };
 
@@ -24,7 +24,11 @@ export function CommandQueue({
 	tier,
 }: { instanceId: string; tier: string }) {
 	const fetcher = useCallback(() => api.listCommands(instanceId), [instanceId]);
-	const { data, error, refresh } = usePoll<Command[]>(fetcher, 3000);
+	const { data, error, refresh } = useResource<Command[]>(
+		`/instances/${instanceId}/commands`,
+		fetcher,
+		{ refreshInterval: 3000 },
+	);
 	const commands = data ?? [];
 
 	const [verb, setVerb] = useState("capabilities");

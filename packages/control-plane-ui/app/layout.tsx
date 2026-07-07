@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { AuthGate } from "@/components/auth-gate";
+import { SwrProvider } from "@/components/swr-provider";
 import { InstanceProvider } from "@/lib/instance-context";
 import "./globals.css";
 
@@ -16,16 +17,18 @@ export default function RootLayout({
 	return (
 		<html lang="en" className="dark">
 			<body className="antialiased">
-				<AuthGate>
-					<InstanceProvider>
-						<div className="flex">
-							<AppSidebar />
-							<main className="h-screen flex-1 overflow-y-auto">
-								{children}
-							</main>
-						</div>
-					</InstanceProvider>
-				</AuthGate>
+				<SwrProvider>
+					<AuthGate>
+						<InstanceProvider>
+							<div className="flex">
+								<AppSidebar />
+								<main className="h-screen flex-1 overflow-y-auto">
+									{children}
+								</main>
+							</div>
+						</InstanceProvider>
+					</AuthGate>
+				</SwrProvider>
 			</body>
 		</html>
 	);

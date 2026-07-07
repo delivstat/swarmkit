@@ -2,6 +2,7 @@
 
 import { RefreshCw } from "lucide-react";
 import { useCallback } from "react";
+import { useSWRConfig } from "swr";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import type { AuditRow, UsageRow } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
+import { useResource } from "@/lib/use-resource";
 
 function num(n: number) {
 	return n.toLocaleString();
@@ -24,7 +25,7 @@ function num(n: number) {
 
 function UsageTable() {
 	const fetcher = useCallback(() => api.usage(), []);
-	const { data, loading } = usePoll<UsageRow[]>(fetcher);
+	const { data, loading } = useResource<UsageRow[]>("/usage", fetcher);
 	const rows = data ?? [];
 
 	return (
@@ -88,7 +89,7 @@ function UsageTable() {
 
 function ActivityTable() {
 	const fetcher = useCallback(() => api.audit(50), []);
-	const { data, loading } = usePoll<AuditRow[]>(fetcher);
+	const { data, loading } = useResource<AuditRow[]>("/audit?limit=50", fetcher);
 	const rows = data ?? [];
 
 	return (
@@ -146,9 +147,11 @@ function ActivityTable() {
 }
 
 export default function RunsPage() {
-	// A single refresh re-mounts both tables' pollers via the key bump.
-	const fetcher = useCallback(() => api.usage(), []);
-	const { refresh } = usePoll<UsageRow[]>(fetcher, 60_000);
+	// One button revalidates every cached resource on the page (both tables share the SWR cache).
+	const { mutate } = useSWRConfig();
+	const refresh = () => {
+		void mutate(() => true);
+	};
 
 	return (
 		<>
