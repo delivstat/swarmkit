@@ -4,10 +4,14 @@ factory import them without an ``_app`` ⇄ routes cycle."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
+from datetime import UTC, datetime
 from typing import Any
 
+import yaml
 from fastapi import HTTPException, Request
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
@@ -116,6 +120,99 @@ def _build_capabilities(rt: Any) -> dict[str, Any]:
             "compression": _enum_value(getattr(raw, "context_compression", None), "backend", "off"),
             "canary": bool(getattr(canary, "routes", None)),
         },
+    }
+
+
+def _content_hash(content: Any) -> str:
+    """SHA-256 of artifact content — the *same* canonicalisation the panel's artifact registry uses
+    (sorted-keys compact JSON for dicts), so an adopted artifact's hash lines up with the fleet's
+    (design/details/control-plane/15-artifact-registry.md)."""
+    text = (
+        json.dumps(content, sort_keys=True, separators=(",", ":"))
+        if isinstance(content, dict)
+        else str(content)
+    )
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _artifact_version(obj: Any) -> str:
+    """``metadata.version`` off a resolved artifact, or '' if absent."""
+    meta = getattr(getattr(obj, "raw", None), "metadata", None)
+    return str(getattr(meta, "version", "") or "")
+
+
+def _artifact_entries(
+    svc: Any, kind: str, ids_versions: list[tuple[str, str]]
+) -> list[dict[str, Any]]:
+    """``[{id, version, content_hash, content}]`` for one kind — content read from the workspace
+    YAML via the ArtifactService. Unreadable files are skipped, never fatal."""
+    entries: list[dict[str, Any]] = []
+    for aid, version in ids_versions:
+        try:
+            content = yaml.safe_load(svc.read_yaml(kind, aid)) or {}
+        except Exception:
+            logger.debug("instance-state: could not read %s '%s'", kind, aid, exc_info=True)
+            continue
+        entries.append(
+            {
+                "id": aid,
+                "version": version,
+                "content_hash": _content_hash(content),
+                "content": content,
+            }
+        )
+    return entries
+
+
+def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
+    """The full observed state of this instance — every artifact's *content*, not just names.
+
+    Unlike ``_build_capabilities`` (cheap, names-only, for liveness), this is what a fleet caches
+    (offline-resilient) and can adopt into its registry. See
+    design/details/control-plane/19-fleet-enrollment-protocol.md (Phase 1 — Observe).
+    """
+    ws = rt.workspace
+    caps = _build_capabilities(rt)
+
+    topos = [(k, _artifact_version(v)) for k, v in sorted(ws.topologies.items())]
+    skills = [(k, _artifact_version(v)) for k, v in sorted(ws.skills.items())]
+    archs = [(k, _artifact_version(v)) for k, v in sorted(ws.archetypes.items())]
+
+    triggers: list[dict[str, Any]] = []
+    for t in getattr(ws, "triggers", []) or []:
+        try:
+            raw = getattr(t, "raw", None)
+            if raw is None:
+                continue
+            content = raw.model_dump(mode="json") if hasattr(raw, "model_dump") else {}
+            meta = getattr(raw, "metadata", None)
+            tid = str(getattr(meta, "id", "") or getattr(meta, "name", ""))
+            triggers.append(
+                {
+                    "id": tid,
+                    "version": _artifact_version(t),
+                    "content_hash": _content_hash(content),
+                    "content": content,
+                }
+            )
+        except Exception:
+            logger.debug("instance-state: could not serialise a trigger", exc_info=True)
+
+    return {
+        "apiVersion": "swarmkit/v1",
+        "kind": "InstanceState",
+        "workspace_id": caps["workspace_id"],
+        "schema_version": caps["schema_version"],
+        "generated_at": datetime.now(UTC).isoformat(),
+        "artifacts": {
+            "topologies": _artifact_entries(svc, "topology", topos),
+            "skills": _artifact_entries(svc, "skill", skills),
+            "archetypes": _artifact_entries(svc, "archetype", archs),
+            "triggers": triggers,
+        },
+        "providers": caps["model_providers"],
+        "governance_provider": caps["governance_provider"],
+        "health": {"status": "ok"},
     }
 
 
