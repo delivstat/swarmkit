@@ -8,6 +8,7 @@ import { useCallback, useState } from "react";
 import { CommandQueue } from "@/components/command-queue";
 import { DeploymentsCard } from "@/components/deployments-card";
 import { ConnectionBadge, HealthBadge } from "@/components/health-badge";
+import { InventoryCard } from "@/components/inventory-card";
 import { LiveJobsCard } from "@/components/live-jobs-card";
 import { MintPanel } from "@/components/mint-panel";
 import { PageHeader } from "@/components/page-header";
@@ -180,6 +181,10 @@ export default function InstanceDetailPage() {
 				)}
 
 				<DeploymentsCard instanceId={instance.id} />
+
+				{instance.connection === "direct" ? (
+					<InventoryCard instanceId={instance.id} />
+				) : null}
 
 				<Card>
 					<CardHeader>
