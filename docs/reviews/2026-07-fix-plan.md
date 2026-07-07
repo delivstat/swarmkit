@@ -8,11 +8,12 @@ merged before the next (to avoid stacked-squash conflicts). Check items off as t
 Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
 > **Status: all P0 merged (#410–#416); P1-G control-plane store base (#417); P1-I god-module
 > split complete — panel `_app.py` (#424), `server.py` (#425), `cli/__init__.py` (#426);
-> P2-J/N/O provider + robustness + single-origin bundle (#418–#422). Deferred as dedicated
-> follow-ups: PR-H (cross-package `ServeClient` + verb table — needs a shared package), PR-K
-> (compiler `ScopeStore`/`from_dict`/`AgentStatus` + topology-as-data cleanup), PR-L (UI SWR
-> migration + component kit), PR-M (generated API contract), the runtime `_SqliteStore` half
-> of PR-G, and the service-layer extraction noted under PR-I below.**
+> P2-J/N/O provider + robustness + single-origin bundle (#418–#422). Postgres backend **complete**
+> — runtime persistence (#440) + audit (#442) + control-plane's 4 stores (#447); both packages run
+> on SQLite or Postgres. PR-K **complete** — K2 (#439), K1 (#444), K4a (#445), K3 sentinels/enums
+> (#448), K4b configurable synthesis roles (#449). Remaining: **PR-L** (UI SWR `useResource` kit +
+> component library), **PR-M** (generated API contract + CI drift), the JSON-safe governance-flag
+> attachment tail, plus the deferred PR-H shared-package `ServeClient`.**
 
 
 ---
