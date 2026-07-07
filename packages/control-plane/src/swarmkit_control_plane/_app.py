@@ -20,11 +20,21 @@ from swarmkit_control_plane._connector import (
     fetch_capabilities,
     fetch_jobs,
     fetch_state,
+    register,
     run_authoring,
     run_eval,
 )
+from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._deploy import push_artifact
-from swarmkit_control_plane._fntypes import AuthorFn, DeployFn, EvalFn, JobsFn, StateFn, VerifyFn
+from swarmkit_control_plane._fntypes import (
+    AuthorFn,
+    DeployFn,
+    EvalFn,
+    JobsFn,
+    RegisterFn,
+    StateFn,
+    VerifyFn,
+)
 from swarmkit_control_plane._oidc import OidcVerifier
 from swarmkit_control_plane._proposals import ProposalStore
 from swarmkit_control_plane._registry import SqliteRegistry
@@ -42,6 +52,7 @@ from swarmkit_control_plane._routes_registry import (
     _mount_command_queue,
     _mount_config,
     _mount_instances,
+    _mount_register,
     _mount_state,
     _mount_token_routes,
 )
@@ -54,6 +65,7 @@ def create_app(
     *,
     verify: VerifyFn = fetch_capabilities,
     fetch_state: StateFn = fetch_state,
+    register_fn: RegisterFn = register,
     cors_origins: list[str] | None = None,
     operator_tokens: list[str] | None = None,
     oidc: OidcVerifier | None = None,
@@ -87,6 +99,7 @@ def create_app(
     arts = artifacts or ArtifactStore(registry.engine)
     props = proposals or ProposalStore(registry.engine)
     state_store = InstanceStateStore(registry.engine)
+    cred_store = CredentialStore(registry.engine)  # membership secrets, encrypted at rest
     growth = GrowthService(registry, props, arts, author, eval_run)
     deploy_svc = DeployService(registry, arts, agg, deploy)
     ops = [t for t in (operator_tokens or []) if t]
@@ -139,6 +152,7 @@ def create_app(
     _mount_instances(app, registry, verify, jobs, author)
     _mount_token_routes(app, registry, verify)
     _mount_state(app, registry, state_store, fetch_state)
+    _mount_register(app, registry, state_store, cred_store, register_fn)
     _mount_command_queue(app, registry)
     _mount_aggregation(app, agg)
     _mount_observability(app, observability or {})

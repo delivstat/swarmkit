@@ -27,6 +27,7 @@ __all__ = [
     "fetch_capabilities",
     "fetch_jobs",
     "fetch_state",
+    "register",
     "resolve_secret_ref",
     "run_authoring",
     "run_eval",
@@ -41,6 +42,24 @@ async def fetch_state(endpoint: str, token_ref: str) -> dict[str, Any]:
     async with ServeClient(endpoint, token_ref) as serve:
         state: dict[str, Any] = serve.ok(await serve.get("/fleet/state"), "/fleet/state")
     return state
+
+
+async def register(
+    endpoint: str, enroll_token: str, fleet_id: str, requested_scope: str | None = None
+) -> dict[str, Any]:
+    """Register this fleet with an instance (POST /fleet/register) using a one-time enrollment token
+    (design 19, Phase 2). The instance issues back a scoped membership credential + its full state
+    in one round trip. The enrollment token is the bearer (its own auth). Returns
+    ``{membership_id, credential, instance_state}``; raises ConnectorError on any failure.
+    """
+    body: dict[str, Any] = {"fleet_id": fleet_id}
+    if requested_scope:
+        body["requested_scope"] = requested_scope
+    async with ServeClient(endpoint, enroll_token) as serve:
+        result: dict[str, Any] = serve.ok(
+            await serve.post("/fleet/register", body), "/fleet/register"
+        )
+    return result
 
 
 async def fetch_capabilities(endpoint: str, token_ref: str) -> dict[str, Any]:
