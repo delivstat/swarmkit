@@ -138,11 +138,24 @@ agg_records = Table(
     Index("idx_agg_kind_ts", "kind", "ts"),
 )
 
+# --- observed state (fleet enrollment Phase 1) --------------------------------
+
+# The last full InstanceState the panel pulled from an instance (GET /fleet/state). Cached so the
+# instance's inventory stays inspectable when it's offline. One row per instance (latest wins).
+instance_state = Table(
+    "instance_state",
+    metadata,
+    Column("instance_id", Text, primary_key=True),
+    Column("state", JSON, nullable=False, default=dict),
+    Column("synced_at", Text, nullable=False),
+)
+
 __all__ = [
     "agg_records",
     "artifact_versions",
     "commands",
     "deployments",
+    "instance_state",
     "instances",
     "metadata",
     "proposals",
