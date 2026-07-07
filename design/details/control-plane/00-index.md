@@ -40,6 +40,7 @@ data model · decisions · what-the-phase-builds · open questions.
 | 16 | [Phase 6: Fleet UI](16-fleet-ui.md) | the separate standalone app; pages; reuse `lib/api.ts`; OIDC + instance selector; conversational authoring; embed-vs-build |
 | 17 | [Phase 7: Growth / self-improvement loop](17-growth-loop.md) | gap → propose → test → approve → publish → deploy; human-gated; proposal-only (no auto-activate) |
 | 18 | [Phase 8: Hardening + rollout](18-hardening-rollout.md) | security review, migrating Minder/Sterling/vedanta, the default-secure breaking change, runbooks, GA criteria |
+| 19 | [Fleet enrollment protocol + API-key credentials](19-fleet-enrollment-protocol.md) | standard client-agnostic register/join handshake; two-token flow (enrollment token → opaque API key → refresh); `InstanceState` full-state export; observed-state cache (offline-resilient); monitor vs manage scope; multi-fleet |
 
 ## Cross-cutting findings (read these first)
 
