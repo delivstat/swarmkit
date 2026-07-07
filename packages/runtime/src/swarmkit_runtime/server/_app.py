@@ -20,6 +20,7 @@ from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
+from swarmkit_runtime.fleet import MembershipStore
 from swarmkit_runtime.persistence import create_store
 
 from ._config import (
@@ -32,6 +33,7 @@ from ._jobs import JobStore
 from ._mcp import _boot_mcp, _mcp_available, _mount_mcp, _start_scheduler
 from ._routes_conversations import _register_conversation_routes
 from ._routes_crud import _register_crud_routes
+from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
 from ._services import ArtifactService
@@ -73,6 +75,7 @@ def create_app(  # noqa: PLR0915
         app.state.runtime = runtime
         app.state.store = create_store(workspace_path, runtime.workspace.raw)
         app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
+        app.state.membership_store = MembershipStore(workspace_path)  # fleet enrollment (design 19)
 
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)
@@ -146,8 +149,9 @@ def create_app(  # noqa: PLR0915
 
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
-        # Skip auth for health endpoint
-        if request.url.path == "/health":
+        # /health is public; /fleet/register authenticates with its one-time enrollment token
+        # inside the route (design 19), so it bypasses the transport-token seam here.
+        if request.url.path in ("/health", "/fleet/register"):
             return await call_next(request)
 
         auth_req = AuthReq(
@@ -202,6 +206,7 @@ def create_app(  # noqa: PLR0915
     _register_job_routes(app, job_store)
     _register_conversation_routes(app, workspace_path)
     _register_crud_routes(app, ArtifactService(workspace_path))
+    _register_fleet_routes(app)
 
     if _mcp_available:
         _mount_mcp(app)

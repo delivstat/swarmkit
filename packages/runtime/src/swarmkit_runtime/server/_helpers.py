@@ -73,6 +73,11 @@ def _required_action(method: str, path: str) -> str | None:
     """
     if path == "/health":
         return None
+    # Minting a fleet enrollment token (a join code) is an admin/human action — and this is what
+    # makes a `manage`-scope join human-issued (design 19). /fleet/register is auth-exempt at the
+    # seam (it authenticates with the one-time enrollment token itself; see the middleware).
+    if path == "/fleet/enroll-token":
+        return "admin"
     if method.upper() == "GET":
         return "read"
     if path.startswith("/api/"):
