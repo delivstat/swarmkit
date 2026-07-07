@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from swarmkit_runtime.langgraph_compiler._sentinels import TaskStatus
+from swarmkit_runtime.langgraph_compiler._state import DEFAULT_SYNTHESIS_ROLES
 from swarmkit_runtime.model_providers import ToolSpec
 from swarmkit_runtime.resolver import ResolvedAgent
 
@@ -115,10 +116,12 @@ class TaskPlan:
                 )
         return errors
 
-    def validate_dependencies(self) -> list[str]:
+    def validate_dependencies(
+        self, synthesis_roles: tuple[str, ...] = DEFAULT_SYNTHESIS_ROLES
+    ) -> list[str]:
         errors: list[str] = []
         task_ids = {t.id for t in self.tasks}
-        _synthesis_agents = {"self", "document-writer"}
+        _synthesis_agents = set(synthesis_roles)
         for task in self.tasks:
             for dep in task.depends_on:
                 if dep not in task_ids:
@@ -136,15 +139,17 @@ class TaskPlan:
                     )
         return errors
 
-    def auto_fix_dependencies(self) -> list[str]:
+    def auto_fix_dependencies(
+        self, synthesis_roles: tuple[str, ...] = DEFAULT_SYNTHESIS_ROLES
+    ) -> list[str]:
         """Fix missing dependencies for synthesis and output tasks.
 
-        If self-tasks or document-writer tasks have no depends_on,
-        automatically make them depend on all other tasks. This
-        prevents them from running in parallel with research tasks.
+        If self-tasks or synthesis-role tasks (``synthesis_roles``, default self +
+        document-writer) have no depends_on, automatically make them depend on all other tasks.
+        This prevents them from running in parallel with research tasks.
         """
         fixes: list[str] = []
-        _synthesis_agents = {"self", "document-writer"}
+        _synthesis_agents = set(synthesis_roles)
         all_ids = [t.id for t in self.tasks]
 
         for task in self.tasks:
@@ -190,9 +195,9 @@ class TaskPlan:
                 f"depends on [{', '.join(research_ids)}]"
             )
 
-        # Also fix document-writer to depend on self if both exist
+        # Also fix non-self synthesis roles (e.g. document-writer) to depend on self if both exist
         self_tasks = [t for t in self.tasks if t.agent == "self"]
-        doc_tasks = [t for t in self.tasks if t.agent == "document-writer"]
+        doc_tasks = [t for t in self.tasks if t.agent in _synthesis_agents and t.agent != "self"]
         for dt in doc_tasks:
             for st in self_tasks:
                 if st.id not in dt.depends_on:

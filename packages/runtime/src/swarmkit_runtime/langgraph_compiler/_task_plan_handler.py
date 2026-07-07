@@ -15,6 +15,7 @@ from swarmkit_runtime.resolver import ResolvedAgent
 
 from ._helpers import _progress
 from ._sentinels import AgentStatus, TaskStatus
+from ._state import DEFAULT_SYNTHESIS_ROLES
 
 
 def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
@@ -36,6 +37,8 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
 
     _STATE_TOOLS = {"create-task-plan", "update-task-plan"}
     _SIDE_EFFECT_TOOLS = {"read-task-result", "create-scope", "update-scope", "read-scope"}
+
+    _synthesis_roles = getattr(planning_config, "synthesis_roles", None) or DEFAULT_SYNTHESIS_ROLES
 
     has_state_tool = any(
         hasattr(b, "tool_name") and b.tool_name in _STATE_TOOLS for b in response.content
@@ -91,7 +94,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
             errors = plan.add_tasks(raw_tasks)
             valid_agents = {c.id for c in agent.children}
             errors.extend(plan.validate_agents(valid_agents))
-            fixes = plan.auto_fix_dependencies()
+            fixes = plan.auto_fix_dependencies(_synthesis_roles)
 
             _synth_model: str = getattr(synthesis_config, "model", "") if synthesis_config else ""
             if _synth_model:
@@ -103,7 +106,7 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
                         "handle document generation automatically"
                     )
 
-            errors.extend(plan.validate_dependencies())
+            errors.extend(plan.validate_dependencies(_synthesis_roles))
 
             task_count = len(plan.tasks)
             _progress(f"[{agent_id}] created task plan: {task_count} tasks")
@@ -137,8 +140,8 @@ def _handle_task_plan_tools(  # noqa: PLR0912, PLR0915
                 upd_errors.extend(plan.remove_tasks(args["remove"]))
             if args.get("update"):
                 upd_errors.extend(plan.update_tasks(args["update"]))
-            fixes = plan.auto_fix_dependencies()
-            upd_errors.extend(plan.validate_dependencies())
+            fixes = plan.auto_fix_dependencies(_synthesis_roles)
+            upd_errors.extend(plan.validate_dependencies(_synthesis_roles))
 
             pending = sum(1 for t in plan.tasks if t.status == TaskStatus.PENDING)
             _progress(f"[{agent_id}] updated task plan: {len(plan.tasks)} total, {pending} pending")
@@ -246,12 +249,13 @@ def _enforce_two_phase(
     if scope_path.exists():
         return raw_tasks
 
+    synthesis_roles = set(getattr(config, "synthesis_roles", None) or DEFAULT_SYNTHESIS_ROLES)
     research_tasks = []
     stripped = []
     for task in raw_tasks:
         agent = task.get("agent", "")
         deps = task.get("depends_on", [])
-        if agent in ("self", "document-writer") or deps:
+        if agent in synthesis_roles or deps:
             stripped.append(task.get("id", "unknown"))
         else:
             research_tasks.append(task)

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.langgraph_compiler._task_plan import TaskPlan
 from swarmkit_runtime.langgraph_compiler._task_plan_handler import _load_plan
 
@@ -250,3 +252,57 @@ class TestFromDict:
 
         plan = _load_plan(_FULL_PLAN)
         assert plan.tasks[0].started_at == 1.0 and plan.tasks[0].tool_calls == 4
+
+
+class TestConfigurableSynthesisRoles:
+    """PR-K4b — synthesis roles are configurable; the default preserves self + document-writer."""
+
+    def _plan(self) -> TaskPlan:
+        plan = TaskPlan()
+        plan.add_tasks(
+            [
+                {"id": "r1", "agent": "researcher", "instruction": "research a"},
+                {"id": "r2", "agent": "researcher", "instruction": "research b"},
+                {"id": "out", "agent": "editor", "instruction": "write the final doc"},
+            ]
+        )
+        return plan
+
+    def test_default_roles_leave_custom_output_role_unwired(self) -> None:
+        # With the default roles, 'editor' is just another research task — runs in parallel.
+        plan = self._plan()
+        plan.auto_fix_dependencies()
+        assert plan.get_task("out").depends_on == []  # type: ignore[union-attr]
+
+    def test_custom_synthesis_role_is_auto_wired_to_depend_on_research(self) -> None:
+        # Declaring 'editor' a synthesis role wires it to run after the research tasks (rather
+        # than in parallel with them).
+        plan = self._plan()
+        fixes = plan.auto_fix_dependencies(("self", "editor"))
+        assert {"r1", "r2"} <= set(plan.get_task("out").depends_on)  # type: ignore[union-attr]
+        assert any("out" in f for f in fixes)
+
+    def test_validate_flags_custom_synthesis_role_without_deps(self) -> None:
+        plan = self._plan()
+        errors = plan.validate_dependencies(("self", "editor"))
+        assert any("out" in e and "depends_on" in e for e in errors)
+        # Under the default roles it is not flagged (editor is not a synthesis role).
+        assert not any("out" in e for e in plan.validate_dependencies())
+
+    def test_resolve_planning_config_reads_roles_and_forces_self(self) -> None:
+        # A workspace/topology that omits 'self' still gets it (structural), deduped, self-first.
+        topo_planning = SimpleNamespace(
+            scope_required=None,
+            two_phase=None,
+            synthesis_roles=["editor", "editor", "publisher"],
+            synthesizer_role="composer",
+        )
+        topo = SimpleNamespace(raw=SimpleNamespace(runtime=SimpleNamespace(planning=topo_planning)))
+        rt = object.__new__(WorkspaceRuntime)
+        rt._workspace = SimpleNamespace(  # type: ignore[assignment]
+            raw=SimpleNamespace(planning=None),
+            topologies={"t": topo},
+        )
+        cfg = rt._resolve_planning_config("t")
+        assert cfg.synthesis_roles == ("self", "editor", "publisher")
+        assert cfg.synthesizer_role == "composer"

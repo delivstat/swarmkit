@@ -15,6 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from swarmkit_runtime.langgraph_compiler._helpers import _progress
 from swarmkit_runtime.langgraph_compiler._run_context import run_state_dir
 from swarmkit_runtime.langgraph_compiler._sentinels import AgentStatus
+from swarmkit_runtime.langgraph_compiler._state import DEFAULT_SYNTHESIZER_ROLE
 from swarmkit_runtime.langgraph_compiler._task_plan import Task, TaskPlan
 from swarmkit_runtime.model_providers._registry import (
     ModelProviderProtocol,
@@ -46,6 +47,7 @@ async def execute_task_batch(  # noqa: PLR0915
     decision_skill_bindings: list[Any] | None = None,
     synthesis_config: Any = None,
     original_input: str = "",
+    synthesizer_role: str = DEFAULT_SYNTHESIZER_ROLE,
 ) -> dict[str, Any]:
     """Execute the next batch of runnable tasks from the plan.
 
@@ -62,6 +64,7 @@ async def execute_task_batch(  # noqa: PLR0915
                 provider_registry,
                 plan,
                 agent_id,
+                synthesizer_role,
             )
             if result is not None:
                 return result
@@ -212,6 +215,7 @@ async def execute_task_batch(  # noqa: PLR0915
         provider_registry,
         plan,
         agent_id,
+        synthesizer_role,
     )
     if result is not None:
         return result
@@ -612,6 +616,7 @@ async def _maybe_synthesize(
     provider_registry: ProviderRegistry | None,
     plan: TaskPlan,
     agent_id: str,
+    synthesizer_role: str = DEFAULT_SYNTHESIZER_ROLE,
 ) -> dict[str, Any] | None:
     """Invoke the synthesizer if configured and scope exists.
 
@@ -634,6 +639,7 @@ async def _maybe_synthesize(
         workspace_root=workspace_root,
         original_input=original_input,
         provider_registry=provider_registry,
+        synthesizer_role=synthesizer_role,
     )
 
     return {

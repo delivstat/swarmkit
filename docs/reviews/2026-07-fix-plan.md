@@ -110,8 +110,14 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   (`_task_plan`/`_task_plan_handler`/`_task_executor`/`_delegation`/`_compiler`/`_prompts`/
   `_tool_loop` + `_workspace_runtime`). `StrEnum` so persisted `tasks.json`/checkpoints round-trip
   unchanged (member == literal, JSON-serialises as literal); guarded by that contract in
-  `test_sentinels.py` + the full 1080-test suite. **Pending:** K4b make the `self`/`document-writer`/
-  `synthesizer` role literals topology/archetype-configurable; JSON-safe governance-flag attachment.
+  `test_sentinels.py` + the full 1080-test suite. **K4b (#449):** `planning.synthesis_roles` +
+  `planning.synthesizer_role` (schema + `PlanningConfig`, topology overrides workspace) make the
+  `document-writer`/`synthesizer` **role** nouns configurable — a swarm's output role (e.g. `editor`)
+  now gets the synthesis auto-dependency wiring that was hardcoded to `document-writer`. `self` stays
+  structural (always forced into the resolved roles). Design in
+  `design/details/configurable-synthesis-roles.md`; live e2e in
+  `examples/configurable-synthesis-roles/` (OpenRouter run — the `editor` task auto-wired to depend
+  on research). **Pending:** JSON-safe governance-flag attachment.
 - [ ] **PR-L — UI SWR kit.** `useResource` (SWR) replacing `usePoll` (fixes race/latch/dup-fetch/
   no-op-refresh); `<DataView>`/`<JsonBlock>`/form-kit/`<StatusBadge>`; operator-token client
   path; keyboard-accessible rows; back `InstanceProvider` with the shared cache.

@@ -274,6 +274,17 @@ export interface Planning {
      */
     scope_required?: boolean;
     /**
+     * Default synthesis/output roles for all topologies: auto-wired to depend on research tasks
+     * so they run last. Defaults to ['self', 'document-writer']. Topology-level planning
+     * overrides this.
+     */
+    synthesis_roles?: string[];
+    /**
+     * Default role name for the automatic synthesis step. Defaults to 'synthesizer'.
+     * Topology-level planning overrides this.
+     */
+    synthesizer_role?: string;
+    /**
      * Enforce two-phase planning for all topologies.
      */
     two_phase?: boolean;
