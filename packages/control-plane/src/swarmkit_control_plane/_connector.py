@@ -26,10 +26,21 @@ __all__ = [
     "ConnectorError",
     "fetch_capabilities",
     "fetch_jobs",
+    "fetch_state",
     "resolve_secret_ref",
     "run_authoring",
     "run_eval",
 ]
+
+
+async def fetch_state(endpoint: str, token_ref: str) -> dict[str, Any]:
+    """Pull an instance's full observed state (GET /fleet/state) — every artifact's content, not
+    just names (fleet enrollment Phase 1, design 19). The panel caches this so the instance stays
+    inspectable offline. Returns the parsed InstanceState. Raises ConnectorError on any failure.
+    """
+    async with ServeClient(endpoint, token_ref) as serve:
+        state: dict[str, Any] = serve.ok(await serve.get("/fleet/state"), "/fleet/state")
+    return state
 
 
 async def fetch_capabilities(endpoint: str, token_ref: str) -> dict[str, Any]:

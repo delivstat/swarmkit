@@ -19,11 +19,12 @@ from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import (
     fetch_capabilities,
     fetch_jobs,
+    fetch_state,
     run_authoring,
     run_eval,
 )
 from swarmkit_control_plane._deploy import push_artifact
-from swarmkit_control_plane._fntypes import AuthorFn, DeployFn, EvalFn, JobsFn, VerifyFn
+from swarmkit_control_plane._fntypes import AuthorFn, DeployFn, EvalFn, JobsFn, StateFn, VerifyFn
 from swarmkit_control_plane._oidc import OidcVerifier
 from swarmkit_control_plane._proposals import ProposalStore
 from swarmkit_control_plane._registry import SqliteRegistry
@@ -41,15 +42,18 @@ from swarmkit_control_plane._routes_registry import (
     _mount_command_queue,
     _mount_config,
     _mount_instances,
+    _mount_state,
     _mount_token_routes,
 )
 from swarmkit_control_plane._service import DeployService, GrowthService
+from swarmkit_control_plane._state_store import InstanceStateStore
 
 
 def create_app(
     registry: SqliteRegistry,
     *,
     verify: VerifyFn = fetch_capabilities,
+    fetch_state: StateFn = fetch_state,
     cors_origins: list[str] | None = None,
     operator_tokens: list[str] | None = None,
     oidc: OidcVerifier | None = None,
@@ -77,11 +81,12 @@ def create_app(
     operator). When neither is set, the panel runs open (no auth) for local dev.
     """
     app = FastAPI(title="SwarmKit control plane")
-    # Share the registry's engine so all four stores use one connection pool + one database
+    # Share the registry's engine so all stores use one connection pool + one database
     # (dialect-agnostic: works for both the SQLite file and a shared Postgres).
     agg = aggregation or AggregationStore(registry.engine)
     arts = artifacts or ArtifactStore(registry.engine)
     props = proposals or ProposalStore(registry.engine)
+    state_store = InstanceStateStore(registry.engine)
     growth = GrowthService(registry, props, arts, author, eval_run)
     deploy_svc = DeployService(registry, arts, agg, deploy)
     ops = [t for t in (operator_tokens or []) if t]
@@ -133,6 +138,7 @@ def create_app(
 
     _mount_instances(app, registry, verify, jobs, author)
     _mount_token_routes(app, registry, verify)
+    _mount_state(app, registry, state_store, fetch_state)
     _mount_command_queue(app, registry)
     _mount_aggregation(app, agg)
     _mount_observability(app, observability or {})

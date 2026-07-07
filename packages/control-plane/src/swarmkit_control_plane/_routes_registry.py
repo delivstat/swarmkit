@@ -12,6 +12,7 @@ from swarmkit_control_plane._connector import ConnectorError
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
     JobsFn,
+    StateFn,
     VerifyFn,
 )
 from swarmkit_control_plane._fntypes import extract_artifact as _extract_artifact
@@ -26,6 +27,7 @@ from swarmkit_control_plane._schemas import (
     MintTokenRequest,
     PollRequest,
 )
+from swarmkit_control_plane._state_store import InstanceStateStore
 from swarmkit_control_plane._tokens import mint_token
 from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_tier
 
@@ -196,6 +198,50 @@ def _mount_token_routes(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn
         updated = registry.get(instance_id)
         assert updated is not None
         return updated.public_dict()
+
+
+def _mount_state(
+    app: FastAPI,
+    registry: SqliteRegistry,
+    state_store: InstanceStateStore,
+    fetch_state: StateFn,
+) -> None:
+    """Observed-state cache routes (fleet enrollment Phase 1, design 19).
+
+    ``/sync`` pulls the instance's full state (Mode A) and caches it; ``/state`` returns the cached
+    snapshot — so an instance's inventory stays inspectable even when it's **offline**.
+    """
+
+    @app.post("/instances/{instance_id}/sync")
+    async def sync_state(instance_id: str) -> dict[str, Any]:
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            raise HTTPException(
+                409, "sync pulls /fleet/state — only valid for direct (Mode A) instances"
+            )
+        try:
+            state = await fetch_state(inst.endpoint, inst.token_ref)
+        except ConnectorError as exc:
+            registry.update_health(instance_id, health="unreachable")
+            raise HTTPException(502, f"state sync failed: {exc}") from exc
+        synced_at = state_store.put(instance_id, state)
+        arts = state.get("artifacts", {}) if isinstance(state, dict) else {}
+        return {
+            "instance_id": instance_id,
+            "synced_at": synced_at,
+            "counts": {kind: len(items) for kind, items in arts.items()},
+        }
+
+    @app.get("/instances/{instance_id}/state")
+    async def get_state(instance_id: str) -> dict[str, Any]:
+        if registry.get(instance_id) is None:
+            raise HTTPException(404, "instance not found")
+        cached = state_store.get(instance_id)
+        if cached is None:
+            raise HTTPException(404, "no state cached yet — POST /instances/{id}/sync first")
+        return cached  # {state, synced_at} — served from cache, works offline
 
 
 def _mount_command_queue(app: FastAPI, registry: SqliteRegistry) -> None:
