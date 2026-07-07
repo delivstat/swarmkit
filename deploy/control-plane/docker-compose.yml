@@ -46,6 +46,14 @@ services:
     #   - "--collector-endpoint=${SWARMKIT_CP_COLLECTOR}"   # OTLP endpoint instances export to
     #   - "--jaeger-url=${SWARMKIT_CP_JAEGER_URL}"
     #   - "--grafana-url=${SWARMKIT_CP_GRAFANA_URL}"
+    # Fleet membership credentials (design 19) are stored ENCRYPTED. By default the panel uses a
+    # local Fernet key (set SWARMKIT_CONTROL_PLANE_SECRET_KEY to persist across restarts). For
+    # production, route them through the `bao` Transit engine below (`--profile vault`) — the key
+    # never leaves the vault; the DB holds only vault:v1:… ciphertext. Then uncomment:
+    # environment:
+    #   SWARMKIT_CONTROL_PLANE_VAULT_ADDR: "http://bao:8200"
+    #   SWARMKIT_CONTROL_PLANE_VAULT_TOKEN: "${SWARMKIT_CP_VAULT_TOKEN}"
+    #   SWARMKIT_CONTROL_PLANE_VAULT_TRANSIT_KEY: "swarmkit-control-plane"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8800/health').status==200 else 1)"]
       interval: 30s
@@ -68,6 +76,39 @@ services:
       - "3000"
     depends_on:
       - panel
+
+  # Vault backend for fleet membership credentials (design 19) — opt-in: `--profile vault`.
+  # OpenBao (self-hostable OSS vault) in dev mode; `bao-init` enables the Transit engine + creates
+  # the panel's key. For production, replace dev mode with a properly initialised/unsealed vault and
+  # a scoped token. Wire the panel to it via the SWARMKIT_CONTROL_PLANE_VAULT_* env above.
+  bao:
+    image: openbao/openbao:latest
+    container_name: swarmkit-control-plane-bao
+    profiles: ["vault"]
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: "${SWARMKIT_CP_VAULT_TOKEN:-root}"
+    command: ["server", "-dev", "-dev-root-token-id=${SWARMKIT_CP_VAULT_TOKEN:-root}", "-dev-listen-address=0.0.0.0:8200"]
+    expose:
+      - "8200"
+
+  bao-init:
+    image: curlimages/curl:latest
+    container_name: swarmkit-control-plane-bao-init
+    profiles: ["vault"]
+    depends_on:
+      - bao
+    restart: "no"
+    entrypoint:
+      - "sh"
+      - "-c"
+      - |
+        until curl -sf http://bao:8200/v1/sys/health; do sleep 1; done
+        T="${SWARMKIT_CP_VAULT_TOKEN:-root}"
+        curl -s -X POST -H "X-Vault-Token: $$T" http://bao:8200/v1/sys/mounts/transit -d '{"type":"transit"}' || true
+        curl -s -X POST -H "X-Vault-Token: $$T" http://bao:8200/v1/transit/keys/swarmkit-control-plane -d '{}' || true
 
 volumes:
   control-plane-data:
