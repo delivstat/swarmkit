@@ -119,7 +119,7 @@ Legend: `[ ]` todo · `[x]` done (PR #) · `[~]` partial.
   `design/details/configurable-synthesis-roles.md`; live e2e in
   `examples/configurable-synthesis-roles/` (OpenRouter run — the `editor` task auto-wired to depend
   on research). **Pending:** JSON-safe governance-flag attachment.
-- [x] **PR-L (#TBD) — UI SWR kit.** `lib/use-resource.ts` (`useResource`, SWR) replaces `usePoll`
+- [x] **PR-L (#451) — UI SWR kit.** `lib/use-resource.ts` (`useResource`, SWR) replaces `usePoll`
   across all 15 consumers — fixes the fetcher-identity effect thrash, adds a shared keyed cache
   (dashboard/selector/instances page dedupe one `/instances` request), request ordering, and a
   stable `refresh` (`mutate`); an app-wide `<SwrProvider>` backs the cache and `InstanceProvider`
