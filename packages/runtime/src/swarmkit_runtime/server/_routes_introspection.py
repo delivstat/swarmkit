@@ -11,8 +11,10 @@ from swarmkit_runtime.persistence import Store
 
 from ._helpers import (
     _build_capabilities,
+    _build_instance_state,
     _get_runtime,
 )
+from ._services import ArtifactService
 
 
 def _register_introspection_routes(app: FastAPI) -> None:
@@ -58,6 +60,16 @@ def _register_introspection_routes(app: FastAPI) -> None:
     async def capabilities(request: Request) -> dict[str, Any]:
         """What this instance can do — the control plane reads this at enroll/refresh."""
         return _build_capabilities(_get_runtime(request))
+
+    @app.get("/fleet/state")
+    async def fleet_state(request: Request) -> dict[str, Any]:
+        """Full observed state — every artifact's *content* (not just names like /capabilities).
+
+        The fleet pulls this to populate its inventory and cache it (offline-resilient). Phase 1 of
+        design/details/control-plane/19-fleet-enrollment-protocol.md. `serve:read` (all GETs).
+        """
+        svc = ArtifactService(request.app.state.workspace_path)
+        return _build_instance_state(_get_runtime(request), svc)
 
     @app.get("/triggers")
     async def list_triggers(request: Request) -> list[dict[str, Any]]:

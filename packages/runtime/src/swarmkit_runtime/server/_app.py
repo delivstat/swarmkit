@@ -72,6 +72,7 @@ def create_app(  # noqa: PLR0915
 
         app.state.runtime = runtime
         app.state.store = create_store(workspace_path, runtime.workspace.raw)
+        app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
 
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)
