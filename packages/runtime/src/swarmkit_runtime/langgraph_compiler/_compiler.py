@@ -282,6 +282,7 @@ def _build_agent_node(  # noqa: PLR0915
                         decision_skill_bindings=_ds_bindings,
                         synthesis_config=_synthesis,
                         original_input=state.get("input", ""),
+                        synthesizer_role=_planning.synthesizer_role,
                     )
                     # If more tasks remain, let coordinator review
                     # by falling through to LLM call on next re-entry

@@ -148,6 +148,11 @@
         "tool_model": {
           "type": "string",
           "description": "Model name for tool-calling turns. Uses a cheaper model for tool calls, main model for synthesis."
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Provider-native runtime options passed through to the model call (e.g. Ollama num_ctx / repeat_penalty, OpenAI top_p / frequency_penalty, Google top_k). Applied after the first-class fields, so an option with the same name (e.g. temperature) overrides them. Keys must be valid for the resolved provider."
         }
       }
     },
@@ -252,6 +257,15 @@
           "type": "boolean",
           "default": false,
           "description": "Enforce two-phase planning: Phase 1 (research) → create-scope → Phase 2 (targeted tasks). The compiler auto-injects checkpoint prompts."
+        },
+        "synthesis_roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Agent roles treated as synthesis/output roles by the planner: they are auto-wired to depend on research tasks so they run last, not in parallel. Defaults to ['self', 'document-writer']. 'self' is always a structural synthesis role even if omitted."
+        },
+        "synthesizer_role": {
+          "type": "string",
+          "description": "Role name for the automatic synthesis step invoked when synthesis config is set. Defaults to 'synthesizer'."
         }
       }
     },

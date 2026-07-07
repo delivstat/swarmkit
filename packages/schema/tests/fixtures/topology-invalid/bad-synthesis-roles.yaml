@@ -1,0 +1,14 @@
+# planning.synthesis_roles must be an array of strings — a bare string is rejected.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: broken-planning
+  version: 0.1.0
+runtime:
+  planning:
+    synthesis_roles: self
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root

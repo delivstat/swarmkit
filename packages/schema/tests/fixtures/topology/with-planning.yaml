@@ -1,0 +1,17 @@
+# A topology exercising the runtime.planning surface, including the configurable synthesis roles.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: with-planning
+  version: 0.1.0
+runtime:
+  planning:
+    scope_required: true
+    two_phase: true
+    synthesis_roles: [self, editor, publisher]
+    synthesizer_role: composer
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root

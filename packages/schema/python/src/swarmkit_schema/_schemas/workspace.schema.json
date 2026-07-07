@@ -348,6 +348,15 @@
           "type": "boolean",
           "default": false,
           "description": "Enforce two-phase planning for all topologies."
+        },
+        "synthesis_roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Default synthesis/output roles for all topologies: auto-wired to depend on research tasks so they run last. Defaults to ['self', 'document-writer']. Topology-level planning overrides this."
+        },
+        "synthesizer_role": {
+          "type": "string",
+          "description": "Default role name for the automatic synthesis step. Defaults to 'synthesizer'. Topology-level planning overrides this."
         }
       }
     },

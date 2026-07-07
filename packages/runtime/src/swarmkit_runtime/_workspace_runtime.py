@@ -279,7 +279,11 @@ class WorkspaceRuntime:
 
     def _resolve_planning_config(self, topology_name: str) -> Any:
         """Resolve planning config from workspace + topology (topology wins)."""
-        from swarmkit_runtime.langgraph_compiler._state import PlanningConfig  # noqa: PLC0415
+        from swarmkit_runtime.langgraph_compiler._state import (  # noqa: PLC0415
+            DEFAULT_SYNTHESIS_ROLES,
+            DEFAULT_SYNTHESIZER_ROLE,
+            PlanningConfig,
+        )
 
         ws_planning = getattr(self._workspace.raw, "planning", None)
         topo = self._workspace.topologies.get(topology_name)
@@ -288,20 +292,33 @@ class WorkspaceRuntime:
 
         scope_required = False
         two_phase = False
+        synthesis_roles: tuple[str, ...] = DEFAULT_SYNTHESIS_ROLES
+        synthesizer_role = DEFAULT_SYNTHESIZER_ROLE
 
-        if ws_planning:
-            scope_required = getattr(ws_planning, "scope_required", False) or False
-            two_phase = getattr(ws_planning, "two_phase", False) or False
-
-        if topo_planning:
-            sr = getattr(topo_planning, "scope_required", None)
-            tp = getattr(topo_planning, "two_phase", None)
+        for src in (ws_planning, topo_planning):  # topology overrides workspace
+            if not src:
+                continue
+            sr = getattr(src, "scope_required", None)
+            tp = getattr(src, "two_phase", None)
+            roles = getattr(src, "synthesis_roles", None)
+            synth = getattr(src, "synthesizer_role", None)
             if sr is not None:
                 scope_required = sr
             if tp is not None:
                 two_phase = tp
+            if roles:
+                # 'self' is structural (inline coordinator execution) — always a synthesis role,
+                # deduped, even if a user's list omits it.
+                synthesis_roles = tuple(dict.fromkeys(("self", *roles)))
+            if synth:
+                synthesizer_role = synth
 
-        return PlanningConfig(scope_required=scope_required, two_phase=two_phase)
+        return PlanningConfig(
+            scope_required=scope_required,
+            two_phase=two_phase,
+            synthesis_roles=synthesis_roles,
+            synthesizer_role=synthesizer_role,
+        )
 
     def _resolve_synthesis_config(self, topology_name: str) -> Any:
         """Resolve synthesis config from workspace + topology (topology wins)."""

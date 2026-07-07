@@ -13,6 +13,12 @@ runtime:
   planning:
     scope_required: true
     two_phase: true
+    # These match the framework defaults — declared explicitly to document that this topology's
+    # 'document-writer' is a synthesis role (auto-wired to run after research) and its automatic
+    # synthesis step is traced under the 'synthesizer' role. Rename them here to use different
+    # role nouns (design/details/configurable-synthesis-roles.md).
+    synthesis_roles: [self, document-writer]
+    synthesizer_role: synthesizer
   synthesis:
     prompt: |
       You are a senior Sterling OMS technical writer producing a formal

@@ -1,0 +1,5 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: synthrole-e2e
+  name: Configurable Synthesis Role E2E

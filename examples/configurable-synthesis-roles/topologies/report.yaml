@@ -1,0 +1,47 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: report
+  version: 0.1.0
+runtime:
+  planning:
+    # 'editor' is a custom synthesis role (not the default document-writer). The planner must
+    # auto-wire the editor task to depend on the research tasks so it runs LAST.
+    synthesis_roles: [self, editor]
+    synthesizer_role: composer
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: openrouter
+      name: moonshotai/kimi-k2-0905
+      temperature: 0.1
+    prompt:
+      system: |
+        You are a research coordinator. You MUST plan the work by calling the
+        create-task-plan tool exactly once, then let the workers run.
+
+        Create EXACTLY these three tasks and nothing else. Do NOT set depends_on
+        on any of them — leave depends_on empty for all three:
+          1. id "research-cats", agent "researcher-a", instruction "List two facts about cats."
+          2. id "research-dogs", agent "researcher-b", instruction "List two facts about dogs."
+          3. id "final-report", agent "editor", instruction "Write a 3-sentence report combining the cat and dog facts."
+
+        Call create-task-plan with those three tasks. Do not write the report yourself.
+    children:
+      - id: researcher-a
+        role: worker
+        model: { provider: openrouter, name: moonshotai/kimi-k2-0905, temperature: 0.1 }
+        prompt:
+          system: "You are a researcher. Answer concisely in 2 bullet points."
+      - id: researcher-b
+        role: worker
+        model: { provider: openrouter, name: moonshotai/kimi-k2-0905, temperature: 0.1 }
+        prompt:
+          system: "You are a researcher. Answer concisely in 2 bullet points."
+      - id: editor
+        role: worker
+        model: { provider: openrouter, name: moonshotai/kimi-k2-0905, temperature: 0.1 }
+        prompt:
+          system: "You are an editor. Combine the provided research into a short report."

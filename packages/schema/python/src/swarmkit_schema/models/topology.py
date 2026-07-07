@@ -206,6 +206,14 @@ class Planning(BaseModel):
         False,
         description="Enforce two-phase planning: Phase 1 (research) → create-scope → Phase 2 (targeted tasks). The compiler auto-injects checkpoint prompts.",
     )
+    synthesis_roles: list[str] | None = Field(
+        None,
+        description="Agent roles treated as synthesis/output roles by the planner: they are auto-wired to depend on research tasks so they run last, not in parallel. Defaults to ['self', 'document-writer']. 'self' is always a structural synthesis role even if omitted.",
+    )
+    synthesizer_role: str | None = Field(
+        None,
+        description="Role name for the automatic synthesis step invoked when synthesis config is set. Defaults to 'synthesizer'.",
+    )
 
 
 class Synthesis(BaseModel):

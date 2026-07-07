@@ -1,0 +1,11 @@
+# A workspace setting default planning behavior — including configurable synthesis roles —
+# for all its topologies. Topology-level planning overrides these.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: planning-workspace
+  name: Planning Workspace
+planning:
+  scope_required: true
+  synthesis_roles: [self, document-writer, publisher]
+  synthesizer_role: composer

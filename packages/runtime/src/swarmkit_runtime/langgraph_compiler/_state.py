@@ -22,12 +22,24 @@ def _last_write_wins(left: str, right: str) -> str:
     return right
 
 
+#: Default synthesis/output roles — auto-wired to depend on research tasks so they run last.
+#: ``self`` is structural (a task assigned to it runs inline in the coordinator);
+#: ``document-writer`` is the conventional final-document role. Overridable per-workspace/topology
+#: via ``planning.synthesis_roles`` (design/details/configurable-synthesis-roles.md).
+DEFAULT_SYNTHESIS_ROLES: tuple[str, ...] = ("self", "document-writer")
+
+#: Default role name for the automatic large-context synthesis step (``planning.synthesizer_role``).
+DEFAULT_SYNTHESIZER_ROLE = "synthesizer"
+
+
 @dataclass(frozen=True)
 class PlanningConfig:
     """Controls task planning and scope behavior for leader agents."""
 
     scope_required: bool = False
     two_phase: bool = False
+    synthesis_roles: tuple[str, ...] = DEFAULT_SYNTHESIS_ROLES
+    synthesizer_role: str = DEFAULT_SYNTHESIZER_ROLE
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,7 @@ from swarmkit_runtime.model_providers import CompletionRequest, Message
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 
 from ._helpers import _progress
-from ._state import SynthesisConfig
+from ._state import DEFAULT_SYNTHESIZER_ROLE, SynthesisConfig
 
 _DEFAULT_SYNTHESIS_PROMPT = """\
 You are a technical document writer. You have been given ALL research \
@@ -79,6 +79,7 @@ async def run_synthesis(
     workspace_root: Path | None,
     original_input: str,
     provider_registry: ProviderRegistry | None,
+    synthesizer_role: str = DEFAULT_SYNTHESIZER_ROLE,
 ) -> str:
     """Run the synthesizer — one large-context call with all results."""
     import json  # noqa: PLC0415
@@ -145,6 +146,7 @@ async def run_synthesis(
         start_time=_start,
         elapsed=_elapsed,
         result_length=len(text),
+        synthesizer_role=synthesizer_role,
     )
 
     if output_path:
@@ -239,6 +241,7 @@ def _record_trace(
     start_time: float,
     elapsed: float,
     result_length: int,
+    synthesizer_role: str = DEFAULT_SYNTHESIZER_ROLE,
 ) -> None:
     """Record synthesizer call in the active run trace."""
 
@@ -256,7 +259,7 @@ def _record_trace(
         agent_id="__synthesizer__",
         model=model,
         parent_agent=None,
-        role="synthesizer",
+        role=synthesizer_role,
         start_time=start_time,
         end_time=start_time + elapsed,
         duration_ms=int(elapsed * 1000),
