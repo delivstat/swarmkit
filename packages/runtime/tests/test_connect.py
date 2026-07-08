@@ -258,3 +258,138 @@ async def test_poll_once_survives_a_malformed_command() -> None:
     # the two with a cmd_id reported a result; the fully-malformed one was skipped
     assert "/instances/i1/commands/c2/result" in results
     assert "/instances/i1/commands/c3/result" in results
+
+
+# --- Mode B join bootstrap (design 19) --------------------------------------
+
+
+def _client(handler: Any, base: str) -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url=base)
+
+
+_STATE = {
+    "workspace_id": "edge-oms",
+    "schema_version": "1.7.0",
+    "artifacts": {"topologies": [{"id": "t1"}], "skills": [], "archetypes": [], "triggers": []},
+}
+
+
+@pytest.mark.asyncio
+async def test_join_fleet_pulls_state_and_posts_join() -> None:
+    from swarmkit_runtime.connect import join_fleet  # noqa: PLC0415
+
+    seen: dict[str, Any] = {}
+
+    def serve_handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/fleet/state"
+        return httpx.Response(200, json=_STATE)
+
+    def panel_handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["body"] = request.read().decode()
+        return httpx.Response(
+            200,
+            json={
+                "instance_id": "abc123",
+                "credential": {"type": "api_key", "value": "poll-token", "tier": "run"},
+            },
+        )
+
+    async with (
+        _client(panel_handler, "http://panel") as panel_client,
+        _client(serve_handler, "http://serve") as serve_client,
+    ):
+        result = await join_fleet(
+            panel_client,
+            serve_client,
+            panel_url="http://panel",
+            join_code="join-code-xyz",
+            serve_url="http://serve",
+            name="edge-1",
+        )
+
+    assert seen["path"] == "/fleet/join"
+    body = seen["body"]
+    assert "join-code-xyz" in body and "edge-oms" in body and "edge-1" in body
+    assert result["instance_id"] == "abc123"
+    assert result["credential"]["value"] == "poll-token"
+
+
+@pytest.mark.asyncio
+async def test_join_fleet_raises_when_serve_state_unavailable() -> None:
+    from swarmkit_runtime.connect import ConnectorError, join_fleet  # noqa: PLC0415
+
+    def serve_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, text="unauthorized")
+
+    def panel_handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        return httpx.Response(200, json={})
+
+    async with (
+        _client(panel_handler, "http://panel") as panel_client,
+        _client(serve_handler, "http://serve") as serve_client,
+    ):
+        with pytest.raises(ConnectorError, match="fleet/state returned 401"):
+            await join_fleet(
+                panel_client,
+                serve_client,
+                panel_url="http://panel",
+                join_code="x",
+                serve_url="http://serve",
+            )
+
+
+@pytest.mark.asyncio
+async def test_join_fleet_raises_on_bad_join_code() -> None:
+    from swarmkit_runtime.connect import ConnectorError, join_fleet  # noqa: PLC0415
+
+    def serve_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_STATE)
+
+    def panel_handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, text="invalid, expired, or already-used join code")
+
+    async with (
+        _client(panel_handler, "http://panel") as panel_client,
+        _client(serve_handler, "http://serve") as serve_client,
+    ):
+        with pytest.raises(ConnectorError, match="fleet/join returned 401"):
+            await join_fleet(
+                panel_client,
+                serve_client,
+                panel_url="http://panel",
+                join_code="bad",
+                serve_url="http://serve",
+            )
+
+
+def test_join_result_extracts_id_token_tier() -> None:
+    from swarmkit_runtime.connect import _join_result  # noqa: PLC0415
+
+    iid, token, tier = _join_result(
+        {"instance_id": "i9", "credential": {"value": "tok", "tier": "admin"}}
+    )
+    assert (iid, token, tier) == ("i9", "tok", "admin")
+
+
+def test_join_result_defaults_tier_and_rejects_missing_credential() -> None:
+    from swarmkit_runtime.connect import ConnectorError, _join_result  # noqa: PLC0415
+
+    # tier defaults to read when the panel omits it.
+    assert _join_result({"instance_id": "i9", "credential": {"value": "tok"}})[2] == "read"
+    # a response without a usable id + token is an error, not a silent no-op.
+    with pytest.raises(ConnectorError):
+        _join_result({"instance_id": "i9", "credential": {}})
+    with pytest.raises(ConnectorError):
+        _join_result({"credential": {"value": "tok"}})
+
+
+def test_connect_cli_requires_instance_id_or_join_code() -> None:
+    from swarmkit_runtime.cli import app  # noqa: PLC0415
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    # neither --instance-id nor --join-code → a usage error (exit 2), rejected before any network
+    # call. (The message text is a rich-rendered panel that wraps at the terminal width, so assert
+    # on the stable exit code rather than substrings of the formatted output.)
+    result = CliRunner().invoke(app, ["connect", "http://panel"])
+    assert result.exit_code == 2

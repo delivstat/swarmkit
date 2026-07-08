@@ -190,19 +190,115 @@ async def _fetch_status_body(
     return body
 
 
+async def join_fleet(
+    panel_client: httpx.AsyncClient,
+    serve_client: httpx.AsyncClient,
+    *,
+    panel_url: str,
+    join_code: str,
+    serve_url: str = "http://127.0.0.1:8000",
+    serve_token: str | None = None,
+    name: str = "",
+) -> dict[str, Any]:
+    """Mode B bootstrap (design 19): pull our own full state from local serve (loopback, trusted),
+    then POST it to the panel's ``/fleet/join`` with the operator's one-time join code. The panel
+    creates our Instance and returns ``{instance_id, credential, …}``; ``credential.value`` is the
+    token the connector then polls with. Raises ConnectorError on any failure."""
+    base_serve = serve_url.rstrip("/")
+    headers = {"Authorization": f"Bearer {serve_token}"} if serve_token else {}
+    try:
+        sr = await serve_client.get(f"{base_serve}/fleet/state", headers=headers)
+    except httpx.HTTPError as exc:
+        raise ConnectorError(f"cannot reach local serve {base_serve}: {exc}") from exc
+    if sr.status_code != 200:
+        raise ConnectorError(f"local serve /fleet/state returned {sr.status_code}: {sr.text[:200]}")
+    state = sr.json()
+    workspace_id = str(state.get("workspace_id", "")) if isinstance(state, dict) else ""
+    identity = {"name": name or workspace_id, "endpoint": base_serve, "workspace_id": workspace_id}
+    try:
+        jr = await panel_client.post(
+            f"{panel_url.rstrip('/')}/fleet/join",
+            json={"join_code": join_code, "instance_identity": identity, "instance_state": state},
+        )
+    except httpx.HTTPError as exc:
+        raise ConnectorError(f"cannot reach panel {panel_url}: {exc}") from exc
+    if jr.status_code not in (200, 201):
+        raise ConnectorError(f"panel /fleet/join returned {jr.status_code}: {jr.text[:200]}")
+    result: dict[str, Any] = jr.json()
+    return result
+
+
+def _join_result(result: dict[str, Any]) -> tuple[str, str, str]:
+    """Extract ``(instance_id, panel_token, granted_tier)`` from a ``/fleet/join`` response, or
+    raise ConnectorError if the panel didn't return a usable instance id + credential."""
+    instance_id = str(result.get("instance_id", ""))
+    cred = result.get("credential", {}) or {}
+    panel_token = str(cred.get("value", ""))
+    granted_tier = str(cred.get("tier", "read"))
+    if not instance_id or not panel_token:
+        raise ConnectorError("panel /fleet/join did not return an instance_id + credential")
+    return instance_id, panel_token, granted_tier
+
+
+async def bootstrap_join(
+    *,
+    panel_url: str,
+    join_code: str,
+    serve_url: str = "http://127.0.0.1:8000",
+    serve_token: str | None = None,
+    name: str = "",
+    log: Any = print,
+) -> tuple[str, str, str]:
+    """Run the Mode B join handshake once, returning ``(instance_id, panel_token, granted_tier)``
+    for the poll loop. Builds a short-lived client pair; the polling clients are made separately."""
+    async with (
+        httpx.AsyncClient(timeout=40) as panel_client,
+        httpx.AsyncClient(timeout=40) as serve_client,
+    ):
+        result = await join_fleet(
+            panel_client,
+            serve_client,
+            panel_url=panel_url,
+            join_code=join_code,
+            serve_url=serve_url,
+            serve_token=serve_token,
+            name=name,
+        )
+    instance_id, panel_token, granted_tier = _join_result(result)
+    log(f"connector: joined fleet as instance {instance_id} (tier={granted_tier})")
+    return instance_id, panel_token, granted_tier
+
+
 async def run_connector(
     *,
     panel_url: str,
-    instance_id: str,
-    panel_token: str | None,
+    instance_id: str = "",
+    panel_token: str | None = None,
+    join_code: str | None = None,
     serve_url: str = "http://127.0.0.1:8000",
     serve_token: str | None = None,
     granted_tier: str = "read",
+    name: str = "",
     interval: float = 5.0,
     once: bool = False,
     log: Any = print,
 ) -> None:
-    """Poll the panel forever (or once), executing queued commands against local serve."""
+    """Poll the panel forever (or once), executing queued commands against local serve.
+
+    With *join_code* set, the connector first performs the Mode B join handshake (design 19) to
+    obtain its ``instance_id`` + panel token, then polls — no pre-provisioned credential needed.
+    """
+    if join_code:
+        instance_id, panel_token, granted_tier = await bootstrap_join(
+            panel_url=panel_url,
+            join_code=join_code,
+            serve_url=serve_url,
+            serve_token=serve_token,
+            name=name,
+            log=log,
+        )
+    if not instance_id:
+        raise ConnectorError("connector needs --instance-id or --join-code")
     panel_headers = {"Authorization": f"Bearer {panel_token}"} if panel_token else {}
     async with (
         httpx.AsyncClient(timeout=40, headers=panel_headers) as panel_client,
