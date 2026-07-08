@@ -237,3 +237,10 @@ export interface RefreshResult {
 	scope: string;
 	fingerprint: string;
 }
+
+/** POST /fleet/join-code — a one-time Mode B join code the operator hands to an edge instance. */
+export interface JoinCodeResult {
+	join_code: string;
+	tier: string;
+	expires_in: number;
+}
