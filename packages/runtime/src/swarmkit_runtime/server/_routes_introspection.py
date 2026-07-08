@@ -67,7 +67,7 @@ def _register_introspection_routes(app: FastAPI) -> None:
 
         The fleet pulls this to populate its inventory and cache it (offline-resilient). Phase 1 of
         design/details/control-plane/19-fleet-enrollment-protocol.md. Requires `serve:read` — or,
-        for an enrolled fleet, a valid membership key (monitor+), accepted by the auth-seam fallback.
+        for an enrolled fleet, a valid membership key (monitor+), via the auth-seam fallback.
         """
         svc = ArtifactService(request.app.state.workspace_path)
         return _build_instance_state(_get_runtime(request), svc)
