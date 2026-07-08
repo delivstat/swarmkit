@@ -285,9 +285,12 @@ instance happens to run* and *what the fleet has vetted and can deploy* (the bas
 1. **Fleet identity.** How does an instance identify a fleet (`fleet_id`) trustably — a fleet public
    key / self-signed identity vs an opaque id? Matters for "same swarm, many fleets" and for the
    instance to attribute pushes. *(Lean: fleet presents a stable key id; instance pins it at join.)*
-2. **State size / transfer.** Full content for a 75-skill workspace is sizable — send full on join,
-   then **delta by `content_hash`** on subsequent syncs? *(Lean: yes — hash manifest first, fetch
-   only changed bodies.)*
+2. **State size / transfer — ✅ done.** Full content on the first sync, then **delta by
+   `content_hash`** on subsequent syncs: serve exposes `GET /fleet/state/manifest` (names + hashes,
+   no content) + `POST /fleet/state/artifacts` (fetch only the changed bodies); the panel diffs the
+   manifest against its cache and merges (`_delta.py`), falling back to a full pull on the first sync
+   or against a pre-delta instance. The `/sync` response reports `{mode, fetched, reused, removed}`.
+   (PRs #475–#477.)
 3. **Enrollment-token issuance UX.** For Mode A the token comes from the *instance owner* — via
    `swarmkit fleet enroll-token` CLI printing a one-time code? How does the operator get it into the
    panel form?

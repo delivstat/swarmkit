@@ -214,11 +214,20 @@ export interface CachedState {
 	synced_at: string;
 }
 
-/** POST /instances/{id}/sync — result of a fresh pull. */
+/** How a sync transferred state (design 19 §delta sync). */
+export interface SyncDelta {
+	mode: "full" | "full-fallback" | "delta";
+	fetched: number;
+	reused: number;
+	removed: number;
+}
+
+/** POST /instances/{id}/sync — result of a fresh pull (delta by content_hash after the first). */
 export interface SyncResult {
 	instance_id: string;
 	synced_at: string;
 	counts: Record<string, number>;
+	delta?: SyncDelta;
 }
 
 /** POST /instances/{id}/register — the enrollment handshake result (design 19, Phase 2). The

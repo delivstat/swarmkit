@@ -42,6 +42,7 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 	);
 	const [busy, setBusy] = useState(false);
 	const [syncError, setSyncError] = useState<string | null>(null);
+	const [syncMsg, setSyncMsg] = useState<string | null>(null);
 	const [selected, setSelected] = useState<Selection | null>(null);
 	const [adopting, setAdopting] = useState(false);
 	const [adoptMsg, setAdoptMsg] = useState<string | null>(null);
@@ -49,9 +50,19 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 
 	async function sync() {
 		setSyncError(null);
+		setSyncMsg(null);
 		setBusy(true);
 		try {
-			await api.syncInstance(instanceId);
+			const res = await api.syncInstance(instanceId);
+			const d = res.delta;
+			// Delta sync (design 19): show how much was transferred vs reused from cache.
+			setSyncMsg(
+				d
+					? d.mode === "delta"
+						? `Delta sync — ${d.fetched} fetched, ${d.reused} unchanged${d.removed ? `, ${d.removed} removed` : ""}.`
+						: `Full sync — ${d.fetched} artifact${d.fetched === 1 ? "" : "s"} pulled.`
+					: "Synced.",
+			);
 			refresh();
 		} catch (err) {
 			setSyncError(err instanceof Error ? err.message : String(err));
@@ -100,6 +111,9 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 			<CardContent className="space-y-4">
 				{syncError ? (
 					<p className="text-sm text-destructive">{syncError}</p>
+				) : null}
+				{syncMsg && !syncError ? (
+					<p className="text-xs text-muted-foreground">{syncMsg}</p>
 				) : null}
 				{notSynced ? (
 					<p className="text-sm text-muted-foreground">
