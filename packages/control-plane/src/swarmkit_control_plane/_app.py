@@ -160,7 +160,7 @@ def create_app(
 
     _mount_instances(app, registry, verify, jobs, author)
     _mount_token_routes(app, registry, verify)
-    _mount_state(app, registry, state_store, fetch_state)
+    _mount_state(app, registry, state_store, arts, fetch_state)
     _mount_register(app, registry, state_store, cred_store, register_fn, refresh_fn)
     _mount_join(app, registry, join_store, state_store)
     _mount_command_queue(app, registry)

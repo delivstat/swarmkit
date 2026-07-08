@@ -244,3 +244,13 @@ export interface JoinCodeResult {
 	tier: string;
 	expires_in: number;
 }
+
+/** POST /instances/{id}/adopt — a cached observed artifact promoted into the registry (design 20). */
+export interface AdoptResult {
+	kind: string;
+	artifact_id: string;
+	version: string;
+	content_hash: string;
+	adopted_from: string;
+	synced_at: string;
+}

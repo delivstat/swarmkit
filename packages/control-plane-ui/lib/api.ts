@@ -1,5 +1,6 @@
 import { getAccessToken, handleUnauthorized } from "./token-store";
 import type {
+	AdoptResult,
 	ArtifactSummary,
 	ArtifactVersion,
 	AuditRow,
@@ -162,6 +163,12 @@ export const api = {
 		}),
 	refreshInstance: (id: string) =>
 		request<RefreshResult>(`/instances/${id}/refresh`, { method: "POST" }),
+	// Adopt a cached observed artifact into the deployable registry (design 20).
+	adoptArtifact: (id: string, body: { kind: string; artifact_id: string }) =>
+		request<AdoptResult>(`/instances/${id}/adopt`, {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
 	drift: (id: string) => request<DriftRow[]>(`/instances/${id}/drift`),
 	setDeployment: (
 		id: string,

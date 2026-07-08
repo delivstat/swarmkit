@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 
+from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._connector import ConnectorError
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._fntypes import (
@@ -23,6 +24,7 @@ from swarmkit_control_plane._join_code_store import DEFAULT_JOIN_TTL_S, JoinCode
 from swarmkit_control_plane._models import Instance
 from swarmkit_control_plane._registry import SqliteRegistry
 from swarmkit_control_plane._schemas import (
+    AdoptRequest,
     AuthorRequest,
     CommandResultRequest,
     EnqueueCommandRequest,
@@ -207,16 +209,43 @@ def _mount_token_routes(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn
         return updated.public_dict()
 
 
+#: InstanceState artifact kind → the collection key it lives under in the cached export.
+_ADOPT_COLLECTIONS: dict[str, str] = {
+    "topology": "topologies",
+    "skill": "skills",
+    "archetype": "archetypes",
+    "trigger": "triggers",
+}
+
+
+def _find_cached_artifact(
+    state: dict[str, Any], kind: str, artifact_id: str
+) -> dict[str, Any] | None:
+    """Locate a ``{id, version, content_hash, content}`` entry in a cached ``InstanceState``, or
+    None if *kind* isn't an adoptable collection or the id isn't present."""
+    collection = _ADOPT_COLLECTIONS.get(kind)
+    if collection is None:
+        return None
+    artifacts = state.get("artifacts", {}) if isinstance(state, dict) else {}
+    for entry in artifacts.get(collection, []) or []:
+        if isinstance(entry, dict) and entry.get("id") == artifact_id:
+            return entry
+    return None
+
+
 def _mount_state(
     app: FastAPI,
     registry: SqliteRegistry,
     state_store: InstanceStateStore,
+    artifacts: ArtifactStore,
     fetch_state: StateFn,
 ) -> None:
-    """Observed-state cache routes (fleet enrollment Phase 1, design 19).
+    """Observed-state cache routes (fleet enrollment Phase 1, design 19) + adopt (Phase 3, doc 20).
 
     ``/sync`` pulls the instance's full state (Mode A) and caches it; ``/state`` returns the cached
-    snapshot — so an instance's inventory stays inspectable even when it's **offline**.
+    snapshot — so an instance's inventory stays inspectable even when it's **offline**. ``/adopt``
+    promotes one cached artifact into the deployable registry (the observed snapshot is kept
+    separate from the registry — adoption is the explicit bridge).
     """
 
     @app.post("/instances/{instance_id}/sync")
@@ -249,6 +278,40 @@ def _mount_state(
         if cached is None:
             raise HTTPException(404, "no state cached yet — POST /instances/{id}/sync first")
         return cached  # {state, synced_at} — served from cache, works offline
+
+    @app.post("/instances/{instance_id}/adopt")
+    async def adopt_artifact(instance_id: str, req: AdoptRequest) -> dict[str, Any]:
+        """Promote a cached observed artifact into the deployable registry (design 20). Reads the
+        artifact's content from the last-synced ``InstanceState`` and registers it as a registry
+        version (idempotent on ``content_hash``), with provenance recording the source instance +
+        the snapshot's ``synced_at`` — so an operator can see an artifact came from instance X
+        before deploying it fleet-wide."""
+        if registry.get(instance_id) is None:
+            raise HTTPException(404, "instance not found")
+        if req.kind not in _ADOPT_COLLECTIONS:
+            raise HTTPException(400, f"kind '{req.kind}' is not adoptable")
+        cached = state_store.get(instance_id)
+        if cached is None:
+            raise HTTPException(409, "no state cached yet — POST /instances/{id}/sync first")
+        entry = _find_cached_artifact(cached["state"], req.kind, req.artifact_id)
+        if entry is None:
+            raise HTTPException(404, f"{req.kind} '{req.artifact_id}' is not in the cached state")
+        state = cached["state"]
+        published = artifacts.register_version(
+            req.kind,
+            req.artifact_id,
+            content=entry.get("content"),
+            authored_by=f"adopted:instance/{instance_id}@{cached['synced_at']}",
+            schema_version=str(state.get("schema_version", "")) if isinstance(state, dict) else "",
+        )
+        return {
+            "kind": req.kind,
+            "artifact_id": req.artifact_id,
+            "version": published["version"],
+            "content_hash": published["content_hash"],
+            "adopted_from": instance_id,
+            "synced_at": cached["synced_at"],
+        }
 
 
 #: The panel's own fleet identity, presented to instances at register (overridable per request).

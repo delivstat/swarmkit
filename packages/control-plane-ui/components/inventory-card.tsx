@@ -14,12 +14,15 @@ import { useResource } from "@/lib/use-resource";
 const KINDS: {
 	key: keyof CachedState["state"]["artifacts"];
 	label: string;
+	singular: string;
 }[] = [
-	{ key: "topologies", label: "Topologies" },
-	{ key: "skills", label: "Skills" },
-	{ key: "archetypes", label: "Archetypes" },
-	{ key: "triggers", label: "Triggers" },
+	{ key: "topologies", label: "Topologies", singular: "topology" },
+	{ key: "skills", label: "Skills", singular: "skill" },
+	{ key: "archetypes", label: "Archetypes", singular: "archetype" },
+	{ key: "triggers", label: "Triggers", singular: "trigger" },
 ];
+
+type Selection = { artifact: InstanceArtifact; kind: string };
 
 /**
  * The instance's cached inventory (design 19 Phase 1): the topologies/skills/archetypes the panel
@@ -39,7 +42,10 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 	);
 	const [busy, setBusy] = useState(false);
 	const [syncError, setSyncError] = useState<string | null>(null);
-	const [selected, setSelected] = useState<InstanceArtifact | null>(null);
+	const [selected, setSelected] = useState<Selection | null>(null);
+	const [adopting, setAdopting] = useState(false);
+	const [adoptMsg, setAdoptMsg] = useState<string | null>(null);
+	const [adoptError, setAdoptError] = useState<string | null>(null);
 
 	async function sync() {
 		setSyncError(null);
@@ -51,6 +57,24 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 			setSyncError(err instanceof Error ? err.message : String(err));
 		} finally {
 			setBusy(false);
+		}
+	}
+
+	async function adopt() {
+		if (!selected) return;
+		setAdopting(true);
+		setAdoptMsg(null);
+		setAdoptError(null);
+		try {
+			const res = await api.adoptArtifact(instanceId, {
+				kind: selected.kind,
+				artifact_id: selected.artifact.id,
+			});
+			setAdoptMsg(`Adopted ${res.kind}/${res.artifact_id} as ${res.version}.`);
+		} catch (err) {
+			setAdoptError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setAdopting(false);
 		}
 	}
 
@@ -84,7 +108,7 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 					</p>
 				) : null}
 				{data
-					? KINDS.map(({ key, label }) => {
+					? KINDS.map(({ key, label, singular }) => {
 							const items = data.state.artifacts[key] ?? [];
 							if (items.length === 0) return null;
 							return (
@@ -98,8 +122,14 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 											<button
 												key={a.id}
 												type="button"
-												onClick={() => setSelected((s) => (s === a ? null : a))}
-												aria-pressed={selected === a}
+												onClick={() =>
+													setSelected((s) =>
+														s?.artifact === a
+															? null
+															: { artifact: a, kind: singular },
+													)
+												}
+												aria-pressed={selected?.artifact === a}
 												className="rounded border px-2 py-0.5 font-mono text-xs outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring aria-pressed:bg-accent"
 											>
 												{a.id}
@@ -111,12 +141,29 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 						})
 					: null}
 				{selected ? (
-					<div>
-						<div className="mb-1 text-xs text-muted-foreground">
-							{selected.id} · v{selected.version} ·{" "}
-							{selected.content_hash.slice(0, 12)}
+					<div className="space-y-2">
+						<div className="flex items-center justify-between gap-2">
+							<div className="text-xs text-muted-foreground">
+								{selected.artifact.id} · v{selected.artifact.version} ·{" "}
+								{selected.artifact.content_hash.slice(0, 12)}
+							</div>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={adopt}
+								disabled={adopting}
+								title="Promote this observed artifact into the deployable registry"
+							>
+								{adopting ? "Adopting…" : "Adopt into registry"}
+							</Button>
 						</div>
-						<JsonBlock value={selected.content} />
+						{adoptMsg ? (
+							<p className="text-xs text-success">{adoptMsg}</p>
+						) : null}
+						{adoptError ? (
+							<p className="text-xs text-destructive">{adoptError}</p>
+						) : null}
+						<JsonBlock value={selected.artifact.content} />
 					</div>
 				) : null}
 			</CardContent>
