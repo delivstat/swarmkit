@@ -47,7 +47,13 @@ def _client(
 def test_mode_a_pushes_records_intent_and_audits(tmp_path: Path) -> None:
     client, calls = _client(tmp_path)
     iid = client.post(
-        "/instances", json={"name": "dc", "endpoint": "http://serve:8000", "connection": "direct"}
+        "/instances",
+        json={
+            "name": "dc",
+            "endpoint": "http://serve:8000",
+            "connection": "direct",
+            "token_ref": "env:DC_TOKEN",  # legacy fallback (no membership registered here)
+        },
     ).json()["id"]
 
     resp = client.post(
@@ -113,7 +119,13 @@ def test_deploy_failure_is_502(tmp_path: Path) -> None:
 
     client, _ = _client(tmp_path, deploy_fn=boom)
     iid = client.post(
-        "/instances", json={"name": "dc", "endpoint": "http://x", "connection": "direct"}
+        "/instances",
+        json={
+            "name": "dc",
+            "endpoint": "http://x",
+            "connection": "direct",
+            "token_ref": "env:X_TOKEN",  # legacy fallback path
+        },
     ).json()["id"]
     assert (
         client.post(
@@ -139,3 +151,96 @@ def test_deploy_is_operator_only(tmp_path: Path) -> None:
     body = {"kind": "topology", "artifact_id": "hello", "version": "v1"}
     assert client.post(f"/instances/{iid}/deploy", json=body, headers=conn).status_code == 403
     assert client.post(f"/instances/{iid}/deploy", json=body, headers=op).status_code == 200
+
+
+# --- deploy over the membership credential (design 20) ----------------------
+
+
+def _manage_client(tmp_path: Path, *, scope: str = "manage") -> tuple[TestClient, list[str]]:
+    """A client whose register_fn issues a *scope* membership; captures the credential each deploy
+    PUT carries (the token_ref arg) so tests can assert which credential was used."""
+    db = tmp_path / "registry.sqlite"
+    registry = SqliteRegistry(db)
+    artifacts = ArtifactStore(db)
+    artifacts.register_version("topology", "hello", content={"nodes": ["root"]})
+
+    used: list[str] = []
+
+    async def deploy_fn(
+        endpoint: str, token_ref: str, kind: str, aid: str, content: Any
+    ) -> dict[str, Any]:
+        used.append(token_ref)
+        return {"deployed": aid}
+
+    async def register_fn(
+        endpoint: str, enroll_token: str, fleet_id: str, requested_scope: str | None
+    ) -> dict[str, Any]:
+        return {
+            "membership_id": "mem-1",
+            "credential": {
+                "type": "api_key",
+                "value": "membership-secret",
+                "scope": scope,
+                "fingerprint": "fp1",
+            },
+            "instance_state": {"schema_version": "", "artifacts": {}},
+        }
+
+    async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:
+        return {}  # stub the enroll-time pull-verify (no live serve in tests)
+
+    client = TestClient(
+        create_app(
+            registry,
+            verify=verify,
+            artifacts=artifacts,
+            deploy=deploy_fn,
+            register_fn=register_fn,
+        )
+    )
+    return client, used
+
+
+def _enroll_direct(client: TestClient, token_ref: str = "") -> str:
+    body: dict[str, Any] = {"name": "dc", "endpoint": "http://serve:8000", "connection": "direct"}
+    if token_ref:
+        body["token_ref"] = token_ref
+    return str(client.post("/instances", json=body).json()["id"])
+
+
+def test_deploy_uses_the_manage_membership_credential(tmp_path: Path) -> None:
+    client, used = _manage_client(tmp_path, scope="manage")
+    iid = _enroll_direct(client, token_ref="env:LEGACY")  # membership must win over token_ref
+    assert client.post(f"/instances/{iid}/register", json={"enroll_token": "t"}).status_code == 200
+
+    resp = client.post(
+        f"/instances/{iid}/deploy",
+        json={"kind": "topology", "artifact_id": "hello", "version": "v1"},
+    )
+    assert resp.status_code == 200
+    # the deploy carried the (decrypted) membership secret, NOT the legacy token_ref.
+    assert used == ["membership-secret"]
+
+
+def test_monitor_membership_cannot_deploy_is_403(tmp_path: Path) -> None:
+    client, used = _manage_client(tmp_path, scope="monitor")
+    iid = _enroll_direct(client, token_ref="env:LEGACY")
+    client.post(f"/instances/{iid}/register", json={"enroll_token": "t"})
+    # a monitor membership exists → refuse (no silent fallback to the admin token_ref).
+    resp = client.post(
+        f"/instances/{iid}/deploy",
+        json={"kind": "topology", "artifact_id": "hello", "version": "v1"},
+    )
+    assert resp.status_code == 403
+    assert used == []
+
+
+def test_deploy_without_membership_or_token_ref_is_409(tmp_path: Path) -> None:
+    client, used = _manage_client(tmp_path)
+    iid = _enroll_direct(client)  # no token_ref, no membership registered
+    resp = client.post(
+        f"/instances/{iid}/deploy",
+        json={"kind": "topology", "artifact_id": "hello", "version": "v1"},
+    )
+    assert resp.status_code == 409
+    assert used == []

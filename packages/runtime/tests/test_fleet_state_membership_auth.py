@@ -127,15 +127,62 @@ class _FakeRequest:
 
 def test_helper_rejects_non_fleet_paths() -> None:
     # path gating is independent of the store — a non-fleet-read path never accepts membership auth.
-    assert _membership_authenticates(_FakeRequest(object(), {}), "/capabilities") is False
+    assert _membership_authenticates(_FakeRequest(object(), {}), "GET", "/capabilities") is False
 
 
 def test_helper_false_without_store() -> None:
-    assert _membership_authenticates(_FakeRequest(None, {}), "/fleet/state") is False
+    assert _membership_authenticates(_FakeRequest(None, {}), "GET", "/fleet/state") is False
 
 
 def test_helper_false_without_bearer(tmp_path: Path) -> None:
     from swarmkit_runtime.fleet import MembershipStore  # noqa: PLC0415
 
     store = MembershipStore(tmp_path)
-    assert _membership_authenticates(_FakeRequest(store, {}), "/fleet/state") is False
+    assert _membership_authenticates(_FakeRequest(store, {}), "GET", "/fleet/state") is False
+
+
+# --- manage-scope deploy over the membership credential (design 20) ----------
+
+
+def _put_topology(client: TestClient, key: str) -> int:
+    """Attempt a deploy PUT with a membership key; return the status code."""
+    return client.put(
+        "/api/topologies/hello",
+        json={"yaml": "apiVersion: swarmkit/v1\nkind: Topology\n", "dry_run": True},
+        headers=_bearer(key),
+    ).status_code
+
+
+def test_manage_membership_authorizes_deploy_put(auth_client: TestClient) -> None:
+    key = _register(auth_client, scope="manage")
+    # a manage key authenticates the deploy write route (dry-run PUT); 401/403 would mean the
+    # scope gate rejected it. Any non-auth status (200/4xx from the handler) means auth passed.
+    assert _put_topology(auth_client, key) not in (401, 403)
+
+
+def test_monitor_membership_cannot_deploy(auth_client: TestClient) -> None:
+    key = _register(auth_client, scope="monitor")
+    # monitor may read /fleet/state but must NOT deploy.
+    assert auth_client.get("/fleet/state", headers=_bearer(key)).status_code == 200
+    assert _put_topology(auth_client, key) == 401
+
+
+def test_transport_admin_token_still_deploys(auth_client: TestClient) -> None:
+    # back-compat: a serve:admin transport token still authorizes the deploy PUT.
+    assert _put_topology(auth_client, ADMIN_TOKEN) not in (401, 403)
+
+
+def test_helper_manage_gates_deploy_put(tmp_path: Path) -> None:
+    from swarmkit_runtime.fleet import MembershipStore  # noqa: PLC0415
+
+    store = MembershipStore(tmp_path)
+    _, manage_key = store.issue_membership("fleet-a", "manage")
+    _, monitor_key = store.issue_membership("fleet-b", "monitor")
+
+    def req(key: str) -> _FakeRequest:
+        return _FakeRequest(store, {"Authorization": f"Bearer {key}"})
+
+    # manage authenticates a deploy PUT; monitor does not; neither authenticates a POST create.
+    assert _membership_authenticates(req(manage_key), "PUT", "/api/skills/x") is True
+    assert _membership_authenticates(req(monitor_key), "PUT", "/api/skills/x") is False
+    assert _membership_authenticates(req(manage_key), "POST", "/api/topologies") is False

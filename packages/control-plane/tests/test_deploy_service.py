@@ -54,6 +54,7 @@ def _enroll(
         endpoint="http://serve:8000",
         connection=connection,  # type: ignore[arg-type]
         tier="admin",
+        token_ref="env:X_TOKEN",  # legacy deploy credential (no membership in these unit tests)
         schema_version=schema_version,
     )
     registry.add(inst)

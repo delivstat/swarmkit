@@ -225,23 +225,35 @@ def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
     }
 
 
-#: Routes a fleet may authenticate to with its membership key (instead of a transport token).
+#: Fleet-read routes any valid membership (``monitor`` is the minimum) may authenticate to.
 _MEMBERSHIP_READ_ROUTES = frozenset({"/fleet/state"})
+#: Deploy write routes — the ``PUT /api/{collection}/{id}`` targets. Only a ``manage`` membership
+#: may authenticate to these (governed deploy over the membership credential, design 20).
+_MEMBERSHIP_DEPLOY_PREFIXES = ("/api/topologies/", "/api/skills/", "/api/archetypes/")
 
 
-def _membership_authenticates(request: Any, path: str) -> bool:
-    """True if *path* accepts membership auth (design 19) and the request carries a valid membership
-    key as a Bearer token. This is the fallback the transport-auth seam consults when a caller
-    presents a membership credential (a fleet reading its instance's state) rather than a serve
-    token — any valid membership can read (``monitor`` is the minimum scope)."""
-    if path not in _MEMBERSHIP_READ_ROUTES:
-        return False
+def _membership_authenticates(request: Any, method: str, path: str) -> bool:
+    """True if *method*+*path* accepts membership auth (design 19/20) and the request carries a
+    valid membership key as a Bearer token. This is the fallback the transport-auth seam consults
+    when a caller presents a membership credential rather than a serve token. Scope-aware:
+
+    * ``monitor`` (and ``manage``) → the fleet-read routes (a fleet reading its instance's state).
+    * ``manage`` only → the deploy write routes (``PUT /api/{collection}/{id}``) — governed deploy
+      over the membership credential (design 20). ``monitor`` is refused there.
+    """
     store = getattr(request.app.state, "membership_store", None)
     if store is None:
         return False
     header = request.headers.get("Authorization", "")
     key = header[7:] if header.startswith("Bearer ") else ""
-    return bool(key) and store.authenticate(key) is not None
+    membership = store.authenticate(key) if key else None
+    if membership is None:
+        return False
+    if path in _MEMBERSHIP_READ_ROUTES:
+        return True  # any valid membership may read
+    if method.upper() == "PUT" and path.startswith(_MEMBERSHIP_DEPLOY_PREFIXES):
+        return getattr(membership, "scope", None) == "manage"  # deploy is manage-only
+    return False
 
 
 def _record_serve_access(request: Any, identity: Any, action: str | None, status: int) -> None:
