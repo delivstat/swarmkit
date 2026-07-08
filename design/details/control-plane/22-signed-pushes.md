@@ -106,18 +106,22 @@ header + a defined body carrying the content; verifies against the pinned fleet 
 content in flight (hash mismatch) → rejected; present the membership key without a signature under
 `require_signed_deploy` → rejected.
 
-## Open questions
+## Decisions (resolved at review)
 
-1. **Wire body shape.** `{content, content_hash}` (explicit, panel-computed hash serve re-checks) vs
-   `{yaml}` (serve parses + hashes)? *(Lean: `{content}` dict + serve recomputes the hash — one
-   canonicalisation, no YAML round-trip ambiguity.)*
-2. **Downgrade protection.** Accept idempotent replay of any validly-signed version (simple), or bind
-   the signature to a monotonically-increasing deploy sequence / the target version so an old signed
-   deploy can't be replayed over a newer one? *(Lean: v1 accepts replay — deploys are operator-
-   published + idempotent; add a monotonic `deployed_at`/version guard as a follow-up.)*
-3. **Enforce default.** Keep `require_signed_deploy` opt-in for a release (like identity), or default
-   it on when `require_identity` is on? *(Lean: opt-in one release, then couple it to
-   require_identity.)*
-4. **Mode B.** Sign the enqueued `deploy` command args and have the connector verify before applying
-   locally, or trust the connector (it runs on the instance host)? *(Lean: sign it too — cheap, and
-   it closes the same gap for poll instances.)*
+1. **Wire body → `{content}` dict, serve recomputes.** The panel sends the artifact content dict;
+   serve recomputes `content_hash` with the registry canonicalisation and verifies the signature
+   over it. One hash definition, no YAML round-trip ambiguity — and it fixes the wire mismatch.
+2. **Downgrade → accept replay for v1.** Deploys are operator-published + idempotent; a monotonic
+   deploy-sequence guard is a follow-up if needed.
+3. **Enforcement → follows `require_identity`.** `SWARMKIT_FLEET_REQUIRE_SIGNED_DEPLOY`, when set,
+   wins; **otherwise it defaults to whatever `require_identity` is** (an instance that already
+   requires a fleet identity also requires signed deploys). When not required, a *present* signature
+   is still verified (reject on invalid); absence is allowed.
+4. **Mode B → sign it too.** The enqueued `deploy` command carries the signature; the connector
+   verifies it against the pinned key before applying locally. Closes the same gap for poll
+   instances (cheap).
+
+## Open questions (deferred)
+
+- **Monotonic downgrade guard** — bind the signature to a deploy sequence so an old signed deploy
+  can't be replayed over a newer one.
