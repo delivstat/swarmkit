@@ -43,6 +43,7 @@ data model · decisions · what-the-phase-builds · open questions.
 | 19 | [Fleet enrollment protocol + API-key credentials](19-fleet-enrollment-protocol.md) | standard client-agnostic register/join handshake; two-token flow (enrollment token → opaque API key → refresh); `InstanceState` full-state export; observed-state cache (offline-resilient); monitor vs manage scope; multi-fleet |
 | 20 | [Fleet enrollment Phase 3 — manage + adopt](20-manage-and-adopt.md) | governed deploy over the membership credential (scope-aware serve auth-seam fallback: monitor→read, manage→deploy); adopt observed artifact into registry; multi-fleet visibility + eject |
 | 21 | [Fleet identity — pinned public keys](21-fleet-identity.md) | self-certifying `fleet_id` from an Ed25519 public key; proof-of-possession at register; trust-on-first-use pinning + mismatch handling; foundation for signed pushes |
+| 22 | [Signed pushes](22-signed-pushes.md) | the fleet signs each deploy over `deploy:kind:id:content_hash`; serve verifies against the pinned key so a stolen membership key alone can't push; opt-in enforcement; fixes the deploy wire mismatch |
 
 ## Cross-cutting findings (read these first)
 
