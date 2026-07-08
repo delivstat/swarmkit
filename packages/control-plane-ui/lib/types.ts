@@ -220,3 +220,20 @@ export interface SyncResult {
 	synced_at: string;
 	counts: Record<string, number>;
 }
+
+/** POST /instances/{id}/register — the enrollment handshake result (design 19, Phase 2). The
+ * credential itself is stored encrypted on the panel and never returned; only its metadata is. */
+export interface RegisterResult {
+	membership_id: string;
+	scope: string;
+	fingerprint: string;
+	synced_at: string;
+	counts: Record<string, number>;
+}
+
+/** POST /instances/{id}/refresh — rotated-credential metadata (the new key never leaves the panel). */
+export interface RefreshResult {
+	membership_id: string;
+	scope: string;
+	fingerprint: string;
+}
