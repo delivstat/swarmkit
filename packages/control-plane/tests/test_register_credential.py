@@ -70,7 +70,7 @@ def test_credential_store_encrypts_at_rest(tmp_path: Path) -> None:
 # --- the /register route --------------------------------------------------------
 
 
-def _client(tmp_path: Path) -> TestClient:
+def _client(tmp_path: Path, refresh_calls: list[str] | None = None) -> TestClient:
     registry = SqliteRegistry(tmp_path / "registry.sqlite")
 
     async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:  # pragma: no cover
@@ -81,7 +81,22 @@ def _client(tmp_path: Path) -> TestClient:
     ) -> dict[str, Any]:
         return _REGISTER_RESULT
 
-    return TestClient(create_app(registry, verify=verify, register_fn=register_fn))
+    async def refresh_fn(endpoint: str, membership_key: str) -> dict[str, Any]:
+        if refresh_calls is not None:
+            refresh_calls.append(membership_key)  # capture the (decrypted) key the panel used
+        return {
+            "membership_id": "mem-123",
+            "credential": {
+                "type": "api_key",
+                "value": "rotated-key",
+                "scope": "manage",
+                "fingerprint": "def456",
+            },
+        }
+
+    return TestClient(
+        create_app(registry, verify=verify, register_fn=register_fn, refresh_fn=refresh_fn)
+    )
 
 
 def _enroll(client: TestClient, connection: str = "direct") -> str:
@@ -119,3 +134,25 @@ def test_register_rejects_poll_mode(tmp_path: Path) -> None:
 def test_register_unknown_instance_404(tmp_path: Path) -> None:
     client = _client(tmp_path)
     assert client.post("/instances/nope/register", json={"enroll_token": "x"}).status_code == 404
+
+
+def test_refresh_decrypts_uses_and_re_stores_the_credential(tmp_path: Path) -> None:
+    calls: list[str] = []
+    client = _client(tmp_path, refresh_calls=calls)
+    iid = _enroll(client)
+    client.post(f"/instances/{iid}/register", json={"enroll_token": "join"})
+
+    r = client.post(f"/instances/{iid}/refresh")
+    assert r.status_code == 200, r.text
+    assert r.json()["fingerprint"] == "def456"  # rotated fingerprint returned
+    # the panel decrypted the stored credential and used it as the key.
+    assert calls == ["super-secret-key"]
+    # the rotated key is now stored (encrypted) — a second refresh uses the NEW key.
+    client.post(f"/instances/{iid}/refresh")
+    assert calls == ["super-secret-key", "rotated-key"]
+
+
+def test_refresh_before_register_is_400(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    iid = _enroll(client)
+    assert client.post(f"/instances/{iid}/refresh").status_code == 400

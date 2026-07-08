@@ -13,6 +13,7 @@ from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
     JobsFn,
+    RefreshFn,
     RegisterFn,
     StateFn,
     VerifyFn,
@@ -257,10 +258,11 @@ def _mount_register(
     state_store: InstanceStateStore,
     cred_store: CredentialStore,
     register_fn: RegisterFn,
+    refresh_fn: RefreshFn,
 ) -> None:
     """The register handshake (design 19, Phase 2): the panel joins an instance with a one-time
     enrollment token, receives a scoped membership credential (stored encrypted) + the instance's
-    full state (cached), in one call."""
+    full state (cached), in one call. ``/refresh`` rotates the stored credential."""
 
     @app.post("/instances/{instance_id}/register")
     async def register_instance(instance_id: str, req: RegisterInstanceRequest) -> dict[str, Any]:
@@ -300,6 +302,40 @@ def _mount_register(
             "fingerprint": cred.get("fingerprint", ""),
             "synced_at": synced_at,
             "counts": {kind: len(items) for kind, items in arts.items()},
+        }
+
+    @app.post("/instances/{instance_id}/refresh")
+    async def refresh_instance(instance_id: str) -> dict[str, Any]:
+        """Rotate the stored membership credential: decrypt it, use it against the instance's
+        /fleet/refresh, and re-store the rotated key encrypted (design 19)."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            raise HTTPException(
+                409, "refresh calls /fleet/refresh — only valid for direct (Mode A)"
+            )
+        key = cred_store.get_secret(instance_id)
+        meta = cred_store.get_metadata(instance_id)
+        if key is None or meta is None:
+            raise HTTPException(400, "no membership credential for this instance — register first")
+        try:
+            result = await refresh_fn(inst.endpoint, key)
+        except ConnectorError as exc:
+            raise HTTPException(502, f"refresh failed: {exc}") from exc
+        cred = result.get("credential", {})
+        cred_store.put_credential(
+            instance_id,
+            membership_id=result.get("membership_id", meta["membership_id"]),
+            fleet_id=meta["fleet_id"],
+            scope=str(cred.get("scope", meta["scope"])),
+            fingerprint=str(cred.get("fingerprint", "")),
+            secret=str(cred.get("value", "")),  # re-encrypted at rest
+        )
+        return {
+            "membership_id": result.get("membership_id", meta["membership_id"]),
+            "scope": cred.get("scope", meta["scope"]),
+            "fingerprint": cred.get("fingerprint", ""),
         }
 
 

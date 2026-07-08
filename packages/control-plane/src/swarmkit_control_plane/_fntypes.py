@@ -15,6 +15,8 @@ VerifyFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 StateFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, enroll_token, fleet_id, requested_scope) -> {membership_id, credential, instance_state}
 RegisterFn = Callable[[str, str, str, "str | None"], Awaitable[dict[str, Any]]]
+# (endpoint, membership_key) -> {membership_id, credential} (rotated key)
+RefreshFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref, kind, artifact_id, content) -> serve response
 DeployFn = Callable[[str, str, str, str, Any], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref) -> serve /jobs list
