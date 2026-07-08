@@ -1,6 +1,6 @@
 # Fleet enrollment Phase 3 — manage scope, governed deploy over the membership credential, and adopt-into-registry
 
-Status: design, pending review. Builds on [19](19-fleet-enrollment-protocol.md) (Phases 1–2, shipped),
+Status: ✅ shipped (PRs #470–#472). Builds on [19](19-fleet-enrollment-protocol.md) (Phases 1–2, shipped),
 [15](15-artifact-registry.md) (registry + versioning), [17](17-growth-loop.md) (growth loop), and
 [13](13-connector-registry.md) (connector). This is slice 3 of doc 19's phasing.
 
@@ -84,13 +84,20 @@ artifact → adopt the good ones → deploy them across the fleet.
 
 ### 3. Multi-fleet visibility
 
-Serve already exposes `GET /fleet/memberships` (owner-listed, no secrets) and
-`DELETE /fleet/membership/{id}` (eject) from Phase 2. This slice surfaces them:
+**Shipped refinement (panel-perspective).** The original sketch was a passthrough of serve's
+`GET /fleet/memberships` — but that endpoint is `serve:admin`, so it would need the instance's admin
+token and would let one fleet enumerate/evict *other* fleets on the instance, crossing the credential
+boundary. Instead, multi-fleet visibility is **panel-perspective**: a fleet sees and manages only its
+**own** membership (from its encrypted `CredentialStore`). Enumerating every fleet on an instance
+stays the instance owner's serve-side admin view.
 
-- **UI:** on the instance page, a "Fleet memberships" card listing this instance's memberships
-  (fleet id, scope, fingerprint, created) via a panel passthrough (`GET /instances/{id}/memberships`
-  → serve `GET /fleet/memberships` over the membership credential), with an eject button
-  (`DELETE`). This makes "same swarm, many fleets" visible and revocable from either side.
+- **Panel:** `GET /instances/{id}/membership` returns this fleet's membership metadata (fleet id,
+  scope, fingerprint, created — no secret). `DELETE /instances/{id}/membership` is a **credential-native
+  self-leave**: it revokes on the instance with the membership key itself (serve's
+  `DELETE /fleet/membership/{id}` now accepts a key for the caller's *own* membership — "membership key
+  or local admin"), then forgets the stored credential.
+- **UI:** a "Fleet membership" card on the instance page showing the relationship + a "Leave fleet"
+  button. This makes "same swarm, many fleets" visible and revocable per-fleet, from the panel's side.
 
 ## API shape
 
