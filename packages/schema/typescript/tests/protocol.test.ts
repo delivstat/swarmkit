@@ -15,6 +15,7 @@ const FIXTURE_ROOT = resolve(here, "..", "..", "tests", "fixtures", "protocol");
 
 const ALL: ProtocolSchemaName[] = [
 	"credential",
+	"fleet-identity",
 	"instance-state",
 	"register-request",
 	"register-response",

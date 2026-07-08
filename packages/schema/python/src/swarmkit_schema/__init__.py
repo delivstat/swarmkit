@@ -29,6 +29,7 @@ SchemaName = Literal["topology", "skill", "archetype", "workspace", "trigger"]
 #: client validates against, not user-authored artifacts, so they are not run through codegen.
 ProtocolSchemaName = Literal[
     "credential",
+    "fleet-identity",
     "instance-state",
     "register-request",
     "register-response",

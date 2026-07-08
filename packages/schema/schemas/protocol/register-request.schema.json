@@ -14,6 +14,22 @@
     "requested_scope": {
       "enum": ["monitor", "manage"],
       "description": "Advisory; the enrollment token's scope is authoritative (a monitor token can't self-upgrade to manage)."
+    },
+    "fleet_public_key": {
+      "type": "string",
+      "description": "Optional fleet identity (design 21): base64 Ed25519 public key. When present, fleet_id must equal its fingerprint and `proof` must verify."
+    },
+    "proof": {
+      "type": "string",
+      "description": "Base64 Ed25519 signature over `<enrollment_token>:<target_workspace_id>`, proving possession of the private key for fleet_public_key."
+    },
+    "target_workspace_id": {
+      "type": "string",
+      "description": "The workspace the fleet believes it is enrolling; binds the proof to this instance (empty = unbound)."
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Optional human label for the fleet (cosmetic; fleet_id is the identity)."
     }
   }
 }

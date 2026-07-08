@@ -10,6 +10,7 @@ import type {
 	Config,
 	DriftRow,
 	EvalRow,
+	FleetIdentity,
 	Gap,
 	Instance,
 	Job,
@@ -76,6 +77,7 @@ export interface EnrollBody {
 export const api = {
 	health: () => request<{ status: string }>("/health"),
 	config: () => request<Config>("/config"),
+	fleetIdentity: () => request<FleetIdentity>("/fleet/identity"),
 	listInstances: () => request<Instance[]>("/instances"),
 	observability: () => request<Observability>("/observability"),
 	usage: () => request<UsageRow[]>("/usage"),

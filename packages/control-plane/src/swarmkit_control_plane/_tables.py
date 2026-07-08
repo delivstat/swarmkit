@@ -167,6 +167,21 @@ instance_credential = Table(
     Column("created_at", Text, nullable=False),
 )
 
+# --- fleet identity (design 21) -----------------------------------------------
+
+# This panel's own fleet identity: one Ed25519 keypair. The public key + derived fleet_id are
+# non-secret; the private key is stored ENCRYPTED (SecretBox, same as membership credentials). A
+# singleton row (id = "default"). fleet_id = fleet:<base32 sha256 pubkey> — self-certifying.
+fleet_identity = Table(
+    "fleet_identity",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("public_key", Text, nullable=False),  # base64 Ed25519 public key
+    Column("private_key_ciphertext", Text, nullable=False),  # encrypted base64 private key
+    Column("display_name", Text, nullable=False, default=""),
+    Column("created_at", Text, nullable=False),
+)
+
 # --- Mode B join codes (enrollment Phase 2) -----------------------------------
 
 # One-time join codes the panel mints for the instance-initiated (Mode B) handshake: a NAT'd
@@ -192,6 +207,7 @@ __all__ = [
     "artifact_versions",
     "commands",
     "deployments",
+    "fleet_identity",
     "instance_credential",
     "instance_state",
     "instances",

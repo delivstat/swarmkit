@@ -3,11 +3,12 @@
 import { ExternalLink } from "lucide-react";
 import { useCallback } from "react";
 
+import { CopyButton } from "@/components/copy-button";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import type { Config } from "@/lib/types";
+import type { Config, FleetIdentity } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
 function Row({
@@ -53,6 +54,12 @@ export default function SettingsPage() {
 	const { data, error, loading } = useResource<Config>("/config", fetcher, {
 		refreshInterval: 30_000,
 	});
+	const idFetcher = useCallback(() => api.fleetIdentity(), []);
+	const { data: identity } = useResource<FleetIdentity>(
+		"/fleet/identity",
+		idFetcher,
+		{ refreshInterval: 0 },
+	);
 
 	const uiApi = process.env.NEXT_PUBLIC_CONTROL_PLANE_API || "(same-origin)";
 	const uiOidc = process.env.NEXT_PUBLIC_OIDC_AUTHORITY ?? "";
@@ -80,6 +87,46 @@ export default function SettingsPage() {
 								<span className="text-destructive">unreachable: {error}</span>
 							</Row>
 						) : null}
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Fleet identity</CardTitle>
+					</CardHeader>
+					<CardContent className="py-0">
+						<Row label="Fleet id">
+							{identity ? (
+								<span className="inline-flex items-center gap-1">
+									<Mono>{identity.fleet_id}</Mono>
+									<CopyButton value={identity.fleet_id} label="Copy id" />
+								</span>
+							) : (
+								<Mono>…</Mono>
+							)}
+						</Row>
+						{identity?.display_name ? (
+							<Row label="Display name">{identity.display_name}</Row>
+						) : null}
+						<Row label="Public key">
+							{identity ? (
+								<span className="inline-flex items-center gap-1">
+									<Mono>{`${identity.fleet_public_key.slice(0, 16)}…`}</Mono>
+									<CopyButton
+										value={identity.fleet_public_key}
+										label="Copy key"
+									/>
+								</span>
+							) : (
+								<Mono>…</Mono>
+							)}
+						</Row>
+						<Row label="">
+							<span className="text-xs text-muted-foreground">
+								Self-certifying — an instance pins this key at register (design
+								21).
+							</span>
+						</Row>
 					</CardContent>
 				</Card>
 

@@ -81,7 +81,7 @@ def _client(
         return {}
 
     async def register_fn(
-        endpoint: str, enroll_token: str, fleet_id: str, requested_scope: str | None
+        endpoint: str, enroll_token: str, fleet_id: str, requested_scope: str | None, **_id: Any
     ) -> dict[str, Any]:
         return _REGISTER_RESULT
 

@@ -84,16 +84,31 @@ async def fetch_artifacts(
 
 
 async def register(
-    endpoint: str, enroll_token: str, fleet_id: str, requested_scope: str | None = None
+    endpoint: str,
+    enroll_token: str,
+    fleet_id: str,
+    requested_scope: str | None = None,
+    *,
+    fleet_public_key: str | None = None,
+    proof: str | None = None,
+    target_workspace_id: str | None = None,
+    display_name: str | None = None,
 ) -> dict[str, Any]:
     """Register this fleet with an instance (POST /fleet/register) using a one-time enrollment token
     (design 19, Phase 2). The instance issues back a scoped membership credential + its full state
-    in one round trip. The enrollment token is the bearer (its own auth). Returns
-    ``{membership_id, credential, instance_state}``; raises ConnectorError on any failure.
+    in one round trip. The enrollment token is the bearer (its own auth). When *fleet_public_key* +
+    *proof* are supplied, the fleet also proves its identity (design 21) so the instance pins its
+    key. Returns ``{membership_id, credential, instance_state}``; raises ConnectorError on failure.
     """
     body: dict[str, Any] = {"fleet_id": fleet_id}
     if requested_scope:
         body["requested_scope"] = requested_scope
+    if fleet_public_key:
+        body["fleet_public_key"] = fleet_public_key
+        body["proof"] = proof or ""
+        body["target_workspace_id"] = target_workspace_id or ""
+        if display_name:
+            body["display_name"] = display_name
     async with ServeClient(endpoint, enroll_token) as serve:
         result: dict[str, Any] = serve.ok(
             await serve.post("/fleet/register", body), "/fleet/register"

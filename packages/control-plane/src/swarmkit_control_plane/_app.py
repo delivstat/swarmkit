@@ -30,6 +30,7 @@ from swarmkit_control_plane._connector import (
 )
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._deploy import push_artifact
+from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
     DeployFn,
@@ -60,6 +61,7 @@ from swarmkit_control_plane._routes_growth import (
 from swarmkit_control_plane._routes_registry import (
     _mount_command_queue,
     _mount_config,
+    _mount_fleet_identity,
     _mount_instances,
     _mount_join,
     _mount_membership,
@@ -116,6 +118,7 @@ def create_app(
     state_store = InstanceStateStore(registry.engine)
     cred_store = CredentialStore(registry.engine)  # membership secrets, encrypted at rest
     join_store = JoinCodeStore(registry.engine)  # one-time Mode B join codes
+    fleet_identity = FleetIdentity(registry.engine)  # this panel's Ed25519 identity (design 21)
     growth = GrowthService(registry, props, arts, author, eval_run)
     deploy_svc = DeployService(registry, arts, agg, deploy, cred_store)
     ops = [t for t in (operator_tokens or []) if t]
@@ -171,8 +174,9 @@ def create_app(
     _mount_instances(app, registry, verify, jobs, author)
     _mount_token_routes(app, registry, verify)
     _mount_state(app, registry, state_store, arts, fetch_state, fetch_manifest, fetch_artifacts)
-    _mount_register(app, registry, state_store, cred_store, register_fn, refresh_fn)
+    _mount_register(app, registry, state_store, cred_store, register_fn, refresh_fn, fleet_identity)
     _mount_membership(app, registry, cred_store, leave_fn)
+    _mount_fleet_identity(app, fleet_identity)
     _mount_join(app, registry, join_store, state_store)
     _mount_command_queue(app, registry)
     _mount_aggregation(app, agg)

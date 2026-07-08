@@ -1,0 +1,1 @@
+{ "fleet_id": "fleet:abc234", "requested_scope": "manage", "fleet_public_key": "cHVia2V5", "proof": "c2ln", "target_workspace_id": "sterling-oms", "display_name": "Acme" }

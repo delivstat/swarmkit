@@ -63,6 +63,19 @@ _memberships = Table(
     Column("expires_at", Text),
 )
 
+# Pinned fleet public keys (design 21). One row per fleet_id the instance has seen; the (non-secret)
+# Ed25519 public key is pinned trust-on-first-use, so a later same-fleet_id/different-key register
+# is a detectable mismatch. Separate from memberships: an instance may hold several memberships for
+# one fleet, but one pinned identity.
+_fleet_identities = Table(
+    "fleet_identities",
+    _metadata,
+    Column("fleet_id", Text, primary_key=True),
+    Column("public_key", Text, nullable=False),  # base64 Ed25519 public key
+    Column("display_name", Text, nullable=False, default=""),
+    Column("pinned_at", Text, nullable=False),
+)
+
 DEFAULT_ENROLLMENT_TTL_S = 900  # 15 minutes
 
 
@@ -224,6 +237,60 @@ class MembershipStore:
         with self._lock, self._engine.begin() as conn:
             result = conn.execute(
                 delete(_memberships).where(_memberships.c.membership_id == membership_id)
+            )
+        return result.rowcount > 0
+
+    # ---- pinned fleet identities (design 21) --------------------------------
+
+    def pin_fleet_key(self, fleet_id: str, public_key_b64: str, display_name: str = "") -> str:
+        """Trust-on-first-use pin of a fleet's public key. Returns:
+
+        * ``"pinned"`` — first time this ``fleet_id`` is seen; the key is recorded.
+        * ``"match"``  — already pinned to the *same* key (a benign re-register).
+        * ``"mismatch"`` — already pinned to a *different* key (the register must be rejected).
+        """
+        with self._lock, self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    select(_fleet_identities.c.public_key).where(
+                        _fleet_identities.c.fleet_id == fleet_id
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row is not None:
+                return "match" if row["public_key"] == public_key_b64 else "mismatch"
+            conn.execute(
+                insert(_fleet_identities).values(
+                    fleet_id=fleet_id,
+                    public_key=public_key_b64,
+                    display_name=display_name,
+                    pinned_at=_now().isoformat(),
+                )
+            )
+        return "pinned"
+
+    def get_fleet_key(self, fleet_id: str) -> str | None:
+        """The pinned base64 public key for a fleet, or None if never pinned."""
+        with self._lock, self._engine.connect() as conn:
+            row = (
+                conn.execute(
+                    select(_fleet_identities.c.public_key).where(
+                        _fleet_identities.c.fleet_id == fleet_id
+                    )
+                )
+                .mappings()
+                .first()
+            )
+        return row["public_key"] if row else None
+
+    def unpin_fleet_key(self, fleet_id: str) -> bool:
+        """Forget a pinned fleet key (owner action) so the fleet may deliberately re-key. Returns
+        True if a pin was removed."""
+        with self._lock, self._engine.begin() as conn:
+            result = conn.execute(
+                delete(_fleet_identities).where(_fleet_identities.c.fleet_id == fleet_id)
             )
         return result.rowcount > 0
 

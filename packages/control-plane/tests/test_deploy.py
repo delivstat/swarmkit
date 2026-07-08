@@ -173,7 +173,7 @@ def _manage_client(tmp_path: Path, *, scope: str = "manage") -> tuple[TestClient
         return {"deployed": aid}
 
     async def register_fn(
-        endpoint: str, enroll_token: str, fleet_id: str, requested_scope: str | None
+        endpoint: str, enroll_token: str, fleet_id: str, requested_scope: str | None, **_id: Any
     ) -> dict[str, Any]:
         return {
             "membership_id": "mem-1",

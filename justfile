@@ -87,6 +87,11 @@ demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-w
 demo-protocol-schema:
     uv run python scripts/demo_protocol_schema.py
 
+# Demo fleet identity (design 21): the register proof-of-possession handshake + TOFU pinning +
+# rogue rejection, end to end against a live serve.
+demo-fleet-identity:
+    uv run python scripts/demo_fleet_identity.py
+
 # Regenerate both pydantic models and TypeScript types from the canonical
 # JSON Schemas. Run after any schema edit per
 # docs/notes/schema-change-discipline.md.

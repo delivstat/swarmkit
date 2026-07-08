@@ -20,6 +20,7 @@ from swarmkit_schema import (
 
 ALL: tuple[ProtocolSchemaName, ...] = (
     "credential",
+    "fleet-identity",
     "instance-state",
     "register-request",
     "register-response",

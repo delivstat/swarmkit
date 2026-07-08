@@ -78,9 +78,10 @@ def _required_action(method: str, path: str) -> str | None:  # noqa: PLR0911
     # seam (it authenticates with the one-time enrollment token itself; see the middleware).
     if path == "/fleet/enroll-token":
         return "admin"
-    # Listing / ejecting memberships is the instance owner's call (admin). /fleet/refresh is
-    # exempt at the seam (it authenticates with the current membership key; see the middleware).
-    if path.startswith("/fleet/membership"):
+    # Listing / ejecting memberships + unpinning a fleet identity are the instance owner's call
+    # (admin). /fleet/refresh is exempt at the seam (it authenticates with the current membership
+    # key; see the middleware).
+    if path.startswith("/fleet/membership") or path.startswith("/fleet/identity"):
         return "admin"
     # Delta-sync body fetch is a content read; it uses POST only to carry the ref list.
     if path == "/fleet/state/artifacts":

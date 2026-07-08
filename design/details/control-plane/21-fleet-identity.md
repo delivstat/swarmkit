@@ -1,8 +1,8 @@
 # Fleet identity — self-certifying `fleet_id` + pinned public keys
 
-Status: design, pending review. Resolves [19](19-fleet-enrollment-protocol.md) open question 1
-("how does an instance identify a fleet trustably"). Builds on the enrollment handshake (doc 19) and
-the membership model.
+Status: ✅ shipped (PR-fleet-identity). Resolves [19](19-fleet-enrollment-protocol.md) open question
+1 ("how does an instance identify a fleet trustably"). Builds on the enrollment handshake (doc 19)
+and the membership model.
 
 ## Goal
 
