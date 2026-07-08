@@ -184,9 +184,21 @@ def connect(
         typer.Argument(help="Control-plane panel base URL.", show_default=False),
     ],
     instance_id: Annotated[
-        str,
+        str | None,
         typer.Option("--instance-id", help="Instance id from enrollment.", show_default=False),
-    ],
+    ] = None,
+    join_code: Annotated[
+        str | None,
+        typer.Option(
+            "--join-code",
+            help="One-time Mode B join code from the panel — bootstraps instance-id + token.",
+            show_default=False,
+        ),
+    ] = None,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", help="Display name for this instance when joining."),
+    ] = None,
     panel_token: Annotated[
         str | None,
         typer.Option("--panel-token", help="Token ref for the panel (env:/file:/literal)."),
@@ -216,20 +228,36 @@ def connect(
 
     Reaches the control-plane panel over outbound HTTPS only, drains its per-instance command
     queue, and executes each command against local serve over loopback. No inbound port required.
+
+    First-time edge: pass ``--join-code`` (minted in the fleet UI) to enroll via the Mode B join
+    handshake — the connector pulls its own state from local serve, posts it to the panel, and is
+    issued an instance id + poll token in one step. Already enrolled: pass ``--instance-id`` +
+    ``--panel-token`` instead.
     """
 
     from swarmkit_runtime.auth._secrets import resolve_secret_ref  # noqa: PLC0415
     from swarmkit_runtime.connect import run_connector  # noqa: PLC0415
 
+    if not (instance_id or join_code):
+        raise typer.BadParameter(
+            "provide --instance-id (already enrolled) or --join-code (Mode B)."
+        )
+
     resolved_panel = resolve_secret_ref(panel_token) if panel_token else None
     resolved_serve = resolve_secret_ref(serve_token) if serve_token else None
+    resolved_join = resolve_secret_ref(join_code) if join_code else None
 
-    typer.echo(f"connector: polling {panel_url} as instance {instance_id} (tier={tier})")
+    if resolved_join:
+        typer.echo(f"connector: joining fleet at {panel_url} via join code")
+    else:
+        typer.echo(f"connector: polling {panel_url} as instance {instance_id} (tier={tier})")
     asyncio.run(
         run_connector(
             panel_url=panel_url,
-            instance_id=instance_id,
+            instance_id=instance_id or "",
             panel_token=resolved_panel,
+            join_code=resolved_join,
+            name=name or "",
             serve_url=serve_url,
             serve_token=resolved_serve,
             granted_tier=tier,
