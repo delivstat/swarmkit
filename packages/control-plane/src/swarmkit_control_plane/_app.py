@@ -120,7 +120,7 @@ def create_app(
     join_store = JoinCodeStore(registry.engine)  # one-time Mode B join codes
     fleet_identity = FleetIdentity(registry.engine)  # this panel's Ed25519 identity (design 21)
     growth = GrowthService(registry, props, arts, author, eval_run)
-    deploy_svc = DeployService(registry, arts, agg, deploy, cred_store)
+    deploy_svc = DeployService(registry, arts, agg, deploy, cred_store, fleet_identity)
     ops = [t for t in (operator_tokens or []) if t]
 
     # Default-secure: an unauthenticated panel can mint serve tokens and deploy artifacts,

@@ -45,6 +45,12 @@ def proof_message(enrollment_token: str, workspace_id: str) -> bytes:
     return f"{enrollment_token}:{workspace_id}".encode()
 
 
+def deploy_message(kind: str, artifact_id: str, content_hash: str) -> bytes:
+    """The bytes the fleet signs to authorize a deploy — must match serve's ``deploy_message``
+    (``deploy:<kind>:<id>:<content_hash>``, design 22)."""
+    return f"deploy:{kind}:{artifact_id}:{content_hash}".encode()
+
+
 class FleetIdentity(Store):
     """The panel's persistent Ed25519 fleet identity (private key encrypted at rest)."""
 
@@ -104,6 +110,12 @@ class FleetIdentity(Store):
         signature = self._private_key.sign(proof_message(enrollment_token, workspace_id))
         return base64.b64encode(signature).decode("ascii")
 
+    def sign_deploy(self, kind: str, artifact_id: str, content_hash: str) -> str:
+        """Sign ``deploy:<kind>:<id>:<content_hash>`` — the base64 signature the instance verifies
+        against the pinned key before applying a deploy (design 22)."""
+        signature = self._private_key.sign(deploy_message(kind, artifact_id, content_hash))
+        return base64.b64encode(signature).decode("ascii")
+
     def public_dict(self) -> dict[str, str]:
         """The non-secret identity — safe to expose (never the private key)."""
         return {
@@ -113,4 +125,10 @@ class FleetIdentity(Store):
         }
 
 
-__all__ = ["FLEET_ID_PREFIX", "FleetIdentity", "fleet_id_from_public_key", "proof_message"]
+__all__ = [
+    "FLEET_ID_PREFIX",
+    "FleetIdentity",
+    "deploy_message",
+    "fleet_id_from_public_key",
+    "proof_message",
+]

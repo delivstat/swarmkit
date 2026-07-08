@@ -37,7 +37,7 @@ def _service(
     if deploy is None:
 
         async def deploy(
-            endpoint: str, token_ref: str, kind: str, aid: str, content: Any
+            endpoint: str, token_ref: str, kind: str, aid: str, content: Any, **_sig: Any
         ) -> dict[str, Any]:
             calls.append((endpoint, kind, aid, content))
             return {"deployed": aid}
@@ -89,7 +89,7 @@ async def test_failed_push_records_no_deployment(tmp_path: Path) -> None:
     """The ordering invariant: a failed Mode-A push leaves no phantom 'deployed v1' record."""
 
     async def boom(
-        endpoint: str, token_ref: str, kind: str, aid: str, content: Any
+        endpoint: str, token_ref: str, kind: str, aid: str, content: Any, **_sig: Any
     ) -> dict[str, Any]:
         raise DeployError("connection refused")
 
