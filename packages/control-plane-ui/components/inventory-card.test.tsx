@@ -90,18 +90,22 @@ describe("InventoryCard", () => {
 		expect(screen.getByText(/"kind": "Topology"/)).toBeTruthy();
 	});
 
-	it("Sync now pulls then revalidates", async () => {
+	it("Sync now pulls then revalidates and shows the delta summary", async () => {
 		mockApi.instanceState.mockRejectedValueOnce(new Error("404")); // not synced yet
 		mockApi.syncInstance.mockResolvedValue({
 			instance_id: "i1",
 			synced_at: "x",
 			counts: { topologies: 1 },
+			delta: { mode: "delta", fetched: 1, reused: 40, removed: 0 },
 		});
 		mockApi.instanceState.mockResolvedValue(CACHED); // after sync, cache has data
 		renderCard();
 		fireEvent.click(await screen.findByRole("button", { name: /Sync now/i }));
 		await waitFor(() =>
 			expect(mockApi.syncInstance).toHaveBeenCalledWith("i1"),
+		);
+		await waitFor(() =>
+			expect(screen.getByText(/1 fetched, 40 unchanged/i)).toBeTruthy(),
 		);
 		await waitFor(() =>
 			expect(screen.getByText("solution-design")).toBeTruthy(),
