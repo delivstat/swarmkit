@@ -11,13 +11,16 @@ from fastapi import FastAPI, HTTPException
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._connector import ConnectorError
 from swarmkit_control_plane._credential_store import CredentialStore
+from swarmkit_control_plane._delta import pull_state
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
     JobsFn,
     LeaveFn,
     RefreshFn,
     RegisterFn,
+    StateArtifactsFn,
     StateFn,
+    StateManifestFn,
     VerifyFn,
 )
 from swarmkit_control_plane._fntypes import extract_artifact as _extract_artifact
@@ -240,13 +243,17 @@ def _mount_state(
     state_store: InstanceStateStore,
     artifacts: ArtifactStore,
     fetch_state: StateFn,
+    fetch_manifest: StateManifestFn,
+    fetch_artifacts: StateArtifactsFn,
 ) -> None:
     """Observed-state cache routes (fleet enrollment Phase 1, design 19) + adopt (Phase 3, doc 20).
 
-    ``/sync`` pulls the instance's full state (Mode A) and caches it; ``/state`` returns the cached
-    snapshot — so an instance's inventory stays inspectable even when it's **offline**. ``/adopt``
-    promotes one cached artifact into the deployable registry (the observed snapshot is kept
-    separate from the registry — adoption is the explicit bridge).
+    ``/sync`` refreshes the cached state — **delta by content_hash** after the first pull (fetch the
+    manifest, diff hashes vs the cache, fetch only changed bodies), falling back to a full pull on
+    the first sync or against a pre-delta instance. ``/state`` returns the cached snapshot — so an
+    instance's inventory stays inspectable even when it's **offline**. ``/adopt`` promotes a cached
+    artifact into the deployable registry (the observed snapshot is kept separate — adoption is the
+    explicit bridge).
     """
 
     @app.post("/instances/{instance_id}/sync")
@@ -258,8 +265,16 @@ def _mount_state(
             raise HTTPException(
                 409, "sync pulls /fleet/state — only valid for direct (Mode A) instances"
             )
+        cached = state_store.get(instance_id)
         try:
-            state = await fetch_state(inst.endpoint, inst.token_ref)
+            state, summary = await pull_state(
+                endpoint=inst.endpoint,
+                token_ref=inst.token_ref,
+                cached_state=cached["state"] if cached else None,
+                fetch_state=fetch_state,
+                fetch_manifest=fetch_manifest,
+                fetch_artifacts=fetch_artifacts,
+            )
         except ConnectorError as exc:
             registry.update_health(instance_id, health="unreachable")
             raise HTTPException(502, f"state sync failed: {exc}") from exc
@@ -269,6 +284,7 @@ def _mount_state(
             "instance_id": instance_id,
             "synced_at": synced_at,
             "counts": {kind: len(items) for kind, items in arts.items()},
+            "delta": summary,  # {mode, fetched, reused, removed} — bytes saved on the wire
         }
 
     @app.get("/instances/{instance_id}/state")

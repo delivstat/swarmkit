@@ -13,6 +13,10 @@ from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
 VerifyFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref) -> serve /fleet/state body (full InstanceState)
 StateFn = Callable[[str, str], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref) -> serve /fleet/state/manifest body (names + hashes, no content)
+StateManifestFn = Callable[[str, str], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref, refs) -> serve /fleet/state/artifacts body (only the requested bodies)
+StateArtifactsFn = Callable[[str, str, list[tuple[str, str]]], Awaitable[dict[str, Any]]]
 # (endpoint, enroll_token, fleet_id, requested_scope) -> {membership_id, credential, instance_state}
 RegisterFn = Callable[[str, str, str, "str | None"], Awaitable[dict[str, Any]]]
 # (endpoint, membership_key) -> {membership_id, credential} (rotated key)

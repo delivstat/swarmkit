@@ -24,6 +24,12 @@ class ConnectorError(Exception):
     """Raised when the panel cannot reach, authenticate to, or get a good status from serve."""
 
 
+class ManifestUnsupported(ConnectorError):
+    """Raised when an instance has no ``/fleet/state/manifest`` (a pre-delta-sync serve). The panel
+    catches this and falls back to a full ``/fleet/state`` pull — so delta sync degrades gracefully
+    against older instances."""
+
+
 def resolve_secret_ref(ref: str) -> str | None:
     """Resolve a secret reference to its value — ``env:NAME`` / ``file:/path`` / a literal.
 
