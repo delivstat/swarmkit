@@ -151,15 +151,22 @@ Additive + default-secure:
 proof → instance pins it; a rogue client claiming the same `fleet_id` without the key is rejected; the
 panel re-registers a second instance and both show the same verifiable `fleet_id`.
 
-## Open questions
+## Decisions (resolved at review)
 
-1. **`fleet_id` form.** Pure key fingerprint (`fleet:<b32>`) — self-certifying but opaque — vs an
-   operator-friendly label *bound to* a key (`acme-prod` + pinned key, label is cosmetic). *(Lean:
-   fingerprint id; carry an optional human `display_name` alongside.)*
-2. **Require vs opportunistic off-loopback.** Default `server.fleet.require_identity` to on when
-   `server.auth` is on, or keep it opt-in for a release? *(Lean: opt-in one release, then flip.)*
-3. **Rotation.** Fleet key rotation = new `fleet_id` (new identity, re-pin everywhere) vs a signed
-   rotation record chaining old→new key? *(Lean: new identity for v1; chained rotation later.)*
-4. **Sign more than the token?** Bind the proof to `fleet_id`+`instance endpoint` too, not just the
-   token, to prevent a proof minted for instance A being replayed at instance B in the same TTL
-   window? *(Lean: include the instance's `workspace_id` in the signed payload.)*
+1. **`fleet_id` form → key fingerprint + `display_name`.** `fleet_id = fleet:<base32 sha256 pubkey>`
+   (self-certifying, unforgeable); an optional cosmetic `display_name` rides alongside for humans.
+2. **Off-loopback enforcement → opt-in, then flip.** `server.fleet.require_identity` defaults **off**;
+   instances pin **opportunistically** when a key is presented. A later release flips the default to
+   on (when `server.auth` is on). Loopback is always optional.
+3. **Proof binds token + `workspace_id`.** The signature is over `enrollment_token || ":" ||
+   workspace_id`, so a proof minted for instance A can't be replayed at instance B inside the token
+   TTL. (The token is already single-use, but binding the target is defence in depth.)
+4. **Rotation → new identity for v1.** Fleet key rotation means a new `fleet_id` (re-pin everywhere);
+   a signed old→new chain is deferred.
+
+## Open questions (deferred)
+
+- **Signed pushes.** Requiring the fleet to sign each deploy (so a stolen membership key alone can't
+  push) — the next slice this identity enables.
+- **Chained key rotation.** A signed rotation record so a fleet can re-key without re-pinning
+  everywhere.
