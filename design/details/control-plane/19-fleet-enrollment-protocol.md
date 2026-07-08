@@ -263,9 +263,11 @@ instance happens to run* and *what the fleet has vetted and can deploy* (the bas
    pluggable SecretBox — Fernet local / Vault-Transit) + refresh/rotate + revoke; `GET /fleet/state`
    also accepts the membership key; the panel enroll/rotate action + the "enroll (poll)" join-code UI
    + `swarmkit connect --join-code` connector bootstrap wire onto it. (PRs #453–#467.)
-3. **Manage + adopt — next.** `manage` scope + governed deploy over the membership credential (reuses
+3. **Manage + adopt — ✅ shipped.** `manage` scope + governed deploy over the membership credential
+   (scope-aware serve auth-seam fallback: monitor→read, manage→the deploy PUTs; reuses
    [15](15-artifact-registry.md)/[17](17-growth-loop.md)) + the explicit "adopt observed artifact
-   into registry" action + multi-fleet UX.
+   into registry" action + panel-perspective multi-fleet visibility with credential-native
+   self-leave. See [20](20-manage-and-adopt.md). (PRs #469–#472.)
 
 ## Test plan
 
