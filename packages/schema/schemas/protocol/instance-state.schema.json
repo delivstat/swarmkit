@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/protocol/instance-state.schema.json",
+  "title": "SwarmKit InstanceState",
+  "description": "The full observed state of a swarmkit instance — every artifact's content, not just names (unlike the cheap names-only /capabilities probe). Returned by serve `GET /fleet/state` and rides along in register/join; a fleet caches it so the instance stays inspectable offline. See design details/control-plane/19-fleet-enrollment-protocol.md (§InstanceState).",
+  "type": "object",
+  "required": ["apiVersion", "kind", "workspace_id", "schema_version", "artifacts"],
+  "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "InstanceState" },
+    "workspace_id": {
+      "type": "string",
+      "description": "The instance's workspace id (metadata.id)."
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "swarmkit-schema version the instance validates against (compat gate)."
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "When this snapshot was produced (ISO-8601)."
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["topologies", "skills", "archetypes", "triggers"],
+      "properties": {
+        "topologies": { "type": "array", "items": { "$ref": "#/$defs/artifactEntry" } },
+        "skills": { "type": "array", "items": { "$ref": "#/$defs/artifactEntry" } },
+        "archetypes": { "type": "array", "items": { "$ref": "#/$defs/artifactEntry" } },
+        "triggers": { "type": "array", "items": { "$ref": "#/$defs/artifactEntry" } }
+      },
+      "description": "Per-kind arrays of the instance's artifacts, each with content + a content hash."
+    },
+    "providers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Model-provider ids configured on the instance."
+    },
+    "governance_provider": {
+      "type": "string",
+      "description": "The governance provider in force (e.g. mock, agt)."
+    },
+    "health": {
+      "type": "object",
+      "description": "Liveness summary — at least a status field."
+    }
+  },
+  "$defs": {
+    "artifactEntry": {
+      "type": "object",
+      "required": ["id", "content_hash"],
+      "properties": {
+        "id": { "type": "string", "description": "Artifact id (metadata.id)." },
+        "version": { "type": "string", "description": "Artifact version (metadata.version)." },
+        "content_hash": {
+          "type": "string",
+          "description": "SHA-256 of the canonicalised content — matches the fleet artifact registry's hash so an adopted artifact lines up."
+        },
+        "content": {
+          "description": "The artifact's full content (the parsed YAML), as an object.",
+          "type": "object"
+        }
+      }
+    }
+  }
+}

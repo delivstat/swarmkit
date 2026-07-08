@@ -1,0 +1,32 @@
+{
+  "membership_id": "mem-abc123",
+  "credential": {
+    "type": "api_key",
+    "value": "sk-membership-secret",
+    "scope": "manage",
+    "fingerprint": "abc123def456"
+  },
+  "instance_state": {
+    "apiVersion": "swarmkit/v1",
+    "kind": "InstanceState",
+    "workspace_id": "sterling-oms",
+    "schema_version": "1.7.0",
+    "generated_at": "2026-07-08T10:00:00Z",
+    "artifacts": {
+      "topologies": [
+        {
+          "id": "solution-design",
+          "version": "1.0.0",
+          "content_hash": "abcdef1234567890",
+          "content": { "apiVersion": "swarmkit/v1", "kind": "Topology" }
+        }
+      ],
+      "skills": [],
+      "archetypes": [],
+      "triggers": []
+    },
+    "providers": ["anthropic"],
+    "governance_provider": "mock",
+    "health": { "status": "ok" }
+  }
+}

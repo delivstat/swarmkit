@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/protocol/register-request.schema.json",
+  "title": "SwarmKit Fleet Register Request",
+  "description": "Mode A (panel → instance) enrollment request body for serve `POST /fleet/register`. The one-time enrollment token is the Bearer credential (not in the body) and is authoritative for scope; `requested_scope` is advisory. See design details/control-plane/19-fleet-enrollment-protocol.md (§Endpoint spec).",
+  "type": "object",
+  "required": ["fleet_id"],
+  "properties": {
+    "fleet_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The joining fleet's self-identifier."
+    },
+    "requested_scope": {
+      "enum": ["monitor", "manage"],
+      "description": "Advisory; the enrollment token's scope is authoritative (a monitor token can't self-upgrade to manage)."
+    }
+  }
+}

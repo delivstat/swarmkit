@@ -1,0 +1,4 @@
+{
+  "join_code": "c",
+  "instance_state": { "apiVersion": "swarmkit/v1", "kind": "Topology", "workspace_id": "w", "schema_version": "1", "artifacts": { "topologies": [], "skills": [], "archetypes": [], "triggers": [] } }
+}

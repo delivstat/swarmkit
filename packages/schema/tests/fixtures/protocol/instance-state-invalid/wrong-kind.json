@@ -1,0 +1,7 @@
+{
+  "apiVersion": "swarmkit/v1",
+  "kind": "Topology",
+  "workspace_id": "w",
+  "schema_version": "1.7.0",
+  "artifacts": { "topologies": [], "skills": [], "archetypes": [], "triggers": [] }
+}

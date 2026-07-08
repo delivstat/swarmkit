@@ -47,6 +47,24 @@ Every time you change anything under `packages/schema/schemas/`:
 
 Generated pydantic models and TS types both cover shape (required fields, types, enums, patterns) but do not translate `allOf` / `if-then` conditional rules. Full validation happens through `swarmkit_schema.validate()` in Python and `@swarmkit/schema.validate()` in TypeScript — both use JSON Schema directly. Runtime code calls `validate()` first, then narrows to the typed interface. See `design/details/pydantic-codegen.md` and `design/details/ts-codegen.md` for the enumerated list of rules and the explicit decision to leave this gap open in favour of validation-UX investment (task #23).
 
+### Protocol schemas (`schemas/protocol/`) — a separate namespace
+
+The fleet-enrollment wire schemas (register/join + `InstanceState` + credential, design
+`details/control-plane/19-fleet-enrollment-protocol.md`) live under `schemas/protocol/`. They are
+API request/response contracts a third-party client validates against — **not** user-authored
+artifacts — so the artifact rules above apply only partially:
+
+- **Still applies:** source of truth is the `.schema.json`; keep the wheel-bundled copy under
+  `python/src/swarmkit_schema/_schemas/protocol/` byte-identical (copy by hand); add valid + invalid
+  fixtures under `tests/fixtures/protocol/<message>/` and `<message>-invalid/` (JSON, not YAML —
+  they're API bodies), exercised by both languages.
+- **Does NOT apply:** no pydantic/TS codegen (they are not in `codegen_pydantic.py`'s `ARTIFACTS`
+  map, so the codegen-drift job ignores them); no `apiVersion`-artifact rules.
+- **Validate with the dedicated entry points:** `validate_protocol()` (Python) / `validateProtocol()`
+  (TypeScript). Response schemas cross-reference the credential + instance-state schemas by `$id`, so
+  both validators load every protocol schema into one registry/Ajv for `$ref` resolution — if you add
+  a new protocol message, add it to `ProtocolSchemaName` in both `__init__.py` and `index.ts`.
+
 ## Why this matters
 
 Two languages validating against one schema is the contract we make with the community: a topology file is valid regardless of which language's tooling reads it. Drift between Python and TS would break that contract silently — a file that passes `swarmkit validate` in Python might fail in the UI's live validation.
