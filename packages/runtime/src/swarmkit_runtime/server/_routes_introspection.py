@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
 
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.persistence import Store
@@ -12,12 +13,23 @@ from swarmkit_runtime.persistence import Store
 from ._helpers import (
     _build_capabilities,
     _build_instance_state,
+    _filter_instance_state,
     _get_runtime,
+    _instance_state_manifest,
 )
 from ._services import ArtifactService
 
 
-def _register_introspection_routes(app: FastAPI) -> None:
+class ArtifactRef(BaseModel):
+    collection: str  # topologies | skills | archetypes | triggers
+    id: str
+
+
+class ArtifactFetchRequest(BaseModel):
+    refs: list[ArtifactRef] = []
+
+
+def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
     """Register health, topologies, skills, archetypes, validate, triggers endpoints."""
 
     @app.get("/health")
@@ -71,6 +83,26 @@ def _register_introspection_routes(app: FastAPI) -> None:
         """
         svc = ArtifactService(request.app.state.workspace_path)
         return _build_instance_state(_get_runtime(request), svc)
+
+    @app.get("/fleet/state/manifest")
+    async def fleet_state_manifest(request: Request) -> dict[str, Any]:
+        """The names-only manifest of the observed state — every artifact's id/version/content_hash,
+        *without* content. A fleet pulls this (cheap), diffs the hashes against its cache, and then
+        fetches only the changed bodies via POST /fleet/state/artifacts — the delta-sync primitive
+        (design 19 §delta sync). Same auth as /fleet/state (serve:read or a monitor+ membership)."""
+        svc = ArtifactService(request.app.state.workspace_path)
+        return _instance_state_manifest(_build_instance_state(_get_runtime(request), svc))
+
+    @app.post("/fleet/state/artifacts")
+    async def fleet_state_artifacts(req: ArtifactFetchRequest, request: Request) -> dict[str, Any]:
+        """Fetch the *content* of specific artifacts (the body-fetch half of delta sync). The body
+        lists ``refs: [{collection, id}]`` (collection = topologies/skills/archetypes/triggers);
+        the response is an InstanceState carrying only those artifacts. A read despite the POST verb
+        (POST only to carry the ref list). Same auth as /fleet/state."""
+        svc = ArtifactService(request.app.state.workspace_path)
+        state = _build_instance_state(_get_runtime(request), svc)
+        refs = [(r.collection, r.id) for r in req.refs]
+        return _filter_instance_state(state, refs)
 
     @app.get("/triggers")
     async def list_triggers(request: Request) -> list[dict[str, Any]]:

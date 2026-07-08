@@ -15,7 +15,9 @@
 ``GET /fleet/state`` (in ``_routes_introspection``) now also accepts a membership key: when the
 transport-auth seam rejects the bearer, a valid membership (monitor+ scope) authorizes the read
 (the fallback lives in the serve auth middleware, ``_membership_authenticates``). This lets an
-enrolled fleet read state with the credential it was issued, not a shared serve token.
+enrolled fleet read state with the credential it was issued, not a shared serve token. The
+delta-sync pair — ``GET /fleet/state/manifest`` (names + hashes, no content) and
+``POST /fleet/state/artifacts`` (fetch only the changed bodies) — share that same auth.
 """
 
 from __future__ import annotations
