@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { JoinCodePanel } from "@/components/join-code-panel";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -167,6 +168,8 @@ export default function NewInstancePage() {
 						</form>
 					</CardContent>
 				</Card>
+
+				<JoinCodePanel />
 			</div>
 		</>
 	);

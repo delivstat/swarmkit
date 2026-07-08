@@ -12,6 +12,7 @@ import type {
 	Gap,
 	Instance,
 	Job,
+	JoinCodeResult,
 	MintResult,
 	Observability,
 	Proposal,
@@ -127,6 +128,13 @@ export const api = {
 		),
 	enrollInstance: (body: EnrollBody) =>
 		request<Instance>("/instances", {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+	// Mode B (design 19): mint a one-time join code to hand to a NAT'd edge instance, which
+	// self-registers via `swarmkit connect --join-code`. Operator action.
+	mintJoinCode: (body: { name?: string; tier?: string } = {}) =>
+		request<JoinCodeResult>("/fleet/join-code", {
 			method: "POST",
 			body: JSON.stringify(body),
 		}),
