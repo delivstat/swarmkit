@@ -256,6 +256,13 @@ export interface Membership {
 	created_at: string;
 }
 
+/** GET /fleet/identity — this panel's self-certifying fleet identity (design 21, no private key). */
+export interface FleetIdentity {
+	fleet_id: string;
+	fleet_public_key: string;
+	display_name: string;
+}
+
 /** POST /fleet/join-code — a one-time Mode B join code the operator hands to an edge instance. */
 export interface JoinCodeResult {
 	join_code: string;

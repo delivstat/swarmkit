@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/protocol/fleet-identity.schema.json",
+  "title": "SwarmKit Fleet Identity",
+  "description": "A fleet's self-certifying public identity (design details/control-plane/21-fleet-identity.md). The fleet_id is derived from the Ed25519 public key (fleet:<base32 sha256 pubkey>), so it can't be forged without the private key. Non-secret — the panel exposes this at GET /fleet/identity and an instance pins it at register.",
+  "type": "object",
+  "required": ["fleet_id", "fleet_public_key"],
+  "properties": {
+    "fleet_id": {
+      "type": "string",
+      "pattern": "^fleet:[a-z2-7]+$",
+      "description": "Self-certifying id: fleet: + lowercased base32 of sha256(public key)."
+    },
+    "fleet_public_key": {
+      "type": "string",
+      "description": "Base64 Ed25519 public key the id derives from."
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Optional human label (cosmetic)."
+    }
+  }
+}

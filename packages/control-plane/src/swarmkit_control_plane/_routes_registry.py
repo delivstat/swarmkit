@@ -12,6 +12,7 @@ from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._connector import ConnectorError
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._delta import pull_state
+from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
     JobsFn,
@@ -335,6 +336,15 @@ def _mount_state(
 DEFAULT_FLEET_ID = "swarmkit-fleet"
 
 
+def _mount_fleet_identity(app: FastAPI, identity: FleetIdentity) -> None:
+    """Expose this panel's non-secret fleet identity (design 21) — the `fleet_id` + public key an
+    operator can verify against what an instance pinned. The private key is never exposed."""
+
+    @app.get("/fleet/identity")
+    async def get_fleet_identity() -> dict[str, str]:
+        return identity.public_dict()
+
+
 def _mount_membership(
     app: FastAPI,
     registry: SqliteRegistry,
@@ -383,10 +393,12 @@ def _mount_register(
     cred_store: CredentialStore,
     register_fn: RegisterFn,
     refresh_fn: RefreshFn,
+    identity: FleetIdentity,
 ) -> None:
     """The register handshake (design 19, Phase 2): the panel joins an instance with a one-time
     enrollment token, receives a scoped membership credential (stored encrypted) + the instance's
-    full state (cached), in one call. ``/refresh`` rotates the stored credential."""
+    full state (cached), in one call. The panel proves its **fleet identity** (design 21) by signing
+    the enrollment token so the instance pins its key. ``/refresh`` rotates the credential."""
 
     @app.post("/instances/{instance_id}/register")
     async def register_instance(instance_id: str, req: RegisterInstanceRequest) -> dict[str, Any]:
@@ -397,10 +409,21 @@ def _mount_register(
             raise HTTPException(
                 409, "register pulls /fleet/register — only valid for direct (Mode A)"
             )
-        fleet_id = req.fleet_id or DEFAULT_FLEET_ID
+        # The fleet_id is the panel's self-certifying identity (design 21), not an operator string.
+        fleet_id = identity.fleet_id
+        # Bind the proof to the instance's workspace when known (from its capabilities); "" is
+        # accepted by serve as an unbound proof (still token-fresh).
+        target_ws = str((inst.capabilities or {}).get("workspace_id", ""))
         try:
             result = await register_fn(
-                inst.endpoint, req.enroll_token, fleet_id, req.requested_scope
+                inst.endpoint,
+                req.enroll_token,
+                fleet_id,
+                req.requested_scope,
+                fleet_public_key=identity.public_key_b64,
+                proof=identity.sign_proof(req.enroll_token, target_ws),
+                target_workspace_id=target_ws,
+                display_name=identity.display_name,
             )
         except ConnectorError as exc:
             raise HTTPException(502, f"register failed: {exc}") from exc

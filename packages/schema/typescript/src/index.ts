@@ -18,6 +18,9 @@ import archetypeSchema from "../../schemas/archetype.schema.json" with {
 import credentialSchema from "../../schemas/protocol/credential.schema.json" with {
 	type: "json",
 };
+import fleetIdentitySchema from "../../schemas/protocol/fleet-identity.schema.json" with {
+	type: "json",
+};
 import instanceStateSchema from "../../schemas/protocol/instance-state.schema.json" with {
 	type: "json",
 };
@@ -63,6 +66,7 @@ const SCHEMAS = {
 // Distinct from the artifact schemas: API request/response contracts, not user-authored artifacts.
 export type ProtocolSchemaName =
 	| "credential"
+	| "fleet-identity"
 	| "instance-state"
 	| "register-request"
 	| "register-response"
@@ -71,6 +75,7 @@ export type ProtocolSchemaName =
 
 const PROTOCOL_SCHEMAS = {
 	credential: credentialSchema,
+	"fleet-identity": fleetIdentitySchema,
 	"instance-state": instanceStateSchema,
 	"register-request": registerRequestSchema,
 	"register-response": registerResponseSchema,

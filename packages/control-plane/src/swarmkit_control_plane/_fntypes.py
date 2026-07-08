@@ -17,8 +17,10 @@ StateFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 StateManifestFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref, refs) -> serve /fleet/state/artifacts body (only the requested bodies)
 StateArtifactsFn = Callable[[str, str, list[tuple[str, str]]], Awaitable[dict[str, Any]]]
-# (endpoint, enroll_token, fleet_id, requested_scope) -> {membership_id, credential, instance_state}
-RegisterFn = Callable[[str, str, str, "str | None"], Awaitable[dict[str, Any]]]
+# (endpoint, enroll_token, fleet_id, requested_scope, **identity) -> {membership_id, credential,
+# instance_state}. Ellipsis args: the real fn takes keyword-only identity params (design 21) the
+# test stubs may omit — the route passes them as kwargs.
+RegisterFn = Callable[..., Awaitable[dict[str, Any]]]
 # (endpoint, membership_key) -> {membership_id, credential} (rotated key)
 RefreshFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, membership_key, membership_id) -> serve response (self-leave a fleet)
