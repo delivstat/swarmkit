@@ -7,6 +7,7 @@ import { useCallback, useState } from "react";
 
 import { CommandQueue } from "@/components/command-queue";
 import { DeploymentsCard } from "@/components/deployments-card";
+import { EnrollmentPanel } from "@/components/enrollment-panel";
 import { ConnectionBadge, HealthBadge } from "@/components/health-badge";
 import { InventoryCard } from "@/components/inventory-card";
 import { LiveJobsCard } from "@/components/live-jobs-card";
@@ -173,6 +174,10 @@ export default function InstanceDetailPage() {
 				</Card>
 
 				<MintPanel instance={instance} onMinted={refresh} />
+
+				{instance.connection === "direct" ? (
+					<EnrollmentPanel instance={instance} onChanged={refresh} />
+				) : null}
 
 				{instance.connection === "poll" ? (
 					<CommandQueue instanceId={instance.id} tier={instance.tier} />

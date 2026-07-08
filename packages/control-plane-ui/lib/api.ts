@@ -15,6 +15,8 @@ import type {
 	MintResult,
 	Observability,
 	Proposal,
+	RefreshResult,
+	RegisterResult,
 	SyncResult,
 	UsageRow,
 } from "./types";
@@ -136,6 +138,22 @@ export const api = {
 	instanceState: (id: string) => request<CachedState>(`/instances/${id}/state`),
 	syncInstance: (id: string) =>
 		request<SyncResult>(`/instances/${id}/sync`, { method: "POST" }),
+	// Enrollment handshake (design 19, Phase 2): register with a one-time enroll token → the
+	// instance issues a scoped membership credential (stored encrypted on the panel) + its state.
+	registerInstance: (
+		id: string,
+		body: {
+			enroll_token: string;
+			fleet_id?: string;
+			requested_scope?: string;
+		},
+	) =>
+		request<RegisterResult>(`/instances/${id}/register`, {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+	refreshInstance: (id: string) =>
+		request<RefreshResult>(`/instances/${id}/refresh`, { method: "POST" }),
 	drift: (id: string) => request<DriftRow[]>(`/instances/${id}/drift`),
 	setDeployment: (
 		id: string,
