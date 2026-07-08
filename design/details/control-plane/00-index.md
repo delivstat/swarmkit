@@ -42,6 +42,7 @@ data model · decisions · what-the-phase-builds · open questions.
 | 18 | [Phase 8: Hardening + rollout](18-hardening-rollout.md) | security review, migrating Minder/Sterling/vedanta, the default-secure breaking change, runbooks, GA criteria |
 | 19 | [Fleet enrollment protocol + API-key credentials](19-fleet-enrollment-protocol.md) | standard client-agnostic register/join handshake; two-token flow (enrollment token → opaque API key → refresh); `InstanceState` full-state export; observed-state cache (offline-resilient); monitor vs manage scope; multi-fleet |
 | 20 | [Fleet enrollment Phase 3 — manage + adopt](20-manage-and-adopt.md) | governed deploy over the membership credential (scope-aware serve auth-seam fallback: monitor→read, manage→deploy); adopt observed artifact into registry; multi-fleet visibility + eject |
+| 21 | [Fleet identity — pinned public keys](21-fleet-identity.md) | self-certifying `fleet_id` from an Ed25519 public key; proof-of-possession at register; trust-on-first-use pinning + mismatch handling; foundation for signed pushes |
 
 ## Cross-cutting findings (read these first)
 
