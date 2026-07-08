@@ -27,6 +27,7 @@ __all__ = [
     "fetch_capabilities",
     "fetch_jobs",
     "fetch_state",
+    "refresh",
     "register",
     "resolve_secret_ref",
     "run_authoring",
@@ -59,6 +60,16 @@ async def register(
         result: dict[str, Any] = serve.ok(
             await serve.post("/fleet/register", body), "/fleet/register"
         )
+    return result
+
+
+async def refresh(endpoint: str, membership_key: str) -> dict[str, Any]:
+    """Rotate this fleet's membership key on an instance (POST /fleet/refresh) — authenticated with
+    the *current* key (design 19, Phase 2). Returns ``{membership_id, credential}`` with the new key
+    (the old one stops working); raises ConnectorError on any failure.
+    """
+    async with ServeClient(endpoint, membership_key) as serve:
+        result: dict[str, Any] = serve.ok(await serve.post("/fleet/refresh", {}), "/fleet/refresh")
     return result
 
 
