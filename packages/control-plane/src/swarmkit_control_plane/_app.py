@@ -20,6 +20,7 @@ from swarmkit_control_plane._connector import (
     fetch_capabilities,
     fetch_jobs,
     fetch_state,
+    leave,
     refresh,
     register,
     run_authoring,
@@ -32,6 +33,7 @@ from swarmkit_control_plane._fntypes import (
     DeployFn,
     EvalFn,
     JobsFn,
+    LeaveFn,
     RefreshFn,
     RegisterFn,
     StateFn,
@@ -56,6 +58,7 @@ from swarmkit_control_plane._routes_registry import (
     _mount_config,
     _mount_instances,
     _mount_join,
+    _mount_membership,
     _mount_register,
     _mount_state,
     _mount_token_routes,
@@ -71,6 +74,7 @@ def create_app(
     fetch_state: StateFn = fetch_state,
     register_fn: RegisterFn = register,
     refresh_fn: RefreshFn = refresh,
+    leave_fn: LeaveFn = leave,
     cors_origins: list[str] | None = None,
     operator_tokens: list[str] | None = None,
     oidc: OidcVerifier | None = None,
@@ -162,6 +166,7 @@ def create_app(
     _mount_token_routes(app, registry, verify)
     _mount_state(app, registry, state_store, arts, fetch_state)
     _mount_register(app, registry, state_store, cred_store, register_fn, refresh_fn)
+    _mount_membership(app, registry, cred_store, leave_fn)
     _mount_join(app, registry, join_store, state_store)
     _mount_command_queue(app, registry)
     _mount_aggregation(app, agg)

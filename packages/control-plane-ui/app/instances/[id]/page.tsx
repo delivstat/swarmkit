@@ -11,6 +11,7 @@ import { EnrollmentPanel } from "@/components/enrollment-panel";
 import { ConnectionBadge, HealthBadge } from "@/components/health-badge";
 import { InventoryCard } from "@/components/inventory-card";
 import { LiveJobsCard } from "@/components/live-jobs-card";
+import { MembershipCard } from "@/components/membership-card";
 import { MintPanel } from "@/components/mint-panel";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -177,6 +178,10 @@ export default function InstanceDetailPage() {
 
 				{instance.connection === "direct" ? (
 					<EnrollmentPanel instance={instance} onChanged={refresh} />
+				) : null}
+
+				{instance.connection === "direct" ? (
+					<MembershipCard instanceId={instance.id} />
 				) : null}
 
 				{instance.connection === "poll" ? (

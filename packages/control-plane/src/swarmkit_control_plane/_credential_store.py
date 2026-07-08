@@ -71,6 +71,15 @@ class CredentialStore(Store):
             )
         return dict(row) if row else None
 
+    def delete(self, instance_id: str) -> bool:
+        """Forget an instance's stored membership credential (after leaving the fleet). Returns True
+        if a row was removed."""
+        with self._lock, self._engine.begin() as conn:
+            result = conn.execute(
+                instance_credential.delete().where(instance_credential.c.instance_id == instance_id)
+            )
+        return bool(result.rowcount)
+
     def get_secret(self, instance_id: str) -> str | None:
         """Decrypt + return the membership secret for authenticating a call, or None if absent."""
         with self._lock, self._engine.connect() as conn:

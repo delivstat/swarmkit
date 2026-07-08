@@ -186,3 +186,50 @@ def test_helper_manage_gates_deploy_put(tmp_path: Path) -> None:
     assert _membership_authenticates(req(manage_key), "PUT", "/api/skills/x") is True
     assert _membership_authenticates(req(monitor_key), "PUT", "/api/skills/x") is False
     assert _membership_authenticates(req(manage_key), "POST", "/api/topologies") is False
+
+
+# --- self-leave: a membership may revoke ONLY its own membership (design 19/20) --
+
+
+def _register_with_id(client: TestClient, scope: str = "monitor") -> tuple[str, str]:
+    """Register and return (membership_id, membership_key)."""
+    token = client.post(
+        "/fleet/enroll-token", json={"scope": scope}, headers=_bearer(ADMIN_TOKEN)
+    ).json()["token"]
+    body = client.post(
+        "/fleet/register", json={"fleet_id": "fleet-a"}, headers=_bearer(token)
+    ).json()
+    return body["membership_id"], body["credential"]["value"]
+
+
+def test_membership_key_can_self_leave(auth_client: TestClient) -> None:
+    mid, key = _register_with_id(auth_client, scope="monitor")
+    # the fleet revokes its OWN membership with its own key — no admin token needed.
+    assert auth_client.delete(f"/fleet/membership/{mid}", headers=_bearer(key)).status_code == 200
+    # the key no longer authenticates (revoked).
+    assert auth_client.get("/fleet/state", headers=_bearer(key)).status_code == 401
+
+
+def test_membership_key_cannot_eject_another_fleet(auth_client: TestClient) -> None:
+    mid_a, _ = _register_with_id(auth_client, scope="manage")
+    _, key_b = _register_with_id(auth_client, scope="manage")
+    # fleet B's key cannot revoke fleet A's membership (only its own).
+    assert (
+        auth_client.delete(f"/fleet/membership/{mid_a}", headers=_bearer(key_b)).status_code == 401
+    )
+
+
+def test_helper_gates_self_leave_by_membership_id(tmp_path: Path) -> None:
+    from swarmkit_runtime.fleet import MembershipStore  # noqa: PLC0415
+
+    store = MembershipStore(tmp_path)
+    m, key = store.issue_membership("fleet-a", "monitor")
+
+    def req() -> _FakeRequest:
+        return _FakeRequest(store, {"Authorization": f"Bearer {key}"})
+
+    # DELETE own id → allowed; DELETE another id → refused.
+    assert (
+        _membership_authenticates(req(), "DELETE", f"/fleet/membership/{m.membership_id}") is True
+    )
+    assert _membership_authenticates(req(), "DELETE", "/fleet/membership/someone-else") is False

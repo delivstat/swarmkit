@@ -27,6 +27,7 @@ __all__ = [
     "fetch_capabilities",
     "fetch_jobs",
     "fetch_state",
+    "leave",
     "refresh",
     "register",
     "resolve_secret_ref",
@@ -70,6 +71,18 @@ async def refresh(endpoint: str, membership_key: str) -> dict[str, Any]:
     """
     async with ServeClient(endpoint, membership_key) as serve:
         result: dict[str, Any] = serve.ok(await serve.post("/fleet/refresh", {}), "/fleet/refresh")
+    return result
+
+
+async def leave(endpoint: str, membership_key: str, membership_id: str) -> dict[str, Any]:
+    """Leave a fleet: revoke this fleet's own membership on an instance (DELETE
+    /fleet/membership/{id}), authenticated with the *membership key itself* (self-leave, design 19).
+    The instance stops accepting the key. Returns the serve response; raises ConnectorError on any
+    failure (including a 404 when the membership is already gone)."""
+    async with ServeClient(endpoint, membership_key) as serve:
+        result: dict[str, Any] = serve.ok(
+            await serve.delete(f"/fleet/membership/{membership_id}"), "/fleet/membership"
+        )
     return result
 
 

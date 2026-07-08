@@ -14,6 +14,7 @@ import type {
 	Instance,
 	Job,
 	JoinCodeResult,
+	Membership,
 	MintResult,
 	Observability,
 	Proposal,
@@ -163,6 +164,14 @@ export const api = {
 		}),
 	refreshInstance: (id: string) =>
 		request<RefreshResult>(`/instances/${id}/refresh`, { method: "POST" }),
+	// The fleet relationship this panel holds for the instance (design 20).
+	membership: (id: string) =>
+		request<Membership>(`/instances/${id}/membership`),
+	leaveFleet: (id: string) =>
+		request<{ left: string; membership_id: string }>(
+			`/instances/${id}/membership`,
+			{ method: "DELETE" },
+		),
 	// Adopt a cached observed artifact into the deployable registry (design 20).
 	adoptArtifact: (id: string, body: { kind: string; artifact_id: string }) =>
 		request<AdoptResult>(`/instances/${id}/adopt`, {

@@ -14,6 +14,7 @@ from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
     JobsFn,
+    LeaveFn,
     RefreshFn,
     RegisterFn,
     StateFn,
@@ -316,6 +317,47 @@ def _mount_state(
 
 #: The panel's own fleet identity, presented to instances at register (overridable per request).
 DEFAULT_FLEET_ID = "swarmkit-fleet"
+
+
+def _mount_membership(
+    app: FastAPI,
+    registry: SqliteRegistry,
+    cred_store: CredentialStore,
+    leave_fn: LeaveFn,
+) -> None:
+    """Surface + leave the fleet relationship **this** panel holds for an instance (design 20).
+
+    Multi-fleet visibility is panel-perspective: a fleet sees and manages only its own membership
+    (from its encrypted store); it does not enumerate other fleets the instance may belong to — that
+    is the instance owner's serve-side view."""
+
+    @app.get("/instances/{instance_id}/membership")
+    async def get_membership(instance_id: str) -> dict[str, Any]:
+        """This fleet's membership metadata — fleet id, scope, fingerprint, created (no secret)."""
+        if registry.get(instance_id) is None:
+            raise HTTPException(404, "instance not found")
+        meta = cred_store.get_metadata(instance_id)
+        if meta is None:
+            raise HTTPException(404, "this fleet holds no membership for the instance")
+        return meta
+
+    @app.delete("/instances/{instance_id}/membership")
+    async def leave_fleet(instance_id: str) -> dict[str, Any]:
+        """Leave the fleet: revoke this panel's membership on the instance with the membership key
+        itself (self-leave, design 19), then forget the stored credential."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        key = cred_store.get_secret(instance_id)
+        meta = cred_store.get_metadata(instance_id)
+        if key is None or meta is None:
+            raise HTTPException(404, "this fleet holds no membership for the instance")
+        try:
+            await leave_fn(inst.endpoint, key, meta["membership_id"])
+        except ConnectorError as exc:
+            raise HTTPException(502, f"leave failed: {exc}") from exc
+        cred_store.delete(instance_id)
+        return {"left": meta["fleet_id"], "membership_id": meta["membership_id"]}
 
 
 def _mount_register(
