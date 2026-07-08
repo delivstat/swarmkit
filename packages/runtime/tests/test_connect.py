@@ -388,7 +388,8 @@ def test_connect_cli_requires_instance_id_or_join_code() -> None:
     from swarmkit_runtime.cli import app  # noqa: PLC0415
     from typer.testing import CliRunner  # noqa: PLC0415
 
-    # neither --instance-id nor --join-code → rejected before any network call.
+    # neither --instance-id nor --join-code → a usage error (exit 2), rejected before any network
+    # call. (The message text is a rich-rendered panel that wraps at the terminal width, so assert
+    # on the stable exit code rather than substrings of the formatted output.)
     result = CliRunner().invoke(app, ["connect", "http://panel"])
-    assert result.exit_code != 0
-    assert "--instance-id" in result.output and "--join-code" in result.output
+    assert result.exit_code == 2
