@@ -24,7 +24,7 @@ def _client(
     if deploy_fn is None:
 
         async def deploy_fn(
-            endpoint: str, token_ref: str, kind: str, aid: str, content: Any
+            endpoint: str, token_ref: str, kind: str, aid: str, content: Any, **_sig: Any
         ) -> dict[str, Any]:
             calls.append((endpoint, kind, aid, content))
             return {"deployed": aid}
@@ -113,7 +113,7 @@ def test_unknown_version_and_kind(tmp_path: Path) -> None:
 
 def test_deploy_failure_is_502(tmp_path: Path) -> None:
     async def boom(
-        endpoint: str, token_ref: str, kind: str, aid: str, content: Any
+        endpoint: str, token_ref: str, kind: str, aid: str, content: Any, **_sig: Any
     ) -> dict[str, Any]:
         raise DeployError("connection refused")
 
@@ -167,7 +167,7 @@ def _manage_client(tmp_path: Path, *, scope: str = "manage") -> tuple[TestClient
     used: list[str] = []
 
     async def deploy_fn(
-        endpoint: str, token_ref: str, kind: str, aid: str, content: Any
+        endpoint: str, token_ref: str, kind: str, aid: str, content: Any, **_sig: Any
     ) -> dict[str, Any]:
         used.append(token_ref)
         return {"deployed": aid}

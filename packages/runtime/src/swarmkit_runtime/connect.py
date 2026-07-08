@@ -66,7 +66,7 @@ def _tier_rank(tier: str) -> int:
     return _TIER_RANK.get(tier.strip().lower(), -1)
 
 
-async def execute_command(  # noqa: PLR0911 — branchy command dispatch; each error reports back
+async def execute_command(  # noqa: PLR0911, PLR0912 — branchy dispatch; each error reports back
     serve_client: httpx.AsyncClient,
     *,
     serve_url: str,
@@ -98,9 +98,19 @@ async def execute_command(  # noqa: PLR0911 — branchy command dispatch; each e
     except KeyError as exc:
         return ("error", None, f"missing arg for verb '{verb}': {exc}")
 
-    body = args.get("body")
-    json_body = body if isinstance(body, dict) else None
     headers = {"Authorization": f"Bearer {serve_token}"} if serve_token else {}
+    json_body: dict[str, Any] | None
+    if verb == "deploy":
+        # The instance applies the deploy locally: wrap the content and forward the fleet signature
+        # so local serve can verify it against the pinned key before applying (design 22).
+        json_body = {"content": args.get("body")}
+        if args.get("fleet_id"):
+            json_body["fleet_id"] = args["fleet_id"]
+        if args.get("signature"):
+            headers["X-Fleet-Signature"] = str(args["signature"])
+    else:
+        body = args.get("body")
+        json_body = body if isinstance(body, dict) else None
     url = serve_url.rstrip("/") + path
     try:
         resp = await serve_client.request(method, url, headers=headers, json=json_body)

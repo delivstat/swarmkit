@@ -1,6 +1,6 @@
 # Signed pushes — a stolen membership key alone can't deploy
 
-Status: design, pending review. Builds on [21](21-fleet-identity.md) (pinned fleet keys) and
+Status: ✅ shipped. Builds on [21](21-fleet-identity.md) (pinned fleet keys) and
 [20](20-manage-and-adopt.md) (governed deploy over the membership credential). The next slice fleet
 identity enables.
 

@@ -92,6 +92,11 @@ demo-protocol-schema:
 demo-fleet-identity:
     uv run python scripts/demo_fleet_identity.py
 
+# Demo signed pushes (design 22): a fleet-signed deploy is applied; a tampered payload or an
+# unsigned deploy (when required) is rejected — a stolen membership key alone can't push.
+demo-signed-deploy:
+    uv run python scripts/demo_signed_deploy.py
+
 # Regenerate both pydantic models and TypeScript types from the canonical
 # JSON Schemas. Run after any schema edit per
 # docs/notes/schema-change-discipline.md.

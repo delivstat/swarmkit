@@ -26,7 +26,9 @@ RefreshFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, membership_key, membership_id) -> serve response (self-leave a fleet)
 LeaveFn = Callable[[str, str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref, kind, artifact_id, content) -> serve response
-DeployFn = Callable[[str, str, str, str, Any], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref, kind, artifact_id, content, *, signature, fleet_id) -> serve response.
+# Ellipsis args: the real fn takes keyword-only signing params (design 22) test stubs may omit.
+DeployFn = Callable[..., Awaitable[dict[str, Any]]]
 # (endpoint, token_ref) -> serve /jobs list
 JobsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 # (endpoint, token_ref, topology, message) -> {"reply", "status"}

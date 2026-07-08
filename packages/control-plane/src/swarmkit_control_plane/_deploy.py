@@ -27,13 +27,26 @@ class DeployError(Exception):
 
 
 async def push_artifact(
-    endpoint: str, token_ref: str, kind: str, artifact_id: str, content: Any
+    endpoint: str,
+    token_ref: str,
+    kind: str,
+    artifact_id: str,
+    content: Any,
+    *,
+    signature: str | None = None,
+    fleet_id: str | None = None,
 ) -> dict[str, Any]:
-    """Mode A: PUT the artifact content to the instance's serve /api collection."""
+    """Mode A: PUT the artifact **content** (a dict) to the instance's serve /api collection. A
+    fleet *signature*, when supplied, rides in the ``X-Fleet-Signature`` header (+ ``fleet_id`` in
+    the body) so the instance verifies the push against the pinned key before applying (doc 22)."""
     plural = DEPLOYABLE[kind]
+    payload: dict[str, Any] = {"content": content}
+    if fleet_id:
+        payload["fleet_id"] = fleet_id
+    headers = {"X-Fleet-Signature": signature} if signature else None
     try:
         async with ServeClient(endpoint, token_ref, timeout=30) as serve:
-            resp = await serve.put(f"/api/{plural}/{artifact_id}", content)
+            resp = await serve.put(f"/api/{plural}/{artifact_id}", payload, headers=headers)
     except ConnectorError as exc:  # transport failure — surface as a deploy failure
         raise DeployError(str(exc)) from exc
     if resp.status_code in (401, 403):

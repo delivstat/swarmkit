@@ -119,10 +119,15 @@ class _FakeApp:
         self.state = _FakeState(store)
 
 
+class _FakeReqState:  # the request.state the helper stashes the membership on
+    pass
+
+
 class _FakeRequest:
     def __init__(self, store: Any, headers: dict[str, str]) -> None:
         self.app = _FakeApp(store)
         self.headers = headers
+        self.state = _FakeReqState()
 
 
 def test_helper_rejects_non_fleet_paths() -> None:

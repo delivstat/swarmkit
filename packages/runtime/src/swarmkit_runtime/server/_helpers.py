@@ -15,6 +15,7 @@ import yaml
 from fastapi import HTTPException, Request
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
+from swarmkit_runtime.fleet import deploy_message, verify_signature
 from swarmkit_runtime.triggers._webhook import validate_webhook_signature
 
 logger = logging.getLogger("swarmkit.server")
@@ -267,6 +268,48 @@ _MEMBERSHIP_READ_ROUTES = frozenset({"/fleet/state", "/fleet/state/manifest"})
 _MEMBERSHIP_DEPLOY_PREFIXES = ("/api/topologies/", "/api/skills/", "/api/archetypes/")
 
 
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _require_signed_deploy() -> bool:
+    """Whether a fleet deploy must carry a valid signature (design 22). An explicit
+    ``SWARMKIT_FLEET_REQUIRE_SIGNED_DEPLOY`` wins; otherwise it **follows** ``require_identity`` —
+    an instance that requires a fleet identity also requires signed deploys."""
+    override = os.environ.get("SWARMKIT_FLEET_REQUIRE_SIGNED_DEPLOY", "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    return _env_truthy("SWARMKIT_FLEET_REQUIRE_IDENTITY")
+
+
+def _verify_signed_deploy(
+    request: Any, kind: str, artifact_id: str, content: Any, body_fleet_id: str | None
+) -> None:
+    """Verify the ``X-Fleet-Signature`` over a deploy's content against the pinned fleet key (design
+    22). The fleet identity comes from the authenticated membership (Mode A) or an explicit
+    ``fleet_id`` in the body (Mode B, the connector applying locally). Raises HTTPException(401) on
+    an invalid signature — or on a **missing** one when signing is required. An operator/transport
+    deploy with no fleet context passes through untouched (the operator is a trusted admin)."""
+    membership = getattr(request.state, "membership", None)
+    fleet_id = getattr(membership, "fleet_id", None) or body_fleet_id
+    if fleet_id is None:
+        return  # no fleet identity involved (operator transport-token deploy)
+    signature = request.headers.get("X-Fleet-Signature", "")
+    pinned = request.app.state.membership_store.get_fleet_key(fleet_id)
+    if signature and pinned is not None:
+        # We hold this fleet's pinned key (Mode A register) → the signature must verify.
+        message = deploy_message(kind, artifact_id, _content_hash(content))
+        if not verify_signature(pinned, signature, message):
+            raise HTTPException(401, "invalid fleet deploy signature")
+    elif _require_signed_deploy() and not (signature and pinned is None):
+        # Required but unverifiable: no signature at all. (A signature with no pinned key — a Mode B
+        # instance whose serve never pinned the fleet, since the *panel* did at join — is accepted:
+        # the call is already authenticated and there's nothing here to verify against.)
+        raise HTTPException(
+            401, "this instance requires a signed deploy (X-Fleet-Signature) from the fleet"
+        )
+
+
 def _membership_authenticates(request: Any, method: str, path: str) -> bool:  # noqa: PLR0911
     """True if *method*+*path* accepts membership auth (design 19/20) and the request carries a
     valid membership key as a Bearer token. This is the fallback the transport-auth seam consults
@@ -284,6 +327,9 @@ def _membership_authenticates(request: Any, method: str, path: str) -> bool:  # 
     membership = store.authenticate(key) if key else None
     if membership is None:
         return False
+    # Stash the authenticated membership so the deploy handler can reach its fleet_id to verify a
+    # signed push (design 22) — set only when a membership authenticates, not for transport tokens.
+    request.state.membership = membership
     if path in _MEMBERSHIP_READ_ROUTES:
         return True  # any valid membership may read
     if method.upper() == "POST" and path == "/fleet/state/artifacts":

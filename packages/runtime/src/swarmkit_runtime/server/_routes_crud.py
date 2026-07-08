@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import yaml
 from fastapi import FastAPI, HTTPException, Request
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 
-from ._helpers import _get_runtime
+from ._helpers import _get_runtime, _verify_signed_deploy
 from ._services import ArtifactService, ServiceError
 
 
@@ -21,6 +22,26 @@ def _install(request: Request, new_rt: WorkspaceRuntime | None) -> None:
     """Swap in a rebuilt runtime after a successful CRUD write (no-op when the reload failed)."""
     if new_rt is not None:
         request.app.state.runtime = new_rt
+
+
+async def _put(
+    request: Request, service: ArtifactService, kind: str, artifact_id: str, *, parse_check: bool
+) -> dict[str, Any]:
+    """Apply a PUT to an artifact. Accepts ``{yaml}`` (operator edit) or ``{content}`` (a fleet
+    deploy — a dict; design 22). For a ``content`` deploy the fleet signature is verified against
+    the pinned key before applying; then the dict is serialised for the workspace writer."""
+    body = await request.json()
+    content = body.get("content")
+    if content is not None:
+        _verify_signed_deploy(request, kind, artifact_id, content, body.get("fleet_id"))
+        yaml_text = yaml.safe_dump(content, sort_keys=False)
+    else:
+        yaml_text = body.get("yaml", "")
+    result, new_rt = service.put_yaml(
+        kind, artifact_id, yaml_text, dry_run=body.get("dry_run", False), parse_check=parse_check
+    )
+    _install(request, new_rt)
+    return result
 
 
 def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
@@ -74,16 +95,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.put("/api/topologies/{topology_id}")
     async def put_topology(topology_id: str, request: Request) -> dict[str, Any]:
-        body = await request.json()
-        result, new_rt = service.put_yaml(
-            "topology",
-            topology_id,
-            body.get("yaml", ""),
-            dry_run=body.get("dry_run", False),
-            parse_check=True,
-        )
-        _install(request, new_rt)
-        return result
+        return await _put(request, service, "topology", topology_id, parse_check=True)
 
     @app.post("/api/topologies")
     async def create_topology(request: Request) -> dict[str, Any]:
@@ -103,29 +115,11 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.put("/api/skills/{skill_id}")
     async def put_skill(skill_id: str, request: Request) -> dict[str, Any]:
-        body = await request.json()
-        result, new_rt = service.put_yaml(
-            "skill",
-            skill_id,
-            body.get("yaml", ""),
-            dry_run=body.get("dry_run", False),
-            parse_check=False,
-        )
-        _install(request, new_rt)
-        return result
+        return await _put(request, service, "skill", skill_id, parse_check=False)
 
     @app.put("/api/archetypes/{archetype_id}")
     async def put_archetype(archetype_id: str, request: Request) -> dict[str, Any]:
-        body = await request.json()
-        result, new_rt = service.put_yaml(
-            "archetype",
-            archetype_id,
-            body.get("yaml", ""),
-            dry_run=body.get("dry_run", False),
-            parse_check=False,
-        )
-        _install(request, new_rt)
-        return result
+        return await _put(request, service, "archetype", archetype_id, parse_check=False)
 
     @app.post("/api/reload")
     async def reload_workspace(request: Request) -> dict[str, Any]:

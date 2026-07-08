@@ -35,26 +35,39 @@ def proof_message(enrollment_token: str, workspace_id: str) -> bytes:
     return f"{enrollment_token}:{workspace_id}".encode()
 
 
-def verify_proof(
-    public_key_b64: str, proof_b64: str, enrollment_token: str, workspace_id: str
-) -> bool:
-    """True iff *proof_b64* is a valid Ed25519 signature by *public_key_b64* over
-    ``proof_message(enrollment_token, workspace_id)``. Never raises — a malformed key/signature is
-    simply not a valid proof."""
+def deploy_message(kind: str, artifact_id: str, content_hash: str) -> bytes:
+    """The exact bytes a fleet signs to authorize a deploy: ``deploy:<kind>:<id>:<content_hash>``
+    (design 22). Binding kind + id + content_hash means a stolen membership key can't push an
+    artifact the fleet didn't sign, and a signature for one artifact can't be replayed onto
+    another. ``content_hash`` is the registry canonicalisation both sides compute."""
+    return f"deploy:{kind}:{artifact_id}:{content_hash}".encode()
+
+
+def verify_signature(public_key_b64: str, signature_b64: str, message: bytes) -> bool:
+    """True iff *signature_b64* is a valid Ed25519 signature by *public_key_b64* over *message*.
+    Never raises — a malformed key/signature is simply not valid."""
     try:
         pub = Ed25519PublicKey.from_public_bytes(base64.b64decode(public_key_b64, validate=True))
-        pub.verify(
-            base64.b64decode(proof_b64, validate=True),
-            proof_message(enrollment_token, workspace_id),
-        )
+        pub.verify(base64.b64decode(signature_b64, validate=True), message)
     except (InvalidSignature, ValueError):
         return False
     return True
 
 
+def verify_proof(
+    public_key_b64: str, proof_b64: str, enrollment_token: str, workspace_id: str
+) -> bool:
+    """True iff *proof_b64* is a valid signature over ``proof_message(enrollment_token,
+    workspace_id)`` (design 21)."""
+    msg = proof_message(enrollment_token, workspace_id)
+    return verify_signature(public_key_b64, proof_b64, msg)
+
+
 __all__ = [
     "FLEET_ID_PREFIX",
+    "deploy_message",
     "fleet_id_from_public_key",
     "proof_message",
     "verify_proof",
+    "verify_signature",
 ]

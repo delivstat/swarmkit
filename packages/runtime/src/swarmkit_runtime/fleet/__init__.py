@@ -17,9 +17,11 @@ from swarmkit_runtime.fleet._credentials import (
 )
 from swarmkit_runtime.fleet._identity import (
     FLEET_ID_PREFIX,
+    deploy_message,
     fleet_id_from_public_key,
     proof_message,
     verify_proof,
+    verify_signature,
 )
 from swarmkit_runtime.fleet._store import MembershipStore
 
@@ -28,10 +30,12 @@ __all__ = [
     "Membership",
     "MembershipStore",
     "Scope",
+    "deploy_message",
     "fingerprint",
     "fleet_id_from_public_key",
     "mint_secret",
     "proof_message",
     "secret_hash",
     "verify_proof",
+    "verify_signature",
 ]
