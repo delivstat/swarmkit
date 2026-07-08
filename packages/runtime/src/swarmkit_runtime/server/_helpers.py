@@ -253,6 +253,10 @@ def _membership_authenticates(request: Any, method: str, path: str) -> bool:
         return True  # any valid membership may read
     if method.upper() == "PUT" and path.startswith(_MEMBERSHIP_DEPLOY_PREFIXES):
         return getattr(membership, "scope", None) == "manage"  # deploy is manage-only
+    if method.upper() == "DELETE" and path.startswith("/fleet/membership/"):
+        # A fleet may revoke ONLY its own membership (self-leave) — "membership key or local admin"
+        # (design 19). It can't eject another fleet; that stays a serve:admin owner action.
+        return path == f"/fleet/membership/{membership.membership_id}"
     return False
 
 

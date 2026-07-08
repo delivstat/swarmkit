@@ -70,7 +70,11 @@ def test_credential_store_encrypts_at_rest(tmp_path: Path) -> None:
 # --- the /register route --------------------------------------------------------
 
 
-def _client(tmp_path: Path, refresh_calls: list[str] | None = None) -> TestClient:
+def _client(
+    tmp_path: Path,
+    refresh_calls: list[str] | None = None,
+    leave_calls: list[tuple[str, str]] | None = None,
+) -> TestClient:
     registry = SqliteRegistry(tmp_path / "registry.sqlite")
 
     async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:  # pragma: no cover
@@ -94,8 +98,19 @@ def _client(tmp_path: Path, refresh_calls: list[str] | None = None) -> TestClien
             },
         }
 
+    async def leave_fn(endpoint: str, membership_key: str, membership_id: str) -> dict[str, Any]:
+        if leave_calls is not None:
+            leave_calls.append((membership_key, membership_id))  # (decrypted key, id) used
+        return {"ejected": membership_id}
+
     return TestClient(
-        create_app(registry, verify=verify, register_fn=register_fn, refresh_fn=refresh_fn)
+        create_app(
+            registry,
+            verify=verify,
+            register_fn=register_fn,
+            refresh_fn=refresh_fn,
+            leave_fn=leave_fn,
+        )
     )
 
 
@@ -156,3 +171,39 @@ def test_refresh_before_register_is_400(tmp_path: Path) -> None:
     client = _client(tmp_path)
     iid = _enroll(client)
     assert client.post(f"/instances/{iid}/refresh").status_code == 400
+
+
+# --- membership visibility + leave (design 20, Phase 3 slice 3) --------------
+
+
+def test_get_membership_returns_this_fleets_metadata(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    iid = _enroll(client)
+    # 404 before registering — this fleet holds no membership yet.
+    assert client.get(f"/instances/{iid}/membership").status_code == 404
+    client.post(f"/instances/{iid}/register", json={"enroll_token": "join"})
+    meta = client.get(f"/instances/{iid}/membership").json()
+    assert meta["membership_id"] == "mem-123" and meta["scope"] == "manage"
+    assert "secret" not in meta and "ciphertext" not in meta  # never a secret
+
+
+def test_leave_revokes_with_the_key_and_forgets_the_credential(tmp_path: Path) -> None:
+    calls: list[tuple[str, str]] = []
+    client = _client(tmp_path, leave_calls=calls)
+    iid = _enroll(client)
+    client.post(f"/instances/{iid}/register", json={"enroll_token": "join"})
+
+    r = client.delete(f"/instances/{iid}/membership")
+    assert r.status_code == 200, r.text
+    assert r.json()["membership_id"] == "mem-123"
+    # the panel self-left using the DECRYPTED membership key + its id.
+    assert calls == [("super-secret-key", "mem-123")]
+    # the stored credential is forgotten — membership is gone, a second leave is 404.
+    assert client.get(f"/instances/{iid}/membership").status_code == 404
+    assert client.delete(f"/instances/{iid}/membership").status_code == 404
+
+
+def test_leave_without_membership_is_404(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    iid = _enroll(client)
+    assert client.delete(f"/instances/{iid}/membership").status_code == 404

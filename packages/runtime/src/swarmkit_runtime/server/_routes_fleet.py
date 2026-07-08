@@ -8,7 +8,9 @@
 * ``POST /fleet/refresh`` (**auth-exempt**; authenticates with the *current* membership key) —
   rotates the key (old stops working); same membership.
 * ``GET /fleet/memberships`` / ``DELETE /fleet/membership/{id}`` (``serve:admin``) — the owner lists
-  the fleets registered here and ejects one (revoking its key).
+  the fleets registered here and ejects one (revoking its key). ``DELETE`` also accepts a membership
+  key for the caller's **own** membership (self-leave) via the auth-seam fallback — a fleet may
+  revoke itself but not another fleet (design 19).
 
 ``GET /fleet/state`` (in ``_routes_introspection``) now also accepts a membership key: when the
 transport-auth seam rejects the bearer, a valid membership (monitor+ scope) authorizes the read

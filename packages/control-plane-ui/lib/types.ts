@@ -238,6 +238,15 @@ export interface RefreshResult {
 	fingerprint: string;
 }
 
+/** GET /instances/{id}/membership — the fleet relationship this panel holds (design 20, no secret). */
+export interface Membership {
+	membership_id: string;
+	fleet_id: string;
+	scope: string;
+	fingerprint: string;
+	created_at: string;
+}
+
 /** POST /fleet/join-code — a one-time Mode B join code the operator hands to an edge instance. */
 export interface JoinCodeResult {
 	join_code: string;

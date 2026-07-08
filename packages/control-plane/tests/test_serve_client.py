@@ -106,6 +106,33 @@ async def test_post_and_put_send_json_body() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delete_sends_method_and_auth() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["auth"] = request.headers.get("Authorization")
+        return httpx.Response(200, json={"ejected": "m1"})
+
+    async with _client(handler) as serve:
+        resp = await serve.delete("/fleet/membership/m1")
+    assert seen["method"] == "DELETE" and seen["path"] == "/fleet/membership/m1"
+    assert seen["auth"] == "Bearer tok"
+    assert serve.ok(resp, "/fleet/membership") == {"ejected": "m1"}
+
+
+@pytest.mark.asyncio
+async def test_delete_transport_error_is_connector_error() -> None:
+    def boom(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    with pytest.raises(ConnectorError):
+        async with _client(boom) as serve:
+            await serve.delete("/fleet/membership/m1")
+
+
+@pytest.mark.asyncio
 async def test_ok_non_json_body() -> None:
     async with _client(lambda r: httpx.Response(200, text="plain")) as serve:
         assert serve.ok(await serve.get("/x"), "/x") == {"text": "plain"}

@@ -112,6 +112,12 @@ class ServeClient:
         except httpx.HTTPError as exc:
             raise ConnectorError(f"cannot reach {self._base}: {exc}") from exc
 
+    async def delete(self, path: str) -> httpx.Response:
+        try:
+            return await self._http().delete(self.url(path), headers=self._headers)
+        except httpx.HTTPError as exc:
+            raise ConnectorError(f"cannot reach {self._base}: {exc}") from exc
+
     def ok(self, resp: httpx.Response, what: str) -> Any:
         """Assert a 2xx and return the parsed JSON body; raise ConnectorError otherwise.
 
