@@ -167,13 +167,35 @@ instance_credential = Table(
     Column("created_at", Text, nullable=False),
 )
 
+# --- Mode B join codes (enrollment Phase 2) -----------------------------------
+
+# One-time join codes the panel mints for the instance-initiated (Mode B) handshake: a NAT'd
+# instance calls POST /fleet/join with a code the operator handed it, and the panel creates its
+# Instance + issues the connector→panel credential. Only the code's hash is stored (high-entropy
+# secret, plain hash suffices); a code is single-use (consumed_at) and TTL-bounded (expires_at).
+join_code = Table(
+    "join_code",
+    metadata,
+    Column("code_hash", Text, primary_key=True),
+    Column("name", Text, nullable=False, default=""),  # display name for the joining instance
+    Column("endpoint", Text, nullable=False, default=""),  # optional advertised endpoint hint
+    Column(
+        "tier", Text, nullable=False, default="read"
+    ),  # granted connector tier (bounds commands)
+    Column("created_at", Text, nullable=False),
+    Column("expires_at", Text, nullable=False),
+    Column("consumed_at", Text),  # set once, on the single successful join
+)
+
 __all__ = [
     "agg_records",
     "artifact_versions",
     "commands",
     "deployments",
+    "instance_credential",
     "instance_state",
     "instances",
+    "join_code",
     "metadata",
     "proposals",
     "reported_artifacts",
