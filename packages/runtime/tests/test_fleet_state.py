@@ -67,3 +67,48 @@ def test_fleet_state_hash_matches_registry_canonicalisation(client: TestClient) 
 def test_fleet_state_is_a_read_scoped_get(client: TestClient) -> None:
     # It's a plain GET (serve:read tier) — reachable like the other introspection routes.
     assert client.get("/fleet/state").status_code == 200
+
+
+# --- delta sync: manifest + body-fetch (design 19 §delta sync) ---------------
+
+
+def test_manifest_is_names_and_hashes_without_content(client: TestClient) -> None:
+    full = client.get("/fleet/state").json()
+    manifest = client.get("/fleet/state/manifest").json()
+    # same envelope + metadata as the full state...
+    assert manifest["kind"] == "InstanceState"
+    assert manifest["workspace_id"] == full["workspace_id"]
+    assert set(manifest["artifacts"]) == {"topologies", "skills", "archetypes", "triggers"}
+    # ...but every entry keeps id/version/content_hash and drops content.
+    entry = manifest["artifacts"]["topologies"][0]
+    assert set(entry) == {"id", "version", "content_hash"}
+    assert "content" not in entry
+    # the hashes match the full state's, so a fleet can diff manifest-vs-cache.
+    full_topo = full["artifacts"]["topologies"][0]
+    assert entry["content_hash"] == full_topo["content_hash"] and entry["id"] == full_topo["id"]
+
+
+def test_artifacts_fetch_returns_only_requested_bodies(client: TestClient) -> None:
+    full = client.get("/fleet/state").json()
+    topo_id = full["artifacts"]["topologies"][0]["id"]
+    resp = client.post(
+        "/fleet/state/artifacts",
+        json={"refs": [{"collection": "topologies", "id": topo_id}]},
+    )
+    assert resp.status_code == 200, resp.text
+    arts = resp.json()["artifacts"]
+    # only the requested topology comes back with content; other collections are empty.
+    assert [e["id"] for e in arts["topologies"]] == [topo_id]
+    assert arts["topologies"][0]["content"]["metadata"]["name"]
+    assert arts["skills"] == [] and arts["archetypes"] == []
+
+
+def test_artifacts_fetch_empty_refs_returns_no_bodies(client: TestClient) -> None:
+    arts = client.post("/fleet/state/artifacts", json={"refs": []}).json()["artifacts"]
+    assert all(entries == [] for entries in arts.values())
+
+
+def test_delta_endpoints_are_reads(client: TestClient) -> None:
+    # both are serve:read (open mode here) — the POST is a content read, not a mutation.
+    assert client.get("/fleet/state/manifest").status_code == 200
+    assert client.post("/fleet/state/artifacts", json={"refs": []}).status_code == 200

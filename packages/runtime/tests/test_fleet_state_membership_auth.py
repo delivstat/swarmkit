@@ -233,3 +233,38 @@ def test_helper_gates_self_leave_by_membership_id(tmp_path: Path) -> None:
         _membership_authenticates(req(), "DELETE", f"/fleet/membership/{m.membership_id}") is True
     )
     assert _membership_authenticates(req(), "DELETE", "/fleet/membership/someone-else") is False
+
+
+# --- delta-sync endpoints accept a membership key too (design 19 §delta sync) --
+
+
+def test_membership_key_reads_manifest_and_fetches_artifacts(auth_client: TestClient) -> None:
+    key = _register(auth_client, scope="monitor")
+    # a monitor membership may read the manifest...
+    m = auth_client.get("/fleet/state/manifest", headers=_bearer(key))
+    assert m.status_code == 200 and "content" not in m.json()["artifacts"]["topologies"][0]
+    # ...and fetch specific bodies (a read despite the POST verb).
+    tid = m.json()["artifacts"]["topologies"][0]["id"]
+    r = auth_client.post(
+        "/fleet/state/artifacts",
+        json={"refs": [{"collection": "topologies", "id": tid}]},
+        headers=_bearer(key),
+    )
+    assert r.status_code == 200 and r.json()["artifacts"]["topologies"][0]["content"]
+
+
+def test_delta_endpoints_deny_without_a_credential(auth_client: TestClient) -> None:
+    assert auth_client.get("/fleet/state/manifest").status_code == 401
+    assert auth_client.post("/fleet/state/artifacts", json={"refs": []}).status_code == 401
+
+
+def test_helper_allows_manifest_and_artifacts_reads(tmp_path: Path) -> None:
+    from swarmkit_runtime.fleet import MembershipStore  # noqa: PLC0415
+
+    store = MembershipStore(tmp_path)
+    _, key = store.issue_membership("fleet-a", "monitor")
+    req = _FakeRequest(store, {"Authorization": f"Bearer {key}"})
+    assert _membership_authenticates(req, "GET", "/fleet/state/manifest") is True
+    assert _membership_authenticates(req, "POST", "/fleet/state/artifacts") is True
+    # the artifacts POST is the *only* whitelisted POST — a POST create is not a delta read.
+    assert _membership_authenticates(req, "POST", "/api/topologies") is False

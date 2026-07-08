@@ -82,6 +82,9 @@ def _required_action(method: str, path: str) -> str | None:  # noqa: PLR0911
     # exempt at the seam (it authenticates with the current membership key; see the middleware).
     if path.startswith("/fleet/membership"):
         return "admin"
+    # Delta-sync body fetch is a content read; it uses POST only to carry the ref list.
+    if path == "/fleet/state/artifacts":
+        return "read"
     if method.upper() == "GET":
         return "read"
     if path.startswith("/api/"):
@@ -225,14 +228,45 @@ def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
     }
 
 
-#: Fleet-read routes any valid membership (``monitor`` is the minimum) may authenticate to.
-_MEMBERSHIP_READ_ROUTES = frozenset({"/fleet/state"})
+def _instance_state_manifest(state: dict[str, Any]) -> dict[str, Any]:
+    """The names-only projection of an ``InstanceState`` — same shape, but each artifact entry keeps
+    only ``id``/``version``/``content_hash`` (no ``content``). The cheap delta-sync primitive: a
+    fleet pulls this, diffs the hashes against its cache, and fetches only the *changed* bodies
+    (design 19 §delta sync). Metadata (workspace_id, schema_version, providers, …) is preserved."""
+    manifest = {k: v for k, v in state.items() if k != "artifacts"}
+    manifest["artifacts"] = {
+        collection: [{ek: ev for ek, ev in entry.items() if ek != "content"} for entry in entries]
+        for collection, entries in state.get("artifacts", {}).items()
+    }
+    return manifest
+
+
+def _filter_instance_state(state: dict[str, Any], refs: list[tuple[str, str]]) -> dict[str, Any]:
+    """Return an ``InstanceState`` carrying only the requested artifacts *with content*. ``refs`` is
+    a list of ``(collection, id)`` pairs (collection = topologies/skills/archetypes/triggers). The
+    manifest metadata is preserved; every collection is present but holds only the requested entries
+    — this is the body-fetch half of delta sync."""
+    wanted: dict[str, set[str]] = {}
+    for collection, artifact_id in refs:
+        wanted.setdefault(collection, set()).add(artifact_id)
+    filtered = {k: v for k, v in state.items() if k != "artifacts"}
+    filtered["artifacts"] = {
+        collection: [e for e in entries if e.get("id") in wanted.get(collection, set())]
+        for collection, entries in state.get("artifacts", {}).items()
+    }
+    return filtered
+
+
+#: Fleet-read routes any valid membership (``monitor`` is the minimum) may authenticate to. The
+#: delta-sync manifest is a read; the body-fetch POST (``/fleet/state/artifacts``) is handled
+#: explicitly below (it is a read despite the POST verb — the body only carries the ref list).
+_MEMBERSHIP_READ_ROUTES = frozenset({"/fleet/state", "/fleet/state/manifest"})
 #: Deploy write routes — the ``PUT /api/{collection}/{id}`` targets. Only a ``manage`` membership
 #: may authenticate to these (governed deploy over the membership credential, design 20).
 _MEMBERSHIP_DEPLOY_PREFIXES = ("/api/topologies/", "/api/skills/", "/api/archetypes/")
 
 
-def _membership_authenticates(request: Any, method: str, path: str) -> bool:
+def _membership_authenticates(request: Any, method: str, path: str) -> bool:  # noqa: PLR0911
     """True if *method*+*path* accepts membership auth (design 19/20) and the request carries a
     valid membership key as a Bearer token. This is the fallback the transport-auth seam consults
     when a caller presents a membership credential rather than a serve token. Scope-aware:
@@ -251,6 +285,8 @@ def _membership_authenticates(request: Any, method: str, path: str) -> bool:
         return False
     if path in _MEMBERSHIP_READ_ROUTES:
         return True  # any valid membership may read
+    if method.upper() == "POST" and path == "/fleet/state/artifacts":
+        return True  # delta-sync body fetch — a read (POST only for the ref list)
     if method.upper() == "PUT" and path.startswith(_MEMBERSHIP_DEPLOY_PREFIXES):
         return getattr(membership, "scope", None) == "manage"  # deploy is manage-only
     if method.upper() == "DELETE" and path.startswith("/fleet/membership/"):
