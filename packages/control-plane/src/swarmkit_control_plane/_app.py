@@ -37,6 +37,7 @@ from swarmkit_control_plane._fntypes import (
     StateFn,
     VerifyFn,
 )
+from swarmkit_control_plane._join_code_store import JoinCodeStore
 from swarmkit_control_plane._oidc import OidcVerifier
 from swarmkit_control_plane._proposals import ProposalStore
 from swarmkit_control_plane._registry import SqliteRegistry
@@ -54,6 +55,7 @@ from swarmkit_control_plane._routes_registry import (
     _mount_command_queue,
     _mount_config,
     _mount_instances,
+    _mount_join,
     _mount_register,
     _mount_state,
     _mount_token_routes,
@@ -103,6 +105,7 @@ def create_app(
     props = proposals or ProposalStore(registry.engine)
     state_store = InstanceStateStore(registry.engine)
     cred_store = CredentialStore(registry.engine)  # membership secrets, encrypted at rest
+    join_store = JoinCodeStore(registry.engine)  # one-time Mode B join codes
     growth = GrowthService(registry, props, arts, author, eval_run)
     deploy_svc = DeployService(registry, arts, agg, deploy)
     ops = [t for t in (operator_tokens or []) if t]
@@ -126,7 +129,10 @@ def create_app(
         async def auth_middleware(
             request: Request, call_next: Callable[[Request], Awaitable[Response]]
         ) -> Response:
-            if request.url.path == "/health" or request.method == "OPTIONS":
+            # /fleet/join authenticates with its one-time join code inside the route (design 19,
+            # Mode B) — the joining instance has no panel credential yet, so it bypasses the seam
+            # here (mirrors serve's /fleet/register). /fleet/join-code stays operator-gated.
+            if request.url.path in ("/health", "/fleet/join") or request.method == "OPTIONS":
                 return await call_next(request)
             header = request.headers.get("Authorization", "")
             token = header[7:] if header.startswith("Bearer ") else ""
@@ -156,6 +162,7 @@ def create_app(
     _mount_token_routes(app, registry, verify)
     _mount_state(app, registry, state_store, fetch_state)
     _mount_register(app, registry, state_store, cred_store, register_fn, refresh_fn)
+    _mount_join(app, registry, join_store, state_store)
     _mount_command_queue(app, registry)
     _mount_aggregation(app, agg)
     _mount_observability(app, observability or {})

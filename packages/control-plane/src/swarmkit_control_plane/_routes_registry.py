@@ -19,6 +19,7 @@ from swarmkit_control_plane._fntypes import (
     VerifyFn,
 )
 from swarmkit_control_plane._fntypes import extract_artifact as _extract_artifact
+from swarmkit_control_plane._join_code_store import DEFAULT_JOIN_TTL_S, JoinCodeStore
 from swarmkit_control_plane._models import Instance
 from swarmkit_control_plane._registry import SqliteRegistry
 from swarmkit_control_plane._schemas import (
@@ -27,6 +28,8 @@ from swarmkit_control_plane._schemas import (
     EnqueueCommandRequest,
     EnrollRequest,
     HeartbeatRequest,
+    JoinCodeRequest,
+    JoinRequest,
     MintTokenRequest,
     PollRequest,
     RegisterInstanceRequest,
@@ -336,6 +339,76 @@ def _mount_register(
             "membership_id": result.get("membership_id", meta["membership_id"]),
             "scope": cred.get("scope", meta["scope"]),
             "fingerprint": cred.get("fingerprint", ""),
+        }
+
+
+def _mount_join(
+    app: FastAPI,
+    registry: SqliteRegistry,
+    join_store: JoinCodeStore,
+    state_store: InstanceStateStore,
+) -> None:
+    """Mode B (instance-initiated) join (design 19). The panel can't reach a NAT'd instance, so the
+    handshake inverts: the operator mints a one-time join code, the edge calls ``POST /fleet/join``
+    with it + its full state, and the panel creates the (poll-mode) Instance, issues the
+    connector→panel credential (shown once), and caches the state — mirroring Mode A register."""
+
+    @app.post("/fleet/join-code")
+    async def mint_join_code(req: JoinCodeRequest) -> dict[str, Any]:
+        """Operator action: mint a one-time join code to hand to an edge instance (the fleet UI's
+        'enroll (poll)'). Operator-gated at the seam — a connector token can't mint codes."""
+        tier = (req.tier or "read").strip().lower()
+        if tier_rank(tier) < 0:
+            raise HTTPException(400, "tier must be 'read', 'run', or 'admin'")
+        ttl = req.ttl_seconds if req.ttl_seconds and req.ttl_seconds > 0 else DEFAULT_JOIN_TTL_S
+        code = join_store.mint(name=req.name, endpoint=req.endpoint, tier=tier, ttl_seconds=ttl)
+        return {"join_code": code, "tier": tier, "expires_in": ttl}
+
+    @app.post("/fleet/join")
+    async def join(req: JoinRequest) -> dict[str, Any]:
+        """Instance-initiated join. **Auth-exempt at the seam** — the join code *is* the auth,
+        consumed single-use here (design 19, Mode B). Creates a poll-mode Instance, mints its
+        connector→panel token (returned once), caches the presented state, and marks it healthy."""
+        consumed = join_store.consume(req.join_code)
+        if consumed is None:
+            raise HTTPException(401, "invalid, expired, or already-used join code")
+        identity = req.instance_identity or {}
+        name = str(identity.get("name") or consumed["name"] or "edge-instance")
+        endpoint = str(identity.get("endpoint") or consumed["endpoint"] or "")
+        tier = str(consumed["tier"])
+        inst = Instance(
+            id=uuid4().hex[:12], name=name, endpoint=endpoint, connection="poll", tier=tier
+        )
+        registry.add(inst)
+        # The credential the connector polls with: a per-instance token, authenticated by hash
+        # (get_by_token_hash) like an operator-minted one. Shown once; only its hash is kept.
+        minted = mint_token(inst.id, tier=tier, client_name=name)
+        registry.set_token(
+            inst.id,
+            token_ref=minted.key_ref,
+            fingerprint=minted.fingerprint,
+            token_hash=minted.token_hash,
+            tier=tier,
+            minted_at=datetime.now(UTC).isoformat(),
+        )
+        state = req.instance_state or {}
+        synced_at = state_store.put(inst.id, state)
+        registry.update_health(
+            inst.id, health="healthy", schema_version=str(state.get("schema_version", ""))
+        )
+        arts = state.get("artifacts", {}) if isinstance(state, dict) else {}
+        return {
+            "instance_id": inst.id,
+            "membership_id": uuid4().hex[:12],  # the instance's to keep (its record of this join)
+            "credential": {
+                "type": "api_key",
+                "value": minted.token,  # shown once; the connector polls the panel with this
+                "tier": tier,
+                "key_ref": minted.key_ref,
+                "fingerprint": minted.fingerprint,
+            },
+            "synced_at": synced_at,
+            "counts": {kind: len(items) for kind, items in arts.items()},
         }
 
 

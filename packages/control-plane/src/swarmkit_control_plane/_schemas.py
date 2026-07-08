@@ -50,6 +50,23 @@ class RegisterInstanceRequest(BaseModel):
     requested_scope: str | None = None
 
 
+class JoinCodeRequest(BaseModel):
+    """Operator mints a one-time Mode B join code (design 19)."""
+
+    name: str = ""  # display name for the instance that will join
+    endpoint: str = ""  # optional advertised endpoint hint
+    tier: str = "read"  # granted connector tier — bounds enqueuable commands (Mode B)
+    ttl_seconds: int | None = None  # defaults to the store's join-code TTL
+
+
+class JoinRequest(BaseModel):
+    """A NAT'd instance joins a fleet, presenting its join code + full state (design 19, Mode B)."""
+
+    join_code: str
+    instance_identity: dict[str, Any] = {}  # {name?, endpoint?, workspace_id?}
+    instance_state: dict[str, Any] = {}  # full InstanceState export (cached by the panel)
+
+
 class AggregateRequest(BaseModel):
     records: list[dict[str, Any]]
     # Only used by operators / open mode; connectors are scoped to their own id via the principal.
