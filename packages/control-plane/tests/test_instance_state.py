@@ -119,3 +119,83 @@ def test_sync_rejected_for_poll_mode(tmp_path: Path) -> None:
 def test_sync_unknown_instance_404(tmp_path: Path) -> None:
     client = _client(tmp_path, [])
     assert client.post("/instances/nope/sync").status_code == 404
+
+
+# --- delta sync at the route level (design 19 §delta sync) -------------------
+
+
+def _delta_client(
+    tmp_path: Path,
+    manifest: dict[str, Any],
+    fetched: dict[str, Any],
+    fetch_calls: list[list[tuple[str, str]]],
+) -> TestClient:
+    """A client whose first sync full-pulls _STATE, and whose manifest/artifacts fns drive the
+    second (delta) sync — capturing exactly which refs get their bodies fetched."""
+    registry = SqliteRegistry(tmp_path / "registry.sqlite")
+
+    async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:  # pragma: no cover
+        return {}
+
+    async def fetch_state(endpoint: str, token_ref: str) -> dict[str, Any]:
+        return _STATE
+
+    async def fetch_manifest(endpoint: str, token_ref: str) -> dict[str, Any]:
+        return manifest
+
+    async def fetch_artifacts(
+        endpoint: str, token_ref: str, refs: list[tuple[str, str]]
+    ) -> dict[str, Any]:
+        fetch_calls.append(refs)
+        return fetched
+
+    return TestClient(
+        create_app(
+            registry,
+            verify=verify,
+            fetch_state=fetch_state,
+            fetch_manifest=fetch_manifest,
+            fetch_artifacts=fetch_artifacts,
+        )
+    )
+
+
+def test_second_sync_delta_fetches_only_the_changed_body(tmp_path: Path) -> None:
+    # manifest: the skill changed hash; the topology is unchanged.
+    manifest = {
+        **{k: v for k, v in _STATE.items() if k != "artifacts"},
+        "artifacts": {
+            "topologies": [{"id": "solution-design", "version": "1.0.0", "content_hash": "abc"}],
+            "skills": [{"id": "get-weather", "version": "2.0.0", "content_hash": "def-NEW"}],
+            "archetypes": [],
+            "triggers": [],
+        },
+    }
+    fetched = {
+        "artifacts": {
+            "topologies": [],
+            "skills": [
+                {
+                    "id": "get-weather",
+                    "version": "2.0.0",
+                    "content_hash": "def-NEW",
+                    "content": {"kind": "Skill", "updated": True},
+                }
+            ],
+            "archetypes": [],
+            "triggers": [],
+        }
+    }
+    calls: list[list[tuple[str, str]]] = []
+    client = _delta_client(tmp_path, manifest, fetched, calls)
+    iid = _enroll(client)
+
+    client.post(f"/instances/{iid}/sync")  # 1st: full pull
+    resp = client.post(f"/instances/{iid}/sync").json()  # 2nd: delta
+
+    assert resp["delta"] == {"mode": "delta", "fetched": 1, "reused": 1, "removed": 0}
+    assert calls == [[("skills", "get-weather")]]  # only the changed skill body was fetched
+    # the cache now has the new skill content but reused the unchanged topology.
+    cached = client.get(f"/instances/{iid}/state").json()["state"]["artifacts"]
+    assert cached["skills"][0]["content"] == {"kind": "Skill", "updated": True}
+    assert cached["topologies"][0]["content"] == {"kind": "Topology"}

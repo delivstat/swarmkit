@@ -17,8 +17,10 @@ from swarmkit_control_plane._aggregation import AggregationStore
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import (
+    fetch_artifacts,
     fetch_capabilities,
     fetch_jobs,
+    fetch_manifest,
     fetch_state,
     leave,
     refresh,
@@ -36,7 +38,9 @@ from swarmkit_control_plane._fntypes import (
     LeaveFn,
     RefreshFn,
     RegisterFn,
+    StateArtifactsFn,
     StateFn,
+    StateManifestFn,
     VerifyFn,
 )
 from swarmkit_control_plane._join_code_store import JoinCodeStore
@@ -72,6 +76,8 @@ def create_app(
     *,
     verify: VerifyFn = fetch_capabilities,
     fetch_state: StateFn = fetch_state,
+    fetch_manifest: StateManifestFn = fetch_manifest,
+    fetch_artifacts: StateArtifactsFn = fetch_artifacts,
     register_fn: RegisterFn = register,
     refresh_fn: RefreshFn = refresh,
     leave_fn: LeaveFn = leave,
@@ -164,7 +170,7 @@ def create_app(
 
     _mount_instances(app, registry, verify, jobs, author)
     _mount_token_routes(app, registry, verify)
-    _mount_state(app, registry, state_store, arts, fetch_state)
+    _mount_state(app, registry, state_store, arts, fetch_state, fetch_manifest, fetch_artifacts)
     _mount_register(app, registry, state_store, cred_store, register_fn, refresh_fn)
     _mount_membership(app, registry, cred_store, leave_fn)
     _mount_join(app, registry, join_store, state_store)

@@ -18,14 +18,18 @@ from typing import Any
 
 from swarmkit_control_plane._serve_client import (
     ConnectorError,
+    ManifestUnsupported,
     ServeClient,
     resolve_secret_ref,
 )
 
 __all__ = [
     "ConnectorError",
+    "ManifestUnsupported",
+    "fetch_artifacts",
     "fetch_capabilities",
     "fetch_jobs",
+    "fetch_manifest",
     "fetch_state",
     "leave",
     "refresh",
@@ -44,6 +48,39 @@ async def fetch_state(endpoint: str, token_ref: str) -> dict[str, Any]:
     async with ServeClient(endpoint, token_ref) as serve:
         state: dict[str, Any] = serve.ok(await serve.get("/fleet/state"), "/fleet/state")
     return state
+
+
+async def fetch_manifest(endpoint: str, token_ref: str) -> dict[str, Any]:
+    """Pull the names-only state manifest (GET /fleet/state/manifest) — id/version/content_hash per
+    artifact, no content (design 19 §delta sync). The panel diffs these hashes against its cache to
+    learn what changed. Raises ``ManifestUnsupported`` when the instance predates delta sync (404),
+    so the caller falls back to a full pull; other failures raise ``ConnectorError``.
+    """
+    async with ServeClient(endpoint, token_ref) as serve:
+        resp = await serve.get("/fleet/state/manifest")
+        if resp.status_code == 404:
+            raise ManifestUnsupported(
+                "instance has no /fleet/state/manifest (pre-delta-sync serve)"
+            )
+        manifest: dict[str, Any] = serve.ok(resp, "/fleet/state/manifest")
+    return manifest
+
+
+async def fetch_artifacts(
+    endpoint: str, token_ref: str, refs: list[tuple[str, str]]
+) -> dict[str, Any]:
+    """Fetch the *content* of specific artifacts (POST /fleet/state/artifacts) — the body-fetch half
+    of delta sync. ``refs`` is ``(collection, id)`` pairs. Returns an InstanceState carrying only
+    those artifacts. Raises ConnectorError on any failure.
+    """
+    body = {
+        "refs": [{"collection": collection, "id": artifact_id} for collection, artifact_id in refs]
+    }
+    async with ServeClient(endpoint, token_ref) as serve:
+        result: dict[str, Any] = serve.ok(
+            await serve.post("/fleet/state/artifacts", body), "/fleet/state/artifacts"
+        )
+    return result
 
 
 async def register(
