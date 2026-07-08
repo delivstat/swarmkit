@@ -29,6 +29,7 @@ from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._compat import incompatibility
 from swarmkit_control_plane._connector import ConnectorError
+from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._deploy import DEPLOYABLE, DeployError
 from swarmkit_control_plane._fntypes import AuthorFn, DeployFn, EvalFn, extract_artifact
 from swarmkit_control_plane._proposals import ProposalStore
@@ -47,6 +48,10 @@ class NotFoundError(ServiceError):
 
 class BadRequestError(ServiceError):
     status = 400
+
+
+class ForbiddenError(ServiceError):
+    status = 403
 
 
 class ConflictError(ServiceError):
@@ -208,11 +213,36 @@ class DeployService:
         artifacts: ArtifactStore,
         agg: AggregationStore,
         deploy: DeployFn,
+        cred_store: CredentialStore | None = None,
     ) -> None:
         self._registry = registry
         self._artifacts = artifacts
         self._agg = agg
         self._deploy = deploy
+        self._cred_store = cred_store
+
+    def _deploy_credential(self, instance_id: str, token_ref: str) -> str:
+        """The credential the Mode-A deploy PUT carries (design 20). **Membership-first**: when the
+        panel holds a membership for this instance it must be ``manage`` (else refuse — a monitor
+        membership can't deploy, and we do *not* silently fall back to the legacy admin token); only
+        when there's no membership do we fall back to the (deprecated) ``token_ref``."""
+        if self._cred_store is not None:
+            meta = self._cred_store.get_metadata(instance_id)
+            if meta is not None:
+                if meta.get("scope") != "manage":
+                    raise ForbiddenError(
+                        f"membership scope '{meta.get('scope')}' cannot deploy — enroll with "
+                        "manage scope (or rotate to one)"
+                    )
+                secret = self._cred_store.get_secret(instance_id)
+                if secret:
+                    return secret
+        if token_ref:
+            return token_ref  # deprecated fallback for pre-enrollment instances
+        raise ConflictError(
+            "no manage membership credential and no token_ref — register the instance with "
+            "manage scope first"
+        )
 
     async def deploy(
         self, *, instance_id: str, kind: str, artifact_id: str, version: str, by: str = ""
@@ -239,10 +269,11 @@ class DeployService:
 
         content = ver["content"]
         if inst.connection == "direct":
+            # Governed deploy over the membership credential (design 20): PUT with the manage-scope
+            # membership key the instance issued, not a separately-provisioned admin token.
+            credential = self._deploy_credential(instance_id, inst.token_ref)
             try:
-                result = await self._deploy(
-                    inst.endpoint, inst.token_ref, kind, artifact_id, content
-                )
+                result = await self._deploy(inst.endpoint, credential, kind, artifact_id, content)
             except DeployError as exc:
                 raise UpstreamError(f"deploy failed: {exc}") from exc
             outcome: dict[str, Any] = {"mode": "direct", "result": result}

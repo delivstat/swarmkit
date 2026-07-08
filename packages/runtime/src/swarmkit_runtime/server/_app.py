@@ -175,7 +175,7 @@ def create_app(  # noqa: PLR0915
             # enrollment (design 19), not a serve transport token. When the transport seam rejects
             # the bearer, fall back to membership auth for the fleet-read routes — a valid
             # membership key (monitor+ scope) authorizes the read. Non-fleet routes stay denied.
-            if _membership_authenticates(request, request.url.path):
+            if _membership_authenticates(request, request.method, request.url.path):
                 return await call_next(request)
             logger.warning(
                 "auth.denied path=%s reason=%s",

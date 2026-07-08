@@ -107,7 +107,7 @@ def create_app(
     cred_store = CredentialStore(registry.engine)  # membership secrets, encrypted at rest
     join_store = JoinCodeStore(registry.engine)  # one-time Mode B join codes
     growth = GrowthService(registry, props, arts, author, eval_run)
-    deploy_svc = DeployService(registry, arts, agg, deploy)
+    deploy_svc = DeployService(registry, arts, agg, deploy, cred_store)
     ops = [t for t in (operator_tokens or []) if t]
 
     # Default-secure: an unauthenticated panel can mint serve tokens and deploy artifacts,
