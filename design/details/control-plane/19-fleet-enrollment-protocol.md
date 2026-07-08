@@ -254,14 +254,16 @@ instance happens to run* and *what the fleet has vetted and can deploy* (the bas
 
 ## What this builds (phased — one design, three PR-sized slices)
 
-1. **Observe (read-only value first):** `InstanceState` schema + `GET /fleet/state` on serve + the
-   panel observed-state snapshot store + the instance-page cached view + **monitor-only** membership.
-   *Delivers: real inventory + offline-resilient observation, with no credential-model change yet
-   (uses existing tokens).*
-2. **Handshake + credentials:** `POST /fleet/register` (Mode A) + `POST /fleet/join` (Mode B) +
-   one-time enrollment tokens + issued opaque API keys + refresh/rotate + revoke. Wire the panel
-   enroll action onto it.
-3. **Manage + adopt:** `manage` scope + governed deploy over the membership credential (reuses
+1. **Observe (read-only value first) — ✅ shipped.** `InstanceState` schema + `GET /fleet/state` on
+   serve + the panel observed-state snapshot store + the instance-page cached view + **monitor-only**
+   membership. *Delivers: real inventory + offline-resilient observation, with no credential-model
+   change yet (uses existing tokens).*
+2. **Handshake + credentials — ✅ shipped.** `POST /fleet/register` (Mode A) + `POST /fleet/join`
+   (Mode B) + one-time enrollment tokens + issued opaque API keys (stored **encrypted at rest** via a
+   pluggable SecretBox — Fernet local / Vault-Transit) + refresh/rotate + revoke; `GET /fleet/state`
+   also accepts the membership key; the panel enroll/rotate action + the "enroll (poll)" join-code UI
+   + `swarmkit connect --join-code` connector bootstrap wire onto it. (PRs #453–#467.)
+3. **Manage + adopt — next.** `manage` scope + governed deploy over the membership credential (reuses
    [15](15-artifact-registry.md)/[17](17-growth-loop.md)) + the explicit "adopt observed artifact
    into registry" action + multi-fleet UX.
 
