@@ -185,6 +185,30 @@ class MembershipStore:
             return None
         return _row_to_membership(row)
 
+    def rotate(self, current_key: str) -> tuple[Membership, str] | None:
+        """Rotate a membership's key: validate the current key, issue a new one for the **same**
+        membership (the old key stops working). Returns ``(membership, new_key)``, or None if the
+        current key is unknown/expired."""
+        m = self.authenticate(current_key)
+        if m is None:
+            return None
+        new_secret = mint_secret()
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(
+                update(_memberships)
+                .where(_memberships.c.membership_id == m.membership_id)
+                .values(key_hash=secret_hash(new_secret), key_fingerprint=fingerprint(new_secret))
+            )
+        rotated = Membership(
+            membership_id=m.membership_id,
+            fleet_id=m.fleet_id,
+            scope=m.scope,
+            key_fingerprint=fingerprint(new_secret),
+            created_at=m.created_at,
+            expires_at=m.expires_at,
+        )
+        return rotated, new_secret
+
     def list_memberships(self) -> list[Membership]:
         with self._lock, self._engine.connect() as conn:
             rows = (

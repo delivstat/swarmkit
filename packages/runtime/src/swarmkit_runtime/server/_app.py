@@ -149,9 +149,10 @@ def create_app(  # noqa: PLR0915
 
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
-        # /health is public; /fleet/register authenticates with its one-time enrollment token
-        # inside the route (design 19), so it bypasses the transport-token seam here.
-        if request.url.path in ("/health", "/fleet/register"):
+        # /health is public; /fleet/register + /fleet/refresh authenticate with their own token
+        # (enrollment token / current membership key) inside the route (design 19), so they bypass
+        # the transport-token seam here.
+        if request.url.path in ("/health", "/fleet/register", "/fleet/refresh"):
             return await call_next(request)
 
         auth_req = AuthReq(
