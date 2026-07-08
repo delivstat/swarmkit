@@ -15,6 +15,24 @@ import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 import archetypeSchema from "../../schemas/archetype.schema.json" with {
 	type: "json",
 };
+import credentialSchema from "../../schemas/protocol/credential.schema.json" with {
+	type: "json",
+};
+import instanceStateSchema from "../../schemas/protocol/instance-state.schema.json" with {
+	type: "json",
+};
+import joinRequestSchema from "../../schemas/protocol/join-request.schema.json" with {
+	type: "json",
+};
+import joinResponseSchema from "../../schemas/protocol/join-response.schema.json" with {
+	type: "json",
+};
+import registerRequestSchema from "../../schemas/protocol/register-request.schema.json" with {
+	type: "json",
+};
+import registerResponseSchema from "../../schemas/protocol/register-response.schema.json" with {
+	type: "json",
+};
 import skillSchema from "../../schemas/skill.schema.json" with { type: "json" };
 import topologySchema from "../../schemas/topology.schema.json" with {
 	type: "json",
@@ -41,8 +59,34 @@ const SCHEMAS = {
 	trigger: triggerSchema,
 } as const;
 
+// Fleet-enrollment wire schemas (design details/control-plane/19-fleet-enrollment-protocol.md).
+// Distinct from the artifact schemas: API request/response contracts, not user-authored artifacts.
+export type ProtocolSchemaName =
+	| "credential"
+	| "instance-state"
+	| "register-request"
+	| "register-response"
+	| "join-request"
+	| "join-response";
+
+const PROTOCOL_SCHEMAS = {
+	credential: credentialSchema,
+	"instance-state": instanceStateSchema,
+	"register-request": registerRequestSchema,
+	"register-response": registerResponseSchema,
+	"join-request": joinRequestSchema,
+	"join-response": joinResponseSchema,
+} as const;
+
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);
+
+// All protocol schemas share one Ajv so the responses' `$ref`s (by `$id`) resolve across files.
+const protocolAjv = new Ajv2020({ strict: false, allErrors: true });
+addFormats(protocolAjv);
+for (const schema of Object.values(PROTOCOL_SCHEMAS)) {
+	protocolAjv.addSchema(schema);
+}
 
 const validators = new Map<SchemaName, ValidateFunction>();
 
@@ -54,6 +98,13 @@ function getValidator(name: SchemaName): ValidateFunction {
 	return v;
 }
 
+function getProtocolValidator(name: ProtocolSchemaName): ValidateFunction {
+	const schema = PROTOCOL_SCHEMAS[name] as { $id: string };
+	const existing = protocolAjv.getSchema(schema.$id);
+	if (existing) return existing as ValidateFunction;
+	return protocolAjv.compile(PROTOCOL_SCHEMAS[name]);
+}
+
 export function getSchema(name: SchemaName): unknown {
 	return SCHEMAS[name];
 }
@@ -63,6 +114,21 @@ export function validate(
 	instance: unknown,
 ): { valid: true } | { valid: false; errors: unknown[] } {
 	const v = getValidator(name);
+	const ok = v(instance);
+	return ok ? { valid: true } : { valid: false, errors: v.errors ?? [] };
+}
+
+export function getProtocolSchema(name: ProtocolSchemaName): unknown {
+	return PROTOCOL_SCHEMAS[name];
+}
+
+// Validate a fleet-enrollment message (register/join/InstanceState/credential, design 19).
+// Cross-file `$ref`s resolve because every protocol schema is registered in one Ajv.
+export function validateProtocol(
+	name: ProtocolSchemaName,
+	instance: unknown,
+): { valid: true } | { valid: false; errors: unknown[] } {
+	const v = getProtocolValidator(name);
 	const ok = v(instance);
 	return ok ? { valid: true } : { valid: false, errors: v.errors ?? [] };
 }

@@ -293,5 +293,9 @@ instance happens to run* and *what the fleet has vetted and can deploy* (the bas
    panel form?
 4. **Where the instance-side membership store lives** — reuse the serve sqlite (`.swarmkit/`) vs a
    dedicated file; interaction with `swarmkit connect` (which already holds the Mode B token).
-5. **Standard-protocol packaging** — publish the register/join + `InstanceState` schemas under
-   `packages/schema` so third-party clients validate against them (makes "any client" real).
+5. **Standard-protocol packaging — ✅ done.** The register/join + `InstanceState` (+ credential)
+   schemas are published under `packages/schema/schemas/protocol/` as canonical JSON Schema, with
+   cross-language validators (`validate_protocol` in Python / `validateProtocol` in TypeScript) and
+   shared fixtures — a distinct namespace from the artifact schemas (they are wire contracts, not
+   codegen'd artifacts). Any client can now validate against the files. Response schemas cross-ref
+   the credential + instance-state schemas by `$id`.

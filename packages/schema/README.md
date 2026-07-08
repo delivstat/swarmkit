@@ -31,6 +31,34 @@ typescript/    # @swarmkit/schema (npm)   — validators + ts-json-schema-genera
 
 Each schema versions independently (`apiVersion: swarmkit/v1`).
 
+### Fleet-enrollment protocol schemas (`schemas/protocol/`)
+
+The register/join handshake + `InstanceState` wire contract (design
+[19](../../design/details/control-plane/19-fleet-enrollment-protocol.md)) — published so **any
+client** can validate against it, not just the SwarmKit runtime/panel. These are API
+request/response contracts, a distinct namespace from the artifact schemas above (they are not
+user-authored artifacts and are **not** run through pydantic/TS codegen).
+
+| Schema | Purpose |
+| --- | --- |
+| `instance-state.schema.json` | Full observed state export (`GET /fleet/state`) |
+| `credential.schema.json` | The issued opaque, scoped API-key credential |
+| `register-request` / `register-response` | Mode A (panel → instance) handshake |
+| `join-request` / `join-response` | Mode B (instance → panel) handshake |
+
+Validate them with the dedicated entry points (responses cross-reference the credential +
+instance-state schemas by `$id`, so validation resolves those automatically):
+
+```python
+from swarmkit_schema import validate_protocol
+validate_protocol("register-response", body)   # raises jsonschema.ValidationError on failure
+```
+
+```ts
+import { validateProtocol } from "@swarmkit/schema";
+validateProtocol("join-request", body);          // -> { valid: true } | { valid: false, errors }
+```
+
 ## Development
 
 ```bash

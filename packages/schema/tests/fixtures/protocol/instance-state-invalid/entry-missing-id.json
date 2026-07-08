@@ -1,0 +1,10 @@
+{
+  "apiVersion": "swarmkit/v1",
+  "kind": "InstanceState",
+  "workspace_id": "w",
+  "schema_version": "1.7.0",
+  "artifacts": {
+    "topologies": [ { "version": "1.0.0", "content_hash": "h" } ],
+    "skills": [], "archetypes": [], "triggers": []
+  }
+}

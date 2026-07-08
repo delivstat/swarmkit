@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/protocol/join-response.schema.json",
+  "title": "SwarmKit Fleet Join Response",
+  "description": "Mode B response from panel `POST /fleet/join`: the panel creates the instance's registry entry and issues the connector→panel credential the instance then polls with. See design details/control-plane/19-fleet-enrollment-protocol.md (§Mode B).",
+  "type": "object",
+  "required": ["instance_id", "membership_id", "credential"],
+  "properties": {
+    "instance_id": {
+      "type": "string",
+      "description": "The id the panel assigned the instance in its registry."
+    },
+    "membership_id": {
+      "type": "string",
+      "description": "The instance's record of this join (kept by the instance for multi-fleet)."
+    },
+    "credential": {
+      "$ref": "https://schemas.swarmkit.dev/v1/protocol/credential.schema.json",
+      "description": "The connector→panel credential (carries a tier); the instance polls the panel with it."
+    },
+    "synced_at": {
+      "type": "string",
+      "description": "When the panel cached the presented state (ISO-8601)."
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" },
+      "description": "Per-kind artifact counts from the cached state (a quick summary)."
+    }
+  }
+}

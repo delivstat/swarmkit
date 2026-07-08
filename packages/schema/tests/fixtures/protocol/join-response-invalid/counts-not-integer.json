@@ -1,0 +1,5 @@
+{
+  "instance_id": "abc", "membership_id": "mem-1",
+  "credential": { "type": "api_key", "value": "x", "tier": "run", "fingerprint": "fp" },
+  "counts": { "topologies": "many" }
+}

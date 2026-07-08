@@ -1,0 +1,9 @@
+{
+  "join_code": "join-code-xyz",
+  "instance_identity": { "name": "edge-oms", "endpoint": "http://127.0.0.1:8000", "workspace_id": "edge-oms" },
+  "instance_state": {
+    "apiVersion": "swarmkit/v1", "kind": "InstanceState", "workspace_id": "edge-oms", "schema_version": "1.7.0",
+    "artifacts": { "topologies": [], "skills": [], "archetypes": [], "triggers": [] },
+    "providers": ["ollama"], "governance_provider": "mock", "health": { "status": "ok" }
+  }
+}

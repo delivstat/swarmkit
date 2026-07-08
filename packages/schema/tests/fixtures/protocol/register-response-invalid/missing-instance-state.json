@@ -1,0 +1,4 @@
+{
+  "membership_id": "mem-1",
+  "credential": { "type": "api_key", "value": "x", "scope": "manage", "fingerprint": "fp" }
+}

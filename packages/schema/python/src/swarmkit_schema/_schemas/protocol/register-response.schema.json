@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/protocol/register-response.schema.json",
+  "title": "SwarmKit Fleet Register Response",
+  "description": "Mode A response from serve `POST /fleet/register`: the instance creates a membership, issues the fleet a scoped credential, and returns its full state — all in one round trip. See design details/control-plane/19-fleet-enrollment-protocol.md.",
+  "type": "object",
+  "required": ["membership_id", "credential", "instance_state"],
+  "properties": {
+    "membership_id": {
+      "type": "string",
+      "description": "The membership this join created (the instance's record of the fleet)."
+    },
+    "credential": {
+      "$ref": "https://schemas.swarmkit.dev/v1/protocol/credential.schema.json",
+      "description": "The scoped API key the fleet uses to call this instance (monitor or manage)."
+    },
+    "instance_state": {
+      "$ref": "https://schemas.swarmkit.dev/v1/protocol/instance-state.schema.json",
+      "description": "The instance's full observed state at enrollment (cached by the fleet)."
+    }
+  }
+}

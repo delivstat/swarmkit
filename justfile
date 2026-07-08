@@ -82,6 +82,11 @@ demo-trigger-schema:    (_demo-schema "trigger")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema
 
+# Demo the published fleet-enrollment protocol schemas (register/join + InstanceState, design 19):
+# validate every committed protocol fixture + show the cross-file $ref enforcing nested state.
+demo-protocol-schema:
+    uv run python scripts/demo_protocol_schema.py
+
 # Regenerate both pydantic models and TypeScript types from the canonical
 # JSON Schemas. Run after any schema edit per
 # docs/notes/schema-change-discipline.md.

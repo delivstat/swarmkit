@@ -1,0 +1,7 @@
+{
+  "instance_id": "abc123def456",
+  "membership_id": "mem-xyz",
+  "credential": { "type": "api_key", "value": "poll-token", "tier": "run", "key_ref": "env:SWARMKIT_SERVE_TOKEN_ABC", "fingerprint": "111222333444" },
+  "synced_at": "2026-07-08T10:00:00Z",
+  "counts": { "topologies": 2, "skills": 5 }
+}
