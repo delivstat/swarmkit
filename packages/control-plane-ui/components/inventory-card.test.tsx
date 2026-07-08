@@ -7,7 +7,11 @@ import type { CachedState } from "@/lib/types";
 import { InventoryCard } from "./inventory-card";
 
 vi.mock("@/lib/api", () => ({
-	api: { instanceState: vi.fn(), syncInstance: vi.fn() },
+	api: {
+		instanceState: vi.fn(),
+		syncInstance: vi.fn(),
+		adoptArtifact: vi.fn(),
+	},
 }));
 
 const mockApi = vi.mocked(api);
@@ -101,6 +105,35 @@ describe("InventoryCard", () => {
 		);
 		await waitFor(() =>
 			expect(screen.getByText("solution-design")).toBeTruthy(),
+		);
+	});
+
+	it("adopts a selected artifact into the registry with its kind", async () => {
+		mockApi.instanceState.mockResolvedValue(CACHED);
+		mockApi.adoptArtifact.mockResolvedValue({
+			kind: "skill",
+			artifact_id: "get-weather",
+			version: "v1",
+			content_hash: "deadbeef0000",
+			adopted_from: "i1",
+			synced_at: "x",
+		});
+		renderCard();
+		// select the skill, then adopt it — the singular kind is sent, not the collection key.
+		fireEvent.click(await screen.findByText("get-weather"));
+		fireEvent.click(
+			await screen.findByRole("button", { name: /Adopt into registry/i }),
+		);
+		await waitFor(() =>
+			expect(mockApi.adoptArtifact).toHaveBeenCalledWith("i1", {
+				kind: "skill",
+				artifact_id: "get-weather",
+			}),
+		);
+		await waitFor(() =>
+			expect(
+				screen.getByText(/Adopted skill\/get-weather as v1/i),
+			).toBeTruthy(),
 		);
 	});
 });

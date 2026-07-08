@@ -67,6 +67,13 @@ class JoinRequest(BaseModel):
     instance_state: dict[str, Any] = {}  # full InstanceState export (cached by the panel)
 
 
+class AdoptRequest(BaseModel):
+    """Promote a cached observed artifact into the deployable registry (design 20)."""
+
+    kind: str  # topology | skill | archetype | trigger
+    artifact_id: str
+
+
 class AggregateRequest(BaseModel):
     records: list[dict[str, Any]]
     # Only used by operators / open mode; connectors are scoped to their own id via the principal.
