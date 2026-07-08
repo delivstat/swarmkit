@@ -10,7 +10,10 @@
 * ``GET /fleet/memberships`` / ``DELETE /fleet/membership/{id}`` (``serve:admin``) — the owner lists
   the fleets registered here and ejects one (revoking its key).
 
-Phase 1 (``GET /fleet/state``) is unchanged; gating it behind the membership key is a later slice.
+``GET /fleet/state`` (in ``_routes_introspection``) now also accepts a membership key: when the
+transport-auth seam rejects the bearer, a valid membership (monitor+ scope) authorizes the read
+(the fallback lives in the serve auth middleware, ``_membership_authenticates``). This lets an
+enrolled fleet read state with the credential it was issued, not a shared serve token.
 """
 
 from __future__ import annotations

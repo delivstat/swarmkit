@@ -225,6 +225,25 @@ def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
     }
 
 
+#: Routes a fleet may authenticate to with its membership key (instead of a transport token).
+_MEMBERSHIP_READ_ROUTES = frozenset({"/fleet/state"})
+
+
+def _membership_authenticates(request: Any, path: str) -> bool:
+    """True if *path* accepts membership auth (design 19) and the request carries a valid membership
+    key as a Bearer token. This is the fallback the transport-auth seam consults when a caller
+    presents a membership credential (a fleet reading its instance's state) rather than a serve
+    token — any valid membership can read (``monitor`` is the minimum scope)."""
+    if path not in _MEMBERSHIP_READ_ROUTES:
+        return False
+    store = getattr(request.app.state, "membership_store", None)
+    if store is None:
+        return False
+    header = request.headers.get("Authorization", "")
+    key = header[7:] if header.startswith("Bearer ") else ""
+    return bool(key) and store.authenticate(key) is not None
+
+
 def _record_serve_access(request: Any, identity: Any, action: str | None, status: int) -> None:
     """Append a serve access-audit record (best-effort; never breaks the request)."""
     store = getattr(request.app.state, "store", None)
