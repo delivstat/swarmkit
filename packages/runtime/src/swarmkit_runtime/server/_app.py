@@ -28,7 +28,7 @@ from ._config import (
     _parse_server_config,
     _parse_trigger_configs,
 )
-from ._helpers import _record_serve_access, _required_action
+from ._helpers import _membership_authenticates, _record_serve_access, _required_action
 from ._jobs import JobStore
 from ._mcp import _boot_mcp, _mcp_available, _mount_mcp, _start_scheduler
 from ._routes_conversations import _register_conversation_routes
@@ -171,6 +171,12 @@ def create_app(  # noqa: PLR0915
                 identity.provider,
             )
         except AuthError as exc:
+            # A fleet reads its instance's state with the membership credential it was issued at
+            # enrollment (design 19), not a serve transport token. When the transport seam rejects
+            # the bearer, fall back to membership auth for the fleet-read routes — a valid
+            # membership key (monitor+ scope) authorizes the read. Non-fleet routes stay denied.
+            if _membership_authenticates(request, request.url.path):
+                return await call_next(request)
             logger.warning(
                 "auth.denied path=%s reason=%s",
                 request.url.path,
