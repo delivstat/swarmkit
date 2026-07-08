@@ -89,6 +89,21 @@ def test_expired_membership_key_rejected(store: MembershipStore) -> None:
     assert store.authenticate(key) is None
 
 
+def test_rotate_issues_new_key_and_invalidates_the_old(store: MembershipStore) -> None:
+    membership, key = store.issue_membership("fleet-a", "manage")
+    rotated = store.rotate(key)
+    assert rotated is not None
+    new_membership, new_key = rotated
+    assert new_membership.membership_id == membership.membership_id  # same membership
+    assert new_key != key
+    assert store.authenticate(new_key) is not None  # new key works
+    assert store.authenticate(key) is None  # old key stops working
+
+
+def test_rotate_with_bad_key_returns_none(store: MembershipStore) -> None:
+    assert store.rotate("not-a-key") is None
+
+
 def test_multi_fleet_memberships_are_independent(store: MembershipStore) -> None:
     _, key_a = store.issue_membership("fleet-a", "monitor")
     m_b, key_b = store.issue_membership("fleet-b", "manage")

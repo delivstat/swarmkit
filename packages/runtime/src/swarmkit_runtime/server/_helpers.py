@@ -64,7 +64,7 @@ def _check_webhook_signature(
         break
 
 
-def _required_action(method: str, path: str) -> str | None:
+def _required_action(method: str, path: str) -> str | None:  # noqa: PLR0911
     """The serve:* tier action a route requires, or None for auth-exempt.
 
     read = all GETs (observe); admin = artifact mutation (/api/* writes) + canary
@@ -77,6 +77,10 @@ def _required_action(method: str, path: str) -> str | None:
     # makes a `manage`-scope join human-issued (design 19). /fleet/register is auth-exempt at the
     # seam (it authenticates with the one-time enrollment token itself; see the middleware).
     if path == "/fleet/enroll-token":
+        return "admin"
+    # Listing / ejecting memberships is the instance owner's call (admin). /fleet/refresh is
+    # exempt at the seam (it authenticates with the current membership key; see the middleware).
+    if path.startswith("/fleet/membership"):
         return "admin"
     if method.upper() == "GET":
         return "read"

@@ -1,13 +1,14 @@
 """Fleet enrollment routes on serve — the instance side of the register handshake (design 19).
 
-Two routes:
-
 * ``POST /fleet/enroll-token`` (``serve:admin``) — the instance owner mints a one-time, TTL-bounded
   enrollment token (a join code). Admin-gated, so a ``manage``-scope join is human-issued.
-* ``POST /fleet/register`` (**auth-exempt at the seam**; authenticates with the enrollment token in
-  its ``Authorization`` header) — consumes the token, creates a membership + issues the scoped API
-  key the fleet will use to call this instance, and returns the full ``InstanceState`` in one round
-  trip.
+* ``POST /fleet/register`` (**auth-exempt at the seam**; authenticates with the enrollment token) —
+  consumes the token, creates a membership + issues the scoped API key the fleet will use to call
+  this instance, and returns the full ``InstanceState`` in one round trip.
+* ``POST /fleet/refresh`` (**auth-exempt**; authenticates with the *current* membership key) —
+  rotates the key (old stops working); same membership.
+* ``GET /fleet/memberships`` / ``DELETE /fleet/membership/{id}`` (``serve:admin``) — the owner lists
+  the fleets registered here and ejects one (revoking its key).
 
 Phase 1 (``GET /fleet/state``) is unchanged; gating it behind the membership key is a later slice.
 """
@@ -74,3 +75,48 @@ def _register_fleet_routes(app: FastAPI) -> None:
             },
             "instance_state": state,
         }
+
+    @app.post("/fleet/refresh")
+    async def refresh(request: Request) -> dict[str, Any]:
+        """Rotate the caller's membership key. Authenticates with the *current* key (Bearer); the
+        old key stops working. Same membership, new secret (shown once)."""
+        header = request.headers.get("Authorization", "")
+        current = header[7:] if header.startswith("Bearer ") else ""
+        if not current:
+            raise HTTPException(
+                401, "refresh requires the current membership key as a Bearer token"
+            )
+        rotated = _store(request).rotate(current)
+        if rotated is None:
+            raise HTTPException(401, "invalid or expired membership key")
+        membership, new_key = rotated
+        return {
+            "membership_id": membership.membership_id,
+            "credential": {
+                "type": "api_key",
+                "value": new_key,
+                "scope": membership.scope,
+                "fingerprint": membership.key_fingerprint,
+            },
+        }
+
+    @app.get("/fleet/memberships")
+    async def list_memberships(request: Request) -> list[dict[str, Any]]:
+        """The fleets registered with this instance (serve:admin — owner-only). No secrets."""
+        return [
+            {
+                "membership_id": m.membership_id,
+                "fleet_id": m.fleet_id,
+                "scope": m.scope,
+                "fingerprint": m.key_fingerprint,
+                "created_at": m.created_at,
+            }
+            for m in _store(request).list_memberships()
+        ]
+
+    @app.delete("/fleet/membership/{membership_id}")
+    async def eject(membership_id: str, request: Request) -> dict[str, Any]:
+        """Eject a fleet — revoke its membership; its key stops authenticating (serve:admin)."""
+        if not _store(request).revoke_membership(membership_id):
+            raise HTTPException(404, "membership not found")
+        return {"ejected": membership_id}

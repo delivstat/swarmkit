@@ -94,3 +94,48 @@ def test_scope_comes_from_the_token_not_the_request(client: TestClient) -> None:
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.json()["credential"]["scope"] == "monitor"
+
+
+def _register(client: TestClient, scope: str = "manage") -> tuple[str, str]:
+    """Register and return (membership_id, membership_key)."""
+    token = _mint(client, scope)
+    body = client.post(
+        "/fleet/register",
+        json={"fleet_id": "fleet-a"},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+    return body["membership_id"], body["credential"]["value"]
+
+
+def test_refresh_rotates_the_membership_key(client: TestClient) -> None:
+    _, key = _register(client)
+    r = client.post("/fleet/refresh", headers={"Authorization": f"Bearer {key}"})
+    assert r.status_code == 200
+    new_key = r.json()["credential"]["value"]
+    assert new_key != key
+    # the old key no longer refreshes (rotated); the new one does.
+    assert (
+        client.post("/fleet/refresh", headers={"Authorization": f"Bearer {key}"}).status_code == 401
+    )
+    assert (
+        client.post("/fleet/refresh", headers={"Authorization": f"Bearer {new_key}"}).status_code
+        == 200
+    )
+
+
+def test_refresh_without_or_with_bad_key_is_401(client: TestClient) -> None:
+    assert client.post("/fleet/refresh").status_code == 401
+    assert (
+        client.post("/fleet/refresh", headers={"Authorization": "Bearer nope"}).status_code == 401
+    )
+
+
+def test_list_and_eject_memberships(client: TestClient) -> None:
+    mid, _ = _register(client)
+    listed = client.get("/fleet/memberships").json()
+    assert any(m["membership_id"] == mid and m["fleet_id"] == "fleet-a" for m in listed)
+    assert "value" not in str(listed) and "key_hash" not in str(listed)  # no secrets leaked
+    # eject it — gone.
+    assert client.delete(f"/fleet/membership/{mid}").status_code == 200
+    assert client.delete(f"/fleet/membership/{mid}").status_code == 404
+    assert all(m["membership_id"] != mid for m in client.get("/fleet/memberships").json())
