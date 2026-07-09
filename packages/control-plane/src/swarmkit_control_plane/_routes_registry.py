@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 
+from swarmkit_control_plane._aggregation import AggregationStore
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._connector import ConnectorError
 from swarmkit_control_plane._credential_store import CredentialStore
@@ -22,6 +24,7 @@ from swarmkit_control_plane._fntypes import (
     StateArtifactsFn,
     StateFn,
     StateManifestFn,
+    UsageFn,
     VerifyFn,
 )
 from swarmkit_control_plane._fntypes import extract_artifact as _extract_artifact
@@ -44,6 +47,8 @@ from swarmkit_control_plane._schemas import (
 from swarmkit_control_plane._state_store import InstanceStateStore
 from swarmkit_control_plane._tokens import mint_token
 from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_tier
+
+_log = logging.getLogger(__name__)
 
 
 def _mount_config(app: FastAPI, config: dict[str, Any]) -> None:
@@ -243,9 +248,11 @@ def _mount_state(
     registry: SqliteRegistry,
     state_store: InstanceStateStore,
     artifacts: ArtifactStore,
+    agg: AggregationStore,
     fetch_state: StateFn,
     fetch_manifest: StateManifestFn,
     fetch_artifacts: StateArtifactsFn,
+    fetch_usage: UsageFn,
 ) -> None:
     """Observed-state cache routes (fleet enrollment Phase 1, design 19) + adopt (Phase 3, doc 20).
 
@@ -281,11 +288,22 @@ def _mount_state(
             raise HTTPException(502, f"state sync failed: {exc}") from exc
         synced_at = state_store.put(instance_id, state)
         arts = state.get("artifacts", {}) if isinstance(state, dict) else {}
+        # Best-effort usage pull (design 23): fold the instance's /usage rollup into the panel
+        # aggregation so the Runs page reflects Mode-A instances without the push pipeline. State is
+        # the contract — a usage hiccup logs and yields pulled_usage: 0, never fails the sync.
+        pulled_usage = 0
+        try:
+            usage = await fetch_usage(inst.endpoint, inst.token_ref)
+            by_model = usage.get("by_model", []) if isinstance(usage, dict) else []
+            pulled_usage = agg.put_usage_snapshot(instance_id, by_model)["written"]
+        except ConnectorError as exc:
+            _log.warning("usage pull failed for %s: %s", instance_id, exc)
         return {
             "instance_id": instance_id,
             "synced_at": synced_at,
             "counts": {kind: len(items) for kind, items in arts.items()},
             "delta": summary,  # {mode, fetched, reused, removed} — bytes saved on the wire
+            "pulled_usage": pulled_usage,  # per-model usage rows refreshed from /usage (design 23)
         }
 
     @app.get("/instances/{instance_id}/state")

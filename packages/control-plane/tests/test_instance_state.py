@@ -6,11 +6,13 @@ so the inventory stays inspectable even when the instance is offline.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
 from swarmkit_control_plane import SqliteRegistry, create_app
+from swarmkit_control_plane._connector import ConnectorError, ManifestUnsupported
 
 _STATE = {
     "apiVersion": "swarmkit/v1",
@@ -43,7 +45,16 @@ _STATE = {
 }
 
 
-def _client(tmp_path: Path, state_calls: list[str]) -> TestClient:
+async def _no_usage(endpoint: str, token_ref: str) -> dict[str, Any]:
+    """Default usage stub — an instance with no recorded usage (empty by_model)."""
+    return {"summary": {}, "by_model": []}
+
+
+def _client(
+    tmp_path: Path,
+    state_calls: list[str],
+    usage: Callable[[str, str], Awaitable[dict[str, Any]]] = _no_usage,
+) -> TestClient:
     registry = SqliteRegistry(tmp_path / "registry.sqlite")
 
     async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:  # pragma: no cover
@@ -53,7 +64,7 @@ def _client(tmp_path: Path, state_calls: list[str]) -> TestClient:
         state_calls.append(endpoint)
         return _STATE
 
-    return TestClient(create_app(registry, verify=verify, fetch_state=fetch_state))
+    return TestClient(create_app(registry, verify=verify, fetch_state=fetch_state, usage=usage))
 
 
 def _enroll(client: TestClient, connection: str = "direct") -> str:
@@ -121,6 +132,92 @@ def test_sync_unknown_instance_404(tmp_path: Path) -> None:
     assert client.post("/instances/nope/sync").status_code == 404
 
 
+# --- usage pull-on-sync (design 23) ------------------------------------------
+
+
+def test_sync_pulls_usage_into_the_fleet_rollup(tmp_path: Path) -> None:
+    async def usage(endpoint: str, token_ref: str) -> dict[str, Any]:
+        return {
+            "summary": {"total_calls": 3},
+            "by_model": [
+                {
+                    "model": "kimi-k2",
+                    "calls": 3,
+                    "input_tokens": 300,
+                    "output_tokens": 60,
+                    "cost_usd": 1.5,
+                }
+            ],
+        }
+
+    client = _client(tmp_path, [], usage=usage)
+    iid = _enroll(client)
+
+    body = client.post(f"/instances/{iid}/sync").json()
+    assert body["pulled_usage"] == 1  # one model row folded into the rollup
+
+    rollup = client.get("/usage").json()
+    assert len(rollup) == 1
+    assert rollup[0]["model"] == "kimi-k2" and rollup[0]["input_tokens"] == 300
+
+
+def test_resync_refreshes_usage_totals_not_doubles_them(tmp_path: Path) -> None:
+    totals = {"n": 100}
+    registry = SqliteRegistry(tmp_path / "registry.sqlite")
+
+    async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:  # pragma: no cover
+        return {}
+
+    async def fetch_state(endpoint: str, token_ref: str) -> dict[str, Any]:
+        return _STATE
+
+    async def fetch_manifest(endpoint: str, token_ref: str) -> dict[str, Any]:
+        raise ManifestUnsupported("full-pull each sync for this test")
+
+    async def usage(endpoint: str, token_ref: str) -> dict[str, Any]:
+        return {
+            "by_model": [
+                {"model": "m", "input_tokens": totals["n"], "output_tokens": 0, "cost_usd": 0}
+            ]
+        }
+
+    client = TestClient(
+        create_app(
+            registry,
+            verify=verify,
+            fetch_state=fetch_state,
+            fetch_manifest=fetch_manifest,
+            usage=usage,
+        )
+    )
+    iid = _enroll(client)
+
+    client.post(f"/instances/{iid}/sync")
+    totals["n"] = 250  # instance ran more between syncs (cumulative total grew)
+    client.post(f"/instances/{iid}/sync")
+
+    rollup = client.get("/usage").json()
+    assert len(rollup) == 1 and rollup[0]["input_tokens"] == 250  # latest, not 100+250
+
+
+def test_usage_pull_failure_does_not_fail_the_sync(tmp_path: Path) -> None:
+    async def usage(endpoint: str, token_ref: str) -> dict[str, Any]:
+        raise ConnectorError("boom")
+
+    calls: list[str] = []
+    client = _client(tmp_path, calls, usage=usage)
+    iid = _enroll(client)
+
+    resp = client.post(f"/instances/{iid}/sync")
+    # State is the contract: the sync still succeeds and caches, usage just reports 0.
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pulled_usage"] == 0
+    assert body["counts"]["topologies"] == 1
+    assert client.get(f"/instances/{iid}/state").json()["state"]["workspace_id"] == "sterling-oms"
+    assert client.get("/usage").json() == []
+
+
 # --- delta sync at the route level (design 19 §delta sync) -------------------
 
 
@@ -156,6 +253,7 @@ def _delta_client(
             fetch_state=fetch_state,
             fetch_manifest=fetch_manifest,
             fetch_artifacts=fetch_artifacts,
+            usage=_no_usage,
         )
     )
 
