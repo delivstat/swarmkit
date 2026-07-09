@@ -59,6 +59,9 @@ class Usage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    # Provider-reported cost in USD for this call, when the provider returns it (e.g. OpenRouter).
+    # 0.0 when the provider reports only tokens — a price table derives cost from tokens (PR 2).
+    cost_usd: float = 0.0
 
 
 @dataclass(frozen=True)

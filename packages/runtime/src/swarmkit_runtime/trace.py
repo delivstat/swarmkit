@@ -43,6 +43,7 @@ class AgentStep:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    cost_usd: float = 0.0
     tool_calls: list[ToolCall] = field(default_factory=list)
     delegations: list[str] = field(default_factory=list)
     result_length: int = 0
@@ -62,10 +63,12 @@ class RunTrace:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_tokens: int = 0
+    total_cost_usd: float = 0.0
     llm_calls: int = 0
     agent_steps: list[AgentStep] = field(default_factory=list)
     token_by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
-    token_by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+    # token counts are ints; the "cost" key is a float (USD) — hence the widened value type.
+    token_by_model: dict[str, dict[str, float]] = field(default_factory=dict)
     # Context compression savings (read-side). bytes are characters.
     compression_bytes_in: int = 0
     compression_bytes_out: int = 0
@@ -92,11 +95,13 @@ class RunTrace:
         model: str,
         input_tokens: int,
         output_tokens: int,
+        cost_usd: float = 0.0,
     ) -> None:
-        """Record tokens from any LLM call (tool loop, synthesis, etc)."""
+        """Record tokens (and provider-reported cost) from any LLM call (tool loop, synthesis)."""
         self.total_input_tokens += input_tokens
         self.total_output_tokens += output_tokens
         self.total_tokens += input_tokens + output_tokens
+        self.total_cost_usd += cost_usd
         self.llm_calls += 1
 
         agent_tokens = self.token_by_agent.setdefault(
@@ -108,11 +113,12 @@ class RunTrace:
 
         if model:
             model_tokens = self.token_by_model.setdefault(
-                model, {"input": 0, "output": 0, "total": 0}
+                model, {"input": 0, "output": 0, "total": 0, "cost": 0.0}
             )
             model_tokens["input"] += input_tokens
             model_tokens["output"] += output_tokens
             model_tokens["total"] += input_tokens + output_tokens
+            model_tokens["cost"] = model_tokens.get("cost", 0.0) + cost_usd
 
     def start(self, run_id: str, topology: str) -> None:
         self.run_id = run_id
@@ -124,6 +130,7 @@ class RunTrace:
         self.total_input_tokens += step.input_tokens
         self.total_output_tokens += step.output_tokens
         self.total_tokens += step.total_tokens
+        self.total_cost_usd += step.cost_usd
 
         agent_tokens = self.token_by_agent.setdefault(
             step.agent_id, {"input": 0, "output": 0, "total": 0}
@@ -134,11 +141,12 @@ class RunTrace:
 
         if step.model:
             model_tokens = self.token_by_model.setdefault(
-                step.model, {"input": 0, "output": 0, "total": 0}
+                step.model, {"input": 0, "output": 0, "total": 0, "cost": 0.0}
             )
             model_tokens["input"] += step.input_tokens
             model_tokens["output"] += step.output_tokens
             model_tokens["total"] += step.total_tokens
+            model_tokens["cost"] = model_tokens.get("cost", 0.0) + step.cost_usd
 
     def finish(self) -> None:
         self.end_time = time.time()
@@ -230,10 +238,10 @@ class RunTrace:
 
         lines.append("")
         lines.append("Tokens by model:")
-        for model, tokens in sorted(self.token_by_model.items()):
+        for model, mtokens in sorted(self.token_by_model.items()):
             lines.append(
-                f"  {model:40s} {tokens['total']:>8,} "
-                f"(in: {tokens['input']:,} / out: {tokens['output']:,})"
+                f"  {model:40s} {mtokens['total']:>8,.0f} "
+                f"(in: {mtokens['input']:,.0f} / out: {mtokens['output']:,.0f})"
             )
 
         return "\n".join(lines)

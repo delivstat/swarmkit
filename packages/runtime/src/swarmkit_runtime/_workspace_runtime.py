@@ -70,8 +70,10 @@ class UsageSummary:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
+    cost_usd: float = 0.0
     by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
-    by_model: dict[str, dict[str, int]] = field(default_factory=dict)
+    # per-model dict carries int token counts plus a float "cost" (USD).
+    by_model: dict[str, dict[str, float]] = field(default_factory=dict)
     # Read-side context compression savings (characters). Zero when off.
     compression_bytes_in: int = 0
     compression_bytes_out: int = 0
@@ -503,6 +505,7 @@ class WorkspaceRuntime:
             input_tokens=trace.total_input_tokens,
             output_tokens=trace.total_output_tokens,
             total_tokens=trace.total_input_tokens + trace.total_output_tokens,
+            cost_usd=trace.total_cost_usd,
             by_agent=dict(trace.token_by_agent),
             by_model=dict(trace.token_by_model),
             compression_bytes_in=trace.compression_bytes_in,
