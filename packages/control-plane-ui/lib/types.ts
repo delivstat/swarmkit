@@ -164,6 +164,32 @@ export interface Job {
 	completed_at?: string | null;
 }
 
+/** One version within a canary route (serve /canary) — weight + optional live metrics. */
+export interface CanaryVersion {
+	version: string;
+	weight: number;
+	metrics?: {
+		total_runs: number;
+		failed_runs: number;
+		error_rate: number;
+		avg_drift?: number;
+		window_start?: string;
+	};
+}
+
+/** A canary route for one topology. */
+export interface CanaryRoute {
+	topology: string;
+	versions: CanaryVersion[];
+}
+
+/** GET /instances/{id}/canary — federated canary status with a reachability envelope (design 26). */
+export interface CanaryEnvelope {
+	reachable: boolean;
+	reason: "poll-mode" | "unreachable" | null;
+	canary: { enabled: boolean; routes: CanaryRoute[] };
+}
+
 /** One completed run from GET /instances/{id}/runs (serve /jobs/history) — per-run cost detail. */
 export interface RunRow {
 	job_id: string;

@@ -27,6 +27,7 @@ __all__ = [
     "ConnectorError",
     "ManifestUnsupported",
     "fetch_artifacts",
+    "fetch_canary",
     "fetch_capabilities",
     "fetch_jobs",
     "fetch_manifest",
@@ -34,9 +35,11 @@ __all__ = [
     "fetch_state",
     "fetch_usage",
     "leave",
+    "promote_canary",
     "refresh",
     "register",
     "resolve_secret_ref",
+    "rollback_canary",
     "run_authoring",
     "run_eval",
 ]
@@ -184,6 +187,39 @@ async def fetch_runs(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
     async with ServeClient(endpoint, token_ref) as serve:
         runs: list[dict[str, Any]] = serve.ok(await serve.get("/jobs/history"), "/jobs/history")
     return runs
+
+
+async def fetch_canary(endpoint: str, token_ref: str) -> dict[str, Any]:
+    """Federated read of an instance's canary status (GET /canary) — per-version weights + metrics
+    (design 26). Live-queried, not stored. Returns ``{"enabled", "routes"}``. Raises ConnectorError
+    on any failure."""
+    async with ServeClient(endpoint, token_ref) as serve:
+        canary: dict[str, Any] = serve.ok(await serve.get("/canary"), "/canary")
+    return canary
+
+
+async def promote_canary(
+    endpoint: str, token_ref: str, topology: str, version: str
+) -> dict[str, Any]:
+    """Promote a canary version to 100% on an instance (POST /canary/{topology}/promote). A
+    manage-scope fleet action (design 26). Raises ConnectorError on any failure."""
+    async with ServeClient(endpoint, token_ref) as serve:
+        result: dict[str, Any] = serve.ok(
+            await serve.post(f"/canary/{topology}/promote", {"version": version}),
+            f"/canary/{topology}/promote",
+        )
+    return result
+
+
+async def rollback_canary(endpoint: str, token_ref: str, topology: str) -> dict[str, Any]:
+    """Roll a canary back to its base version on an instance (POST /canary/{topology}/rollback).
+    A manage-scope fleet action (design 26). Raises ConnectorError on any failure."""
+    async with ServeClient(endpoint, token_ref) as serve:
+        result: dict[str, Any] = serve.ok(
+            await serve.post(f"/canary/{topology}/rollback", {}),
+            f"/canary/{topology}/rollback",
+        )
+    return result
 
 
 async def run_authoring(

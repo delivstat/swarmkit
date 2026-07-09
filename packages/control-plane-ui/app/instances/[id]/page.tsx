@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
+import { CanaryCard } from "@/components/canary-card";
 import { CommandQueue } from "@/components/command-queue";
 import { DeploymentsCard } from "@/components/deployments-card";
 import { EnrollmentPanel } from "@/components/enrollment-panel";
@@ -191,6 +192,10 @@ export default function InstanceDetailPage() {
 				)}
 
 				<DeploymentsCard instanceId={instance.id} />
+
+				{instance.connection === "direct" ? (
+					<CanaryCard instanceId={instance.id} />
+				) : null}
 
 				{instance.connection === "direct" ? (
 					<InventoryCard instanceId={instance.id} />

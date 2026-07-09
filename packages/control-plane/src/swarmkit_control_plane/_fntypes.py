@@ -33,6 +33,12 @@ DeployFn = Callable[..., Awaitable[dict[str, Any]]]
 JobsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 # (endpoint, token_ref) -> serve /jobs/history list (per-run cost/status detail)
 RunsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
+# (endpoint, token_ref) -> serve /canary {"enabled", "routes"}
+CanaryFn = Callable[[str, str], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref, topology, version) -> promote result
+CanaryPromoteFn = Callable[[str, str, str, str], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref, topology) -> rollback result
+CanaryRollbackFn = Callable[[str, str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref) -> serve /usage {"summary", "by_model"}
 UsageFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref, topology, message) -> {"reply", "status"}
