@@ -25,12 +25,22 @@ store. Separately, cost is never computed at all — `Usage` carries only tokens
    keyed by `job_id`. So `/usage`, `/usage/{job_id}`, and `/jobs/history` report real numbers, and
    the fleet panel's Runs page (federated `/jobs/history`, design 24) shows real per-run cost.
 
+## PR 2 — price table (shipped)
+
+Providers that return tokens but no cost (Anthropic, OpenAI, Google; Ollama is local → $0) get
+`cost_usd` derived from a per-model price table at record time. `model_providers/_pricing.py` holds
+USD-per-1M `(input, output)` prices keyed by a normalized model prefix (aggregator prefix stripped,
+lowercased, longest-key-wins so `gpt-4o-mini` isn't billed as `gpt-4o`); dated/variant suffixes
+(`-20250514`, `-2024-08-06`) still resolve. `_record_run_usage` fills cost from the table **only
+when the provider reported none** — OpenRouter's returned cost stays authoritative. An unpriced
+model contributes `$0` (unknown, not guessed). Prices are approximate public list prices and need
+maintaining when providers change them.
+
 ## Non-goals / follow-up
 
-- **PR 2 — price table.** Providers that return tokens but no cost (Anthropic, OpenAI, Google;
-  Ollama is local/$0) get `cost_usd = tokens × per-model price` computed at record time. OpenRouter
-  keeps its provider-returned cost (authoritative). Out of scope here.
 - No change to the trace file format beyond additive fields (back-compatible `asdict`/load).
+- The in-memory trace's `total_cost_usd` is populated from provider-returned cost only; the price
+  table applies at the persistence chokepoint (the authoritative `/usage` + `/jobs/history` surface).
 
 ## Test plan
 
