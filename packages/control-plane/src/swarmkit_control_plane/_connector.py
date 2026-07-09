@@ -31,6 +31,7 @@ __all__ = [
     "fetch_jobs",
     "fetch_manifest",
     "fetch_state",
+    "fetch_usage",
     "leave",
     "refresh",
     "register",
@@ -159,6 +160,17 @@ async def fetch_jobs(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
     async with ServeClient(endpoint, token_ref) as serve:
         jobs: list[dict[str, Any]] = serve.ok(await serve.get("/jobs"), "/jobs")
     return jobs
+
+
+async def fetch_usage(endpoint: str, token_ref: str) -> dict[str, Any]:
+    """Pull an instance's usage rollup (GET /usage) — cumulative token/cost totals grouped by
+    model (design 23). Folded into /sync so the fleet Runs page reflects Mode-A instances without
+    requiring the observability push pipeline. Returns {"summary", "by_model"}. Raises
+    ConnectorError on any failure.
+    """
+    async with ServeClient(endpoint, token_ref) as serve:
+        usage: dict[str, Any] = serve.ok(await serve.get("/usage"), "/usage")
+    return usage
 
 
 async def run_authoring(

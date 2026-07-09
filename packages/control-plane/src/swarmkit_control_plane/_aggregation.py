@@ -59,6 +59,55 @@ class AggregationStore(Store):
                     deduped += 1
         return {"ingested": ingested, "deduped": deduped, "skipped": skipped}
 
+    def put_usage_snapshot(
+        self, instance_id: str, by_model: list[dict[str, Any]]
+    ) -> dict[str, int]:
+        """Replace an instance's *pulled* usage rollup (design 23 — usage pull-on-sync).
+
+        Unlike :meth:`ingest` (append-only event records, dedup-and-forget), a pulled ``/usage``
+        rollup is a **cumulative snapshot**: re-syncing must *refresh* the totals, not dedup them
+        away. So each model row is upserted under a reserved ``pull:<model>`` record-id with
+        ``DO UPDATE`` (replace-on-sync). The ``pull:`` prefix keeps pulled snapshots distinct
+        from pushed event ids, and :meth:`usage_rollup` (group by model+provider) folds them in.
+
+        ``by_model`` rows carry serve's shape (``model, calls, input_tokens, output_tokens,
+        cost_usd``); ``provider`` is absent from serve and stored as ``null``. Returns the number of
+        model rows written.
+        """
+        written = 0
+        with self._lock, self._engine.begin() as conn:
+            for row in by_model:
+                model = row.get("model")
+                if not model:
+                    continue
+                payload = {
+                    "model": model,
+                    "provider": row.get("provider"),
+                    "input_tokens": row.get("input_tokens", 0),
+                    "output_tokens": row.get("output_tokens", 0),
+                    "cost_usd": row.get("cost_usd", 0),
+                    "calls": row.get("calls", 0),
+                    "source": "pull",
+                }
+                record = {
+                    "instance_id": instance_id,
+                    "kind": "usage",
+                    "record_id": f"pull:{model}",
+                    "ts": str(row.get("ts", "")),
+                    "payload": payload,
+                }
+                conn.execute(
+                    upsert(
+                        self._engine,
+                        agg_records,
+                        record,
+                        index_elements=["instance_id", "kind", "record_id"],
+                        set_={"ts": record["ts"], "payload": payload},
+                    )
+                )
+                written += 1
+        return {"written": written}
+
     def usage_rollup(self) -> list[dict[str, Any]]:
         """Token/cost totals grouped by model + provider across the fleet."""
         payload = agg_records.c.payload

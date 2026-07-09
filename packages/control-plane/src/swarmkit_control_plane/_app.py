@@ -22,6 +22,7 @@ from swarmkit_control_plane._connector import (
     fetch_jobs,
     fetch_manifest,
     fetch_state,
+    fetch_usage,
     leave,
     refresh,
     register,
@@ -43,6 +44,7 @@ from swarmkit_control_plane._fntypes import (
     StateArtifactsFn,
     StateFn,
     StateManifestFn,
+    UsageFn,
     VerifyFn,
 )
 from swarmkit_control_plane._join_code_store import JoinCodeStore
@@ -93,6 +95,7 @@ def create_app(
     proposals: ProposalStore | None = None,
     deploy: DeployFn = push_artifact,
     jobs: JobsFn = fetch_jobs,
+    usage: UsageFn = fetch_usage,
     author: AuthorFn = run_authoring,
     eval_run: EvalFn = run_eval,
     host: str = "127.0.0.1",
@@ -175,7 +178,9 @@ def create_app(
 
     _mount_instances(app, registry, verify, jobs, author)
     _mount_token_routes(app, registry, verify)
-    _mount_state(app, registry, state_store, arts, fetch_state, fetch_manifest, fetch_artifacts)
+    _mount_state(
+        app, registry, state_store, arts, agg, fetch_state, fetch_manifest, fetch_artifacts, usage
+    )
     _mount_register(app, registry, state_store, cred_store, register_fn, refresh_fn, fleet_identity)
     _mount_membership(app, registry, cred_store, leave_fn)
     _mount_fleet_identity(app, fleet_identity)

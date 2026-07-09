@@ -52,6 +52,47 @@ def test_usage_ingest_is_append_only_and_deduped(tmp_path: Path) -> None:
     assert row["records"] == 2
 
 
+def test_put_usage_snapshot_replaces_on_resync(tmp_path: Path) -> None:
+    # A pulled /usage rollup is a cumulative snapshot (design 23): re-syncing must *refresh* the
+    # totals, not dedup them away (as ingest would) nor sum them (as append would).
+    store = _store(tmp_path)
+    first = store.put_usage_snapshot(
+        "i1", [{"model": "kimi-k2", "input_tokens": 100, "output_tokens": 20, "cost_usd": 0.5}]
+    )
+    assert first == {"written": 1}
+    r1 = store.usage_rollup()
+    assert len(r1) == 1
+    assert r1[0]["model"] == "kimi-k2" and r1[0]["provider"] is None  # serve omits provider
+    assert r1[0]["input_tokens"] == 100 and r1[0]["records"] == 1
+
+    # Re-sync with grown cumulative totals → the row is REPLACED, not added.
+    store.put_usage_snapshot(
+        "i1", [{"model": "kimi-k2", "input_tokens": 250, "output_tokens": 60, "cost_usd": 1.2}]
+    )
+    r2 = store.usage_rollup()
+    assert len(r2) == 1  # still one row — replaced, not duplicated
+    assert r2[0]["input_tokens"] == 250 and r2[0]["output_tokens"] == 60
+    assert r2[0]["records"] == 1
+
+
+def test_put_usage_snapshot_skips_rows_without_model(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    out = store.put_usage_snapshot("i1", [{"input_tokens": 5}, {"model": "m", "input_tokens": 3}])
+    assert out == {"written": 1}
+    assert store.usage_rollup()[0]["model"] == "m"
+
+
+def test_pulled_snapshot_and_pushed_events_are_separate_records(tmp_path: Path) -> None:
+    # The reserved pull:<model> record-id keeps a pulled snapshot distinct from pushed event ids,
+    # so a pull never collides with (nor is deduped against) a pushed usage event.
+    store = _store(tmp_path)
+    store.ingest("i1", "usage", [{"id": "evt-1", "model": "m", "input_tokens": 10}])
+    store.put_usage_snapshot("i1", [{"model": "m", "input_tokens": 40}])
+    rollup = store.usage_rollup()
+    assert len(rollup) == 1 and rollup[0]["model"] == "m"
+    assert rollup[0]["records"] == 2  # one pushed event + one pulled snapshot, both retained
+
+
 def test_records_without_id_are_skipped(tmp_path: Path) -> None:
     store = _store(tmp_path)
     out = store.ingest("i1", "usage", [{"model": "x"}])
