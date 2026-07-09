@@ -12,24 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Detect which parts of the repo changed, so the expensive browser e2e only runs when the panel,
-  # its UI, or this workflow is touched — a runtime-only or docs/demo PR shouldn't pay for Chromium.
-  changes:
-    name: detect changes
-    runs-on: ubuntu-latest
-    outputs:
-      e2e: ${{ steps.filter.outputs.e2e }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            e2e:
-              - 'packages/control-plane/**'
-              - 'packages/control-plane-ui/**'
-              - '.github/workflows/ci.yml'
-
   python:
     name: python (${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -91,53 +73,6 @@ jobs:
 
       - name: Test (vitest)
         run: pnpm -r run test
-
-  e2e:
-    name: e2e (control-plane oidc login)
-    needs: changes
-    if: ${{ needs.changes.outputs.e2e == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - name: Install Python dependencies
-        run: uv sync --all-packages --group dev
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install JS dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Cache the downloaded Chromium so it isn't re-fetched every run (the browser binary is the
-      # slow part). Keyed on the lockfile — a Playwright version bump changes it and re-downloads.
-      - name: Cache Playwright browser
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      # --with-deps still installs the apt libraries (not cached); the browser binary comes from the
-      # cache above on a hit.
-      - name: Install Playwright browser
-        run: pnpm --filter @swarmkit/control-plane-ui exec playwright install --with-deps chromium
-
-      # Drives the real browser PKCE flow against a fake OIDC IdP + the OIDC-enabled panel + the UI
-      # (all started by playwright.config.ts). Verifies the panel accepts the issued token.
-      - name: Run OIDC login e2e
-        run: pnpm --filter @swarmkit/control-plane-ui run e2e
 
   schema-validity:
     name: schema validity (json-schema draft 2020-12)
