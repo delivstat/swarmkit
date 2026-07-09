@@ -6,6 +6,7 @@ Agent execution code never imports opentelemetry directly.
 See design/details/opentelemetry-observability.md.
 """
 
+from swarmkit_runtime.telemetry._active import configure_telemetry, get_telemetry
 from swarmkit_runtime.telemetry._config import TelemetryConfig, load_telemetry_config
 from swarmkit_runtime.telemetry._metrics import (
     init_metrics,
@@ -20,12 +21,15 @@ from swarmkit_runtime.telemetry._metrics import (
     record_tool_call,
 )
 from swarmkit_runtime.telemetry._ring_buffer import PromptRingBuffer
-from swarmkit_runtime.telemetry._tracer import SwarmKitTelemetry
+from swarmkit_runtime.telemetry._tracer import RecordedSpan, SwarmKitTelemetry
 
 __all__ = [
     "PromptRingBuffer",
+    "RecordedSpan",
     "SwarmKitTelemetry",
     "TelemetryConfig",
+    "configure_telemetry",
+    "get_telemetry",
     "init_metrics",
     "load_telemetry_config",
     "record_agent_step",
