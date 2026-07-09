@@ -16,6 +16,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { useInstances } from "@/lib/instance-context";
 import type { EvalRow } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
@@ -27,18 +28,23 @@ function PassRate({ rate }: { rate: number | null }) {
 }
 
 export default function EvalsPage() {
-	const fetcher = useCallback(() => api.evals(), []);
+	const { selected, selectedId } = useInstances();
+	const fetcher = useCallback(
+		() => api.evals(selectedId || undefined),
+		[selectedId],
+	);
 	const { data, error, loading, refresh } = useResource<EvalRow[]>(
-		"/eval",
+		`/eval?instance_id=${selectedId}`,
 		fetcher,
 	);
 	const rows = data ?? [];
+	const scopeLabel = selected ? selected.name : "the fleet";
 
 	return (
 		<>
 			<PageHeader
 				title="Evals"
-				description="Eval pass-rates aggregated across the fleet, by eval set and topology."
+				description={`Eval pass-rates for ${scopeLabel}, by eval set and topology.`}
 				actions={
 					<Button variant="outline" size="sm" onClick={refresh}>
 						<RefreshCw />

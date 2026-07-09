@@ -45,14 +45,12 @@ export function InstanceProvider({ children }: { children: React.ReactNode }) {
 		if (saved) setSelectedIdState(saved);
 	}, []);
 
-	// Keep the selection valid: default to the first instance when unset or when the
-	// remembered instance is no longer registered.
+	// The selection defaults to "" = "All instances" (fleet-wide). Only narrow the validity check
+	// to a concrete instance: if the remembered instance is no longer registered, fall back to All
+	// rather than to some other instance — "" is always valid.
 	useEffect(() => {
-		if (instances.length === 0) return;
-		const stillThere = instances.some((i) => i.id === selectedId);
-		if (!selectedId || !stillThere) {
-			setSelectedIdState(instances[0]?.id ?? "");
-		}
+		if (!selectedId || instances.length === 0) return;
+		if (!instances.some((i) => i.id === selectedId)) setSelectedIdState("");
 	}, [instances, selectedId]);
 
 	const setSelectedId = useCallback((id: string) => {

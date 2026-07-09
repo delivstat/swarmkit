@@ -29,6 +29,7 @@ export function InstanceSelector() {
 					onChange={(e) => setSelectedId(e.target.value)}
 					className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
 				>
+					<option value="">All instances</option>
 					{instances.map((i) => (
 						<option key={i.id} value={i.id}>
 							{i.name}

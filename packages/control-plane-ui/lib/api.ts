@@ -21,6 +21,7 @@ import type {
 	Proposal,
 	RefreshResult,
 	RegisterResult,
+	RunsEnvelope,
 	SyncResult,
 	UsageRow,
 } from "./types";
@@ -80,9 +81,18 @@ export const api = {
 	fleetIdentity: () => request<FleetIdentity>("/fleet/identity"),
 	listInstances: () => request<Instance[]>("/instances"),
 	observability: () => request<Observability>("/observability"),
-	usage: () => request<UsageRow[]>("/usage"),
-	evals: () => request<EvalRow[]>("/eval"),
-	audit: (limit = 100) => request<AuditRow[]>(`/audit?limit=${limit}`),
+	usage: (instanceId?: string) =>
+		request<UsageRow[]>(
+			`/usage${instanceId ? `?instance_id=${instanceId}` : ""}`,
+		),
+	evals: (instanceId?: string) =>
+		request<EvalRow[]>(
+			`/eval${instanceId ? `?instance_id=${instanceId}` : ""}`,
+		),
+	audit: (limit = 100, instanceId?: string) =>
+		request<AuditRow[]>(
+			`/audit?limit=${limit}${instanceId ? `&instance_id=${instanceId}` : ""}`,
+		),
 	author: (id: string, message: string, topology?: string) =>
 		request<AuthorResult>(`/instances/${id}/author`, {
 			method: "POST",
@@ -146,6 +156,8 @@ export const api = {
 	deleteInstance: (id: string) =>
 		request<{ deleted: string }>(`/instances/${id}`, { method: "DELETE" }),
 	instanceJobs: (id: string) => request<Job[]>(`/instances/${id}/jobs`),
+	// Federated per-run history (design 24) — live per-run cost detail, never stored on the panel.
+	instanceRuns: (id: string) => request<RunsEnvelope>(`/instances/${id}/runs`),
 	// Observed-state cache (design 19 Phase 1): the last full inventory the panel pulled.
 	instanceState: (id: string) => request<CachedState>(`/instances/${id}/state`),
 	syncInstance: (id: string) =>
