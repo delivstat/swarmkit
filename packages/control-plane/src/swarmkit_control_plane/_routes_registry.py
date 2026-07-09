@@ -17,6 +17,9 @@ from swarmkit_control_plane._delta import pull_state
 from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
+    CanaryFn,
+    CanaryPromoteFn,
+    CanaryRollbackFn,
     JobsFn,
     LeaveFn,
     RefreshFn,
@@ -35,6 +38,7 @@ from swarmkit_control_plane._registry import SqliteRegistry
 from swarmkit_control_plane._schemas import (
     AdoptRequest,
     AuthorRequest,
+    CanaryPromoteRequest,
     CommandResultRequest,
     EnqueueCommandRequest,
     EnrollRequest,
@@ -184,6 +188,65 @@ def _mount_instance_runs(app: FastAPI, registry: SqliteRegistry, runs: RunsFn) -
             _log.warning("runs fetch failed for %s: %s", instance_id, exc)
             return {"reachable": False, "reason": "unreachable", "runs": []}
         return {"reachable": True, "reason": None, "runs": fetched}
+
+
+def _mount_instance_canary(
+    app: FastAPI,
+    registry: SqliteRegistry,
+    canary: CanaryFn,
+    promote: CanaryPromoteFn,
+    rollback: CanaryRollbackFn,
+) -> None:
+    """Fleet canary — monitor + control the runtime's canary router across instances (design 26,
+    Layer A). Read is federated live (like /runs); promote/rollback are manage-scope mutations
+    federated to the instance, Mode A only."""
+
+    @app.get("/instances/{instance_id}/canary")
+    async def instance_canary(instance_id: str) -> dict[str, Any]:
+        """Live canary status (serve GET /canary). 200 with a reachability envelope
+        ``{reachable, reason, canary}`` — ``poll-mode`` for a Mode-B instance, ``unreachable`` for a
+        direct instance that didn't answer (also flips health)."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        empty = {"enabled": False, "routes": []}
+        if inst.connection != "direct":
+            return {"reachable": False, "reason": "poll-mode", "canary": empty}
+        try:
+            status = await canary(inst.endpoint, inst.token_ref)
+        except ConnectorError as exc:
+            registry.update_health(instance_id, health="unreachable")
+            _log.warning("canary fetch failed for %s: %s", instance_id, exc)
+            return {"reachable": False, "reason": "unreachable", "canary": empty}
+        return {"reachable": True, "reason": None, "canary": status}
+
+    @app.post("/instances/{instance_id}/canary/{topology}/promote")
+    async def instance_canary_promote(
+        instance_id: str, topology: str, req: CanaryPromoteRequest
+    ) -> dict[str, Any]:
+        inst = _canary_target(registry, instance_id)
+        try:
+            return await promote(inst.endpoint, inst.token_ref, topology, req.version)
+        except ConnectorError as exc:
+            raise HTTPException(502, f"canary promote failed: {exc}") from exc
+
+    @app.post("/instances/{instance_id}/canary/{topology}/rollback")
+    async def instance_canary_rollback(instance_id: str, topology: str) -> dict[str, Any]:
+        inst = _canary_target(registry, instance_id)
+        try:
+            return await rollback(inst.endpoint, inst.token_ref, topology)
+        except ConnectorError as exc:
+            raise HTTPException(502, f"canary rollback failed: {exc}") from exc
+
+
+def _canary_target(registry: SqliteRegistry, instance_id: str) -> Instance:
+    """Resolve a Mode-A instance for a canary mutation, or raise the right HTTP error."""
+    inst = registry.get(instance_id)
+    if inst is None:
+        raise HTTPException(404, "instance not found")
+    if inst.connection != "direct":
+        raise HTTPException(409, "canary control requires a directly-reachable (Mode A) instance")
+    return inst
 
 
 def _mount_token_routes(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -> None:

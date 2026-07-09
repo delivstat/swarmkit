@@ -6,6 +6,7 @@ import type {
 	AuditRow,
 	AuthorResult,
 	CachedState,
+	CanaryEnvelope,
 	Command,
 	Config,
 	DriftRow,
@@ -158,6 +159,19 @@ export const api = {
 	instanceJobs: (id: string) => request<Job[]>(`/instances/${id}/jobs`),
 	// Federated per-run history (design 24) — live per-run cost detail, never stored on the panel.
 	instanceRuns: (id: string) => request<RunsEnvelope>(`/instances/${id}/runs`),
+	// Fleet canary (design 26) — federated status + manage-scope promote/rollback.
+	instanceCanary: (id: string) =>
+		request<CanaryEnvelope>(`/instances/${id}/canary`),
+	promoteCanary: (id: string, topology: string, version: string) =>
+		request<{ promoted: boolean }>(
+			`/instances/${id}/canary/${encodeURIComponent(topology)}/promote`,
+			{ method: "POST", body: JSON.stringify({ version }) },
+		),
+	rollbackCanary: (id: string, topology: string) =>
+		request<{ rolled_back: boolean }>(
+			`/instances/${id}/canary/${encodeURIComponent(topology)}/rollback`,
+			{ method: "POST", body: "{}" },
+		),
 	// Observed-state cache (design 19 Phase 1): the last full inventory the panel pulled.
 	instanceState: (id: string) => request<CachedState>(`/instances/${id}/state`),
 	syncInstance: (id: string) =>

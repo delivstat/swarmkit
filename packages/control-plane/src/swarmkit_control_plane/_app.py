@@ -18,6 +18,7 @@ from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import (
     fetch_artifacts,
+    fetch_canary,
     fetch_capabilities,
     fetch_jobs,
     fetch_manifest,
@@ -25,8 +26,10 @@ from swarmkit_control_plane._connector import (
     fetch_state,
     fetch_usage,
     leave,
+    promote_canary,
     refresh,
     register,
+    rollback_canary,
     run_authoring,
     run_eval,
 )
@@ -36,6 +39,9 @@ from swarmkit_control_plane._deploy_seq import DeploySeqStore
 from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
+    CanaryFn,
+    CanaryPromoteFn,
+    CanaryRollbackFn,
     DeployFn,
     EvalFn,
     JobsFn,
@@ -67,6 +73,7 @@ from swarmkit_control_plane._routes_registry import (
     _mount_command_queue,
     _mount_config,
     _mount_fleet_identity,
+    _mount_instance_canary,
     _mount_instance_runs,
     _mount_instances,
     _mount_join,
@@ -99,6 +106,9 @@ def create_app(
     deploy: DeployFn = push_artifact,
     jobs: JobsFn = fetch_jobs,
     runs: RunsFn = fetch_runs,
+    canary: CanaryFn = fetch_canary,
+    canary_promote: CanaryPromoteFn = promote_canary,
+    canary_rollback: CanaryRollbackFn = rollback_canary,
     usage: UsageFn = fetch_usage,
     author: AuthorFn = run_authoring,
     eval_run: EvalFn = run_eval,
@@ -182,6 +192,7 @@ def create_app(
 
     _mount_instances(app, registry, verify, jobs, author)
     _mount_instance_runs(app, registry, runs)
+    _mount_instance_canary(app, registry, canary, canary_promote, canary_rollback)
     _mount_token_routes(app, registry, verify)
     _mount_state(
         app, registry, state_store, arts, agg, fetch_state, fetch_manifest, fetch_artifacts, usage

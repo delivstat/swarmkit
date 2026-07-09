@@ -33,6 +33,10 @@ class PollRequest(BaseModel):
     capabilities: dict[str, Any] | None = None
 
 
+class CanaryPromoteRequest(BaseModel):
+    version: str
+
+
 class CommandResultRequest(BaseModel):
     status: str = "done"  # done | error
     output: dict[str, Any] | None = None
