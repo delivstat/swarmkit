@@ -4,6 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { useCallback } from "react";
 import { useSWRConfig } from "swr";
 
+import { JaegerLink } from "@/components/jaeger-link";
 import { PageHeader } from "@/components/page-header";
 import { RunsDetail } from "@/components/runs-detail";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useInstances } from "@/lib/instance-context";
-import type { AuditRow, UsageRow } from "@/lib/types";
+import type { AuditRow, CachedState, Config, UsageRow } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
 function num(n: number) {
@@ -163,6 +164,16 @@ export default function RunsPage() {
 		void mutate(() => true);
 	};
 
+	// Jaeger deep-link: the panel's configured Jaeger URL + the selected instance's OTel service
+	// (its workspace id, from the cached state — falls back to the instance name).
+	const { data: config } = useResource<Config>("/config", () => api.config());
+	const jaegerUrl = config?.observability?.jaeger_url ?? "";
+	const { data: cached } = useResource<CachedState>(
+		selectedId ? `/instances/${selectedId}/state` : null,
+		() => api.instanceState(selectedId),
+	);
+	const traceService = cached?.state?.workspace_id ?? selected?.name ?? "";
+
 	const scopeLabel = selected ? selected.name : "all instances";
 
 	return (
@@ -171,10 +182,15 @@ export default function RunsPage() {
 				title="Runs"
 				description={`Usage + activity for ${scopeLabel}. Aggregates are pushed; per-run detail is fetched live from the instance.`}
 				actions={
-					<Button variant="outline" size="sm" onClick={refresh}>
-						<RefreshCw />
-						Refresh
-					</Button>
+					<>
+						{selected ? (
+							<JaegerLink baseUrl={jaegerUrl} service={traceService} />
+						) : null}
+						<Button variant="outline" size="sm" onClick={refresh}>
+							<RefreshCw />
+							Refresh
+						</Button>
+					</>
 				}
 			/>
 			<div className="space-y-6 p-6">
