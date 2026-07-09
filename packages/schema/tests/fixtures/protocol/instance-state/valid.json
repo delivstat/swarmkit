@@ -2,6 +2,7 @@
   "apiVersion": "swarmkit/v1",
   "kind": "InstanceState",
   "workspace_id": "sterling-oms",
+  "workspace_name": "Sterling OMS Project Workspace",
   "schema_version": "1.7.0",
   "generated_at": "2026-07-08T10:00:00Z",
   "artifacts": {

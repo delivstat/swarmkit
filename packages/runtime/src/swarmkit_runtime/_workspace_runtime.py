@@ -831,9 +831,22 @@ class WorkspaceRuntime:
     @property
     def workspace_id(self) -> str:
         """The workspace's declared id (``metadata.id``) — identifies this instance in telemetry
-        (OTel ``service.name`` / ``swarmkit.workspace.id``). Falls back to the directory name."""
+        (``swarmkit.workspace.id``). Falls back to the directory name."""
         meta = getattr(self._workspace.raw, "metadata", None)
         return str(getattr(meta, "id", "") or self._workspace_root.name)
+
+    @property
+    def workspace_name(self) -> str:
+        """The workspace's human-readable name (``metadata.name``); empty if unset."""
+        meta = getattr(self._workspace.raw, "metadata", None)
+        return str(getattr(meta, "name", "") or "")
+
+    @property
+    def telemetry_service_name(self) -> str:
+        """OTel ``service.name`` — ``"<name> (<id>)"`` when a name is set, else the id — so a fleet
+        is legible in Jaeger's service list (design: runtime/otel-trace-export)."""
+        name, wid = self.workspace_name, self.workspace_id
+        return f"{name} ({wid})" if name else wid
 
     @property
     def workspace_root(self) -> Path:

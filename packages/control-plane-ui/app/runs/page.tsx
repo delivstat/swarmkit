@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 import { useInstances } from "@/lib/instance-context";
+import { telemetryServiceName } from "@/lib/jaeger";
 import type { AuditRow, CachedState, Config, UsageRow } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
@@ -172,7 +173,13 @@ export default function RunsPage() {
 		selectedId ? `/instances/${selectedId}/state` : null,
 		() => api.instanceState(selectedId),
 	);
-	const traceService = cached?.state?.workspace_id ?? selected?.name ?? "";
+	// Mirror the runtime's OTel service.name ("<name> (<id>)") so the deep-link resolves.
+	const traceService = cached
+		? telemetryServiceName(
+				cached.state.workspace_name ?? "",
+				cached.state.workspace_id,
+			)
+		: (selected?.name ?? "");
 
 	const scopeLabel = selected ? selected.name : "all instances";
 

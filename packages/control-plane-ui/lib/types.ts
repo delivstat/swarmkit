@@ -216,6 +216,7 @@ export interface InstanceState {
 	apiVersion: string;
 	kind: string;
 	workspace_id: string;
+	workspace_name?: string;
 	schema_version: string;
 	generated_at?: string;
 	artifacts: {
