@@ -111,8 +111,12 @@ content in flight (hash mismatch) → rejected; present the membership key witho
 1. **Wire body → `{content}` dict, serve recomputes.** The panel sends the artifact content dict;
    serve recomputes `content_hash` with the registry canonicalisation and verifies the signature
    over it. One hash definition, no YAML round-trip ambiguity — and it fixes the wire mismatch.
-2. **Downgrade → accept replay for v1.** Deploys are operator-published + idempotent; a monotonic
-   deploy-sequence guard is a follow-up if needed.
+2. **Downgrade → monotonic sequence guard (shipped).** The fleet stamps a strictly-increasing
+   ``deploy_seq`` into each deploy signature; the instance records the high-water mark per
+   (fleet, kind, id) and rejects (``409``) any deploy whose sequence isn't newer — so an *old*
+   validly-signed deploy can't be replayed over a newer version. The seq is inside the signature, so
+   it can't be stripped or bumped. A per-panel counter (`DeploySeqStore`) is the source. *(Initially
+   deferred; landed in a follow-up PR.)*
 3. **Enforcement → follows `require_identity`.** `SWARMKIT_FLEET_REQUIRE_SIGNED_DEPLOY`, when set,
    wins; **otherwise it defaults to whatever `require_identity` is** (an instance that already
    requires a fleet identity also requires signed deploys). When not required, a *present* signature
@@ -123,5 +127,4 @@ content in flight (hash mismatch) → rejected; present the membership key witho
 
 ## Open questions (deferred)
 
-- **Monotonic downgrade guard** — bind the signature to a deploy sequence so an old signed deploy
-  can't be replayed over a newer one.
+*(None outstanding — the monotonic downgrade guard, the last deferred item, shipped.)*

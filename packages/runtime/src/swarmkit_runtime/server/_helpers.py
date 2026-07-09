@@ -283,24 +283,41 @@ def _require_signed_deploy() -> bool:
 
 
 def _verify_signed_deploy(
-    request: Any, kind: str, artifact_id: str, content: Any, body_fleet_id: str | None
+    request: Any,
+    kind: str,
+    artifact_id: str,
+    content: Any,
+    body_fleet_id: str | None,
+    deploy_seq: int | None,
 ) -> None:
     """Verify the ``X-Fleet-Signature`` over a deploy's content against the pinned fleet key (design
     22). The fleet identity comes from the authenticated membership (Mode A) or an explicit
     ``fleet_id`` in the body (Mode B, the connector applying locally). Raises HTTPException(401) on
-    an invalid signature — or on a **missing** one when signing is required. An operator/transport
-    deploy with no fleet context passes through untouched (the operator is a trusted admin)."""
+    an invalid signature — or on a **missing** one when signing is required. When a ``deploy_seq``
+    is bound, it is part of the signed message *and* must be strictly newer than the last applied
+    for this (fleet, kind, id) — else HTTPException(409), the downgrade guard. An operator/
+    transport deploy with no fleet context passes through untouched (the operator is a trusted
+    admin)."""
     membership = getattr(request.state, "membership", None)
     fleet_id = getattr(membership, "fleet_id", None) or body_fleet_id
     if fleet_id is None:
         return  # no fleet identity involved (operator transport-token deploy)
     signature = request.headers.get("X-Fleet-Signature", "")
-    pinned = request.app.state.membership_store.get_fleet_key(fleet_id)
+    store = request.app.state.membership_store
+    pinned = store.get_fleet_key(fleet_id)
     if signature and pinned is not None:
-        # We hold this fleet's pinned key (Mode A register) → the signature must verify.
-        message = deploy_message(kind, artifact_id, _content_hash(content))
+        # We hold this fleet's pinned key (Mode A register) → the signature must verify (over the
+        # content hash and, when bound, the deploy sequence — so the seq can't be stripped/bumped).
+        message = deploy_message(kind, artifact_id, _content_hash(content), deploy_seq)
         if not verify_signature(pinned, signature, message):
             raise HTTPException(401, "invalid fleet deploy signature")
+        # Downgrade/replay guard: a bound sequence must advance past the last applied.
+        if deploy_seq is not None and not store.deploy_seq_ok(
+            fleet_id, kind, artifact_id, deploy_seq
+        ):
+            raise HTTPException(
+                409, "stale deploy — sequence is not newer than the last applied (replay/downgrade)"
+            )
     elif _require_signed_deploy() and not (signature and pinned is None):
         # Required but unverifiable: no signature at all. (A signature with no pinned key — a Mode B
         # instance whose serve never pinned the fleet, since the *panel* did at join — is accepted:

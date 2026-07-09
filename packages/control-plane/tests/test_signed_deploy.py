@@ -74,19 +74,44 @@ def test_deploy_is_signed_and_verifies_on_serve(tmp_path: Path) -> None:
     )
     assert resp.status_code == 200, resp.text
 
-    # the deploy carried a signature + the panel's fleet_id...
+    # the deploy carried a signature + the panel's fleet_id + a monotonic sequence...
     assert captured["fleet_id"] == identity["fleet_id"]
     assert captured["signature"]
-    # ...and the signature verifies serve-side against the panel's public key over the content hash.
+    assert captured["deploy_seq"] >= 1
+    # ...and the signature verifies serve-side over the content hash + the bound sequence.
     chash = content_hash(captured["content"])
-    message = deploy_message("topology", "hello", chash)
+    message = deploy_message("topology", "hello", chash, captured["deploy_seq"])
     assert verify_signature(identity["fleet_public_key"], captured["signature"], message) is True
-    # a signature over a different hash would not verify (binding check).
-    assert (
-        verify_signature(
-            identity["fleet_public_key"],
-            captured["signature"],
-            deploy_message("topology", "hello", "different-hash"),
-        )
-        is False
-    )
+    # a signature over a different sequence would not verify (the seq is bound in the signature).
+    other = deploy_message("topology", "hello", chash, captured["deploy_seq"] + 1)
+    assert verify_signature(identity["fleet_public_key"], captured["signature"], other) is False
+
+
+def test_deploy_seq_store_is_monotonic(tmp_path: Path) -> None:
+    from swarmkit_control_plane._deploy_seq import DeploySeqStore  # noqa: PLC0415
+
+    store = DeploySeqStore(tmp_path / "cp.sqlite")
+    seqs = [store.next() for _ in range(5)]
+    assert seqs == [1, 2, 3, 4, 5]
+    # a reopened store continues, never repeats.
+    assert DeploySeqStore(tmp_path / "cp.sqlite").next() == 6
+
+
+def test_consecutive_deploys_use_increasing_sequences(tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}  # holds the latest deploy's captured args
+    client = _client(tmp_path, captured)
+    iid = client.post(
+        "/instances",
+        json={
+            "name": "dc",
+            "endpoint": "http://s:8000",
+            "connection": "direct",
+            "token_ref": "env:L",
+        },
+    ).json()["id"]
+    client.post(f"/instances/{iid}/register", json={"enroll_token": "t"})
+    body = {"kind": "topology", "artifact_id": "hello", "version": "v1"}
+    client.post(f"/instances/{iid}/deploy", json=body)
+    first = captured["deploy_seq"]
+    client.post(f"/instances/{iid}/deploy", json=body)
+    assert captured["deploy_seq"] > first  # each deploy advances the sequence

@@ -92,8 +92,8 @@ demo-protocol-schema:
 demo-fleet-identity:
     uv run python scripts/demo_fleet_identity.py
 
-# Demo signed pushes (design 22): a fleet-signed deploy is applied; a tampered payload or an
-# unsigned deploy (when required) is rejected — a stolen membership key alone can't push.
+# Demo signed pushes (design 22): a fleet-signed deploy is applied; a tampered payload, an unsigned
+# deploy (when required), or a replayed old signed deploy (downgrade guard) is rejected.
 demo-signed-deploy:
     uv run python scripts/demo_signed_deploy.py
 
