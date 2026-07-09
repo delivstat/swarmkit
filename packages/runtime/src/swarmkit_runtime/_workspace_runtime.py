@@ -157,7 +157,7 @@ def _run_trace_to_span(trace: Any, workspace_id: str) -> Any:
     )
 
 
-def _finalize_trace(trace: Any, workspace_root: Path) -> None:
+def _finalize_trace(trace: Any, workspace_root: Path, workspace_id: str) -> None:
     """Persist a finished ``RunTrace`` to disk and mirror it to OTel (design:
     runtime/otel-trace-export) so Jaeger/Grafana show the run. The OTel export is best-effort —
     telemetry never fails a run."""
@@ -167,7 +167,7 @@ def _finalize_trace(trace: Any, workspace_root: Path) -> None:
 
         telemetry = get_telemetry()
         if telemetry.enabled:
-            telemetry.export_run_spans(_run_trace_to_span(trace, workspace_root.name))
+            telemetry.export_run_spans(_run_trace_to_span(trace, workspace_id))
 
 
 class MissingMCPServerError(Exception):
@@ -574,7 +574,7 @@ class WorkspaceRuntime:
 
         trace.finish()
         set_active_trace(None)
-        _finalize_trace(trace, self._workspace_root)
+        _finalize_trace(trace, self._workspace_root, self.workspace_id)
 
         events = _extract_events(self._governance)
 
@@ -827,6 +827,13 @@ class WorkspaceRuntime:
     @property
     def workspace(self) -> ResolvedWorkspace:
         return self._workspace
+
+    @property
+    def workspace_id(self) -> str:
+        """The workspace's declared id (``metadata.id``) — identifies this instance in telemetry
+        (OTel ``service.name`` / ``swarmkit.workspace.id``). Falls back to the directory name."""
+        meta = getattr(self._workspace.raw, "metadata", None)
+        return str(getattr(meta, "id", "") or self._workspace_root.name)
 
     @property
     def workspace_root(self) -> Path:

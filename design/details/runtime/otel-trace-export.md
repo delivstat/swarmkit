@@ -48,7 +48,11 @@ a waterfall.
    enabled, convert `RunTrace` → `RecordedSpan` tree and call `export_run_spans`. Best-effort — a
    telemetry failure never fails a run.
 4. **Serve startup** — the server lifespan calls `configure_telemetry()` and logs the exporter +
-   endpoint (so an operator sees "otlp → http://…"), instead of the silent no-op today.
+   endpoint (so an operator sees "otlp → http://…"), instead of the silent no-op today. It also
+   sets the OTel **`service.name` to the workspace's `metadata.id`** (unless the operator set a
+   custom name), so a fleet is distinguishable in Jaeger — each instance is its own service rather
+   than every instance collapsing into one `swarmkit` service. The `swarmkit.workspace.id` span
+   attribute uses the same id (not the workspace *directory* name, which is often just "workspace").
 
 ## Non-goals
 
