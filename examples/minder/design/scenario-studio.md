@@ -349,9 +349,11 @@ self-service Studio on top.
 
 ## Why this fits Minder
 
-- **On-site, cloud-free in the loop** — capture/label/train/run all on the
+- **On-site, cloud-free in the loop** *(default)* — capture/label/train/run all on the
   appliance; the only optional cloud is a one-off user-run training job, never the
-  monitoring path.
+  monitoring path. (One deliberate, opt-in exception: a `critical` scenario may escalate a
+  *flagged* candidate to a cloud VLM for a faster/more-accurate call — see
+  `scenario-studio-severity-escalation.md`, guardrailed + per-scenario.)
 - **Tiered, code-does-the-doing** — foundation model labels once; a tiny detector
   + deterministic rule does the 24/7 work; the VLM only escalates rare matches.
 - **Authoring-first** — Studio is to detection what the rules editor is to rules:
