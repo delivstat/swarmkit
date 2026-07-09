@@ -297,8 +297,14 @@ instance happens to run* and *what the fleet has vetted and can deploy* (the bas
    no running serve or auth token — like `swarmkit auth token`). `swarmkit fleet memberships` lists
    who has registered (+ whether their identity is pinned). The operator pastes the code into the
    fleet UI's Register action; the EnrollmentPanel points at the CLI command.
-4. **Where the instance-side membership store lives** — reuse the serve sqlite (`.swarmkit/`) vs a
-   dedicated file; interaction with `swarmkit connect` (which already holds the Mode B token).
+4. **Where the instance-side membership store lives — ✅ done.** A *dedicated*
+   `.swarmkit/fleet.sqlite` in the default (sqlite) case — separate from the main `store.sqlite`
+   because the enrollment credentials are security-sensitive — **but** it now honours the same
+   configured backend as the main store (`create_membership_store`, resolving env →
+   `storage.runtime` → sqlite exactly like `create_store`). So a Postgres instance keeps its fleet
+   data (memberships, pinned keys, tokens, deploy sequences) in Postgres, not stranded in a local
+   sqlite. serve and the `swarmkit fleet` CLI both use the factory, so they agree on one location
+   (the CLI reads `storage.runtime` from workspace.yaml directly, no full workspace load).
 5. **Standard-protocol packaging — ✅ done.** The register/join + `InstanceState` (+ credential)
    schemas are published under `packages/schema/schemas/protocol/` as canonical JSON Schema, with
    cross-language validators (`validate_protocol` in Python / `validateProtocol` in TypeScript) and

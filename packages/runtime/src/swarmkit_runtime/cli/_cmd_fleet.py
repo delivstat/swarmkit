@@ -44,10 +44,10 @@ def enroll_token(
         typer.echo(f"invalid scope '{scope}' — use {' | '.join(_SCOPES)}", err=True)
         raise typer.Exit(code=2)
 
-    from swarmkit_runtime.fleet import MembershipStore  # noqa: PLC0415
+    from swarmkit_runtime.fleet import create_membership_store  # noqa: PLC0415
     from swarmkit_runtime.fleet._credentials import Scope  # noqa: PLC0415
 
-    store = MembershipStore(workspace_path.resolve())
+    store = create_membership_store(workspace_path.resolve())
     token_scope: Scope = scope  # type: ignore[assignment]
     token = store.create_enrollment_token(token_scope, ttl_seconds=ttl)
 
@@ -69,9 +69,9 @@ def memberships(
 ) -> None:
     """List the fleets registered with this instance (no secrets). Shows each membership's scope,
     key fingerprint, and whether the fleet's identity is pinned (design 21)."""
-    from swarmkit_runtime.fleet import MembershipStore  # noqa: PLC0415
+    from swarmkit_runtime.fleet import create_membership_store  # noqa: PLC0415
 
-    store = MembershipStore(workspace_path.resolve())
+    store = create_membership_store(workspace_path.resolve())
     rows = store.list_memberships()
     if not rows:
         typer.echo("No fleets have registered with this instance yet.")

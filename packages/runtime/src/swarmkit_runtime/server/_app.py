@@ -20,7 +20,7 @@ from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
-from swarmkit_runtime.fleet import MembershipStore
+from swarmkit_runtime.fleet import create_membership_store
 from swarmkit_runtime.persistence import create_store
 
 from ._config import (
@@ -75,7 +75,8 @@ def create_app(  # noqa: PLR0915
         app.state.runtime = runtime
         app.state.store = create_store(workspace_path, runtime.workspace.raw)
         app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
-        app.state.membership_store = MembershipStore(workspace_path)  # fleet enrollment (design 19)
+        # Fleet enrollment store, on the same backend as the main store (design 19 Q4).
+        app.state.membership_store = create_membership_store(workspace_path, runtime.workspace.raw)
 
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)

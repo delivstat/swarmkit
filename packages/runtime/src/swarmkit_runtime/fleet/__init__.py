@@ -15,6 +15,7 @@ from swarmkit_runtime.fleet._credentials import (
     mint_secret,
     secret_hash,
 )
+from swarmkit_runtime.fleet._factory import create_membership_store
 from swarmkit_runtime.fleet._identity import (
     FLEET_ID_PREFIX,
     deploy_message,
@@ -30,6 +31,7 @@ __all__ = [
     "Membership",
     "MembershipStore",
     "Scope",
+    "create_membership_store",
     "deploy_message",
     "fingerprint",
     "fleet_id_from_public_key",
