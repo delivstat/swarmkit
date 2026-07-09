@@ -185,3 +185,30 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
                 detail=f"No canary route for topology '{topology_name}'",
             )
         return {"rolled_back": True, "topology": topology_name}
+
+    @app.post("/canary/{topology_name}")
+    async def canary_start(topology_name: str, request: Request) -> dict[str, Any]:
+        """Start a canary at runtime (design 26 Layer B): split traffic to a newly-deployed version.
+        Body: ``{base_version, canary_version, weight, promote_when?}``. Bootstraps the router when
+        the instance had no canary configured. The canary version's artifact must already be
+        deployed here (the fleet deploys it first)."""
+        body = await request.json()
+        base_version = body.get("base_version", "")
+        canary_version = body.get("canary_version", "")
+        weight = body.get("weight")
+        if not (base_version and canary_version) or not isinstance(weight, int):
+            raise HTTPException(
+                status_code=400,
+                detail="need 'base_version', 'canary_version', and integer 'weight'",
+            )
+        router: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
+        if router is None:
+            router = CanaryRouter([])
+            request.app.state.canary_router = router
+        try:
+            router.start_route(
+                topology_name, base_version, canary_version, weight, body.get("promote_when")
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"started": True, "topology": topology_name, "routes": router.get_status()}
