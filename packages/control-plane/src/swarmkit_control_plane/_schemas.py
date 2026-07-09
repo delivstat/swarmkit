@@ -37,6 +37,13 @@ class CanaryPromoteRequest(BaseModel):
     version: str
 
 
+class CanaryStartRequest(BaseModel):
+    base_version: str
+    canary_version: str
+    weight: int
+    promote_when: dict[str, Any] | None = None
+
+
 class CommandResultRequest(BaseModel):
     status: str = "done"  # done | error
     output: dict[str, Any] | None = None

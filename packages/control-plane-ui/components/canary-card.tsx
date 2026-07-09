@@ -41,6 +41,30 @@ export function CanaryCard({ instanceId }: { instanceId: string }) {
 		}
 	};
 
+	const [form, setForm] = useState({
+		topology: "",
+		base: "",
+		canary: "",
+		weight: "10",
+	});
+	const set = (k: keyof typeof form) => (e: { target: { value: string } }) =>
+		setForm((f) => ({ ...f, [k]: e.target.value }));
+	const canStart =
+		form.topology.trim() !== "" &&
+		form.base.trim() !== "" &&
+		form.canary.trim() !== "";
+
+	const start = () =>
+		act(
+			() =>
+				api.startCanary(instanceId, form.topology.trim(), {
+					base_version: form.base.trim(),
+					canary_version: form.canary.trim(),
+					weight: Number(form.weight) || 10,
+				}),
+			"start",
+		);
+
 	const routes = data?.canary?.routes ?? [];
 	const reachable = data?.reachable ?? true;
 	const unavailable =
@@ -159,6 +183,59 @@ export function CanaryCard({ instanceId }: { instanceId: string }) {
 						</TableBody>
 					</Table>
 				)}
+
+				{reachable ? (
+					<div className="space-y-2 border-t p-4">
+						<p className="text-xs font-medium text-muted-foreground">
+							Start a canary
+						</p>
+						<p className="text-xs text-muted-foreground">
+							Deploy the canary version first (Deployments), then split traffic
+							to it here.
+						</p>
+						<div className="flex flex-wrap items-center gap-2">
+							<input
+								aria-label="Topology"
+								placeholder="topology"
+								value={form.topology}
+								onChange={set("topology")}
+								className="h-8 w-40 rounded-md border border-input bg-background px-2 text-sm"
+							/>
+							<input
+								aria-label="Base version"
+								placeholder="base version"
+								value={form.base}
+								onChange={set("base")}
+								className="h-8 w-32 rounded-md border border-input bg-background px-2 text-sm"
+							/>
+							<input
+								aria-label="Canary version"
+								placeholder="canary version"
+								value={form.canary}
+								onChange={set("canary")}
+								className="h-8 w-32 rounded-md border border-input bg-background px-2 text-sm"
+							/>
+							<input
+								aria-label="Weight"
+								type="number"
+								min={1}
+								max={99}
+								value={form.weight}
+								onChange={set("weight")}
+								className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm"
+							/>
+							<span className="text-xs text-muted-foreground">%</span>
+							<Button
+								size="sm"
+								variant="outline"
+								disabled={!canStart || busy !== ""}
+								onClick={start}
+							>
+								Start
+							</Button>
+						</div>
+					</div>
+				) : null}
 			</CardContent>
 		</Card>
 	);

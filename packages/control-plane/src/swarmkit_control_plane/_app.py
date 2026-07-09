@@ -32,6 +32,7 @@ from swarmkit_control_plane._connector import (
     rollback_canary,
     run_authoring,
     run_eval,
+    start_canary,
 )
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._deploy import push_artifact
@@ -42,6 +43,7 @@ from swarmkit_control_plane._fntypes import (
     CanaryFn,
     CanaryPromoteFn,
     CanaryRollbackFn,
+    CanaryStartFn,
     DeployFn,
     EvalFn,
     JobsFn,
@@ -109,6 +111,7 @@ def create_app(
     canary: CanaryFn = fetch_canary,
     canary_promote: CanaryPromoteFn = promote_canary,
     canary_rollback: CanaryRollbackFn = rollback_canary,
+    canary_start: CanaryStartFn = start_canary,
     usage: UsageFn = fetch_usage,
     author: AuthorFn = run_authoring,
     eval_run: EvalFn = run_eval,
@@ -192,7 +195,7 @@ def create_app(
 
     _mount_instances(app, registry, verify, jobs, author)
     _mount_instance_runs(app, registry, runs)
-    _mount_instance_canary(app, registry, canary, canary_promote, canary_rollback)
+    _mount_instance_canary(app, registry, canary, canary_promote, canary_rollback, canary_start)
     _mount_token_routes(app, registry, verify)
     _mount_state(
         app, registry, state_store, arts, agg, fetch_state, fetch_manifest, fetch_artifacts, usage

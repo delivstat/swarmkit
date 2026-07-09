@@ -11,6 +11,7 @@ vi.mock("@/lib/api", () => ({
 		instanceCanary: vi.fn(),
 		promoteCanary: vi.fn(),
 		rollbackCanary: vi.fn(),
+		startCanary: vi.fn(),
 	},
 }));
 
@@ -96,6 +97,39 @@ describe("CanaryCard", () => {
 			expect(screen.getByText(/Poll-mode \(Mode B\)/i)).toBeTruthy(),
 		);
 		expect(screen.queryByRole("button", { name: /Promote/i })).toBeNull();
+	});
+
+	it("starts a canary from the form", async () => {
+		mockApi.instanceCanary.mockResolvedValue({
+			reachable: true,
+			reason: null,
+			canary: { enabled: false, routes: [] },
+		});
+		mockApi.startCanary.mockResolvedValue({ started: true });
+		renderCard();
+		await waitFor(() =>
+			expect(screen.getByText(/No canary routes configured/i)).toBeTruthy(),
+		);
+		fireEvent.change(screen.getByLabelText("Topology"), {
+			target: { value: "advisor" },
+		});
+		fireEvent.change(screen.getByLabelText("Base version"), {
+			target: { value: "2.0.0" },
+		});
+		fireEvent.change(screen.getByLabelText("Canary version"), {
+			target: { value: "2.1.0" },
+		});
+		fireEvent.change(screen.getByLabelText("Weight"), {
+			target: { value: "20" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: /^Start$/i }));
+		await waitFor(() =>
+			expect(mockApi.startCanary).toHaveBeenCalledWith("i1", "advisor", {
+				base_version: "2.0.0",
+				canary_version: "2.1.0",
+				weight: 20,
+			}),
+		);
 	});
 
 	it("shows an empty state when no canary routes are configured", async () => {
