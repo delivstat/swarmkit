@@ -130,6 +130,37 @@ def test_recent_audit_tags_instance(tmp_path: Path) -> None:
     assert rows[0]["instance_id"] == "dc-1" and rows[0]["action"] == "run"
 
 
+def test_rollups_scope_to_one_instance(tmp_path: Path) -> None:
+    # design 24: fleet-wide by default, ?instance_id scopes to one instance.
+    store = _store(tmp_path)
+    store.ingest(
+        "i1", "usage", [{"id": "u1", "model": "m", "input_tokens": 100, "output_tokens": 5}]
+    )
+    store.ingest(
+        "i2", "usage", [{"id": "u2", "model": "m", "input_tokens": 900, "output_tokens": 5}]
+    )
+    store.ingest(
+        "i1", "eval", [{"id": "e1", "eval_set": "s", "topology": "t", "passed": 2, "total": 2}]
+    )
+    store.ingest(
+        "i2", "eval", [{"id": "e2", "eval_set": "s", "topology": "t", "passed": 0, "total": 2}]
+    )
+    store.ingest("i1", "audit", [{"id": "a1", "ts": "2026-01-02", "action": "run"}])
+    store.ingest("i2", "audit", [{"id": "a2", "ts": "2026-01-03", "action": "run"}])
+
+    # fleet-wide sums both instances
+    assert store.usage_rollup()[0]["input_tokens"] == 1000
+    # scoped to i1 only
+    scoped = store.usage_rollup("i1")
+    assert len(scoped) == 1 and scoped[0]["input_tokens"] == 100
+
+    assert store.eval_summary("i1")[0]["pass_rate"] == 1.0  # i1 passed 2/2
+    assert store.eval_summary("i2")[0]["pass_rate"] == 0.0  # i2 passed 0/2
+
+    audit_i2 = store.recent_audit(instance_id="i2")
+    assert len(audit_i2) == 1 and audit_i2[0]["instance_id"] == "i2"
+
+
 # --- endpoints (open mode) ------------------------------------------------------
 
 
@@ -180,6 +211,23 @@ def test_push_and_rollup_via_api(tmp_path: Path) -> None:
     )
     assert resp.status_code == 200 and resp.json()["ingested"] == 1
     assert client.get("/usage").json()[0]["input_tokens"] == 5
+
+
+def test_usage_endpoint_scopes_by_instance_id(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    for iid, tok in (("i1", 5), ("i2", 50)):
+        client.post(
+            "/aggregate/usage",
+            json={
+                "instance_id": iid,
+                "records": [{"id": f"u-{iid}", "model": "m", "input_tokens": tok}],
+            },
+        )
+    # fleet-wide sums both; ?instance_id narrows to one.
+    assert client.get("/usage").json()[0]["input_tokens"] == 55
+    scoped = client.get("/usage?instance_id=i2").json()
+    assert len(scoped) == 1 and scoped[0]["input_tokens"] == 50
+    assert client.get("/audit?instance_id=i1&limit=10").json() == []  # no i1 audit rows
 
 
 def test_unknown_kind_404_and_missing_instance_400(tmp_path: Path) -> None:

@@ -21,6 +21,7 @@ from swarmkit_control_plane._fntypes import (
     LeaveFn,
     RefreshFn,
     RegisterFn,
+    RunsFn,
     StateArtifactsFn,
     StateFn,
     StateManifestFn,
@@ -153,6 +154,36 @@ def _mount_instances(
             raise HTTPException(502, f"authoring run failed: {exc}") from exc
         reply = result.get("reply") or ""
         return {"reply": reply, "artifact": _extract_artifact(reply)}
+
+
+def _mount_instance_runs(app: FastAPI, registry: SqliteRegistry, runs: RunsFn) -> None:
+    """Federated per-run history — the "details" lane of the two-lane observability model
+    (design 24): aggregates are pushed to the panel, but granular per-run cost/status detail stays
+    on the instance owner's server and is fetched live, on demand, **never stored**."""
+
+    @app.get("/instances/{instance_id}/runs")
+    async def instance_runs(instance_id: str) -> dict[str, Any]:
+        """GET the instance's completed-run history (serve /jobs/history) live.
+
+        Always 200 with a reachability envelope ``{reachable, reason, runs}`` so the UI can tell the
+        three states apart instead of guessing from an error: ``reachable`` + runs, ``reachable`` +
+        empty (no runs yet), or ``reachable=false`` with a reason (``poll-mode`` — a NAT'd Mode-B
+        instance can't be federated; ``unreachable`` — a direct instance that didn't answer, which
+        also flips its health)."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            # Mode B can't be pulled directly; its aggregate cost still shows (pushed), but live
+            # per-run detail is unavailable — say so honestly rather than erroring.
+            return {"reachable": False, "reason": "poll-mode", "runs": []}
+        try:
+            fetched = await runs(inst.endpoint, inst.token_ref)
+        except ConnectorError as exc:
+            registry.update_health(instance_id, health="unreachable")
+            _log.warning("runs fetch failed for %s: %s", instance_id, exc)
+            return {"reachable": False, "reason": "unreachable", "runs": []}
+        return {"reachable": True, "reason": None, "runs": fetched}
 
 
 def _mount_token_routes(app: FastAPI, registry: SqliteRegistry, verify: VerifyFn) -> None:

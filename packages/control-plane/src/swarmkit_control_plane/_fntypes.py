@@ -31,6 +31,8 @@ LeaveFn = Callable[[str, str, str], Awaitable[dict[str, Any]]]
 DeployFn = Callable[..., Awaitable[dict[str, Any]]]
 # (endpoint, token_ref) -> serve /jobs list
 JobsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
+# (endpoint, token_ref) -> serve /jobs/history list (per-run cost/status detail)
+RunsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 # (endpoint, token_ref) -> serve /usage {"summary", "by_model"}
 UsageFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref, topology, message) -> {"reply", "status"}

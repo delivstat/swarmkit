@@ -108,8 +108,9 @@ class AggregationStore(Store):
                 written += 1
         return {"written": written}
 
-    def usage_rollup(self) -> list[dict[str, Any]]:
-        """Token/cost totals grouped by model + provider across the fleet."""
+    def usage_rollup(self, instance_id: str | None = None) -> list[dict[str, Any]]:
+        """Token/cost totals grouped by model + provider. Fleet-wide by default; pass
+        *instance_id* to scope to one instance (design 24 — instance-scoped observability)."""
         payload = agg_records.c.payload
         model = payload["model"].as_string()
         provider = payload["provider"].as_string()
@@ -130,11 +131,14 @@ class AggregationStore(Store):
             .group_by(model, provider)
             .order_by(func.count().desc())
         )
+        if instance_id is not None:
+            stmt = stmt.where(agg_records.c.instance_id == instance_id)
         with self._lock, self._engine.connect() as conn:
             return [dict(r) for r in conn.execute(stmt).mappings().all()]
 
-    def eval_summary(self) -> list[dict[str, Any]]:
-        """Pass-rate per (eval_set, topology) across the fleet."""
+    def eval_summary(self, instance_id: str | None = None) -> list[dict[str, Any]]:
+        """Pass-rate per (eval_set, topology). Fleet-wide by default; pass *instance_id* to scope
+        to one instance (design 24)."""
         payload = agg_records.c.payload
         eval_set = payload["eval_set"].as_string()
         topology = payload["topology"].as_string()
@@ -150,6 +154,8 @@ class AggregationStore(Store):
             .group_by(eval_set, topology)
             .order_by(eval_set)
         )
+        if instance_id is not None:
+            stmt = stmt.where(agg_records.c.instance_id == instance_id)
         with self._lock, self._engine.connect() as conn:
             rows = [dict(r) for r in conn.execute(stmt).mappings().all()]
         for row in rows:
@@ -157,14 +163,19 @@ class AggregationStore(Store):
             row["pass_rate"] = round(row["passed"] / total, 4) if total else None
         return rows
 
-    def recent_audit(self, limit: int = 100) -> list[dict[str, Any]]:
-        """Most-recent audit events across the fleet, each tagged with its instance."""
+    def recent_audit(
+        self, limit: int = 100, instance_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Most-recent audit events, each tagged with its instance. Fleet-wide by default; pass
+        *instance_id* to scope to one instance (design 24)."""
         stmt = (
             select(agg_records.c.instance_id, agg_records.c.payload)
             .where(agg_records.c.kind == "audit")
             .order_by(agg_records.c.ts.desc())
             .limit(limit)
         )
+        if instance_id is not None:
+            stmt = stmt.where(agg_records.c.instance_id == instance_id)
         with self._lock, self._engine.connect() as conn:
             rows = conn.execute(stmt).mappings().all()
         return [{"instance_id": r["instance_id"], **(r["payload"] or {})} for r in rows]
