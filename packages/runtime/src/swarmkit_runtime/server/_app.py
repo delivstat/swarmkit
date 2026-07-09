@@ -22,6 +22,7 @@ from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.fleet import create_membership_store
 from swarmkit_runtime.persistence import create_store
+from swarmkit_runtime.telemetry import configure_telemetry, load_telemetry_config
 
 from ._config import (
     _parse_canary_routes,
@@ -88,6 +89,16 @@ def create_app(  # noqa: PLR0915
             cfg.timeout_seconds,
             cfg.mcp_enabled,
         )
+
+        # Wire OpenTelemetry trace export (design: runtime/otel-trace-export): a run's spans go to
+        # the configured OTLP collector so Jaeger/Grafana show it. No-op unless SWARMKIT_OTEL_* set.
+        tel_cfg = load_telemetry_config()
+        if configure_telemetry(tel_cfg).enabled:
+            logger.info(
+                "Telemetry enabled: exporter=%s endpoint=%s",
+                tel_cfg.exporter,
+                tel_cfg.endpoint or "(default)",
+            )
 
         await _boot_mcp(runtime, cfg)
 

@@ -12,8 +12,11 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any
 
 from opentelemetry import trace
+from opentelemetry.context import Context
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -28,6 +31,21 @@ from swarmkit_runtime.telemetry._config import TelemetryConfig
 _ATTR_PREFIX = "swarmkit"
 
 
+@dataclass(frozen=True)
+class RecordedSpan:
+    """A span reconstructed from an already-finished run (design: runtime/otel-trace-export).
+
+    Carries explicit start/end nanoseconds so a post-hoc export from ``RunTrace`` renders an
+    accurate timeline in Jaeger. ``children`` nest under this span."""
+
+    name: str
+    start_ns: int
+    end_ns: int
+    attributes: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    children: tuple[RecordedSpan, ...] = ()
+
+
 class SwarmKitTelemetry:
     """Instrumentation facade for SwarmKit runtime.
 
@@ -35,9 +53,15 @@ class SwarmKitTelemetry:
     all methods are no-ops via the NoOp tracer.
     """
 
-    def __init__(self, config: TelemetryConfig) -> None:
+    def __init__(self, config: TelemetryConfig, *, provider: TracerProvider | None = None) -> None:
         self._config = config
         self._tracer: Tracer
+
+        # An injected provider (tests: an in-memory exporter) short-circuits config-driven setup —
+        # and never touches the process-global provider, so tests don't collide.
+        if provider is not None:
+            self._tracer = provider.get_tracer("swarmkit")
+            return
 
         if not config.enabled or config.exporter == "none":
             self._tracer = trace.get_tracer("swarmkit-noop")
@@ -70,6 +94,26 @@ class SwarmKitTelemetry:
     @property
     def enabled(self) -> bool:
         return self._config.enabled and self._config.exporter != "none"
+
+    def export_run_spans(self, root: RecordedSpan) -> None:
+        """Emit a finished run's span tree (design: runtime/otel-trace-export). Each
+        ``RecordedSpan`` becomes an OTel span with its recorded start/end times and proper parent
+        nesting, so a post-hoc export from ``RunTrace`` renders an accurate Jaeger timeline. No-op
+        when disabled."""
+        if not self.enabled:
+            return
+        self._emit_recorded(root, parent=None)
+
+    def _emit_recorded(self, rs: RecordedSpan, *, parent: Context | None) -> None:
+        span = self._tracer.start_span(
+            rs.name, context=parent, start_time=rs.start_ns, attributes=rs.attributes
+        )
+        if rs.error:
+            span.set_status(StatusCode.ERROR, rs.error)
+        child_ctx = trace.set_span_in_context(span)
+        for child in rs.children:
+            self._emit_recorded(child, parent=child_ctx)
+        span.end(end_time=rs.end_ns)
 
     @contextmanager
     def start_run(

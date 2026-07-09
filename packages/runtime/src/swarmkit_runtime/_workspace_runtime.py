@@ -11,6 +11,7 @@ architectural decision in ``memory/feedback_cli_architecture.md``.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,6 +90,84 @@ class RunResult:
     events: list[RunEvent] = field(default_factory=list)
     usage: UsageSummary | None = None
     trace_data: dict[str, Any] | None = None
+
+
+def _run_trace_to_span(trace: Any, workspace_id: str) -> Any:
+    """Convert a finished ``RunTrace`` into an OTel ``RecordedSpan`` tree (design:
+    runtime/otel-trace-export): topology.run → agent.step.<id> → tool.call.<name>. Tool calls have
+    only a duration, so they're laid out sequentially inside their agent step's window."""
+    from swarmkit_runtime.telemetry import RecordedSpan  # noqa: PLC0415
+
+    def _ns(seconds: float) -> int:
+        return int(seconds * 1_000_000_000)
+
+    steps = []
+    for step in trace.agent_steps:
+        step_start = step.start_time or trace.start_time
+        step_end = step.end_time or step_start
+        cursor = step_start
+        tools = []
+        for tc in step.tool_calls:
+            t_start, t_end = cursor, cursor + tc.duration_ms / 1000
+            cursor = t_end
+            tools.append(
+                RecordedSpan(
+                    name=f"tool.call.{tc.tool_name}",
+                    start_ns=_ns(t_start),
+                    end_ns=_ns(t_end),
+                    attributes={
+                        "swarmkit.tool.name": tc.tool_name,
+                        "swarmkit.tool.result_length": tc.result_length,
+                        "swarmkit.tool.cached": tc.cached,
+                    },
+                    error=tc.error,
+                )
+            )
+        steps.append(
+            RecordedSpan(
+                name=f"agent.step.{step.agent_id}",
+                start_ns=_ns(step_start),
+                end_ns=_ns(step_end),
+                attributes={
+                    "swarmkit.agent.id": step.agent_id,
+                    "swarmkit.agent.role": step.role,
+                    "swarmkit.model.id": step.model,
+                    "swarmkit.model.tokens_in": step.input_tokens,
+                    "swarmkit.model.tokens_out": step.output_tokens,
+                    "swarmkit.model.cost_usd": step.cost_usd,
+                },
+                error=step.error,
+                children=tuple(tools),
+            )
+        )
+    return RecordedSpan(
+        name="topology.run",
+        start_ns=_ns(trace.start_time),
+        end_ns=_ns(trace.end_time or trace.start_time),
+        attributes={
+            "swarmkit.run.id": trace.run_id,
+            "swarmkit.topology.id": trace.topology,
+            "swarmkit.workspace.id": workspace_id,
+            "swarmkit.run.llm_calls": trace.llm_calls,
+            "swarmkit.model.tokens_in": trace.total_input_tokens,
+            "swarmkit.model.tokens_out": trace.total_output_tokens,
+            "swarmkit.model.cost_usd": trace.total_cost_usd,
+        },
+        children=tuple(steps),
+    )
+
+
+def _finalize_trace(trace: Any, workspace_root: Path) -> None:
+    """Persist a finished ``RunTrace`` to disk and mirror it to OTel (design:
+    runtime/otel-trace-export) so Jaeger/Grafana show the run. The OTel export is best-effort —
+    telemetry never fails a run."""
+    trace.save(workspace_root)
+    with contextlib.suppress(Exception):
+        from swarmkit_runtime.telemetry import get_telemetry  # noqa: PLC0415
+
+        telemetry = get_telemetry()
+        if telemetry.enabled:
+            telemetry.export_run_spans(_run_trace_to_span(trace, workspace_root.name))
 
 
 class MissingMCPServerError(Exception):
@@ -494,8 +573,8 @@ class WorkspaceRuntime:
                 await self._mcp_manager.close_all()
 
         trace.finish()
-        trace.save(self._workspace_root)
         set_active_trace(None)
+        _finalize_trace(trace, self._workspace_root)
 
         events = _extract_events(self._governance)
 
