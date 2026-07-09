@@ -37,6 +37,7 @@ def _client(
     canary_fn: Any = None,
     promote_fn: Any = None,
     rollback_fn: Any = None,
+    start_fn: Any = None,
 ) -> TestClient:
     registry = SqliteRegistry(tmp_path / "registry.sqlite")
 
@@ -53,6 +54,7 @@ def _client(
             canary=canary_fn or default_canary,
             canary_promote=promote_fn,
             canary_rollback=rollback_fn,
+            canary_start=start_fn,
         )
     )
 
@@ -142,3 +144,38 @@ def test_rollback_forwards_to_instance(tmp_path: Path) -> None:
     iid = _enroll(client)
     resp = client.post(f"/instances/{iid}/canary/solution-design/rollback")
     assert resp.status_code == 200 and resp.json()["rolled_back"] is True
+
+
+def test_start_forwards_to_instance(tmp_path: Path) -> None:
+    seen: dict[str, Any] = {}
+
+    async def start(
+        endpoint: str,
+        token_ref: str,
+        topology: str,
+        base: str,
+        canary: str,
+        weight: int,
+        promote_when: Any,
+    ) -> dict[str, Any]:
+        seen.update(topology=topology, base=base, canary=canary, weight=weight)
+        return {"started": True, "topology": topology}
+
+    client = _client(tmp_path, start_fn=start)
+    iid = _enroll(client)
+    resp = client.post(
+        f"/instances/{iid}/canary/solution-design/start",
+        json={"base_version": "1.0.0", "canary_version": "1.1.0", "weight": 15},
+    )
+    assert resp.status_code == 200 and resp.json()["started"] is True
+    assert seen == {"topology": "solution-design", "base": "1.0.0", "canary": "1.1.0", "weight": 15}
+
+
+def test_start_poll_mode_409(tmp_path: Path) -> None:
+    client = _client(tmp_path, start_fn=lambda *a: None)
+    iid = _enroll(client, "poll")
+    r = client.post(
+        f"/instances/{iid}/canary/t/start",
+        json={"base_version": "1.0.0", "canary_version": "1.1.0", "weight": 10},
+    )
+    assert r.status_code == 409

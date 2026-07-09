@@ -42,6 +42,7 @@ __all__ = [
     "rollback_canary",
     "run_authoring",
     "run_eval",
+    "start_canary",
 ]
 
 
@@ -218,6 +219,32 @@ async def rollback_canary(endpoint: str, token_ref: str, topology: str) -> dict[
         result: dict[str, Any] = serve.ok(
             await serve.post(f"/canary/{topology}/rollback", {}),
             f"/canary/{topology}/rollback",
+        )
+    return result
+
+
+async def start_canary(
+    endpoint: str,
+    token_ref: str,
+    topology: str,
+    base_version: str,
+    canary_version: str,
+    weight: int,
+    promote_when: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Start a canary on an instance (POST /canary/{topology}, design 26 Layer B): split *weight*%
+    of traffic to *canary_version*. The canary version's artifact must already be deployed to the
+    instance. A manage-scope fleet action. Raises ConnectorError on any failure."""
+    body: dict[str, Any] = {
+        "base_version": base_version,
+        "canary_version": canary_version,
+        "weight": weight,
+    }
+    if promote_when:
+        body["promote_when"] = promote_when
+    async with ServeClient(endpoint, token_ref) as serve:
+        result: dict[str, Any] = serve.ok(
+            await serve.post(f"/canary/{topology}", body), f"/canary/{topology}"
         )
     return result
 

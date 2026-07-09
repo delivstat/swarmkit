@@ -20,6 +20,7 @@ from swarmkit_control_plane._fntypes import (
     CanaryFn,
     CanaryPromoteFn,
     CanaryRollbackFn,
+    CanaryStartFn,
     JobsFn,
     LeaveFn,
     RefreshFn,
@@ -39,6 +40,7 @@ from swarmkit_control_plane._schemas import (
     AdoptRequest,
     AuthorRequest,
     CanaryPromoteRequest,
+    CanaryStartRequest,
     CommandResultRequest,
     EnqueueCommandRequest,
     EnrollRequest,
@@ -196,6 +198,7 @@ def _mount_instance_canary(
     canary: CanaryFn,
     promote: CanaryPromoteFn,
     rollback: CanaryRollbackFn,
+    start: CanaryStartFn,
 ) -> None:
     """Fleet canary — monitor + control the runtime's canary router across instances (design 26,
     Layer A). Read is federated live (like /runs); promote/rollback are manage-scope mutations
@@ -237,6 +240,26 @@ def _mount_instance_canary(
             return await rollback(inst.endpoint, inst.token_ref, topology)
         except ConnectorError as exc:
             raise HTTPException(502, f"canary rollback failed: {exc}") from exc
+
+    @app.post("/instances/{instance_id}/canary/{topology}/start")
+    async def instance_canary_start(
+        instance_id: str, topology: str, req: CanaryStartRequest
+    ) -> dict[str, Any]:
+        """Start a canary on the instance (design 26 Layer B): split traffic to a version already
+        deployed there. Deploy the canary version first (the Deploy flow), then start it here."""
+        inst = _canary_target(registry, instance_id)
+        try:
+            return await start(
+                inst.endpoint,
+                inst.token_ref,
+                topology,
+                req.base_version,
+                req.canary_version,
+                req.weight,
+                req.promote_when,
+            )
+        except ConnectorError as exc:
+            raise HTTPException(502, f"canary start failed: {exc}") from exc
 
 
 def _canary_target(registry: SqliteRegistry, instance_id: str) -> Instance:

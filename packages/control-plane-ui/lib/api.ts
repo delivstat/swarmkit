@@ -172,6 +172,15 @@ export const api = {
 			`/instances/${id}/canary/${encodeURIComponent(topology)}/rollback`,
 			{ method: "POST", body: "{}" },
 		),
+	startCanary: (
+		id: string,
+		topology: string,
+		body: { base_version: string; canary_version: string; weight: number },
+	) =>
+		request<{ started: boolean }>(
+			`/instances/${id}/canary/${encodeURIComponent(topology)}/start`,
+			{ method: "POST", body: JSON.stringify(body) },
+		),
 	// Observed-state cache (design 19 Phase 1): the last full inventory the panel pulled.
 	instanceState: (id: string) => request<CachedState>(`/instances/${id}/state`),
 	syncInstance: (id: string) =>
