@@ -291,9 +291,12 @@ instance happens to run* and *what the fleet has vetted and can deploy* (the bas
    manifest against its cache and merges (`_delta.py`), falling back to a full pull on the first sync
    or against a pre-delta instance. The `/sync` response reports `{mode, fetched, reused, removed}`.
    (PRs #475–#477.)
-3. **Enrollment-token issuance UX.** For Mode A the token comes from the *instance owner* — via
-   `swarmkit fleet enroll-token` CLI printing a one-time code? How does the operator get it into the
-   panel form?
+3. **Enrollment-token issuance UX — ✅ done.** The instance owner mints the one-time code with
+   `swarmkit fleet enroll-token <workspace> --scope monitor|manage [--ttl N]`, which prints the
+   single-use token + instructions (operating directly on the instance's `.swarmkit/fleet.sqlite`,
+   no running serve or auth token — like `swarmkit auth token`). `swarmkit fleet memberships` lists
+   who has registered (+ whether their identity is pinned). The operator pastes the code into the
+   fleet UI's Register action; the EnrollmentPanel points at the CLI command.
 4. **Where the instance-side membership store lives** — reuse the serve sqlite (`.swarmkit/`) vs a
    dedicated file; interaction with `swarmkit connect` (which already holds the Mode B token).
 5. **Standard-protocol packaging — ✅ done.** The register/join + `InstanceState` (+ credential)
