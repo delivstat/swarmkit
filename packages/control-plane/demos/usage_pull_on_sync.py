@@ -146,9 +146,14 @@ def main() -> None:
     print(f"  pulled_usage = {body['pulled_usage']} model rows")
     _show_rollup(client)
 
+    # Derive the narration from the fixtures so it can't drift if the demo's usage is edited.
+    t2_in = [m["input_tokens"] for m in _USAGE_T2["by_model"]]
+    t1_in = [m["input_tokens"] for m in _USAGE_T1["by_model"]]
     total_in = sum(r["input_tokens"] for r in client.get("/usage").json())
-    print(f"\n  fleet input tokens = {total_in:,}  (= 31000+9800, the latest totals —")
-    print("  not summed with sync #1's 18000+6500)")
+    latest = " + ".join(f"{n:,}" for n in t2_in)
+    first = " + ".join(f"{n:,}" for n in t1_in)
+    print(f"\n  fleet input tokens = {total_in:,}  (= {latest}, the latest totals —")
+    print(f"  not summed with sync #1's {first})")
     print("\nMode-A instances now show real usage on the Runs page, pulled at sync.")
 
 
