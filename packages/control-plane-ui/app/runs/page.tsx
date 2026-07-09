@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { useSWRConfig } from "swr";
 
 import { PageHeader } from "@/components/page-header";
+import { RunsDetail } from "@/components/runs-detail";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -16,6 +17,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { useInstances } from "@/lib/instance-context";
 import type { AuditRow, UsageRow } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
@@ -23,9 +25,13 @@ function num(n: number) {
 	return n.toLocaleString();
 }
 
-function UsageTable() {
-	const fetcher = useCallback(() => api.usage(), []);
-	const { data, loading } = useResource<UsageRow[]>("/usage", fetcher);
+/** Pushed aggregate (always available, scopeable per instance). `scope` is "" for the whole fleet. */
+function UsageTable({ scope }: { scope: string }) {
+	const fetcher = useCallback(() => api.usage(scope || undefined), [scope]);
+	const { data, loading } = useResource<UsageRow[]>(
+		`/usage?instance_id=${scope}`,
+		fetcher,
+	);
 	const rows = data ?? [];
 
 	return (
@@ -38,7 +44,7 @@ function UsageTable() {
 					<p className="p-6 text-sm text-muted-foreground">Loading…</p>
 				) : rows.length === 0 ? (
 					<p className="p-6 text-sm text-muted-foreground">
-						No usage recorded yet (push to{" "}
+						No usage recorded yet (pushed to{" "}
 						<code className="rounded bg-muted px-1 py-0.5 text-xs">
 							POST /aggregate/usage
 						</code>
@@ -87,9 +93,12 @@ function UsageTable() {
 	);
 }
 
-function ActivityTable() {
-	const fetcher = useCallback(() => api.audit(50), []);
-	const { data, loading } = useResource<AuditRow[]>("/audit?limit=50", fetcher);
+function ActivityTable({ scope }: { scope: string }) {
+	const fetcher = useCallback(() => api.audit(50, scope || undefined), [scope]);
+	const { data, loading } = useResource<AuditRow[]>(
+		`/audit?limit=50&instance_id=${scope}`,
+		fetcher,
+	);
 	const rows = data ?? [];
 
 	return (
@@ -102,7 +111,7 @@ function ActivityTable() {
 					<p className="p-6 text-sm text-muted-foreground">Loading…</p>
 				) : rows.length === 0 ? (
 					<p className="p-6 text-sm text-muted-foreground">
-						No audit events yet (push to{" "}
+						No audit events yet (pushed to{" "}
 						<code className="rounded bg-muted px-1 py-0.5 text-xs">
 							POST /aggregate/audit
 						</code>
@@ -147,17 +156,20 @@ function ActivityTable() {
 }
 
 export default function RunsPage() {
-	// One button revalidates every cached resource on the page (both tables share the SWR cache).
+	const { selected, selectedId } = useInstances();
+	// One button revalidates every cached resource on the page (all tables share the SWR cache).
 	const { mutate } = useSWRConfig();
 	const refresh = () => {
 		void mutate(() => true);
 	};
 
+	const scopeLabel = selected ? selected.name : "all instances";
+
 	return (
 		<>
 			<PageHeader
 				title="Runs"
-				description="Fleet-wide usage and recent activity, aggregated from instance pushes."
+				description={`Usage + activity for ${scopeLabel}. Aggregates are pushed; per-run detail is fetched live from the instance.`}
 				actions={
 					<Button variant="outline" size="sm" onClick={refresh}>
 						<RefreshCw />
@@ -166,8 +178,25 @@ export default function RunsPage() {
 				}
 			/>
 			<div className="space-y-6 p-6">
-				<UsageTable />
-				<ActivityTable />
+				<UsageTable scope={selectedId} />
+				{/* Per-run detail is federated per-instance — only meaningful for one instance. */}
+				{selected ? (
+					<RunsDetail instanceId={selected.id} instanceName={selected.name} />
+				) : (
+					<Card>
+						<CardHeader>
+							<CardTitle>Per-run detail</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<p className="text-sm text-muted-foreground">
+								Select a single instance (top-left) to see individual runs with
+								per-run cost. Run detail is fetched live from that instance and
+								isn’t stored on the panel.
+							</p>
+						</CardContent>
+					</Card>
+				)}
+				<ActivityTable scope={selectedId} />
 			</div>
 		</>
 	);

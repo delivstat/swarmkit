@@ -164,6 +164,27 @@ export interface Job {
 	completed_at?: string | null;
 }
 
+/** One completed run from GET /instances/{id}/runs (serve /jobs/history) — per-run cost detail. */
+export interface RunRow {
+	job_id: string;
+	topology: string;
+	version?: string;
+	status: string;
+	created_at?: string;
+	completed_at?: string | null;
+	usage_input_tokens?: number;
+	usage_output_tokens?: number;
+	usage_cost_usd?: number;
+}
+
+/** GET /instances/{id}/runs — federated per-run detail with a reachability envelope (design 24).
+ * `reachable=false` carries a `reason`: "poll-mode" (Mode-B can't be pulled) or "unreachable". */
+export interface RunsEnvelope {
+	reachable: boolean;
+	reason: "poll-mode" | "unreachable" | null;
+	runs: RunRow[];
+}
+
 export type DriftStatus = "ok" | "drift" | "missing";
 
 /** Row of GET /instances/{id}/drift — registry-intended vs the instance's reported actual. */
