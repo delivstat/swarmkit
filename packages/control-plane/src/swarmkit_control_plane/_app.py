@@ -30,6 +30,7 @@ from swarmkit_control_plane._connector import (
 )
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._deploy import push_artifact
+from swarmkit_control_plane._deploy_seq import DeploySeqStore
 from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import (
     AuthorFn,
@@ -119,8 +120,9 @@ def create_app(
     cred_store = CredentialStore(registry.engine)  # membership secrets, encrypted at rest
     join_store = JoinCodeStore(registry.engine)  # one-time Mode B join codes
     fleet_identity = FleetIdentity(registry.engine)  # this panel's Ed25519 identity (design 21)
+    deploy_seq = DeploySeqStore(registry.engine)  # monotonic deploy counter (design 22)
     growth = GrowthService(registry, props, arts, author, eval_run)
-    deploy_svc = DeployService(registry, arts, agg, deploy, cred_store, fleet_identity)
+    deploy_svc = DeployService(registry, arts, agg, deploy, cred_store, fleet_identity, deploy_seq)
     ops = [t for t in (operator_tokens or []) if t]
 
     # Default-secure: an unauthenticated panel can mint serve tokens and deploy artifacts,

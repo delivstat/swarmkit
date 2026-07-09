@@ -182,6 +182,18 @@ fleet_identity = Table(
     Column("created_at", Text, nullable=False),
 )
 
+# --- monotonic deploy sequence (design 22 downgrade guard) --------------------
+
+# A single per-panel counter the fleet stamps into each deploy signature (strictly increasing over
+# time). The instance rejects any deploy whose sequence isn't newer than the last it applied, so an
+# old validly-signed deploy can't be replayed over a newer version. Singleton row (id = "default").
+fleet_deploy_seq = Table(
+    "fleet_deploy_seq",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("value", Integer, nullable=False),
+)
+
 # --- Mode B join codes (enrollment Phase 2) -----------------------------------
 
 # One-time join codes the panel mints for the instance-initiated (Mode B) handshake: a NAT'd
@@ -207,6 +219,7 @@ __all__ = [
     "artifact_versions",
     "commands",
     "deployments",
+    "fleet_deploy_seq",
     "fleet_identity",
     "instance_credential",
     "instance_state",

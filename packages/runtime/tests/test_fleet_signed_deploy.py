@@ -171,3 +171,59 @@ def test_deploy_message_is_stable_and_bound() -> None:
     assert a != deploy_message("skill", "hello", "h1")  # kind bound
     assert a != deploy_message("topology", "other", "h1")  # id bound
     assert a != deploy_message("topology", "hello", "h2")  # hash bound
+
+
+# --- monotonic downgrade guard (design 22) ----------------------------------
+
+
+def _seq_deploy(client: TestClient, key: str, content: Any, fleet: _Fleet, seq: int) -> int:
+    sig = base64.b64encode(
+        fleet._sk.sign(deploy_message("topology", "hello", _content_hash(content), seq))
+    ).decode()
+    return client.put(
+        "/api/topologies/hello",
+        json={"content": content, "deploy_seq": seq, "dry_run": True},
+        headers={"Authorization": f"Bearer {key}", "X-Fleet-Signature": sig},
+    ).status_code
+
+
+def test_newer_sequence_accepted_stale_rejected(client: TestClient) -> None:
+    fleet = _Fleet()
+    key = fleet.register(client)
+    assert _seq_deploy(client, key, _CONTENT, fleet, 5) not in (401, 403, 409)  # first
+    assert _seq_deploy(client, key, _CONTENT, fleet, 6) not in (401, 403, 409)  # advances
+    # replaying the older validly-signed deploy (seq 5) over the newer state → 409 downgrade guard.
+    assert _seq_deploy(client, key, _CONTENT, fleet, 5) == 409
+    assert _seq_deploy(client, key, _CONTENT, fleet, 6) == 409  # equal is not newer either
+
+
+def test_sequence_is_per_artifact(client: TestClient) -> None:
+    # a sequence advanced for one artifact does not block a lower sequence for a different one.
+    fleet = _Fleet()
+    key = fleet.register(client)
+    assert _seq_deploy(client, key, _CONTENT, fleet, 10) not in (401, 403, 409)
+    skill = {"apiVersion": "swarmkit/v1", "kind": "Skill", "metadata": {"id": "s", "name": "s"}}
+    sig = base64.b64encode(
+        fleet._sk.sign(deploy_message("skill", "s", _content_hash(skill), 3))
+    ).decode()
+    status = client.put(
+        "/api/skills/s",
+        json={"content": skill, "deploy_seq": 3, "dry_run": True},
+        headers={"Authorization": f"Bearer {key}", "X-Fleet-Signature": sig},
+    ).status_code
+    assert status != 409  # skill seq 3 is fine despite topology being at 10
+
+
+def test_sequence_must_be_inside_the_signature(client: TestClient) -> None:
+    # signing seq 5 but claiming seq 9 in the body → signature over the 5-part message won't verify.
+    fleet = _Fleet()
+    key = fleet.register(client)
+    sig = base64.b64encode(
+        fleet._sk.sign(deploy_message("topology", "hello", _content_hash(_CONTENT), 5))
+    ).decode()
+    status = client.put(
+        "/api/topologies/hello",
+        json={"content": _CONTENT, "deploy_seq": 9, "dry_run": True},
+        headers={"Authorization": f"Bearer {key}", "X-Fleet-Signature": sig},
+    ).status_code
+    assert status == 401  # tampered seq → invalid signature

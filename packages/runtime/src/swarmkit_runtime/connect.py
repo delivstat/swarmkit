@@ -106,6 +106,8 @@ async def execute_command(  # noqa: PLR0911, PLR0912 — branchy dispatch; each 
         json_body = {"content": args.get("body")}
         if args.get("fleet_id"):
             json_body["fleet_id"] = args["fleet_id"]
+        if args.get("deploy_seq") is not None:
+            json_body["deploy_seq"] = args["deploy_seq"]
         if args.get("signature"):
             headers["X-Fleet-Signature"] = str(args["signature"])
     else:

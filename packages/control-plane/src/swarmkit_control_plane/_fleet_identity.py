@@ -45,10 +45,13 @@ def proof_message(enrollment_token: str, workspace_id: str) -> bytes:
     return f"{enrollment_token}:{workspace_id}".encode()
 
 
-def deploy_message(kind: str, artifact_id: str, content_hash: str) -> bytes:
+def deploy_message(
+    kind: str, artifact_id: str, content_hash: str, deploy_seq: int | None = None
+) -> bytes:
     """The bytes the fleet signs to authorize a deploy — must match serve's ``deploy_message``
-    (``deploy:<kind>:<id>:<content_hash>``, design 22)."""
-    return f"deploy:{kind}:{artifact_id}:{content_hash}".encode()
+    (``deploy:<kind>:<id>:<content_hash>[:<deploy_seq>]``, design 22)."""
+    base = f"deploy:{kind}:{artifact_id}:{content_hash}"
+    return (base if deploy_seq is None else f"{base}:{deploy_seq}").encode()
 
 
 class FleetIdentity(Store):
@@ -110,10 +113,15 @@ class FleetIdentity(Store):
         signature = self._private_key.sign(proof_message(enrollment_token, workspace_id))
         return base64.b64encode(signature).decode("ascii")
 
-    def sign_deploy(self, kind: str, artifact_id: str, content_hash: str) -> str:
-        """Sign ``deploy:<kind>:<id>:<content_hash>`` — the base64 signature the instance verifies
-        against the pinned key before applying a deploy (design 22)."""
-        signature = self._private_key.sign(deploy_message(kind, artifact_id, content_hash))
+    def sign_deploy(
+        self, kind: str, artifact_id: str, content_hash: str, deploy_seq: int | None = None
+    ) -> str:
+        """Sign ``deploy:<kind>:<id>:<content_hash>[:<deploy_seq>]`` — the base64 signature the
+        instance verifies against the pinned key (+ the monotonic guard) before applying (design
+        22)."""
+        signature = self._private_key.sign(
+            deploy_message(kind, artifact_id, content_hash, deploy_seq)
+        )
         return base64.b64encode(signature).decode("ascii")
 
     def public_dict(self) -> dict[str, str]:

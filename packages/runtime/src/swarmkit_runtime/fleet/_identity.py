@@ -35,12 +35,18 @@ def proof_message(enrollment_token: str, workspace_id: str) -> bytes:
     return f"{enrollment_token}:{workspace_id}".encode()
 
 
-def deploy_message(kind: str, artifact_id: str, content_hash: str) -> bytes:
-    """The exact bytes a fleet signs to authorize a deploy: ``deploy:<kind>:<id>:<content_hash>``
-    (design 22). Binding kind + id + content_hash means a stolen membership key can't push an
-    artifact the fleet didn't sign, and a signature for one artifact can't be replayed onto
-    another. ``content_hash`` is the registry canonicalisation both sides compute."""
-    return f"deploy:{kind}:{artifact_id}:{content_hash}".encode()
+def deploy_message(
+    kind: str, artifact_id: str, content_hash: str, deploy_seq: int | None = None
+) -> bytes:
+    """The exact bytes a fleet signs to authorize a deploy: ``deploy:<kind>:<id>:<content_hash>``,
+    or ``deploy:<kind>:<id>:<content_hash>:<deploy_seq>`` when a monotonic sequence is bound (doc
+    22 downgrade guard). Binding kind + id + content_hash means a stolen membership key can't push
+    an artifact the fleet didn't sign, and a signature for one artifact can't be replayed onto
+    another; binding ``deploy_seq`` additionally stops an *old* signed deploy being replayed over a
+    newer one (the seq is in the signature, so it can't be stripped or bumped). ``content_hash`` is
+    the registry canonicalisation both sides compute."""
+    base = f"deploy:{kind}:{artifact_id}:{content_hash}"
+    return (base if deploy_seq is None else f"{base}:{deploy_seq}").encode()
 
 
 def verify_signature(public_key_b64: str, signature_b64: str, message: bytes) -> bool:

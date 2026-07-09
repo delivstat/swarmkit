@@ -33,7 +33,9 @@ async def _put(
     body = await request.json()
     content = body.get("content")
     if content is not None:
-        _verify_signed_deploy(request, kind, artifact_id, content, body.get("fleet_id"))
+        _verify_signed_deploy(
+            request, kind, artifact_id, content, body.get("fleet_id"), body.get("deploy_seq")
+        )
         yaml_text = yaml.safe_dump(content, sort_keys=False)
     else:
         yaml_text = body.get("yaml", "")

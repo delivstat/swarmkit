@@ -31,6 +31,7 @@ from swarmkit_control_plane._compat import incompatibility
 from swarmkit_control_plane._connector import ConnectorError
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._deploy import DEPLOYABLE, DeployError
+from swarmkit_control_plane._deploy_seq import DeploySeqStore
 from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import AuthorFn, DeployFn, EvalFn, extract_artifact
 from swarmkit_control_plane._proposals import ProposalStore
@@ -216,6 +217,7 @@ class DeployService:
         deploy: DeployFn,
         cred_store: CredentialStore | None = None,
         identity: FleetIdentity | None = None,
+        deploy_seq: DeploySeqStore | None = None,
     ) -> None:
         self._registry = registry
         self._artifacts = artifacts
@@ -223,6 +225,7 @@ class DeployService:
         self._deploy = deploy
         self._cred_store = cred_store
         self._identity = identity
+        self._deploy_seq = deploy_seq
 
     def _deploy_credential(self, instance_id: str, token_ref: str) -> str:
         """The credential the Mode-A deploy PUT carries (design 20). **Membership-first**: when the
@@ -275,8 +278,14 @@ class DeployService:
         # signature against the pinned key before applying, so a stolen membership key alone can't
         # push. Signed over the registry content_hash (which serve recomputes from the content).
         signature = fleet_id = None
+        deploy_seq: int | None = None
         if self._identity is not None:
-            signature = self._identity.sign_deploy(kind, artifact_id, str(ver["content_hash"]))
+            # A monotonic sequence, bound into the signature, is the downgrade guard (design 22):
+            # the instance rejects any deploy whose sequence isn't newer than the last it applied.
+            deploy_seq = self._deploy_seq.next() if self._deploy_seq is not None else None
+            signature = self._identity.sign_deploy(
+                kind, artifact_id, str(ver["content_hash"]), deploy_seq
+            )
             fleet_id = self._identity.fleet_id
         if inst.connection == "direct":
             # Governed deploy over the membership credential (design 20): PUT with the manage-scope
@@ -291,17 +300,20 @@ class DeployService:
                     content,
                     signature=signature,
                     fleet_id=fleet_id,
+                    deploy_seq=deploy_seq,
                 )
             except DeployError as exc:
                 raise UpstreamError(f"deploy failed: {exc}") from exc
             outcome: dict[str, Any] = {"mode": "direct", "result": result}
         else:
-            # Mode B: the connector applies locally over loopback; carry the signature + fleet_id in
-            # the command so local serve can verify against the pinned key (design 22).
+            # Mode B: the connector applies locally over loopback; carry the signature + fleet_id +
+            # sequence in the command so local serve can verify against the pinned key (design 22).
             args: dict[str, Any] = {"kind": kind, "id": artifact_id, "body": content}
             if signature:
                 args["signature"] = signature
                 args["fleet_id"] = fleet_id
+                if deploy_seq is not None:
+                    args["deploy_seq"] = deploy_seq
             cmd = self._registry.enqueue(instance_id, "deploy", args)
             outcome = {"mode": "poll", "command_id": cmd.cmd_id}
 

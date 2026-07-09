@@ -21,7 +21,9 @@ from uuid import uuid4
 from sqlalchemy import (
     Column,
     Engine,
+    Integer,
     MetaData,
+    PrimaryKeyConstraint,
     Table,
     Text,
     delete,
@@ -74,6 +76,20 @@ _fleet_identities = Table(
     Column("public_key", Text, nullable=False),  # base64 Ed25519 public key
     Column("display_name", Text, nullable=False, default=""),
     Column("pinned_at", Text, nullable=False),
+)
+
+# Per-(fleet, artifact) last-applied deploy sequence (design 22 downgrade guard). A fleet signs a
+# monotonic sequence with each deploy; the instance rejects any deploy whose sequence isn't newer
+# than the last it applied for that (fleet, kind, id) — so an old validly-signed deploy can't be
+# replayed over a newer version. Keyed by fleet_id so two fleets' counters are independent.
+_deploy_seqs = Table(
+    "fleet_deploy_seqs",
+    _metadata,
+    Column("fleet_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("artifact_id", Text, nullable=False),
+    Column("last_seq", Integer, nullable=False),
+    PrimaryKeyConstraint("fleet_id", "kind", "artifact_id"),
 )
 
 DEFAULT_ENROLLMENT_TTL_S = 900  # 15 minutes
@@ -293,6 +309,40 @@ class MembershipStore:
                 delete(_fleet_identities).where(_fleet_identities.c.fleet_id == fleet_id)
             )
         return result.rowcount > 0
+
+    # ---- monotonic deploy sequence (design 22 downgrade guard) --------------
+
+    def deploy_seq_ok(self, fleet_id: str, kind: str, artifact_id: str, seq: int) -> bool:
+        """Check + record a deploy's monotonic sequence. Returns True and advances the stored
+        high-water mark when *seq* is **strictly newer** than the last applied for this
+        (fleet, kind, id); returns False (no change) when it isn't — a stale/replayed deploy.
+        Select-then-write under the store lock, so a deploy sequence advances at most once."""
+        c = _deploy_seqs.c
+        with self._lock, self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    select(c.last_seq).where(
+                        c.fleet_id == fleet_id, c.kind == kind, c.artifact_id == artifact_id
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row is None:
+                conn.execute(
+                    insert(_deploy_seqs).values(
+                        fleet_id=fleet_id, kind=kind, artifact_id=artifact_id, last_seq=seq
+                    )
+                )
+                return True
+            if seq <= int(row["last_seq"]):
+                return False
+            conn.execute(
+                update(_deploy_seqs)
+                .where(c.fleet_id == fleet_id, c.kind == kind, c.artifact_id == artifact_id)
+                .values(last_seq=seq)
+            )
+        return True
 
 
 def _row_to_membership(row: object) -> Membership:

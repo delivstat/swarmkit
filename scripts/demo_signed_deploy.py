@@ -60,16 +60,15 @@ def main() -> int:
         ).json()["credential"]["value"]
         print(f"fleet {fleet_id} enrolled (key pinned)")
 
-        def deploy(content: dict, sign_content: dict | None) -> int:
+        def deploy(content: dict, sign_content: dict | None, seq: int | None = None) -> int:
             headers = {"Authorization": f"Bearer {key}"}
+            body: dict = {"content": content, "dry_run": True}
+            if seq is not None:
+                body["deploy_seq"] = seq
             if sign_content is not None:
-                sig = sk.sign(deploy_message("topology", "hello", _content_hash(sign_content)))
-                headers["X-Fleet-Signature"] = base64.b64encode(sig).decode()
-            return client.put(
-                "/api/topologies/hello",
-                json={"content": content, "dry_run": True},
-                headers=headers,
-            ).status_code
+                msg = deploy_message("topology", "hello", _content_hash(sign_content), seq)
+                headers["X-Fleet-Signature"] = base64.b64encode(sk.sign(msg)).decode()
+            return client.put("/api/topologies/hello", json=body, headers=headers).status_code
 
         print(f"  deploy with a valid signature      -> {deploy(CONTENT, CONTENT)} (applied)")
         tampered = {**CONTENT, "agents": [{"id": "root", "archetype": "evil"}]}
@@ -80,8 +79,14 @@ def main() -> int:
         print(f"  unsigned deploy (required)         -> {deploy(CONTENT, None)} (rejected)")
         print(f"  signed deploy (required)           -> {deploy(CONTENT, CONTENT)} (applied)")
 
+        print("\nmonotonic downgrade guard (design 22):")
+        print(f"  signed deploy seq=5                -> {deploy(CONTENT, CONTENT, 5)} (applied)")
+        print(f"  signed deploy seq=6                -> {deploy(CONTENT, CONTENT, 6)} (applied)")
+        print(f"  replay old signed deploy seq=5     -> {deploy(CONTENT, CONTENT, 5)} (rejected)")
+
     print(
-        "\nOK — a valid fleet signature is required to push; a stolen membership key isn't enough."
+        "\nOK — a valid fleet signature is required to push, and an old signed deploy can't be "
+        "replayed over a newer one."
     )
     return 0
 
