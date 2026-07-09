@@ -15,7 +15,9 @@ app = typer.Typer(
 review_app = typer.Typer(help="Human-in-the-loop review queue.")
 author_app = typer.Typer(help="Conversational authoring for topologies, skills, archetypes.")
 auth_app = typer.Typer(help="Manage serve API auth (token minting).")
+fleet_app = typer.Typer(help="Fleet enrollment — mint join codes, list memberships (design 19).")
 
 app.add_typer(review_app, name="review")
 app.add_typer(author_app, name="author")
 app.add_typer(auth_app, name="auth")
+app.add_typer(fleet_app, name="fleet")

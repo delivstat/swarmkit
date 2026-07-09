@@ -79,8 +79,9 @@ export function EnrollmentPanel({
 			<CardContent className="space-y-4">
 				<p className="text-sm text-muted-foreground">
 					Register this fleet with the instance using a one-time enrollment
-					token (minted on the instance: <code>POST /fleet/enroll-token</code>
-					). The issued membership credential is stored{" "}
+					token. The instance owner mints it with{" "}
+					<code>swarmkit fleet enroll-token --scope manage</code> and hands it
+					over. The issued membership credential is stored{" "}
 					<strong>encrypted on the panel</strong> and never shown here.
 				</p>
 
