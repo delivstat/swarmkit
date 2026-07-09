@@ -13,6 +13,7 @@ from uuid import uuid4
 
 from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
 from swarmkit_runtime.canary import CanaryRouter
+from swarmkit_runtime.model_providers._pricing import estimate_cost
 from swarmkit_runtime.persistence import Store, UsageRow
 
 from ._config import _DEFAULT_TIMEOUT_SECONDS
@@ -81,7 +82,11 @@ def _record_run_usage(store: Store, job_id: str, result: RunResult) -> None:
     with contextlib.suppress(Exception):
         total_cost = 0.0
         for model, tok in usage.by_model.items():
+            # Provider-reported cost is authoritative (OpenRouter, PR 1); when it's absent
+            # (token-only providers) derive it from the price table (PR 2).
             cost = float(tok.get("cost", 0.0))
+            if cost == 0.0:
+                cost = estimate_cost(model, int(tok.get("input", 0)), int(tok.get("output", 0)))
             total_cost += cost
             store.record_usage(
                 UsageRow(
