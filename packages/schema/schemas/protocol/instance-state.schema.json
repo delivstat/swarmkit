@@ -12,6 +12,10 @@
       "type": "string",
       "description": "The instance's workspace id (metadata.id)."
     },
+    "workspace_name": {
+      "type": "string",
+      "description": "The instance's human-readable workspace name (metadata.name), for display."
+    },
     "schema_version": {
       "type": "string",
       "description": "swarmkit-schema version the instance validates against (compat gate)."

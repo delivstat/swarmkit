@@ -97,7 +97,7 @@ def create_app(  # noqa: PLR0915
         # Jaeger (each instance = its own service) — unless the operator set a custom service_name.
         tel_cfg = load_telemetry_config()
         if tel_cfg.service_name == "swarmkit":
-            tel_cfg = replace(tel_cfg, service_name=runtime.workspace_id)
+            tel_cfg = replace(tel_cfg, service_name=runtime.telemetry_service_name)
         if configure_telemetry(tel_cfg).enabled:
             logger.info(
                 "Telemetry enabled: service=%s exporter=%s endpoint=%s",

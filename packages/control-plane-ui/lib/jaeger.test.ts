@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { jaegerServiceUrl } from "./jaeger";
+import { jaegerServiceUrl, telemetryServiceName } from "./jaeger";
+
+describe("telemetryServiceName", () => {
+	it("composes '<name> (<id>)' when a workspace name is set (mirrors the runtime)", () => {
+		expect(
+			telemetryServiceName("Sterling OMS Project Workspace", "sterling-oms"),
+		).toBe("Sterling OMS Project Workspace (sterling-oms)");
+	});
+
+	it("falls back to the id when no name is set", () => {
+		expect(telemetryServiceName("", "minder")).toBe("minder");
+	});
+});
 
 describe("jaegerServiceUrl", () => {
 	it("builds a service-scoped Jaeger search URL", () => {

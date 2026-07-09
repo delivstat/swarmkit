@@ -126,6 +126,7 @@ def _build_capabilities(rt: Any) -> dict[str, Any]:
         "serve_version": _pkg_version("swarmkit-runtime"),
         "schema_version": _pkg_version("swarmkit-schema"),
         "workspace_id": str(raw.metadata.id),
+        "workspace_name": str(getattr(raw.metadata, "name", "") or ""),
         "topologies": sorted(ws.topologies.keys()),
         "model_providers": rt.provider_registry.provider_ids,
         "governance_provider": _enum_value(getattr(raw, "governance", None), "provider", "mock"),
@@ -216,6 +217,7 @@ def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
         "apiVersion": "swarmkit/v1",
         "kind": "InstanceState",
         "workspace_id": caps["workspace_id"],
+        "workspace_name": caps["workspace_name"],
         "schema_version": caps["schema_version"],
         "generated_at": datetime.now(UTC).isoformat(),
         "artifacts": {

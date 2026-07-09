@@ -49,10 +49,13 @@ a waterfall.
    telemetry failure never fails a run.
 4. **Serve startup** — the server lifespan calls `configure_telemetry()` and logs the exporter +
    endpoint (so an operator sees "otlp → http://…"), instead of the silent no-op today. It also
-   sets the OTel **`service.name` to the workspace's `metadata.id`** (unless the operator set a
-   custom name), so a fleet is distinguishable in Jaeger — each instance is its own service rather
-   than every instance collapsing into one `swarmkit` service. The `swarmkit.workspace.id` span
-   attribute uses the same id (not the workspace *directory* name, which is often just "workspace").
+   sets the OTel **`service.name`** to a human-readable **`"<metadata.name> (<metadata.id>)"`** (or
+   just the id when no name is set, or a custom `service_name` if the operator configured one), so a
+   fleet is legible in Jaeger's service list — e.g. `Sterling OMS Project Workspace (sterling-oms)`
+   rather than every instance collapsing into one `swarmkit` service. The `swarmkit.workspace.id`
+   span attribute uses the id (not the workspace *directory* name, which is often just "workspace").
+   `/fleet/state` carries `workspace_name` so the fleet UI can rebuild the same service string for
+   its Jaeger deep-link (design/details/control-plane/25).
 
 ## Non-goals
 
