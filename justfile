@@ -49,6 +49,11 @@ test-py:
 test-js:
     pnpm run test
 
+# Control-plane OIDC-login browser e2e (Playwright). Not in CI — run locally. Extra args pass
+# through to `playwright test`, e.g. `just e2e --headed`.
+e2e *args:
+    @scripts/e2e.sh {{args}}
+
 # ---- Build ----
 
 build: build-py build-js
