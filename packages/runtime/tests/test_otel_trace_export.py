@@ -117,6 +117,7 @@ def test_run_trace_conversion_nests_tools_sequentially_in_their_step() -> None:
     root = _run_trace_to_span(trace, "sterling-oms")
     assert root.name == "topology.run"
     assert root.attributes["swarmkit.topology.id"] == "single-agent-design"
+    assert root.attributes["swarmkit.workspace.id"] == "sterling-oms"  # identifies the instance
     assert root.attributes["swarmkit.model.cost_usd"] == 0.0045
 
     (agent,) = root.children

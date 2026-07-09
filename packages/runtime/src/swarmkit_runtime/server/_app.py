@@ -9,6 +9,7 @@ import logging
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -92,10 +93,15 @@ def create_app(  # noqa: PLR0915
 
         # Wire OpenTelemetry trace export (design: runtime/otel-trace-export): a run's spans go to
         # the configured OTLP collector so Jaeger/Grafana show it. No-op unless SWARMKIT_OTEL_* set.
+        # Name the OTel service after this instance's workspace so a fleet is distinguishable in
+        # Jaeger (each instance = its own service) — unless the operator set a custom service_name.
         tel_cfg = load_telemetry_config()
+        if tel_cfg.service_name == "swarmkit":
+            tel_cfg = replace(tel_cfg, service_name=runtime.workspace_id)
         if configure_telemetry(tel_cfg).enabled:
             logger.info(
-                "Telemetry enabled: exporter=%s endpoint=%s",
+                "Telemetry enabled: service=%s exporter=%s endpoint=%s",
+                tel_cfg.service_name,
                 tel_cfg.exporter,
                 tel_cfg.endpoint or "(default)",
             )
