@@ -59,6 +59,13 @@ class OpenAIModelProvider:
         from ._types import with_retry  # noqa: PLC0415
 
         kwargs = _to_openai_kwargs(request)
+        if self.provider_id == "openrouter":
+            # OpenRouter returns per-call cost (USD) only when asked — a passthrough body flag the
+            # base OpenAI API doesn't accept, so it's gated to this provider. Read back in
+            # `_from_openai_response` as `raw.usage.cost`.
+            extra_body = dict(kwargs.get("extra_body") or {})
+            extra_body["usage"] = {"include": True}
+            kwargs["extra_body"] = extra_body
         raw = await with_retry(
             lambda: self._client.chat.completions.create(**kwargs),
             label=f"openai:{request.model}",
@@ -190,6 +197,9 @@ def _from_openai_response(raw: Any) -> CompletionResponse:
     usage = Usage(
         input_tokens=getattr(raw.usage, "prompt_tokens", 0) or 0,
         output_tokens=getattr(raw.usage, "completion_tokens", 0) or 0,
+        # OpenRouter returns per-call cost here (USD) when asked (see `complete`); other
+        # OpenAI-compat providers omit it → 0.0, and a price table fills it in later (PR 2).
+        cost_usd=float(getattr(raw.usage, "cost", 0.0) or 0.0),
     )
 
     return CompletionResponse(

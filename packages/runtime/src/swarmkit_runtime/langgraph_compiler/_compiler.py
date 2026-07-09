@@ -354,6 +354,7 @@ def _build_agent_node(  # noqa: PLR0915
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
+            cost_usd=response.usage.cost_usd,
         )
         _trace = get_active_trace()
         if _trace is not None:

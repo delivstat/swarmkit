@@ -5,14 +5,15 @@ mirrors state into the sqlite store / canary router."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
-from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
+from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
 from swarmkit_runtime.canary import CanaryRouter
-from swarmkit_runtime.persistence import Store
+from swarmkit_runtime.persistence import Store, UsageRow
 
 from ._config import _DEFAULT_TIMEOUT_SECONDS
 
@@ -67,6 +68,39 @@ class JobStore:
         task.add_done_callback(self._background_tasks.discard)
 
 
+def _record_run_usage(store: Store, job_id: str, result: RunResult) -> None:
+    """Persist a completed run's usage (design: runtime/usage-recording-and-cost). Writes both
+    sinks: one ``run_usage`` row per model (feeds ``/usage`` + ``/usage/{job_id}``), and the
+    job-level totals onto the jobs table (feeds ``/jobs/history``, which the fleet panel federates
+    for per-run cost). Without this the whole usage pipeline reports zero. Best-effort — a
+    bookkeeping failure must never fail an otherwise-successful run."""
+    usage = result.usage
+    if usage is None:
+        return
+    # Best-effort: a bookkeeping failure must never fail an otherwise-successful run.
+    with contextlib.suppress(Exception):
+        total_cost = 0.0
+        for model, tok in usage.by_model.items():
+            cost = float(tok.get("cost", 0.0))
+            total_cost += cost
+            store.record_usage(
+                UsageRow(
+                    agent_id="",
+                    model=model,
+                    input_tokens=int(tok.get("input", 0)),
+                    output_tokens=int(tok.get("output", 0)),
+                    cost_usd=cost,
+                    job_id=job_id,
+                )
+            )
+        store.update_job(
+            job_id,
+            usage_input_tokens=usage.input_tokens,
+            usage_output_tokens=usage.output_tokens,
+            usage_cost_usd=total_cost,
+        )
+
+
 async def execute_job(
     job: Job,
     rt: WorkspaceRuntime,
@@ -103,6 +137,8 @@ async def execute_job(
             job.output = result.output
             job.status = "completed"
             job.events.append("Job completed successfully")
+            if store is not None:
+                _record_run_usage(store, job.id, result)
         except TimeoutError:
             job.error = f"Job timed out after {timeout_seconds}s"
             job.status = "failed"

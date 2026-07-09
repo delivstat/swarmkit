@@ -34,6 +34,7 @@ def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResp
             model=model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+            cost_usd=response.usage.cost_usd,
         )
 
 

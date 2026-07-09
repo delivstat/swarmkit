@@ -584,6 +584,65 @@ def test_openai_tool_call_args_are_json_not_str() -> None:
     assert resp.content[0].tool_input == {"q": "x"}  # parsed to dict, not left a string
 
 
+def _fake_raw(*, cost: object = None) -> object:
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    usage = SimpleNamespace(prompt_tokens=120, completion_tokens=45)
+    if cost is not None:
+        usage.cost = cost
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content="hi", tool_calls=None),
+                finish_reason="stop",
+            )
+        ],
+        usage=usage,
+    )
+
+
+def test_openai_response_captures_provider_cost() -> None:
+    # OpenRouter returns per-call cost on `usage.cost`; capture it into Usage.cost_usd.
+    from swarmkit_runtime.model_providers._openai import _from_openai_response  # noqa: PLC0415
+
+    resp = _from_openai_response(_fake_raw(cost=0.0123))
+    assert resp.usage.input_tokens == 120 and resp.usage.output_tokens == 45
+    assert resp.usage.cost_usd == 0.0123
+
+
+def test_openai_response_cost_defaults_to_zero_when_absent() -> None:
+    # Providers reporting only tokens (no `usage.cost`) -> cost_usd 0.0 (price table fills it).
+    from swarmkit_runtime.model_providers._openai import _from_openai_response  # noqa: PLC0415
+
+    resp = _from_openai_response(_fake_raw(cost=None))
+    assert resp.usage.cost_usd == 0.0
+
+
+@pytest.mark.asyncio
+async def test_openrouter_requests_cost_but_base_openai_does_not() -> None:
+    # Only OpenRouter asks for cost (the base OpenAI API rejects the passthrough flag).
+    from swarmkit_runtime.model_providers._openai import OpenAIModelProvider  # noqa: PLC0415
+    from swarmkit_runtime.model_providers._openai_compat import (  # noqa: PLC0415
+        OpenRouterModelProvider,
+    )
+
+    seen: dict[str, dict[str, object]] = {}
+
+    async def _capture(provider: object, label: str) -> None:
+        async def fake_create(**kwargs: object) -> object:
+            seen[label] = kwargs
+            return _fake_raw(cost=0.02)
+
+        provider._client.chat.completions.create = fake_create  # type: ignore[attr-defined]
+        await provider.complete(CompletionRequest(model="m", messages=()))  # type: ignore[attr-defined]
+
+    await _capture(OpenRouterModelProvider(api_key="k"), "openrouter")
+    await _capture(OpenAIModelProvider(api_key="k"), "openai")
+
+    assert seen["openrouter"]["extra_body"] == {"usage": {"include": True}}
+    assert "extra_body" not in seen["openai"]
+
+
 def test_apply_options_drops_non_native_but_keeps_extra() -> None:
     # The single source of truth every non-Ollama adapter uses. Ollama-only knobs are
     # dropped from options; genuine cross-vendor params survive; extra is never filtered.

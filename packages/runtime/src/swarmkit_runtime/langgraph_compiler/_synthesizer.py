@@ -254,6 +254,7 @@ def _record_trace(
 
     input_tokens = getattr(usage, "input_tokens", 0) or 0
     output_tokens = getattr(usage, "output_tokens", 0) or 0
+    cost_usd = float(getattr(usage, "cost_usd", 0.0) or 0.0)
 
     step = AgentStep(
         agent_id="__synthesizer__",
@@ -266,6 +267,7 @@ def _record_trace(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=input_tokens + output_tokens,
+        cost_usd=cost_usd,
         result_length=result_length,
     )
     trace.add_step(step)
