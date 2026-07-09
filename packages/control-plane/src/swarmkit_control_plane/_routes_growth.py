@@ -47,18 +47,21 @@ def _mount_aggregation(app: FastAPI, agg: AggregationStore) -> None:
         return agg.ingest(instance_id, kind, req.records)
 
     @app.get("/usage")
-    async def usage() -> list[dict[str, Any]]:
-        return agg.usage_rollup()
+    async def usage(instance_id: str | None = Query(None)) -> list[dict[str, Any]]:
+        # Fleet-wide by default; ?instance_id scopes to one instance (design 24).
+        return agg.usage_rollup(instance_id)
 
     @app.get("/eval")
-    async def eval_summary() -> list[dict[str, Any]]:
-        return agg.eval_summary()
+    async def eval_summary(instance_id: str | None = Query(None)) -> list[dict[str, Any]]:
+        return agg.eval_summary(instance_id)
 
     @app.get("/audit")
-    async def audit(limit: int = Query(100, ge=1, le=1000)) -> list[dict[str, Any]]:
+    async def audit(
+        limit: int = Query(100, ge=1, le=1000), instance_id: str | None = Query(None)
+    ) -> list[dict[str, Any]]:
         # Bounded: sqlite treats a negative LIMIT as unbounded, so an unvalidated ?limit=-1
         # would dump the entire append-only audit log; a huge positive value is a memory spike.
-        return agg.recent_audit(limit)
+        return agg.recent_audit(limit, instance_id)
 
     @app.get("/gaps")
     async def gaps() -> list[dict[str, Any]]:

@@ -30,6 +30,7 @@ __all__ = [
     "fetch_capabilities",
     "fetch_jobs",
     "fetch_manifest",
+    "fetch_runs",
     "fetch_state",
     "fetch_usage",
     "leave",
@@ -171,6 +172,18 @@ async def fetch_usage(endpoint: str, token_ref: str) -> dict[str, Any]:
     async with ServeClient(endpoint, token_ref) as serve:
         usage: dict[str, Any] = serve.ok(await serve.get("/usage"), "/usage")
     return usage
+
+
+async def fetch_runs(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
+    """Federated live-query of an instance's *completed* run history (GET /jobs/history) — per-run
+    cost/token/status detail, pulled on demand and **not stored** (design 24). This is the "details"
+    half of the two-lane model: aggregates are pushed, granular per-run history stays on the owner's
+    instance and is fetched only when viewed. Returns the parsed /jobs/history list. Raises
+    ConnectorError on any failure.
+    """
+    async with ServeClient(endpoint, token_ref) as serve:
+        runs: list[dict[str, Any]] = serve.ok(await serve.get("/jobs/history"), "/jobs/history")
+    return runs
 
 
 async def run_authoring(

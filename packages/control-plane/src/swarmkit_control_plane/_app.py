@@ -21,6 +21,7 @@ from swarmkit_control_plane._connector import (
     fetch_capabilities,
     fetch_jobs,
     fetch_manifest,
+    fetch_runs,
     fetch_state,
     fetch_usage,
     leave,
@@ -41,6 +42,7 @@ from swarmkit_control_plane._fntypes import (
     LeaveFn,
     RefreshFn,
     RegisterFn,
+    RunsFn,
     StateArtifactsFn,
     StateFn,
     StateManifestFn,
@@ -65,6 +67,7 @@ from swarmkit_control_plane._routes_registry import (
     _mount_command_queue,
     _mount_config,
     _mount_fleet_identity,
+    _mount_instance_runs,
     _mount_instances,
     _mount_join,
     _mount_membership,
@@ -95,6 +98,7 @@ def create_app(
     proposals: ProposalStore | None = None,
     deploy: DeployFn = push_artifact,
     jobs: JobsFn = fetch_jobs,
+    runs: RunsFn = fetch_runs,
     usage: UsageFn = fetch_usage,
     author: AuthorFn = run_authoring,
     eval_run: EvalFn = run_eval,
@@ -177,6 +181,7 @@ def create_app(
         return {"status": "ok"}
 
     _mount_instances(app, registry, verify, jobs, author)
+    _mount_instance_runs(app, registry, runs)
     _mount_token_routes(app, registry, verify)
     _mount_state(
         app, registry, state_store, arts, agg, fetch_state, fetch_manifest, fetch_artifacts, usage
