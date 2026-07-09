@@ -91,7 +91,8 @@ def _required_action(method: str, path: str) -> str | None:  # noqa: PLR0911
         return "read"
     if path.startswith("/api/"):
         return "admin"
-    if path.startswith("/canary/") and (path.endswith("/promote") or path.endswith("/rollback")):
+    # Any canary mutation — promote, rollback, or start a new canary (design 26) — is admin.
+    if path.startswith("/canary/"):
         return "admin"
     return "run"
 

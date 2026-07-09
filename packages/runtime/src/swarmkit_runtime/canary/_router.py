@@ -333,5 +333,48 @@ class CanaryRouter:
             )
             return True
 
+    def start_route(
+        self,
+        topology_name: str,
+        base_version: str,
+        canary_version: str,
+        weight: int,
+        promote_when: dict[str, Any] | None = None,
+    ) -> None:
+        """Start (or replace) a canary route at runtime (design 26 Layer B): split *weight*% of
+        traffic to *canary_version*, the rest to *base_version*. Lets the fleet begin a canary
+        rollout without a restart. *weight* is 1-99; the canary version's artifact must already be
+        deployed to this instance. Not persisted to workspace.yaml — a restart reverts to the
+        declared config."""
+        if not 0 < weight < 100:
+            raise ValueError("canary weight must be between 1 and 99")
+        if base_version == canary_version:
+            raise ValueError("base and canary versions must differ")
+        pc = None
+        if promote_when:
+            pc = PromoteCriteria(
+                min_runs=promote_when.get("min_runs", 50),
+                error_rate_below=promote_when.get("error_rate_below", 0.05),
+                drift_below=promote_when.get("drift_below", 0.30),
+                window_minutes=promote_when.get("window_minutes", 60),
+            )
+        versions = [
+            VersionEntry(version=base_version, weight=100 - weight, promote_when=None),
+            VersionEntry(version=canary_version, weight=weight, promote_when=pc),
+        ]
+        with self._lock:
+            self._routes[topology_name] = CanaryRoute(topology=topology_name, versions=versions)
+            self._metrics[topology_name] = {
+                v.version: VersionMetrics(version=v.version) for v in versions
+            }
+        logger.info(
+            "Canary started: %s — base v%s (%d%%) / canary v%s (%d%%)",
+            topology_name,
+            base_version,
+            100 - weight,
+            canary_version,
+            weight,
+        )
+
 
 __all__ = ["CanaryRouter"]

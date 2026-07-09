@@ -12,8 +12,13 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from swarmkit_runtime.canary._router import CanaryRouter
+from swarmkit_runtime.server._routes_introspection import _register_introspection_routes
 
 # ---------------------------------------------------------------------------
 # Router unit tests
@@ -227,6 +232,77 @@ def test_rollback() -> None:
 def test_rollback_unknown() -> None:
     router = _make_router()
     assert router.rollback("nonexistent") is False
+
+
+# ---------------------------------------------------------------------------
+# start_route (design 26 Layer B — start a canary at runtime)
+# ---------------------------------------------------------------------------
+
+
+def test_start_route_adds_a_split() -> None:
+    router = _make_router()
+    router.start_route("solution", "2.0.0", "2.1.0", 20)
+    assert router.has_route("solution")
+    versions = {v["version"]: v["weight"] for v in router.get_status()[-1]["versions"]}
+    assert versions == {"2.0.0": 80, "2.1.0": 20}
+
+
+def test_start_route_bootstraps_an_empty_router() -> None:
+    router = CanaryRouter([])  # no configured routes
+    assert not router.has_route("t")
+    router.start_route("t", "1.0.0", "1.1.0", 10)
+    assert router.has_route("t")
+
+
+def test_start_route_rejects_bad_weight() -> None:
+    router = CanaryRouter([])
+    for w in (0, 100, -5):
+        with pytest.raises(ValueError, match="between 1 and 99"):
+            router.start_route("t", "1.0.0", "1.1.0", w)
+
+
+def test_start_route_rejects_same_version() -> None:
+    router = CanaryRouter([])
+    with pytest.raises(ValueError, match="must differ"):
+        router.start_route("t", "1.0.0", "1.0.0", 10)
+
+
+# ---------------------------------------------------------------------------
+# serve POST /canary/{topology} — start a canary over HTTP (design 26 Layer B)
+# ---------------------------------------------------------------------------
+
+
+def _canary_app() -> Any:
+    app = FastAPI()
+    _register_introspection_routes(app)
+    return TestClient(app)
+
+
+def test_serve_start_bootstraps_router_and_splits() -> None:
+    client = _canary_app()
+    resp = client.post(
+        "/canary/solution", json={"base_version": "1.0.0", "canary_version": "1.1.0", "weight": 15}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["started"] is True
+    weights = {v["version"]: v["weight"] for v in body["routes"][0]["versions"]}
+    assert weights == {"1.0.0": 85, "1.1.0": 15}
+    # the router now reports the route on GET /canary
+    assert client.get("/canary").json()["routes"][0]["topology"] == "solution"
+
+
+def test_serve_start_bad_weight_400() -> None:
+    client = _canary_app()
+    resp = client.post(
+        "/canary/t", json={"base_version": "1.0.0", "canary_version": "1.1.0", "weight": 100}
+    )
+    assert resp.status_code == 400
+
+
+def test_serve_start_missing_fields_400() -> None:
+    client = _canary_app()
+    assert client.post("/canary/t", json={"weight": 10}).status_code == 400
 
 
 # ---------------------------------------------------------------------------

@@ -83,6 +83,7 @@ def test_api_key_rejects_reserved_scope() -> None:
         ("POST", "/api/reload", "admin"),
         ("POST", "/canary/hello/promote", "admin"),
         ("POST", "/canary/hello/rollback", "admin"),
+        ("POST", "/canary/hello", "admin"),  # start a canary (design 26 Layer B)
     ],
 )
 def test_required_action(method: str, path: str, expected: str | None) -> None:
