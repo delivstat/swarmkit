@@ -10,9 +10,9 @@ Next.js web app with three surfaces (design §15):
 
 ## Status
 
-**Deferred to v1.1.** The v0.6 design confirms the UI ships as v1.1 — the v1.0 on-ramp is conversational CLI via the three authoring swarms. This package is scaffolded for when v1.1 work starts.
+**Active — building the workspace UI** per `design/details/workspace-ui.md`. Posture (decided): a **co-equal peer** to the CLI, **not** its replacement — invariant #8 stands, the conversational CLI remains the v1.0 on-ramp. This app is the per-**workspace** surface (see/monitor/run/author one workspace); `packages/control-plane-ui` is the separate per-**fleet** surface. Built slice by slice (auth → monitor → schema-driven designer → topology graph → conversational console).
 
-Do not add UI features that compete with or bypass the authoring swarms. The UI is a *presentation layer on top of* the same authoring swarms the CLI uses. One mechanism, two front-ends.
+Do not add UI features that compete with or bypass the authoring swarms. The UI is a *presentation layer on top of* the same authoring swarms + serve API the CLI uses. One mechanism, two front-ends. The conversational front door stays the default authoring path; the designer is the inspect/refine/reference layer.
 
 ## Non-negotiable invariants
 
