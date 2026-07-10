@@ -66,7 +66,7 @@ services:
     build:
       context: .
       args:
-        SWARMKIT_VERSION: "1.8.0"
+        SWARMKIT_VERSION: "1.54.0"
     network_mode: host
     restart: unless-stopped
     volumes:
@@ -178,6 +178,18 @@ services:
       - HA_URL=http://localhost:8123
       - HA_TOKEN=${HA_TOKEN:-}
       - SWARMKIT_URL=http://localhost:8321
+      # OpenTelemetry trace export to the LOCAL FLEET's OTLP collector.
+      # `network_mode: host` (above) puts this container on the host network, so
+      # `localhost:4318` reaches the collector running next to the fleet panel/UI
+      # — same localhost convention the rest of this file uses (Frigate, Ollama, HA).
+      # The runtime auto-derives service.name from the workspace ("Minder — …
+      # (minder)"), so traces are self-labelled in Jaeger with no extra config.
+      # Failure is graceful by design: spans go through a BatchSpanProcessor on a
+      # background thread, so if the collector / fleet UI is down the run does NOT
+      # fail or slow — batches just retry then drop off the hot path. Set
+      # MINDER_OTEL=none to turn export off entirely (zero overhead).
+      - SWARMKIT_OTEL_EXPORTER=${MINDER_OTEL:-otlp}
+      - SWARMKIT_OTEL_ENDPOINT=${MINDER_OTEL_ENDPOINT:-http://localhost:4318/v1/traces}
     depends_on:
       - homeassistant
 

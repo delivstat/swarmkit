@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Install SwarmKit runtime. SWARMKIT_VERSION is supplied by docker-compose so
 # the pin lives in one place; schema follows the runtime's own dependency.
-ARG SWARMKIT_VERSION=1.8.0
+ARG SWARMKIT_VERSION=1.54.0
 RUN uv pip install --system --no-cache \
     swarmkit-runtime==${SWARMKIT_VERSION}
 
