@@ -1,0 +1,160 @@
+# SwarmKit demo fleet — the WHOLE thing in one command.
+#
+# Observability (Jaeger/Grafana/Prometheus/collector) + control-plane (panel + UI behind a
+# single-origin Caddy proxy) + example instances, enrolled automatically.
+#
+#   cp deploy/fleet/.env.example deploy/fleet/.env   # set a fixed secret key (+ optional model key)
+#   docker compose -f deploy/fleet/docker-compose.yml up -d --build
+#
+# UIs:  Fleet http://localhost:8080  ·  Jaeger http://localhost:16686  ·  Grafana http://localhost:3001
+#
+# This supersedes the untracked ~/fleet-demo host scripts for a clean clone-and-run. The panel runs
+# --insecure-no-auth (trial); see deploy/control-plane for production auth/vault.
+name: swarmkit-fleet
+
+# Reuse the observability bundle verbatim (collector on otel-collector:4318, Jaeger :16686,
+# Grafana :3001, Prometheus :9090 + the SwarmKit dashboard). Its relative volume paths resolve
+# against deploy/observability/, and its services join this project's network.
+include:
+  - ../observability/docker-compose.yml
+
+# One runtime image (root Dockerfile, ships the current runtime) drives every instance + the
+# enroll job. Built once, reused by anchor.
+x-runtime: &runtime
+  build:
+    context: ../..
+    dockerfile: Dockerfile
+  image: swarmkit-runtime:fleet
+
+# Instances bind 0.0.0.0 so the panel + collector can reach them across the compose network; that
+# non-loopback bind trips the runtime's default-secure guard, so --insecure is required (trial
+# fleet, same posture as the panel's --insecure-no-auth). Production: front instances with auth.
+x-instance-command: &instance-command
+  ["serve", "/workspace", "--host", "0.0.0.0", "--port", "8000", "--insecure"]
+
+x-instance-env: &instance-env
+  SWARMKIT_OTEL_EXPORTER: otlp
+  SWARMKIT_OTEL_ENDPOINT: http://otel-collector:4318/v1/traces
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+
+x-instance-health: &instance-health
+  test:
+    - "CMD"
+    - "python"
+    - "-c"
+    - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 15s
+
+services:
+  panel:
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile
+    image: swarmkit-control-plane
+    restart: unless-stopped
+    environment:
+      # Fixed Fernet key so the panel survives restarts (else it crashes decrypting its own fleet
+      # identity). Required — set it in deploy/fleet/.env (see .env.example).
+      SWARMKIT_CONTROL_PLANE_SECRET_KEY: ${SWARMKIT_CONTROL_PLANE_SECRET_KEY:?set SWARMKIT_CONTROL_PLANE_SECRET_KEY in deploy/fleet/.env — see .env.example}
+    expose:
+      - "8800"
+    volumes:
+      - fleet-panel-data:/data
+    command:
+      - "--insecure-no-auth"
+      - "--collector-endpoint=http://localhost:4318"
+      - "--jaeger-url=http://localhost:16686"
+      - "--grafana-url=http://localhost:3001"
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8800/health').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+  ui:
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile.ui
+      args:
+        # Single-origin: the UI calls /api, Caddy strips it and forwards to panel:8800. No CORS,
+        # no baked host URL.
+        NEXT_PUBLIC_CONTROL_PLANE_API: "/api"
+    image: swarmkit-control-plane-ui
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - panel
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8080:80" # the fleet UI front door
+    volumes:
+      - ../control-plane/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - ui
+      - panel
+
+  # --- Example instances: each serves a self-contained workspace + exports OTLP to the collector.
+  # Instance state (.swarmkit/, gitignored) is written into the bind-mounted workspace.
+  instance-hello:
+    <<: *runtime
+    restart: unless-stopped
+    command: *instance-command
+    volumes:
+      - ../../examples/hello-swarm/workspace:/workspace
+    environment: *instance-env
+    expose:
+      - "8000"
+    depends_on:
+      - otel-collector
+    healthcheck: *instance-health
+
+  instance-sterling:
+    <<: *runtime
+    restart: unless-stopped
+    command: *instance-command
+    volumes:
+      - ../../examples/sterling-oms/workspace:/workspace
+    environment: *instance-env
+    expose:
+      - "8000"
+    depends_on:
+      - otel-collector
+    healthcheck: *instance-health
+
+  # --- One-shot: run the design-19 enrollment handshake once panel + instances are healthy.
+  # Bind-mounts the SAME workspace dirs as the instances, so `swarmkit fleet enroll-token` mints
+  # against the identical {workspace}/.swarmkit/fleet.sqlite the instance serves.
+  enroll:
+    <<: *runtime
+    restart: "no"
+    entrypoint: ["python", "/enroll.py"]
+    environment:
+      PANEL_URL: http://panel:8800
+      # name=service-host:workspace-mount:scope, comma-separated
+      FLEET_INSTANCES: "hello=instance-hello:/workspaces/hello:manage,sterling=instance-sterling:/workspaces/sterling:monitor"
+    volumes:
+      - ./enroll.py:/enroll.py:ro
+      - ../../examples/hello-swarm/workspace:/workspaces/hello
+      - ../../examples/sterling-oms/workspace:/workspaces/sterling
+    depends_on:
+      panel:
+        condition: service_healthy
+      instance-hello:
+        condition: service_healthy
+      instance-sterling:
+        condition: service_healthy
+
+volumes:
+  fleet-panel-data:

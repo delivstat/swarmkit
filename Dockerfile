@@ -14,7 +14,10 @@ COPY packages/runtime/ packages/runtime/
 COPY packages/schema/ packages/schema/
 COPY pyproject.toml uv.lock ./
 
-RUN uv sync --all-packages --no-dev --frozen
+# Sync only the runtime (pulls swarmkit-schema as its workspace dep). NOT --all-packages: the
+# workspace also lists packages/control-plane, which this image neither copies nor needs, so
+# --all-packages fails to resolve it.
+RUN uv sync --package swarmkit-runtime --no-dev --frozen
 
 FROM python:3.11-slim
 
