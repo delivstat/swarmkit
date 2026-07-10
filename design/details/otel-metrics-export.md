@@ -37,9 +37,14 @@ no config change to the collector, Prometheus, Grafana, or the dashboard.
 
 - No new metric instruments — the set in `_metrics.py` / the design note stands.
 - No collector/Prometheus/Grafana changes — those are already correct.
-- Governance / approval-wait / drift metrics are emitted only where that data already flows through
-  the run path; the dashboard's three headline series (runs, agent steps, tool calls) are the
-  acceptance bar.
+- The dashboard's three headline series (runs, agent steps, tool calls) were the initial acceptance
+  bar. **Follow-up (landed):** the remaining defined instruments are now wired too —
+  `swarmkit.governance.decisions.total` at the three `evaluate_action` seams (agent-execute,
+  mcp-call, context-retrieve; labelled `decision=allow|deny`, coarse `scope` to bound cardinality)
+  and `swarmkit.approval.wait_ms` in `FileReviewQueue.resolve` (wait = resolve time − the review
+  item's `timestamp`). Drift and compression metrics already had call sites and simply revived once
+  the `MeterProvider` existed. Two Grafana panels (governance allow-vs-deny rate; approval-wait p95)
+  cover the new series.
 
 ## Design
 

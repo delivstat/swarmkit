@@ -18,6 +18,7 @@ from swarmkit_runtime.model_providers import (
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.skills import ResolvedSkill, impl_get
+from swarmkit_runtime.telemetry import record_governance_decision
 
 SkillResult = str | tuple[str, list[ContentBlock]]
 
@@ -131,6 +132,9 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
             action=f"mcp:call:{server_id}:{tool_name}",
             scopes_required=scopes,
             context={"server_permission": permission},
+        )
+        record_governance_decision(
+            decision="allow" if decision.allowed else "deny", scope="mcp:call"
         )
         if not decision.allowed:
             return f"[skill:{skill.id}] DENIED: {decision.reason}"

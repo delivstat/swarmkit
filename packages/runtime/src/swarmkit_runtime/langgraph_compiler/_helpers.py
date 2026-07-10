@@ -21,6 +21,7 @@ from langchain_core.messages import AIMessage
 from swarmkit_runtime.governance import AuditEvent, GovernanceProvider
 from swarmkit_runtime.model_providers import CompletionResponse, ContentBlock, Message
 from swarmkit_runtime.resolver import ResolvedAgent
+from swarmkit_runtime.telemetry import record_governance_decision
 
 _MAX_RESULT_CHARS = int(os.environ.get("SWARMKIT_MAX_RESULT_CHARS", "3000"))
 _TRUST_DENY_THRESHOLD = 0.2
@@ -151,6 +152,9 @@ async def _check_governance(
         agent_id=agent_id,
         action="agent:execute",
         scopes_required=scopes_required,
+    )
+    record_governance_decision(
+        decision="allow" if decision.allowed else "deny", scope="agent:execute"
     )
 
     if not decision.allowed:
