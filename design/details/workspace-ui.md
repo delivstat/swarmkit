@@ -22,8 +22,11 @@ refine/reference layer, and live monitoring reusing the OTel/jobs data we alread
   Authoring-first (`project_authoring_first`) stays true — the designer is the power/reference layer,
   not the default creation path.
 - **Two apps, not one.** `packages/control-plane-ui` = the **fleet** view (many instances, remote,
-  governance). This = the **workspace** view (one workspace, local, deep). They share components
-  (runs table, trace links, artifact cards) but are separate apps with separate scopes. Do not merge.
+  governance). This (`packages/ui`) = the **workspace** view (one workspace, local, deep). Separate
+  apps, separate scopes — do not merge, and the workspace UI must not depend on the fleet app. For a
+  consistent look + feel they **copy** shared patterns (runs table, trace links, artifact cards, auth
+  gate) rather than importing across the app boundary; visual consistency across the two surfaces is
+  a deliberate goal (see Auth for the copy rationale + the one caveat).
 
 ## Non-goals
 
@@ -52,9 +55,15 @@ itself — so the UI's gate follows the serve's configured mode:
 - **`api_key`** → a lightweight *key gate* (enter/store the bearer), not an IdP redirect.
 - **`none` / `--insecure` / loopback dev** → no gate; the local-dev default is frictionless.
 
-**Reuse, don't rebuild:** `packages/control-plane-ui` already has the OIDC client
-(`lib/oidc-config.ts`, `lib/token-store.ts`, `components/auth-gate.tsx`); the workspace UI shares
-them. The serve needs one small addition — an **unauthenticated auth-discovery endpoint**,
+**Copy, don't re-invent.** `packages/control-plane-ui` is a private app (no `exports`), not an
+importable library, and the workspace UI must not depend on the fleet app (wrong-direction coupling).
+So the OIDC client (`lib/oidc-config.ts`, `lib/token-store.ts`, `components/auth-gate.tsx`) and the
+shared look-and-feel are **copied** — a deliberate choice: keeping the two SwarmKit web surfaces
+visually + behaviourally consistent is a goal, and copies keep the apps independent. Trade-off: the
+copies are hand-synced. Visual drift is cosmetic; the one place to watch is the auth sliver (a
+PKCE/token-refresh fix in one app not the other = a login bug), so keep that core small and obvious —
+share just it later if it earns its keep. The serve needs one small addition — an **unauthenticated
+auth-discovery endpoint**,
 `GET /auth-info` → `{mode: none|api_key|jwt, oidc?: {issuer, client_id, audience}}` — so the UI
 renders the right gate and knows where to send the user without hardcoding. Everything the UI does
 still carries the same bearer the CLI would, through the same serve auth — no parallel auth path.
