@@ -143,6 +143,15 @@ export interface SendMessageResponse {
 	conversation_id: string;
 }
 
+/** Per-run usage totals — the flat shape GET /usage/{job_id} returns (no by-model breakdown). */
+export interface JobUsage {
+	total_calls: number;
+	total_input_tokens: number;
+	total_output_tokens: number;
+	total_cache_tokens: number;
+	total_cost_usd: number;
+}
+
 export interface UsageSummary {
 	summary: {
 		total_calls: number;
