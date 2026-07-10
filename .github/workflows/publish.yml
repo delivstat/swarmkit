@@ -18,12 +18,15 @@ jobs:
       - name: Build packages
         run: uv build --all-packages
 
+      # --check-url skips files already on PyPI instead of erroring. The two packages version
+      # independently, so a runtime-only release (runtime bumped, schema unchanged) must not fail on
+      # re-uploading the existing schema — and vice versa. New versions still publish normally.
       - name: Publish swarmkit-schema
-        run: uv publish dist/swarmkit_schema-*.tar.gz dist/swarmkit_schema-*.whl
+        run: uv publish --check-url https://pypi.org/simple/ dist/swarmkit_schema-*.tar.gz dist/swarmkit_schema-*.whl
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
       - name: Publish swarmkit-runtime
-        run: uv publish dist/swarmkit_runtime-*.tar.gz dist/swarmkit_runtime-*.whl
+        run: uv publish --check-url https://pypi.org/simple/ dist/swarmkit_runtime-*.tar.gz dist/swarmkit_runtime-*.whl
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
