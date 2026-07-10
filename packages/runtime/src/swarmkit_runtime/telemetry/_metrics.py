@@ -30,8 +30,17 @@ _compression_bytes_saved_total: metrics.Counter | None = None
 _compression_ratio: metrics.Histogram | None = None
 
 
-def init_metrics(service_name: str = "swarmkit") -> None:
-    """Initialize OTel metrics instruments. Call once at startup."""
+def init_metrics(
+    service_name: str = "swarmkit",
+    *,
+    meter_provider: metrics.MeterProvider | None = None,
+) -> None:
+    """Initialize OTel metrics instruments. Call once at startup, after a ``MeterProvider`` is set.
+
+    ``meter_provider`` binds the instruments to a specific provider rather than the process-global
+    one. Passing it explicitly (a) sidesteps OTel's set-once global-provider semantics on a
+    reconfigure and (b) makes the emission path unit-testable with an in-memory reader.
+    """
     global _meter  # noqa: PLW0603
     global _runs_total, _agent_steps_total, _tool_calls_total  # noqa: PLW0603
     global _governance_decisions_total  # noqa: PLW0603
@@ -39,7 +48,8 @@ def init_metrics(service_name: str = "swarmkit") -> None:
     global _drift_score, _drift_breaches_total  # noqa: PLW0603
     global _compression_bytes_saved_total, _compression_ratio  # noqa: PLW0603
 
-    _meter = metrics.get_meter(service_name)
+    provider = meter_provider if meter_provider is not None else metrics.get_meter_provider()
+    _meter = provider.get_meter(service_name)
 
     _runs_total = _meter.create_counter(
         f"{_ATTR_PREFIX}.runs.total",

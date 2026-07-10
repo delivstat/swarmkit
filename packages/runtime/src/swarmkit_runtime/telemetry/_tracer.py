@@ -15,8 +15,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
-from opentelemetry import trace
+from opentelemetry import metrics, trace
 from opentelemetry.context import Context
+from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -27,8 +28,24 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.trace import Span, StatusCode, Tracer
 
 from swarmkit_runtime.telemetry._config import TelemetryConfig
+from swarmkit_runtime.telemetry._metrics import init_metrics
 
 _ATTR_PREFIX = "swarmkit"
+
+# Metric export cadence. The reader flushes on this interval off the run's hot path, so a down
+# collector never blocks or slows a run (same best-effort posture as BatchSpanProcessor for traces).
+_METRIC_EXPORT_INTERVAL_MS = 15_000
+
+
+def _metrics_endpoint(traces_endpoint: str) -> str:
+    """Derive the OTLP metrics endpoint from the traces endpoint (one collector serves both).
+
+    ``…/v1/traces`` → ``…/v1/metrics``; anything else is returned unchanged (custom collectors that
+    don't use the standard OTLP HTTP path get their endpoint verbatim)."""
+    suffix = "/v1/traces"
+    if traces_endpoint.endswith(suffix):
+        return traces_endpoint[: -len(suffix)] + "/v1/metrics"
+    return traces_endpoint
 
 
 @dataclass(frozen=True)
@@ -53,14 +70,23 @@ class SwarmKitTelemetry:
     all methods are no-ops via the NoOp tracer.
     """
 
-    def __init__(self, config: TelemetryConfig, *, provider: TracerProvider | None = None) -> None:
+    def __init__(
+        self,
+        config: TelemetryConfig,
+        *,
+        provider: TracerProvider | None = None,
+        meter_provider: MeterProvider | None = None,
+    ) -> None:
         self._config = config
         self._tracer: Tracer
 
         # An injected provider (tests: an in-memory exporter) short-circuits config-driven setup —
-        # and never touches the process-global provider, so tests don't collide.
+        # and never touches the process-global provider, so tests don't collide. A meter_provider
+        # can be injected the same way to test the metrics emission path.
         if provider is not None:
             self._tracer = provider.get_tracer("swarmkit")
+            if meter_provider is not None:
+                init_metrics(config.service_name, meter_provider=meter_provider)
             return
 
         if not config.enabled or config.exporter == "none":
@@ -69,27 +95,69 @@ class SwarmKitTelemetry:
 
         resource = Resource.create({"service.name": config.service_name})
         provider = TracerProvider(resource=resource)
+        built_meter_provider: MeterProvider | None = None
 
         if config.exporter == "console":
             provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+            built_meter_provider = self._build_meter_provider(resource, config, console=True)
         elif config.exporter == "otlp":
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # noqa: PLC0415
                 OTLPSpanExporter,
             )
 
-            headers = dict(config.headers)
-            if config.api_key and config.api_key_header not in headers:
-                prefix = "Bearer " if config.api_key_header == "Authorization" else ""
-                headers[config.api_key_header] = f"{prefix}{config.api_key}"
-
+            headers = self._auth_headers(config)
             exporter = OTLPSpanExporter(
                 endpoint=config.endpoint,
                 headers=headers,
             )
             provider.add_span_processor(BatchSpanProcessor(exporter))
+            built_meter_provider = self._build_meter_provider(resource, config, console=False)
 
         trace.set_tracer_provider(provider)
         self._tracer = trace.get_tracer("swarmkit", schema_url=None)
+
+        # Metrics: mirror the trace provider so Prometheus/Grafana populate (design:
+        # runtime/otel-metrics-export). Bind instruments to this provider explicitly so a later
+        # reconfigure re-binds cleanly despite OTel's set-once global-provider semantics.
+        if built_meter_provider is not None:
+            metrics.set_meter_provider(built_meter_provider)
+            init_metrics(config.service_name, meter_provider=built_meter_provider)
+
+    @staticmethod
+    def _auth_headers(config: TelemetryConfig) -> dict[str, str]:
+        """Build the OTLP auth headers (shared by the span and metric exporters)."""
+        headers = dict(config.headers)
+        if config.api_key and config.api_key_header not in headers:
+            prefix = "Bearer " if config.api_key_header == "Authorization" else ""
+            headers[config.api_key_header] = f"{prefix}{config.api_key}"
+        return headers
+
+    @classmethod
+    def _build_meter_provider(
+        cls, resource: Resource, config: TelemetryConfig, *, console: bool
+    ) -> MeterProvider:
+        """A ``MeterProvider`` whose reader flushes on an interval (never on the hot path)."""
+        from opentelemetry.sdk.metrics.export import (  # noqa: PLC0415
+            ConsoleMetricExporter,
+            PeriodicExportingMetricReader,
+        )
+
+        metric_exporter: Any
+        if console:
+            metric_exporter = ConsoleMetricExporter()
+        else:
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (  # noqa: PLC0415
+                OTLPMetricExporter,
+            )
+
+            metric_exporter = OTLPMetricExporter(
+                endpoint=_metrics_endpoint(config.endpoint),
+                headers=cls._auth_headers(config),
+            )
+        reader = PeriodicExportingMetricReader(
+            metric_exporter, export_interval_millis=_METRIC_EXPORT_INTERVAL_MS
+        )
+        return MeterProvider(resource=resource, metric_readers=[reader])
 
     @property
     def enabled(self) -> bool:
@@ -103,6 +171,30 @@ class SwarmKitTelemetry:
         if not self.enabled:
             return
         self._emit_recorded(root, parent=None)
+
+    def export_run_metrics(self, trace_obj: Any) -> None:
+        """Emit run/step/tool metrics from a finished ``RunTrace`` (companion to
+        :meth:`export_run_spans`; design: runtime/otel-metrics-export). Increments the run counter +
+        records run duration, then per agent step the step counter, and per tool call the tool
+        counter + duration. No-op when telemetry is disabled; best-effort — never raises on the run
+        path (the reader ships these on its own interval, off the hot path)."""
+        if not self.enabled:
+            return
+        from swarmkit_runtime.telemetry import _metrics  # noqa: PLC0415
+
+        topology_id = getattr(trace_obj, "topology", "")
+        _metrics.record_run_started(topology_id=topology_id)
+        _metrics.record_run_completed(
+            topology_id=topology_id, duration_ms=int(getattr(trace_obj, "duration_ms", 0))
+        )
+        for step in getattr(trace_obj, "agent_steps", []):
+            _metrics.record_agent_step(agent_id=step.agent_id, topology_id=topology_id)
+            for call in getattr(step, "tool_calls", []):
+                _metrics.record_tool_call(
+                    tool_name=call.tool_name,
+                    status="error" if call.error else "ok",
+                    duration_ms=int(call.duration_ms),
+                )
 
     def _emit_recorded(self, rs: RecordedSpan, *, parent: Context | None) -> None:
         span = self._tracer.start_span(

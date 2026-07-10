@@ -168,6 +168,7 @@ def _finalize_trace(trace: Any, workspace_root: Path, workspace_id: str) -> None
         telemetry = get_telemetry()
         if telemetry.enabled:
             telemetry.export_run_spans(_run_trace_to_span(trace, workspace_id))
+            telemetry.export_run_metrics(trace)
 
 
 class MissingMCPServerError(Exception):
