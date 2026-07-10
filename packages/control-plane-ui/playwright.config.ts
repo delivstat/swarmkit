@@ -24,6 +24,10 @@ export default defineConfig({
 		},
 		{
 			command: [
+				// Fresh panel each run — the data-dir persists a fleet identity encrypted with an
+				// ephemeral key, so a stale dir crashes the next start with InvalidToken (locally;
+				// CI always starts on a clean runner).
+				`rm -rf ${PANEL_DATA} &&`,
 				"uv run swarmkit-control-plane",
 				`--data-dir ${PANEL_DATA} --port 8819`,
 				"--operator-token op-e2e-secret",
