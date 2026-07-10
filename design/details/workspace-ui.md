@@ -40,6 +40,25 @@ refine/reference layer, and live monitoring reusing the OTel/jobs data we alread
   + `/yaml`), `run`, `jobs` (+ `history`/`stream`/`usage`), **`conversations`** (chat), `validate`,
   `canary`, `capabilities`, `triggers`, `reload`. The UI is mostly a frontend against this.
 
+## Auth — the UI mirrors the serve's auth
+
+The serve has a config-driven `server.auth` (`workspace.yaml`) with providers **`api_key`** and
+**`jwt`** (default `none`). Serve *validates* bearer tokens — it does not run an OIDC redirect
+itself — so the UI's gate follows the serve's configured mode:
+
+- **`jwt`** (validates OIDC-issued tokens) → the UI runs the **OIDC PKCE login** (redirect → IdP →
+  token) and attaches the JWT bearer to every serve call. **A login screen** — the same flow the
+  fleet UI already ships.
+- **`api_key`** → a lightweight *key gate* (enter/store the bearer), not an IdP redirect.
+- **`none` / `--insecure` / loopback dev** → no gate; the local-dev default is frictionless.
+
+**Reuse, don't rebuild:** `packages/control-plane-ui` already has the OIDC client
+(`lib/oidc-config.ts`, `lib/token-store.ts`, `components/auth-gate.tsx`); the workspace UI shares
+them. The serve needs one small addition — an **unauthenticated auth-discovery endpoint**,
+`GET /auth-info` → `{mode: none|api_key|jwt, oidc?: {issuer, client_id, audience}}` — so the UI
+renders the right gate and knows where to send the user without hardcoding. Everything the UI does
+still carries the same bearer the CLI would, through the same serve auth — no parallel auth path.
+
 ## The technical crux — the designer is schema-generated
 
 "Expose every property + option, with help and tooltips" is **not** hand-built. A single form engine
@@ -72,6 +91,7 @@ Each new endpoint ships with the contract test pattern the panel uses, so CLI an
 ## API shape (illustrative)
 
 ```
+GET  /auth-info                          # UNAUTHENTICATED — {mode, oidc?} → which login gate to render
 GET  /api/schema/{artifact_type}         # JSON Schema → drives the designer form + tooltips
 GET  /observability/runs                 # monitor: recent runs (+ filters)
 GET  /observability/runs/{id}/trace      # per-run span tree (from the OTel bridge)
