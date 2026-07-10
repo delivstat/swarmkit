@@ -151,6 +151,12 @@ def create_app(  # noqa: PLR0915
             allow_headers=["*"],
         )
 
+    @app.get("/auth-info")
+    async def auth_info() -> dict[str, object]:
+        """Unauthenticated: advertise the server's auth mode (+ OIDC issuer/audience for jwt) so a
+        client renders the right login gate before it holds a token."""
+        return _auth.public_info()
+
     @app.middleware("http")
     async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
         start = time.monotonic()
@@ -167,10 +173,11 @@ def create_app(  # noqa: PLR0915
 
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
-        # /health is public; /fleet/register + /fleet/refresh authenticate with their own token
+        # /health + /auth-info are public (the latter tells an unauthenticated client which login
+        # gate to render); /fleet/register + /fleet/refresh authenticate with their own token
         # (enrollment token / current membership key) inside the route (design 19), so they bypass
         # the transport-token seam here.
-        if request.url.path in ("/health", "/fleet/register", "/fleet/refresh"):
+        if request.url.path in ("/health", "/auth-info", "/fleet/register", "/fleet/refresh"):
             return await call_next(request)
 
         auth_req = AuthReq(

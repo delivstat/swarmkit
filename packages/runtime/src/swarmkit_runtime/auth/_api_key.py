@@ -96,6 +96,10 @@ class APIKeyAuthProvider(AuthProvider):
         required = f"{resource}:{action}"
         return required in identity.scopes
 
+    @property
+    def mode(self) -> str:
+        return "api_key"
+
     @staticmethod
     def _extract_bearer(headers: dict[str, str]) -> str | None:
         """Extract bearer token from Authorization header."""

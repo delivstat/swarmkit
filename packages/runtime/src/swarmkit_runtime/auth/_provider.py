@@ -64,3 +64,16 @@ class AuthProvider(ABC):
 
         Returns True if allowed, False if denied.
         """
+
+    @property
+    def mode(self) -> str:
+        """Short public identifier for this auth mode: ``none`` | ``api_key`` | ``jwt``.
+
+        Advertised (unauthenticated) via ``GET /auth-info`` so a client knows which login gate to
+        render before it holds a token. Overridden by each concrete provider."""
+        return "unknown"
+
+    def public_info(self) -> dict[str, Any]:
+        """Unauthenticated descriptor a client reads to render the right login gate. Default is just
+        the mode; providers advertise extra config (e.g. an OIDC issuer/audience) by overriding."""
+        return {"mode": self.mode}
