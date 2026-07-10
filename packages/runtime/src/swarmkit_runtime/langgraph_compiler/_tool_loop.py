@@ -15,6 +15,7 @@ from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.model_providers import CompletionResponse, ContentBlock, Message
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.resolver import ResolvedAgent
+from swarmkit_runtime.telemetry import record_governance_decision
 
 from ._helpers import ToolCallResult, _extract_text, _progress, _truncate_result
 from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomplete
@@ -252,6 +253,9 @@ async def _handle_context_retrieve(
                 action=f"context:retrieve:{ref}",
                 scopes_required=frozenset(),
                 context={"ref": ref},
+            )
+            record_governance_decision(
+                decision="allow" if decision.allowed else "deny", scope="context:retrieve"
             )
             if not decision.allowed:
                 return f"[context_retrieve] DENIED: {decision.reason}"

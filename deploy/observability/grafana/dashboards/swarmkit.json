@@ -73,6 +73,34 @@
           "expr": "sum(swarmkit_runs_total{service_name=~\"$service\"})"
         }
       ]
+    },
+    {
+      "id": 5,
+      "title": "Governance decisions (rate, allow vs deny)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "swarmkit-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service_name, decision) (rate(swarmkit_governance_decisions_total{service_name=~\"$service\"}[$__rate_interval]))",
+          "legendFormat": "{{service_name}} · {{decision}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Approval wait p95 (ms)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "swarmkit-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(swarmkit_approval_wait_ms_bucket{service_name=~\"$service\"}[$__rate_interval])))",
+          "legendFormat": "{{service_name}}"
+        }
+      ]
     }
   ]
 }

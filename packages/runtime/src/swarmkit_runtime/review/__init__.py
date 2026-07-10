@@ -71,6 +71,7 @@ class FileReviewQueue:
         data = json.loads(path.read_text(encoding="utf-8"))
         data["status"] = status
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _record_approval_wait(data)
         return True
 
 
@@ -94,6 +95,19 @@ def create_review_item(
         reason=reason,
         timestamp=datetime.now(tz=UTC),
     )
+
+
+def _record_approval_wait(data: dict[str, Any]) -> None:
+    """Emit the human-approval wait time (design: runtime/otel-metrics-export). Best-effort — a
+    telemetry hiccup must never fail resolving a review. No-op when telemetry is disabled."""
+    try:
+        from swarmkit_runtime.telemetry import record_approval_wait  # noqa: PLC0415
+
+        created = datetime.fromisoformat(data["timestamp"])
+        wait_ms = int((datetime.now(tz=UTC) - created).total_seconds() * 1000)
+        record_approval_wait(scope=str(data.get("skill_id") or "review"), wait_ms=max(0, wait_ms))
+    except Exception:
+        pass
 
 
 def _from_dict(data: dict[str, Any]) -> ReviewItem:

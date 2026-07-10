@@ -13,6 +13,8 @@ from typing import Any
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider
+from swarmkit_runtime.review import FileReviewQueue, create_review_item
+from swarmkit_runtime.telemetry import record_governance_decision
 from swarmkit_runtime.telemetry._config import TelemetryConfig
 from swarmkit_runtime.telemetry._tracer import SwarmKitTelemetry, _metrics_endpoint
 from swarmkit_runtime.trace import AgentStep, RunTrace, ToolCall
@@ -106,3 +108,35 @@ def test_metrics_endpoint_derives_from_traces_endpoint() -> None:
     )
     # Non-standard endpoints are returned unchanged.
     assert _metrics_endpoint("http://collector:9999/custom") == "http://collector:9999/custom"
+
+
+def test_governance_decision_metric_flows() -> None:
+    _telemetry, reader = _capturing_telemetry()  # binds instruments to reader's provider
+    record_governance_decision(decision="allow", scope="mcp:call")
+    record_governance_decision(decision="deny", scope="agent:execute")
+
+    assert _sum_by_name(reader)["swarmkit.governance.decisions.total"] == 2
+    data = reader.get_metrics_data()
+    assert data is not None
+    decisions = {
+        (point.attributes or {}).get("decision")
+        for rm in data.resource_metrics
+        for sm in rm.scope_metrics
+        for metric in sm.metrics
+        if metric.name == "swarmkit.governance.decisions.total"
+        for point in metric.data.data_points
+    }
+    assert decisions == {"allow", "deny"}
+
+
+def test_approval_wait_metric_flows_on_review_resolve(tmp_path: Any) -> None:
+    _telemetry, reader = _capturing_telemetry()
+    queue = FileReviewQueue(tmp_path)
+    item = create_review_item(
+        topology_id="t", agent_id="a", skill_id="verify-invoice", output={}, verdict={}, reason="r"
+    )
+    queue.submit(item)
+
+    assert queue.resolve(item.id, "approved") is True
+    # One histogram observation of the wait time.
+    assert _sum_by_name(reader)["swarmkit.approval.wait_ms"] == 1
