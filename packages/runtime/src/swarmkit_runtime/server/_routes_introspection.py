@@ -29,6 +29,35 @@ class ArtifactFetchRequest(BaseModel):
     refs: list[ArtifactRef] = []
 
 
+def _span_to_dict(span: Any) -> dict[str, Any]:
+    """Serialize a RecordedSpan tree (topology.run → agent.step → tool.call) for a UI waterfall."""
+    return {
+        "name": span.name,
+        "start_ns": span.start_ns,
+        "end_ns": span.end_ns,
+        "duration_ms": round((span.end_ns - span.start_ns) / 1e6, 3),
+        "attributes": dict(span.attributes),
+        "error": span.error,
+        "children": [_span_to_dict(child) for child in span.children],
+    }
+
+
+def _audit_event_to_dict(event: Any) -> dict[str, Any]:
+    """Serialize an AuditEvent to JSON (UUID → str, datetime → isoformat). Read-only view."""
+    ts = getattr(event, "timestamp", None)
+    return {
+        "event_id": str(getattr(event, "event_id", "")),
+        "event_type": getattr(event, "event_type", ""),
+        "agent_id": getattr(event, "agent_id", ""),
+        "agent_role": getattr(event, "agent_role", None),
+        "timestamp": ts.isoformat() if ts is not None else None,
+        "topology_id": getattr(event, "topology_id", None),
+        "skill_id": getattr(event, "skill_id", None),
+        "run_id": getattr(event, "run_id", None),
+        "payload": getattr(event, "payload", {}),
+    }
+
+
 def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
     """Register health, topologies, skills, archetypes, validate, triggers endpoints."""
 
@@ -146,6 +175,46 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
             }
             for r in rows
         ]
+
+    @app.get("/observability/runs/{run_id}/trace")
+    async def get_run_trace(run_id: str, request: Request) -> dict[str, Any]:
+        """The finished run's span tree (topology.run → agent.step → tool.call) for a UI waterfall,
+        loaded from the persisted RunTrace (.swarmkit/traces/<run-id>.json)."""
+        ws_path = getattr(request.app.state, "workspace_path", None)
+        if ws_path is None:
+            raise HTTPException(status_code=404, detail="workspace not ready")
+        trace_file = ws_path / ".swarmkit" / "traces" / f"{run_id}.json"
+        if not trace_file.is_file():
+            raise HTTPException(status_code=404, detail=f"no trace recorded for run {run_id!r}")
+
+        from swarmkit_runtime._workspace_runtime import _run_trace_to_span  # noqa: PLC0415
+        from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
+
+        runtime = getattr(request.app.state, "runtime", None)
+        workspace_id = runtime.workspace_id if runtime is not None else ""
+        return _span_to_dict(_run_trace_to_span(RunTrace.load(trace_file), workspace_id))
+
+    @app.get("/audit")
+    async def get_audit(
+        request: Request,
+        run_id: str | None = None,
+        agent_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Append-only audit events, newest-first (read-only; the media pillar exposes no
+        update/delete). Empty when the workspace has no audit store yet."""
+        runtime = getattr(request.app.state, "runtime", None)
+        if runtime is None:
+            return []
+        # Query the provider async, directly — the sync Observability.query_audit facade spins its
+        # own event loop (for the CLI) and can't be called from inside this request's loop.
+        events = [
+            _audit_event_to_dict(e)
+            async for e in runtime.audit_provider.query(
+                run_id=run_id, agent_id=agent_id, limit=limit
+            )
+        ]
+        return events
 
     @app.get("/canary")
     async def canary_status(request: Request) -> dict[str, Any]:
