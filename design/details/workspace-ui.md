@@ -1,0 +1,138 @@
+---
+status: draft
+---
+
+# Workspace UI — a co-equal visual surface for one workspace
+
+## Goal
+
+A browser UI, served alongside `swarmkit serve`, that lets a user **see, monitor, run, and author**
+one swarm workspace — conversational authoring as the front door, a schema-driven designer as the
+refine/reference layer, and live monitoring reusing the OTel/jobs data we already emit. It is a
+**client of the serve API**, not a second home for business logic.
+
+## Posture (decided)
+
+- **Co-equal peer to the CLI, not a replacement.** Invariant #8 stands: CLI chat remains the
+  documented v1.0 on-ramp; this UI is an equal surface, not billed as *the* primary one. The CLI and
+  the UI are both thin clients of `WorkspaceRuntime` via the serve API (the thin-interface principle,
+  `feedback_cli_architecture`). §15.3 is **not** reversed.
+- **Conversational front door; designer refines.** A new user lands on describe-intent chat; a swarm
+  drafts the artifact; the schema-driven designer opens that draft to inspect/tweak every field.
+  Authoring-first (`project_authoring_first`) stays true — the designer is the power/reference layer,
+  not the default creation path.
+- **Two apps, not one.** `packages/control-plane-ui` = the **fleet** view (many instances, remote,
+  governance). This (`packages/ui`) = the **workspace** view (one workspace, local, deep). Separate
+  apps, separate scopes — do not merge, and the workspace UI must not depend on the fleet app. For a
+  consistent look + feel they **copy** shared patterns (runs table, trace links, artifact cards, auth
+  gate) rather than importing across the app boundary; visual consistency across the two surfaces is
+  a deliberate goal (see Auth for the copy rationale + the one caveat).
+
+## Non-goals
+
+- Not reversing the on-ramp, not deprecating the CLI, not a fleet/multi-instance console.
+- Not hand-coded forms per artifact type (see below), and not a new logic layer — the serve API is
+  the single contract.
+- Not a from-scratch build: `packages/ui` is already scaffolded (`composer/`, `dashboard/`, `chat/`,
+  `jobs/`, `skills/`, `archetypes/`, `canary/`), and this builds it out.
+
+## What already exists (so this is smaller than it sounds)
+
+- **`packages/ui`** — 24 files, the directories above. Bones for exactly this.
+- **Serve API (~70% of the surface)** — artifact CRUD (`GET/PUT/POST /api/topologies|skills|archetypes`
+  + `/yaml`), `run`, `jobs` (+ `history`/`stream`/`usage`), **`conversations`** (chat), `validate`,
+  `canary`, `capabilities`, `triggers`, `reload`. The UI is mostly a frontend against this.
+
+## Auth — the UI mirrors the serve's auth
+
+The serve has a config-driven `server.auth` (`workspace.yaml`) with providers **`api_key`** and
+**`jwt`** (default `none`). Serve *validates* bearer tokens — it does not run an OIDC redirect
+itself — so the UI's gate follows the serve's configured mode:
+
+- **`jwt`** (validates OIDC-issued tokens) → the UI runs the **OIDC PKCE login** (redirect → IdP →
+  token) and attaches the JWT bearer to every serve call. **A login screen** — the same flow the
+  fleet UI already ships.
+- **`api_key`** → a lightweight *key gate* (enter/store the bearer), not an IdP redirect.
+- **`none` / `--insecure` / loopback dev** → no gate; the local-dev default is frictionless.
+
+**Copy, don't re-invent.** `packages/control-plane-ui` is a private app (no `exports`), not an
+importable library, and the workspace UI must not depend on the fleet app (wrong-direction coupling).
+So the OIDC client (`lib/oidc-config.ts`, `lib/token-store.ts`, `components/auth-gate.tsx`) and the
+shared look-and-feel are **copied** — a deliberate choice: keeping the two SwarmKit web surfaces
+visually + behaviourally consistent is a goal, and copies keep the apps independent. Trade-off: the
+copies are hand-synced. Visual drift is cosmetic; the one place to watch is the auth sliver (a
+PKCE/token-refresh fix in one app not the other = a login bug), so keep that core small and obvious —
+share just it later if it earns its keep. The serve needs one small addition — an **unauthenticated
+auth-discovery endpoint**,
+`GET /auth-info` → `{mode: none|api_key|jwt, oidc?: {issuer, client_id, audience}}` — so the UI
+renders the right gate and knows where to send the user without hardcoding. Everything the UI does
+still carries the same bearer the CLI would, through the same serve auth — no parallel auth path.
+
+## The technical crux — the designer is schema-generated
+
+"Expose every property + option, with help and tooltips" is **not** hand-built. A single form engine
+renders any artifact from the canonical JSON Schemas (`packages/schema`): each field → input by type,
+enum → select, constraints → validation, and the schema **`description` → the tooltip**. Consequences:
+
+- "every available property" is free and **stays in sync** — add a schema field, it appears in the
+  designer with its docs (`project_schema_surface` + `schema-change-discipline`).
+- Tooltips reuse the same `description` strings LLMs consume (`project_usability_and_llm_docs`) — one
+  source of truth for human + model docs.
+- The only bespoke editor is the **topology graph** (agents as nodes, delegation/edges as links);
+  even node property panels are the schema-driven form.
+
+## Serve-API work (the backend gaps to close first)
+
+The UI is a thin client, so gaps are filled in the serve API (backed by `WorkspaceRuntime`), never in
+the UI:
+
+- **Observability reads** — list/stream runs, per-run trace tree, audit events, token/cost. Much is
+  in `jobs`/`usage` already; add audit + trace-tree read endpoints (the OTel export gives us the
+  data). Powers the monitor views.
+- **Authoring flows** — the proposal lifecycle the CLI exposes (`authoring list|show|approve|reject`
+  + generate `topology|skill|archetype|mcp-server`). The conversational front door + gap-surfacing
+  need these as endpoints.
+- **knowledge-pack / validate detail** — already have `validate`; expose knowledge-pack + richer
+  validation errors (field paths) so the designer can inline-annotate.
+
+Each new endpoint ships with the contract test pattern the panel uses, so CLI and UI can't drift.
+
+## API shape (illustrative)
+
+```
+GET  /auth-info                          # UNAUTHENTICATED — {mode, oidc?} → which login gate to render
+GET  /api/schema/{artifact_type}         # JSON Schema → drives the designer form + tooltips
+GET  /observability/runs                 # monitor: recent runs (+ filters)
+GET  /observability/runs/{id}/trace      # per-run span tree (from the OTel bridge)
+GET  /observability/audit                # append-only audit events (read-only)
+GET  /authoring/proposals                # gap/proposal lifecycle: list
+POST /authoring/proposals/{id}/approve   #   approve / reject
+POST /authoring/draft                    # conversational: intent → drafted artifact
+```
+
+(Existing `/api/topologies|skills|archetypes`, `/run`, `/jobs`, `/conversations`, `/validate`,
+`/canary` stand.)
+
+## Sequencing (a program, one design + PR per slice)
+
+1. **This design note** (design-only PR) — posture + scope + the schema-driven-designer decision.
+2. **Monitor first** — the "see and monitor" surface: workspace dashboard, runs list, per-run trace
+   + cost, audit. Reuses OTel/jobs; lowest risk; delivers the stated primary value early.
+3. **Schema-driven form engine** + designer for **skills / archetypes** (simplest schemas).
+4. **Topology designer** — the graph editor (agents/edges) with schema-driven node panels. Hardest.
+5. **Conversational front door + run/chat consoles** — wire `/authoring/draft` + `conversations`.
+
+## Test plan
+
+- Form engine: property tests that every canonical schema renders (every field has an input +
+  tooltip; required/enum/constraint respected) — a golden test over `packages/schema` so a new schema
+  field can't ship without a designer control.
+- Each serve endpoint: unit + a CLI↔API contract test (no drift), same pattern as the panel.
+- E2E (Playwright, local runner — not CI, per `scripts/e2e.sh`): draft an artifact conversationally,
+  open it in the designer, edit a field, save, run it, watch the trace appear in the monitor.
+
+## Demo plan
+
+Per slice: monitor slice → a run on the workspace shows up live with its trace + cost. Designer slice
+→ create a valid skill entirely in the UI (every field discoverable via tooltips) and `validate` it
+green. Topology slice → build a two-agent delegation graph visually and run it.
