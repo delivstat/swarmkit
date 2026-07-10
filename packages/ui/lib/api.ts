@@ -6,6 +6,7 @@ import type {
 	HealthResponse,
 	JobListItem,
 	JobResponse,
+	JobUsage,
 	SendMessageResponse,
 	SkillDetail,
 	SkillItem,
@@ -69,6 +70,7 @@ export const api = {
 
 	jobs: () => get<JobListItem[]>("/jobs"),
 	job: (id: string) => get<JobResponse>(`/jobs/${id}`),
+	jobUsage: (id: string) => get<JobUsage>(`/usage/${id}`),
 	jobStreamUrl: (id: string) => `${BASE}/jobs/${id}/stream`,
 
 	run: (topology: string, input: string, maxSteps = 10) =>

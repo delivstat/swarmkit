@@ -3,7 +3,8 @@
 import { Card, CardTitle } from "@/components/card";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
-import type { JobResponse } from "@/lib/types";
+import { formatTokens, formatUsd } from "@/lib/format";
+import type { JobResponse, JobUsage } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -76,6 +77,36 @@ function EventStream({ jobId }: { jobId: string }) {
 	);
 }
 
+function Stat({ label, value }: { label: string; value: string }) {
+	return (
+		<div>
+			<div className="text-xs" style={{ color: "var(--fg-muted)" }}>
+				{label}
+			</div>
+			<div className="text-sm font-medium">{value}</div>
+		</div>
+	);
+}
+
+function UsageCard({ jobId }: { jobId: string }) {
+	const fetchUsage = useCallback(() => api.jobUsage(jobId), [jobId]);
+	const { data } = usePoll<JobUsage>(fetchUsage, 3000);
+	// Usage is recorded on completion — nothing to show until the run has logged an LLM call.
+	if (!data || data.total_calls === 0) return null;
+	return (
+		<Card>
+			<CardTitle>Usage &amp; cost</CardTitle>
+			<div className="grid grid-cols-2 gap-3 sm:grid-cols-5 mt-2">
+				<Stat label="Cost" value={formatUsd(data.total_cost_usd)} />
+				<Stat label="LLM calls" value={String(data.total_calls)} />
+				<Stat label="Input" value={formatTokens(data.total_input_tokens)} />
+				<Stat label="Output" value={formatTokens(data.total_output_tokens)} />
+				<Stat label="Cache" value={formatTokens(data.total_cache_tokens)} />
+			</div>
+		</Card>
+	);
+}
+
 export default function JobDetailPage() {
 	const params = useParams();
 	const jobId = params.id as string;
@@ -132,6 +163,8 @@ export default function JobDetailPage() {
 							</pre>
 						</Card>
 					)}
+
+					<UsageCard jobId={jobId} />
 
 					<EventStream jobId={jobId} />
 				</div>
