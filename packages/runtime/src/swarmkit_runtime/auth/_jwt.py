@@ -107,6 +107,15 @@ class JWTAuthProvider(AuthProvider):
         required = f"{resource}:{action}"
         return required in identity.scopes
 
+    @property
+    def mode(self) -> str:
+        return "jwt"
+
+    def public_info(self) -> dict[str, Any]:
+        # issuer + audience are what a browser needs (with its own client_id) to run the OIDC PKCE
+        # flow; jwks_url + scopes_claim are server-side validation details a client never sees.
+        return {"mode": "jwt", "oidc": {"issuer": self._issuer, "audience": self._audience}}
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

@@ -24,3 +24,7 @@ class NoneAuthProvider(AuthProvider):
 
     async def authorize(self, identity: AuthIdentity, resource: str, action: str) -> bool:
         return True
+
+    @property
+    def mode(self) -> str:
+        return "none"
