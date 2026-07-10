@@ -15,11 +15,29 @@ import type {
 	ValidateResponse,
 } from "./types";
 
+import { getAccessToken, handleUnauthorized } from "./token-store";
+
 const BASE = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "http://localhost:8000";
 
+/** Merge the current bearer (OIDC token or stored API key) into request headers, if any. */
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+	const token = getAccessToken();
+	return {
+		...(extra ?? {}),
+		...(token ? { Authorization: `Bearer ${token}` } : {}),
+	};
+}
+
+/** A 401 on a request we DID authenticate means the token expired/was rejected → trigger re-auth.
+ * Guarded on `token` so a pre-auth request never loops the login. */
+function on401(status: number): void {
+	if (status === 401 && getAccessToken()) handleUnauthorized();
+}
+
 async function get<T>(path: string): Promise<T> {
-	const res = await fetch(`${BASE}${path}`);
+	const res = await fetch(`${BASE}${path}`, { headers: authHeaders() });
 	if (!res.ok) {
+		on401(res.status);
 		const body = await res.text();
 		throw new Error(`${res.status} ${res.statusText}: ${body}`);
 	}
@@ -29,10 +47,11 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body?: unknown): Promise<T> {
 	const res = await fetch(`${BASE}${path}`, {
 		method: "POST",
-		headers: { "Content-Type": "application/json" },
+		headers: authHeaders({ "Content-Type": "application/json" }),
 		body: body ? JSON.stringify(body) : undefined,
 	});
 	if (!res.ok) {
+		on401(res.status);
 		const text = await res.text();
 		throw new Error(`${res.status} ${res.statusText}: ${text}`);
 	}
@@ -77,7 +96,7 @@ export const api = {
 		new Promise((resolve, reject) => {
 			fetch(`${BASE}/conversations/${conversationId}/messages`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: authHeaders({ "Content-Type": "application/json" }),
 				body: JSON.stringify({ message }),
 			})
 				.then((res) => {

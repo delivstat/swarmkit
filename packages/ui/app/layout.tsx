@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthGate } from "@/components/auth-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 
 export const metadata: Metadata = {
@@ -15,8 +16,10 @@ export default function RootLayout({
 	return (
 		<html lang="en">
 			<body className="flex h-screen overflow-hidden">
-				<Sidebar />
-				<main className="flex-1 overflow-y-auto p-6">{children}</main>
+				<AuthGate>
+					<Sidebar />
+					<main className="flex-1 overflow-y-auto p-6">{children}</main>
+				</AuthGate>
 			</body>
 		</html>
 	);
