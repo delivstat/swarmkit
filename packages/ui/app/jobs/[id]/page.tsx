@@ -4,7 +4,7 @@ import { Card, CardTitle } from "@/components/card";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
 import { formatTokens, formatUsd } from "@/lib/format";
-import type { JobResponse, JobUsage } from "@/lib/types";
+import type { JobResponse, JobUsage, TraceSpan } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -107,6 +107,75 @@ function UsageCard({ jobId }: { jobId: string }) {
 	);
 }
 
+function flattenSpans(
+	span: TraceSpan,
+	depth = 0,
+	out: { span: TraceSpan; depth: number }[] = [],
+): { span: TraceSpan; depth: number }[] {
+	out.push({ span, depth });
+	for (const child of span.children) flattenSpans(child, depth + 1, out);
+	return out;
+}
+
+function TraceWaterfall({ runId }: { runId: string }) {
+	const fetchTrace = useCallback(() => api.runTrace(runId), [runId]);
+	const { data } = usePoll<TraceSpan>(fetchTrace, 5000);
+	// No trace yet (run unfinished / not recorded) → the endpoint 404s → hide the card.
+	if (!data) return null;
+	const rootStart = data.start_ns;
+	const total = Math.max(1, data.end_ns - data.start_ns);
+	return (
+		<Card>
+			<CardTitle>Trace</CardTitle>
+			<div className="mt-2 space-y-1">
+				{flattenSpans(data).map(({ span, depth }) => {
+					const offset = ((span.start_ns - rootStart) / total) * 100;
+					const width = Math.max(
+						0.5,
+						((span.end_ns - span.start_ns) / total) * 100,
+					);
+					return (
+						<div
+							key={`${span.name}-${span.start_ns}`}
+							className="flex items-center gap-2 text-xs"
+						>
+							<div
+								className="w-48 shrink-0 truncate font-mono"
+								style={{
+									paddingLeft: depth * 12,
+									color: span.error ? "var(--error)" : "var(--fg)",
+								}}
+								title={span.error ?? span.name}
+							>
+								{span.name}
+							</div>
+							<div
+								className="relative h-4 flex-1 rounded"
+								style={{ background: "var(--bg)" }}
+							>
+								<div
+									className="absolute h-4 rounded"
+									style={{
+										left: `${offset}%`,
+										width: `${width}%`,
+										background: span.error ? "var(--error)" : "var(--accent)",
+									}}
+								/>
+							</div>
+							<div
+								className="w-16 shrink-0 text-right"
+								style={{ color: "var(--fg-muted)" }}
+							>
+								{span.duration_ms}ms
+							</div>
+						</div>
+					);
+				})}
+			</div>
+		</Card>
+	);
+}
+
 export default function JobDetailPage() {
 	const params = useParams();
 	const jobId = params.id as string;
@@ -165,6 +234,8 @@ export default function JobDetailPage() {
 					)}
 
 					<UsageCard jobId={jobId} />
+
+					<TraceWaterfall runId={jobId} />
 
 					<EventStream jobId={jobId} />
 				</div>
