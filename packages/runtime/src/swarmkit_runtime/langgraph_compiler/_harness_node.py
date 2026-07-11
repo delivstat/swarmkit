@@ -17,6 +17,8 @@ the terminal event. The richer OTel/cost projection of the *inner* ExecEvents is
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +36,7 @@ from swarmkit_runtime.executors import (
     ExecutorError,
     ResolvedExecutor,
     SandboxError,
+    SandboxHandle,
     TaskSpec,
     collect_diff,
     enforce_budget,
@@ -113,6 +116,29 @@ async def _record(
             payload=payload,
         )
     )
+
+
+@asynccontextmanager
+async def _persistent_dir(path: Path) -> AsyncIterator[SandboxHandle]:
+    """A non-isolated, persistent working directory. Unlike the worktree it is NOT torn down and NOT
+    reset to a base ref — the harness edits it in place, so a session-scoped harness (e.g. Claude
+    Code, whose project memory is keyed to cwd) accumulates state across runs. The isolation of the
+    worktree is traded for persistence; the diff it produces is informational, not an isolation
+    boundary."""
+    path.mkdir(parents=True, exist_ok=True)
+    yield SandboxHandle(root=path, kind="directory", network="deny")
+
+
+def _sandbox_for(agent: ResolvedAgent, root: Path, base_ref: str) -> tuple[Any, bool]:
+    """Choose the harness's execution sandbox. With ``executor.config.working_dir`` set, run in that
+    persistent directory (resolved under the workspace root); otherwise provision an isolated,
+    ephemeral git worktree (the default). Returns ``(context_manager, persistent)``."""
+    working_dir = agent.executor.config.get("working_dir")
+    if working_dir:
+        wd = Path(working_dir)
+        resolved = wd if wd.is_absolute() else (root / wd)
+        return _persistent_dir(resolved.resolve()), True
+    return worktree_sandbox(root, base_ref), False
 
 
 async def run_harness_node(
@@ -242,8 +268,9 @@ async def _execute(
         if run_id is not None:
             await runner.cancel(run_id)
 
+    sandbox_cm, persistent = _sandbox_for(agent, root, task.base_ref or "HEAD")
     try:
-        async with worktree_sandbox(root, task.base_ref or "HEAD") as sandbox:
+        async with sandbox_cm as sandbox:
             report = runner.preflight(task, sandbox)
             if not report.ok:
                 await _record(
@@ -277,7 +304,13 @@ async def _execute(
 
             diff = ""
             if terminal is not None and terminal.status == "success":
-                diff = await collect_diff(sandbox)
+                try:
+                    diff = await collect_diff(sandbox)
+                except SandboxError:
+                    # A persistent working_dir need not be a git repo — the diff is informational
+                    # there, not an isolation boundary, so a missing repo is not a failure.
+                    if not persistent:
+                        raise
 
             cost_usd = meter.cost(ref)
             _record_trace_step(agent, kind, ref, start_ts, meter, cost_usd, terminal, diff)

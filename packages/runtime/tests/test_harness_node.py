@@ -87,6 +87,33 @@ class _FakeHarness(Executor):
 
 
 @pytest.mark.asyncio
+async def test_working_dir_runs_in_place_and_persists(tmp_path: Path) -> None:
+    """With executor.config.working_dir set, the harness runs in that persistent directory (stable
+    cwd for Claude Code memory) instead of an ephemeral worktree — the file survives the run, and
+    the cwd handed to the harness IS the configured dir."""
+    seen_root: dict[str, Path] = {}
+
+    async def events(sandbox: SandboxHandle) -> AsyncIterator[ExecEvent]:
+        seen_root["root"] = sandbox.root
+        yield ExecStarted(run_id="r1", kind="fake")
+        (sandbox.root / "memory.txt").write_text("persisted\n")
+        yield ExecResult(status="success", output="done")
+
+    agent = dataclasses.replace(
+        _agent(), executor=ResolvedExecutor(kind="fake", config={"working_dir": "coding-worker"})
+    )
+    gov = MockGovernanceProvider()
+    result = await run_harness_node(
+        agent, _state(), gov, workspace_root=tmp_path, executor=_FakeHarness(events)
+    )
+
+    assert "done" in result["output"]
+    persistent = (tmp_path / "coding-worker").resolve()
+    assert seen_root["root"] == persistent  # harness cwd is the configured dir, not a temp worktree
+    assert (persistent / "memory.txt").read_text() == "persisted\n"  # NOT torn down
+
+
+@pytest.mark.asyncio
 async def test_success_run_collects_diff_and_records_audit(tmp_path: Path) -> None:
     _git_workspace(tmp_path)
 
