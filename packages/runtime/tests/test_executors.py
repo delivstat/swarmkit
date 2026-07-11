@@ -21,8 +21,10 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def test_default_registry_kinds() -> None:
-    # `model` (default) + the `claude-code` harness adapter (registered in P2 PR5).
-    assert default_executor_registry().kinds() == ["claude-code", "model"]
+    # `model` (default) + the bundled declarative adapters (claude-code ships as an adapter.yaml).
+    kinds = default_executor_registry().kinds()
+    assert "model" in kinds
+    assert "claude-code" in kinds
 
 
 def test_resolve_none_is_the_model_default() -> None:

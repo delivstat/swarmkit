@@ -6,10 +6,11 @@ a new kind (a harness adapter) is added by registering an :class:`Executor`, no 
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
-from swarmkit_runtime.executors._claude_code import ClaudeCodeExecutor
+from swarmkit_runtime.executors._adapter_spec import AdapterSpec
+from swarmkit_runtime.executors._declarative import DeclarativeExecutor, load_adapter_specs
 from swarmkit_runtime.executors._model import ModelExecutor
 from swarmkit_runtime.executors._protocol import Executor, ExecutorError, ResolvedExecutor
 
@@ -39,13 +40,21 @@ class ExecutorRegistry:
         return ResolvedExecutor(kind=kind, ref=getattr(block, "ref", None), config=dict(config))
 
 
-def default_executor_registry() -> ExecutorRegistry:
-    """The core registry: ``model`` (default) plus the ``claude-code`` harness adapter (P2).
+def default_executor_registry(
+    adapter_specs: Iterable[AdapterSpec] | None = None,
+) -> ExecutorRegistry:
+    """The core registry used to validate ``executor.kind`` at resolution.
 
-    The registered ``ClaudeCodeExecutor`` is a default instance used for config *validation* at
-    resolution; an executing node builds a per-archetype instance via
-    :meth:`ClaudeCodeExecutor.from_config` (P2 PR6)."""
+    Registers ``model`` (the default) plus one entry per declarative adapter: the bundled reference
+    library (claude-code, codex, …) always, and any ``adapter_specs`` supplied by the caller (a
+    workspace's own ``adapters/``). Each declarative kind is registered as a
+    :class:`DeclarativeExecutor` — used here only for kind + config validation; a running node
+    builds its own configured instance. No harness is special-cased in code."""
     registry = ExecutorRegistry()
     registry.register(ModelExecutor())
-    registry.register(ClaudeCodeExecutor())
+    specs: dict[str, AdapterSpec] = dict(load_adapter_specs(None))  # bundled
+    for spec in adapter_specs or ():
+        specs[spec.kind] = spec  # workspace overrides bundled
+    for spec in specs.values():
+        registry.register(DeclarativeExecutor(spec))
     return registry

@@ -23,7 +23,12 @@ from pydantic import ValidationError as PydanticValidationError
 from swarmkit_schema.models import SwarmKitArchetype
 
 from swarmkit_runtime.errors import ResolutionError
-from swarmkit_runtime.executors import ExecutorError, ResolvedExecutor, default_executor_registry
+from swarmkit_runtime.executors import (
+    ExecutorError,
+    ResolvedExecutor,
+    default_executor_registry,
+    parse_adapter_spec,
+)
 from swarmkit_runtime.skills import ResolvedSkill
 from swarmkit_runtime.workspace import DiscoveredArtifact
 
@@ -59,8 +64,12 @@ def build_archetype_registry(
     errors: list[ResolutionError] = []
     registry: dict[str, ResolvedArchetype] = {}
     # `executor.kind` is registry-validated, not schema-enum'd (executor-abstraction §4.2): an
-    # unknown kind (e.g. `harness` before P2) fails here, not silently.
-    executor_registry = default_executor_registry()
+    # unknown kind fails here, not silently. The registry knows `model`, the bundled declarative
+    # adapters, and any this workspace declares (its `executor-adapter` artifacts).
+    workspace_adapters = [
+        parse_adapter_spec(dict(a.raw)) for a in artifacts if a.kind == "executor-adapter"
+    ]
+    executor_registry = default_executor_registry(workspace_adapters)
 
     for artifact in artifacts:
         if artifact.kind != "archetype":
