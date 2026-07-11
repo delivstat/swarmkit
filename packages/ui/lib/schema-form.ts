@@ -67,6 +67,17 @@ export function fieldKind(schema: JsonSchema, name = ""): FieldKind {
 	return "json";
 }
 
+/** The artifact type a field references (via the canonical schema's `x-swarmkit-ref` hint), or
+ * null. Drives workspace-populated pickers (dropdown / multi-select chips) instead of free-text id
+ * entry. */
+export function refType(schema: JsonSchema): string | null {
+	const ref = schema["x-swarmkit-ref"];
+	return typeof ref === "string" ? ref : null;
+}
+
+/** Options for reference pickers: artifact type → available ids in the workspace. */
+export type RefOptions = Record<string, string[]>;
+
 export interface FieldSpec {
 	name: string;
 	schema: JsonSchema;

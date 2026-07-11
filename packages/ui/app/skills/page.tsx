@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { JsonSchema } from "@/lib/schema-form";
 import type { SkillDetail, SkillItem } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
+import { useRefOptions } from "@/lib/use-ref-options";
 import { dump, load } from "js-yaml";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -53,6 +54,7 @@ function SkillEditor({
 	const [mode, setMode] = useState<"form" | "yaml">("form");
 	const [obj, setObj] = useState<Record<string, unknown>>({});
 	const [schema, setSchema] = useState<JsonSchema | null>(null);
+	const refOptions = useRefOptions();
 
 	const setBoth = (text: string) => {
 		setYaml(text);
@@ -195,7 +197,12 @@ function SkillEditor({
 					<p className="text-sm opacity-50">Loading...</p>
 				) : mode === "form" && schema ? (
 					<div className="mb-3 max-h-[50vh] overflow-y-auto pr-1">
-						<SchemaForm schema={schema} value={obj} onChange={setObj} />
+						<SchemaForm
+							schema={schema}
+							value={obj}
+							onChange={setObj}
+							options={refOptions}
+						/>
 					</div>
 				) : (
 					<textarea

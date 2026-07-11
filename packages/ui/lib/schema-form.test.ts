@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fieldKind, objectFields, resolveRef } from "./schema-form";
+import { fieldKind, objectFields, refType, resolveRef } from "./schema-form";
 
 const ROOT = {
 	$defs: {
@@ -60,6 +60,24 @@ describe("fieldKind", () => {
 		expect(fieldKind({ type: "array", items: {} })).toBe("array");
 		expect(fieldKind({ type: "object", properties: {} })).toBe("object");
 		expect(fieldKind({ oneOf: [] })).toBe("json");
+	});
+});
+
+describe("refType", () => {
+	it("reads the x-swarmkit-ref hint", () => {
+		expect(refType({ "x-swarmkit-ref": "skill" })).toBe("skill");
+		expect(refType({ type: "array", "x-swarmkit-ref": "archetype" })).toBe(
+			"archetype",
+		);
+		expect(refType({ type: "string" })).toBeNull();
+	});
+
+	it("survives $ref resolution (sibling override)", () => {
+		const r = resolveRef(ROOT, {
+			$ref: "#/$defs/metadata",
+			"x-swarmkit-ref": "archetype",
+		});
+		expect(refType(r)).toBe("archetype");
 	});
 });
 
