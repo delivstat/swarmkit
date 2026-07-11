@@ -16,6 +16,7 @@ from swarmkit_runtime.executors import (
     ExecMessage,
     ExecResult,
     ExecStarted,
+    ExecToolCall,
     ExecUsage,
     Executor,
     PreflightReport,
@@ -24,9 +25,11 @@ from swarmkit_runtime.executors import (
     TaskSpec,
 )
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
+from swarmkit_runtime.langgraph_compiler._compiler import set_active_trace
 from swarmkit_runtime.langgraph_compiler._harness_node import run_harness_node
 from swarmkit_runtime.langgraph_compiler._state import SwarmState
 from swarmkit_runtime.resolver import ResolvedAgent
+from swarmkit_runtime.trace import RunTrace
 
 
 def _git_workspace(root: Path) -> None:
@@ -110,6 +113,74 @@ async def test_success_run_collects_diff_and_records_audit(tmp_path: Path) -> No
     assert cast(int, res_event.payload["diff_bytes"]) > 0
     # the sandbox (a temp worktree) is torn down — no leftover checkout under the repo.
     assert not (tmp_path / "generated.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_records_trace_step_with_cost_tokens_and_executor_attrs(tmp_path: Path) -> None:
+    _git_workspace(tmp_path)
+
+    async def events(sandbox: SandboxHandle) -> AsyncIterator[ExecEvent]:
+        yield ExecStarted(run_id="r1", kind="claude-code", ref="claude-opus-4-8")
+        (sandbox.root / "out.txt").write_text("x\n")
+        yield ExecToolCall(tool="Edit", input_summary="out.txt")
+        yield ExecUsage(input_tokens=100, output_tokens=20, cost_usd=0.05)
+        yield ExecResult(status="success", output="done")
+
+    agent = dataclasses.replace(
+        _agent(), executor=ResolvedExecutor(kind="claude-code", ref="claude-opus-4-8")
+    )
+    trace = RunTrace(run_id="run-1", topology="t")
+    set_active_trace(trace)
+    try:
+        await run_harness_node(
+            agent,
+            _state(),
+            MockGovernanceProvider(),
+            workspace_root=tmp_path,
+            executor=_FakeHarness(events),
+        )
+    finally:
+        set_active_trace(None)
+
+    assert len(trace.agent_steps) == 1
+    step = trace.agent_steps[0]
+    assert step.executor_kind == "claude-code"
+    assert step.executor_ref == "claude-opus-4-8"
+    assert step.model == "claude-opus-4-8"
+    assert step.input_tokens == 100 and step.output_tokens == 20
+    assert step.cost_usd == pytest.approx(0.05)  # vendor cost authoritative
+    assert [tc.tool_name for tc in step.tool_calls] == ["Edit"]
+    # rolls into run totals.
+    assert trace.total_cost_usd == pytest.approx(0.05)
+
+
+@pytest.mark.asyncio
+async def test_trace_cost_falls_back_to_price_table_when_no_vendor_cost(tmp_path: Path) -> None:
+    _git_workspace(tmp_path)
+
+    async def events(sandbox: SandboxHandle) -> AsyncIterator[ExecEvent]:
+        yield ExecStarted(run_id="r1", kind="claude-code", ref="claude-opus-4-8")
+        yield ExecUsage(input_tokens=1_000_000, output_tokens=0)  # no cost_usd
+        yield ExecResult(status="success", output="done")
+
+    agent = dataclasses.replace(
+        _agent(), executor=ResolvedExecutor(kind="claude-code", ref="claude-opus-4-8")
+    )
+    trace = RunTrace(run_id="run-2", topology="t")
+    set_active_trace(trace)
+    try:
+        await run_harness_node(
+            agent,
+            _state(),
+            MockGovernanceProvider(),
+            workspace_root=tmp_path,
+            executor=_FakeHarness(events),
+        )
+    finally:
+        set_active_trace(None)
+
+    # price table filled the gap (opus is priced) — cost is > 0, not the vendor's silent zero.
+    assert trace.agent_steps[0].cost_usd > 0
 
 
 @pytest.mark.asyncio

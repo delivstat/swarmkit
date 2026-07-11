@@ -49,6 +49,10 @@ class AgentStep:
     result_length: int = 0
     error: str | None = None
     forced_synthesis: bool = False
+    # How this step executed (design executor-abstraction §5). Defaults to ``model`` so every step —
+    # model or harness — carries a uniform ``executor.kind``; harness steps set kind + ref.
+    executor_kind: str = "model"
+    executor_ref: str = ""
 
 
 @dataclass

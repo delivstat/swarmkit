@@ -27,6 +27,7 @@ from swarmkit_runtime.executors import (
     ExecInputRequested,
     ExecResult,
     ExecStarted,
+    ExecToolCall,
     ExecUsage,
     Executor,
     ExecutorError,
@@ -38,8 +39,11 @@ from swarmkit_runtime.executors import (
     worktree_sandbox,
 )
 from swarmkit_runtime.governance import AuditEvent
+from swarmkit_runtime.model_providers._pricing import estimate_cost
+from swarmkit_runtime.trace import AgentStep, ToolCall
 
 from ._helpers import _make_result
+from ._run_context import current_parent_agent
 
 if TYPE_CHECKING:
     from swarmkit_runtime.governance import GovernanceProvider
@@ -140,6 +144,77 @@ async def run_harness_node(
     return await _execute(agent, state, governance, runner, task, budget, root, kind)
 
 
+class _Meter:
+    """Accumulates the harness run's usage for the trace step (§5 observability parity)."""
+
+    def __init__(self) -> None:
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.cached_tokens = 0
+        self.vendor_cost = 0.0
+        self.has_vendor_cost = False
+        self.tool_calls: list[ToolCall] = []
+
+    def add_usage(self, event: ExecUsage) -> None:
+        self.input_tokens += event.input_tokens
+        self.output_tokens += event.output_tokens
+        self.cached_tokens += event.cached_tokens
+        if event.cost_usd is not None:
+            self.vendor_cost += event.cost_usd
+            self.has_vendor_cost = True
+
+    def cost(self, ref: str) -> float:
+        """Vendor-reported cost is authoritative; else fall back to the price table by ``ref`` (the
+        exact model/harness fallback model nodes already use). Unpriced ⇒ 0.0, never guessed."""
+        if self.has_vendor_cost:
+            return self.vendor_cost
+        return estimate_cost(ref, self.input_tokens, self.output_tokens) if ref else 0.0
+
+
+def _record_trace_step(
+    agent: ResolvedAgent,
+    kind: str,
+    ref: str,
+    start_ts: float,
+    meter: _Meter,
+    cost_usd: float,
+    terminal: ExecResult | None,
+    diff: str,
+) -> None:
+    """Append an :class:`AgentStep` to the active run trace so a harness node's tokens, cost, and
+    tool calls roll into the run totals, the OTel span tree, and the metrics — just like a model
+    node. No-op when there is no active trace (e.g. a direct unit-test call)."""
+    from swarmkit_runtime.langgraph_compiler._compiler import get_active_trace  # noqa: PLC0415
+
+    trace = get_active_trace()
+    if trace is None:
+        return
+    end_ts = datetime.now(tz=UTC).timestamp()
+    status = terminal.status if terminal is not None else "failure"
+    output = terminal.output if terminal is not None else None
+    result_length = len(diff) or (len(output) if isinstance(output, str) else 0)
+    trace.add_step(
+        AgentStep(
+            agent_id=agent.id,
+            model=ref or kind,
+            parent_agent=current_parent_agent(),
+            role=agent.role,
+            start_time=start_ts,
+            end_time=end_ts,
+            duration_ms=int((end_ts - start_ts) * 1000),
+            input_tokens=meter.input_tokens,
+            output_tokens=meter.output_tokens,
+            total_tokens=meter.input_tokens + meter.output_tokens,
+            cost_usd=cost_usd,
+            tool_calls=meter.tool_calls,
+            result_length=result_length,
+            error=None if status == "success" else status,
+            executor_kind=kind,
+            executor_ref=ref,
+        )
+    )
+
+
 async def _execute(
     agent: ResolvedAgent,
     state: SwarmState,
@@ -151,7 +226,10 @@ async def _execute(
     kind: str,
 ) -> dict[str, Any]:
     agent_id = agent.id
+    ref = agent.executor.ref or ""
     holder: dict[str, str | None] = {"run_id": None}
+    meter = _Meter()
+    start_ts = datetime.now(tz=UTC).timestamp()
 
     async def _cancel() -> None:
         run_id = holder["run_id"]
@@ -170,13 +248,16 @@ async def _execute(
             await _record(governance, "executor.started", agent_id, {"kind": kind})
 
             terminal: ExecResult | None = None
-            cost_usd = 0.0
             guarded = enforce_budget(runner.run(task, sandbox, budget), budget, cancel=_cancel)
             async for event in guarded:
                 if isinstance(event, ExecStarted):
                     holder["run_id"] = event.run_id
-                elif isinstance(event, ExecUsage) and event.cost_usd is not None:
-                    cost_usd += event.cost_usd
+                elif isinstance(event, ExecUsage):
+                    meter.add_usage(event)
+                elif isinstance(event, ExecToolCall):
+                    meter.tool_calls.append(
+                        ToolCall(tool_name=event.tool, result_length=len(event.input_summary))
+                    )
                 elif isinstance(event, (ExecApprovalRequested, ExecInputRequested)):
                     # deny / abort (§6.2): no relay, no hang — terminate needs_approval.
                     await _cancel()
@@ -192,6 +273,8 @@ async def _execute(
             if terminal is not None and terminal.status == "success":
                 diff = await collect_diff(sandbox)
 
+            cost_usd = meter.cost(ref)
+            _record_trace_step(agent, kind, ref, start_ts, meter, cost_usd, terminal, diff)
             return await _finish(governance, agent_id, kind, terminal, cost_usd, diff)
     except SandboxError as exc:
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": str(exc)})
