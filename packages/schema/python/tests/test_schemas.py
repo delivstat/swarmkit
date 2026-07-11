@@ -9,7 +9,14 @@ import yaml
 from jsonschema import Draft202012Validator, ValidationError
 from swarmkit_schema import SchemaName, get_schema, validate
 
-ALL: tuple[SchemaName, ...] = ("topology", "skill", "archetype", "workspace", "trigger")
+ALL: tuple[SchemaName, ...] = (
+    "topology",
+    "skill",
+    "archetype",
+    "workspace",
+    "trigger",
+    "executor-adapter",
+)
 
 FIXTURE_ROOT = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures"
 
@@ -80,6 +87,17 @@ def test_trigger_valid_fixtures(fixture: Path) -> None:
 def test_trigger_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("trigger", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("executor-adapter"), ids=lambda p: p.name)
+def test_executor_adapter_valid_fixtures(fixture: Path) -> None:
+    validate("executor-adapter", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("executor-adapter-invalid"), ids=lambda p: p.name)
+def test_executor_adapter_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("executor-adapter", _load_yaml(fixture))
 
 
 def test_workspace_reference_fields_carry_x_swarmkit_ref() -> None:

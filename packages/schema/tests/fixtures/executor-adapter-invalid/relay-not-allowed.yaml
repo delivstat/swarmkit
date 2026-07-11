@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: wants-relay
+  name: Wants Relay
+  description: Invalid — declarative adapters cap at deny|abort; relay is Tier-1-only.
+spec:
+  launch:
+    command: [harness, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - emit:
+        - event: result
+          with: { status: success }
+  on_unanswerable: relay
+provenance:
+  authored_by: human
+  version: 0.1.0

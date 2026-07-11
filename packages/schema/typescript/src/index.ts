@@ -15,6 +15,9 @@ import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 import archetypeSchema from "../../schemas/archetype.schema.json" with {
 	type: "json",
 };
+import executorAdapterSchema from "../../schemas/executor-adapter.schema.json" with {
+	type: "json",
+};
 import credentialSchema from "../../schemas/protocol/credential.schema.json" with {
 	type: "json",
 };
@@ -52,7 +55,8 @@ export type SchemaName =
 	| "skill"
 	| "archetype"
 	| "workspace"
-	| "trigger";
+	| "trigger"
+	| "executor-adapter";
 
 const SCHEMAS = {
 	topology: topologySchema,
@@ -60,6 +64,7 @@ const SCHEMAS = {
 	archetype: archetypeSchema,
 	workspace: workspaceSchema,
 	trigger: triggerSchema,
+	"executor-adapter": executorAdapterSchema,
 } as const;
 
 // Fleet-enrollment wire schemas (design details/control-plane/19-fleet-enrollment-protocol.md).

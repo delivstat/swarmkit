@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: echo-harness
+  name: Echo Harness
+  description: A minimal adapter for a harness that emits one JSON result line.
+spec:
+  launch:
+    command: [echo-harness, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success, output: "$.text" }
+provenance:
+  authored_by: human
+  version: 0.1.0

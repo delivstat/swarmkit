@@ -7,3 +7,4 @@ export type { SwarmKitSkill } from "./skill.js";
 export type { SwarmKitArchetype } from "./archetype.js";
 export type { SwarmKitWorkspace } from "./workspace.js";
 export type { SwarmKitTrigger } from "./trigger.js";
+export type { SwarmKitExecutorAdapter } from "./executor-adapter.js";

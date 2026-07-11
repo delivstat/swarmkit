@@ -118,6 +118,19 @@ Anything past this ceiling declares `requires: code` and graduates to a Tier-1 P
 (still supported as an escape hatch — the base class and registry are unchanged). The point is that
 the *common* subprocess+JSONL shape, which is every major coding harness, needs none.
 
+### Auth — both modes, expressed generically (RFC decision 4)
+
+A harness authenticates two ways, and an adapter declares **both**: **API key** (the model-provider
+credential) and **subscription** (saved CLI login / long-lived setup token). This is *not* a
+special-cased mechanism — each mode simply declares what it **contributes to the launch**: `env` vars,
+extra command `args`, and/or `credential_paths` provisioned into the sandbox. So auth may be an
+environment variable, a `--api-key` command flag, a mounted `~/.claude` credential dir, or any
+combination — the engine merges the active mode's contribution and has no per-mode logic. The
+workspace sets `auth.default`; an archetype may override; in headless mode `api_key` takes precedence
+where both are usable (deterministic). The one credential-rule exception (§7) holds: the
+model-provider key is the only secret in the launch, `{credential.model_provider}`, scoped per-run and
+scrubbed. `claude-code.yaml` ships declaring both modes.
+
 ### Interaction ceiling
 
 Mid-run `relay` (pause for human approval, feed the answer back into the live session) and
