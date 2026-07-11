@@ -220,9 +220,7 @@ def _build_agent_node(  # noqa: PLR0915
                 run_harness_node,
             )
 
-            return await run_harness_node(
-                agent, state, governance, workspace_root=workspace_root
-            )
+            return await run_harness_node(agent, state, governance, workspace_root=workspace_root)
 
         # ---- pre_input decision skills (relevance gate) ----------------
         if _ds_bindings:
