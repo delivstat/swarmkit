@@ -99,14 +99,22 @@ class DeclarativeExecutor(Executor):
         return next(iter(auth.modes))
 
     def _launch_env(self, ctx: Mapping[str, str]) -> dict[str, str]:
-        """Inherit the process env (so saved-CLI / subscription creds flow through), then layer the
-        adapter's launch env and the active auth mode's env, substituting the model-provider
-        credential. The credential is the one allowed secret (§7)."""
+        """Inherit the process env (so saved-CLI / subscription creds flow through), then make
+        **only the active auth mode's** credentials effective: strip every *other* mode's declared
+        env vars, and layer the adapter's launch env + the active mode's env.
+
+        Stripping is what makes ``subscription`` mode actually use the subscription — a stale
+        ``ANTHROPIC_API_KEY`` inherited from the environment would otherwise take precedence over
+        the CLI login and break the run. The model-provider credential is the one secret (§7)."""
         env = dict(os.environ)
-        cred = self._credential
+        active = self._active_auth_mode()
+        for name, mode_spec in self._spec.auth.modes.items():
+            if name != active:
+                for var in mode_spec.env:
+                    env.pop(var, None)
         sub_ctx = dict(ctx)
-        if cred is not None:
-            sub_ctx["credential.model_provider"] = cred
+        if self._credential is not None:
+            sub_ctx["credential.model_provider"] = self._credential
         from swarmkit_runtime.executors._event_map import _sub  # noqa: PLC0415
 
         def add(source: Mapping[str, str]) -> None:
@@ -116,9 +124,8 @@ class DeclarativeExecutor(Executor):
                     env[name] = value
 
         add(self._spec.launch.env)
-        mode = self._active_auth_mode()
-        if mode is not None:
-            add(self._spec.auth.modes[mode].env)
+        if active is not None:
+            add(self._spec.auth.modes[active].env)
         return env
 
     def _auth_args(self, ctx: Mapping[str, str]) -> list[str]:

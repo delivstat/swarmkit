@@ -86,6 +86,37 @@ async def test_build_command_and_auth_env_injection() -> None:
     assert ex.launched_env["ANTHROPIC_API_KEY"] == "sk-secret"
 
 
+@pytest.mark.asyncio
+async def test_subscription_mode_strips_the_api_key_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The billing bug from real e2e: a stale ANTHROPIC_API_KEY inherited from the environment must
+    NOT leak into the harness when subscription mode is active — else it overrides the CLI login."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-stale-out-of-credits")
+    ex = _Scripted([])  # claude-code.yaml defaults to auth.default: subscription
+    _ = [
+        e
+        async for e in ex.run(
+            TaskSpec(statement="x"), SandboxHandle(root=Path(".")), BudgetEnvelope()
+        )
+    ]
+    assert ex.launched_env is not None
+    # subscription is active → the api_key mode's declared var is stripped from the subprocess env.
+    assert "ANTHROPIC_API_KEY" not in ex.launched_env
+
+
+@pytest.mark.asyncio
+async def test_api_key_mode_keeps_the_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    ex = _Scripted([], config={"auth_mode": "api_key"}, model_provider_credential="sk-live")
+    _ = [
+        e
+        async for e in ex.run(
+            TaskSpec(statement="x"), SandboxHandle(root=Path(".")), BudgetEnvelope()
+        )
+    ]
+    assert ex.launched_env is not None
+    assert ex.launched_env["ANTHROPIC_API_KEY"] == "sk-live"
+
+
 def test_preflight_fails_when_binary_missing() -> None:
     ex = DeclarativeExecutor(_spec())  # type: ignore[arg-type]
     # claude-code's launch binary is `claude`; on a bare CI box it may be absent → report says so.
