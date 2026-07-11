@@ -16,6 +16,7 @@ the terminal event. The richer OTel/cost projection of the *inner* ExecEvents is
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from swarmkit_runtime.executors import (
     BudgetEnvelope,
     ClaudeCodeExecutor,
+    DeclarativeExecutor,
     ExecApprovalRequested,
     ExecInputRequested,
     ExecResult,
@@ -36,6 +38,7 @@ from swarmkit_runtime.executors import (
     TaskSpec,
     collect_diff,
     enforce_budget,
+    load_adapter_specs,
     worktree_sandbox,
 )
 from swarmkit_runtime.governance import AuditEvent
@@ -54,17 +57,26 @@ if TYPE_CHECKING:
 _DEFAULT_IDLE_SECONDS = 120.0
 
 
-def _build_executor(resolved: ResolvedExecutor) -> Executor:
-    """Construct a runnable, per-archetype-configured adapter for a resolved executor block.
+def _build_executor(resolved: ResolvedExecutor, workspace_root: Path | None) -> Executor:
+    """Construct a runnable executor for a resolved block by looking its ``kind`` up among the
+    declarative adapters (bundled + the workspace's ``adapters/``). ``model`` never reaches here —
+    the compiler runs it via its own node.
 
-    Only ``claude-code`` is runnable in P2 (``model`` never reaches here — the compiler runs it via
-    its own node). An unknown/not-yet-runnable kind raises :class:`ExecutorError`.
+    A declarative ``adapter.yaml`` is the path for every harness. ``claude-code`` retains a Tier-1
+    Python fallback until it ships as a bundled YAML (P3 PR4); an otherwise-unknown kind raises.
     """
+    specs = load_adapter_specs(workspace_root)
+    spec = specs.get(resolved.kind)
+    if spec is not None:
+        credential = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CODEX_API_KEY")
+        return DeclarativeExecutor(
+            spec, config=resolved.config, model_provider_credential=credential
+        )
     if resolved.kind == "claude-code":
         return ClaudeCodeExecutor.from_config(resolved.config)
     raise ExecutorError(
         f"no runnable adapter for executor kind {resolved.kind!r} "
-        "(P2 ships the 'claude-code' harness adapter)"
+        f"(known declarative adapters: {sorted(specs)})"
     )
 
 
@@ -129,7 +141,7 @@ async def run_harness_node(
     root = Path(workspace_root) if workspace_root is not None else None
 
     try:
-        runner = executor if executor is not None else _build_executor(agent.executor)
+        runner = executor if executor is not None else _build_executor(agent.executor, root)
     except ExecutorError as exc:
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": str(exc)})
         return _make_result(agent_id, f"[harness:{kind}] unavailable: {exc}")
