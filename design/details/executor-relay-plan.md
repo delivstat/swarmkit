@@ -65,20 +65,36 @@ harness stream ──▶ AdapterInterpreter ──▶ exec.approval_requested
 - **Core** owns everything vendor-neutral. **Driver** is a small Tier-1 class selected by the
   adapter's declared mechanism.
 
+## Decision (owner, this session)
+
+- **Accept a narrow per-harness `InteractionDriver` (code)** for the one genuinely bidirectional
+  part — feeding a decision back into a running session. Everything else stays generic core, and
+  adapters still *declare* their interaction capability in YAML. A harness with no driver stays
+  `deny | abort`. This is the only way real relay works; the "harnesses are data" rule holds
+  everywhere except this small, bounded seam.
+- **`hold-stream` is the first driver** (the common short-wait case, Claude-native).
+
 ## The drivers (grounded in the real `claude` binary)
 
 Claude Code exposes both mechanisms relay needs:
 
-- **`hold-stream`** — `claude -p --input-format stream-json --output-format stream-json`
+- **`hold-stream` (first)** — `claude -p --input-format stream-json --output-format stream-json`
   (realtime streaming input + `--replay-user-messages`). The session stays alive; a permission
   request arrives as a control event and the decision is written back over stdin. Right for **short**
   waits (policy auto-approve, or an operator responding in seconds–minutes).
-- **`park-resume`** — kill the process, checkpoint the `session_id`, and on approval re-launch with
-  `--resume <id> --allowedTools <capability>` so the resumed session may take the action. Right for
-  **long** waits (hours/days) where holding a subprocess is untenable.
+- **`park-resume` (later)** — kill the process, checkpoint the `session_id`, and on approval
+  re-launch with `--resume <id> --allowedTools <capability>` so the resumed session may take the
+  action. Right for **long** waits (hours/days).
 
-A harness with neither stays `deny | abort`. opencode's observed deny-then-continue is *not* relay —
-it doesn't pause — so opencode remains abort until/unless it grows a pause-and-ask mode.
+**Why two, and why hold-stream can't cover long waits:** hold-stream keeps the subprocess *alive and
+blocked* on stdin. That is untenable past minutes — the model API session times out server-side, a
+live OS subprocess can't be serialized into a durable graph checkpoint (a runtime restart kills the
+pause), and resources stay pinned. `park-resume` persists only the `session_id` (a checkpointable
+string) and relaunches, so a pause survives days and restarts. Until `park-resume` lands, a relay
+wait exceeding `max_approval_wait` **degrades to `abort`** — never hangs.
+
+A harness with neither driver stays `deny | abort`. opencode's observed deny-then-continue is *not*
+relay — it doesn't pause — so opencode remains abort until/unless it grows a pause-and-ask mode.
 
 ## Governance (the point of the feature)
 
@@ -103,13 +119,14 @@ it doesn't pause — so opencode remains abort until/unless it grows a pause-and
    `approval_requested` arrives under `relay`: policy consult → auto-approve, else submit a
    `ReviewItem` to the `ReviewQueue`, wait up to `max_approval_wait`, decide, audit. Feed-back via an
    injected fake driver (tested without a real harness). Timeout → abort. Scoped approval.
-3. **`park-resume` driver.** The most generic real driver: cancel + checkpoint the resume token,
-   surface to the inbox, and on approval re-launch through the declarative engine with the resume arg
-   + an expanded-grant arg (a new adapter `grant.arg` template). Reuses the existing checkpointer +
-   `swarmkit`-resume path. e2e-testable against real `claude` for a short wait.
-4. **`hold-stream` driver (Claude Code reference).** The live bidirectional path: launch with
-   `--input-format stream-json`, translate the control-protocol permission request ↔ decision. The
-   richer seat; short-wait, no re-launch. Gated e2e against real `claude`.
+3. **`hold-stream` driver (Claude Code reference, FIRST).** The live bidirectional path: launch with
+   `--input-format stream-json --output-format stream-json`, translate the control-protocol
+   permission request ↔ decision written back over stdin. Short-wait, no re-launch. Gated e2e against
+   real `claude`. This is the common case (operator responds quickly / policy auto-approves).
+4. **`park-resume` driver (long waits).** Cancel + checkpoint the resume token, surface to the inbox,
+   and on approval re-launch through the declarative engine with the resume arg + an expanded-grant
+   arg (a new adapter `grant.arg` template). Reuses the existing checkpointer + `swarmkit`-resume
+   path, so a pause survives hours/days and runtime restarts.
 5. **CLI + cockpit surface.** `swarmkit review` already lists/approves; extend it to render a harness
    approval request (capability, rationale, node) and record the response. Audit projection shows the
    gate; the trace gets an approval-gate child span (human-wait duration flagged, per RFC §8.1).
