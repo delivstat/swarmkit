@@ -1,10 +1,14 @@
 "use client";
 
 import { Card, CardTitle } from "@/components/card";
+import { SchemaForm } from "@/components/schema-form";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import type { JsonSchema } from "@/lib/schema-form";
 import type { ResolvedAgent, SkillItem, TopologyDetail } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
+import { useRefOptions } from "@/lib/use-ref-options";
+import { dump, load } from "js-yaml";
 import {
 	ChevronDown,
 	ChevronRight,
@@ -637,6 +641,53 @@ function countAgents(agent: ResolvedAgent): number {
 	return count;
 }
 
+/** Schema-driven full-topology editor (agents array with archetype/skills ref pickers + tooltips),
+ * a peer to the visual structure/relationships/network views. */
+function TopologyFormView({
+	schema,
+	value,
+	onChange,
+	options,
+	onSave,
+	saving,
+}: {
+	schema: JsonSchema | null;
+	value: Record<string, unknown>;
+	onChange: (v: Record<string, unknown>) => void;
+	options: Record<string, string[]>;
+	onSave: () => void;
+	saving: boolean;
+}) {
+	if (!schema) {
+		return (
+			<div className="p-4 text-sm" style={{ color: "var(--fg-muted)" }}>
+				Loading schema…
+			</div>
+		);
+	}
+	return (
+		<div className="flex-1 overflow-y-auto p-4">
+			<div className="mb-3 flex justify-end">
+				<button
+					type="button"
+					onClick={onSave}
+					disabled={saving}
+					className="rounded px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+					style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
+				>
+					{saving ? "Saving…" : "Save"}
+				</button>
+			</div>
+			<SchemaForm
+				schema={schema}
+				value={value}
+				onChange={onChange}
+				options={options}
+			/>
+		</div>
+	);
+}
+
 export default function ComposerPage() {
 	const searchParams = useSearchParams();
 	const fetchTopologies = useCallback(() => api.topologies(), []);
@@ -651,8 +702,11 @@ export default function ComposerPage() {
 	const [topologyYaml, setTopologyYaml] = useState<string | null>(null);
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 	const [activeView, setActiveView] = useState<
-		"structure" | "relationships" | "network"
+		"structure" | "relationships" | "network" | "form"
 	>("structure");
+	const [topologySchema, setTopologySchema] = useState<JsonSchema | null>(null);
+	const [formObj, setFormObj] = useState<Record<string, unknown>>({});
+	const refOptions = useRefOptions();
 	const [loading, setLoading] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [yamlPanelOpen, setYamlPanelOpen] = useState(false);
@@ -670,6 +724,13 @@ export default function ComposerPage() {
 		}
 	}, [searchParams, autoLoaded]);
 
+	useEffect(() => {
+		api
+			.schema("topology")
+			.then((s) => setTopologySchema(s as JsonSchema))
+			.catch(() => setTopologySchema(null));
+	}, []);
+
 	const loadTopology = async (id: string) => {
 		setSelectedTopology(id);
 		setLoading(true);
@@ -682,6 +743,11 @@ export default function ComposerPage() {
 			setTopologyDetail(detail);
 			setTopologyYaml(yamlResp.yaml);
 			setYamlDraft(yamlResp.yaml);
+			try {
+				setFormObj((load(yamlResp.yaml) as Record<string, unknown>) ?? {});
+			} catch {
+				setFormObj({});
+			}
 			setSelectedAgentId(detail.resolved.id);
 		} catch {
 			setTopologyDetail(null);
@@ -799,22 +865,25 @@ export default function ComposerPage() {
 					className="flex ml-auto rounded-md overflow-hidden border"
 					style={{ borderColor: "var(--border)" }}
 				>
-					{(["structure", "relationships", "network"] as const).map((view) => (
-						<button
-							key={view}
-							type="button"
-							onClick={() => setActiveView(view)}
-							className={cn(
-								"px-3 py-1 text-xs capitalize",
-								activeView === view ? "font-medium" : "opacity-60",
-							)}
-							style={{
-								background: activeView === view ? "var(--border)" : "var(--bg)",
-							}}
-						>
-							{view}
-						</button>
-					))}
+					{(["structure", "relationships", "network", "form"] as const).map(
+						(view) => (
+							<button
+								key={view}
+								type="button"
+								onClick={() => setActiveView(view)}
+								className={cn(
+									"px-3 py-1 text-xs capitalize",
+									activeView === view ? "font-medium" : "opacity-60",
+								)}
+								style={{
+									background:
+										activeView === view ? "var(--border)" : "var(--bg)",
+								}}
+							>
+								{view}
+							</button>
+						),
+					)}
 				</div>
 			</div>
 
@@ -875,6 +944,16 @@ export default function ComposerPage() {
 
 				{/* Right: View content */}
 				<div className="flex-1 overflow-y-auto">
+					{activeView === "form" && (
+						<TopologyFormView
+							schema={topologySchema}
+							value={formObj}
+							onChange={setFormObj}
+							options={refOptions}
+							onSave={() => handleSave(dump(formObj))}
+							saving={saving}
+						/>
+					)}
 					{activeView === "structure" && (
 						<div className="p-4">
 							{!selectedAgent && topologyDetail && (
