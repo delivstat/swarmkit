@@ -176,6 +176,21 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
             for r in rows
         ]
 
+    @app.get("/api/schema/{artifact_type}")
+    async def get_artifact_schema(artifact_type: str) -> dict[str, Any]:
+        """The canonical JSON Schema for an artifact type — drives the UI's schema-generated
+        designer (fields + enums + constraints, descriptions → tooltips). One of topology / skill /
+        archetype / workspace / trigger; 404 otherwise."""
+        from swarmkit_schema import SchemaName, get_schema  # noqa: PLC0415
+
+        valid = set(SchemaName.__args__)  # type: ignore[attr-defined]
+        if artifact_type not in valid:
+            raise HTTPException(
+                status_code=404,
+                detail=f"unknown artifact type {artifact_type!r}; one of {sorted(valid)}",
+            )
+        return get_schema(artifact_type)  # type: ignore[arg-type]
+
     @app.get("/observability/runs/{run_id}/trace")
     async def get_run_trace(run_id: str, request: Request) -> dict[str, Any]:
         """The finished run's span tree (topology.run → agent.step → tool.call) for a UI waterfall,
