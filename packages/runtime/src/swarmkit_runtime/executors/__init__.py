@@ -37,6 +37,7 @@ from swarmkit_runtime.executors._run import (
     SandboxHandle,
     TaskSpec,
 )
+from swarmkit_runtime.executors._sandbox import SandboxError, collect_diff, worktree_sandbox
 
 __all__ = [
     "BudgetEnvelope",
@@ -60,7 +61,10 @@ __all__ = [
     "PreflightReport",
     "ResolvedExecutor",
     "ResumeToken",
+    "SandboxError",
     "SandboxHandle",
     "TaskSpec",
+    "collect_diff",
     "default_executor_registry",
+    "worktree_sandbox",
 ]
