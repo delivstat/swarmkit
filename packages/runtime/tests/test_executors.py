@@ -20,8 +20,9 @@ from swarmkit_runtime.workspace import discover
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
-def test_default_registry_has_only_model_in_p1() -> None:
-    assert default_executor_registry().kinds() == ["model"]
+def test_default_registry_kinds() -> None:
+    # `model` (default) + the `claude-code` harness adapter (registered in P2 PR5).
+    assert default_executor_registry().kinds() == ["claude-code", "model"]
 
 
 def test_resolve_none_is_the_model_default() -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from swarmkit_runtime.executors._claude_code import ClaudeCodeExecutor
 from swarmkit_runtime.executors._model import ModelExecutor
 from swarmkit_runtime.executors._protocol import Executor, ExecutorError, ResolvedExecutor
 
@@ -39,7 +40,12 @@ class ExecutorRegistry:
 
 
 def default_executor_registry() -> ExecutorRegistry:
-    """The core registry: only ``model`` in P1. Harness adapters register here in P2."""
+    """The core registry: ``model`` (default) plus the ``claude-code`` harness adapter (P2).
+
+    The registered ``ClaudeCodeExecutor`` is a default instance used for config *validation* at
+    resolution; an executing node builds a per-archetype instance via
+    :meth:`ClaudeCodeExecutor.from_config` (P2 PR6)."""
     registry = ExecutorRegistry()
     registry.register(ModelExecutor())
+    registry.register(ClaudeCodeExecutor())
     return registry

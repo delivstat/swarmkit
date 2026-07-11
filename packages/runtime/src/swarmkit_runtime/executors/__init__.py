@@ -13,6 +13,7 @@
 """
 
 from swarmkit_runtime.executors._budget import enforce_budget
+from swarmkit_runtime.executors._claude_code import ClaudeCodeExecutor
 from swarmkit_runtime.executors._events import (
     ExecApprovalRequested,
     ExecApprovalResponse,
@@ -42,6 +43,7 @@ from swarmkit_runtime.executors._sandbox import SandboxError, collect_diff, work
 
 __all__ = [
     "BudgetEnvelope",
+    "ClaudeCodeExecutor",
     "ExecApprovalRequested",
     "ExecApprovalResponse",
     "ExecArtifact",
