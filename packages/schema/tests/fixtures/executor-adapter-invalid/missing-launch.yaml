@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: no-launch
+  name: No Launch
+  description: Invalid — spec.launch is required and absent here.
+spec:
+  stream:
+    format: jsonl
+  event_map:
+    - emit:
+        - event: result
+          with: { status: success }
+provenance:
+  authored_by: human
+  version: 0.1.0

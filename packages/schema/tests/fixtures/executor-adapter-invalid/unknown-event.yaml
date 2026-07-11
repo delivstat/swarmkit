@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: bad-event
+  name: Bad Event
+  description: Invalid — emits an event kind outside the ExecEvent vocabulary.
+spec:
+  launch:
+    command: [harness, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - emit:
+        - event: teleport
+          with: { destination: "$.somewhere" }
+provenance:
+  authored_by: human
+  version: 0.1.0

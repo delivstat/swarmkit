@@ -2925,7 +2925,7 @@ requires-dist = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.69.0"
+version = "1.70.0"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -3011,7 +3011,7 @@ provides-extras = ["serve", "dev"]
 
 [[package]]
 name = "swarmkit-schema"
-version = "1.12.0"
+version = "1.13.0"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },

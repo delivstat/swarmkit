@@ -145,6 +145,39 @@ def test_ignores_hidden_files(tmp_path: Path) -> None:
     assert sum(1 for a in artifacts if a.kind == "skill") == 0
 
 
+def test_adapters_dir_discovers_executor_adapter_kind(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    _write_workspace(ws, "adapter-test")
+    adapters = ws / "adapters"
+    adapters.mkdir()
+    (adapters / "echo.yaml").write_text(
+        "apiVersion: swarmkit/v1\n"
+        "kind: ExecutorAdapter\n"
+        "metadata:\n"
+        "  id: echo-harness\n"
+        "  name: Echo\n"
+        "  description: a discovery-test adapter\n"
+        "spec:\n"
+        "  launch:\n"
+        "    command: [echo, hi]\n"
+        "  stream:\n"
+        "    format: jsonl\n"
+        "  event_map:\n"
+        "    - emit:\n"
+        "        - event: result\n"
+        "          with: {status: success}\n"
+        "provenance:\n"
+        "  authored_by: human\n"
+        "  version: 0.1.0\n",
+        encoding="utf-8",
+    )
+    artifacts = discover(ws)
+    adapters_found = [a for a in artifacts if a.kind == "executor-adapter"]
+    assert len(adapters_found) == 1
+    assert adapters_found[0].raw["metadata"]["id"] == "echo-harness"
+
+
 def test_ignores_non_yaml_files(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()

@@ -205,7 +205,7 @@ def resolution_error_from_discovery(exc: DiscoveryError) -> ResolutionError:
 
 def _to_schema_name(kind: ArtifactKind) -> SchemaName:
     # ArtifactKind and SchemaName are independently declared Literal aliases
-    # that share the same five values — mypy recognises the subtype.
+    # that share the same values — mypy recognises the subtype.
     return kind
 
 

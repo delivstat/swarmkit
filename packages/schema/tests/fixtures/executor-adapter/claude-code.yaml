@@ -1,0 +1,72 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: claude-code
+  name: Claude Code
+  description: Anthropic's agentic coding harness, run headless with stream-json output.
+spec:
+  launch:
+    command:
+      - claude
+      - -p
+      - "{task.statement}"
+      - --output-format
+      - stream-json
+      - --verbose
+    optional_args:
+      - when: budget.max_turns
+        args: [--max-turns, "{budget.max_turns}"]
+      - when: config.model
+        args: [--model, "{config.model}"]
+  auth:
+    default: subscription
+    modes:
+      api_key:
+        env:
+          ANTHROPIC_API_KEY: "{credential.model_provider}"
+      subscription:
+        credential_paths:
+          - ~/.claude
+  stream:
+    format: jsonl
+    retain_raw: false
+  event_map:
+    - when: { type: system }
+      set: { session_id: "$.session_id" }
+    - when: { type: assistant }
+      for_each: "$.message.content"
+      emit:
+        - when: { type: text }
+          event: message
+          with: { role: assistant, text: "$.text" }
+        - when: { type: tool_use }
+          event: tool_call
+          with: { tool: "$.name", input_summary: "$.input" }
+    - when: { type: assistant }
+      emit:
+        - event: usage
+          with:
+            input_tokens: "$.message.usage.input_tokens"
+            output_tokens: "$.message.usage.output_tokens"
+    - when: { type: result }
+      emit:
+        - event: usage
+          with: { input_tokens: "$.usage.input_tokens", cost_usd: "$.total_cost_usd" }
+        - event: result
+          with:
+            status: { from: "$.subtype", map: status_map }
+            output: "$.result"
+  status_map:
+    success: success
+    error_max_turns: budget_exceeded
+    _default: failure
+  resume:
+    arg: [--resume, "{resume.token}"]
+  success_when: { exit_code: 0 }
+  on_unanswerable: abort
+  telemetry_grade: normalized
+  artifacts: { profile: files }
+provenance:
+  authored_by: vendor_published
+  version: 1.0.0
+  vendor: anthropic

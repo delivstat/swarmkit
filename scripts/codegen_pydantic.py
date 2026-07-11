@@ -33,6 +33,7 @@ ARTIFACTS: dict[str, str] = {
     "archetype": "SwarmKitArchetype",
     "workspace": "SwarmKitWorkspace",
     "trigger": "SwarmKitTrigger",
+    "executor-adapter": "SwarmKitExecutorAdapter",
 }
 
 
@@ -43,9 +44,15 @@ HEADER = """# ruff: noqa
 """
 
 
+def _module_name(artifact: str) -> str:
+    # Artifact keys are kebab-case (e.g. `executor-adapter`); Python module names must be
+    # importable, so hyphens become underscores for the generated file + its import.
+    return artifact.replace("-", "_")
+
+
 def _generate_one(artifact: str) -> None:
     schema_path = SCHEMAS_DIR / f"{artifact}.schema.json"
-    output_path = OUTPUT_DIR / f"{artifact}.py"
+    output_path = OUTPUT_DIR / f"{_module_name(artifact)}.py"
     if not schema_path.is_file():
         raise FileNotFoundError(f"Schema missing: {schema_path}")
 
@@ -100,7 +107,7 @@ def _write_init() -> None:
         "",
     ]
     for artifact, root in ARTIFACTS.items():
-        body.append(f"from .{artifact} import {root}")
+        body.append(f"from .{_module_name(artifact)} import {root}")
     body.append("")
     body.append("__all__ = [")
     for root in ARTIFACTS.values():

@@ -17,7 +17,7 @@ from typing import Any, Literal
 
 import yaml
 
-ArtifactKind = Literal["workspace", "topology", "skill", "archetype", "trigger"]
+ArtifactKind = Literal["workspace", "topology", "skill", "archetype", "trigger", "executor-adapter"]
 
 # Directory → expected artifact kind.
 # `triggers/` and `schedules/` both hold ``kind: Trigger`` artifacts
@@ -28,6 +28,7 @@ _KIND_DIRS: dict[str, ArtifactKind] = {
     "skills": "skill",
     "triggers": "trigger",
     "schedules": "trigger",
+    "adapters": "executor-adapter",
 }
 
 # What the artifact's ``kind:`` field should say for each internal kind.
@@ -37,6 +38,7 @@ _EXPECTED_KIND_STR: dict[ArtifactKind, str] = {
     "skill": "Skill",
     "archetype": "Archetype",
     "trigger": "Trigger",
+    "executor-adapter": "ExecutorAdapter",
 }
 
 _YAML_SUFFIXES = frozenset({".yaml", ".yml"})

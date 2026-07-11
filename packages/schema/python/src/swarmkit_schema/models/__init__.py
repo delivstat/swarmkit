@@ -10,6 +10,7 @@ from .skill import SwarmKitSkill
 from .archetype import SwarmKitArchetype
 from .workspace import SwarmKitWorkspace
 from .trigger import SwarmKitTrigger
+from .executor_adapter import SwarmKitExecutorAdapter
 
 __all__ = [
     "SwarmKitTopology",
@@ -17,4 +18,5 @@ __all__ = [
     "SwarmKitArchetype",
     "SwarmKitWorkspace",
     "SwarmKitTrigger",
+    "SwarmKitExecutorAdapter",
 ]

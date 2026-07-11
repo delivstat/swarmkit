@@ -17,6 +17,7 @@ const ALL_SCHEMAS: SchemaName[] = [
 	"archetype",
 	"workspace",
 	"trigger",
+	"executor-adapter",
 ];
 
 function fixtures(kind: string): string[] {
@@ -74,3 +75,9 @@ describeFixtures("skill", "skill", "skill-invalid", "skill");
 describeFixtures("archetype", "archetype", "archetype-invalid", "archetype");
 describeFixtures("workspace", "workspace", "workspace-invalid", "workspace");
 describeFixtures("trigger", "trigger", "trigger-invalid", "trigger");
+describeFixtures(
+	"executor-adapter",
+	"executor-adapter",
+	"executor-adapter-invalid",
+	"executor-adapter",
+);
