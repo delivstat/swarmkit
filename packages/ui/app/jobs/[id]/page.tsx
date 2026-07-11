@@ -3,7 +3,12 @@
 import { Card, CardTitle } from "@/components/card";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
-import { formatTokens, formatUsd } from "@/lib/format";
+import {
+	executorBadge,
+	formatTokens,
+	formatUsd,
+	spanCostUsd,
+} from "@/lib/format";
 import type { JobResponse, JobUsage, TraceSpan } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { useParams } from "next/navigation";
@@ -134,20 +139,37 @@ function TraceWaterfall({ runId }: { runId: string }) {
 						0.5,
 						((span.end_ns - span.start_ns) / total) * 100,
 					);
+					// A harness node (executor.kind !== "model") gets a chip so it's visually
+					// distinct from a model node; both share the same waterfall row (design §5).
+					const badge = executorBadge(span.attributes);
+					const cost = spanCostUsd(span.attributes);
 					return (
 						<div
 							key={`${span.name}-${span.start_ns}`}
 							className="flex items-center gap-2 text-xs"
 						>
 							<div
-								className="w-48 shrink-0 truncate font-mono"
+								className="flex w-48 shrink-0 items-center gap-1 font-mono"
 								style={{
 									paddingLeft: depth * 12,
 									color: span.error ? "var(--error)" : "var(--fg)",
 								}}
 								title={span.error ?? span.name}
 							>
-								{span.name}
+								<span className="truncate">{span.name}</span>
+								{badge && (
+									<span
+										className="shrink-0 rounded px-1 text-[10px]"
+										style={{
+											background: "var(--bg)",
+											color: "var(--accent)",
+											border: "1px solid var(--accent)",
+										}}
+										title={`executor: ${badge}`}
+									>
+										{badge}
+									</span>
+								)}
 							</div>
 							<div
 								className="relative h-4 flex-1 rounded"
@@ -162,6 +184,14 @@ function TraceWaterfall({ runId }: { runId: string }) {
 									}}
 								/>
 							</div>
+							{cost > 0 && (
+								<div
+									className="w-14 shrink-0 text-right"
+									style={{ color: "var(--fg-muted)" }}
+								>
+									{formatUsd(cost)}
+								</div>
+							)}
 							<div
 								className="w-16 shrink-0 text-right"
 								style={{ color: "var(--fg-muted)" }}
