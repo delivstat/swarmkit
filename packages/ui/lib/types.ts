@@ -143,6 +143,30 @@ export interface SendMessageResponse {
 	conversation_id: string;
 }
 
+/** A node in a run's span tree (GET /observability/runs/{id}/trace) — for the waterfall. */
+export interface TraceSpan {
+	name: string;
+	start_ns: number;
+	end_ns: number;
+	duration_ms: number;
+	attributes: Record<string, unknown>;
+	error: string | null;
+	children: TraceSpan[];
+}
+
+/** An append-only audit event (GET /audit) — read-only. */
+export interface AuditEvent {
+	event_id: string;
+	event_type: string;
+	agent_id: string;
+	agent_role: string | null;
+	timestamp: string | null;
+	topology_id: string | null;
+	skill_id: string | null;
+	run_id: string | null;
+	payload: Record<string, unknown>;
+}
+
 /** Per-run usage totals — the flat shape GET /usage/{job_id} returns (no by-model breakdown). */
 export interface JobUsage {
 	total_calls: number;

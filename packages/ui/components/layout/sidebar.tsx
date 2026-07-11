@@ -10,6 +10,7 @@ import {
 	MessageCircle,
 	PenTool,
 	Puzzle,
+	ScrollText,
 	Timer,
 	Users,
 } from "lucide-react";
@@ -21,6 +22,7 @@ const NAV = [
 	{ href: "/chat", label: "Chat", icon: MessageCircle },
 	{ href: "/composer", label: "Composer", icon: PenTool },
 	{ href: "/jobs", label: "Jobs", icon: Activity },
+	{ href: "/audit", label: "Audit", icon: ScrollText },
 	{ href: "/topologies", label: "Topologies", icon: GitBranch },
 	{ href: "/skills", label: "Skills", icon: Puzzle },
 	{ href: "/archetypes", label: "Archetypes", icon: Users },

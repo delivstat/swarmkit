@@ -1,5 +1,6 @@
 import type {
 	ArchetypeDetail,
+	AuditEvent,
 	CanaryStatus,
 	ConversationDetail,
 	ConversationListItem,
@@ -11,6 +12,7 @@ import type {
 	SkillDetail,
 	SkillItem,
 	TopologyDetail,
+	TraceSpan,
 	TriggerConfig,
 	UsageSummary,
 	ValidateResponse,
@@ -72,6 +74,18 @@ export const api = {
 	job: (id: string) => get<JobResponse>(`/jobs/${id}`),
 	jobUsage: (id: string) => get<JobUsage>(`/usage/${id}`),
 	jobStreamUrl: (id: string) => `${BASE}/jobs/${id}/stream`,
+
+	runTrace: (id: string) => get<TraceSpan>(`/observability/runs/${id}/trace`),
+	audit: (
+		params: { run_id?: string; agent_id?: string; limit?: number } = {},
+	) => {
+		const q = new URLSearchParams();
+		if (params.run_id) q.set("run_id", params.run_id);
+		if (params.agent_id) q.set("agent_id", params.agent_id);
+		if (params.limit) q.set("limit", String(params.limit));
+		const qs = q.toString();
+		return get<AuditEvent[]>(`/audit${qs ? `?${qs}` : ""}`);
+	},
 
 	run: (topology: string, input: string, maxSteps = 10) =>
 		post<JobResponse>(`/run/${topology}`, {

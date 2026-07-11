@@ -54,3 +54,31 @@ describe("api bearer wiring", () => {
 		expect(onUnauthorized).not.toHaveBeenCalled();
 	});
 });
+
+describe("observability endpoints", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	const urlOf = (m: ReturnType<typeof vi.fn>) => m.mock.calls[0]?.[0] as string;
+
+	it("runTrace hits the per-run trace path", async () => {
+		const fetchMock = stubFetch(200);
+		await api.runTrace("job-1");
+		expect(urlOf(fetchMock)).toContain("/observability/runs/job-1/trace");
+	});
+
+	it("audit builds the query string from params", async () => {
+		const fetchMock = stubFetch(200);
+		await api.audit({ run_id: "r1", agent_id: "a1", limit: 50 });
+		const url = urlOf(fetchMock);
+		expect(url).toContain("/audit?");
+		expect(url).toContain("run_id=r1");
+		expect(url).toContain("agent_id=a1");
+		expect(url).toContain("limit=50");
+	});
+
+	it("audit with no params hits /audit with no query", async () => {
+		const fetchMock = stubFetch(200);
+		await api.audit();
+		expect(urlOf(fetchMock)).toMatch(/\/audit$/);
+	});
+});
