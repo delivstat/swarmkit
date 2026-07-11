@@ -94,3 +94,13 @@ def test_workspace_reference_fields_carry_x_swarmkit_ref() -> None:
 
     archetype = get_schema("archetype")
     assert archetype["$defs"]["defaults"]["properties"]["skills"]["x-swarmkit-ref"] == "skill"
+
+
+def test_archetype_has_optional_executor_block() -> None:
+    """The executor block (executor-abstraction §4) is present + optional (backward-compatible):
+    `kind` required within it, but the block itself is not in the archetype's required list."""
+    schema = get_schema("archetype")
+    executor = schema["$defs"]["executor"]
+    assert "kind" in executor["properties"]
+    assert executor["required"] == ["kind"]
+    assert "executor" not in schema["required"]  # optional → existing archetypes unaffected

@@ -8,6 +8,7 @@
 export interface SwarmKitArchetype {
     apiVersion: APIVersion;
     defaults:   Defaults;
+    executor?:  Executor;
     kind:       Kind;
     metadata:   Metadata;
     provenance: Provenance;
@@ -77,6 +78,37 @@ export interface Abstract {
 }
 
 export type Category = "capability" | "decision" | "coordination" | "persistence";
+
+/**
+ * How a node of this archetype executes (design/details/executor-abstraction.md). OPTIONAL
+ * and backward-compatible: absent means kind: model with the archetype's defaults.model —
+ * existing archetypes are unaffected. `kind` is NOT a closed enum in core; it is validated
+ * at runtime against the executor registry, and each kind's `config` is opaque to core
+ * (validated by that executor's own schema). Core-owned harness blocks (sandbox / budget /
+ * telemetry / interaction / artifacts) formalize with the harness executor; until then they
+ * pass through.
+ */
+export interface Executor {
+    /**
+     * Executor-kind-specific config, opaque to core and validated by the adapter's own schema.
+     */
+    config?: { [key: string]: any };
+    /**
+     * Executor kind — `model` (default) or a registered plugin kind (e.g. `harness`). Validated
+     * against the executor registry at runtime, not a closed enum in core.
+     */
+    kind: string;
+    /**
+     * What the executor resolves: a model id for kind: model, or an adapter id (e.g.
+     * `claude-code`) for kind: harness.
+     */
+    ref?: string;
+    /**
+     * Optional adapter version constraint; interpreted by the adapter.
+     */
+    version_constraint?: string;
+    [property: string]: any;
+}
 
 export type Kind = "Archetype";
 

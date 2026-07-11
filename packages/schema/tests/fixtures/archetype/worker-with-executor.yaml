@@ -1,0 +1,20 @@
+# Archetype with an explicit `executor` block (executor-abstraction §4.1). Exercises the optional,
+# backward-compatible executor surface: a `model` executor here; the harness kind lands with P2.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: coding-worker
+  name: Coding Worker
+  description: Worker whose node execution is declared via an explicit executor block.
+role: worker
+defaults:
+  prompt:
+    system: Implement the described change.
+executor:
+  kind: model
+  ref: openrouter/deepseek-v4
+  config:
+    temperature: 0.2
+provenance:
+  authored_by: human
+  version: 0.1.0
