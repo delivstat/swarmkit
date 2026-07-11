@@ -2,22 +2,65 @@
 
 `model` (default, today's behavior) and, from P2, `harness`. Public surface:
 
-- :class:`Executor` — a registered executor kind (owns its config validation).
+- :class:`Executor` — a registered executor kind (config validation + the P2 execution hooks).
 - :class:`ModelExecutor` — the default kind.
 - :class:`ExecutorRegistry` / :func:`default_executor_registry` — resolve `executor.kind`.
 - :class:`ResolvedExecutor` — the resolved result carried into node execution.
 - :class:`ExecutorError` — unknown kind / invalid config.
+- ``ExecEvent`` + variants — the normalized event vocabulary adapters emit (§5.1).
+- :class:`TaskSpec` / :class:`SandboxHandle` / :class:`BudgetEnvelope` / :class:`PreflightReport` /
+  :class:`ResumeToken` — the run-side value types (§5, §6.0).
 """
 
+from swarmkit_runtime.executors._events import (
+    ExecApprovalRequested,
+    ExecApprovalResponse,
+    ExecArtifact,
+    ExecEvent,
+    ExecInputRequested,
+    ExecInputResponse,
+    ExecMessage,
+    ExecRaw,
+    ExecResult,
+    ExecResultStatus,
+    ExecStarted,
+    ExecToolCall,
+    ExecUsage,
+)
 from swarmkit_runtime.executors._model import ModelExecutor
 from swarmkit_runtime.executors._protocol import Executor, ExecutorError, ResolvedExecutor
 from swarmkit_runtime.executors._registry import ExecutorRegistry, default_executor_registry
+from swarmkit_runtime.executors._run import (
+    BudgetEnvelope,
+    PreflightReport,
+    ResumeToken,
+    SandboxHandle,
+    TaskSpec,
+)
 
 __all__ = [
+    "BudgetEnvelope",
+    "ExecApprovalRequested",
+    "ExecApprovalResponse",
+    "ExecArtifact",
+    "ExecEvent",
+    "ExecInputRequested",
+    "ExecInputResponse",
+    "ExecMessage",
+    "ExecRaw",
+    "ExecResult",
+    "ExecResultStatus",
+    "ExecStarted",
+    "ExecToolCall",
+    "ExecUsage",
     "Executor",
     "ExecutorError",
     "ExecutorRegistry",
     "ModelExecutor",
+    "PreflightReport",
     "ResolvedExecutor",
+    "ResumeToken",
+    "SandboxHandle",
+    "TaskSpec",
     "default_executor_registry",
 ]
