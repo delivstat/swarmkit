@@ -177,6 +177,21 @@ _USAGE_FIELDS = frozenset(
 # ---- the interpreter --------------------------------------------------------------------------
 
 
+def _collapse_results(events: list[ExecEvent]) -> list[ExecEvent]:
+    """At most one terminal :class:`ExecResult` per output line — the LAST one declared wins.
+
+    This is what lets a status be classified by *ordered literal-match rules* without conditionals:
+    a base ``{type: result}`` rule sets ``success``, a later ``{type: result, is_error: true}`` rule
+    overrides to ``failure``, and a still-later ``{subtype: error_max_turns}`` rule to
+    ``budget_exceeded`` — most-specific-last wins (real harnesses signal errors across two fields,
+    e.g. Claude Code's ``subtype: success`` + ``is_error: true``)."""
+    results = [e for e in events if isinstance(e, ExecResult)]
+    if len(results) <= 1:
+        return events
+    last = results[-1]
+    return [e for e in events if not isinstance(e, ExecResult) or e is last]
+
+
 class AdapterInterpreter:
     """Stateful translator: parsed JSON lines → ExecEvents, capturing ``session_id`` for resume."""
 
@@ -191,7 +206,7 @@ class AdapterInterpreter:
                 continue
             self._apply_set(rule, obj)
             events.extend(self._apply_emit(rule, obj))
-        return events
+        return _collapse_results(events)
 
     def _apply_set(self, rule: Rule, obj: Mapping[str, Any]) -> None:
         for key, spec in rule.set.items():

@@ -72,13 +72,54 @@ def test_event_payloads() -> None:
     assert final_usage.cost_usd == pytest.approx(0.0123)
 
 
+def test_result_status_ordered_rules_honor_is_error() -> None:
+    """Real Claude Code marks errors with `subtype: success` + `is_error: true`. Ordered rules +
+    last-result-wins must classify each case correctly (regression from real e2e)."""
+    spec = _spec()
+
+    def status_for(result_line: dict[str, object]) -> str:
+        interp = AdapterInterpreter(spec)  # type: ignore[arg-type]
+        events = interp.feed(result_line)
+        results = [e for e in events if isinstance(e, ExecResult)]
+        assert len(results) == 1  # collapsed to a single terminal result
+        return results[0].status
+
+    base = {"type": "result", "result": "x", "usage": {"input_tokens": 1}}
+    assert status_for({**base, "subtype": "success", "is_error": False}) == "success"
+    # the billing-error shape captured from the real binary: subtype success BUT is_error true
+    assert status_for({**base, "subtype": "success", "is_error": True}) == "failure"
+    assert status_for({**base, "subtype": "error_max_turns", "is_error": True}) == "budget_exceeded"
+
+
 def test_status_map_default_and_translation() -> None:
-    interp = AdapterInterpreter(_spec())  # type: ignore[arg-type]
-    # error_max_turns -> budget_exceeded via status_map
-    e1 = interp.feed({"type": "result", "subtype": "error_max_turns"})
-    assert isinstance(e1[-1], ExecResult) and e1[-1].status == "budget_exceeded"
-    # an unmapped subtype -> _default (failure)
-    e2 = interp.feed({"type": "result", "subtype": "who_knows"})
+    # The {from, map} primitive (used by opencode / gemini-cli) — translate a vendor enum, with
+    # _default covering the rest. Exercised here on a minimal inline adapter.
+    raw = {
+        "apiVersion": "swarmkit/v1",
+        "kind": "ExecutorAdapter",
+        "metadata": {"id": "m", "name": "m", "description": "minimal status-map adapter"},
+        "spec": {
+            "launch": {"command": ["h"]},
+            "stream": {"format": "jsonl"},
+            "event_map": [
+                {
+                    "when": {"type": "done"},
+                    "emit": [
+                        {
+                            "event": "result",
+                            "with": {"status": {"from": "$.code", "map": "status_map"}},
+                        }
+                    ],
+                }
+            ],
+            "status_map": {"ok": "success", "_default": "failure"},
+        },
+        "provenance": {"authored_by": "human", "version": "0.1.0"},
+    }
+    interp = AdapterInterpreter(parse_adapter_spec(raw))
+    e1 = interp.feed({"type": "done", "code": "ok"})
+    assert isinstance(e1[-1], ExecResult) and e1[-1].status == "success"
+    e2 = interp.feed({"type": "done", "code": "unmapped"})
     assert isinstance(e2[-1], ExecResult) and e2[-1].status == "failure"
 
 
