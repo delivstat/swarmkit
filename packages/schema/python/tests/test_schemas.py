@@ -86,8 +86,6 @@ def test_workspace_reference_fields_carry_x_swarmkit_ref() -> None:
     """Reference fields (agent→archetype, agent→skills, archetype→skills) are annotated with
     x-swarmkit-ref so a UI can render them as workspace-populated pickers instead of free text.
     A non-validating hint (ignored by validators + codegen); pinned so it isn't dropped."""
-    from swarmkit_schema import get_schema
-
     topo = get_schema("topology")
     agent = topo["$defs"]["agent"]["properties"]
     assert agent["archetype"]["x-swarmkit-ref"] == "archetype"
