@@ -19,12 +19,31 @@ cost. So one canvas renders two modes:
   schema-driven form already built (archetype/skills pickers, tooltips). YAML stays the escape hatch.
 - **Examine** (run-time): overlay a run's trace onto the same layout — colour/annotate each node by
   what happened (fired vs. skipped, duration, cost, error), light the delegation path taken, and
-  click a node → its `agent.step` span with tool calls + tokens + cost.
+  click a node → its `agent.step` span with tool calls + tokens + cost. Two sub-modes:
+  - **Replay** (post-hoc): from a finished run's `/observability/runs/{id}/trace`.
+  - **Live** (in-flight): stream a running job's events (`GET /jobs/{id}/stream`, SSE) so nodes light
+    up **as the run executes** — the graph becomes a live view of the agents working. Crucially, when
+    the run needs a human decision — an approval or input request (an executor
+    `exec.approval_requested` / `exec.input_requested`, or any HITL review) — the node **pulses** and
+    the request is answerable **inline on the graph**. So the canvas doesn't just watch a run, it
+    *unblocks* it. (This is the visual seat for the executor abstraction's mid-run interaction,
+    `executor-abstraction.md` §6.2–6.3 — same event stream, surfaced spatially.)
 
 Examine is the standout: a flat waterfall answers *"what happened when"*; the graph overlay answers
 **"where in the org did the time and money go"** — which is what an operator actually asks. It also
-**unifies** the two surfaces built separately — the topology Form view (design) and the trace
-waterfall (monitor) — onto one spatial model.
+**unifies** the surfaces built separately — the topology Form view (design), the trace waterfall +
+audit (monitor), and the approval inbox (HITL) — onto one spatial model.
+
+### Beyond a single run
+
+- **Aggregate / compare** — overlay stats across the last N runs instead of one: average cost/latency
+  per node, failure rate, the consistent hot-spot. The fleet's *"which agent is expensive or flaky"*
+  question, answered on the graph from metrics already exported (`swarmkit_agent_steps_total`,
+  per-node cost).
+- **Edit affordances beyond the agent graph** — the topology also carries `governance`, `planning`,
+  and `synthesis` blocks that aren't nodes/edges. The canvas edits the graph; these render as
+  side-panels (still schema-driven forms), so it's the graph *and* its non-graph config, not a lossy
+  view.
 
 ## Goal
 
@@ -80,10 +99,17 @@ concern.)
 1. This note (design-only).
 2. **View-only graph** — render the topology as a React Flow canvas (a new composer view, or replacing
    "structure"). Prerequisite; lowest risk.
-3. **Examine overlay** — feed a run's trace onto the graph (node colour by cost/duration/status, path
-   taken, click → span detail) on the run-detail page. *Highest value; zero new backend.*
-4. **Edit on canvas** — add/remove nodes, draw delegation edges; node panel = the schema form.
-5. **Fleet port** — copy the read-only view+overlay into the fleet UI run detail.
+3. **Examine replay** — feed a finished run's trace onto the graph (node colour by cost/duration/status,
+   path taken, click → span detail) on the run-detail page. *High value; zero new backend.*
+4. **Live run** — stream `/jobs/{id}/stream` so nodes light up in-flight, and surface approval/input
+   requests inline on the pulsing node (the cockpit for HITL + executor interaction). Governance is
+   unchanged — answering inline routes through the same approval gate; the canvas is just the surface.
+5. **Edit on canvas** — add/remove nodes, draw delegation edges; node panel = the schema form; the
+   `governance`/`planning`/`synthesis` blocks as side-panels.
+6. **Aggregate / compare** — per-node stats across the last N runs (cost/latency/failure hot-spots),
+   from the exported metrics.
+7. **Fleet port** — copy the read-only view + replay/live/aggregate into the fleet UI run detail
+   (no edit).
 
 ## Test plan
 
