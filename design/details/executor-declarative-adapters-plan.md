@@ -1,8 +1,17 @@
 ---
-status: draft
+status: done
 ---
 
 # Executor P3 — declarative adapter foundation (harnesses are data, not code)
+
+> **Status: COMPLETE.** All 6 PRs merged (#537–#543) plus e2e-hardening. A harness is an
+> `adapter.yaml`, interpreted by the one `DeclarativeExecutor`; no harness-specific Python remains
+> (the P2 `_claude_code.py` is deleted). Shipped: the `executor-adapter` schema, the event-map
+> interpreter, the declarative engine + registry loading, claude-code as bundled data, the bundled
+> library (claude-code + opencode **verified against real binaries**, codex + gemini-cli
+> **experimental**), auth-precedence + `is_error` fixes found by real e2e, the `working_dir`
+> persistence option, and the launch-block review gate + contributor guide. Interactive tier (relay,
+> input-escalation, classifier, traceparent) remains deferred.
 
 Reorders the RFC (`executor-abstraction.md`): pulls the **Tier-2 declarative adapter engine**
 (RFC §5.2, phased P4) forward to be *the* foundation, and drops the planned `codex` **code**

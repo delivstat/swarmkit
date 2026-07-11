@@ -235,3 +235,9 @@ def load_adapter_specs(workspace_root: Path | str | None = None) -> dict[str, Ad
     if workspace_root is not None:
         specs.update(_load_dir(Path(workspace_root) / "adapters"))
     return specs
+
+
+def load_workspace_adapter_specs(workspace_root: Path | str) -> dict[str, AdapterSpec]:
+    """Only the workspace's own ``adapters/`` (not the bundled library). These are the adapters
+    subject to the launch-block review gate (bundled ones are pre-vetted)."""
+    return _load_dir(Path(workspace_root) / "adapters")
