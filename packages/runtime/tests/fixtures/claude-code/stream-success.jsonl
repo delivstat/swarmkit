@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","session_id":"sess-abc123","tools":["Bash","Edit"],"model":"claude-opus-4-8"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll add the flag."}],"usage":{"input_tokens":1200,"output_tokens":40,"cache_read_input_tokens":800}},"session_id":"sess-abc123"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"Edit","input":{"file_path":"config.py","old_string":"DEBUG = False","new_string":"DEBUG = True"}}],"usage":{"input_tokens":60,"output_tokens":90}},"session_id":"sess-abc123"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_1","content":"ok"}]},"session_id":"sess-abc123"}
+{"type":"result","subtype":"success","is_error":false,"result":"Added the DEBUG flag.","total_cost_usd":0.0123,"num_turns":2,"usage":{"input_tokens":1320,"output_tokens":130,"cache_read_input_tokens":800},"session_id":"sess-abc123"}
