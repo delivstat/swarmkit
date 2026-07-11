@@ -38,6 +38,34 @@ class Metadata(BaseModel):
     description: str = Field(..., min_length=10)
 
 
+class Executor(BaseModel):
+    """
+    How a node of this archetype executes (design/details/executor-abstraction.md). OPTIONAL and backward-compatible: absent means kind: model with the archetype's defaults.model — existing archetypes are unaffected. `kind` is NOT a closed enum in core; it is validated at runtime against the executor registry, and each kind's `config` is opaque to core (validated by that executor's own schema). Core-owned harness blocks (sandbox / budget / telemetry / interaction / artifacts) formalize with the harness executor; until then they pass through.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    kind: str = Field(
+        ...,
+        description="Executor kind — `model` (default) or a registered plugin kind (e.g. `harness`). Validated against the executor registry at runtime, not a closed enum in core.",
+        pattern="^[a-z][a-z0-9_-]*$",
+    )
+    ref: str | None = Field(
+        None,
+        description="What the executor resolves: a model id for kind: model, or an adapter id (e.g. `claude-code`) for kind: harness.",
+    )
+    version_constraint: str | None = Field(
+        None,
+        description="Optional adapter version constraint; interpreted by the adapter.",
+    )
+    config: dict[str, Any] | None = Field(
+        None,
+        description="Executor-kind-specific config, opaque to core and validated by the adapter's own schema.",
+    )
+
+
 class Model(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -154,4 +182,5 @@ class SwarmKitArchetype(BaseModel):
         description="Must match the agent role where this archetype is instantiated.",
     )
     defaults: Defaults
+    executor: Executor | None = None
     provenance: Provenance

@@ -15,6 +15,7 @@
       "description": "Must match the agent role where this archetype is instantiated."
     },
     "defaults": { "$ref": "#/$defs/defaults" },
+    "executor": { "$ref": "#/$defs/executor" },
     "provenance": { "$ref": "#/$defs/provenance" }
   },
   "$defs": {
@@ -34,6 +35,32 @@
         "id": { "$ref": "#/$defs/identifier" },
         "name": { "type": "string", "minLength": 1 },
         "description": { "type": "string", "minLength": 10 }
+      }
+    },
+    "executor": {
+      "type": "object",
+      "description": "How a node of this archetype executes (design/details/executor-abstraction.md). OPTIONAL and backward-compatible: absent means kind: model with the archetype's defaults.model — existing archetypes are unaffected. `kind` is NOT a closed enum in core; it is validated at runtime against the executor registry, and each kind's `config` is opaque to core (validated by that executor's own schema). Core-owned harness blocks (sandbox / budget / telemetry / interaction / artifacts) formalize with the harness executor; until then they pass through.",
+      "required": ["kind"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "description": "Executor kind — `model` (default) or a registered plugin kind (e.g. `harness`). Validated against the executor registry at runtime, not a closed enum in core."
+        },
+        "ref": {
+          "type": "string",
+          "description": "What the executor resolves: a model id for kind: model, or an adapter id (e.g. `claude-code`) for kind: harness."
+        },
+        "version_constraint": {
+          "type": "string",
+          "description": "Optional adapter version constraint; interpreted by the adapter."
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Executor-kind-specific config, opaque to core and validated by the adapter's own schema."
+        }
       }
     },
     "defaults": {

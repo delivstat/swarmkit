@@ -80,7 +80,7 @@ The design doc is detailed and opinionated. Before making a non-trivial change, 
 These hold across the whole repo. Individual package `CLAUDE.md`s add more.
 
 1. **Topology-as-data, always.** No generating Python as the output of a "topology compiler" — we interpret. `swarmkit eject` is the one path that produces code, and it's a user-facing export, not a runtime mechanism.
-2. **Skills are the only extension primitive.** When tempted to add a parallel extension mechanism, ask how it could be a skill category or a composed skill instead.
+2. **Skills are the only *capability* extension primitive.** When tempted to add a parallel *capability* mechanism, ask how it could be a skill category or a composed skill instead. *Node execution* is a separate provider seam — the `executor` abstraction (`design/details/executor-abstraction.md`), where `model` and `harness` are kinds — parallel to `ModelProvider`/`GovernanceProvider`, not a capability primitive. (A session-holding, diff-producing harness is an executor; a stateless answer-and-return consult is still a skill.)
 3. **All governance goes through the `GovernanceProvider` interface** (design §8.5). Only `packages/runtime/src/swarmkit_runtime/governance/` imports AGT directly.
 4. **All LLM calls go through the `ModelProvider` interface** (`design/details/model-provider-abstraction.md`). Only `packages/runtime/src/swarmkit_runtime/model_providers/` imports `anthropic` / `openai` / `google-genai` / Ollama's HTTP client. Same shape as the governance rule; same reasoning — no vendor lock-in at framework level.
 5. **Audit log is append-only from executive perspective.** No update/delete path exposed to agents, ever (design §8.3, §8.7).

@@ -27,7 +27,7 @@ These come from the design's architectural principles and separation-of-powers m
 2. **All governance goes through `GovernanceProvider`.** No direct AGT imports outside `governance/`. If code needs policy evaluation, identity, or audit, it goes through the interface.
 3. **Audit is append-only from agent perspective.** No code path should expose `update` or `delete` on audit entries to executive-layer callers.
 4. **Pillar boundaries are enforced at the module level** (design §8.4). Executive code invokes skills via middleware that routes through the policy engine — there is no bypass.
-5. **Skills are the only extension primitive.** When adding a capability, add a skill category or skill definition — do not introduce parallel extension mechanisms.
+5. **Skills are the only *capability* extension primitive.** When adding a *capability*, add a skill category or skill definition — do not introduce parallel capability mechanisms. *How* a node executes is the `executor` provider seam (`design/details/executor-abstraction.md`: `model` | `harness` kinds), parallel to `ModelProvider` — not a skill.
 6. **Eject must stay intact.** Every feature you add to the runtime needs an ejection story; if it cannot be expressed in generated LangGraph code, reconsider the design.
 
 ## Style
