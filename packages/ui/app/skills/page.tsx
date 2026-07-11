@@ -1,9 +1,12 @@
 "use client";
 
 import { Card, CardTitle } from "@/components/card";
+import { SchemaForm } from "@/components/schema-form";
 import { api } from "@/lib/api";
+import type { JsonSchema } from "@/lib/schema-form";
 import type { SkillDetail, SkillItem } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
+import { dump, load } from "js-yaml";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -45,6 +48,27 @@ function SkillEditor({
 	const [error, setError] = useState<string | null>(null);
 	const [isNew, setIsNew] = useState(false);
 	const [newName, setNewName] = useState("");
+	// Form (schema-driven) vs raw YAML. The form is the designer: every field + tooltip from the
+	// skill schema; YAML is the power/escape hatch. `obj` is the parsed skill for form mode.
+	const [mode, setMode] = useState<"form" | "yaml">("form");
+	const [obj, setObj] = useState<Record<string, unknown>>({});
+	const [schema, setSchema] = useState<JsonSchema | null>(null);
+
+	const setBoth = (text: string) => {
+		setYaml(text);
+		try {
+			setObj((load(text) as Record<string, unknown>) ?? {});
+		} catch {
+			// leave obj as-is; the form just won't reflect an unparseable draft
+		}
+	};
+
+	useEffect(() => {
+		api
+			.schema("skill")
+			.then((s) => setSchema(s as JsonSchema))
+			.catch(() => setSchema(null));
+	}, []);
 
 	useEffect(() => {
 		if (skillId) {
@@ -53,13 +77,13 @@ function SkillEditor({
 			fetch(`${base}/api/skills/${skillId}/yaml`)
 				.then((r) => r.json())
 				.then((data) => {
-					setYaml(data.yaml ?? "");
+					setBoth(data.yaml ?? "");
 					setLoading(false);
 				})
 				.catch(() => setLoading(false));
 		} else {
 			setIsNew(true);
-			setYaml(NEW_SKILL_TEMPLATE);
+			setBoth(NEW_SKILL_TEMPLATE);
 			setLoading(false);
 		}
 	}, [skillId]);
@@ -78,7 +102,14 @@ function SkillEditor({
 		setSaving(true);
 		setError(null);
 		try {
-			const finalYaml = isNew ? yaml.replace("NAME", id) : yaml;
+			let finalYaml: string;
+			if (mode === "form") {
+				const meta =
+					(obj.metadata as Record<string, unknown> | undefined) ?? {};
+				finalYaml = dump(isNew ? { ...obj, metadata: { ...meta, id } } : obj);
+			} else {
+				finalYaml = isNew ? yaml.replace("NAME", id) : yaml;
+			}
 			const result = await api.saveSkill(id, finalYaml);
 			if (result.valid) {
 				await api.reloadWorkspace();
@@ -128,8 +159,44 @@ function SkillEditor({
 					</div>
 				)}
 
+				<div className="mb-3 flex gap-1 text-xs">
+					{(["form", "yaml"] as const).map((m) => (
+						<button
+							key={m}
+							type="button"
+							disabled={m === "form" && !schema}
+							onClick={() => {
+								setError(null);
+								if (m === "yaml") {
+									setYaml(dump(obj));
+									setMode("yaml");
+								} else {
+									try {
+										setObj((load(yaml) as Record<string, unknown>) ?? {});
+										setMode("form");
+									} catch {
+										setError("YAML is invalid — fix it before using the form");
+									}
+								}
+							}}
+							className="rounded px-2 py-1 font-medium disabled:opacity-40"
+							style={{
+								background: mode === m ? "var(--accent)" : "transparent",
+								color: mode === m ? "var(--accent-fg)" : "var(--fg-muted)",
+								border: "1px solid var(--border)",
+							}}
+						>
+							{m === "form" ? "Form" : "YAML"}
+						</button>
+					))}
+				</div>
+
 				{loading ? (
 					<p className="text-sm opacity-50">Loading...</p>
+				) : mode === "form" && schema ? (
+					<div className="mb-3 max-h-[50vh] overflow-y-auto pr-1">
+						<SchemaForm schema={schema} value={obj} onChange={setObj} />
+					</div>
 				) : (
 					<textarea
 						className="w-full font-mono text-xs p-3 rounded border resize-none mb-3"
@@ -140,7 +207,7 @@ function SkillEditor({
 							minHeight: "300px",
 						}}
 						value={yaml}
-						onChange={(e) => setYaml(e.target.value)}
+						onChange={(e) => setBoth(e.target.value)}
 						spellCheck={false}
 					/>
 				)}

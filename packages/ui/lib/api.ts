@@ -75,6 +75,9 @@ export const api = {
 	jobUsage: (id: string) => get<JobUsage>(`/usage/${id}`),
 	jobStreamUrl: (id: string) => `${BASE}/jobs/${id}/stream`,
 
+	schema: (artifactType: string) =>
+		get<Record<string, unknown>>(`/api/schema/${artifactType}`),
+
 	runTrace: (id: string) => get<TraceSpan>(`/observability/runs/${id}/trace`),
 	audit: (
 		params: { run_id?: string; agent_id?: string; limit?: number } = {},
