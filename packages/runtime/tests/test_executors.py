@@ -13,6 +13,7 @@ from swarmkit_runtime.executors import (
     ResolvedExecutor,
     default_executor_registry,
 )
+from swarmkit_runtime.resolver import resolve_workspace
 from swarmkit_runtime.skills import build_skill_registry
 from swarmkit_runtime.workspace import discover
 
@@ -45,6 +46,24 @@ def test_resolve_unknown_kind_raises() -> None:
 def test_model_executor_config_is_permissive() -> None:
     # Model-call params are open — validation must not reject arbitrary knobs.
     ModelExecutor().validate_config({"temperature": 0.2, "top_p": 0.9, "anything": True})
+
+
+def test_resolved_agents_carry_the_model_executor_by_default() -> None:
+    """End-to-end: every resolved agent carries a ResolvedExecutor (design executor-abstraction);
+    with no `executor` block declared, it's the `model` default — no behavior change."""
+    repo_root = Path(__file__).resolve().parents[3]
+    workspace = resolve_workspace(repo_root / "examples" / "hello-swarm" / "workspace")
+    topology = next(iter(workspace.topologies.values()))
+
+    def kinds(agent: object) -> list[str]:
+        found = [agent.executor.kind]  # type: ignore[attr-defined]
+        for child in agent.children:  # type: ignore[attr-defined]
+            found.extend(kinds(child))
+        return found
+
+    all_kinds = kinds(topology.root)
+    assert all_kinds  # at least the root
+    assert set(all_kinds) == {"model"}
 
 
 def test_resolution_rejects_an_unknown_executor_kind_in_a_workspace() -> None:
