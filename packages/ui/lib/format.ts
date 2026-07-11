@@ -14,3 +14,22 @@ export function formatTokens(n: number): string {
 	if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
 	return `${(n / 1_000_000).toFixed(1)}M`;
 }
+
+/** A trace-span badge for a non-`model` executor (design executor-abstraction §5). Reads the
+ * `swarmkit.executor.kind` / `swarmkit.executor.ref` span attributes and returns a short label like
+ * `claude-code` or `claude-code · claude-opus-4-8`. Returns `null` for a plain model step (or a span
+ * with no executor attribute — e.g. `topology.run`, `tool.call.*`), so only harness nodes get a chip. */
+export function executorBadge(
+	attributes: Record<string, unknown>,
+): string | null {
+	const kind = attributes["swarmkit.executor.kind"];
+	if (typeof kind !== "string" || kind === "" || kind === "model") return null;
+	const ref = attributes["swarmkit.executor.ref"];
+	return typeof ref === "string" && ref !== "" ? `${kind} · ${ref}` : kind;
+}
+
+/** The span's recorded cost, from the `swarmkit.model.cost_usd` attribute; `0` when absent. */
+export function spanCostUsd(attributes: Record<string, unknown>): number {
+	const cost = attributes["swarmkit.model.cost_usd"];
+	return typeof cost === "number" && Number.isFinite(cost) ? cost : 0;
+}
