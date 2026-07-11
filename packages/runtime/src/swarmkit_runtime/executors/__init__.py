@@ -12,8 +12,10 @@
   :class:`ResumeToken` — the run-side value types (§5, §6.0).
 """
 
+from swarmkit_runtime.executors._adapter_spec import AdapterSpec, parse_adapter_spec
 from swarmkit_runtime.executors._budget import enforce_budget
 from swarmkit_runtime.executors._claude_code import ClaudeCodeExecutor
+from swarmkit_runtime.executors._event_map import AdapterInterpreter, build_command
 from swarmkit_runtime.executors._events import (
     ExecApprovalRequested,
     ExecApprovalResponse,
@@ -42,6 +44,8 @@ from swarmkit_runtime.executors._run import (
 from swarmkit_runtime.executors._sandbox import SandboxError, collect_diff, worktree_sandbox
 
 __all__ = [
+    "AdapterInterpreter",
+    "AdapterSpec",
     "BudgetEnvelope",
     "ClaudeCodeExecutor",
     "ExecApprovalRequested",
@@ -67,8 +71,10 @@ __all__ = [
     "SandboxError",
     "SandboxHandle",
     "TaskSpec",
+    "build_command",
     "collect_diff",
     "default_executor_registry",
     "enforce_budget",
+    "parse_adapter_spec",
     "worktree_sandbox",
 ]
