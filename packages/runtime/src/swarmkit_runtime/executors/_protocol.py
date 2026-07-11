@@ -12,9 +12,18 @@ P1 defines the resolution + validation surface (``config_schema``); the executio
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
+
+from swarmkit_runtime.executors._events import ExecEvent
+from swarmkit_runtime.executors._run import (
+    BudgetEnvelope,
+    PreflightReport,
+    ResumeToken,
+    SandboxHandle,
+    TaskSpec,
+)
 
 
 class ExecutorError(Exception):
@@ -48,3 +57,26 @@ class Executor(ABC):
             jsonschema.validate(dict(config), self.config_schema())
         except jsonschema.ValidationError as exc:
             raise ExecutorError(f"executor {self.kind!r} config invalid: {exc.message}") from exc
+
+    # --- execution hooks (§5) --------------------------------------------------------------------
+    # Default to "not implemented" so a `model` executor (which the compiler runs via its existing
+    # node, not through run()) stays minimal; the harness executor overrides these in P2.
+
+    def preflight(self, task: TaskSpec, sandbox: SandboxHandle) -> PreflightReport:
+        """Fail-fast readiness check before any spend (binary/version/credentials/sandbox)."""
+        raise NotImplementedError(f"executor {self.kind!r} does not implement preflight()")
+
+    def run(
+        self, task: TaskSpec, sandbox: SandboxHandle, budget: BudgetEnvelope
+    ) -> AsyncIterator[ExecEvent]:
+        """Launch, translating the vendor's native stream into normalized :data:`ExecEvent`s. Core
+        supplies budget/sandbox enforcement around this; the adapter enforces nothing itself."""
+        raise NotImplementedError(f"executor {self.kind!r} does not implement run()")
+
+    async def cancel(self, run_id: str) -> None:
+        """Cancel an in-flight run. No-op by default."""
+        return None
+
+    def resume_token(self, run_id: str) -> ResumeToken | None:
+        """The vendor session id if the kind supports resume, else ``None`` (default)."""
+        return None
