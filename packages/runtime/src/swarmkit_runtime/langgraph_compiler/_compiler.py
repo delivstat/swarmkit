@@ -211,6 +211,17 @@ def _build_agent_node(  # noqa: PLR0915
         if denial is not None:
             return denial
 
+        # ---- executor dispatch (executor-abstraction §5) ---------------
+        # `model` runs the tool-loop below, unchanged. Any other kind is a harness executor and
+        # hands off to its runner (a guarded stub until P2 PR6). Governance/trust gates above apply
+        # to every executor kind; only the execution mechanism differs.
+        if agent.executor.kind != "model":
+            from swarmkit_runtime.langgraph_compiler._harness_node import (  # noqa: PLC0415
+                run_harness_node,
+            )
+
+            return await run_harness_node(agent, state, governance)
+
         # ---- pre_input decision skills (relevance gate) ----------------
         if _ds_bindings:
             user_input = state.get("input", "")
