@@ -40,7 +40,9 @@ from swarmkit_runtime.executors import (
     TaskSpec,
     collect_diff,
     enforce_budget,
+    is_launch_approved,
     load_adapter_specs,
+    load_workspace_adapter_specs,
     worktree_sandbox,
 )
 from swarmkit_runtime.governance import AuditEvent
@@ -73,6 +75,17 @@ def _build_executor(resolved: ResolvedExecutor, workspace_root: Path | None) -> 
         raise ExecutorError(
             f"no adapter for executor kind {resolved.kind!r} (known adapters: {sorted(specs)})"
         )
+    # Launch-block review gate (§5.2): a workspace-authored adapter's launch surface — a command
+    # line run on the host — must be human-approved (and re-approved on change). Bundled reference
+    # adapters are pre-vetted, so they bypass. This is a human-only scope: approval is a CLI action
+    # (`swarmkit adapters approve`), never something an agent can grant.
+    if workspace_root is not None and resolved.kind in load_workspace_adapter_specs(workspace_root):  # noqa: SIM102
+        if not is_launch_approved(workspace_root, spec):
+            raise ExecutorError(
+                f"adapter {resolved.kind!r} launch block is not approved — a workspace adapter's "
+                f"launch command must be human-reviewed before it can run. Approve it with "
+                f"`swarmkit adapters approve {resolved.kind}` after inspecting its launch."
+            )
     credential = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CODEX_API_KEY")
     return DeclarativeExecutor(spec, config=resolved.config, model_provider_credential=credential)
 

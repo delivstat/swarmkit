@@ -13,8 +13,17 @@
 """
 
 from swarmkit_runtime.executors._adapter_spec import AdapterSpec, parse_adapter_spec
+from swarmkit_runtime.executors._approval import (
+    approve_launch,
+    is_launch_approved,
+    launch_fingerprint,
+)
 from swarmkit_runtime.executors._budget import enforce_budget
-from swarmkit_runtime.executors._declarative import DeclarativeExecutor, load_adapter_specs
+from swarmkit_runtime.executors._declarative import (
+    DeclarativeExecutor,
+    load_adapter_specs,
+    load_workspace_adapter_specs,
+)
 from swarmkit_runtime.executors._event_map import AdapterInterpreter, build_command
 from swarmkit_runtime.executors._events import (
     ExecApprovalRequested,
@@ -71,11 +80,15 @@ __all__ = [
     "SandboxError",
     "SandboxHandle",
     "TaskSpec",
+    "approve_launch",
     "build_command",
     "collect_diff",
     "default_executor_registry",
     "enforce_budget",
+    "is_launch_approved",
+    "launch_fingerprint",
     "load_adapter_specs",
+    "load_workspace_adapter_specs",
     "parse_adapter_spec",
     "worktree_sandbox",
 ]
