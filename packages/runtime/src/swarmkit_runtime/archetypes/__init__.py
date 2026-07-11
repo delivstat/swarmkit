@@ -23,6 +23,7 @@ from pydantic import ValidationError as PydanticValidationError
 from swarmkit_schema.models import SwarmKitArchetype
 
 from swarmkit_runtime.errors import ResolutionError
+from swarmkit_runtime.executors import ExecutorError, default_executor_registry
 from swarmkit_runtime.skills import ResolvedSkill
 from swarmkit_runtime.workspace import DiscoveredArtifact
 
@@ -54,6 +55,9 @@ def build_archetype_registry(
     """
     errors: list[ResolutionError] = []
     registry: dict[str, ResolvedArchetype] = {}
+    # `executor.kind` is registry-validated, not schema-enum'd (executor-abstraction §4.2): an
+    # unknown kind (e.g. `harness` before P2) fails here, not silently.
+    executor_registry = default_executor_registry()
 
     for artifact in artifacts:
         if artifact.kind != "archetype":
@@ -97,6 +101,26 @@ def build_archetype_registry(
         # placeholders skipped here; their binding happens in phase 3c.
         skill_errors = _check_skill_refs(arch_id, artifact.path, model, skill_registry)
         errors.extend(skill_errors)
+
+        # Resolve the executor block (absent ⇒ the default `model` executor). Fail fast on an
+        # unknown kind or config the executor rejects (design executor-abstraction §4.2).
+        if model.executor is not None:
+            try:
+                executor_registry.resolve(model.executor)
+            except ExecutorError as exc:
+                errors.append(
+                    ResolutionError(
+                        code="archetype.executor-invalid",
+                        message=f"archetype {arch_id!r} has an invalid executor: {exc}",
+                        artifact_path=artifact.path,
+                        yaml_pointer="/executor",
+                        suggestion=(
+                            f"Set executor.kind to a registered kind "
+                            f"({executor_registry.kinds()}) with a valid config."
+                        ),
+                    )
+                )
+
         # Even with skill errors, keep the archetype in the registry so
         # later phases can produce more useful cross-references.
         registry[arch_id] = ResolvedArchetype(id=arch_id, raw=model, source_path=artifact.path)
