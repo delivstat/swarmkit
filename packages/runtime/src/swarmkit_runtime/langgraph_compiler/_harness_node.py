@@ -68,13 +68,10 @@ def _build_executor(resolved: ResolvedExecutor, workspace_root: Path | None) -> 
     spec = specs.get(resolved.kind)
     if spec is None:
         raise ExecutorError(
-            f"no adapter for executor kind {resolved.kind!r} "
-            f"(known adapters: {sorted(specs)})"
+            f"no adapter for executor kind {resolved.kind!r} (known adapters: {sorted(specs)})"
         )
     credential = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CODEX_API_KEY")
-    return DeclarativeExecutor(
-        spec, config=resolved.config, model_provider_credential=credential
-    )
+    return DeclarativeExecutor(spec, config=resolved.config, model_provider_credential=credential)
 
 
 def _budget_from_config(config: dict[str, Any]) -> BudgetEnvelope:
