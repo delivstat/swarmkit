@@ -12,6 +12,7 @@
   :class:`ResumeToken` — the run-side value types (§5, §6.0).
 """
 
+from swarmkit_runtime.executors._budget import enforce_budget
 from swarmkit_runtime.executors._events import (
     ExecApprovalRequested,
     ExecApprovalResponse,
@@ -66,5 +67,6 @@ __all__ = [
     "TaskSpec",
     "collect_diff",
     "default_executor_registry",
+    "enforce_budget",
     "worktree_sandbox",
 ]
