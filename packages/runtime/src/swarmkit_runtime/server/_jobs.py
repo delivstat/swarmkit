@@ -136,6 +136,10 @@ async def execute_job(
                     job.topology,
                     job.input,
                     max_steps=max_steps,
+                    # Key the run (and thus its persisted trace, .swarmkit/traces/<run-id>.json) by
+                    # the job id, so GET /observability/runs/{job_id}/trace resolves it directly —
+                    # no separate job→run_id mapping. run_id == job_id == thread_id for serve runs.
+                    thread_id=job.id,
                 ),
                 timeout=timeout_seconds,
             )

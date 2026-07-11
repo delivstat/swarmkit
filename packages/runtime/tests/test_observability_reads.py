@@ -5,11 +5,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
+from swarmkit_runtime._workspace_runtime import RunResult
 from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.server import create_app
+from swarmkit_runtime.server._jobs import Job, execute_job
 from swarmkit_runtime.server._routes_introspection import (
     _audit_event_to_dict,
     _span_to_dict,
@@ -100,3 +104,18 @@ def test_trace_endpoint_serves_a_persisted_run_trace() -> None:
             assert step["children"][0]["name"].startswith("tool.call")
     finally:
         (EXAMPLE_WS / ".swarmkit" / "traces" / "ui-test-run.json").unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_execute_job_keys_the_run_by_job_id() -> None:
+    """execute_job passes thread_id=job.id to rt.run, so the run's trace is keyed by the job id and
+    the run-detail UI can fetch GET /observability/runs/{job_id}/trace directly — no separate
+    job→run_id mapping. (An end-to-end run can't be tested here — it needs a live model.)"""
+    job = Job(id="job-xyz", topology="hello", status="pending", input="hi")
+    rt = MagicMock()
+    rt.run = AsyncMock(return_value=RunResult(output="ok"))
+
+    await execute_job(job, rt, max_steps=5)
+
+    rt.run.assert_awaited_once()
+    assert rt.run.await_args.kwargs["thread_id"] == "job-xyz"
