@@ -1,0 +1,6 @@
+{"type":"step_start","sessionID":"ses_oc1","part":{"type":"step-start"}}
+{"type":"tool","sessionID":"ses_oc1","part":{"type":"tool","tool":"write","state":{"status":"completed","input":{"content":"HELLO","filePath":"/tmp/x.txt"},"output":"Wrote file successfully."}}}
+{"type":"step_finish","sessionID":"ses_oc1","part":{"type":"step-finish","reason":"tool-calls","tokens":{"total":7625,"input":7612,"output":13},"cost":0}}
+{"type":"step_start","sessionID":"ses_oc1","part":{"type":"step-start"}}
+{"type":"text","sessionID":"ses_oc1","part":{"type":"text","text":"Done - created the file with HELLO."}}
+{"type":"step_finish","sessionID":"ses_oc1","part":{"type":"step-finish","reason":"stop","tokens":{"total":7631,"input":7618,"output":0},"cost":0}}

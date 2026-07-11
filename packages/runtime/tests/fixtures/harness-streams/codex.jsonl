@@ -1,0 +1,5 @@
+{"id":"0","msg":{"type":"session_configured","session_id":"codex-sess-1"}}
+{"id":"1","msg":{"type":"agent_message","message":"I'll update the config."}}
+{"id":"2","msg":{"type":"exec_command_begin","command":["bash","-lc","sed -i 's/DEBUG=0/DEBUG=1/' config.env"]}}
+{"id":"3","msg":{"type":"token_count","input_tokens":1400,"output_tokens":80}}
+{"id":"4","msg":{"type":"task_complete","last_agent_message":"Set DEBUG=1 in config.env."}}

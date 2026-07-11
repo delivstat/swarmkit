@@ -1,0 +1,66 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: gemini-cli
+  name: Gemini CLI
+  description: >-
+    EXPERIMENTAL (not yet verified against a real binary). Google's Gemini CLI, run
+    non-interactively with streaming JSON output. The event map reflects Gemini CLI's line-delimited
+    event stream; verify and tune the field paths against your installed version before relying on it.
+spec:
+  launch:
+    command:
+      - gemini
+      - --output-format
+      - stream-json
+      - --prompt
+      - "{task.statement}"
+    optional_args:
+      - when: config.model
+        args: [--model, "{config.model}"]
+  auth:
+    default: subscription
+    modes:
+      api_key:
+        env:
+          GEMINI_API_KEY: "{credential.model_provider}"
+      subscription:
+        credential_paths:
+          - ~/.gemini
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: session }
+      set: { session_id: "$.sessionId" }
+    - when: { type: content }
+      emit:
+        - event: message
+          with: { role: assistant, text: "$.text" }
+    - when: { type: tool_call }
+      emit:
+        - event: tool_call
+          with: { tool: "$.name", input_summary: "$.args" }
+    - when: { type: usage }
+      emit:
+        - event: usage
+          with:
+            input_tokens: "$.promptTokenCount"
+            output_tokens: "$.candidatesTokenCount"
+    - when: { type: result }
+      emit:
+        - event: result
+          with:
+            status: { from: "$.status", map: status_map }
+            output: "$.response"
+  status_map:
+    success: success
+    error: failure
+    _default: failure
+  success_when: { exit_code: 0 }
+  on_unanswerable: abort
+  telemetry_grade: normalized
+  artifacts: { profile: files }
+provenance:
+  authored_by: human
+  version: 0.1.0
+  vendor: google

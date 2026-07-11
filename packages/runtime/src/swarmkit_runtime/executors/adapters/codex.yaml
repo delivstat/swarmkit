@@ -1,0 +1,65 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: codex
+  name: OpenAI Codex CLI
+  description: >-
+    EXPERIMENTAL (not yet verified against a real binary). OpenAI's Codex coding CLI, run headless
+    with `codex exec --json`. The event map reflects Codex's `msg`-enveloped JSONL protocol; verify
+    and tune the field paths against your installed Codex version before relying on it.
+spec:
+  launch:
+    command:
+      - codex
+      - exec
+      - --json
+      - "{task.statement}"
+    optional_args:
+      - when: config.model
+        args: [--model, "{config.model}"]
+  auth:
+    default: subscription
+    modes:
+      api_key:
+        env:
+          OPENAI_API_KEY: "{credential.model_provider}"
+      subscription:
+        credential_paths:
+          - ~/.codex
+  stream:
+    format: jsonl
+  event_map:
+    - when: { msg.type: session_configured }
+      set: { session_id: "$.msg.session_id" }
+    - when: { msg.type: agent_message }
+      emit:
+        - event: message
+          with: { role: assistant, text: "$.msg.message" }
+    - when: { msg.type: exec_command_begin }
+      emit:
+        - event: tool_call
+          with: { tool: exec, input_summary: "$.msg.command" }
+    - when: { msg.type: token_count }
+      emit:
+        - event: usage
+          with:
+            input_tokens: "$.msg.input_tokens"
+            output_tokens: "$.msg.output_tokens"
+    - when: { msg.type: task_complete }
+      emit:
+        - event: result
+          with: { status: success, output: "$.msg.last_agent_message" }
+    - when: { msg.type: task_error }
+      emit:
+        - event: result
+          with: { status: failure, output: "$.msg.message" }
+  resume:
+    arg: [--session, "{resume.token}"]
+  success_when: { exit_code: 0 }
+  on_unanswerable: abort
+  telemetry_grade: normalized
+  artifacts: { profile: files }
+provenance:
+  authored_by: human
+  version: 0.1.0
+  vendor: openai
