@@ -135,6 +135,9 @@ def _run_trace_to_span(trace: Any, workspace_id: str) -> Any:
                     "swarmkit.model.tokens_in": step.input_tokens,
                     "swarmkit.model.tokens_out": step.output_tokens,
                     "swarmkit.model.cost_usd": step.cost_usd,
+                    # executor.kind/ref so a model and a harness node query uniformly (§5).
+                    "swarmkit.executor.kind": getattr(step, "executor_kind", "model"),
+                    "swarmkit.executor.ref": getattr(step, "executor_ref", ""),
                 },
                 error=step.error,
                 children=tuple(tools),
