@@ -1,8 +1,16 @@
 ---
-status: draft
+status: done
 ---
 
 # Executor P2 — implementation plan (harness executor, end to end)
+
+> **Status: COMPLETE.** All 8 PRs merged (runtime 1.61.0 → 1.69.0):
+> #527 ExecEvent contract · #528 compiler dispatch · #529 worktree sandbox ·
+> #530 budget/liveness · #531 claude-code adapter · #532 harness node execution ·
+> #533 observability · #534 cockpit display. A `harness` node runs sandboxed, governed,
+> budgeted, deny/abort-safe, and is observed (cost/trace/audit) identically to a `model`
+> node. P3 (relay + input-escalation, container sandbox + egress proxy, `codex` adapter,
+> Tier-2 declarative adapters, resume-with-feedback) is not started.
 
 Decomposes RFC §12 **P2** (`executor-abstraction.md`) into codebase-grounded PRs. P1 (schema →
 registry → resolution threading) is done: every `ResolvedAgent` carries a `ResolvedExecutor`, all
