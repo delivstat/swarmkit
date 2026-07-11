@@ -80,3 +80,17 @@ def test_trigger_valid_fixtures(fixture: Path) -> None:
 def test_trigger_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("trigger", _load_yaml(fixture))
+
+
+def test_workspace_reference_fields_carry_x_swarmkit_ref() -> None:
+    """Reference fields (agent→archetype, agent→skills, archetype→skills) are annotated with
+    x-swarmkit-ref so a UI can render them as workspace-populated pickers instead of free text.
+    A non-validating hint (ignored by validators + codegen); pinned so it isn't dropped."""
+    topo = get_schema("topology")
+    agent = topo["$defs"]["agent"]["properties"]
+    assert agent["archetype"]["x-swarmkit-ref"] == "archetype"
+    assert agent["skills"]["x-swarmkit-ref"] == "skill"
+    assert agent["skills_additional"]["x-swarmkit-ref"] == "skill"
+
+    archetype = get_schema("archetype")
+    assert archetype["$defs"]["defaults"]["properties"]["skills"]["x-swarmkit-ref"] == "skill"

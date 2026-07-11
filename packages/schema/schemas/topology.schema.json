@@ -80,17 +80,19 @@
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
         "role": { "enum": ["root", "leader", "worker"] },
-        "archetype": { "$ref": "#/$defs/identifier" },
+        "archetype": { "$ref": "#/$defs/identifier", "x-swarmkit-ref": "archetype" },
         "model": { "$ref": "#/$defs/model" },
         "prompt": { "$ref": "#/$defs/prompt" },
         "skills": {
           "type": "array",
           "items": { "$ref": "#/$defs/identifier" },
+          "x-swarmkit-ref": "skill",
           "description": "Skill IDs (design §6.1). Replaces the archetype's skill list when present."
         },
         "skills_additional": {
           "type": "array",
           "items": { "$ref": "#/$defs/identifier" },
+          "x-swarmkit-ref": "skill",
           "description": "Skills merged onto the archetype defaults (design §6.6)."
         },
         "iam": { "$ref": "#/$defs/iam" },

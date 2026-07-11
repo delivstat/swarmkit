@@ -3011,7 +3011,7 @@ provides-extras = ["serve", "dev"]
 
 [[package]]
 name = "swarmkit-schema"
-version = "1.10.0"
+version = "1.11.0"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },

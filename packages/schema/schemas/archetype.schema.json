@@ -44,7 +44,8 @@
         "prompt": { "$ref": "#/$defs/prompt" },
         "skills": {
           "type": "array",
-          "items": { "$ref": "#/$defs/skill_entry" }
+          "items": { "$ref": "#/$defs/skill_entry" },
+          "x-swarmkit-ref": "skill"
         },
         "iam": { "$ref": "#/$defs/iam" },
         "output_schema": {
