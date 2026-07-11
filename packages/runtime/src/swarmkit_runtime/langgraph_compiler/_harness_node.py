@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, Any
 
 from swarmkit_runtime.executors import (
     BudgetEnvelope,
-    ClaudeCodeExecutor,
     DeclarativeExecutor,
     ExecApprovalRequested,
     ExecInputRequested,
@@ -62,22 +61,17 @@ def _build_executor(resolved: ResolvedExecutor, workspace_root: Path | None) -> 
     declarative adapters (bundled + the workspace's ``adapters/``). ``model`` never reaches here —
     the compiler runs it via its own node.
 
-    A declarative ``adapter.yaml`` is the path for every harness. ``claude-code`` retains a Tier-1
-    Python fallback until it ships as a bundled YAML (P3 PR4); an otherwise-unknown kind raises.
+    Every harness is a declarative ``adapter.yaml`` (bundled or workspace-local) — no harness is
+    special-cased in code. An otherwise-unknown kind raises.
     """
     specs = load_adapter_specs(workspace_root)
     spec = specs.get(resolved.kind)
-    if spec is not None:
-        credential = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CODEX_API_KEY")
-        return DeclarativeExecutor(
-            spec, config=resolved.config, model_provider_credential=credential
+    if spec is None:
+        raise ExecutorError(
+            f"no adapter for executor kind {resolved.kind!r} (known adapters: {sorted(specs)})"
         )
-    if resolved.kind == "claude-code":
-        return ClaudeCodeExecutor.from_config(resolved.config)
-    raise ExecutorError(
-        f"no runnable adapter for executor kind {resolved.kind!r} "
-        f"(known declarative adapters: {sorted(specs)})"
-    )
+    credential = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CODEX_API_KEY")
+    return DeclarativeExecutor(spec, config=resolved.config, model_provider_credential=credential)
 
 
 def _budget_from_config(config: dict[str, Any]) -> BudgetEnvelope:

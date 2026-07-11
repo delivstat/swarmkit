@@ -468,7 +468,7 @@ async def test_harness_executor_dispatches_to_runner() -> None:
         {"input": "test", "messages": [], "agent_results": {}, "current_agent": "", "output": ""}
     )
     # graceful failure result, not an exception; the model provider is untouched.
-    assert "no runnable adapter" in result["output"]
+    assert "no adapter for executor kind" in result["output"]
     assert len(mock_model.calls) == 0
     assert any(e.event_type == "executor.failed" for e in mock_gov.events)
 

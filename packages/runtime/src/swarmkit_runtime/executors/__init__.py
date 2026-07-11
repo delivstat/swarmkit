@@ -14,7 +14,6 @@
 
 from swarmkit_runtime.executors._adapter_spec import AdapterSpec, parse_adapter_spec
 from swarmkit_runtime.executors._budget import enforce_budget
-from swarmkit_runtime.executors._claude_code import ClaudeCodeExecutor
 from swarmkit_runtime.executors._declarative import DeclarativeExecutor, load_adapter_specs
 from swarmkit_runtime.executors._event_map import AdapterInterpreter, build_command
 from swarmkit_runtime.executors._events import (
@@ -48,7 +47,6 @@ __all__ = [
     "AdapterInterpreter",
     "AdapterSpec",
     "BudgetEnvelope",
-    "ClaudeCodeExecutor",
     "DeclarativeExecutor",
     "ExecApprovalRequested",
     "ExecApprovalResponse",

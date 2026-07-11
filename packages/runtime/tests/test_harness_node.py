@@ -239,4 +239,4 @@ async def test_unrunnable_kind_without_injected_executor(tmp_path: Path) -> None
     agent = dataclasses.replace(_agent(), executor=ResolvedExecutor(kind="mystery"))
     gov = MockGovernanceProvider()
     result = await run_harness_node(agent, _state(), gov, workspace_root=tmp_path)
-    assert "no runnable adapter" in result["output"]
+    assert "no adapter for executor kind" in result["output"]
