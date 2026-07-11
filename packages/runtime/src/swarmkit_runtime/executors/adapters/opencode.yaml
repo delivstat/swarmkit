@@ -1,0 +1,72 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: opencode
+  name: opencode
+  description: >-
+    The opencode agentic coding CLI, run headless with `opencode run --format json`. Verified
+    against opencode 1.17.x — the event map reflects its real `part`-enveloped JSONL stream
+    (step_start / text / tool / step_finish).
+spec:
+  launch:
+    command:
+      - opencode
+      - run
+      - --format
+      - json
+      - "{task.statement}"
+    optional_args:
+      - when: config.model
+        args: [--model, "{config.model}"]
+  auth:
+    default: subscription
+    modes:
+      api_key:
+        env:
+          ANTHROPIC_API_KEY: "{credential.model_provider}"
+      subscription:
+        credential_paths:
+          - ~/.local/share/opencode
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: step_start }
+      set: { session_id: "$.sessionID" }
+    - when: { type: text }
+      emit:
+        - event: message
+          with: { role: assistant, text: "$.part.text" }
+    - when: { type: tool }
+      emit:
+        - event: tool_call
+          with:
+            tool: "$.part.tool"
+            status: "$.part.state.status"
+            input_summary: "$.part.state.input"
+    - when: { type: step_finish }
+      emit:
+        - event: usage
+          with:
+            input_tokens: "$.part.tokens.input"
+            output_tokens: "$.part.tokens.output"
+            cost_usd: "$.part.cost"
+    # A step_finish with reason `stop` is the terminal step; `error` is a hard failure. Intermediate
+    # steps (reason `tool-calls`) emit usage but no result. Ordered rules + last-result-wins.
+    - when: { type: step_finish, part.reason: stop }
+      emit:
+        - event: result
+          with: { status: success }
+    - when: { type: step_finish, part.reason: error }
+      emit:
+        - event: result
+          with: { status: failure }
+  resume:
+    arg: [--session, "{resume.token}"]
+  success_when: { exit_code: 0 }
+  on_unanswerable: abort
+  telemetry_grade: normalized
+  artifacts: { profile: files }
+provenance:
+  authored_by: human
+  version: 0.2.0
+  vendor: opencode

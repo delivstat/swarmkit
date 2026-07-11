@@ -1,0 +1,5 @@
+{"type":"session","sessionId":"gem-sess-1"}
+{"type":"content","text":"Refactoring the handler."}
+{"type":"tool_call","name":"write_file","args":{"path":"handler.py"}}
+{"type":"usage","promptTokenCount":1100,"candidatesTokenCount":95}
+{"type":"result","status":"success","response":"Refactored handler.py."}
