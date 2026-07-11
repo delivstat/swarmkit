@@ -5,9 +5,11 @@ See ``design/details/langgraph-compiler.md``.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import pytest
+from swarmkit_runtime.executors import ExecutorError, ResolvedExecutor
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
 from swarmkit_runtime.langgraph_compiler._output_gov import _validate_and_correct
@@ -412,6 +414,67 @@ async def test_full_trust_no_warnings() -> None:
         e for e in mock_gov.events if e.event_type in ("trust.denied", "trust.degraded")
     ]
     assert len(trust_events) == 0
+
+
+# ---- executor dispatch (executor-abstraction §5, P2) ---------------------
+
+
+def _with_root_executor(topo: ResolvedTopology, kind: str) -> ResolvedTopology:
+    """Return a copy of ``topo`` whose root agent declares executor ``kind``."""
+    new_root = dataclasses.replace(topo.root, executor=ResolvedExecutor(kind=kind))
+    return dataclasses.replace(topo, root=new_root)
+
+
+@pytest.mark.asyncio
+async def test_model_executor_is_the_default_path() -> None:
+    """The default (`model`) executor runs the tool-loop unchanged — the seam is transparent."""
+    topo = _simple_topology()
+    assert topo.root.executor.kind == "model"
+    mock_model = MockModelProvider(
+        default_response=CompletionResponse(
+            content=(ContentBlock(type="text", text="done"),),
+            stop_reason="end_turn",
+            usage=Usage(),
+        )
+    )
+    mock_gov = MockGovernanceProvider()
+    graph = compile_topology(topo, model_provider=mock_model, governance=mock_gov)
+    result = await graph.ainvoke(
+        {"input": "test", "messages": [], "agent_results": {}, "current_agent": "", "output": ""}
+    )
+    assert result["output"] == "done"
+    assert len(mock_model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_harness_executor_dispatches_to_runner_and_stubs_out() -> None:
+    """A non-`model` executor routes to the harness runner, which is a guarded stub until P2 PR6.
+
+    Governance/trust gates still run first (they precede dispatch); the model is never called.
+    """
+    topo = _with_root_executor(_simple_topology(), "harness")
+    mock_model = MockModelProvider(
+        default_response=CompletionResponse(
+            content=(ContentBlock(type="text", text="should not run"),),
+            stop_reason="end_turn",
+            usage=Usage(),
+        )
+    )
+    mock_gov = MockGovernanceProvider()
+    graph = compile_topology(topo, model_provider=mock_model, governance=mock_gov)
+
+    with pytest.raises(ExecutorError, match="harness execution not yet available"):
+        await graph.ainvoke(
+            {
+                "input": "test",
+                "messages": [],
+                "agent_results": {},
+                "current_agent": "",
+                "output": "",
+            }
+        )
+    # dispatch happens after the model tool-loop would begin — the model provider is untouched.
+    assert len(mock_model.calls) == 0
 
 
 # ---- output governance (auto-correction) ---------------------------------
