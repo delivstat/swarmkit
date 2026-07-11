@@ -14,6 +14,7 @@ from typing import Any, Literal
 from swarmkit_schema.models import SwarmKitTopology, SwarmKitTrigger, SwarmKitWorkspace
 
 from swarmkit_runtime.archetypes import ResolvedArchetype
+from swarmkit_runtime.executors import ResolvedExecutor
 from swarmkit_runtime.skills import ResolvedSkill
 
 AgentRole = Literal["root", "leader", "worker"]
@@ -43,6 +44,9 @@ class ResolvedAgent:
     children: tuple[ResolvedAgent, ...] = field(default_factory=tuple)
     depends_on: tuple[str, ...] = field(default_factory=tuple)
     source_archetype: str | None = None
+    # How this agent's node executes (design executor-abstraction). From its archetype's executor
+    # block; defaults to `model` (today's behavior). The compiler dispatches on `executor.kind`.
+    executor: ResolvedExecutor = field(default_factory=lambda: ResolvedExecutor(kind="model"))
 
 
 @dataclass(frozen=True)

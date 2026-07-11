@@ -16,14 +16,14 @@ Design reference: ``design/details/topology-loader.md`` phase 3b.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from pydantic import ValidationError as PydanticValidationError
 from swarmkit_schema.models import SwarmKitArchetype
 
 from swarmkit_runtime.errors import ResolutionError
-from swarmkit_runtime.executors import ExecutorError, default_executor_registry
+from swarmkit_runtime.executors import ExecutorError, ResolvedExecutor, default_executor_registry
 from swarmkit_runtime.skills import ResolvedSkill
 from swarmkit_runtime.workspace import DiscoveredArtifact
 
@@ -40,6 +40,9 @@ class ResolvedArchetype:
     id: str
     raw: SwarmKitArchetype
     source_path: Path
+    # The resolved node-execution seam (design executor-abstraction). Defaults to `model` (today's
+    # behavior) when no `executor` block is declared.
+    executor: ResolvedExecutor = field(default_factory=lambda: ResolvedExecutor(kind="model"))
 
 
 def build_archetype_registry(
@@ -104,9 +107,10 @@ def build_archetype_registry(
 
         # Resolve the executor block (absent ⇒ the default `model` executor). Fail fast on an
         # unknown kind or config the executor rejects (design executor-abstraction §4.2).
+        resolved_executor = ResolvedExecutor(kind="model")
         if model.executor is not None:
             try:
-                executor_registry.resolve(model.executor)
+                resolved_executor = executor_registry.resolve(model.executor)
             except ExecutorError as exc:
                 errors.append(
                     ResolutionError(
@@ -123,7 +127,9 @@ def build_archetype_registry(
 
         # Even with skill errors, keep the archetype in the registry so
         # later phases can produce more useful cross-references.
-        registry[arch_id] = ResolvedArchetype(id=arch_id, raw=model, source_path=artifact.path)
+        registry[arch_id] = ResolvedArchetype(
+            id=arch_id, raw=model, source_path=artifact.path, executor=resolved_executor
+        )
 
     return registry, errors
 

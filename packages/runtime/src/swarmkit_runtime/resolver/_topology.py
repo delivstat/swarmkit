@@ -18,6 +18,7 @@ from swarmkit_schema.models import SwarmKitTopology
 
 from swarmkit_runtime.archetypes import ResolvedArchetype
 from swarmkit_runtime.errors import ResolutionError, yaml_pointer
+from swarmkit_runtime.executors import ResolvedExecutor
 from swarmkit_runtime.skills import ResolvedSkill
 from swarmkit_runtime.workspace import DiscoveredArtifact
 
@@ -234,6 +235,11 @@ def _resolve_agent(
             children=tuple(resolved_children),
             depends_on=depends_on,
             source_archetype=str(archetype_id) if archetype_id else None,
+            # The archetype's resolved executor (design executor-abstraction); `model` default when
+            # the agent has no archetype. Per-node overrides are a later refinement (§4.2 rule 4).
+            executor=(
+                archetype.executor if archetype is not None else ResolvedExecutor(kind="model")
+            ),
         ),
         errors,
     )
