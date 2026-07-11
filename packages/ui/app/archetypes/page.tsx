@@ -1,9 +1,13 @@
 "use client";
 
 import { Card, CardTitle } from "@/components/card";
+import { SchemaForm } from "@/components/schema-form";
 import { api } from "@/lib/api";
+import type { JsonSchema } from "@/lib/schema-form";
 import type { ArchetypeDetail } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
+import { useRefOptions } from "@/lib/use-ref-options";
+import { dump, load } from "js-yaml";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -43,6 +47,27 @@ function ArchetypeEditor({
 	const [isNew] = useState(!archetypeId);
 	const [newName, setNewName] = useState("");
 	const [detail, setDetail] = useState<ArchetypeDetail | null>(null);
+	// Schema-driven form (with x-swarmkit-ref skill pickers) vs raw YAML.
+	const [mode, setMode] = useState<"form" | "yaml">("form");
+	const [obj, setObj] = useState<Record<string, unknown>>({});
+	const [schema, setSchema] = useState<JsonSchema | null>(null);
+	const refOptions = useRefOptions();
+
+	const setBoth = (text: string) => {
+		setYaml(text);
+		try {
+			setObj((load(text) as Record<string, unknown>) ?? {});
+		} catch {
+			// leave obj as-is on an unparseable draft
+		}
+	};
+
+	useEffect(() => {
+		api
+			.schema("archetype")
+			.then((s) => setSchema(s as JsonSchema))
+			.catch(() => setSchema(null));
+	}, []);
 
 	useEffect(() => {
 		if (archetypeId) {
@@ -56,12 +81,12 @@ function ArchetypeEditor({
 			])
 				.then(([d, yamlData]) => {
 					setDetail(d);
-					setYaml(yamlData.yaml ?? "");
+					setBoth(yamlData.yaml ?? "");
 					setLoading(false);
 				})
 				.catch(() => setLoading(false));
 		} else {
-			setYaml(NEW_ARCHETYPE_TEMPLATE);
+			setBoth(NEW_ARCHETYPE_TEMPLATE);
 			setLoading(false);
 		}
 	}, [archetypeId]);
@@ -80,7 +105,14 @@ function ArchetypeEditor({
 		setSaving(true);
 		setError(null);
 		try {
-			const finalYaml = isNew ? yaml.replace("NAME", id) : yaml;
+			let finalYaml: string;
+			if (mode === "form") {
+				const meta =
+					(obj.metadata as Record<string, unknown> | undefined) ?? {};
+				finalYaml = dump(isNew ? { ...obj, metadata: { ...meta, id } } : obj);
+			} else {
+				finalYaml = isNew ? yaml.replace("NAME", id) : yaml;
+			}
 			const result = await api.saveArchetype(id, finalYaml);
 			if (result.valid) {
 				await api.reloadWorkspace();
@@ -132,8 +164,49 @@ function ArchetypeEditor({
 					</div>
 				)}
 
+				<div className="mb-3 flex gap-1 text-xs">
+					{(["form", "yaml"] as const).map((m) => (
+						<button
+							key={m}
+							type="button"
+							disabled={m === "form" && !schema}
+							onClick={() => {
+								setError(null);
+								if (m === "yaml") {
+									setYaml(dump(obj));
+									setMode("yaml");
+								} else {
+									try {
+										setObj((load(yaml) as Record<string, unknown>) ?? {});
+										setMode("form");
+									} catch {
+										setError("YAML is invalid — fix it before using the form");
+									}
+								}
+							}}
+							className="rounded px-2 py-1 font-medium disabled:opacity-40"
+							style={{
+								background: mode === m ? "var(--accent)" : "transparent",
+								color: mode === m ? "var(--accent-fg)" : "var(--fg-muted)",
+								border: "1px solid var(--border)",
+							}}
+						>
+							{m === "form" ? "Form" : "YAML"}
+						</button>
+					))}
+				</div>
+
 				{loading ? (
 					<p className="text-sm opacity-50">Loading...</p>
+				) : mode === "form" && schema ? (
+					<div className="mb-3 max-h-[50vh] overflow-y-auto pr-1">
+						<SchemaForm
+							schema={schema}
+							value={obj}
+							onChange={setObj}
+							options={refOptions}
+						/>
+					</div>
 				) : (
 					<textarea
 						className="w-full font-mono text-xs p-3 rounded border resize-none mb-3"
@@ -144,7 +217,7 @@ function ArchetypeEditor({
 							minHeight: "350px",
 						}}
 						value={yaml}
-						onChange={(e) => setYaml(e.target.value)}
+						onChange={(e) => setBoth(e.target.value)}
 						spellCheck={false}
 					/>
 				)}

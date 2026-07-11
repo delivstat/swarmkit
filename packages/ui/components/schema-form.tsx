@@ -2,11 +2,16 @@
 
 import {
 	type JsonSchema,
+	type RefOptions,
 	fieldKind,
 	objectFields,
+	refType,
 	resolveRef,
 } from "@/lib/schema-form";
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
+
+// Workspace artifact ids by type (skill/archetype/topology), provided to reference-picker fields.
+const RefOptionsContext = createContext<RefOptions>({});
 
 const inputStyle = {
 	background: "var(--bg)",
@@ -14,6 +19,88 @@ const inputStyle = {
 	color: "var(--fg)",
 };
 const inputClass = "w-full px-3 py-2 rounded border text-sm";
+
+/** A single reference picker (dropdown of workspace ids for `type`). */
+function RefSelect({
+	type,
+	value,
+	onChange,
+}: {
+	type: string;
+	value: string;
+	onChange: (v: string) => void;
+}) {
+	const options = useContext(RefOptionsContext)[type] ?? [];
+	return (
+		<select
+			className={inputClass}
+			style={inputStyle}
+			value={value}
+			onChange={(e) => onChange(e.target.value)}
+		>
+			<option value="" />
+			{options.map((o) => (
+				<option key={o} value={o}>
+					{o}
+				</option>
+			))}
+		</select>
+	);
+}
+
+/** A multi reference picker: selected ids as removable chips + a dropdown to add unselected ones. */
+function RefChips({
+	type,
+	value,
+	onChange,
+}: {
+	type: string;
+	value: string[];
+	onChange: (v: string[]) => void;
+}) {
+	const options = useContext(RefOptionsContext)[type] ?? [];
+	const available = options.filter((o) => !value.includes(o));
+	return (
+		<div>
+			<div className="mb-1 flex flex-wrap gap-1">
+				{value.map((v) => (
+					<span
+						key={v}
+						className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
+						style={{ borderColor: "var(--border)" }}
+					>
+						{v}
+						<button
+							type="button"
+							onClick={() => onChange(value.filter((x) => x !== v))}
+							style={{ color: "var(--fg-muted)" }}
+						>
+							×
+						</button>
+					</span>
+				))}
+				{value.length === 0 ? (
+					<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+						none selected
+					</span>
+				) : null}
+			</div>
+			<select
+				className={inputClass}
+				style={inputStyle}
+				value=""
+				onChange={(e) => e.target.value && onChange([...value, e.target.value])}
+			>
+				<option value="">+ add {type}…</option>
+				{available.map((o) => (
+					<option key={o} value={o}>
+						{o}
+					</option>
+				))}
+			</select>
+		</div>
+	);
+}
 
 /** A labeled field row; the schema `description` is the tooltip (the whole point of driving the
  * form from the schema). */
@@ -208,6 +295,19 @@ function Field({
 	value: unknown;
 	onChange: (v: unknown) => void;
 }) {
+	// Workspace reference (x-swarmkit-ref): a picker over existing artifacts, not free text.
+	const ref = refType(schema);
+	if (ref) {
+		return schema.type === "array" ? (
+			<RefChips
+				type={ref}
+				value={(value as string[]) ?? []}
+				onChange={onChange}
+			/>
+		) : (
+			<RefSelect type={ref} value={String(value ?? "")} onChange={onChange} />
+		);
+	}
 	switch (fieldKind(schema, name)) {
 		case "const":
 			return (
@@ -301,17 +401,22 @@ export function SchemaForm({
 	schema,
 	value,
 	onChange,
+	options,
 }: {
 	schema: JsonSchema;
 	value: Record<string, unknown>;
 	onChange: (v: Record<string, unknown>) => void;
+	/** Workspace ids by artifact type — populates x-swarmkit-ref pickers. */
+	options?: RefOptions;
 }) {
 	return (
-		<ObjectFields
-			root={schema}
-			schema={schema}
-			value={value}
-			onChange={onChange}
-		/>
+		<RefOptionsContext.Provider value={options ?? {}}>
+			<ObjectFields
+				root={schema}
+				schema={schema}
+				value={value}
+				onChange={onChange}
+			/>
+		</RefOptionsContext.Provider>
 	);
 }
