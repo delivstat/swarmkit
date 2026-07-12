@@ -8,6 +8,7 @@ import type {
 	JobListItem,
 	JobResponse,
 	JobUsage,
+	ReviewGate,
 	SendMessageResponse,
 	SkillDetail,
 	SkillItem,
@@ -102,6 +103,12 @@ export const api = {
 		}),
 	canaryRollback: (topology: string) =>
 		post<{ rolled_back: boolean }>(`/canary/${topology}/rollback`),
+
+	reviewPending: () => get<ReviewGate[]>("/review"),
+	reviewApprove: (id: string) => post<ReviewGate>(`/review/${id}/approve`),
+	reviewReject: (id: string) => post<ReviewGate>(`/review/${id}/reject`),
+	reviewAnswer: (id: string, answer: string) =>
+		post<ReviewGate>(`/review/${id}/answer`, { answer }),
 
 	conversations: () => get<ConversationListItem[]>("/conversations"),
 	conversation: (id: string) => get<ConversationDetail>(`/conversations/${id}`),
