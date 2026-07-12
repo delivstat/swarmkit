@@ -79,19 +79,31 @@ approved design + workspace conventions).
   the harness node (the lead's model); the `input_escalation` / `human_required_patterns` archetype
   fields; the `answer` adapter template; memoization wiring.
 
+## Scope decision (owner, this session): LEAN first
+
+Build **classifier → human inbox → resume-with-answer → memoize** first. **Defer lead-node
+auto-answer** (PR3 below) until the punt-back case proves common enough to justify the
+compiler-integration + LLM cost — a human answers the question for now. This proves the whole
+pipeline (detect → answer → deliver → not-ask-twice) with the smaller build; the lead node is a
+later optimization that removes the human from the common case.
+
 ## PR slices (dependency-ordered)
 
+**Lean build (chosen):**
 1. **The classifier (core).** `_input_classifier.py`: pre-filters + one structured-output call →
    `input_requested{question, options, free_text_allowed}`. Pure; mock-model tested. No wiring.
 2. **Input-request handling in the harness node.** After a run with a punt-back (or a native
-   `input_requested` event): classify → route to the **human inbox** for now (bounded wait → abort) →
+   `input_requested` event): classify → route to the **human inbox** (bounded wait → abort) →
    park-resume relaunch with the answer injected (new `answer` adapter template). Reuses the relay
    loop. Memoize the Q→A into `pre_answered` for the session.
+
+**Deferred (later):**
 3. **Lead-node escalation.** Thread the parent `ResolvedAgent` + a `ModelProvider` into the harness
    node; the lead answers within a token budget; `human_required_patterns` + a decline bypass to the
-   human inbox. Lead answers audited.
+   human inbox. Lead answers audited. *(Deferred — a human answers for now.)*
 4. **Cross-run memoization + spec-quality signal.** Persist Q→A to the run record; pre-inject on
-   re-run; count recurring question classes (surface only — the fix is a workspace convention).
+   re-run; count recurring question classes. *(Session-level memoization ships in PR2; cross-run +
+   analytics deferred.)*
 
 ## Never-hang
 
