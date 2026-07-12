@@ -70,6 +70,7 @@
           "additionalProperties": { "type": "string" }
         },
         "resume": { "$ref": "#/$defs/resume" },
+        "grant": { "$ref": "#/$defs/grant" },
         "success_when": {
           "type": "object",
           "additionalProperties": false,
@@ -293,6 +294,27 @@
           "type": "array",
           "items": { "$ref": "#/$defs/template" },
           "description": "Args appended when resuming, e.g. [--resume, \"{resume.token}\"]."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "The nudge statement sent on a park-resume relaunch (substituted for {task.statement}), e.g. 'Continue — the requested permissions have been granted.'"
+        }
+      }
+    },
+    "grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How an approved capability is passed to the harness on a park-resume relaunch (RFC §6.2). The whole park-resume mechanism is data: no harness is special-cased in code.",
+      "properties": {
+        "arg": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/template" },
+          "description": "Args appended on a grant-expanding resume, e.g. [--allowedTools, \"{grant.capabilities}\"]. {grant.capabilities} is the approved capabilities joined by `separator`."
+        },
+        "separator": {
+          "type": "string",
+          "default": " ",
+          "description": "How multiple approved capabilities are joined into {grant.capabilities}."
         }
       }
     },

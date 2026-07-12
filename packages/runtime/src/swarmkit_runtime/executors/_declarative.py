@@ -17,6 +17,7 @@ import os
 import shutil
 import uuid
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -177,14 +178,30 @@ class DeclarativeExecutor(Executor):
             self._active.pop(run_id, None)
 
     async def run(
-        self, task: TaskSpec, sandbox: SandboxHandle, budget: BudgetEnvelope
+        self,
+        task: TaskSpec,
+        sandbox: SandboxHandle,
+        budget: BudgetEnvelope,
+        *,
+        resume_token: str | None = None,
+        granted: tuple[str, ...] = (),
     ) -> AsyncIterator[ExecEvent]:
         import json  # noqa: PLC0415
 
         run_id = uuid.uuid4().hex
         interp = AdapterInterpreter(self._spec)
-        ctx = _ctx(task, sandbox, budget, self._config)
-        argv = build_command(self._spec, ctx) + self._auth_args(ctx)
+        resuming = resume_token is not None
+        # On a park-resume relaunch (RFC §6.2): swap the statement for the declared nudge, and add
+        # the resume token + joined granted capabilities to the substitution context (all declared).
+        run_task = task
+        if resuming and self._spec.resume_prompt:
+            run_task = replace(task, statement=self._spec.resume_prompt)
+        ctx = _ctx(run_task, sandbox, budget, self._config)
+        if resuming:
+            ctx["resume.token"] = resume_token or ""
+            if granted:
+                ctx["grant.capabilities"] = self._spec.grant_separator.join(granted)
+        argv = build_command(self._spec, ctx, resuming=resuming) + self._auth_args(ctx)
         env = self._launch_env(ctx)
 
         yield ExecStarted(run_id=run_id, kind=self._spec.kind, ref=self._config.get("model"))

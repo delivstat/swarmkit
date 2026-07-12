@@ -37,10 +37,12 @@ def test_parses_relay_interaction_block() -> None:
     assert spec.on_unanswerable == "relay"
     assert spec.interaction_driver == "hold-stream"
     assert spec.max_approval_wait_seconds == 120
-    # a non-relay adapter (claude-code = abort) carries no interaction driver
-    default = parse_adapter_spec(yaml.safe_load(ADAPTER_YAML.read_text()))
-    assert default.on_unanswerable == "abort"
-    assert default.interaction_driver is None
+    # claude-code ships as a park-resume relay adapter (grant + resume declared in data)
+    cc = parse_adapter_spec(yaml.safe_load(ADAPTER_YAML.read_text()))
+    assert cc.on_unanswerable == "relay"
+    assert cc.interaction_driver == "park-resume"
+    assert cc.grant_arg == ("--allowedTools", "{grant.capabilities}")
+    assert cc.resume_prompt is not None
 
 
 def _run_stream() -> tuple[AdapterInterpreter, list[object]]:

@@ -65,6 +65,9 @@ if TYPE_CHECKING:
 
 # Default idle timeout (seconds): the never-hang backstop when a harness config sets none.
 _DEFAULT_IDLE_SECONDS = 120.0
+# Park-resume: cap the run → resolve → relaunch loop so a harness that keeps requesting new
+# capabilities can't spin forever (each round is a real relaunch + spend).
+_MAX_RELAY_ROUNDS = 5
 
 
 def _build_executor(resolved: ResolvedExecutor, workspace_root: Path | None) -> Executor:
@@ -155,6 +158,7 @@ class _RelayCtx:
     and an out-of-grant request aborts (unchanged)."""
 
     on_unanswerable: str = "abort"
+    driver_mode: str | None = None  # the adapter's interaction.driver (e.g. "park-resume")
     driver: InteractionDriver = field(default_factory=NoInteractionDriver)
     review_queue: ReviewQueue | None = None
     max_wait_seconds: float | None = None
@@ -169,14 +173,17 @@ def _relay_ctx(
 ) -> _RelayCtx:
     """Assemble the relay context from the adapter spec + injected (test) overrides."""
     on_unanswerable = "abort"
+    driver_mode: str | None = None
     max_wait: float | None = None
     if root is not None:
         spec = load_adapter_specs(root).get(agent.executor.kind)
         if spec is not None:
             on_unanswerable = spec.on_unanswerable
+            driver_mode = spec.interaction_driver
             max_wait = spec.max_approval_wait_seconds
     return _RelayCtx(
         on_unanswerable=on_unanswerable,
+        driver_mode=driver_mode,
         driver=driver if driver is not None else NoInteractionDriver(),
         review_queue=review_queue
         if review_queue is not None
@@ -340,62 +347,68 @@ async def _execute(  # noqa: PLR0912, PLR0915
 
             await _record(governance, "executor.started", agent_id, {"kind": kind})
 
+            park_resume = (
+                relay.on_unanswerable == "relay"
+                and relay.driver_mode == "park-resume"
+                and relay.review_queue is not None
+            )
             terminal: ExecResult | None = None
-            guarded = enforce_budget(runner.run(task, sandbox, budget), budget, cancel=_cancel)
-            async for event in guarded:
-                if isinstance(event, ExecStarted):
-                    holder["run_id"] = event.run_id
-                elif isinstance(event, ExecUsage):
-                    meter.add_usage(event)
-                elif isinstance(event, ExecToolCall):
-                    meter.tool_calls.append(
-                        ToolCall(tool_name=event.tool, result_length=len(event.input_summary))
-                    )
-                elif isinstance(event, ExecApprovalRequested):
-                    # relay (§6.2): pause, resolve via policy/inbox, feed the decision back.
-                    # Requires a driver that supports bidirectional control; otherwise abort.
-                    if (
-                        relay.on_unanswerable == "relay"
-                        and relay.driver.supports_relay
-                        and relay.review_queue is not None
-                    ):
-                        decision = await resolve_relay(
-                            event,
-                            agent_id=agent_id,
-                            topology_id=relay.topology_id,
-                            governance=governance,
-                            review_queue=relay.review_queue,
-                            max_wait_seconds=relay.max_wait_seconds,
+            resume_token: str | None = None
+            granted: list[str] = []
+            rounds = 0
+            while True:
+                round_denials: list[ExecApprovalRequested] = []
+                aborted = False
+                stream = runner.run(
+                    task, sandbox, budget, resume_token=resume_token, granted=tuple(granted)
+                )
+                async for event in enforce_budget(stream, budget, cancel=_cancel):
+                    if isinstance(event, ExecStarted):
+                        holder["run_id"] = event.run_id
+                    elif isinstance(event, ExecUsage):
+                        meter.add_usage(event)
+                    elif isinstance(event, ExecToolCall):
+                        meter.tool_calls.append(
+                            ToolCall(tool_name=event.tool, result_length=len(event.input_summary))
                         )
-                        await relay.driver.respond(event, granted=decision.granted)
-                        if decision.granted:
-                            continue  # the harness proceeds; keep consuming the stream
+                    elif isinstance(event, ExecApprovalRequested):
+                        if park_resume:
+                            # collect; resolve after the stream, then relaunch with the grant.
+                            round_denials.append(event)
+                            continue
+                        # no relay driver: deny / abort — never hang.
                         await _cancel()
                         terminal = ExecResult(
                             status="needs_approval",
-                            exit_metadata={
-                                "denied": _interaction_summary(event),
-                                "responder": decision.responder,
-                            },
+                            exit_metadata={"denied": _interaction_summary(event)},
                         )
+                        aborted = True
                         break
-                    # deny / abort: no relay, no hang — terminate needs_approval.
-                    await _cancel()
-                    terminal = ExecResult(
-                        status="needs_approval",
-                        exit_metadata={"denied": _interaction_summary(event)},
-                    )
+                    elif isinstance(event, ExecInputRequested):
+                        # §6.3 input requests (judgment questions) are deferred — abort for now.
+                        await _cancel()
+                        terminal = ExecResult(
+                            status="needs_approval",
+                            exit_metadata={"denied": _interaction_summary(event)},
+                        )
+                        aborted = True
+                        break
+                    elif isinstance(event, ExecResult):
+                        terminal = event
+
+                if aborted or not park_resume or not round_denials or rounds >= _MAX_RELAY_ROUNDS:
                     break
-                elif isinstance(event, ExecInputRequested):
-                    # §6.3 input requests (judgment questions) are deferred — abort for now.
-                    await _cancel()
-                    terminal = ExecResult(
-                        status="needs_approval",
-                        exit_metadata={"denied": _interaction_summary(event)},
-                    )
-                    break
-                elif isinstance(event, ExecResult):
-                    terminal = event
+                newly = await _resolve_denials(
+                    round_denials, agent_id, governance, relay, set(granted)
+                )
+                if not newly:
+                    break  # nothing new approved — the denied terminal stands (never hangs)
+                granted.extend(newly)
+                token = runner.resume_token(holder["run_id"] or "")
+                if token is None:
+                    break  # harness can't resume — stop
+                resume_token = token.value
+                rounds += 1
 
             diff = ""
             if terminal is not None and terminal.status == "success":
@@ -413,6 +426,33 @@ async def _execute(  # noqa: PLR0912, PLR0915
     except SandboxError as exc:
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": str(exc)})
         return _make_result(agent_id, f"[harness:{kind}] sandbox error: {exc}")
+
+
+async def _resolve_denials(
+    denials: list[ExecApprovalRequested],
+    agent_id: str,
+    governance: GovernanceProvider,
+    relay: _RelayCtx,
+    already_granted: set[str],
+) -> list[str]:
+    """Resolve each denied capability via the relay orchestrator (policy → inbox → wait). Returns
+    the newly-approved capabilities to expand the grant on the next relaunch."""
+    assert relay.review_queue is not None  # park_resume guarantees it
+    newly: list[str] = []
+    for req in denials:
+        if not req.capability or req.capability in already_granted or req.capability in newly:
+            continue
+        decision = await resolve_relay(
+            req,
+            agent_id=agent_id,
+            topology_id=relay.topology_id,
+            governance=governance,
+            review_queue=relay.review_queue,
+            max_wait_seconds=relay.max_wait_seconds,
+        )
+        if decision.granted:
+            newly.append(req.capability)
+    return newly
 
 
 def _interaction_summary(event: ExecApprovalRequested | ExecInputRequested) -> str:

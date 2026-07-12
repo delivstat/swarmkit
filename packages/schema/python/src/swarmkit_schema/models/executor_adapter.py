@@ -235,6 +235,29 @@ class Resume(BaseModel):
         None,
         description='Args appended when resuming, e.g. [--resume, "{resume.token}"].',
     )
+    prompt: str | None = Field(
+        None,
+        description="The nudge statement sent on a park-resume relaunch (substituted for {task.statement}), e.g. 'Continue — the requested permissions have been granted.'",
+    )
+
+
+class Grant(BaseModel):
+    """
+    How an approved capability is passed to the harness on a park-resume relaunch (RFC §6.2). The whole park-resume mechanism is data: no harness is special-cased in code.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    arg: list[str] | None = Field(
+        None,
+        description='Args appended on a grant-expanding resume, e.g. [--allowedTools, "{grant.capabilities}"]. {grant.capabilities} is the approved capabilities joined by `separator`.',
+    )
+    separator: str | None = Field(
+        " ",
+        description="How multiple approved capabilities are joined into {grant.capabilities}.",
+    )
 
 
 class AuthoredBy(Enum):
@@ -327,6 +350,7 @@ class Spec(BaseModel):
         description="Vendor discriminator value -> ExecResultStatus (success|failure|budget_exceeded|cancelled|needs_approval|stalled). `_default` covers the rest.",
     )
     resume: Resume | None = None
+    grant: Grant | None = None
     success_when: SuccessWhen | None = Field(
         None,
         description="Terminal success predicate. Core layers its semantic check (typed output + artifact-manifest match) on top — exit code alone is necessary, not sufficient.",

@@ -71,6 +71,11 @@ class AdapterSpec:
     event_map: tuple[Rule, ...]
     status_map: Mapping[str, str] = field(default_factory=dict)
     resume_arg: tuple[str, ...] = ()
+    resume_prompt: str | None = None
+    # park-resume grant plumbing (RFC §6.2): how an approved capability is passed on relaunch, and
+    # how multiple approved capabilities are joined into {grant.capabilities}. All data, no code.
+    grant_arg: tuple[str, ...] = ()
+    grant_separator: str = " "
     auth: AuthSpec = field(default_factory=AuthSpec)
     on_unanswerable: str = "abort"
     # Interaction (RFC §6.2), present only when on_unanswerable == "relay": the bidirectional driver
@@ -128,6 +133,7 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
         env=dict(launch_raw.get("env") or {}),
     )
     resume = spec.get("resume") or {}
+    grant = spec.get("grant") or {}
     success_when: Mapping[str, Any] = spec.get("success_when") or {}
     interaction: Mapping[str, Any] = spec.get("interaction") or {}
     return AdapterSpec(
@@ -136,6 +142,9 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
         event_map=tuple(_rule(r) for r in spec["event_map"]),
         status_map=dict(spec.get("status_map") or {}),
         resume_arg=tuple(resume.get("arg") or ()),
+        resume_prompt=resume.get("prompt"),
+        grant_arg=tuple(grant.get("arg") or ()),
+        grant_separator=str(grant.get("separator", " ")),
         auth=_auth(spec.get("auth")),
         on_unanswerable=str(spec.get("on_unanswerable", "abort")),
         interaction_driver=interaction.get("driver"),

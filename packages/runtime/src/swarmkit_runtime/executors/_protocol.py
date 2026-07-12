@@ -67,10 +67,19 @@ class Executor(ABC):
         raise NotImplementedError(f"executor {self.kind!r} does not implement preflight()")
 
     def run(
-        self, task: TaskSpec, sandbox: SandboxHandle, budget: BudgetEnvelope
+        self,
+        task: TaskSpec,
+        sandbox: SandboxHandle,
+        budget: BudgetEnvelope,
+        *,
+        resume_token: str | None = None,
+        granted: tuple[str, ...] = (),
     ) -> AsyncIterator[ExecEvent]:
         """Launch, translating the vendor's native stream into normalized :data:`ExecEvent`s. Core
-        supplies budget/sandbox enforcement around this; the adapter enforces nothing itself."""
+        supplies budget/sandbox enforcement around this; the adapter enforces nothing itself.
+
+        ``resume_token`` / ``granted`` drive a park-resume relaunch (RFC §6.2): resume the prior
+        session with an expanded grant. Executors that don't support relay ignore them."""
         raise NotImplementedError(f"executor {self.kind!r} does not implement run()")
 
     async def cancel(self, run_id: str) -> None:
