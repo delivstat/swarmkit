@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from swarmkit_runtime.executors import ExecApprovalRequested
+from swarmkit_runtime.executors import ExecApprovalRequested, ExecInputRequested
 from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.review import ReviewItem
 
@@ -122,6 +122,67 @@ async def _finish(
         },
     )
     return decision
+
+
+async def resolve_input(
+    request: ExecInputRequested,
+    *,
+    agent_id: str,
+    topology_id: str,
+    governance: GovernanceProvider,
+    review_queue: ReviewQueue,
+    max_wait_seconds: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    poll_interval: float = 0.5,
+    sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
+) -> str | None:
+    """Resolve a §6.3 input request via the human inbox: submit the question + options, wait for a
+    textual answer, and return it. Returns ``None`` on timeout or rejection (the run then aborts —
+    never hangs). Every request/response is audited. (Lead-node auto-answer is deferred; a human
+    answers for now.)"""
+    await _audit(
+        governance,
+        "executor.input_requested",
+        agent_id,
+        {"question": request.question, "options": list(request.options)},
+    )
+    item = ReviewItem(
+        id=f"input-{agent_id}-{abs(hash(request.question)) % 10_000_000}",
+        topology_id=topology_id,
+        agent_id=agent_id,
+        skill_id="harness-input",
+        output={
+            "question": request.question,
+            "options": list(request.options),
+            "free_text_allowed": request.free_text_allowed,
+        },
+        verdict={},
+        reason=f"harness needs input: {request.question}",
+        timestamp=datetime.now(tz=UTC),
+    )
+    review_queue.submit(item)
+
+    budget = _DEFAULT_MAX_WAIT_SECONDS if max_wait_seconds is None else max_wait_seconds
+    start = clock()
+    answer: str | None = None
+    responder = "timeout"
+    while clock() - start < budget:
+        current = review_queue.get(item.id)
+        if current is not None and current.status == "approved":
+            answer, responder = current.answer, "operator"
+            break
+        if current is not None and current.status == "rejected":
+            responder = "operator"
+            break
+        await sleep(poll_interval)
+
+    await _audit(
+        governance,
+        "executor.input_response",
+        agent_id,
+        {"question": request.question, "answer": answer or "", "responder": responder},
+    )
+    return answer
 
 
 async def _audit(

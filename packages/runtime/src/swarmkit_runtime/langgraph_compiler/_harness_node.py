@@ -29,6 +29,7 @@ from swarmkit_runtime.executors import (
     DeclarativeExecutor,
     ExecApprovalRequested,
     ExecInputRequested,
+    ExecMessage,
     ExecResult,
     ExecStarted,
     ExecToolCall,
@@ -54,12 +55,14 @@ from swarmkit_runtime.review import FileReviewQueue
 from swarmkit_runtime.trace import AgentStep, ToolCall
 
 from ._helpers import _make_result
-from ._relay import resolve_relay
+from ._input_classifier import classify_input_request, should_classify
+from ._relay import resolve_input, resolve_relay
 from ._run_context import current_parent_agent
 
 if TYPE_CHECKING:
     from swarmkit_runtime.governance import GovernanceProvider
     from swarmkit_runtime.langgraph_compiler._state import SwarmState
+    from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
     from swarmkit_runtime.resolver import ResolvedAgent
     from swarmkit_runtime.review import ReviewQueue
 
@@ -163,6 +166,10 @@ class _RelayCtx:
     review_queue: ReviewQueue | None = None
     max_wait_seconds: float | None = None
     topology_id: str = ""
+    # §6.3 input escalation: a model provider + classifier model enable question detection. Absent ⇒
+    # input requests are not detected (the harness node stays permission-relay + abort).
+    model_provider: ModelProviderProtocol | None = None
+    classifier_model: str | None = None
 
 
 def _relay_ctx(
@@ -170,6 +177,7 @@ def _relay_ctx(
     root: Path | None,
     driver: InteractionDriver | None,
     review_queue: ReviewQueue | None,
+    model_provider: ModelProviderProtocol | None = None,
 ) -> _RelayCtx:
     """Assemble the relay context from the adapter spec + injected (test) overrides."""
     on_unanswerable = "abort"
@@ -185,6 +193,8 @@ def _relay_ctx(
         on_unanswerable=on_unanswerable,
         driver_mode=driver_mode,
         driver=driver if driver is not None else NoInteractionDriver(),
+        model_provider=model_provider,
+        classifier_model=agent.executor.config.get("classifier_model"),
         review_queue=review_queue
         if review_queue is not None
         else (FileReviewQueue(root) if root else None),
@@ -213,6 +223,7 @@ async def run_harness_node(
     executor: Executor | None = None,
     driver: InteractionDriver | None = None,
     review_queue: ReviewQueue | None = None,
+    model_provider: ModelProviderProtocol | None = None,
 ) -> dict[str, Any]:
     """Execute an agent whose ``executor.kind`` is not ``model``.
 
@@ -238,7 +249,7 @@ async def run_harness_node(
 
     budget = _budget_from_config(dict(agent.executor.config))
     task = _task_spec(agent, state, root)
-    relay = _relay_ctx(agent, root, driver, review_queue)
+    relay = _relay_ctx(agent, root, driver, review_queue, model_provider)
     return await _execute(agent, state, governance, runner, task, budget, root, kind, relay)
 
 
@@ -354,30 +365,41 @@ async def _execute(  # noqa: PLR0912, PLR0915
             )
             terminal: ExecResult | None = None
             resume_token: str | None = None
+            pending_answer: str | None = None
             granted: list[str] = []
+            answered: dict[str, str] = {}  # §6.3 session memo: never ask the same question twice
             rounds = 0
             while True:
                 round_denials: list[ExecApprovalRequested] = []
+                round_messages: list[str] = []
+                round_native_input: ExecInputRequested | None = None
+                round_did_work = False
                 aborted = False
                 stream = runner.run(
-                    task, sandbox, budget, resume_token=resume_token, granted=tuple(granted)
+                    task,
+                    sandbox,
+                    budget,
+                    resume_token=resume_token,
+                    granted=tuple(granted),
+                    answer=pending_answer,
                 )
                 async for event in enforce_budget(stream, budget, cancel=_cancel):
                     if isinstance(event, ExecStarted):
                         holder["run_id"] = event.run_id
                     elif isinstance(event, ExecUsage):
                         meter.add_usage(event)
+                    elif isinstance(event, ExecMessage):
+                        round_messages.append(event.text)
                     elif isinstance(event, ExecToolCall):
+                        round_did_work = True
                         meter.tool_calls.append(
                             ToolCall(tool_name=event.tool, result_length=len(event.input_summary))
                         )
                     elif isinstance(event, ExecApprovalRequested):
                         if park_resume:
-                            # collect; resolve after the stream, then relaunch with the grant.
-                            round_denials.append(event)
+                            round_denials.append(event)  # resolve after the stream, then relaunch
                             continue
-                        # no relay driver: deny / abort — never hang.
-                        await _cancel()
+                        await _cancel()  # no relay driver: deny / abort — never hang.
                         terminal = ExecResult(
                             status="needs_approval",
                             exit_metadata={"denied": _interaction_summary(event)},
@@ -385,7 +407,9 @@ async def _execute(  # noqa: PLR0912, PLR0915
                         aborted = True
                         break
                     elif isinstance(event, ExecInputRequested):
-                        # §6.3 input requests (judgment questions) are deferred — abort for now.
+                        if park_resume:
+                            round_native_input = event  # a native question event; resolve below
+                            continue
                         await _cancel()
                         terminal = ExecResult(
                             status="needs_approval",
@@ -396,18 +420,41 @@ async def _execute(  # noqa: PLR0912, PLR0915
                     elif isinstance(event, ExecResult):
                         terminal = event
 
-                if aborted or not park_resume or not round_denials or rounds >= _MAX_RELAY_ROUNDS:
+                if aborted or not park_resume or rounds >= _MAX_RELAY_ROUNDS:
                     break
-                newly = await _resolve_denials(
-                    round_denials, agent_id, governance, relay, set(granted)
+
+                # (a) permission denials → relaunch with the expanded grant (§6.2)
+                if round_denials:
+                    newly = await _resolve_denials(
+                        round_denials, agent_id, governance, relay, set(granted)
+                    )
+                    token = runner.resume_token(holder["run_id"] or "")
+                    if not newly or token is None:
+                        break  # nothing new approved / can't resume — denied terminal stands
+                    granted.extend(newly)
+                    resume_token, pending_answer = token.value, None
+                    rounds += 1
+                    continue
+
+                # (b) input request → relaunch with the resolved answer (§6.3)
+                request = round_native_input or await _detect_input(
+                    round_messages, did_work=round_did_work, relay=relay
                 )
-                if not newly:
-                    break  # nothing new approved — the denied terminal stands (never hangs)
-                granted.extend(newly)
+                if request is None or request.question in answered:
+                    break  # no question (or already answered this session) — done
+                ans = await resolve_input(
+                    request,
+                    agent_id=agent_id,
+                    topology_id=relay.topology_id,
+                    governance=governance,
+                    review_queue=relay.review_queue,  # type: ignore[arg-type]
+                    max_wait_seconds=relay.max_wait_seconds,
+                )
                 token = runner.resume_token(holder["run_id"] or "")
-                if token is None:
-                    break  # harness can't resume — stop
-                resume_token = token.value
+                if not ans or token is None:
+                    break  # no answer / can't resume — never hangs
+                answered[request.question] = ans
+                resume_token, pending_answer = token.value, ans
                 rounds += 1
 
             diff = ""
@@ -453,6 +500,21 @@ async def _resolve_denials(
         if decision.granted:
             newly.append(req.capability)
     return newly
+
+
+async def _detect_input(
+    messages: list[str], *, did_work: bool, relay: _RelayCtx
+) -> ExecInputRequested | None:
+    """Detect a §6.3 input request from the harness's final message via the shared classifier —
+    only when a model provider + classifier model are configured, the run took no action
+    (structural pre-filter), and there is a final message. No model ⇒ no detection (opt-in)."""
+    if relay.model_provider is None or not relay.classifier_model or not messages:
+        return None
+    if not should_classify(artifact_present=did_work):
+        return None
+    return await classify_input_request(
+        messages[-1], model_provider=relay.model_provider, model=relay.classifier_model
+    )
 
 
 def _interaction_summary(event: ExecApprovalRequested | ExecInputRequested) -> str:
