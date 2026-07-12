@@ -147,6 +147,43 @@ executor:
     working_dir: coding-worker   # persistent (under the workspace root); omit for the isolated worktree
 ```
 
+## Sandbox and isolation (opt-in)
+
+By default a harness runs in an ephemeral git worktree — isolation of *edits*, not of the *process*: the subprocess still inherits your host network and, with a `working_dir`, host files. For untrusted harness code you can opt into a **container tier** with resource limits and enforced egress. It is **off by default** — an adapter with no `sandbox` block behaves exactly as before.
+
+```yaml
+spec:
+  # …launch / stream / event_map…
+  sandbox:
+    kind: container            # worktree (default) | container
+    image: my-harness:latest   # a prebuilt image you trust; OR use `build:` below
+    network: allowlist         # deny (default) | allowlist
+    allow: [api.anthropic.com]  # hosts reachable when network: allowlist
+    mounts:                    # extra resources beyond the worktree (KB, shared config)
+      - { source: ./knowledge, target: /knowledge, mode: ro }
+    resources: { cpus: "2", memory: 2g, pids: 512 }
+```
+
+**Run the harness with no local install.** Instead of a prebuilt `image`, declare how to `build` one — the runtime builds a derived image **once** (content-addressed, cached) and the user brings only their API key/subscription (injected at run, never baked in):
+
+```yaml
+    sandbox:
+      kind: container
+      build:
+        base: node:22-slim
+        install: ["npm install -g @anthropic-ai/claude-code"]
+```
+
+`build` takes exactly one front-end: `base` (+ optional `install`, the self-contained path, lowered to a Dockerfile internally), `dockerfile` (a path, for full Docker control), or `dockerfile_inline` (Dockerfile content inline). `image` and `build` are mutually exclusive.
+
+**On the image:** SwarmKit publishes and requires no bespoke image — `build` from any public base, point `image:` at any image, or set `$SWARMKIT_HARNESS_IMAGE`. None of the three, with `kind: container`, is a clear error, not a guessed base.
+
+**Egress is enforced, not advised.** `network: deny` → no outbound access (a local-model harness); `network: allowlist` → only `allow` hosts, via a managed proxy (the mode a cloud harness needs to reach its model API and nothing else). HTTP/SSE MCP servers become reachable by adding their `host:port` to `allow`.
+
+**The disable switch always wins.** `SWARMKIT_DISABLE_CONTAINER_SANDBOX=1` forces the native worktree for every archetype regardless of adapter config — the escape hatch for a box with no container runtime or a fast local loop. A container requested with no runtime present (and no disable) is a clear error, never a silent unsandboxed run. Tune limits per archetype without forking the adapter via `executor.config.sandbox`.
+
+> **Status:** the `sandbox` config surface is stable (schema ≥ 1.16.0); the enforcing container provisioner (build, mounts, egress proxy) is rolling out across releases. Until it lands in your build, `kind: container` errors loudly with the disable-switch hint — use the worktree default meanwhile. See `design/details/executor-container-sandbox.md`.
+
 ## When the DSL isn't enough
 
 If your harness needs something past the DSL ceiling — non-JSONL output, stateful stderr parsing, bidirectional interaction — declare `spec.requires: code` and implement a Tier-1 Python `Executor` instead. That's the escape hatch; the common subprocess+JSONL shape (every major coding harness) needs none.

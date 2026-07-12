@@ -2,7 +2,7 @@
 
 > An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
 
-**Status:** v1.2.58. M0-M10 shipped. Structured delegation v2 compiler, planner-driven task execution, crash-resilient plans. CLI + HTTP server (`swarmkit serve`) with async jobs, SSE streaming, webhook triggers, MCP endpoint (Streamable HTTP), pluggable auth (API key, JWT/JWKS), canary deployments (weighted version routing, auto-promotion by error rate + drift). 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, structured inter-agent communication (provenance envelopes, output_schema, deterministic grounding), 2 reference topologies, 20 skills, 16 archetypes. Next: eject + launch prep (M11).
+**Status:** runtime v1.86.0 (schema v1.16.0). M0-M10 shipped; fleet control plane + harness executors (M19) shipped. Structured delegation v2 compiler, planner-driven task execution, crash-resilient plans. CLI + HTTP server (`swarmkit serve`) with async jobs, SSE streaming, webhook triggers, MCP endpoint (Streamable HTTP), pluggable auth (API key, JWT/JWKS), canary deployments (weighted version routing, auto-promotion by error rate + drift). **Harness executors** — run Claude Code / opencode / any JSONL subprocess as a node via declarative `adapter.yaml`; worktree isolation, mid-run relay approvals + trust accrual, opt-in container sandbox (resource limits, enforced egress, no-local-install build). 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, structured inter-agent communication (provenance envelopes, output_schema, deterministic grounding), Postgres backend, fleet aggregation + panel UI, 2 reference topologies, 25 skills, 16 archetypes. Next: container-sandbox provisioner, topology canvas (M20).
 
 ## Start here
 
@@ -76,6 +76,16 @@ Per-feature design notes under `design/details/`:
 - [Skill registry](https://github.com/delivstat/swarmkit/blob/main/design/details/skill-registry.md): community skill import from SKILL.md repos and MCP catalogues.
 - [Knowledge Curator topology](https://github.com/delivstat/swarmkit/blob/main/design/details/knowledge-curator-topology.md): persistent wiki maintained by LLM agents.
 
+## Harness executors (M19 — shipped; container sandbox rolling out)
+
+Run a coding harness (Claude Code, opencode, or any subprocess emitting line-delimited JSON) as an agent node, alongside the `model` executor, under the same governance + observability. Harnesses are **data**: a declarative `adapter.yaml` interpreted by one engine — no per-harness Python — with a bundled library (claude-code + opencode verified e2e; codex + gemini-cli experimental). A harness runs in an ephemeral git worktree by default (produces a diff, never integrates). Mid-run out-of-grant permissions **relay** to a human inbox and resume (`swarmkit review`); repeated operator approvals **accrue** into a proposed allowlist changeset (`swarmkit trust list|apply|clear`, default N=5, one denial resets+blocks). An **opt-in container sandbox** adds real isolation — resource limits, enforced egress (`deny`/`allowlist`), extra `mounts`, and a `build` step that runs the harness with **no local install** (bring only your API key). Off by default; `SWARMKIT_DISABLE_CONTAINER_SANDBOX` always wins; a container with no runtime fails loud, never a silent unsandboxed run.
+
+- [Executor abstraction design](https://github.com/delivstat/swarmkit/blob/main/design/details/executor-abstraction.md): the provider seam (`model` | harness kinds), adapter tiers, relay, trust accrual, RFC decisions.
+- [Container sandbox design](https://github.com/delivstat/swarmkit/blob/main/design/details/executor-container-sandbox.md): opt-in container tier, disable switch, build-no-local-install, mounts, egress proxy.
+- [Relay design](https://github.com/delivstat/swarmkit/blob/main/design/details/executor-relay-plan.md) · [Input escalation](https://github.com/delivstat/swarmkit/blob/main/design/details/executor-input-escalation-plan.md) · [Trust accrual](https://github.com/delivstat/swarmkit/blob/main/design/details/executor-trust-accrual-plan.md).
+- [Authoring a harness adapter](https://github.com/delivstat/swarmkit/blob/main/docs/guides/authoring-harness-adapters.md): anatomy, event-map DSL, auth modes, launch review gate, sandbox block, DSL ceiling.
+- Adapter fixtures: [executor-adapter](https://github.com/delivstat/swarmkit/tree/main/packages/schema/tests/fixtures/executor-adapter) (minimal, claude-code, relay, sandbox-container, sandbox-build).
+
 ## HTTP server, auth, and canary deployments (M10 — shipped)
 
 - [Serve and auth design](https://github.com/delivstat/swarmkit/blob/main/design/details/serve-and-auth.md): FastAPI server, AuthProvider ABC, MCP endpoint, triggers, workspace.yaml `server:` block.
@@ -111,6 +121,7 @@ Memory-writer extracts structured insights (topic, context, key_points, tags) vi
 
 - [Sterling OMS workspace](https://github.com/delivstat/swarmkit/blob/main/docs/guides/sterling-oms-workspace.md): building domain-specific agent workspaces with knowledge bases.
 - [Model selection](https://github.com/delivstat/swarmkit/blob/main/docs/guides/model-selection.md): pricing comparison, per-agent config, env vars.
+- [Authoring a harness adapter](https://github.com/delivstat/swarmkit/blob/main/docs/guides/authoring-harness-adapters.md): declarative `adapter.yaml`, event-map DSL, auth, launch gate, opt-in container sandbox.
 - [Serve CLI reference](https://github.com/delivstat/swarmkit/blob/main/docs/reference/serve-cli-tests.md): complete endpoint reference with real test outputs.
 - [Canary deployments](https://github.com/delivstat/swarmkit/blob/main/docs/reference/canary-deployments.md): weighted version routing, auto-promotion, monitoring, rollback.
 - [Workspace memory](https://github.com/delivstat/swarmkit/blob/main/docs/reference/workspace-memory.md): agents that remember across conversations. Setup, GBrain backend, real test outputs.
@@ -129,6 +140,7 @@ Memory-writer extracts structured insights (topic, context, key_points, tags) vi
 - [Usability-first](https://github.com/delivstat/swarmkit/blob/main/docs/notes/usability-first.md)
 - [LLM-friendly knowledge](https://github.com/delivstat/swarmkit/blob/main/docs/notes/llm-friendly-knowledge.md)
 - [Observability discipline](https://github.com/delivstat/swarmkit/blob/main/docs/notes/observability.md)
+- [Harness adapter discipline](https://github.com/delivstat/swarmkit/blob/main/docs/notes/harness-adapters.md): verify-against-real-binary, byte-identical bundled copies, sandbox-is-opt-in/never-silently-unsandboxed.
 
 ## Package docs
 

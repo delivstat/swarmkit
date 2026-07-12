@@ -75,10 +75,18 @@ defaults:
     system: "Detailed system prompt for the agent."
   skills:
     - skill-id-here
+executor:                       # OPTIONAL: how this node runs. Omit ⇒ `model` (the default).
+  kind: claude-code             # a harness adapter id (e.g. claude-code) runs a coding harness
+  config:                       # opaque per-kind config
+    allowed_tools: "Read, Edit"  # capability grant; working_dir for a persistent session
+    # sandbox: {kind: container, network: allowlist, allow: [api.anthropic.com]}  # opt-in isolation
 provenance:                     # REQUIRED
   authored_by: human            # REQUIRED (NOT "authors")
   version: 1.0.0                # REQUIRED
 ```
+The `executor` block is optional — omit it for a normal model-backed agent. Use a harness `kind`
+(from the workspace's bundled/authored adapters) to run a coding harness as the node; the container
+`sandbox` is opt-in (see the harness-adapter guide).
 
 TOPOLOGY YAML:
 ```yaml

@@ -130,6 +130,14 @@ def _corpus_sections(repo_root: Path, *, include_fixtures: bool) -> Iterator[_Se
         files=_discover_glob(repo_root, "docs/notes/*.md"),
     )
     yield _Section(
+        heading="How-to guides",
+        preamble=(
+            "Task-oriented guides — authoring harness adapters, model selection, serve auth. "
+            "How to actually do the thing, with runnable commands."
+        ),
+        files=_discover_glob(repo_root, "docs/guides/*.md"),
+    )
+    yield _Section(
         heading="Per-package invariants",
         preamble="Package-specific CLAUDE.md files — stricter than the root one.",
         files=_discover_glob(repo_root, "packages/*/CLAUDE.md"),

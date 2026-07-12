@@ -272,6 +272,10 @@ Image content blocks across all 7 model providers. MCP tools can return `ImageCo
 
 Per-server and per-tool governance: `permission: open|cautious|strict|readonly` in workspace.yaml. Reads auto-approved, writes need governance approval, readonly denies mutations.
 
+### Harness executors (M19 — shipped, sandbox rolling out)
+
+Run a coding harness (Claude Code, opencode, and any subprocess that emits line-delimited JSON) as an agent node, not just a model. Harnesses are **data**: a declarative `adapter.yaml` — no per-harness Python — interpreted by one engine, with a bundled library for the big harnesses. Isolated in an ephemeral git worktree by default; mid-run out-of-grant permissions **relay** to a human inbox and resume; repeated approvals **accrue** into a proposed allowlist changeset (`swarmkit trust`). An **opt-in container sandbox** adds real isolation — resource limits, enforced egress (`deny`/`allowlist`), and a `build` step that runs the harness with **no local install** (bring only your API key). Off by default; `SWARMKIT_DISABLE_CONTAINER_SANDBOX` always wins. See [the adapter guide](docs/guides/authoring-harness-adapters.md).
+
 ## Complete feature list
 
 ### Topology & Agent Orchestration
@@ -362,6 +366,15 @@ Per-server and per-tool governance: `permission: open|cautious|strict|readonly` 
 67. **JSON & TypeScript schemas** — validators in both languages
 68. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
 69. **16 archetypes + 25 skills** — production-ready out of the box
+
+### Harness executors
+70. **Harness as a node** — run Claude Code / opencode / any subprocess emitting JSONL as an agent
+71. **Declarative adapters** — `adapter.yaml`, no per-harness Python; bundled library for the big harnesses
+72. **Worktree isolation** — ephemeral git worktree per run by default; produces a diff, never integrates
+73. **Relay approvals** — mid-run out-of-grant permissions pause to a human inbox and resume (`swarmkit review`)
+74. **Trust accrual** — repeated approvals propose an allowlist changeset (`swarmkit trust list|apply|clear`)
+75. **Opt-in container sandbox** — resource limits + enforced egress (`deny`/`allowlist`); off by default, disable switch always wins
+76. **No-local-install `build`** — provision the harness into a cached image; bring only your API key
 
 ## Reference topologies
 
