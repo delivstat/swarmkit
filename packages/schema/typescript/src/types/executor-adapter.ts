@@ -44,11 +44,19 @@ export interface Spec {
     artifacts?: Artifacts;
     auth?:      Auth;
     event_map:  EventMapElement[];
-    launch:     Launch;
     /**
-     * Interaction ceiling for a declarative adapter (RFC §5.2): deny refuses the out-of-grant
-     * action in place; abort terminates needs_approval. `relay` is Tier-1-only (needs
-     * bidirectional session control) and is not permitted here.
+     * Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2).
+     * Declares the bidirectional driver that feeds an approval decision back into the running
+     * session — the single per-harness code seam; everything else (inbox, policy, scoping,
+     * audit, never-hang) is generic core.
+     */
+    interaction?: Interaction;
+    launch:       Launch;
+    /**
+     * How a mid-run request outside the launch grant is handled (RFC §6.2). `deny` refuses it
+     * in place; `abort` terminates needs_approval; `relay` pauses the harness and routes the
+     * request to the approval inbox, then feeds the decision back. `relay` requires an
+     * `interaction` block with a driver (the one Tier-1 seam — bidirectional session control).
      */
     on_unanswerable?: OnUnanswerable;
     /**
@@ -197,6 +205,33 @@ export interface With {
 }
 
 /**
+ * Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2).
+ * Declares the bidirectional driver that feeds an approval decision back into the running
+ * session — the single per-harness code seam; everything else (inbox, policy, scoping,
+ * audit, never-hang) is generic core.
+ */
+export interface Interaction {
+    /**
+     * `hold-stream` keeps the session alive and answers over streaming stdin (short waits);
+     * `park-resume` checkpoints the session id and re-launches with an expanded grant on
+     * approval (long waits, survives restarts).
+     */
+    driver: Driver;
+    /**
+     * Bounded wait for an approval decision before degrading to `abort` (never-hang guarantee).
+     * Core applies a default when omitted.
+     */
+    max_approval_wait_seconds?: number;
+}
+
+/**
+ * `hold-stream` keeps the session alive and answers over streaming stdin (short waits);
+ * `park-resume` checkpoints the session id and re-launches with an expanded grant on
+ * approval (long waits, survives restarts).
+ */
+export type Driver = "hold-stream" | "park-resume";
+
+/**
  * How to launch the harness subprocess. `command` is argv (no shell); substitution is
  * value-only.
  */
@@ -224,11 +259,12 @@ export interface OptionalArg {
 }
 
 /**
- * Interaction ceiling for a declarative adapter (RFC §5.2): deny refuses the out-of-grant
- * action in place; abort terminates needs_approval. `relay` is Tier-1-only (needs
- * bidirectional session control) and is not permitted here.
+ * How a mid-run request outside the launch grant is handled (RFC §6.2). `deny` refuses it
+ * in place; `abort` terminates needs_approval; `relay` pauses the harness and routes the
+ * request to the approval inbox, then feeds the decision back. `relay` requires an
+ * `interaction` block with a driver (the one Tier-1 seam — bidirectional session control).
  */
-export type OnUnanswerable = "deny" | "abort";
+export type OnUnanswerable = "deny" | "abort" | "relay";
 
 /**
  * Present only when this adapter has hit the declarative DSL ceiling and must be

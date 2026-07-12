@@ -45,6 +45,16 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["launch", "stream", "event_map"],
+      "allOf": [
+        {
+          "$comment": "relay requires a bidirectional interaction driver (RFC §6.2).",
+          "if": {
+            "properties": { "on_unanswerable": { "const": "relay" } },
+            "required": ["on_unanswerable"]
+          },
+          "then": { "required": ["interaction"] }
+        }
+      ],
       "properties": {
         "launch": { "$ref": "#/$defs/launch" },
         "auth": { "$ref": "#/$defs/auth" },
@@ -67,9 +77,26 @@
           "properties": { "exit_code": { "type": "integer" } }
         },
         "on_unanswerable": {
-          "enum": ["deny", "abort"],
+          "enum": ["deny", "abort", "relay"],
           "default": "abort",
-          "description": "Interaction ceiling for a declarative adapter (RFC §5.2): deny refuses the out-of-grant action in place; abort terminates needs_approval. `relay` is Tier-1-only (needs bidirectional session control) and is not permitted here."
+          "description": "How a mid-run request outside the launch grant is handled (RFC §6.2). `deny` refuses it in place; `abort` terminates needs_approval; `relay` pauses the harness and routes the request to the approval inbox, then feeds the decision back. `relay` requires an `interaction` block with a driver (the one Tier-1 seam — bidirectional session control)."
+        },
+        "interaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2). Declares the bidirectional driver that feeds an approval decision back into the running session — the single per-harness code seam; everything else (inbox, policy, scoping, audit, never-hang) is generic core.",
+          "required": ["driver"],
+          "properties": {
+            "driver": {
+              "enum": ["hold-stream", "park-resume"],
+              "description": "`hold-stream` keeps the session alive and answers over streaming stdin (short waits); `park-resume` checkpoints the session id and re-launches with an expanded grant on approval (long waits, survives restarts)."
+            },
+            "max_approval_wait_seconds": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Bounded wait for an approval decision before degrading to `abort` (never-hang guarantee). Core applies a default when omitted."
+            }
+          }
         },
         "telemetry_grade": {
           "enum": ["normalized", "opaque"],
