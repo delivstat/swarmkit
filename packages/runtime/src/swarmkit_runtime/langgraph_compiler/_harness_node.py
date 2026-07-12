@@ -16,6 +16,7 @@ the terminal event. The richer OTel/cost projection of the *inner* ExecEvents is
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -41,8 +42,10 @@ from swarmkit_runtime.executors import (
     ResolvedExecutor,
     SandboxError,
     SandboxHandle,
+    SandboxSpec,
     TaskSpec,
     collect_diff,
+    container_sandbox,
     enforce_budget,
     is_launch_approved,
     load_adapter_specs,
@@ -72,6 +75,8 @@ _DEFAULT_IDLE_SECONDS = 120.0
 # Park-resume: cap the run → resolve → relaunch loop so a harness that keeps requesting new
 # capabilities can't spin forever (each round is a real relaunch + spend).
 _MAX_RELAY_ROUNDS = 5
+
+_logger = logging.getLogger(__name__)
 
 
 def _build_executor(resolved: ResolvedExecutor, workspace_root: Path | None) -> Executor:
@@ -219,16 +224,53 @@ def _trust_threshold(agent: ResolvedAgent) -> int:
         return 5
 
 
-def _sandbox_for(agent: ResolvedAgent, root: Path, base_ref: str) -> tuple[Any, bool]:
-    """Choose the harness's execution sandbox. With ``executor.config.working_dir`` set, run in that
-    persistent directory (resolved under the workspace root); otherwise provision an isolated,
-    ephemeral git worktree (the default). Returns ``(context_manager, persistent)``."""
+def _container_disabled() -> bool:
+    """The global kill-switch: ``SWARMKIT_DISABLE_CONTAINER_SANDBOX`` forces the native worktree for
+    every archetype regardless of adapter config (executor-container-sandbox.md). Always wins, so an
+    environment with no container runtime is never trapped by an archetype that insists on one."""
+    return os.environ.get("SWARMKIT_DISABLE_CONTAINER_SANDBOX", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _sandbox_for(
+    agent: ResolvedAgent, root: Path, base_ref: str, sandbox_spec: SandboxSpec | None = None
+) -> tuple[Any, bool]:
+    """Choose the harness's execution sandbox. Precedence (most-specific first, but *disable always
+    wins*):
+
+    1. ``SWARMKIT_DISABLE_CONTAINER_SANDBOX`` set → native worktree, whatever the adapter says.
+    2. adapter/config ``sandbox.kind == container`` → the container tier (opt-in).
+    3. ``executor.config.working_dir`` set → a persistent directory (session-scoped harness).
+    4. else → an isolated, ephemeral git worktree (the default; today's behaviour).
+
+    Returns ``(context_manager, persistent)``."""
+    spec = _effective_sandbox(agent, sandbox_spec)
+    if spec is not None and spec.is_container and not _container_disabled():
+        return container_sandbox(root, base_ref, spec), False
+    if spec is not None and spec.is_container and _container_disabled():
+        _logger.info("container sandbox disabled by env; using native worktree for %s", agent.id)
+
     working_dir = agent.executor.config.get("working_dir")
     if working_dir:
         wd = Path(working_dir)
         resolved = wd if wd.is_absolute() else (root / wd)
         return _persistent_dir(resolved.resolve()), True
     return worktree_sandbox(root, base_ref), False
+
+
+def _effective_sandbox(
+    agent: ResolvedAgent, from_adapter: SandboxSpec | None
+) -> SandboxSpec | None:
+    """Merge the adapter's ``sandbox`` block with a per-archetype ``executor.config.sandbox``
+    override. The override wins (same pattern as ``working_dir`` / ``allowed_tools``); absent both
+    ⇒ ``None`` (worktree)."""
+    override = agent.executor.config.get("sandbox")
+    if override:
+        return SandboxSpec.from_raw(dict(override))
+    return from_adapter
 
 
 async def run_harness_node(
@@ -363,7 +405,9 @@ async def _execute(  # noqa: PLR0912, PLR0915
         if run_id is not None:
             await runner.cancel(run_id)
 
-    sandbox_cm, persistent = _sandbox_for(agent, root, task.base_ref or "HEAD")
+    adapter_spec = load_adapter_specs(root).get(agent.executor.kind)
+    sandbox_spec = adapter_spec.sandbox if adapter_spec is not None else None
+    sandbox_cm, persistent = _sandbox_for(agent, root, task.base_ref or "HEAD", sandbox_spec)
     try:
         async with sandbox_cm as sandbox:
             report = runner.preflight(task, sandbox)

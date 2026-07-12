@@ -74,7 +74,7 @@ Isolation is declared where everything harness-specific already lives — the `a
 ```yaml
 sandbox:
   kind: container            # worktree (default) | container
-  image: swarmkit-harness    # defaults to $SWARMKIT_HARNESS_IMAGE, else a documented base
+  image: my-harness:latest   # a prebuilt image you choose; or use `build:` below
   network: allowlist         # deny (default) | allowlist
   allow: [api.anthropic.com] # hosts permitted when network: allowlist
   resources:
@@ -83,10 +83,77 @@ sandbox:
     pids: 512                # --pids-limit
 ```
 
+**On the image: SwarmKit publishes none, and requires none.** Name the container one of three
+ways — `build:` from a standard public base (below, the recommended "no local install" path),
+`image:` pointing at any image you already trust, or an org-wide `$SWARMKIT_HARNESS_IMAGE` default.
+`kind: container` with none of the three set is a **clear error, not a guessed base image** — a
+guessed image likely wouldn't have the harness installed. A thin convenience base (git + common
+tooling, mirroring the existing `swarmkit-mcp-sandbox`) *may* be published later through the Docker
+build already in CI, but it is a convenience, never a dependency.
+
 All fields optional; an absent block ≡ `kind: worktree`. `ResolvedExecutor.config` also accepts a
 `sandbox` override so a workspace can tune limits per archetype without forking the adapter (same
 pattern as `working_dir` / `allowed_tools`). The spec is validated at load; unknown network mode or
 a non-container `kind` with an `allow` list is a schema error.
+
+## Install the harness in the sandbox — no local install (the onboarding win)
+
+The container tier unlocks something the worktree never could: **the user need not have the harness
+installed at all.** Instead of a prebuilt `image`, an adapter can declare how to *build* one:
+
+```yaml
+sandbox:
+  kind: container
+  build:
+    base: node:22-slim
+    install: ["npm install -g @anthropic-ai/claude-code"]
+  network: allowlist
+  allow: [api.anthropic.com]
+```
+
+The runtime builds a **derived image once**, content-addressed by a hash of the resolved Dockerfile
++ context, tags it (e.g. `swarmkit-harness/<adapter-id>:<hash>`), and reuses it on every subsequent
+run — so the install cost is paid once, not per run. The user brings only their **API key or
+subscription** (injected at run via `-e`, never baked into the image — the build must not need the
+credential). This makes the bundled adapters genuinely turnkey: `claude-code` ships a `build` block,
+and a fresh workspace runs a sandboxed claude-code with nothing installed locally but Docker.
+`image` and `build` are mutually exclusive (schema-enforced): use a prebuilt image, or build one.
+
+**`base + install` vs a Dockerfile.** `build` accepts exactly one of three front-ends, all lowered
+to a single Dockerfile the builder consumes:
+- `base` + `install:` — the ergonomic 90% path (`FROM <base>` + a `RUN` per step); keeps the adapter
+  a **single self-contained YAML**, nothing else to ship. Recommended for shareable adapters.
+- `dockerfile_inline:` — full Docker control (COPY, multi-stage, ARG, ENV) while *still* keeping the
+  adapter self-contained.
+- `dockerfile:` — a path to a Dockerfile the user already has (context = its directory).
+Content-addressing hashes the *resolved* Dockerfile, so all three cache identically.
+
+Build is opt-in and lazy — no `build` block, or `kind: worktree`, means nothing is ever built.
+Rebuild triggers only on a hash change (edit the base or install steps). A `swarmkit adapters build
+<id>` command can warm the cache ahead of a run; a missing runtime is the same fail-loud error as
+everywhere else.
+
+## Resources the harness needs — mounts + MCP reachability
+
+A harness in a locked-down container can reach only what we hand it. Three kinds of resource:
+
+1. **The source tree** — already the worktree, bind-mounted `rw` at the working dir. Nothing to add.
+2. **Extra directories** (a knowledge base, a shared read-only config, a second source tree) — the
+   `sandbox.mounts` list: `{source, target, mode}`, `source` relative to the workspace root, default
+   `ro`. Secrets never go here — they take the auth/`-e` path.
+3. **MCP tools** — the workspace's MCP servers the harness is allowed to call (already named per task
+   via `TaskSpec.mcp_tools`). Reachability depends on transport:
+   - **HTTP/SSE MCP servers** — reachable by adding their `host:port` to the egress `allow` list (or
+     attaching the harness to the same internal docker network as the server). This is the v1 path
+     and needs no new field — it falls out of the network allowlist.
+   - **stdio MCP servers** — a subprocess speaking over pipes can't be reached across a container
+     boundary. v1 does **not** bridge these into the sandbox; the options (run the stdio server as a
+     sidecar on the sandbox's network, or a host-side stdio→HTTP shim) are a **later refinement**,
+     noted not built. Until then, a containerized harness uses HTTP/SSE MCP servers, and the loader
+     warns if an archetype pairs a container sandbox with a stdio-only MCP tool.
+
+The through-line: everything the harness can touch — filesystem, network, tools — is declared, so the
+container is deny-by-default and we widen it explicitly, the same posture as the capability grant.
 
 ## Where it slots in — one chokepoint
 
@@ -146,7 +213,11 @@ per-host TLS pinning and DNS-level filtering are noted as later hardening.
    egress-proxy container + `HTTPS_PROXY` injection + proxy ACL from `allow`. Unit: mode → runtime
    args mapping. Gated e2e: `deny` blocks a real outbound call; `allowlist` permits only a listed
    host. (task #14)
-5. **Demo + docs + PR** — `demos/container_sandbox.py`, adapter-authoring guide + a discipline note,
+5. **Build-in-sandbox** — `sandbox.build` → a derived image built once, content-addressed + cached,
+   with `swarmkit adapters build`. The "no local install" path. (task #19)
+6. **Resource mounts + MCP reachability** — `sandbox.mounts` bind-mounts; HTTP/SSE MCP via the egress
+   allowlist; the loader warning for a container + stdio-only MCP pairing. (task #20)
+7. **Demo + docs + PR** — `demos/container_sandbox.py`, adapter-authoring guide + a discipline note,
    version bump, PR, CI, publish. (task #15)
 
 ## Test plan
@@ -179,5 +250,10 @@ with the one-line notice. Skips with a clear message when no container runtime i
 - `container` requested with no runtime present ⇒ a clear `ExecutorError` naming the disable switch —
   never a silent unsandboxed run.
 - `SWARMKIT_DISABLE_CONTAINER_SANDBOX=1` forces the native worktree for every archetype, logged once.
-- Eject story: the container flags are derivable from the adapter's `sandbox` block, so an ejected
-  LangGraph node can reproduce the `docker run` wrapper (invariant #7).
+- A `sandbox.build` adapter runs the harness with **nothing installed locally** but a container
+  runtime; the derived image is built once and reused; the credential reaches it only via `-e`.
+- `sandbox.mounts` makes a knowledge-base dir readable inside the container; an HTTP/SSE MCP server
+  on the `allow` list is reachable; a container + stdio-only MCP pairing warns at load.
+- Eject story: the container flags (run args, mounts, build ref) are derivable from the adapter's
+  `sandbox` block, so an ejected LangGraph node can reproduce the `docker build`/`docker run`
+  wrapper (invariant #7).

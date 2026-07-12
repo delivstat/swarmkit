@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: conflicting-sandbox-harness
+  name: Conflicting Sandbox Harness
+  description: image and build are mutually exclusive — declaring both must be rejected.
+spec:
+  launch:
+    command: [conflicting-sandbox-harness, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success, output: "$.text" }
+  sandbox:
+    kind: container
+    image: swarmkit-harness
+    build:
+      base: node:22-slim
+provenance:
+  authored_by: human
+  version: 0.1.0

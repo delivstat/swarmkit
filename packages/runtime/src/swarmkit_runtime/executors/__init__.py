@@ -12,13 +12,20 @@
   :class:`ResumeToken` — the run-side value types (§5, §6.0).
 """
 
-from swarmkit_runtime.executors._adapter_spec import AdapterSpec, parse_adapter_spec
+from swarmkit_runtime.executors._adapter_spec import (
+    AdapterSpec,
+    BuildSpec,
+    MountSpec,
+    SandboxSpec,
+    parse_adapter_spec,
+)
 from swarmkit_runtime.executors._approval import (
     approve_launch,
     is_launch_approved,
     launch_fingerprint,
 )
 from swarmkit_runtime.executors._budget import enforce_budget
+from swarmkit_runtime.executors._container import container_sandbox
 from swarmkit_runtime.executors._declarative import (
     DeclarativeExecutor,
     load_adapter_specs,
@@ -57,6 +64,7 @@ __all__ = [
     "AdapterInterpreter",
     "AdapterSpec",
     "BudgetEnvelope",
+    "BuildSpec",
     "DeclarativeExecutor",
     "ExecApprovalRequested",
     "ExecApprovalResponse",
@@ -76,16 +84,19 @@ __all__ = [
     "ExecutorRegistry",
     "InteractionDriver",
     "ModelExecutor",
+    "MountSpec",
     "NoInteractionDriver",
     "PreflightReport",
     "ResolvedExecutor",
     "ResumeToken",
     "SandboxError",
     "SandboxHandle",
+    "SandboxSpec",
     "TaskSpec",
     "approve_launch",
     "build_command",
     "collect_diff",
+    "container_sandbox",
     "default_executor_registry",
     "enforce_budget",
     "is_launch_approved",

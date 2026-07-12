@@ -99,6 +99,7 @@
             }
           }
         },
+        "sandbox": { "$ref": "#/$defs/sandbox" },
         "telemetry_grade": {
           "enum": ["normalized", "opaque"],
           "default": "normalized",
@@ -315,6 +316,101 @@
           "type": "string",
           "default": " ",
           "description": "How multiple approved capabilities are joined into {grant.capabilities}."
+        }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Opt-in isolation tier for the harness subprocess (executor-container-sandbox.md). Absent ⇒ the native git-worktree sandbox (default; today's behaviour). `container` runs the harness inside a docker|podman container with resource limits and enforced egress. A global disable switch (SWARMKIT_DISABLE_CONTAINER_SANDBOX) forces the worktree regardless of this block — the operator is never trapped by an archetype that insists on a container.",
+      "allOf": [
+        {
+          "$comment": "Use a prebuilt image OR build one from a base+install — not both.",
+          "not": { "required": ["image", "build"] }
+        }
+      ],
+      "properties": {
+        "kind": {
+          "enum": ["worktree", "container"],
+          "default": "worktree",
+          "description": "`worktree` (default) runs the harness directly in an ephemeral git worktree, as today. `container` provisions an isolated container with the worktree bind-mounted read-write, resource limits, and the `network` policy enforced."
+        },
+        "image": {
+          "type": "string",
+          "description": "A prebuilt container image for kind=container, in which the harness is already installed — any image you choose (yours, or a public one). Falls back to $SWARMKIT_HARNESS_IMAGE when unset. SwarmKit publishes no required image: if neither `image`, `build`, nor $SWARMKIT_HARNESS_IMAGE is given, provisioning fails with a clear error rather than guessing. Secrets are never baked in — they are injected at run via -e (same rule as the MCP sandbox). Use `build` instead to provision the harness into a derived image with no local install."
+        },
+        "build": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Provision the harness into a derived image so it runs in-container with NO local install — the user brings only their API key/subscription. Built once, content-addressed by the resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline` (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so all three go through one builder.",
+          "oneOf": [
+            { "required": ["base"] },
+            { "required": ["dockerfile"] },
+            { "required": ["dockerfile_inline"] }
+          ],
+          "properties": {
+            "base": {
+              "type": "string",
+              "description": "Base image the install steps run on, e.g. node:22-slim. Lowered to `FROM <base>` + a `RUN` per install step."
+            },
+            "install": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Shell commands run at build time to install the harness into the image, e.g. [\"npm install -g @anthropic-ai/claude-code\"]. Only used with `base`. No secrets here — install must not need the user's credential (that arrives at run via -e)."
+            },
+            "dockerfile": {
+              "type": "string",
+              "description": "Path to a Dockerfile (relative → workspace root) for harnesses needing COPY / multi-stage / ARG beyond base+install. The build context is the file's directory."
+            },
+            "dockerfile_inline": {
+              "type": "string",
+              "description": "Dockerfile content inline — full control while keeping the adapter a single self-contained artifact (no second file to ship)."
+            }
+          }
+        },
+        "mounts": {
+          "type": "array",
+          "description": "Extra resources bind-mounted into the container beyond the worktree — a source tree, a knowledge-base directory, shared read-only config. Secrets do NOT belong here (use auth modes / -e injection).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["source", "target"],
+            "properties": {
+              "source": {
+                "type": "string",
+                "description": "Host path; a relative path resolves under the workspace root."
+              },
+              "target": {
+                "type": "string",
+                "description": "Absolute path the resource is mounted at inside the container."
+              },
+              "mode": {
+                "enum": ["ro", "rw"],
+                "default": "ro",
+                "description": "Read-only (default) or read-write."
+              }
+            }
+          }
+        },
+        "network": {
+          "enum": ["deny", "allowlist"],
+          "default": "deny",
+          "description": "Enforced egress policy for kind=container. `deny` → no outbound access (--network none); suits a local-model harness. `allowlist` → egress only to `allow` hosts, via a managed forward proxy — the mode a cloud harness needs to reach its model API and nothing else."
+        },
+        "allow": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Hosts the harness may reach when network=allowlist, e.g. [api.anthropic.com]. Empty ⇒ effectively deny (a strict base to add to)."
+        },
+        "resources": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Container resource limits for kind=container. Omitted fields are unbounded.",
+          "properties": {
+            "cpus": { "type": "string", "description": "Max CPUs, passed to --cpus (e.g. \"2\")." },
+            "memory": { "type": "string", "description": "Max memory, passed to --memory (e.g. \"2g\")." },
+            "pids": { "type": "integer", "description": "Max process count, passed to --pids-limit." }
+          }
         }
       }
     },
