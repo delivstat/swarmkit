@@ -40,6 +40,7 @@ from swarmkit_runtime.executors._events import (
     ExecToolCall,
     ExecUsage,
 )
+from swarmkit_runtime.executors._interaction import InteractionDriver, NoInteractionDriver
 from swarmkit_runtime.executors._model import ModelExecutor
 from swarmkit_runtime.executors._protocol import Executor, ExecutorError, ResolvedExecutor
 from swarmkit_runtime.executors._registry import ExecutorRegistry, default_executor_registry
@@ -73,7 +74,9 @@ __all__ = [
     "Executor",
     "ExecutorError",
     "ExecutorRegistry",
+    "InteractionDriver",
     "ModelExecutor",
+    "NoInteractionDriver",
     "PreflightReport",
     "ResolvedExecutor",
     "ResumeToken",
