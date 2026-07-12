@@ -227,3 +227,20 @@ export interface SkillDetail {
 	category: string;
 	implementation_type: string | null;
 }
+
+/** A pending harness gate (GET /review) — a §6.2 permission or §6.3 input request awaiting a human. */
+export interface ReviewGate {
+	id: string;
+	kind: "permission" | "input" | "other";
+	agent_id: string;
+	topology_id: string;
+	skill_id: string;
+	reason: string;
+	status: "pending" | "approved" | "rejected";
+	answer: string;
+	capability: string;
+	question: string;
+	options: string[];
+	free_text_allowed: boolean;
+	timestamp: string;
+}
