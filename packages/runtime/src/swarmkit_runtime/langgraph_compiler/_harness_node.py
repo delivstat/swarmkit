@@ -53,6 +53,7 @@ from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.model_providers._pricing import estimate_cost
 from swarmkit_runtime.review import FileReviewQueue
 from swarmkit_runtime.trace import AgentStep, ToolCall
+from swarmkit_runtime.trust import TrustStore
 
 from ._helpers import _make_result
 from ._input_classifier import classify_input_request, should_classify
@@ -170,6 +171,10 @@ class _RelayCtx:
     # input requests are not detected (the harness node stays permission-relay + abort).
     model_provider: ModelProviderProtocol | None = None
     classifier_model: str | None = None
+    # §6.2.3 trust accrual: repeated operator approvals of an (archetype, capability) accrue toward
+    # an allowlist-changeset proposal. Absent (no root / no archetype) ⇒ no accrual.
+    trust: TrustStore | None = None
+    archetype: str | None = None
 
 
 def _relay_ctx(
@@ -199,7 +204,19 @@ def _relay_ctx(
         if review_queue is not None
         else (FileReviewQueue(root) if root else None),
         max_wait_seconds=max_wait,
+        trust=TrustStore(root, threshold=_trust_threshold(agent)) if root else None,
+        archetype=agent.source_archetype,
     )
+
+
+def _trust_threshold(agent: ResolvedAgent) -> int:
+    """Operator-tunable N (approvals before an allowlist proposal) — from the archetype's
+    ``executor.config.trust_threshold``; defaults to the store's built-in (5)."""
+    raw = agent.executor.config.get("trust_threshold")
+    try:
+        return int(raw) if raw is not None else 5
+    except (TypeError, ValueError):
+        return 5
 
 
 def _sandbox_for(agent: ResolvedAgent, root: Path, base_ref: str) -> tuple[Any, bool]:
@@ -496,6 +513,8 @@ async def _resolve_denials(
             governance=governance,
             review_queue=relay.review_queue,
             max_wait_seconds=relay.max_wait_seconds,
+            trust=relay.trust,
+            archetype=relay.archetype,
         )
         if decision.granted:
             newly.append(req.capability)

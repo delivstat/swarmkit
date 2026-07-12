@@ -17,9 +17,11 @@ author_app = typer.Typer(help="Conversational authoring for topologies, skills, 
 auth_app = typer.Typer(help="Manage serve API auth (token minting).")
 fleet_app = typer.Typer(help="Fleet enrollment — mint join codes, list memberships (design 19).")
 adapters_app = typer.Typer(help="Declarative harness adapters — inspect + approve launch blocks.")
+trust_app = typer.Typer(help="Trust accrual — apply repeated-approval capabilities to allowlists.")
 
 app.add_typer(review_app, name="review")
 app.add_typer(author_app, name="author")
 app.add_typer(auth_app, name="auth")
 app.add_typer(fleet_app, name="fleet")
 app.add_typer(adapters_app, name="adapters")
+app.add_typer(trust_app, name="trust")

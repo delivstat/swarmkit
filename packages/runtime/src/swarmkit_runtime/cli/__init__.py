@@ -25,6 +25,7 @@ from . import (  # noqa: F401
     _cmd_observability,
     _cmd_run,
     _cmd_serve,
+    _cmd_trust,
 )
 from ._app import app
 from ._cmd_serve import _auth_requires_secure
