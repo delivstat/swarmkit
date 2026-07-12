@@ -673,6 +673,46 @@ Closes the loop: observe → measure → propose → approve → distribute.
 - [ ] A2A agent / sub-swarm / another instance's swarm modelled as a **coordination
       skill** (builds on the A2A adapter + §18).
 
+### M19 — Executor abstraction + harness isolation 🟡
+
+**Goal:** run a node as a harness (session-holding, diff-producing subprocess) alongside `model`,
+under the same governance + observability, with a real isolation boundary.
+
+**Design reference:** `design/details/executor-abstraction.md` and the per-phase notes below.
+
+- [x] **P2 — harness executors** — `claude-code` adapter, worktree sandbox, budget envelope,
+      normalized events, cockpit display; `deny`/`abort` interaction. `executor-p2-plan.md`.
+- [x] **P3 — declarative adapters** — one `DeclarativeExecutor` interpreting `adapter.yaml`; bundled
+      library (claude-code + opencode verified e2e, codex + gemini-cli experimental); launch review
+      gate. `executor-declarative-adapters-plan.md`. (runtime 1.78.0)
+- [x] **Relay (§6.2)** — mid-run permission approvals via park-resume (policy → inbox → bounded wait
+      → abort); resume-token relaunch with expanded allowlist. `executor-relay-plan.md`. (1.81.0)
+- [x] **Input escalation (§6.3)** — LLM classifier → human inbox → resume-with-answer (never regex).
+      `executor-input-escalation-plan.md`. (1.83.0)
+- [x] **Review surface** — one `/review` API + queue across CLI, serve UI, fleet UI. (1.84.0, #552–554)
+- [x] **Trust accrual (§6.2.3 / P3.5)** — N approvals of an (archetype, capability) → propose an
+      allowlist changeset; one denial resets + blocks. `executor-trust-accrual-plan.md`. (1.85.0, #555)
+- [ ] **Container sandbox + egress proxy (opt-in)** — the enforced isolation tier the worktree only
+      advises today: container runtime (docker|podman), resource limits, network deny/allowlist.
+      **Opt-in, with a global disable switch; default stays native worktree.**
+      `design/details/executor-container-sandbox.md`. Tasks #11 (design), #12 (config seam),
+      #13 (provisioner), #14 (network enforcement), #15 (demo + PR).
+- [ ] Verify codex + gemini-cli adapters e2e against the real binaries (drop the EXPERIMENTAL marker).
+
+### M20 — Topology canvas (NEW) 🟡
+
+**Goal:** one interactive node-and-edge canvas, two modes — **edit** the topology graph and
+**examine** a run over the same layout. Replaces the composer's text/tree "Network" view with a real
+React Flow canvas; the same canvas renders read-only in the fleet run-detail.
+
+**Design reference:** `design/details/topology-canvas.md` (promote draft → accepted in task #16).
+
+- [ ] Promote the note + scaffold React Flow; read-only `TopologyCanvas` (agents→nodes, children→edges). Task #16.
+- [ ] **Edit mode** — add/remove nodes, draw delegation edges, node panel = schema form; edits
+      round-trip through YAML (no second source of truth). Task #17.
+- [ ] **Examine-run mode** — overlay `/observability/runs/{id}/trace` (who fired, order, timing,
+      tokens); inline gate answering; copy read-only into the fleet run-detail. Task #18.
+
 ---
 
 ## Rynko Platform (separate plan)
@@ -763,6 +803,14 @@ Every design note under `design/details/` and where it appears in this plan:
 | `topology-composer-ui.md` | M13 ✅ |
 | `structured-inter-agent-communication.md` | M9 ✅ |
 | `document-writer-pattern.md` | M8 ✅ |
+| `executor-abstraction.md` | M19 🟡 |
+| `executor-p2-plan.md` | M19 ✅ |
+| `executor-declarative-adapters-plan.md` | M19 ✅ |
+| `executor-relay-plan.md` | M19 ✅ |
+| `executor-input-escalation-plan.md` | M19 ✅ |
+| `executor-trust-accrual-plan.md` | M19 ✅ |
+| `executor-container-sandbox.md` | M19 🟡 |
+| `topology-canvas.md` | M20 🟡 |
 
 ## Open questions
 
