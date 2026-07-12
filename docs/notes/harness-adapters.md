@@ -39,6 +39,10 @@ If a harness signals errors with more than one field, classify with **ordered re
 
 A **workspace** adapter's `launch` block is human-gated (`swarmkit adapters approve <id>`); bundled adapters are pre-vetted and bypass. Changing a workspace adapter's launch surface invalidates its approval. This is enforced in `_build_executor` — don't add a bypass.
 
+## Sandbox is opt-in — never silently unsandboxed
+
+The `sandbox` block (`kind: container`) is opt-in; absent, the harness runs in the native worktree exactly as before. Two rules to keep: `SWARMKIT_DISABLE_CONTAINER_SANDBOX` **always wins** (forces the worktree, regardless of adapter config — resolved once in `_sandbox_for`), and a container requested with **no runtime present must fail loud**, never fall back to an unsandboxed run (that would be a security lie — mirrors the MCP Docker sandbox's `raise`). The `image`/`build` credential rule: secrets reach the container only via `-e` at run, never baked into the image or a `build` step. Design: `design/details/executor-container-sandbox.md`.
+
 ## Schema changes
 
 Changing `executor-adapter.schema.json` follows the general [schema-change discipline](schema-change-discipline.md): sync the bundled `_schemas/` copy, regenerate pydantic + TS (`just schema-codegen`), add fixtures, run both validators.

@@ -39,6 +39,9 @@ def _fake_repo(tmp_path: Path) -> Path:
     notes = tmp_path / "docs" / "notes"
     notes.mkdir(parents=True)
     (notes / "usability-first.md").write_text("# Usability\n")
+    guides = tmp_path / "docs" / "guides"
+    guides.mkdir(parents=True)
+    (guides / "authoring-harness-adapters.md").write_text("# Authoring a harness adapter\n")
     schemas_dir = tmp_path / "packages" / "schema" / "schemas"
     schemas_dir.mkdir(parents=True)
     (schemas_dir / "topology.schema.json").write_text('{"$id": "topology"}\n')
@@ -60,6 +63,7 @@ def test_pack_includes_every_section(tmp_path: Path) -> None:
         "## Authoritative design",
         "## Per-feature design notes",
         "## Cross-cutting notes",
+        "## How-to guides",
         "## Per-package invariants",
         "## Canonical schemas",
         "## Schema fixtures",
