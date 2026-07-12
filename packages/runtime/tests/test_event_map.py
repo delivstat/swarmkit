@@ -25,8 +25,22 @@ ADAPTER_YAML = REPO / "packages/schema/tests/fixtures/executor-adapter/claude-co
 STREAM_JSONL = Path(__file__).parent / "fixtures/claude-code/stream-success.jsonl"
 
 
+RELAY_YAML = REPO / "packages/schema/tests/fixtures/executor-adapter/relay.yaml"
+
+
 def _spec() -> object:
     return parse_adapter_spec(yaml.safe_load(ADAPTER_YAML.read_text()))
+
+
+def test_parses_relay_interaction_block() -> None:
+    spec = parse_adapter_spec(yaml.safe_load(RELAY_YAML.read_text()))
+    assert spec.on_unanswerable == "relay"
+    assert spec.interaction_driver == "hold-stream"
+    assert spec.max_approval_wait_seconds == 120
+    # a non-relay adapter (claude-code = abort) carries no interaction driver
+    default = parse_adapter_spec(yaml.safe_load(ADAPTER_YAML.read_text()))
+    assert default.on_unanswerable == "abort"
+    assert default.interaction_driver is None
 
 
 def _run_stream() -> tuple[AdapterInterpreter, list[object]]:

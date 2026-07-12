@@ -73,6 +73,10 @@ class AdapterSpec:
     resume_arg: tuple[str, ...] = ()
     auth: AuthSpec = field(default_factory=AuthSpec)
     on_unanswerable: str = "abort"
+    # Interaction (RFC §6.2), present only when on_unanswerable == "relay": the bidirectional driver
+    # that feeds an approval decision back, and the bounded wait before degrading to abort.
+    interaction_driver: str | None = None
+    max_approval_wait_seconds: float | None = None
     telemetry_grade: str = "normalized"
     artifacts_profile: str = "files"
     retain_raw: bool = False
@@ -125,6 +129,7 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
     )
     resume = spec.get("resume") or {}
     success_when: Mapping[str, Any] = spec.get("success_when") or {}
+    interaction: Mapping[str, Any] = spec.get("interaction") or {}
     return AdapterSpec(
         kind=str(raw["metadata"]["id"]),
         launch=launch,
@@ -133,6 +138,8 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
         resume_arg=tuple(resume.get("arg") or ()),
         auth=_auth(spec.get("auth")),
         on_unanswerable=str(spec.get("on_unanswerable", "abort")),
+        interaction_driver=interaction.get("driver"),
+        max_approval_wait_seconds=interaction.get("max_approval_wait_seconds"),
         telemetry_grade=str(spec.get("telemetry_grade", "normalized")),
         artifacts_profile=str((spec.get("artifacts") or {}).get("profile", "files")),
         retain_raw=bool((spec.get("stream") or {}).get("retain_raw", False)),

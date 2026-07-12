@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: relay-harness
+  name: Relay Harness
+  description: a harness that pauses for approval mid-run via a bidirectional driver
+spec:
+  launch:
+    command: [relay-harness, run, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: permission }
+      emit:
+        - event: approval_requested
+          with: { run_id: "$.run_id", capability: "$.tool", rationale: "$.why" }
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success, output: "$.text" }
+  on_unanswerable: relay
+  interaction:
+    driver: hold-stream
+    max_approval_wait_seconds: 120
+provenance:
+  authored_by: human
+  version: 0.1.0

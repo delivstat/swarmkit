@@ -42,11 +42,41 @@ class SuccessWhen(BaseModel):
 
 class OnUnanswerable(Enum):
     """
-    Interaction ceiling for a declarative adapter (RFC §5.2): deny refuses the out-of-grant action in place; abort terminates needs_approval. `relay` is Tier-1-only (needs bidirectional session control) and is not permitted here.
+    How a mid-run request outside the launch grant is handled (RFC §6.2). `deny` refuses it in place; `abort` terminates needs_approval; `relay` pauses the harness and routes the request to the approval inbox, then feeds the decision back. `relay` requires an `interaction` block with a driver (the one Tier-1 seam — bidirectional session control).
     """
 
     deny = "deny"
     abort = "abort"
+    relay = "relay"
+
+
+class Driver(Enum):
+    """
+    `hold-stream` keeps the session alive and answers over streaming stdin (short waits); `park-resume` checkpoints the session id and re-launches with an expanded grant on approval (long waits, survives restarts).
+    """
+
+    hold_stream = "hold-stream"
+    park_resume = "park-resume"
+
+
+class Interaction(BaseModel):
+    """
+    Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2). Declares the bidirectional driver that feeds an approval decision back into the running session — the single per-harness code seam; everything else (inbox, policy, scoping, audit, never-hang) is generic core.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    driver: Driver = Field(
+        ...,
+        description="`hold-stream` keeps the session alive and answers over streaming stdin (short waits); `park-resume` checkpoints the session id and re-launches with an expanded grant on approval (long waits, survives restarts).",
+    )
+    max_approval_wait_seconds: float | None = Field(
+        None,
+        description="Bounded wait for an approval decision before degrading to `abort` (never-hang guarantee). Core applies a default when omitted.",
+        ge=0.0,
+    )
 
 
 class TelemetryGrade(Enum):
@@ -303,7 +333,11 @@ class Spec(BaseModel):
     )
     on_unanswerable: OnUnanswerable | None = Field(
         "abort",
-        description="Interaction ceiling for a declarative adapter (RFC §5.2): deny refuses the out-of-grant action in place; abort terminates needs_approval. `relay` is Tier-1-only (needs bidirectional session control) and is not permitted here.",
+        description="How a mid-run request outside the launch grant is handled (RFC §6.2). `deny` refuses it in place; `abort` terminates needs_approval; `relay` pauses the harness and routes the request to the approval inbox, then feeds the decision back. `relay` requires an `interaction` block with a driver (the one Tier-1 seam — bidirectional session control).",
+    )
+    interaction: Interaction | None = Field(
+        None,
+        description="Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2). Declares the bidirectional driver that feeds an approval decision back into the running session — the single per-harness code seam; everything else (inbox, policy, scoping, audit, never-hang) is generic core.",
     )
     telemetry_grade: TelemetryGrade | None = Field(
         "normalized",
