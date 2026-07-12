@@ -8,22 +8,28 @@ itself (docker run, build, egress) lands in later tasks; here the seam is proven
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
-from swarmkit_runtime.executors import ExecutorError, SandboxSpec, container_sandbox
+from swarmkit_runtime.executors import (
+    ExecutorError,
+    ResolvedExecutor,
+    SandboxSpec,
+    container_sandbox,
+)
 from swarmkit_runtime.executors._adapter_spec import parse_adapter_spec
 from swarmkit_runtime.langgraph_compiler._harness_node import (
     _container_disabled,
     _effective_sandbox,
     _sandbox_for,
 )
-from swarmkit_runtime.resolver._resolved import ResolvedAgent, ResolvedExecutor
+from swarmkit_runtime.resolver._resolved import ResolvedAgent
 
 # --- spec parsing -------------------------------------------------------------------------------
 
 
-def _adapter(sandbox: dict | None) -> dict:
-    spec: dict = {
+def _adapter(sandbox: dict[str, Any] | None) -> dict[str, Any]:
+    spec: dict[str, Any] = {
         "launch": {"command": ["h", "{task.statement}"]},
         "stream": {"format": "jsonl"},
         "event_map": [{"when": {"type": "done"}, "emit": [{"event": "result"}]}],
@@ -91,7 +97,7 @@ def test_disable_switch_reads_truthy_values(monkeypatch: pytest.MonkeyPatch) -> 
 # --- precedence in _sandbox_for -----------------------------------------------------------------
 
 
-def _agent(config: dict | None = None) -> ResolvedAgent:
+def _agent(config: dict[str, Any] | None = None) -> ResolvedAgent:
     return ResolvedAgent(
         id="coder",
         role="worker",
