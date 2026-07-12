@@ -128,8 +128,21 @@ def review_show(
             typer.echo(f"Skill:    {item.skill_id}")
             typer.echo(f"Status:   {item.status}")
             typer.echo(f"Reason:   {item.reason}")
-            typer.echo(f"Output:   {json.dumps(item.output, indent=2)}")
-            typer.echo(f"Verdict:  {json.dumps(item.verdict, indent=2)}")
+            # Friendly rendering for harness gates (§6.2 permission / §6.3 input).
+            if item.skill_id == "harness-approval":
+                typer.echo(f"Capability: {item.output.get('capability', '')}")
+                typer.echo("Resolve with: swarmkit review approve|reject <id>")
+            elif item.skill_id == "harness-input":
+                typer.echo(f"Question:   {item.output.get('question', '')}")
+                options = item.output.get("options") or []
+                for i, opt in enumerate(options):
+                    typer.echo(f"  [{i}] {opt}")
+                if item.output.get("free_text_allowed", True):
+                    typer.echo("  (free text also accepted)")
+                typer.echo('Resolve with: swarmkit review answer <id> "<your answer>"')
+            else:
+                typer.echo(f"Output:   {json.dumps(item.output, indent=2)}")
+                typer.echo(f"Verdict:  {json.dumps(item.verdict, indent=2)}")
             return
     _stderr(f"Review item '{item_id}' not found.")
     raise typer.Exit(1)
@@ -167,6 +180,33 @@ def review_reject(
             queue.resolve(item.id, "rejected")
             typer.echo(f"✗ Rejected {item.id[:8]}")
             return
+    _stderr(f"Review item '{item_id}' not found.")
+    raise typer.Exit(1)
+
+
+@review_app.command("answer")
+def review_answer(
+    item_id: str,
+    answer: Annotated[str, typer.Argument(help="The answer text (or an option shown by `show`).")],
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Answer a harness input request (§6.3) with text. Inspect it first with `review show <id>`.
+
+    An answer that is a bare integer selects that option index from the request; otherwise the text
+    is used verbatim (when the request allows free text)."""
+    queue = FileReviewQueue(workspace_path.resolve())
+    for item in queue.list_all():
+        if not item.id.startswith(item_id):
+            continue
+        resolved = answer
+        options = item.output.get("options") or []
+        if answer.isdigit() and 0 <= int(answer) < len(options):
+            resolved = str(options[int(answer)])
+        queue.answer_input(item.id, resolved)
+        typer.echo(f"✓ Answered {item.id[:8]}: {resolved!r}")
+        return
     _stderr(f"Review item '{item_id}' not found.")
     raise typer.Exit(1)
 

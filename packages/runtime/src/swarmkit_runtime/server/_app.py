@@ -38,6 +38,7 @@ from ._routes_crud import _register_crud_routes
 from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
+from ._routes_review import _register_review_routes
 from ._services import ArtifactService
 
 logger = logging.getLogger("swarmkit.server")
@@ -238,6 +239,7 @@ def create_app(  # noqa: PLR0915
     _register_job_routes(app, job_store)
     _register_conversation_routes(app, workspace_path)
     _register_crud_routes(app, ArtifactService(workspace_path))
+    _register_review_routes(app, workspace_path)
     _register_fleet_routes(app)
 
     if _mcp_available:
