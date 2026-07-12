@@ -125,9 +125,7 @@ class _DecidedQueue:
         return True
 
 
-async def _approve_once(
-    tmp_path: Path, store: TrustStore, *, granted: bool
-) -> list[AuditEvent]:
+async def _approve_once(tmp_path: Path, store: TrustStore, *, granted: bool) -> list[AuditEvent]:
     """Drive one relay resolution to an immediate operator decision."""
     gov = _Gov()
     await resolve_relay(

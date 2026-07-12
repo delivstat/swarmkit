@@ -92,9 +92,7 @@ def test_apply_missing_archetype_file_errors(tmp_path: Path) -> None:
 def test_clear_lifts_block(tmp_path: Path) -> None:
     store = TrustStore(tmp_path, threshold=1)
     store.record("coding-worker", "Bash(deploy)", False)  # blocked
-    result = runner.invoke(
-        app, ["trust", "clear", "coding-worker", "Bash(deploy)", str(tmp_path)]
-    )
+    result = runner.invoke(app, ["trust", "clear", "coding-worker", "Bash(deploy)", str(tmp_path)])
     assert result.exit_code == 0
     # After clearing, the pair accrues again.
     assert store.record("coding-worker", "Bash(deploy)", True) is not None
