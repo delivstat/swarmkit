@@ -26,6 +26,7 @@ from swarmkit_runtime.review import ReviewItem
 if TYPE_CHECKING:
     from swarmkit_runtime.governance import GovernanceProvider
     from swarmkit_runtime.review import ReviewQueue
+    from swarmkit_runtime.trust import TrustStore
 
 _DEFAULT_MAX_WAIT_SECONDS = 300.0
 
@@ -51,13 +52,18 @@ async def resolve_relay(
     governance: GovernanceProvider,
     review_queue: ReviewQueue,
     max_wait_seconds: float | None = None,
+    trust: TrustStore | None = None,
+    archetype: str | None = None,
     clock: Callable[[], float] = time.monotonic,
     poll_interval: float = 0.5,
     sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
 ) -> RelayDecision:
     """Resolve a relayed permission request: policy auto-approve → inbox → bounded wait → abort.
 
-    ``clock`` / ``sleep`` are injectable so the wait is testable without real time.
+    ``clock`` / ``sleep`` are injectable so the wait is testable without real time. When ``trust`` +
+    ``archetype`` are given, each **operator** decision is folded into the trust tally (§6.2.3): N
+    approvals ⇒ an allowlist-changeset proposal; one denial resets + blocks. Policy auto-approvals
+    (already allowlisted) and timeouts (not a deliberate answer) are not accrued.
     """
     capability = request.capability
     await _audit(
@@ -98,9 +104,13 @@ async def resolve_relay(
     while clock() - start < budget:
         current = review_queue.get(item.id)
         if current is not None and current.status == "approved":
-            return await _finish(governance, agent_id, RelayDecision(True, "operator"), capability)
+            dec = await _finish(governance, agent_id, RelayDecision(True, "operator"), capability)
+            await _accrue(governance, agent_id, trust, archetype, capability, dec)
+            return dec
         if current is not None and current.status == "rejected":
-            return await _finish(governance, agent_id, RelayDecision(False, "operator"), capability)
+            dec = await _finish(governance, agent_id, RelayDecision(False, "operator"), capability)
+            await _accrue(governance, agent_id, trust, archetype, capability, dec)
+            return dec
         await sleep(poll_interval)
     return await _finish(
         governance, agent_id, RelayDecision(False, "timeout", "approval wait expired"), capability
@@ -122,6 +132,32 @@ async def _finish(
         },
     )
     return decision
+
+
+async def _accrue(
+    governance: GovernanceProvider,
+    agent_id: str,
+    trust: TrustStore | None,
+    archetype: str | None,
+    capability: str,
+    decision: RelayDecision,
+) -> None:
+    """Fold one operator decision into the trust tally; audit a proposal the run it is first made.
+    The store only *proposes* — the grant is widened later by a human (``swarmkit trust apply``)."""
+    if trust is None or not archetype:
+        return
+    proposal = trust.record(archetype, capability, decision.granted)
+    if proposal is not None:
+        await _audit(
+            governance,
+            "trust.changeset_proposed",
+            agent_id,
+            {
+                "archetype": archetype,
+                "capability": capability,
+                "approvals": proposal.approvals,
+            },
+        )
 
 
 async def resolve_input(
