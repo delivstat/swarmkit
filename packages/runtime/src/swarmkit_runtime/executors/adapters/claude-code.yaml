@@ -18,6 +18,10 @@ spec:
         args: [--max-turns, "{budget.max_turns}"]
       - when: config.model
         args: [--model, "{config.model}"]
+      # Constrain the tool grant (space/comma-separated). When set, tools outside it are denied and
+      # surface for relay; unset (the default) means all tools, so relay never engages.
+      - when: config.allowed_tools
+        args: [--allowedTools, "{config.allowed_tools}"]
   auth:
     default: subscription
     modes:
@@ -69,10 +73,24 @@ spec:
       emit:
         - event: result
           with: { status: budget_exceeded, output: "$.result" }
+    # relay (§6.2): a tool outside the grant is reported in result.permission_denials. Map each to an
+    # approval_requested; the generic park-resume loop resolves it and relaunches with the grant.
+    - when: { type: result }
+      for_each: "$.permission_denials"
+      emit:
+        - event: approval_requested
+          with: { capability: "$.tool_name" }
   resume:
     arg: [--resume, "{resume.token}"]
+    prompt: "The requested permissions have been granted. Please continue and complete the task."
+  grant:
+    arg: [--allowedTools, "{grant.capabilities}"]
+    separator: " "
   success_when: { exit_code: 0 }
-  on_unanswerable: abort
+  on_unanswerable: relay
+  interaction:
+    driver: park-resume
+    max_approval_wait_seconds: 300
   telemetry_grade: normalized
   artifacts: { profile: files }
 provenance:

@@ -65,14 +65,27 @@ harness stream ──▶ AdapterInterpreter ──▶ exec.approval_requested
 - **Core** owns everything vendor-neutral. **Driver** is a small Tier-1 class selected by the
   adapter's declared mechanism.
 
-## Decision (owner, this session)
+## Decision (owner, this session) — updated after verifying against the real binary
 
-- **Accept a narrow per-harness `InteractionDriver` (code)** for the one genuinely bidirectional
-  part — feeding a decision back into a running session. Everything else stays generic core, and
-  adapters still *declare* their interaction capability in YAML. A harness with no driver stays
-  `deny | abort`. This is the only way real relay works; the "harnesses are data" rule holds
-  everywhere except this small, bounded seam.
-- **`hold-stream` is the first driver** (the common short-wait case, Claude-native).
+- **`park-resume` is THE driver.** Spiking the real `claude` CLI showed **hold-stream is not
+  buildable**: the CLI has no live permission callback (`--permission-prompt-tool` doesn't exist),
+  and in `-p` stream-json mode it never emits a `control_request` to answer over stdin. When a tool
+  isn't pre-granted, Claude **denies and stops** — it never pauses to ask. So there is nothing to
+  "hold". hold-stream is **dropped** (kept only as a documented future option for a harness that
+  actually exposes a live callback, e.g. via the Agent SDK — none of ours do).
+- **park-resume is verified e2e:** a constrained run surfaces a structured denial
+  (`result.permission_denials = [{tool_name, tool_input}]`) + `session_id`; on approval,
+  `claude --resume <id> --allowedTools <cap>` retries and completes. It also covers long/durable
+  waits (only a string is parked) — the very case hold-stream couldn't.
+- **park-resume is mostly declarative:** the adapter maps `permission_denials → approval_requested`
+  (data), declares a `grant` arg + `resume` arg + a resume `prompt` (data); the run→resolve→resume
+  **loop** is generic core. The `InteractionDriver` code seam is reserved for a future hold-stream;
+  park-resume needs no per-harness code.
+- **Everything harness-specific about park-resume is in the YAML** (owner directive): the resume
+  command/keyword (`resume.arg`), the grant command/keyword (`grant.arg`), the join separator, and
+  the nudge (`resume.prompt`). A different harness with different flags is a different `adapter.yaml`,
+  not code. Substitution vars gain `{grant.capabilities}` (the approved caps, joined by the declared
+  separator).
 
 ## The drivers (grounded in the real `claude` binary)
 

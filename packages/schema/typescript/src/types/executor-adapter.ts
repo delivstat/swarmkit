@@ -44,6 +44,7 @@ export interface Spec {
     artifacts?: Artifacts;
     auth?:      Auth;
     event_map:  EventMapElement[];
+    grant?:     Grant;
     /**
      * Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2).
      * Declares the bidirectional driver that feeds an approval decision back into the running
@@ -205,6 +206,22 @@ export interface With {
 }
 
 /**
+ * How an approved capability is passed to the harness on a park-resume relaunch (RFC §6.2).
+ * The whole park-resume mechanism is data: no harness is special-cased in code.
+ */
+export interface Grant {
+    /**
+     * Args appended on a grant-expanding resume, e.g. [--allowedTools, "{grant.capabilities}"].
+     * {grant.capabilities} is the approved capabilities joined by `separator`.
+     */
+    arg?: string[];
+    /**
+     * How multiple approved capabilities are joined into {grant.capabilities}.
+     */
+    separator?: string;
+}
+
+/**
  * Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2).
  * Declares the bidirectional driver that feeds an approval decision back into the running
  * session — the single per-harness code seam; everything else (inbox, policy, scoping,
@@ -282,6 +299,11 @@ export interface Resume {
      * Args appended when resuming, e.g. [--resume, "{resume.token}"].
      */
     arg?: string[];
+    /**
+     * The nudge statement sent on a park-resume relaunch (substituted for {task.statement}),
+     * e.g. 'Continue — the requested permissions have been granted.'
+     */
+    prompt?: string;
 }
 
 export interface Stream {

@@ -262,7 +262,8 @@ def build_command(
     """Build the final argv from the launch template + a substitution context.
 
     ``optional_args`` groups are appended only when their ``when`` variable is set (non-empty) in
-    ``ctx``; ``resume`` args are appended when ``resuming`` and a resume token is present. No shell.
+    ``ctx``. When ``resuming`` with a resume token: ``resume`` args are appended, and ``grant`` args
+    are appended when ``{grant.capabilities}`` is set (park-resume relaunch). No shell.
     """
     argv = [_sub(part, ctx) for part in spec.launch.command]
     for group in spec.launch.optional_args:
@@ -270,4 +271,6 @@ def build_command(
             argv.extend(_sub(a, ctx) for a in group.args)
     if resuming and ctx.get("resume.token") and spec.resume_arg:
         argv.extend(_sub(a, ctx) for a in spec.resume_arg)
+    if resuming and ctx.get("grant.capabilities") and spec.grant_arg:
+        argv.extend(_sub(a, ctx) for a in spec.grant_arg)
     return argv

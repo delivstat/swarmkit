@@ -77,7 +77,13 @@ class _FakeHarness(Executor):
         return PreflightReport(ok=True)
 
     async def run(
-        self, task: TaskSpec, sandbox: SandboxHandle, budget: BudgetEnvelope
+        self,
+        task: TaskSpec,
+        sandbox: SandboxHandle,
+        budget: BudgetEnvelope,
+        *,
+        resume_token: str | None = None,
+        granted: tuple[str, ...] = (),
     ) -> AsyncIterator[ExecEvent]:
         async for event in self._events_factory(sandbox):
             yield event

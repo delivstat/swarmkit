@@ -17,9 +17,9 @@ from swarmkit_runtime.executors import (
     ExecResult,
     ExecStarted,
     Executor,
-    InteractionDriver,
     PreflightReport,
     ResolvedExecutor,
+    ResumeToken,
     SandboxHandle,
     TaskSpec,
     approve_launch,
@@ -152,11 +152,15 @@ class _DenyGov(MockGovernanceProvider):
 # ---- harness-node wiring -----------------------------------------------------------------------
 
 
-class _FakeHarness(Executor):
+class _ParkFake(Executor):
+    """A park-resume fake: the first run hits a permission denial; a resumed run (with the grant)
+    completes. Records the (resume_token, granted) of each run so the loop can be asserted."""
+
     kind = "fake"
 
-    def __init__(self, events_factory: Any) -> None:
-        self._events_factory = events_factory
+    def __init__(self, capability: str = "Write") -> None:
+        self._capability = capability
+        self.runs: list[tuple[str | None, tuple[str, ...]]] = []
 
     def config_schema(self) -> dict[str, Any]:
         return {"type": "object", "additionalProperties": True}
@@ -165,23 +169,31 @@ class _FakeHarness(Executor):
         return PreflightReport(ok=True)
 
     async def run(
-        self, task: TaskSpec, sandbox: SandboxHandle, budget: BudgetEnvelope
+        self,
+        task: TaskSpec,
+        sandbox: SandboxHandle,
+        budget: BudgetEnvelope,
+        *,
+        resume_token: str | None = None,
+        granted: tuple[str, ...] = (),
     ) -> AsyncIterator[ExecEvent]:
-        async for e in self._events_factory():
-            yield e
+        self.runs.append((resume_token, tuple(granted)))
+        yield ExecStarted(run_id=f"r{len(self.runs)}", kind="fake")
+        if resume_token is None:
+            # first run: the capability is not granted → surface a denial, then stop.
+            yield ExecApprovalRequested(
+                run_id="r1", capability=self._capability, rationale="need it"
+            )
+            yield ExecResult(status="needs_approval", output="waiting on permission")
+        else:
+            yield ExecMessage(role="assistant", text="proceeding")
+            yield ExecResult(status="success", output="completed")
+
+    def resume_token(self, run_id: str) -> ResumeToken | None:
+        return ResumeToken(value="sess-1")
 
     async def cancel(self, run_id: str) -> None:
         return None
-
-
-class _FakeDriver(InteractionDriver):
-    supports_relay = True
-
-    def __init__(self) -> None:
-        self.responses: list[bool] = []
-
-    async def respond(self, request: ExecApprovalRequested, *, granted: bool) -> None:
-        self.responses.append(granted)
 
 
 def _agent() -> ResolvedAgent:
@@ -201,57 +213,49 @@ def _state() -> SwarmState:
 
 
 @pytest.mark.asyncio
-async def test_harness_node_relay_approves_and_continues(tmp_path: Path) -> None:
-    """With a relay driver + policy auto-approve, an approval request is resolved, fed back, and the
-    stream continues to a success — not aborted."""
-
-    async def events() -> AsyncIterator[ExecEvent]:
-        yield ExecStarted(run_id="r1", kind="fake")
-        yield ExecApprovalRequested(run_id="r1", capability="Bash(ls)", rationale="list")
-        yield ExecMessage(role="assistant", text="did the thing")
-        yield ExecResult(status="success", output="done")
-
-    driver = _FakeDriver()
-    # force the relay path: adapter would declare on_unanswerable=relay; here we patch the ctx via a
-    # workspace adapter. Simpler: monkeypatch the resolved on_unanswerable through a relay adapter.
+async def test_park_resume_approves_then_completes(tmp_path: Path) -> None:
+    """park-resume: a denial is auto-approved by policy, the harness is relaunched with the grant,
+    and the resumed run completes — not aborted."""
     ws = _relay_workspace(tmp_path)
     agent = dataclasses.replace(_agent(), executor=ResolvedExecutor(kind="relay-fake"))
+    fake = _ParkFake(capability="Write")
     result = await run_harness_node(
         agent,
         _state(),
-        _AllowGov(),
+        _AllowGov(),  # policy auto-approves the denial
         workspace_root=ws,
-        executor=_FakeHarness(events),
-        driver=driver,
+        executor=fake,
         review_queue=cast(ReviewQueue, _MemQueue()),
     )
-    assert "done" in result["output"]  # ran to success, not aborted
-    assert driver.responses == [True]  # the decision was fed back once
+    assert "completed" in result["output"]  # resumed run succeeded
+    # two runs: the initial (no resume) and the relaunch carrying the approved capability
+    assert len(fake.runs) == 2
+    assert fake.runs[0] == (None, ())
+    assert fake.runs[1] == ("sess-1", ("Write",))
 
 
 @pytest.mark.asyncio
-async def test_harness_node_relay_without_driver_aborts(tmp_path: Path) -> None:
-    async def events() -> AsyncIterator[ExecEvent]:
-        yield ExecStarted(run_id="r1", kind="fake")
-        yield ExecApprovalRequested(run_id="r1", capability="Bash(rm)", rationale="danger")
-        yield ExecResult(status="success", output="should not reach")
-
+async def test_park_resume_denied_stays_needs_approval(tmp_path: Path) -> None:
+    """When the inbox rejects (and policy denies), no relaunch happens and the denied result stands
+    — never hangs."""
     ws = _relay_workspace(tmp_path)
     agent = dataclasses.replace(_agent(), executor=ResolvedExecutor(kind="relay-fake"))
+    fake = _ParkFake()
     result = await run_harness_node(
         agent,
         _state(),
-        MockGovernanceProvider(),
+        _DenyGov(),  # policy denies → inbox
         workspace_root=ws,
-        executor=_FakeHarness(events),
-        # no driver → NoInteractionDriver → relay unavailable → abort
+        executor=fake,
+        review_queue=cast(ReviewQueue, _MemQueue(preset="rejected")),
     )
     assert "needs_approval" in result["output"]
+    assert len(fake.runs) == 1  # no relaunch
 
 
 def _relay_workspace(root: Path) -> Path:
-    """A git workspace with an approved relay adapter, so the harness node sees on_unanswerable
-    relay and the worktree sandbox can be provisioned."""
+    """A git workspace with an approved park-resume relay adapter, so the harness node sees
+    on_unanswerable relay + driver park-resume and the worktree sandbox can be provisioned."""
 
     def git(*args: str) -> None:
         subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
@@ -270,7 +274,7 @@ def _relay_workspace(root: Path) -> Path:
         "  stream: {format: jsonl}\n"
         "  event_map: [{emit: [{event: result, with: {status: success}}]}]\n"
         "  on_unanswerable: relay\n"
-        "  interaction: {driver: hold-stream, max_approval_wait_seconds: 5}\n"
+        "  interaction: {driver: park-resume, max_approval_wait_seconds: 5}\n"
         "provenance: {authored_by: human, version: 0.1.0}\n"
     )
     # approve its launch so the gate doesn't block (_relay_ctx reads the spec)
