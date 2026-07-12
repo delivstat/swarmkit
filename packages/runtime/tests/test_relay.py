@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import subprocess
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -30,20 +31,22 @@ from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler._harness_node import run_harness_node
 from swarmkit_runtime.langgraph_compiler._relay import resolve_relay
 from swarmkit_runtime.langgraph_compiler._state import SwarmState
+from swarmkit_runtime.model_providers import CompletionResponse, ContentBlock, Usage
 from swarmkit_runtime.resolver import ResolvedAgent
 from swarmkit_runtime.review import ReviewItem, ReviewQueue
 
 
 class _MemQueue:
-    """In-memory ReviewQueue; a preset decision resolves the item immediately (no real waiting)."""
+    """In-memory ReviewQueue; a preset decision (+ optional answer) resolves an item immediately."""
 
-    def __init__(self, preset: str | None = None) -> None:
+    def __init__(self, preset: str | None = None, preset_answer: str = "") -> None:
         self._items: dict[str, ReviewItem] = {}
         self._preset = preset  # "approved" | "rejected" | None
+        self._preset_answer = preset_answer
 
     def submit(self, item: ReviewItem) -> None:
         if self._preset is not None:
-            item = dataclasses.replace(item, status=self._preset)  # type: ignore[arg-type]
+            item = dataclasses.replace(item, status=self._preset, answer=self._preset_answer)  # type: ignore[arg-type]
         self._items[item.id] = item
 
     def list_pending(self) -> list[ReviewItem]:
@@ -55,6 +58,14 @@ class _MemQueue:
     def resolve(self, item_id: str, status: Any) -> bool:
         if item_id in self._items:
             self._items[item_id] = dataclasses.replace(self._items[item_id], status=status)
+            return True
+        return False
+
+    def answer_input(self, item_id: str, answer: str) -> bool:
+        if item_id in self._items:
+            self._items[item_id] = dataclasses.replace(
+                self._items[item_id], status="approved", answer=answer
+            )
             return True
         return False
 
@@ -176,6 +187,7 @@ class _ParkFake(Executor):
         *,
         resume_token: str | None = None,
         granted: tuple[str, ...] = (),
+        answer: str | None = None,
     ) -> AsyncIterator[ExecEvent]:
         self.runs.append((resume_token, tuple(granted)))
         yield ExecStarted(run_id=f"r{len(self.runs)}", kind="fake")
@@ -285,3 +297,118 @@ def _relay_workspace(root: Path) -> Path:
     git("add", "-A")
     git("commit", "-m", "seed")
     return root
+
+
+# ---- §6.3 input-request escalation -------------------------------------------------------------
+
+
+class _ClassifierModel:
+    """A model provider whose structured output flags an input request (the classifier seat)."""
+
+    provider_id = "fake"
+
+    def supports(self, model: str) -> bool:
+        return True
+
+    async def complete(self, request: Any) -> CompletionResponse:
+        payload = {
+            "is_request": True,
+            "question": "Which cache backend should I use?",
+            "options": ["redis", "memcached"],
+            "free_text_allowed": False,
+        }
+        return CompletionResponse(
+            content=(ContentBlock(type="text", text=json.dumps(payload)),),
+            stop_reason="end_turn",
+            usage=Usage(),
+        )
+
+
+class _PuntThenAnswer(Executor):
+    """First run: ends with a question and NO tool work (a punt-back). Resumed with the answer:
+    completes. Records (resume_token, answer) per run."""
+
+    kind = "fake"
+
+    def __init__(self) -> None:
+        self.runs: list[tuple[str | None, str | None]] = []
+
+    def config_schema(self) -> dict[str, Any]:
+        return {"type": "object", "additionalProperties": True}
+
+    def preflight(self, task: TaskSpec, sandbox: SandboxHandle) -> PreflightReport:
+        return PreflightReport(ok=True)
+
+    async def run(
+        self,
+        task: TaskSpec,
+        sandbox: SandboxHandle,
+        budget: BudgetEnvelope,
+        *,
+        resume_token: str | None = None,
+        granted: tuple[str, ...] = (),
+        answer: str | None = None,
+    ) -> AsyncIterator[ExecEvent]:
+        self.runs.append((resume_token, answer))
+        yield ExecStarted(run_id=f"r{len(self.runs)}", kind="fake")
+        if resume_token is None:
+            yield ExecMessage(
+                role="assistant", text="Should I use redis or memcached for the cache?"
+            )
+            yield ExecResult(status="needs_approval", output="waiting on a decision")
+        else:
+            yield ExecMessage(role="assistant", text=f"Using {answer}.")
+            yield ExecResult(status="success", output=f"done with {answer}")
+
+    def resume_token(self, run_id: str) -> ResumeToken | None:
+        return ResumeToken(value="sess-1")
+
+    async def cancel(self, run_id: str) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_input_request_classified_answered_and_resumed(tmp_path: Path) -> None:
+    """A punt-back question is detected by the classifier, answered via the inbox, and the harness
+    is relaunched with the answer — completing autonomously."""
+    ws = _relay_workspace(tmp_path)
+    agent = dataclasses.replace(
+        _agent(),
+        executor=ResolvedExecutor(kind="relay-fake", config={"classifier_model": "small"}),
+    )
+    fake = _PuntThenAnswer()
+    gov = MockGovernanceProvider()
+    result = await run_harness_node(
+        agent,
+        _state(),
+        gov,
+        workspace_root=ws,
+        executor=fake,
+        review_queue=cast(ReviewQueue, _MemQueue(preset="approved", preset_answer="redis")),
+        model_provider=_ClassifierModel(),
+    )
+    assert "done with redis" in result["output"]
+    assert len(fake.runs) == 2
+    assert fake.runs[1] == ("sess-1", "redis")  # relaunched with the resolved answer
+    types = [e.event_type for e in gov.events]
+    assert "executor.input_requested" in types and "executor.input_response" in types
+
+
+@pytest.mark.asyncio
+async def test_input_request_no_model_provider_aborts(tmp_path: Path) -> None:
+    """Without a model provider the classifier can't run, so a punt-back isn't detected — the run
+    ends on its own terminal (needs_approval), never hangs, never relaunches."""
+    ws = _relay_workspace(tmp_path)
+    agent = dataclasses.replace(_agent(), executor=ResolvedExecutor(kind="relay-fake"))
+    fake = _PuntThenAnswer()
+    result = await run_harness_node(
+        agent,
+        _state(),
+        MockGovernanceProvider(),
+        workspace_root=ws,
+        executor=fake,
+        review_queue=cast(ReviewQueue, _MemQueue()),
+        # no model_provider → no classification
+    )
+    assert "needs_approval" in result["output"]
+    assert len(fake.runs) == 1  # no relaunch

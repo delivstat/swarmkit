@@ -84,6 +84,7 @@ class _FakeHarness(Executor):
         *,
         resume_token: str | None = None,
         granted: tuple[str, ...] = (),
+        answer: str | None = None,
     ) -> AsyncIterator[ExecEvent]:
         async for event in self._events_factory(sandbox):
             yield event

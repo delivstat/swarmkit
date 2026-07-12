@@ -74,12 +74,14 @@ class Executor(ABC):
         *,
         resume_token: str | None = None,
         granted: tuple[str, ...] = (),
+        answer: str | None = None,
     ) -> AsyncIterator[ExecEvent]:
         """Launch, translating the vendor's native stream into normalized :data:`ExecEvent`s. Core
         supplies budget/sandbox enforcement around this; the adapter enforces nothing itself.
 
         ``resume_token`` / ``granted`` drive a park-resume relaunch (RFC §6.2): resume the prior
-        session with an expanded grant. Executors that don't support relay ignore them."""
+        session with an expanded grant. ``answer`` delivers a resolved §6.3 input answer on a
+        relaunch (sent as the resumed session's message). Executors without relay ignore them."""
         raise NotImplementedError(f"executor {self.kind!r} does not implement run()")
 
     async def cancel(self, run_id: str) -> None:

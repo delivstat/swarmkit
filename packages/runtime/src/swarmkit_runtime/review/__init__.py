@@ -26,6 +26,9 @@ class ReviewItem:
     reason: str
     timestamp: datetime
     status: Literal["pending", "approved", "rejected"] = "pending"
+    # For §6.3 input requests: the operator's textual answer (which option / free text). Empty for a
+    # plain approve/reject gate.
+    answer: str = ""
 
 
 class ReviewQueue(Protocol):
@@ -35,6 +38,7 @@ class ReviewQueue(Protocol):
     def list_pending(self) -> list[ReviewItem]: ...
     def get(self, item_id: str) -> ReviewItem | None: ...
     def resolve(self, item_id: str, status: Literal["approved", "rejected"]) -> bool: ...
+    def answer_input(self, item_id: str, answer: str) -> bool: ...
 
 
 class FileReviewQueue:
@@ -77,6 +81,18 @@ class FileReviewQueue:
             return False
         data = json.loads(path.read_text(encoding="utf-8"))
         data["status"] = status
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _record_approval_wait(data)
+        return True
+
+    def answer_input(self, item_id: str, answer: str) -> bool:
+        """Resolve a §6.3 input request with the operator's textual answer (approves + records)."""
+        path = self._dir / f"{item_id}.json"
+        if not path.exists():
+            return False
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["status"] = "approved"
+        data["answer"] = answer
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         _record_approval_wait(data)
         return True
@@ -128,6 +144,7 @@ def _from_dict(data: dict[str, Any]) -> ReviewItem:
         reason=data["reason"],
         timestamp=datetime.fromisoformat(data["timestamp"]),
         status=data.get("status", "pending"),
+        answer=data.get("answer", ""),
     )
 
 

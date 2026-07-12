@@ -185,16 +185,20 @@ class DeclarativeExecutor(Executor):
         *,
         resume_token: str | None = None,
         granted: tuple[str, ...] = (),
+        answer: str | None = None,
     ) -> AsyncIterator[ExecEvent]:
         import json  # noqa: PLC0415
 
         run_id = uuid.uuid4().hex
         interp = AdapterInterpreter(self._spec)
         resuming = resume_token is not None
-        # On a park-resume relaunch (RFC §6.2): swap the statement for the declared nudge, and add
-        # the resume token + joined granted capabilities to the substitution context (all declared).
+        # On a park-resume relaunch (RFC §6.2/§6.3): the resumed session's message is the resolved
+        # input answer if one was supplied, else the declared permission-nudge; plus the resume
+        # token + joined granted capabilities in the substitution context (all declared).
         run_task = task
-        if resuming and self._spec.resume_prompt:
+        if resuming and answer:
+            run_task = replace(task, statement=answer)
+        elif resuming and self._spec.resume_prompt:
             run_task = replace(task, statement=self._spec.resume_prompt)
         ctx = _ctx(run_task, sandbox, budget, self._config)
         if resuming:
