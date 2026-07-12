@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +35,8 @@ from swarmkit_runtime.executors import (
     ExecUsage,
     Executor,
     ExecutorError,
+    InteractionDriver,
+    NoInteractionDriver,
     ResolvedExecutor,
     SandboxError,
     SandboxHandle,
@@ -47,15 +50,18 @@ from swarmkit_runtime.executors import (
 )
 from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.model_providers._pricing import estimate_cost
+from swarmkit_runtime.review import FileReviewQueue
 from swarmkit_runtime.trace import AgentStep, ToolCall
 
 from ._helpers import _make_result
+from ._relay import resolve_relay
 from ._run_context import current_parent_agent
 
 if TYPE_CHECKING:
     from swarmkit_runtime.governance import GovernanceProvider
     from swarmkit_runtime.langgraph_compiler._state import SwarmState
     from swarmkit_runtime.resolver import ResolvedAgent
+    from swarmkit_runtime.review import ReviewQueue
 
 # Default idle timeout (seconds): the never-hang backstop when a harness config sets none.
 _DEFAULT_IDLE_SECONDS = 120.0
@@ -142,6 +148,43 @@ async def _persistent_dir(path: Path) -> AsyncIterator[SandboxHandle]:
     yield SandboxHandle(root=path, kind="directory", network="deny")
 
 
+@dataclass(frozen=True)
+class _RelayCtx:
+    """Everything the relay path needs, bundled. ``on_unanswerable``/``driver``/``max_wait`` come
+    from the adapter's ``interaction`` block; a harness with no relay driver leaves this at defaults
+    and an out-of-grant request aborts (unchanged)."""
+
+    on_unanswerable: str = "abort"
+    driver: InteractionDriver = field(default_factory=NoInteractionDriver)
+    review_queue: ReviewQueue | None = None
+    max_wait_seconds: float | None = None
+    topology_id: str = ""
+
+
+def _relay_ctx(
+    agent: ResolvedAgent,
+    root: Path | None,
+    driver: InteractionDriver | None,
+    review_queue: ReviewQueue | None,
+) -> _RelayCtx:
+    """Assemble the relay context from the adapter spec + injected (test) overrides."""
+    on_unanswerable = "abort"
+    max_wait: float | None = None
+    if root is not None:
+        spec = load_adapter_specs(root).get(agent.executor.kind)
+        if spec is not None:
+            on_unanswerable = spec.on_unanswerable
+            max_wait = spec.max_approval_wait_seconds
+    return _RelayCtx(
+        on_unanswerable=on_unanswerable,
+        driver=driver if driver is not None else NoInteractionDriver(),
+        review_queue=review_queue
+        if review_queue is not None
+        else (FileReviewQueue(root) if root else None),
+        max_wait_seconds=max_wait,
+    )
+
+
 def _sandbox_for(agent: ResolvedAgent, root: Path, base_ref: str) -> tuple[Any, bool]:
     """Choose the harness's execution sandbox. With ``executor.config.working_dir`` set, run in that
     persistent directory (resolved under the workspace root); otherwise provision an isolated,
@@ -161,13 +204,15 @@ async def run_harness_node(
     *,
     workspace_root: Path | Any = None,
     executor: Executor | None = None,
+    driver: InteractionDriver | None = None,
+    review_queue: ReviewQueue | None = None,
 ) -> dict[str, Any]:
     """Execute an agent whose ``executor.kind`` is not ``model``.
 
     Returns the standard node result dict. Errors (preflight, sandbox, no result) become a failure
-    result, never an exception — a harness node faces the same downstream gates as any other node,
-    so it fails on an edge rather than crashing the graph. ``executor`` is injectable for testing;
-    in production it is built from ``agent.executor``.
+    result, never an exception — a harness node fails on an edge rather than crashing the graph.
+    ``executor`` / ``driver`` / ``review_queue`` are injectable for testing; in production they are
+    built from ``agent.executor`` + the workspace.
     """
     agent_id = agent.id
     kind = agent.executor.kind
@@ -186,7 +231,8 @@ async def run_harness_node(
 
     budget = _budget_from_config(dict(agent.executor.config))
     task = _task_spec(agent, state, root)
-    return await _execute(agent, state, governance, runner, task, budget, root, kind)
+    relay = _relay_ctx(agent, root, driver, review_queue)
+    return await _execute(agent, state, governance, runner, task, budget, root, kind, relay)
 
 
 class _Meter:
@@ -260,7 +306,7 @@ def _record_trace_step(
     )
 
 
-async def _execute(
+async def _execute(  # noqa: PLR0912, PLR0915
     agent: ResolvedAgent,
     state: SwarmState,
     governance: GovernanceProvider,
@@ -269,6 +315,7 @@ async def _execute(
     budget: BudgetEnvelope,
     root: Path,
     kind: str,
+    relay: _RelayCtx,
 ) -> dict[str, Any]:
     agent_id = agent.id
     ref = agent.executor.ref or ""
@@ -304,8 +351,43 @@ async def _execute(
                     meter.tool_calls.append(
                         ToolCall(tool_name=event.tool, result_length=len(event.input_summary))
                     )
-                elif isinstance(event, (ExecApprovalRequested, ExecInputRequested)):
-                    # deny / abort (§6.2): no relay, no hang — terminate needs_approval.
+                elif isinstance(event, ExecApprovalRequested):
+                    # relay (§6.2): pause, resolve via policy/inbox, feed the decision back.
+                    # Requires a driver that supports bidirectional control; otherwise abort.
+                    if (
+                        relay.on_unanswerable == "relay"
+                        and relay.driver.supports_relay
+                        and relay.review_queue is not None
+                    ):
+                        decision = await resolve_relay(
+                            event,
+                            agent_id=agent_id,
+                            topology_id=relay.topology_id,
+                            governance=governance,
+                            review_queue=relay.review_queue,
+                            max_wait_seconds=relay.max_wait_seconds,
+                        )
+                        await relay.driver.respond(event, granted=decision.granted)
+                        if decision.granted:
+                            continue  # the harness proceeds; keep consuming the stream
+                        await _cancel()
+                        terminal = ExecResult(
+                            status="needs_approval",
+                            exit_metadata={
+                                "denied": _interaction_summary(event),
+                                "responder": decision.responder,
+                            },
+                        )
+                        break
+                    # deny / abort: no relay, no hang — terminate needs_approval.
+                    await _cancel()
+                    terminal = ExecResult(
+                        status="needs_approval",
+                        exit_metadata={"denied": _interaction_summary(event)},
+                    )
+                    break
+                elif isinstance(event, ExecInputRequested):
+                    # §6.3 input requests (judgment questions) are deferred — abort for now.
                     await _cancel()
                     terminal = ExecResult(
                         status="needs_approval",

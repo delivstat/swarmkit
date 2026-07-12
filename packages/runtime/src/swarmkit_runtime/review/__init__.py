@@ -33,6 +33,7 @@ class ReviewQueue(Protocol):
 
     def submit(self, item: ReviewItem) -> None: ...
     def list_pending(self) -> list[ReviewItem]: ...
+    def get(self, item_id: str) -> ReviewItem | None: ...
     def resolve(self, item_id: str, status: Literal["approved", "rejected"]) -> bool: ...
 
 
@@ -63,6 +64,12 @@ class FileReviewQueue:
             data = json.loads(path.read_text(encoding="utf-8"))
             items.append(_from_dict(data))
         return items
+
+    def get(self, item_id: str) -> ReviewItem | None:
+        path = self._dir / f"{item_id}.json"
+        if not path.exists():
+            return None
+        return _from_dict(json.loads(path.read_text(encoding="utf-8")))
 
     def resolve(self, item_id: str, status: Literal["approved", "rejected"]) -> bool:
         path = self._dir / f"{item_id}.json"
