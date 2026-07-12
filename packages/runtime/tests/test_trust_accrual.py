@@ -133,7 +133,7 @@ async def _approve_once(tmp_path: Path, store: TrustStore, *, granted: bool) -> 
         agent_id="coder",
         topology_id="t",
         governance=gov,  # type: ignore[arg-type]
-        review_queue=_DecidedQueue("approved" if granted else "rejected"),  # type: ignore[arg-type]
+        review_queue=_DecidedQueue("approved" if granted else "rejected"),
         trust=store,
         archetype="coding-worker",
         max_wait_seconds=5.0,
@@ -172,7 +172,7 @@ async def test_relay_without_archetype_does_not_accrue(tmp_path: Path) -> None:
         agent_id="coder",
         topology_id="t",
         governance=gov,  # type: ignore[arg-type]
-        review_queue=_DecidedQueue("approved"),  # type: ignore[arg-type]
+        review_queue=_DecidedQueue("approved"),
         trust=store,
         archetype=None,  # no archetype ⇒ no accrual
         max_wait_seconds=5.0,
