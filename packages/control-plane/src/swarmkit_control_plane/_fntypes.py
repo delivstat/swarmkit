@@ -33,6 +33,10 @@ DeployFn = Callable[..., Awaitable[dict[str, Any]]]
 JobsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 # (endpoint, token_ref) -> serve /jobs/history list (per-run cost/status detail)
 RunsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
+# (endpoint, token_ref) -> serve /review list (pending harness permission/input gates)
+GatesFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
+# (endpoint, token_ref, item_id, action, answer) -> updated gate (approve|reject|answer)
+ResolveGateFn = Callable[[str, str, str, str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref) -> serve /canary {"enabled", "routes"}
 CanaryFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref, topology, version) -> promote result

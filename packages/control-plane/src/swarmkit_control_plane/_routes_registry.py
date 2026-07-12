@@ -21,10 +21,12 @@ from swarmkit_control_plane._fntypes import (
     CanaryPromoteFn,
     CanaryRollbackFn,
     CanaryStartFn,
+    GatesFn,
     JobsFn,
     LeaveFn,
     RefreshFn,
     RegisterFn,
+    ResolveGateFn,
     RunsFn,
     StateArtifactsFn,
     StateFn,
@@ -44,6 +46,7 @@ from swarmkit_control_plane._schemas import (
     CommandResultRequest,
     EnqueueCommandRequest,
     EnrollRequest,
+    GateResolveRequest,
     HeartbeatRequest,
     JoinCodeRequest,
     JoinRequest,
@@ -190,6 +193,46 @@ def _mount_instance_runs(app: FastAPI, registry: SqliteRegistry, runs: RunsFn) -
             _log.warning("runs fetch failed for %s: %s", instance_id, exc)
             return {"reachable": False, "reason": "unreachable", "runs": []}
         return {"reachable": True, "reason": None, "runs": fetched}
+
+
+def _mount_instance_gates(
+    app: FastAPI, registry: SqliteRegistry, gates: GatesFn, resolve: ResolveGateFn
+) -> None:
+    """Federated harness gates — the fleet operator's view of §6.2 permission + §6.3 input requests
+    paused on instances, resolved through the same /review API the CLI + serve UI use. Live-pulled
+    (Mode A / direct); a NAT'd Mode-B instance can't be federated inbound and says so."""
+
+    @app.get("/instances/{instance_id}/review")
+    async def instance_gates(instance_id: str) -> dict[str, Any]:
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            return {"reachable": False, "reason": "poll-mode", "gates": []}
+        try:
+            fetched = await gates(inst.endpoint, inst.token_ref)
+        except ConnectorError as exc:
+            registry.update_health(instance_id, health="unreachable")
+            _log.warning("gates fetch failed for %s: %s", instance_id, exc)
+            return {"reachable": False, "reason": "unreachable", "gates": []}
+        return {"reachable": True, "reason": None, "gates": fetched}
+
+    @app.post("/instances/{instance_id}/review/{item_id}/{action}")
+    async def instance_gate_resolve(
+        instance_id: str, item_id: str, action: str, req: GateResolveRequest
+    ) -> dict[str, Any]:
+        if action not in ("approve", "reject", "answer"):
+            raise HTTPException(400, "action must be approve | reject | answer")
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            raise HTTPException(409, "instance is poll-mode (Mode B) — not directly resolvable")
+        try:
+            return await resolve(inst.endpoint, inst.token_ref, item_id, action, req.answer)
+        except ConnectorError as exc:
+            registry.update_health(instance_id, health="unreachable")
+            raise HTTPException(502, f"instance unreachable: {exc}") from exc
 
 
 def _mount_instance_canary(

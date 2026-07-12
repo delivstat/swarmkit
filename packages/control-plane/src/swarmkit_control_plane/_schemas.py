@@ -33,6 +33,11 @@ class PollRequest(BaseModel):
     capabilities: dict[str, Any] | None = None
 
 
+class GateResolveRequest(BaseModel):
+    # Only used for the `answer` action (§6.3 input); empty for approve/reject.
+    answer: str = ""
+
+
 class CanaryPromoteRequest(BaseModel):
     version: str
 

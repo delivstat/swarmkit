@@ -211,6 +211,24 @@ export interface RunsEnvelope {
 	runs: RunRow[];
 }
 
+/** A pending harness gate on an instance — §6.2 permission or §6.3 input awaiting a human. */
+export interface ReviewGate {
+	id: string;
+	kind: "permission" | "input" | "other";
+	agent_id: string;
+	reason: string;
+	capability: string;
+	question: string;
+	options: string[];
+	free_text_allowed: boolean;
+}
+
+export interface GatesEnvelope {
+	reachable: boolean;
+	reason: "poll-mode" | "unreachable" | null;
+	gates: ReviewGate[];
+}
+
 export type DriftStatus = "ok" | "drift" | "missing";
 
 /** Row of GET /instances/{id}/drift — registry-intended vs the instance's reported actual. */
