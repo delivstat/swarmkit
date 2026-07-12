@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: bad-sandbox-harness
+  name: Bad Sandbox Harness
+  description: sandbox.network must be deny|allowlist — this uses an unknown mode and must be rejected.
+spec:
+  launch:
+    command: [bad-sandbox-harness, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success, output: "$.text" }
+  sandbox:
+    kind: container
+    network: open
+provenance:
+  authored_by: human
+  version: 0.1.0

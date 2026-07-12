@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: empty-build-harness
+  name: Empty Build Harness
+  description: build must name exactly one front-end (base|dockerfile|dockerfile_inline) — none is invalid.
+spec:
+  launch:
+    command: [empty-build-harness, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success, output: "$.text" }
+  sandbox:
+    kind: container
+    build:
+      install: ["npm install -g something"]
+provenance:
+  authored_by: human
+  version: 0.1.0

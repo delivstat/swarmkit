@@ -27,11 +27,17 @@ class TaskSpec:
 @dataclass(frozen=True)
 class SandboxHandle:
     """A provisioned execution sandbox the adapter runs inside (§6.1). ``root`` is the working dir;
-    ``kind`` is the sandbox type. Provisioning/teardown is core's job, not the adapter's."""
+    ``kind`` is the sandbox type. Provisioning/teardown is core's job, not the adapter's.
+
+    ``exec_prefix`` is prepended to the harness argv at the launch chokepoint. Empty for a worktree
+    (spawn the harness directly, as today); for a container it is the ``docker run …`` /
+    ``podman run …`` wrapper, so the same argv runs inside the container
+    (executor-container-sandbox.md)."""
 
     root: Path
     kind: str = "worktree"
     network: str = "deny"
+    exec_prefix: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

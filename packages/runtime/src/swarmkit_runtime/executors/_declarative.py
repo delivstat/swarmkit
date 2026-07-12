@@ -206,6 +206,10 @@ class DeclarativeExecutor(Executor):
             if granted:
                 ctx["grant.capabilities"] = self._spec.grant_separator.join(granted)
         argv = build_command(self._spec, ctx, resuming=resuming) + self._auth_args(ctx)
+        # The container tier prepends its `docker run … <image>` wrapper so the same argv runs
+        # inside the container; a worktree leaves it empty (spawn directly, as today).
+        if sandbox.exec_prefix:
+            argv = [*sandbox.exec_prefix, *argv]
         env = self._launch_env(ctx)
 
         yield ExecStarted(run_id=run_id, kind=self._spec.kind, ref=self._config.get("model"))

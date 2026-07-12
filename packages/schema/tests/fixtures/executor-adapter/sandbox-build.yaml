@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: turnkey-harness
+  name: Turnkey Harness
+  description: Builds the harness into the sandbox image (no local install) and mounts a knowledge base.
+spec:
+  launch:
+    command: [turnkey-harness, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success, output: "$.text" }
+  sandbox:
+    kind: container
+    build:
+      base: node:22-slim
+      install: ["npm install -g @anthropic-ai/claude-code"]
+    network: allowlist
+    allow: [api.anthropic.com]
+    mounts:
+      - source: ./knowledge
+        target: /knowledge
+        mode: ro
+provenance:
+  authored_by: human
+  version: 0.1.0

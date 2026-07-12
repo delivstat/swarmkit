@@ -1,0 +1,28 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: sandboxed-harness
+  name: Sandboxed Harness
+  description: A harness that opts into the container isolation tier with an egress allowlist.
+spec:
+  launch:
+    command: [sandboxed-harness, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: done }
+      emit:
+        - event: result
+          with: { status: success, output: "$.text" }
+  sandbox:
+    kind: container
+    image: my-harness:latest
+    network: allowlist
+    allow: [api.anthropic.com]
+    resources:
+      cpus: "2"
+      memory: 2g
+      pids: 512
+provenance:
+  authored_by: human
+  version: 0.1.0

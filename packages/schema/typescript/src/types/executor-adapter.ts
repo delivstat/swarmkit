@@ -14,7 +14,7 @@
  */
 export interface SwarmKitExecutorAdapter {
     apiVersion: APIVersion;
-    kind:       Kind;
+    kind:       SwarmKitExecutorAdapterKind;
     metadata:   Metadata;
     provenance: Provenance;
     spec:       Spec;
@@ -22,7 +22,7 @@ export interface SwarmKitExecutorAdapter {
 
 export type APIVersion = "swarmkit/v1";
 
-export type Kind = "ExecutorAdapter";
+export type SwarmKitExecutorAdapterKind = "ExecutorAdapter";
 
 export interface Metadata {
     description: string;
@@ -67,6 +67,7 @@ export interface Spec {
      */
     requires?: Requires;
     resume?:   Resume;
+    sandbox?:  Sandbox;
     /**
      * Vendor discriminator value -> ExecResultStatus
      * (success|failure|budget_exceeded|cancelled|needs_approval|stalled). `_default` covers the
@@ -304,6 +305,148 @@ export interface Resume {
      * e.g. 'Continue — the requested permissions have been granted.'
      */
     prompt?: string;
+}
+
+/**
+ * Opt-in isolation tier for the harness subprocess (executor-container-sandbox.md). Absent
+ * ⇒ the native git-worktree sandbox (default; today's behaviour). `container` runs the
+ * harness inside a docker|podman container with resource limits and enforced egress. A
+ * global disable switch (SWARMKIT_DISABLE_CONTAINER_SANDBOX) forces the worktree regardless
+ * of this block — the operator is never trapped by an archetype that insists on a container.
+ */
+export interface Sandbox {
+    /**
+     * Hosts the harness may reach when network=allowlist, e.g. [api.anthropic.com]. Empty ⇒
+     * effectively deny (a strict base to add to).
+     */
+    allow?: string[];
+    /**
+     * Provision the harness into a derived image so it runs in-container with NO local install
+     * — the user brings only their API key/subscription. Built once, content-addressed by the
+     * resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give
+     * exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter
+     * self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline`
+     * (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so
+     * all three go through one builder.
+     */
+    build?: Build;
+    /**
+     * A prebuilt container image for kind=container, in which the harness is already installed
+     * — any image you choose (yours, or a public one). Falls back to $SWARMKIT_HARNESS_IMAGE
+     * when unset. SwarmKit publishes no required image: if neither `image`, `build`, nor
+     * $SWARMKIT_HARNESS_IMAGE is given, provisioning fails with a clear error rather than
+     * guessing. Secrets are never baked in — they are injected at run via -e (same rule as the
+     * MCP sandbox). Use `build` instead to provision the harness into a derived image with no
+     * local install.
+     */
+    image?: string;
+    /**
+     * `worktree` (default) runs the harness directly in an ephemeral git worktree, as today.
+     * `container` provisions an isolated container with the worktree bind-mounted read-write,
+     * resource limits, and the `network` policy enforced.
+     */
+    kind?: SandboxKind;
+    /**
+     * Extra resources bind-mounted into the container beyond the worktree — a source tree, a
+     * knowledge-base directory, shared read-only config. Secrets do NOT belong here (use auth
+     * modes / -e injection).
+     */
+    mounts?: Mount[];
+    /**
+     * Enforced egress policy for kind=container. `deny` → no outbound access (--network none);
+     * suits a local-model harness. `allowlist` → egress only to `allow` hosts, via a managed
+     * forward proxy — the mode a cloud harness needs to reach its model API and nothing else.
+     */
+    network?: Network;
+    /**
+     * Container resource limits for kind=container. Omitted fields are unbounded.
+     */
+    resources?: Resources;
+}
+
+/**
+ * Provision the harness into a derived image so it runs in-container with NO local install
+ * — the user brings only their API key/subscription. Built once, content-addressed by the
+ * resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give
+ * exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter
+ * self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline`
+ * (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so
+ * all three go through one builder.
+ */
+export interface Build {
+    /**
+     * Base image the install steps run on, e.g. node:22-slim. Lowered to `FROM <base>` + a
+     * `RUN` per install step.
+     */
+    base?: string;
+    /**
+     * Path to a Dockerfile (relative → workspace root) for harnesses needing COPY / multi-stage
+     * / ARG beyond base+install. The build context is the file's directory.
+     */
+    dockerfile?: string;
+    /**
+     * Dockerfile content inline — full control while keeping the adapter a single
+     * self-contained artifact (no second file to ship).
+     */
+    dockerfile_inline?: string;
+    /**
+     * Shell commands run at build time to install the harness into the image, e.g. ["npm
+     * install -g @anthropic-ai/claude-code"]. Only used with `base`. No secrets here — install
+     * must not need the user's credential (that arrives at run via -e).
+     */
+    install?: string[];
+}
+
+/**
+ * `worktree` (default) runs the harness directly in an ephemeral git worktree, as today.
+ * `container` provisions an isolated container with the worktree bind-mounted read-write,
+ * resource limits, and the `network` policy enforced.
+ */
+export type SandboxKind = "worktree" | "container";
+
+export interface Mount {
+    /**
+     * Read-only (default) or read-write.
+     */
+    mode?: Mode;
+    /**
+     * Host path; a relative path resolves under the workspace root.
+     */
+    source: string;
+    /**
+     * Absolute path the resource is mounted at inside the container.
+     */
+    target: string;
+}
+
+/**
+ * Read-only (default) or read-write.
+ */
+export type Mode = "ro" | "rw";
+
+/**
+ * Enforced egress policy for kind=container. `deny` → no outbound access (--network none);
+ * suits a local-model harness. `allowlist` → egress only to `allow` hosts, via a managed
+ * forward proxy — the mode a cloud harness needs to reach its model API and nothing else.
+ */
+export type Network = "deny" | "allowlist";
+
+/**
+ * Container resource limits for kind=container. Omitted fields are unbounded.
+ */
+export interface Resources {
+    /**
+     * Max CPUs, passed to --cpus (e.g. "2").
+     */
+    cpus?: string;
+    /**
+     * Max memory, passed to --memory (e.g. "2g").
+     */
+    memory?: string;
+    /**
+     * Max process count, passed to --pids-limit.
+     */
+    pids?: number;
 }
 
 export interface Stream {

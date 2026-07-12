@@ -260,6 +260,186 @@ class Grant(BaseModel):
     )
 
 
+class Kind(Enum):
+    """
+    `worktree` (default) runs the harness directly in an ephemeral git worktree, as today. `container` provisions an isolated container with the worktree bind-mounted read-write, resource limits, and the `network` policy enforced.
+    """
+
+    worktree = "worktree"
+    container = "container"
+
+
+class Build(BaseModel):
+    """
+    Provision the harness into a derived image so it runs in-container with NO local install — the user brings only their API key/subscription. Built once, content-addressed by the resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline` (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so all three go through one builder.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    base: str = Field(
+        ...,
+        description="Base image the install steps run on, e.g. node:22-slim. Lowered to `FROM <base>` + a `RUN` per install step.",
+    )
+    install: list[str] | None = Field(
+        None,
+        description='Shell commands run at build time to install the harness into the image, e.g. ["npm install -g @anthropic-ai/claude-code"]. Only used with `base`. No secrets here — install must not need the user\'s credential (that arrives at run via -e).',
+    )
+    dockerfile: str | None = Field(
+        None,
+        description="Path to a Dockerfile (relative → workspace root) for harnesses needing COPY / multi-stage / ARG beyond base+install. The build context is the file's directory.",
+    )
+    dockerfile_inline: str | None = Field(
+        None,
+        description="Dockerfile content inline — full control while keeping the adapter a single self-contained artifact (no second file to ship).",
+    )
+
+
+class Build1(BaseModel):
+    """
+    Provision the harness into a derived image so it runs in-container with NO local install — the user brings only their API key/subscription. Built once, content-addressed by the resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline` (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so all three go through one builder.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    base: str | None = Field(
+        None,
+        description="Base image the install steps run on, e.g. node:22-slim. Lowered to `FROM <base>` + a `RUN` per install step.",
+    )
+    install: list[str] | None = Field(
+        None,
+        description='Shell commands run at build time to install the harness into the image, e.g. ["npm install -g @anthropic-ai/claude-code"]. Only used with `base`. No secrets here — install must not need the user\'s credential (that arrives at run via -e).',
+    )
+    dockerfile: str = Field(
+        ...,
+        description="Path to a Dockerfile (relative → workspace root) for harnesses needing COPY / multi-stage / ARG beyond base+install. The build context is the file's directory.",
+    )
+    dockerfile_inline: str | None = Field(
+        None,
+        description="Dockerfile content inline — full control while keeping the adapter a single self-contained artifact (no second file to ship).",
+    )
+
+
+class Build2(BaseModel):
+    """
+    Provision the harness into a derived image so it runs in-container with NO local install — the user brings only their API key/subscription. Built once, content-addressed by the resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline` (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so all three go through one builder.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    base: str | None = Field(
+        None,
+        description="Base image the install steps run on, e.g. node:22-slim. Lowered to `FROM <base>` + a `RUN` per install step.",
+    )
+    install: list[str] | None = Field(
+        None,
+        description='Shell commands run at build time to install the harness into the image, e.g. ["npm install -g @anthropic-ai/claude-code"]. Only used with `base`. No secrets here — install must not need the user\'s credential (that arrives at run via -e).',
+    )
+    dockerfile: str | None = Field(
+        None,
+        description="Path to a Dockerfile (relative → workspace root) for harnesses needing COPY / multi-stage / ARG beyond base+install. The build context is the file's directory.",
+    )
+    dockerfile_inline: str = Field(
+        ...,
+        description="Dockerfile content inline — full control while keeping the adapter a single self-contained artifact (no second file to ship).",
+    )
+
+
+class Mode(Enum):
+    """
+    Read-only (default) or read-write.
+    """
+
+    ro = "ro"
+    rw = "rw"
+
+
+class Mount(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    source: str = Field(
+        ..., description="Host path; a relative path resolves under the workspace root."
+    )
+    target: str = Field(
+        ...,
+        description="Absolute path the resource is mounted at inside the container.",
+    )
+    mode: Mode | None = Field("ro", description="Read-only (default) or read-write.")
+
+
+class Network(Enum):
+    """
+    Enforced egress policy for kind=container. `deny` → no outbound access (--network none); suits a local-model harness. `allowlist` → egress only to `allow` hosts, via a managed forward proxy — the mode a cloud harness needs to reach its model API and nothing else.
+    """
+
+    deny = "deny"
+    allowlist = "allowlist"
+
+
+class Resources(BaseModel):
+    """
+    Container resource limits for kind=container. Omitted fields are unbounded.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    cpus: str | None = Field(None, description='Max CPUs, passed to --cpus (e.g. "2").')
+    memory: str | None = Field(
+        None, description='Max memory, passed to --memory (e.g. "2g").'
+    )
+    pids: int | None = Field(
+        None, description="Max process count, passed to --pids-limit."
+    )
+
+
+class Sandbox(BaseModel):
+    """
+    Opt-in isolation tier for the harness subprocess (executor-container-sandbox.md). Absent ⇒ the native git-worktree sandbox (default; today's behaviour). `container` runs the harness inside a docker|podman container with resource limits and enforced egress. A global disable switch (SWARMKIT_DISABLE_CONTAINER_SANDBOX) forces the worktree regardless of this block — the operator is never trapped by an archetype that insists on a container.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    kind: Kind | None = Field(
+        "worktree",
+        description="`worktree` (default) runs the harness directly in an ephemeral git worktree, as today. `container` provisions an isolated container with the worktree bind-mounted read-write, resource limits, and the `network` policy enforced.",
+    )
+    image: str | None = Field(
+        None,
+        description="A prebuilt container image for kind=container, in which the harness is already installed — any image you choose (yours, or a public one). Falls back to $SWARMKIT_HARNESS_IMAGE when unset. SwarmKit publishes no required image: if neither `image`, `build`, nor $SWARMKIT_HARNESS_IMAGE is given, provisioning fails with a clear error rather than guessing. Secrets are never baked in — they are injected at run via -e (same rule as the MCP sandbox). Use `build` instead to provision the harness into a derived image with no local install.",
+    )
+    build: Build | Build1 | Build2 | None = Field(
+        None,
+        description="Provision the harness into a derived image so it runs in-container with NO local install — the user brings only their API key/subscription. Built once, content-addressed by the resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline` (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so all three go through one builder.",
+    )
+    mounts: list[Mount] | None = Field(
+        None,
+        description="Extra resources bind-mounted into the container beyond the worktree — a source tree, a knowledge-base directory, shared read-only config. Secrets do NOT belong here (use auth modes / -e injection).",
+    )
+    network: Network | None = Field(
+        "deny",
+        description="Enforced egress policy for kind=container. `deny` → no outbound access (--network none); suits a local-model harness. `allowlist` → egress only to `allow` hosts, via a managed forward proxy — the mode a cloud harness needs to reach its model API and nothing else.",
+    )
+    allow: list[str] | None = Field(
+        None,
+        description="Hosts the harness may reach when network=allowlist, e.g. [api.anthropic.com]. Empty ⇒ effectively deny (a strict base to add to).",
+    )
+    resources: Resources | None = Field(
+        None,
+        description="Container resource limits for kind=container. Omitted fields are unbounded.",
+    )
+
+
 class AuthoredBy(Enum):
     human = "human"
     authored_by_swarm = "authored_by_swarm"
@@ -363,6 +543,7 @@ class Spec(BaseModel):
         None,
         description="Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2). Declares the bidirectional driver that feeds an approval decision back into the running session — the single per-harness code seam; everything else (inbox, policy, scoping, audit, never-hang) is generic core.",
     )
+    sandbox: Sandbox | None = None
     telemetry_grade: TelemetryGrade | None = Field(
         "normalized",
         description="`opaque` (unobservable) adapters are denied by default (RFC decision 5); use requires explicit per-archetype opt-in.",

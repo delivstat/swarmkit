@@ -43,6 +43,87 @@ class LaunchSpec:
 
 
 @dataclass(frozen=True)
+class BuildSpec:
+    """Provision the harness into a derived image (no local install). Built once, content-addressed
+    by the resolved Dockerfile + context, cached. Alternative to a prebuilt ``image``. Exactly one
+    of ``base`` (+ optional ``install``), ``dockerfile`` (path), or ``dockerfile_inline`` is set —
+    all three lower to one Dockerfile the builder consumes."""
+
+    base: str | None = None
+    install: tuple[str, ...] = ()
+    dockerfile: str | None = None
+    dockerfile_inline: str | None = None
+
+
+@dataclass(frozen=True)
+class MountSpec:
+    """An extra resource bind-mounted into the container beyond the worktree (KB dir, shared config,
+    second source tree). ``source`` relative to the workspace root; secrets never go here."""
+
+    source: str
+    target: str
+    mode: str = "ro"
+
+
+@dataclass(frozen=True)
+class SandboxSpec:
+    """The opt-in isolation tier for the harness (executor-container-sandbox.md). ``kind: worktree``
+    (default) ≡ today's behaviour. ``container`` runs the harness in a docker|podman container with
+    resource limits + enforced egress; ``image`` or ``build`` provisions it; ``mounts`` add
+    resources. All data — the provisioner interprets it, no harness is special-cased."""
+
+    kind: str = "worktree"
+    image: str | None = None
+    build: BuildSpec | None = None
+    network: str = "deny"
+    allow: tuple[str, ...] = ()
+    mounts: tuple[MountSpec, ...] = ()
+    cpus: str | None = None
+    memory: str | None = None
+    pids: int | None = None
+
+    @property
+    def is_container(self) -> bool:
+        return self.kind == "container"
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, Any] | None) -> SandboxSpec:
+        """Shape a schema-validated ``sandbox`` mapping (or a per-archetype config override) into a
+        :class:`SandboxSpec`. ``None``/empty ⇒ defaults (worktree)."""
+        if not raw:
+            return cls()
+        build_raw = raw.get("build")
+        build = (
+            BuildSpec(
+                base=build_raw.get("base"),
+                install=tuple(build_raw.get("install") or ()),
+                dockerfile=build_raw.get("dockerfile"),
+                dockerfile_inline=build_raw.get("dockerfile_inline"),
+            )
+            if build_raw
+            else None
+        )
+        mounts = tuple(
+            MountSpec(
+                source=str(m["source"]), target=str(m["target"]), mode=str(m.get("mode", "ro"))
+            )
+            for m in raw.get("mounts") or ()
+        )
+        resources: Mapping[str, Any] = raw.get("resources") or {}
+        return cls(
+            kind=str(raw.get("kind", "worktree")),
+            image=raw.get("image"),
+            build=build,
+            network=str(raw.get("network", "deny")),
+            allow=tuple(raw.get("allow") or ()),
+            mounts=mounts,
+            cpus=resources.get("cpus"),
+            memory=resources.get("memory"),
+            pids=resources.get("pids"),
+        )
+
+
+@dataclass(frozen=True)
 class EmitSpec:
     """Emit one ExecEvent. ``when`` is an optional per-item match (inside ``for_each``); ``with_``
     maps event fields to extraction paths / literals / a ``{from, map}`` translation."""
@@ -87,6 +168,8 @@ class AdapterSpec:
     retain_raw: bool = False
     success_exit_code: int | None = None
     requires_code: bool = False
+    # Opt-in isolation tier (executor-container-sandbox.md). Default ≡ worktree (today's behaviour).
+    sandbox: SandboxSpec = field(default_factory=SandboxSpec)
 
 
 def _emit(raw: Mapping[str, Any]) -> EmitSpec:
@@ -154,6 +237,7 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
         retain_raw=bool((spec.get("stream") or {}).get("retain_raw", False)),
         success_exit_code=success_when.get("exit_code"),
         requires_code=spec.get("requires") == "code",
+        sandbox=SandboxSpec.from_raw(spec.get("sandbox")),
     )
 
 
