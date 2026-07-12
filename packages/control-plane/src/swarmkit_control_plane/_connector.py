@@ -333,3 +333,23 @@ def _parse_eval(output: str) -> dict[str, Any]:
                 "status": "completed",
             }
     return {"status": "unparsed", "raw": text[:200]}
+
+
+async def fetch_gates(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
+    """Federated read of an instance's pending harness gates (GET /review) — §6.2 permission and
+    §6.3 input requests awaiting a human. Live-queried, not stored. Raises ConnectorError."""
+    async with ServeClient(endpoint, token_ref) as serve:
+        gates: list[dict[str, Any]] = serve.ok(await serve.get("/review"), "/review")
+    return gates
+
+
+async def resolve_gate(
+    endpoint: str, token_ref: str, item_id: str, action: str, answer: str
+) -> dict[str, Any]:
+    """Proxy a human decision to the instance's review queue (POST /review/{id}/{action}), where
+    action is approve | reject | answer. Returns the updated gate. Raises ConnectorError."""
+    body = {"answer": answer} if action == "answer" else {}
+    path = f"/review/{item_id}/{action}"
+    async with ServeClient(endpoint, token_ref) as serve:
+        result: dict[str, Any] = serve.ok(await serve.post(path, body), path)
+    return result

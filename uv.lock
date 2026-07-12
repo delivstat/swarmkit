@@ -2898,7 +2898,7 @@ wheels = [
 
 [[package]]
 name = "swarmkit-control-plane"
-version = "0.42.0"
+version = "0.43.0"
 source = { editable = "packages/control-plane" }
 dependencies = [
     { name = "cryptography" },

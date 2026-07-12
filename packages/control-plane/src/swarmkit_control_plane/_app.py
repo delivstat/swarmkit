@@ -20,6 +20,7 @@ from swarmkit_control_plane._connector import (
     fetch_artifacts,
     fetch_canary,
     fetch_capabilities,
+    fetch_gates,
     fetch_jobs,
     fetch_manifest,
     fetch_runs,
@@ -34,6 +35,7 @@ from swarmkit_control_plane._connector import (
     run_eval,
     start_canary,
 )
+from swarmkit_control_plane._connector import resolve_gate as resolve_gate_conn
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._deploy import push_artifact
 from swarmkit_control_plane._deploy_seq import DeploySeqStore
@@ -46,10 +48,12 @@ from swarmkit_control_plane._fntypes import (
     CanaryStartFn,
     DeployFn,
     EvalFn,
+    GatesFn,
     JobsFn,
     LeaveFn,
     RefreshFn,
     RegisterFn,
+    ResolveGateFn,
     RunsFn,
     StateArtifactsFn,
     StateFn,
@@ -76,6 +80,7 @@ from swarmkit_control_plane._routes_registry import (
     _mount_config,
     _mount_fleet_identity,
     _mount_instance_canary,
+    _mount_instance_gates,
     _mount_instance_runs,
     _mount_instances,
     _mount_join,
@@ -108,6 +113,8 @@ def create_app(
     deploy: DeployFn = push_artifact,
     jobs: JobsFn = fetch_jobs,
     runs: RunsFn = fetch_runs,
+    gates: GatesFn = fetch_gates,
+    resolve_gate: ResolveGateFn = resolve_gate_conn,
     canary: CanaryFn = fetch_canary,
     canary_promote: CanaryPromoteFn = promote_canary,
     canary_rollback: CanaryRollbackFn = rollback_canary,
@@ -195,6 +202,7 @@ def create_app(
 
     _mount_instances(app, registry, verify, jobs, author)
     _mount_instance_runs(app, registry, runs)
+    _mount_instance_gates(app, registry, gates, resolve_gate)
     _mount_instance_canary(app, registry, canary, canary_promote, canary_rollback, canary_start)
     _mount_token_routes(app, registry, verify)
     _mount_state(

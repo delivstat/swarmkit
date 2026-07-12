@@ -13,6 +13,7 @@ import type {
 	EvalRow,
 	FleetIdentity,
 	Gap,
+	GatesEnvelope,
 	Instance,
 	Job,
 	JoinCodeResult,
@@ -22,6 +23,7 @@ import type {
 	Proposal,
 	RefreshResult,
 	RegisterResult,
+	ReviewGate,
 	RunsEnvelope,
 	SyncResult,
 	UsageRow,
@@ -159,6 +161,15 @@ export const api = {
 	instanceJobs: (id: string) => request<Job[]>(`/instances/${id}/jobs`),
 	// Federated per-run history (design 24) — live per-run cost detail, never stored on the panel.
 	instanceRuns: (id: string) => request<RunsEnvelope>(`/instances/${id}/runs`),
+	// Federated harness gates (§6.2 permission / §6.3 input) — live-pulled, resolved via the same
+	// /review API the CLI + serve UI use.
+	instanceGates: (id: string) =>
+		request<GatesEnvelope>(`/instances/${id}/review`),
+	resolveGate: (id: string, itemId: string, action: string, answer = "") =>
+		request<ReviewGate>(`/instances/${id}/review/${itemId}/${action}`, {
+			method: "POST",
+			body: JSON.stringify({ answer }),
+		}),
 	// Fleet canary (design 26) — federated status + manage-scope promote/rollback.
 	instanceCanary: (id: string) =>
 		request<CanaryEnvelope>(`/instances/${id}/canary`),
