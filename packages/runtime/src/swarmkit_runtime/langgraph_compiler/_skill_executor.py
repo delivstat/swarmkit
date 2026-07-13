@@ -11,6 +11,7 @@ from typing import Any
 
 from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.mcp._client import MCPClientManager
+from swarmkit_runtime.mcp._governed import check_mcp_permission
 from swarmkit_runtime.model_providers import (
     CompletionRequest,
     ContentBlock,
@@ -18,7 +19,6 @@ from swarmkit_runtime.model_providers import (
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.skills import ResolvedSkill, impl_get
-from swarmkit_runtime.telemetry import record_governance_decision
 
 SkillResult = str | tuple[str, list[ContentBlock]]
 
@@ -118,26 +118,20 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
     server_id = str(impl_get(impl, "server"))
     tool_name = str(impl_get(impl, "tool"))
 
-    permission = (
-        mcp_manager.get_permission(server_id, tool_name) if mcp_manager is not None else "cautious"
+    iam = getattr(skill.raw, "iam", None)
+    scopes: frozenset[str] = frozenset()
+    if iam and isinstance(iam, dict):
+        scopes = frozenset(iam.get("required_scopes", []))
+    allowed, reason = await check_mcp_permission(
+        mcp_manager,
+        governance,
+        agent_id=agent_id,
+        server_id=server_id,
+        tool_name=tool_name,
+        scopes=scopes,
     )
-
-    if permission != "open" and governance is not None:
-        iam = getattr(skill.raw, "iam", None)
-        scopes: frozenset[str] = frozenset()
-        if iam and isinstance(iam, dict):
-            scopes = frozenset(iam.get("required_scopes", []))
-        decision = await governance.evaluate_action(
-            agent_id=agent_id,
-            action=f"mcp:call:{server_id}:{tool_name}",
-            scopes_required=scopes,
-            context={"server_permission": permission},
-        )
-        record_governance_decision(
-            decision="allow" if decision.allowed else "deny", scope="mcp:call"
-        )
-        if not decision.allowed:
-            return f"[skill:{skill.id}] DENIED: {decision.reason}"
+    if not allowed:
+        return f"[skill:{skill.id}] DENIED: {reason}"
 
     if mcp_manager is None:
         return (
