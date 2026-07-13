@@ -12,10 +12,11 @@ dependencies = []
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# The static bundle under src/swarmkit_webui/_static/ is built by `just build-webui` (pnpm export →
+# copy) and is gitignored, so hatch's default VCS file walk skips it. `artifacts` includes those
+# built outputs as package data — once, at their natural path (a force-include double-adds them).
+[tool.hatch.build]
+artifacts = ["src/swarmkit_webui/_static/**"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/swarmkit_webui"]
-
-# The static bundle under _static/ is built by `just build-webui` (pnpm export → copy) before
-# packaging; hatch includes it as package data. Force-include so an empty tree still packages.
-[tool.hatch.build.targets.wheel.force-include]
-"src/swarmkit_webui/_static" = "swarmkit_webui/_static"
