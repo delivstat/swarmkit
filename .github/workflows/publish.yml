@@ -14,6 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "9"
+
+      # The portal (swarmkit-webui) ships the static Next.js export. Build it and stage it into the
+      # package BEFORE `uv build`, so the wheel carries the assets. See serve-hosted-webui.md.
+      - name: Build the web portal
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @swarmkit/ui build
+          rm -rf packages/webui/src/swarmkit_webui/_static
+          cp -r packages/ui/out packages/webui/src/swarmkit_webui/_static
 
       - name: Build packages
         run: uv build --all-packages
@@ -28,5 +43,10 @@ jobs:
 
       - name: Publish swarmkit-runtime
         run: uv publish --check-url https://pypi.org/simple/ dist/swarmkit_runtime-*.tar.gz dist/swarmkit_runtime-*.whl
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Publish swarmkit-webui
+        run: uv publish --check-url https://pypi.org/simple/ dist/swarmkit_webui-*.tar.gz dist/swarmkit_webui-*.whl
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}

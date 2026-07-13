@@ -25,11 +25,13 @@ members = [
     "packages/runtime",
     "packages/schema/python",
     "packages/control-plane",
+    "packages/webui",
 ]
 
 [tool.uv.sources]
 swarmkit-runtime = { workspace = true }
 swarmkit-schema = { workspace = true }
+swarmkit-webui = { workspace = true }
 
 [tool.ruff]
 line-length = 100

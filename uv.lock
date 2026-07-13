@@ -11,6 +11,7 @@ members = [
     "swarmkit-control-plane",
     "swarmkit-runtime",
     "swarmkit-schema",
+    "swarmkit-webui",
     "swarmkit-workspace",
 ]
 
@@ -2925,7 +2926,7 @@ requires-dist = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.84.0"
+version = "1.96.0"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -2969,6 +2970,9 @@ serve = [
     { name = "mcp" },
     { name = "pyjwt", extra = ["crypto"] },
 ]
+ui = [
+    { name = "swarmkit-webui" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -3003,15 +3007,16 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "swarmkit-schema", editable = "packages/schema/python" },
+    { name = "swarmkit-webui", marker = "extra == 'ui'", editable = "packages/webui" },
     { name = "typer", specifier = ">=0.12" },
     { name = "types-pyyaml", marker = "extra == 'dev'" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
-provides-extras = ["serve", "dev"]
+provides-extras = ["serve", "ui", "dev"]
 
 [[package]]
 name = "swarmkit-schema"
-version = "1.15.0"
+version = "1.16.0"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },
@@ -3042,6 +3047,11 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "swarmkit-webui"
+version = "0.1.0"
+source = { editable = "packages/webui" }
 
 [[package]]
 name = "swarmkit-workspace"

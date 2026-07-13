@@ -64,6 +64,15 @@ build-py:
 build-js:
     pnpm run build
 
+# Build the web portal static export and stage it into the swarmkit-webui package (serve-hosted-webui.md).
+# `swarmkit serve` then hosts it when swarmkit-runtime[ui] is installed. Assets are generated, not committed.
+build-webui:
+    pnpm --filter @swarmkit/ui build
+    rm -rf packages/webui/src/swarmkit_webui/_static
+    cp -r packages/ui/out packages/webui/src/swarmkit_webui/_static
+    touch packages/webui/src/swarmkit_webui/_static/.gitkeep
+    @echo "staged portal → packages/webui/src/swarmkit_webui/_static ($(find packages/webui/src/swarmkit_webui/_static -type f | wc -l) files)"
+
 # ---- Runtime helpers ----
 
 

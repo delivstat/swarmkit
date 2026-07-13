@@ -39,6 +39,7 @@ from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
 from ._routes_review import _register_review_routes
+from ._webui import mount_webui
 from ._services import ArtifactService
 
 logger = logging.getLogger("swarmkit.server")
@@ -246,5 +247,9 @@ def create_app(  # noqa: PLR0915
         _mount_mcp(app)
     else:
         logger.warning("mcp package not installed; /mcp endpoint disabled")
+
+    # The static web portal is the catch-all — mounted last so every API route + /mcp win first.
+    if not mount_webui(app):
+        logger.info("web portal not installed; API only (pip install 'swarmkit-runtime[ui]')")
 
     return app
