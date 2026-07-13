@@ -39,9 +39,7 @@ def _app_with_portal(monkeypatch: pytest.MonkeyPatch, static: Path | None) -> Fa
     return app
 
 
-def test_serves_shell_assets_and_deep_links(
-    portal: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_serves_shell_assets_and_deep_links(portal: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     client = TestClient(_app_with_portal(monkeypatch, portal))
 
     # root → the shell
