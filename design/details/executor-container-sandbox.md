@@ -164,6 +164,15 @@ A harness in a locked-down container can reach only what we hand it. Three kinds
 The through-line: everything the harness can touch — filesystem, network, tools — is declared, so the
 container is deny-by-default and we widen it explicitly, the same posture as the capability grant.
 
+**Shipped (task #20).** `sandbox.mounts` is bind-mounted into the container (`_mount_args`: relative
+`source` → workspace root, absolute used as-is, `mode` preserved). `_mcp_reach.py::mcp_reachability`
+(pure, duck-typed) extracts **http** MCP servers' hostnames and lists **stdio** ids;
+`_effective_allow` merges the http hostnames into an `allowlist` (so a containerized harness reaches
+them) and logs a warning naming any stdio MCP server (can't cross the boundary — not bridged). The
+workspace's MCP configs reach the sandbox via `MCPClientManager.configs`, threaded
+`compiler → run_harness_node(mcp_manager=) → _sandbox_for → container_sandbox`. A gated e2e mounts a
+KB dir read-only and reads it from inside a real container.
+
 ## Where it slots in — one chokepoint
 
 `_sandbox_for(agent, root, base_ref)` (`_harness_node.py`) is the single place the sandbox is

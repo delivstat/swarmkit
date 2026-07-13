@@ -226,6 +226,7 @@ def _build_agent_node(  # noqa: PLR0915
                 governance,
                 workspace_root=workspace_root,
                 model_provider=model_provider,
+                mcp_manager=mcp_manager,
             )
 
         # ---- pre_input decision skills (relevance gate) ----------------
