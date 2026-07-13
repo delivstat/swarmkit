@@ -42,7 +42,8 @@ def test_effective_allow_merges_http_hosts_for_container_allowlist() -> None:
     spec = SandboxSpec(kind="container", network="allowlist", allow=("api.anthropic.com",))
     configs = {"docs": _Cfg("http", "https://mcp.example.com/sse")}
     allow = _effective_allow(spec, configs)
-    assert allow == ("api.anthropic.com", "mcp.example.com")  # deduped union
+    # deduped union + the host alias (so the gateway on the host is reachable)
+    assert allow == ("api.anthropic.com", "mcp.example.com", "host.docker.internal")
 
 
 def test_effective_allow_noop_off_container_or_deny() -> None:

@@ -145,6 +145,10 @@ def _build_exec_prefix(
         "run",
         "--rm",
         "-i",
+        # Reach the host (the governed MCP gateway binds there) via host.docker.internal. Harmless
+        # when no gateway is used; on Linux `host-gateway` resolves it to the host.
+        "--add-host",
+        f"{_HOST_ALIAS}:host-gateway",
         *_mount_args(host_worktree, spec, workspace_root),
         *_resource_args(spec),
         *network_args,
@@ -154,10 +158,15 @@ def _build_exec_prefix(
     )
 
 
+# The container reaches the host's governed MCP gateway (and any host service) via this alias.
+_HOST_ALIAS = "host.docker.internal"
+
+
 def _effective_allow(spec: SandboxSpec, mcp_configs: Mapping[str, Any]) -> tuple[str, ...]:
-    """The egress allowlist plus any **http** MCP servers' hostnames (so a containerized harness can
-    reach them), deduped. **stdio** MCP servers can't cross the container boundary — warn, don't
-    bridge (a v1 limitation; sidecar/shim deferred)."""
+    """The egress allowlist plus the http MCP servers' hostnames (so a containerized harness can
+    reach them) **and the host alias** (so it can reach the governed MCP gateway on the host),
+    deduped. **stdio** MCP servers can't cross the container boundary — warn, don't bridge (a v1
+    limitation; sidecar/shim deferred)."""
     if not spec.is_container or spec.network != "allowlist":
         return spec.allow
     http_hosts, stdio_ids = mcp_reachability(mcp_configs)
@@ -167,7 +176,7 @@ def _effective_allow(spec: SandboxSpec, mcp_configs: Mapping[str, Any]) -> tuple
             "speak over local pipes; use an http MCP server or drop the container sandbox for them",
             ", ".join(stdio_ids),
         )
-    return tuple(dict.fromkeys([*spec.allow, *http_hosts]))
+    return tuple(dict.fromkeys([*spec.allow, *http_hosts, _HOST_ALIAS]))
 
 
 @asynccontextmanager

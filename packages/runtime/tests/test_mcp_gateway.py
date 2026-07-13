@@ -134,6 +134,17 @@ async def test_gateway_denies_call_via_governance() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gateway_advertises_container_host() -> None:
+    # Bind all interfaces but advertise host.docker.internal so a container reaches the host.
+    tools = [GatewayTool("fs__read", "fs", "read", "Read", {"type": "object"})]
+    async with mcp_gateway(
+        tools, _Mgr(), _Gov(), agent_id="c", host="0.0.0.0", advertise_host="host.docker.internal"
+    ) as gw:
+        assert gw.url.startswith("http://host.docker.internal:")
+        assert gw.url.endswith("/sse")
+
+
+@pytest.mark.asyncio
 async def test_gateway_rejects_wrong_token() -> None:
     from mcp.client.sse import sse_client  # noqa: PLC0415
 
