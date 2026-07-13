@@ -236,7 +236,11 @@ def _container_disabled() -> bool:
 
 
 def _sandbox_for(
-    agent: ResolvedAgent, root: Path, base_ref: str, sandbox_spec: SandboxSpec | None = None
+    agent: ResolvedAgent,
+    root: Path,
+    base_ref: str,
+    sandbox_spec: SandboxSpec | None = None,
+    env_keys: tuple[str, ...] = (),
 ) -> tuple[Any, bool]:
     """Choose the harness's execution sandbox. Precedence (most-specific first, but *disable always
     wins*):
@@ -249,7 +253,7 @@ def _sandbox_for(
     Returns ``(context_manager, persistent)``."""
     spec = _effective_sandbox(agent, sandbox_spec)
     if spec is not None and spec.is_container and not _container_disabled():
-        return container_sandbox(root, base_ref, spec), False
+        return container_sandbox(root, base_ref, spec, env_keys=env_keys), False
     if spec is not None and spec.is_container and _container_disabled():
         _logger.info("container sandbox disabled by env; using native worktree for %s", agent.id)
 
@@ -407,7 +411,10 @@ async def _execute(  # noqa: PLR0912, PLR0915
 
     adapter_spec = load_adapter_specs(root).get(agent.executor.kind)
     sandbox_spec = adapter_spec.sandbox if adapter_spec is not None else None
-    sandbox_cm, persistent = _sandbox_for(agent, root, task.base_ref or "HEAD", sandbox_spec)
+    env_keys = adapter_spec.env_keys() if adapter_spec is not None else ()
+    sandbox_cm, persistent = _sandbox_for(
+        agent, root, task.base_ref or "HEAD", sandbox_spec, env_keys
+    )
     try:
         async with sandbox_cm as sandbox:
             report = runner.preflight(task, sandbox)

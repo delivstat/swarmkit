@@ -12,10 +12,8 @@ from typing import Any
 
 import pytest
 from swarmkit_runtime.executors import (
-    ExecutorError,
     ResolvedExecutor,
     SandboxSpec,
-    container_sandbox,
 )
 from swarmkit_runtime.executors._adapter_spec import parse_adapter_spec
 from swarmkit_runtime.langgraph_compiler._harness_node import (
@@ -121,16 +119,9 @@ def test_container_spec_selects_container_branch(
 ) -> None:
     monkeypatch.delenv("SWARMKIT_DISABLE_CONTAINER_SANDBOX", raising=False)
     cm, _persistent = _sandbox_for(_agent(), tmp_path, "HEAD", SandboxSpec(kind="container"))
-    # The container branch is chosen; provisioning is not yet available → fail loud on enter,
-    # never a silent unsandboxed run.
+    # The container branch is chosen (a container_sandbox context manager), not the worktree.
+    # Provisioning happens on enter; see test_container_sandbox for that path.
     assert cm is not None
-
-
-@pytest.mark.asyncio
-async def test_container_branch_fails_loud_until_provisioner_lands(tmp_path: Path) -> None:
-    with pytest.raises(ExecutorError, match="SWARMKIT_DISABLE_CONTAINER_SANDBOX"):
-        async with container_sandbox(tmp_path, "HEAD", SandboxSpec(kind="container")):
-            pass
 
 
 def test_disable_switch_forces_worktree_over_container(

@@ -171,6 +171,15 @@ class AdapterSpec:
     # Opt-in isolation tier (executor-container-sandbox.md). Default ≡ worktree (today's behaviour).
     sandbox: SandboxSpec = field(default_factory=SandboxSpec)
 
+    def env_keys(self) -> tuple[str, ...]:
+        """Every env var name the harness launch may set — the union of `launch.env` and all auth
+        modes' `env` keys. The container tier forwards these into the container (`-e <KEY>`); a
+        superset is safe (an unset key forwards nothing)."""
+        keys: set[str] = set(self.launch.env)
+        for mode in self.auth.modes.values():
+            keys.update(mode.env)
+        return tuple(sorted(keys))
+
 
 def _emit(raw: Mapping[str, Any]) -> EmitSpec:
     return EmitSpec(
