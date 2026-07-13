@@ -1,8 +1,11 @@
 """The one governed MCP-call path (executor-mcp-gateway.md, task #22).
 
 Every MCP call — model-agent skill or harness-via-gateway — passes the same gate: tier resolution +
-governance.evaluate_action + audit. These cover that gate in isolation.
+governance.evaluate_action + audit. These cover that gate in isolation with structural doubles.
 """
+
+# The doubles duck-type MCPClientManager / GovernanceProvider without inheriting them.
+# mypy: disable-error-code="arg-type, comparison-overlap"
 
 from __future__ import annotations
 
