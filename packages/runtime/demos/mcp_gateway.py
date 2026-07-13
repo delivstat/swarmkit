@@ -16,6 +16,9 @@ Run it:
     uv run python packages/runtime/demos/mcp_gateway.py
 """
 
+# The demo's doubles duck-type MCPClientManager / GovernanceProvider without inheriting them.
+# mypy: disable-error-code="arg-type"
+
 from __future__ import annotations
 
 import asyncio
