@@ -21,7 +21,10 @@ import type {
 
 import { getAccessToken, handleUnauthorized } from "./token-store";
 
-const BASE = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "http://localhost:8000";
+// Relative by default: when the portal is served by `swarmkit serve` itself, API calls resolve
+// against the page's own origin — same serve, same workspace, no env var, no CORS. Set
+// NEXT_PUBLIC_SWARMKIT_API only for a detached portal pointing at a remote serve.
+const BASE = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "";
 
 /** Merge the current bearer (OIDC token or stored API key) into request headers, if any. */
 function authHeaders(extra?: Record<string, string>): Record<string, string> {

@@ -55,7 +55,7 @@ export default function JobsPage() {
 								>
 									<td className="px-4 py-2">
 										<Link
-											href={`/jobs/${job.job_id}`}
+											href={`/job?id=${job.job_id}`}
 											className="font-mono text-xs hover:underline"
 											style={{ color: "var(--accent)" }}
 										>

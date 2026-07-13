@@ -18,7 +18,8 @@ import type {
 	TraceSpan,
 } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function EventStream({ jobId }: { jobId: string }) {
@@ -247,9 +248,8 @@ function RunGraph({ runId, topology }: { runId: string; topology: string }) {
 	);
 }
 
-export default function JobDetailPage() {
-	const params = useParams();
-	const jobId = params.id as string;
+function JobDetail() {
+	const jobId = useSearchParams().get("id") ?? "";
 
 	const fetchJob = useCallback(() => api.job(jobId), [jobId]);
 	const { data: job, error, loading } = usePoll<JobResponse>(fetchJob, 2000);
@@ -314,5 +314,14 @@ export default function JobDetailPage() {
 				</div>
 			)}
 		</div>
+	);
+}
+
+// useSearchParams must sit under a Suspense boundary for the static export prerender.
+export default function JobPage() {
+	return (
+		<Suspense fallback={<p className="text-sm opacity-50">Loading…</p>}>
+			<JobDetail />
+		</Suspense>
 	);
 }
