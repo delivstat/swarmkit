@@ -76,17 +76,26 @@ export interface TopologyCanvasProps {
 	root: ResolvedAgent | null | undefined;
 	/** Called when a node (agent) is clicked — the id, for a detail panel. */
 	onSelect?: (agentId: string) => void;
-	/** Node ids to highlight (e.g. an examine-run overlay in a later slice). */
+	/** Edit mode: allow drawing delegation edges + deleting nodes. Absent ⇒ read-only. */
+	editable?: boolean;
+	/** Draw a delegation edge: `source` delegates to `target` (target re-parents under source). */
+	onConnect?: (source: string, target: string) => void;
+	/** Delete an agent (and its subtree). */
+	onDeleteNode?: (agentId: string) => void;
 	className?: string;
 }
 
 /**
- * Render a topology as a read-only interactive graph. The layout comes from the pure
- * `topologyToGraph` helper; this component is the presentation + interaction shell.
+ * Render a topology as an interactive graph. The layout comes from the pure `topologyToGraph`
+ * helper; this component is the presentation + interaction shell. In `editable` mode, drawing an
+ * edge or deleting a node calls back so the composer can round-trip the change through YAML.
  */
 export function TopologyCanvas({
 	root,
 	onSelect,
+	editable = false,
+	onConnect,
+	onDeleteNode,
 	className,
 }: TopologyCanvasProps) {
 	const { nodes, edges } = useMemo(() => {
@@ -100,6 +109,14 @@ export function TopologyCanvas({
 	const onNodeClick: ReactFlowProps["onNodeClick"] = (_e, node) =>
 		onSelect?.(node.id);
 
+	const handleConnect: ReactFlowProps["onConnect"] = (conn) => {
+		if (conn.source && conn.target) onConnect?.(conn.source, conn.target);
+	};
+
+	const handleNodesDelete: ReactFlowProps["onNodesDelete"] = (deleted) => {
+		for (const n of deleted) onDeleteNode?.(n.id);
+	};
+
 	return (
 		<div className={className} style={{ width: "100%", height: "100%" }}>
 			<ReactFlow
@@ -107,9 +124,12 @@ export function TopologyCanvas({
 				edges={edges}
 				nodeTypes={NODE_TYPES}
 				onNodeClick={onNodeClick}
+				onConnect={handleConnect}
+				onNodesDelete={handleNodesDelete}
 				fitView
 				nodesDraggable={false}
-				nodesConnectable={false}
+				nodesConnectable={editable}
+				deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
 				edgesFocusable={false}
 				proOptions={{ hideAttribution: true }}
 			>
