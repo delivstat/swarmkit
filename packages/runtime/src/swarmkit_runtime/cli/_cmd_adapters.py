@@ -7,18 +7,22 @@ required on any change. Approval is a human action recorded on disk — no agent
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from swarmkit_runtime.executors import (
+    ExecutorError,
     approve_launch,
+    build_harness_image,
     is_launch_approved,
     launch_fingerprint,
     load_adapter_specs,
     load_workspace_adapter_specs,
 )
+from swarmkit_runtime.executors._container import _resolve_runtime
 
 from ._app import adapters_app
 
@@ -90,3 +94,34 @@ def adapters_approve(
         raise typer.Exit(code=1)
     fingerprint = approve_launch(root, spec)
     typer.echo(f"✓ Approved launch of {kind!r}\n  {fingerprint}")
+
+
+@adapters_app.command("build")
+def adapters_build(
+    kind: Annotated[str, typer.Argument(help="Adapter kind (id) with a sandbox.build block.")],
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Warm the build-in-sandbox image cache for an adapter (no local harness install needed).
+
+    Builds the derived image its ``sandbox.build`` block describes — once, content-addressed +
+    cached — so the first run doesn't pay the build cost. Prints the resulting image tag."""
+    root = workspace_path.resolve()
+    spec = load_adapter_specs(root).get(kind)
+    if spec is None:
+        typer.echo(f"Unknown adapter kind: {kind!r}")
+        raise typer.Exit(code=1)
+    if spec.sandbox.build is None:
+        typer.echo(
+            f"{kind!r} has no sandbox.build block — nothing to build. Give it a build block "
+            "(base+install, dockerfile, or dockerfile_inline) to run with no local install."
+        )
+        raise typer.Exit(code=1)
+    try:
+        runtime = _resolve_runtime()
+        tag = asyncio.run(build_harness_image(runtime, kind, spec.sandbox.build, root))
+    except ExecutorError as exc:
+        typer.echo(f"Build failed: {exc}")
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"✓ Built {kind!r} harness image\n  {tag}")

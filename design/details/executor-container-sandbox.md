@@ -128,6 +128,15 @@ to a single Dockerfile the builder consumes:
 - `dockerfile:` — a path to a Dockerfile the user already has (context = its directory).
 Content-addressing hashes the *resolved* Dockerfile, so all three cache identically.
 
+**Shipped (task #19).** `_image.py`: `resolve_dockerfile` lowers all three front-ends to one
+Dockerfile; `image_tag` content-addresses by `(adapter_id, dockerfile)` → `swarmkit-harness/<id>:<hash>`;
+`build_harness_image` builds once (via a temp Dockerfile + the chosen context so `COPY` works) and
+reuses the tag if it already exists. Wired into `container_sandbox` image resolution (prebuilt
+`image`/`$SWARMKIT_HARNESS_IMAGE` wins; else the `build` block is built + cached). `swarmkit adapters
+build <id>` warms the cache ahead of a run. A gated real-docker e2e builds a derived image with a
+tool installed and runs it. (A `dockerfile` that `COPY`s changing context is not re-hashed — a
+documented v1 limitation.)
+
 Build is opt-in and lazy — no `build` block, or `kind: worktree`, means nothing is ever built.
 Rebuild triggers only on a hash change (edit the base or install steps). A `swarmkit adapters build
 <id>` command can warm the cache ahead of a run; a missing runtime is the same fail-loud error as

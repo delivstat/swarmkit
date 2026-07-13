@@ -47,6 +47,7 @@ from swarmkit_runtime.executors._events import (
     ExecToolCall,
     ExecUsage,
 )
+from swarmkit_runtime.executors._image import build_harness_image
 from swarmkit_runtime.executors._interaction import InteractionDriver, NoInteractionDriver
 from swarmkit_runtime.executors._model import ModelExecutor
 from swarmkit_runtime.executors._protocol import Executor, ExecutorError, ResolvedExecutor
@@ -95,6 +96,7 @@ __all__ = [
     "TaskSpec",
     "approve_launch",
     "build_command",
+    "build_harness_image",
     "collect_diff",
     "container_sandbox",
     "default_executor_registry",

@@ -79,24 +79,32 @@ def test_override_not_on_path_fails_loud(monkeypatch: pytest.MonkeyPatch) -> Non
 # --- image resolution ---------------------------------------------------------------------------
 
 
-def test_image_from_spec_then_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validate_image_source_ok_with_image_build_or_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("SWARMKIT_HARNESS_IMAGE", raising=False)
-    assert C._resolve_image(SandboxSpec(kind="container", image="my:tag")) == "my:tag"
+    C._validate_image_source(SandboxSpec(kind="container", image="my:tag"))  # no raise
+    C._validate_image_source(SandboxSpec(kind="container", build=BuildSpec(base="alpine")))
     monkeypatch.setenv("SWARMKIT_HARNESS_IMAGE", "env-img:1")
-    assert C._resolve_image(SandboxSpec(kind="container")) == "env-img:1"
+    C._validate_image_source(SandboxSpec(kind="container"))
 
 
-def test_no_image_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_image_source_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SWARMKIT_HARNESS_IMAGE", raising=False)
     with pytest.raises(ExecutorError, match="no image is configured"):
-        C._resolve_image(SandboxSpec(kind="container"))
+        C._validate_image_source(SandboxSpec(kind="container"))
 
 
-def test_build_without_image_points_to_task_19(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_resolve_image_prefers_prebuilt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.delenv("SWARMKIT_HARNESS_IMAGE", raising=False)
-    spec = SandboxSpec(kind="container", build=BuildSpec(base="node:22-slim"))
-    with pytest.raises(ExecutorError, match="not yet available"):
-        C._resolve_image(spec)
+    got = await C._resolve_image("docker", SandboxSpec(image="my:tag"), "h", tmp_path)
+    assert got == "my:tag"
+    monkeypatch.setenv("SWARMKIT_HARNESS_IMAGE", "env-img:1")
+    got = await C._resolve_image("docker", SandboxSpec(kind="container"), "h", tmp_path)
+    assert got == "env-img:1"
 
 
 # --- exec-prefix assembly -----------------------------------------------------------------------
@@ -116,6 +124,7 @@ def test_exec_prefix_full_shape() -> None:
         Path("/tmp/wt"),
         spec,
         ("ANTHROPIC_API_KEY", "FOO"),
+        "my:tag",
         network_args=("--network", "none"),
     )
     assert prefix[0:4] == ("docker", "run", "--rm", "-i")
@@ -136,6 +145,7 @@ def test_allowlist_injects_proxy_env_inline() -> None:
         Path("/tmp/wt"),
         SandboxSpec(kind="container", image="i", network="allowlist"),
         (),
+        "i",
         network_args=("--network", "swarmkit-sbx-abc"),
         inline_env={"HTTPS_PROXY": "http://swarmkit-proxy-abc:8888"},
     )
@@ -150,6 +160,7 @@ def test_minimal_prefix_no_limits() -> None:
         Path("/w"),
         SandboxSpec(kind="container", image="i"),
         (),
+        "i",
         network_args=("--network", "none"),
     )
     assert prefix == (
