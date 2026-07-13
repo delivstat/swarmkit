@@ -20,7 +20,7 @@ from swarmkit_runtime.executors._image import build_harness_image, image_tag, re
 
 
 def test_base_install_lowers_to_from_plus_runs(tmp_path: Path) -> None:
-    build = BuildSpec(base="node:22-slim", install=["npm i -g a", "npm i -g b"])
+    build = BuildSpec(base="node:22-slim", install=("npm i -g a", "npm i -g b"))
     text, ctx = resolve_dockerfile(build, tmp_path)
     assert text == "FROM node:22-slim\nRUN npm i -g a\nRUN npm i -g b\n"
     assert ctx == tmp_path
@@ -82,7 +82,7 @@ async def test_builds_when_absent_then_caches(
         return (0, "", "")
 
     monkeypatch.setattr(I, "_run", _fake_run)
-    build = BuildSpec(base="alpine", install=["true"])
+    build = BuildSpec(base="alpine", install=("true",))
 
     tag1 = await build_harness_image("docker", "my-harness", build, tmp_path)
     assert any(a[0] == "build" for a in calls)  # built the first time
@@ -124,7 +124,7 @@ async def test_e2e_build_produces_a_runnable_image(tmp_path: Path) -> None:
         "printf '#!/bin/sh\\necho BUILT_OK\\n' > /usr/local/bin/harness "
         "&& chmod +x /usr/local/bin/harness"
     )
-    build = BuildSpec(base="alpine:3.20", install=[install])
+    build = BuildSpec(base="alpine:3.20", install=(install,))
     tag = await build_harness_image("docker", "e2e-harness", build, tmp_path)
     proc = await asyncio.create_subprocess_exec(
         "docker",
