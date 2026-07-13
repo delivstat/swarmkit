@@ -14,12 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
+      # pnpm first (reads its version from package.json "packageManager"), then Node with pnpm cache
+      # — the same ordering CI uses.
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: "9"
+          node-version: 20
+          cache: pnpm
 
       # The portal (swarmkit-webui) ships the static Next.js export. Build it and stage it into the
       # package BEFORE `uv build`, so the wheel carries the assets. See serve-hosted-webui.md.
