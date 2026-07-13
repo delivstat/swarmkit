@@ -103,17 +103,22 @@ async def mcp_gateway(
     *,
     agent_id: str,
     host: str = "127.0.0.1",
+    advertise_host: str | None = None,
     token: str | None = None,
 ) -> AsyncIterator[GatewayHandle]:
     """Serve an SSE MCP server exposing ``tools`` (governed) on an ephemeral port; yield the handle;
-    shut down on exit. No tools ⇒ nothing is served (the caller shouldn't wire a config)."""
+    shut down on exit. No tools ⇒ nothing is served (the caller shouldn't wire a config).
+
+    ``host`` is the bind address; ``advertise_host`` (default = ``host``) is the host put in the URL
+    the harness connects to — for a container sandbox, bind ``0.0.0.0`` but advertise
+    ``host.docker.internal`` so the container reaches the host."""
     import uvicorn  # noqa: PLC0415
     from mcp.server import Server  # noqa: PLC0415
     from mcp.server.sse import SseServerTransport  # noqa: PLC0415
     from mcp.types import TextContent, Tool  # noqa: PLC0415
     from starlette.applications import Starlette  # noqa: PLC0415
     from starlette.requests import Request  # noqa: PLC0415
-    from starlette.responses import JSONResponse  # noqa: PLC0415
+    from starlette.responses import JSONResponse, Response  # noqa: PLC0415
     from starlette.routing import Mount, Route  # noqa: PLC0415
 
     bearer = token or secrets.token_urlsafe(24)
@@ -160,6 +165,7 @@ async def mcp_gateway(
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         async with sse.connect_sse(request.scope, request.receive, request._send) as (r, w):
             await server.run(r, w, server.create_initialization_options())
+        return Response()  # the SSE stream already flushed via request._send; keep Starlette happy
 
     async def _handle_post(scope: Any, receive: Any, send: Any) -> None:
         if not _authed(scope):
@@ -180,7 +186,7 @@ async def mcp_gateway(
         while not userver.started:
             await asyncio.sleep(0.02)
         port = userver.servers[0].sockets[0].getsockname()[1]
-        url = f"http://{host}:{port}/sse"
+        url = f"http://{advertise_host or host}:{port}/sse"
         yield GatewayHandle(url=url, token=bearer, tools=tuple(tools))
     finally:
         userver.should_exit = True

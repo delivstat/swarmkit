@@ -184,6 +184,18 @@ spec:
 
 > **Status: shipped** (runtime ≥ 1.91.0). The container tier is fully enforced — provisioning (docker|podman), resource limits, `deny`/`allowlist` egress (via a locally-built proxy), build-in-sandbox, and mounts. A `kind: container` with no runtime present fails loudly with the disable-switch hint. Try it: `uv run python packages/runtime/demos/container_sandbox.py`. See `design/details/executor-container-sandbox.md`.
 
+## Reaching the workspace's MCP tools (governed)
+
+A harness can call the workspace's MCP servers — but **through governance**, not directly (a direct call would bypass permission tiers + audit). When an adapter declares the seam and the agent has granted `mcp_tool` skills, SwarmKit stands up an **ephemeral in-process MCP gateway** for the run: it advertises only the agent's granted tools and routes every call through the same `evaluate_action` + audit path a model agent uses, then out to the real server. The harness is pointed at it via a generated `--mcp-config`. Declare the seam in your adapter:
+
+```yaml
+optional_args:
+  - when: task.mcp_config
+    args: [--mcp-config, "{task.mcp_config}"]   # Claude Code; other harnesses use their own flag
+```
+
+Absent the seam (or with no MCP grants) the harness simply gets no MCP — nothing is started. In a container sandbox the gateway is reached over `host.docker.internal` (auto-added to the egress allowlist). Try it: `uv run python packages/runtime/demos/mcp_gateway.py`. See `design/details/executor-mcp-gateway.md`.
+
 ## When the DSL isn't enough
 
 If your harness needs something past the DSL ceiling — non-JSONL output, stateful stderr parsing, bidirectional interaction — declare `spec.requires: code` and implement a Tier-1 Python `Executor` instead. That's the escape hatch; the common subprocess+JSONL shape (every major coding harness) needs none.

@@ -190,6 +190,8 @@ def test_minimal_prefix_no_limits() -> None:
         "run",
         "--rm",
         "-i",
+        "--add-host",
+        "host.docker.internal:host-gateway",
         "-v",
         "/w:/workspace",
         "-w",

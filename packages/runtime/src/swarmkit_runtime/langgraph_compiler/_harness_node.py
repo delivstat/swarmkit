@@ -440,11 +440,25 @@ async def _wire_mcp_gateway(
     if not granted:
         return task
 
+    from swarmkit_runtime.executors._container import _HOST_ALIAS  # noqa: PLC0415
     from swarmkit_runtime.mcp._gateway import build_gateway_tools, mcp_gateway  # noqa: PLC0415
+
+    # In a container, bind all interfaces + advertise host.docker.internal so the container reaches
+    # the gateway on the host (the container adds --add-host + allowlists the alias); else loopback.
+    in_container = sandbox.kind == "container"
+    bind_host = "0.0.0.0" if in_container else "127.0.0.1"
+    advertise = _HOST_ALIAS if in_container else None
 
     tools = build_gateway_tools(granted, mcp_manager)
     gw = await stack.enter_async_context(
-        mcp_gateway(tools, mcp_manager, governance, agent_id=agent.id)
+        mcp_gateway(
+            tools,
+            mcp_manager,
+            governance,
+            agent_id=agent.id,
+            host=bind_host,
+            advertise_host=advertise,
+        )
     )
     config_path = Path(sandbox.root) / ".swarmkit-mcp.json"
     config_path.write_text(json.dumps(gw.harness_config(), indent=2), encoding="utf-8")

@@ -104,12 +104,16 @@ adapter declares (opencode etc. get their own `optional_args` when verified).
    (`check_mcp_permission` + `governed_mcp_call` + `MCPCallDenied`).
 2. **Ephemeral gateway + config gen + `task.mcp_config`** — the in-process MCP server (grant-filtered,
    governed), per-run token, config generation, the `task.mcp_config` substitution var, and
-   `claude-code.yaml` `optional_args`. Native (worktree) path. Unit tests (gateway lists only grants;
-   a call is governed + audited; denied tier refuses) + a gated e2e (real `claude` + a trivial real
-   MCP server: the harness calls a workspace tool through the gateway and the call is audited).
-3. **Container-sandbox reachability** — bind host-reachable, `--add-host` host-gateway, allowlist the
-   gateway host. Unit (arg assembly) + gated e2e (a sandboxed harness reaches the gateway; `deny`
-   yields no gateway).
+   `claude-code.yaml` `optional_args`. Native (worktree) path. **SHIPPED (runtime 1.93.0, PR #566)** —
+   `mcp/_gateway.py` (`build_gateway_tools`, `harness_mcp_config`, `mcp_gateway` SSE server);
+   `_wire_mcp_gateway` in the harness node; integration test drives the real SSE gateway with
+   SwarmKit's own MCP client (list+call governed, denial + bad-token rejected) — no live harness
+   needed.
+3. **Container-sandbox reachability** — bind `0.0.0.0` + advertise `host.docker.internal`,
+   `--add-host …:host-gateway` on the container, auto-allowlist the alias. **SHIPPED (runtime
+   1.94.0)** — `mcp_gateway(advertise_host=…)`, `_container._HOST_ALIAS` in `_build_exec_prefix` +
+   `_effective_allow`; the harness node binds/advertises per `sandbox.kind`. Demo:
+   `demos/mcp_gateway.py`.
 
 ## Test plan
 
