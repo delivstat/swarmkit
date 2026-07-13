@@ -698,6 +698,10 @@ under the same governance + observability, with a real isolation boundary.
       **Opt-in, with a global disable switch; default stays native worktree.** Shipped across
       runtime 1.86.0–1.91.0 (PRs #557, #559, #560, #561, #562). Demo: `demos/container_sandbox.py`.
       `design/details/executor-container-sandbox.md`.
+- [ ] **Gatewayed MCP for harnesses** — a harness reaches the workspace's MCP tools through an
+      ephemeral in-process governed gateway (every call tier-checked + audited, no ungoverned direct
+      path), wired via `--mcp-config`. `design/details/executor-mcp-gateway.md`. Tasks #22 (extract
+      the governed call), #23 (gateway + config gen, native), #24 (container reachability + demo).
 - [ ] Verify codex + gemini-cli adapters e2e against the real binaries (drop the EXPERIMENTAL marker).
 
 ### M20 — Topology canvas (NEW) 🟡
@@ -811,6 +815,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `executor-input-escalation-plan.md` | M19 ✅ |
 | `executor-trust-accrual-plan.md` | M19 ✅ |
 | `executor-container-sandbox.md` | M19 ✅ |
+| `executor-mcp-gateway.md` | M19 🟡 |
 | `topology-canvas.md` | M20 🟡 |
 
 ## Open questions
