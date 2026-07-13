@@ -117,6 +117,8 @@ def test_get_job(hello_client: TestClient) -> None:
 
     assert data["status"] in ("completed", "failed")
     assert data["job_id"] == job_id
+    # the run-detail graph overlay needs to know which topology this run executed
+    assert data["topology"] == "hello"
 
 
 def test_get_nonexistent_job(hello_client: TestClient) -> None:

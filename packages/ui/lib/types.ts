@@ -6,6 +6,7 @@ export interface HealthResponse {
 export interface JobResponse {
 	job_id: string;
 	status: "pending" | "running" | "completed" | "failed";
+	topology: string;
 	output: string | null;
 	error: string | null;
 }

@@ -90,6 +90,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
         return JobResponse(
             job_id=job.id,
             status=job.status,
+            topology=job.topology,
             output=job.output,
             error=job.error,
         )

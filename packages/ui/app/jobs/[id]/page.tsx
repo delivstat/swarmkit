@@ -2,6 +2,7 @@
 
 import { Card, CardTitle } from "@/components/card";
 import { StatusBadge } from "@/components/status-badge";
+import { TopologyCanvas } from "@/components/topology-canvas";
 import { api } from "@/lib/api";
 import {
 	executorBadge,
@@ -9,10 +10,16 @@ import {
 	formatUsd,
 	spanCostUsd,
 } from "@/lib/format";
-import type { JobResponse, JobUsage, TraceSpan } from "@/lib/types";
+import { traceToOverlay } from "@/lib/topology-run";
+import type {
+	JobResponse,
+	JobUsage,
+	TopologyDetail,
+	TraceSpan,
+} from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 function EventStream({ jobId }: { jobId: string }) {
 	const [events, setEvents] = useState<string[]>([]);
@@ -206,6 +213,40 @@ function TraceWaterfall({ runId }: { runId: string }) {
 	);
 }
 
+/** The run mapped onto the topology graph: which agents fired, their cost/duration/status; nodes
+ * that did not fire dim. Polls the trace so it fills in as an in-flight run progresses. */
+function RunGraph({ runId, topology }: { runId: string; topology: string }) {
+	const [detail, setDetail] = useState<TopologyDetail | null>(null);
+	useEffect(() => {
+		let live = true;
+		api
+			.topologyDetail(topology)
+			.then((d) => live && setDetail(d))
+			.catch(() => live && setDetail(null));
+		return () => {
+			live = false;
+		};
+	}, [topology]);
+
+	const fetchTrace = useCallback(() => api.runTrace(runId), [runId]);
+	const { data: trace } = usePoll<TraceSpan>(fetchTrace, 5000);
+	const overlay = useMemo(() => traceToOverlay(trace ?? null), [trace]);
+
+	if (!detail) return null;
+	return (
+		<Card>
+			<CardTitle>Run graph</CardTitle>
+			<p className="text-xs mb-2" style={{ color: "var(--fg-muted)" }}>
+				The run over the topology — green fired, red errored, dimmed did not
+				fire.
+			</p>
+			<div style={{ height: 440 }}>
+				<TopologyCanvas root={detail.resolved} overlay={overlay} />
+			</div>
+		</Card>
+	);
+}
+
 export default function JobDetailPage() {
 	const params = useParams();
 	const jobId = params.id as string;
@@ -264,6 +305,8 @@ export default function JobDetailPage() {
 					)}
 
 					<UsageCard jobId={jobId} />
+
+					{job.topology && <RunGraph runId={jobId} topology={job.topology} />}
 
 					<TraceWaterfall runId={jobId} />
 

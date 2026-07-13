@@ -26,6 +26,7 @@ class RunResponse(BaseModel):
 class JobResponse(BaseModel):
     job_id: str
     status: str
+    topology: str = ""  # which topology this run executed (for the run-detail graph overlay)
     output: str | None = None
     error: str | None = None
 

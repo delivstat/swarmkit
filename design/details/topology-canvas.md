@@ -102,20 +102,27 @@ concern.)
 
 ## Sequencing (one design + PR per slice)
 
-1. This note (design-only).
-2. **View-only graph** — render the topology as a React Flow canvas (a new composer view, or replacing
-   "structure"). Prerequisite; lowest risk.
-3. **Examine replay** — feed a finished run's trace onto the graph (node colour by cost/duration/status,
-   path taken, click → span detail) on the run-detail page. *High value; zero new backend.*
+1. This note (design-only). **DONE.**
+2. **View-only graph** — render the topology as a React Flow canvas (a new composer view). **SHIPPED
+   (UI 0.7.0, PR #568, task #16)** — `lib/topology-graph.ts` (pure tidy-tree) +
+   `components/topology-canvas.tsx`.
+3. **Examine replay** — feed a finished run's trace onto the graph (node colour by
+   cost/duration/status, dim did-not-fire) on the run-detail page. **SHIPPED (UI 0.8.0 / runtime
+   1.95.0, PR #570, task #18)** — `lib/topology-run.ts::traceToOverlay`; `RunGraph` on `/jobs/[id]`;
+   polls the trace so an in-flight run fills in. (`get_job` now returns `topology`.)
 4. **Live run** — stream `/jobs/{id}/stream` so nodes light up in-flight, and surface approval/input
    requests inline on the pulsing node (the cockpit for HITL + executor interaction). Governance is
    unchanged — answering inline routes through the same approval gate; the canvas is just the surface.
-5. **Edit on canvas** — add/remove nodes, draw delegation edges; node panel = the schema form; the
-   `governance`/`planning`/`synthesis` blocks as side-panels.
+   *(Deferred — examine currently polls the trace; live SSE + inline-answer is a follow-up.)*
+5. **Edit on canvas** — add/remove nodes, draw delegation edges; node panel = the schema form.
+   **SHIPPED (UI 0.8.0, PR #569, task #17)** — `lib/topology-edit.ts` (pure raw-YAML ops, round-trip)
+   + editable `TopologyCanvas` + composer wiring. (`governance`/`planning`/`synthesis` side-panels
+   deferred.)
 6. **Aggregate / compare** — per-node stats across the last N runs (cost/latency/failure hot-spots),
-   from the exported metrics.
-7. **Fleet port** — copy the read-only view + replay/live/aggregate into the fleet UI run detail
-   (no edit).
+   from the exported metrics. *(Deferred.)*
+7. **Fleet port** — copy the read-only view + replay into the fleet UI run detail (no edit). Needs a
+   federated per-run **trace** endpoint (panel proxy → instance `/observability/runs/{id}/trace`);
+   the fleet UI today federates only `RunRow` cost rows + a Jaeger link. *(Follow-up.)*
 
 ## Test plan
 
