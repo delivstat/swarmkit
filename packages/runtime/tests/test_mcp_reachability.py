@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+import pytest
 from swarmkit_runtime.executors import SandboxSpec, mcp_reachability
 from swarmkit_runtime.executors._container import _effective_allow
 
@@ -53,7 +54,7 @@ def test_effective_allow_noop_off_container_or_deny() -> None:
     assert _effective_allow(spec, configs) == ("x",)
 
 
-def test_stdio_mcp_with_container_allowlist_warns(caplog: logging.LogCaptureFixture) -> None:
+def test_stdio_mcp_with_container_allowlist_warns(caplog: pytest.LogCaptureFixture) -> None:
     spec = SandboxSpec(kind="container", network="allowlist", allow=("h",))
     with caplog.at_level(logging.WARNING):
         _effective_allow(spec, {"fs": _Cfg("stdio")})
