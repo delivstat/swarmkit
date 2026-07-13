@@ -5,8 +5,10 @@
 // out; pan/zoom/minimap. Edit + examine-run modes build on this same component in later slices.
 
 import "@xyflow/react/dist/style.css";
+import { formatTokens, formatUsd } from "@/lib/format";
 import type { AgentNodeData } from "@/lib/topology-graph";
 import { topologyToGraph } from "@/lib/topology-graph";
+import type { NodeRun } from "@/lib/topology-run";
 import type { ResolvedAgent } from "@/lib/types";
 import {
 	Background,
@@ -30,19 +32,34 @@ const ROLE_STYLE: Record<string, { color: string; icon: typeof Crown }> = {
 	worker: WORKER_STYLE,
 };
 
-type AgentNode = Node<AgentNodeData, "agent">;
+/** Node data carries the run overlay in examine mode: `run` if the agent fired, `examine` marks the
+ * overlay active (so a node with no `run` reads as "did not fire" — dimmed). */
+interface CanvasNodeData extends AgentNodeData {
+	run?: NodeRun;
+	examine?: boolean;
+}
+type AgentNode = Node<CanvasNodeData, "agent">;
 
-/** A custom node = an agent card (id, role icon, archetype, skill count). */
+/** A custom node = an agent card. In examine mode a status ring + cost/duration overlay the card,
+ * and a node that did not fire is dimmed. */
 function AgentCard({ data, selected }: NodeProps<AgentNode>) {
 	const style = ROLE_STYLE[data.role] ?? WORKER_STYLE;
 	const Icon = style.icon;
+	const run = data.run;
+	const notFired = data.examine && !run;
+	const ring = run
+		? run.status === "error"
+			? "var(--error)"
+			: "var(--success)"
+		: undefined;
 	return (
 		<div
 			className="rounded-lg px-3 py-2 text-xs shadow-sm"
 			style={{
 				background: "var(--bg-sidebar)",
-				border: `2px solid ${selected ? style.color : "var(--border)"}`,
+				border: `2px solid ${selected ? style.color : (ring ?? "var(--border)")}`,
 				minWidth: 150,
+				opacity: notFired ? 0.45 : 1,
 			}}
 		>
 			<Handle
@@ -58,9 +75,18 @@ function AgentCard({ data, selected }: NodeProps<AgentNode>) {
 				{data.role}
 				{data.archetype ? ` · ${data.archetype}` : ""}
 			</div>
-			<div style={{ color: "var(--fg-muted)" }}>
-				{data.skillCount} skill{data.skillCount === 1 ? "" : "s"}
-			</div>
+			{run ? (
+				<div style={{ color: ring }}>
+					{formatUsd(run.costUsd)} · {Math.round(run.durationMs)}ms ·{" "}
+					{formatTokens(run.tokens)} tok
+				</div>
+			) : (
+				<div style={{ color: "var(--fg-muted)" }}>
+					{data.examine
+						? "did not fire"
+						: `${data.skillCount} skill${data.skillCount === 1 ? "" : "s"}`}
+				</div>
+			)}
 			<Handle
 				type="source"
 				position={Position.Bottom}
@@ -82,13 +108,17 @@ export interface TopologyCanvasProps {
 	onConnect?: (source: string, target: string) => void;
 	/** Delete an agent (and its subtree). */
 	onDeleteNode?: (agentId: string) => void;
+	/** Examine mode: a run overlay keyed by agent id. Present ⇒ nodes show cost/duration/status and
+	 * non-fired agents dim. Read-only regardless of `editable`. */
+	overlay?: Record<string, NodeRun>;
 	className?: string;
 }
 
 /**
  * Render a topology as an interactive graph. The layout comes from the pure `topologyToGraph`
  * helper; this component is the presentation + interaction shell. In `editable` mode, drawing an
- * edge or deleting a node calls back so the composer can round-trip the change through YAML.
+ * edge or deleting a node calls back so the composer can round-trip the change through YAML. With an
+ * `overlay`, it becomes an examine view — a run mapped onto the same graph.
  */
 export function TopologyCanvas({
 	root,
@@ -96,15 +126,20 @@ export function TopologyCanvas({
 	editable = false,
 	onConnect,
 	onDeleteNode,
+	overlay,
 	className,
 }: TopologyCanvasProps) {
+	const examine = overlay !== undefined;
 	const { nodes, edges } = useMemo(() => {
 		const g = topologyToGraph(root);
-		return {
-			nodes: g.nodes as AgentNode[],
-			edges: g.edges as Edge[],
-		};
-	}, [root]);
+		const nodes = g.nodes.map((n) => ({
+			...n,
+			data: examine
+				? { ...n.data, run: overlay?.[n.id], examine: true }
+				: n.data,
+		})) as AgentNode[];
+		return { nodes, edges: g.edges as Edge[] };
+	}, [root, overlay, examine]);
 
 	const onNodeClick: ReactFlowProps["onNodeClick"] = (_e, node) =>
 		onSelect?.(node.id);
@@ -128,8 +163,8 @@ export function TopologyCanvas({
 				onNodesDelete={handleNodesDelete}
 				fitView
 				nodesDraggable={false}
-				nodesConnectable={editable}
-				deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
+				nodesConnectable={editable && !examine}
+				deleteKeyCode={editable && !examine ? ["Backspace", "Delete"] : null}
 				edgesFocusable={false}
 				proOptions={{ hideAttribution: true }}
 			>
