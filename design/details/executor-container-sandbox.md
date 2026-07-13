@@ -191,10 +191,19 @@ Two provisioning shapes, decided in the note, implemented in task #13:
   observable.
 
 The proxy is itself a container the runtime manages for the lifetime of the sandbox (brought up in
-`container_sandbox.__aenter__`, torn down in `__aexit__`), so there is no host-level daemon to
-install. `allow` defaults to empty; an `allowlist` with no hosts is effectively `deny` plus a proxy
-(useful as a strict base to add to). v1 enforces at the **host/proxy** layer (route + proxy ACL);
-per-host TLS pinning and DNS-level filtering are noted as later hardening.
+`egress_for.__aenter__`, torn down in `__aexit__`), so there is no host-level daemon to install.
+`allow` defaults to empty; an `allowlist` with no hosts is effectively `deny` plus a proxy (useful
+as a strict base to add to). v1 enforces at the **host/proxy** layer (route + proxy ACL); per-host
+TLS pinning and DNS-level filtering are noted as later hardening.
+
+**Shipped (task #14).** `_egress.py::egress_for` implements exactly this: `deny` → `--network none`;
+`allowlist` → an `--internal` docker network + a **tinyproxy** forward proxy (default-deny, one
+anchored-regex filter per `allow` host, HTTPS `CONNECT` permitted), dual-homed onto the bridge for
+its own egress, with `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` (upper + lower case) injected inline.
+Consistent with "SwarmKit publishes no image", the proxy is a **1-line inline Dockerfile
+(`alpine` + `tinyproxy`) built locally, once, content-addressed + cached** — no published artifact.
+A gated real-docker e2e proves `deny` blocks a raw dial and `allowlist` permits only the listed host
+(the proxy's own logs show non-listed hosts refused).
 
 ## PR slices (map to tasks)
 
