@@ -16,11 +16,12 @@ the terminal event. The richer OTel/cost projection of the *inner* ExecEvents is
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from contextlib import AsyncExitStack, asynccontextmanager
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -309,7 +310,6 @@ async def run_harness_node(
     agent_id = agent.id
     kind = agent.executor.kind
     root = Path(workspace_root) if workspace_root is not None else None
-    mcp_configs = getattr(mcp_manager, "configs", None)
 
     try:
         runner = executor if executor is not None else _build_executor(agent.executor, root)
@@ -326,7 +326,7 @@ async def run_harness_node(
     task = _task_spec(agent, state, root)
     relay = _relay_ctx(agent, root, driver, review_queue, model_provider)
     return await _execute(
-        agent, state, governance, runner, task, budget, root, kind, relay, mcp_configs
+        agent, state, governance, runner, task, budget, root, kind, relay, mcp_manager
     )
 
 
@@ -401,6 +401,62 @@ def _record_trace_step(
     )
 
 
+def _granted_mcp_tools(agent: ResolvedAgent) -> list[tuple[str, str, str]]:
+    """The agent's granted MCP tools as ``(server_id, tool_name, description)`` — one per
+    ``mcp_tool`` skill. These are exactly what the gateway re-exposes to the harness."""
+    from swarmkit_runtime.skills import impl_get  # noqa: PLC0415
+
+    out: list[tuple[str, str, str]] = []
+    for skill in agent.skills:
+        impl = getattr(skill.raw, "implementation", None)
+        if impl is None or impl_get(impl, "type") != "mcp_tool":
+            continue
+        server = str(impl_get(impl, "server") or "")
+        tool = str(impl_get(impl, "tool") or "")
+        desc = str(getattr(getattr(skill.raw, "metadata", None), "description", "") or "")
+        if server and tool:
+            out.append((server, tool, desc))
+    return out
+
+
+async def _wire_mcp_gateway(
+    stack: AsyncExitStack,
+    agent: ResolvedAgent,
+    adapter_spec: Any,
+    mcp_manager: Any,
+    governance: GovernanceProvider,
+    sandbox: SandboxHandle,
+    task: TaskSpec,
+) -> TaskSpec:
+    """If the adapter opts into ``task.mcp_config`` and the agent has granted MCP tools, start the
+    ephemeral governed gateway (on ``stack``, torn down with the run), write the harness-native MCP
+    config into the sandbox, and return the task with ``mcp_config`` pointing at it. Otherwise the
+    task is unchanged (no gateway, no config) — a harness with no MCP grants is untouched."""
+    if mcp_manager is None or adapter_spec is None:
+        return task
+    if not any(g.when == "task.mcp_config" for g in adapter_spec.launch.optional_args):
+        return task  # the adapter's harness has no --mcp-config seam
+    granted = _granted_mcp_tools(agent)
+    if not granted:
+        return task
+
+    from swarmkit_runtime.mcp._gateway import build_gateway_tools, mcp_gateway  # noqa: PLC0415
+
+    tools = build_gateway_tools(granted, mcp_manager)
+    gw = await stack.enter_async_context(
+        mcp_gateway(tools, mcp_manager, governance, agent_id=agent.id)
+    )
+    config_path = Path(sandbox.root) / ".swarmkit-mcp.json"
+    config_path.write_text(json.dumps(gw.harness_config(), indent=2), encoding="utf-8")
+    await _record(
+        governance,
+        "executor.mcp_gateway",
+        agent.id,
+        {"tools": [t.name for t in tools], "url": gw.url},
+    )
+    return replace(task, mcp_config=str(config_path))
+
+
 async def _execute(  # noqa: PLR0912, PLR0915
     agent: ResolvedAgent,
     state: SwarmState,
@@ -411,9 +467,10 @@ async def _execute(  # noqa: PLR0912, PLR0915
     root: Path,
     kind: str,
     relay: _RelayCtx,
-    mcp_configs: Mapping[str, Any] | None = None,
+    mcp_manager: Any = None,
 ) -> dict[str, Any]:
     agent_id = agent.id
+    mcp_configs = getattr(mcp_manager, "configs", None)
     ref = agent.executor.ref or ""
     holder: dict[str, str | None] = {"run_id": None}
     meter = _Meter()
@@ -431,13 +488,19 @@ async def _execute(  # noqa: PLR0912, PLR0915
         agent, root, task.base_ref or "HEAD", sandbox_spec, env_keys, mcp_configs
     )
     try:
-        async with sandbox_cm as sandbox:
+        async with sandbox_cm as sandbox, AsyncExitStack() as gateway_stack:
             report = runner.preflight(task, sandbox)
             if not report.ok:
                 await _record(
                     governance, "executor.failed", agent_id, {"kind": kind, "reason": report.reason}
                 )
                 return _make_result(agent_id, f"[harness:{kind}] preflight failed: {report.reason}")
+
+            # Stand up the governed MCP gateway (if the adapter opts in + the agent has MCP grants)
+            # and point the harness at it via task.mcp_config; torn down with the run.
+            task = await _wire_mcp_gateway(
+                gateway_stack, agent, adapter_spec, mcp_manager, governance, sandbox, task
+            )
 
             await _record(governance, "executor.started", agent_id, {"kind": kind})
 

@@ -47,6 +47,8 @@ def _ctx(
     ctx: dict[str, str] = {"task.statement": task.statement, "sandbox.root": str(sandbox.root)}
     if task.base_ref:
         ctx["task.base_ref"] = task.base_ref
+    if task.mcp_config:
+        ctx["task.mcp_config"] = task.mcp_config
     if budget.max_turns is not None:
         ctx["budget.max_turns"] = str(budget.max_turns)
     if budget.max_cost_usd is not None:
