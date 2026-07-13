@@ -182,7 +182,7 @@ spec:
 
 **The disable switch always wins.** `SWARMKIT_DISABLE_CONTAINER_SANDBOX=1` forces the native worktree for every archetype regardless of adapter config — the escape hatch for a box with no container runtime or a fast local loop. A container requested with no runtime present (and no disable) is a clear error, never a silent unsandboxed run. Tune limits per archetype without forking the adapter via `executor.config.sandbox`.
 
-> **Status:** the `sandbox` config surface is stable (schema ≥ 1.16.0); the enforcing container provisioner (build, mounts, egress proxy) is rolling out across releases. Until it lands in your build, `kind: container` errors loudly with the disable-switch hint — use the worktree default meanwhile. See `design/details/executor-container-sandbox.md`.
+> **Status: shipped** (runtime ≥ 1.91.0). The container tier is fully enforced — provisioning (docker|podman), resource limits, `deny`/`allowlist` egress (via a locally-built proxy), build-in-sandbox, and mounts. A `kind: container` with no runtime present fails loudly with the disable-switch hint. Try it: `uv run python packages/runtime/demos/container_sandbox.py`. See `design/details/executor-container-sandbox.md`.
 
 ## When the DSL isn't enough
 

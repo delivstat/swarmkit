@@ -692,11 +692,12 @@ under the same governance + observability, with a real isolation boundary.
 - [x] **Review surface** — one `/review` API + queue across CLI, serve UI, fleet UI. (1.84.0, #552–554)
 - [x] **Trust accrual (§6.2.3 / P3.5)** — N approvals of an (archetype, capability) → propose an
       allowlist changeset; one denial resets + blocks. `executor-trust-accrual-plan.md`. (1.85.0, #555)
-- [ ] **Container sandbox + egress proxy (opt-in)** — the enforced isolation tier the worktree only
-      advises today: container runtime (docker|podman), resource limits, network deny/allowlist.
-      **Opt-in, with a global disable switch; default stays native worktree.**
-      `design/details/executor-container-sandbox.md`. Tasks #11 (design), #12 (config seam),
-      #13 (provisioner), #14 (network enforcement), #15 (demo + PR).
+- [x] **Container sandbox + egress proxy (opt-in)** — the enforced isolation tier the worktree only
+      advised: container runtime (docker|podman), resource limits, `deny`/`allowlist` egress (via a
+      locally-built proxy), build-in-sandbox (no local install), resource mounts + MCP reachability.
+      **Opt-in, with a global disable switch; default stays native worktree.** Shipped across
+      runtime 1.86.0–1.91.0 (PRs #557, #559, #560, #561, #562). Demo: `demos/container_sandbox.py`.
+      `design/details/executor-container-sandbox.md`.
 - [ ] Verify codex + gemini-cli adapters e2e against the real binaries (drop the EXPERIMENTAL marker).
 
 ### M20 — Topology canvas (NEW) 🟡
@@ -809,7 +810,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `executor-relay-plan.md` | M19 ✅ |
 | `executor-input-escalation-plan.md` | M19 ✅ |
 | `executor-trust-accrual-plan.md` | M19 ✅ |
-| `executor-container-sandbox.md` | M19 🟡 |
+| `executor-container-sandbox.md` | M19 ✅ |
 | `topology-canvas.md` | M20 🟡 |
 
 ## Open questions
