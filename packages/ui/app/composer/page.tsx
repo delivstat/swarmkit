@@ -2,6 +2,7 @@
 
 import { Card, CardTitle } from "@/components/card";
 import { SchemaForm } from "@/components/schema-form";
+import { TopologyCanvas } from "@/components/topology-canvas";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { JsonSchema } from "@/lib/schema-form";
@@ -702,7 +703,7 @@ export default function ComposerPage() {
 	const [topologyYaml, setTopologyYaml] = useState<string | null>(null);
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 	const [activeView, setActiveView] = useState<
-		"structure" | "relationships" | "network" | "form"
+		"structure" | "relationships" | "network" | "canvas" | "form"
 	>("structure");
 	const [topologySchema, setTopologySchema] = useState<JsonSchema | null>(null);
 	const [formObj, setFormObj] = useState<Record<string, unknown>>({});
@@ -865,25 +866,24 @@ export default function ComposerPage() {
 					className="flex ml-auto rounded-md overflow-hidden border"
 					style={{ borderColor: "var(--border)" }}
 				>
-					{(["structure", "relationships", "network", "form"] as const).map(
-						(view) => (
-							<button
-								key={view}
-								type="button"
-								onClick={() => setActiveView(view)}
-								className={cn(
-									"px-3 py-1 text-xs capitalize",
-									activeView === view ? "font-medium" : "opacity-60",
-								)}
-								style={{
-									background:
-										activeView === view ? "var(--border)" : "var(--bg)",
-								}}
-							>
-								{view}
-							</button>
-						),
-					)}
+					{(
+						["structure", "relationships", "network", "canvas", "form"] as const
+					).map((view) => (
+						<button
+							key={view}
+							type="button"
+							onClick={() => setActiveView(view)}
+							className={cn(
+								"px-3 py-1 text-xs capitalize",
+								activeView === view ? "font-medium" : "opacity-60",
+							)}
+							style={{
+								background: activeView === view ? "var(--border)" : "var(--bg)",
+							}}
+						>
+							{view}
+						</button>
+					))}
 				</div>
 			</div>
 
@@ -1000,6 +1000,14 @@ export default function ComposerPage() {
 							selectedId={selectedAgentId}
 							onSelect={setSelectedAgentId}
 						/>
+					)}
+					{activeView === "canvas" && topologyDetail && (
+						<div className="h-full">
+							<TopologyCanvas
+								root={topologyDetail.resolved}
+								onSelect={setSelectedAgentId}
+							/>
+						</div>
 					)}
 				</div>
 			</div>
