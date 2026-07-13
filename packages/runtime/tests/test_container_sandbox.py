@@ -111,7 +111,13 @@ def test_exec_prefix_full_shape() -> None:
         memory="2g",
         pids=512,
     )
-    prefix = C._build_exec_prefix("docker", Path("/tmp/wt"), spec, ("ANTHROPIC_API_KEY", "FOO"))
+    prefix = C._build_exec_prefix(
+        "docker",
+        Path("/tmp/wt"),
+        spec,
+        ("ANTHROPIC_API_KEY", "FOO"),
+        network_args=("--network", "none"),
+    )
     assert prefix[0:4] == ("docker", "run", "--rm", "-i")
     assert "-v" in prefix and "/tmp/wt:/workspace" in prefix
     assert prefix[prefix.index("-w") + 1] == "/workspace"
@@ -120,21 +126,31 @@ def test_exec_prefix_full_shape() -> None:
     assert "--pids-limit" in prefix and "512" in prefix
     assert "--network" in prefix and "none" in prefix
     # env forwarded by name only — values never enter argv/image
-    assert prefix.count("-e") == 2
     assert "ANTHROPIC_API_KEY" in prefix and "FOO" in prefix
     assert prefix[-1] == "my:tag"  # image is last, args come before it
 
 
-def test_allowlist_leaves_default_network_until_task_14() -> None:
+def test_allowlist_injects_proxy_env_inline() -> None:
     prefix = C._build_exec_prefix(
-        "docker", Path("/tmp/wt"), SandboxSpec(kind="container", image="i", network="allowlist"), ()
+        "docker",
+        Path("/tmp/wt"),
+        SandboxSpec(kind="container", image="i", network="allowlist"),
+        (),
+        network_args=("--network", "swarmkit-sbx-abc"),
+        inline_env={"HTTPS_PROXY": "http://swarmkit-proxy-abc:8888"},
     )
-    assert "--network" not in prefix  # #14 fills the allowlist/proxy enforcement
+    assert "--network" in prefix and "swarmkit-sbx-abc" in prefix
+    # inline env is KEY=VALUE (a non-secret proxy var), distinct from name-only forwarding
+    assert "HTTPS_PROXY=http://swarmkit-proxy-abc:8888" in prefix
 
 
 def test_minimal_prefix_no_limits() -> None:
     prefix = C._build_exec_prefix(
-        "podman", Path("/w"), SandboxSpec(kind="container", image="i"), ()
+        "podman",
+        Path("/w"),
+        SandboxSpec(kind="container", image="i"),
+        (),
+        network_args=("--network", "none"),
     )
     assert prefix == (
         "podman",

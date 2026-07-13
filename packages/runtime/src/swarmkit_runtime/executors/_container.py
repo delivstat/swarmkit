@@ -20,11 +20,13 @@ from __future__ import annotations
 
 import os
 import shutil
+import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from ._adapter_spec import SandboxSpec
+from ._egress import egress_for
 from ._protocol import ExecutorError
 from ._run import SandboxHandle
 from ._sandbox import worktree_sandbox
@@ -84,15 +86,6 @@ def _resource_args(spec: SandboxSpec) -> list[str]:
     return args
 
 
-def _network_args(spec: SandboxSpec) -> list[str]:
-    """``deny`` → no egress (``--network none``). ``allowlist`` enforcement (an internal network +
-    egress proxy) lands in task #14; until then an allowlist runs on the default network — the
-    schema still records intent, and this is the seam #14 fills."""
-    if spec.network == "deny":
-        return ["--network", "none"]
-    return []
-
-
 def _mount_args(host_worktree: Path, spec: SandboxSpec) -> list[str]:
     """The worktree is bind-mounted read-write at the workdir so the harness's writes land on the
     host worktree (where ``collect_diff`` reads them). Extra ``sandbox.mounts`` land in task #20."""
@@ -108,8 +101,23 @@ def _env_forward_args(env_keys: Sequence[str]) -> list[str]:
     return args
 
 
+def _env_inline_args(env: dict[str, str]) -> list[str]:
+    """One ``-e KEY=VALUE`` per non-secret inline var (the egress proxy vars). Sorted for stable
+    argv (testability)."""
+    args: list[str] = []
+    for key in sorted(env):
+        args += ["-e", f"{key}={env[key]}"]
+    return args
+
+
 def _build_exec_prefix(
-    runtime: str, host_worktree: Path, spec: SandboxSpec, env_keys: Sequence[str]
+    runtime: str,
+    host_worktree: Path,
+    spec: SandboxSpec,
+    env_keys: Sequence[str],
+    *,
+    network_args: Sequence[str] = (),
+    inline_env: dict[str, str] | None = None,
 ) -> tuple[str, ...]:
     return (
         runtime,
@@ -118,8 +126,9 @@ def _build_exec_prefix(
         "-i",
         *_mount_args(host_worktree, spec),
         *_resource_args(spec),
-        *_network_args(spec),
+        *network_args,
         *_env_forward_args(env_keys),
+        *_env_inline_args(inline_env or {}),
         _resolve_image(spec),
     )
 
@@ -136,13 +145,25 @@ async def container_sandbox(
 
     Fails loud (``ExecutorError``) when no container runtime or resolvable image is available —
     never a silent unsandboxed run. The worktree checkout + teardown are the wrapped
-    :func:`worktree_sandbox`; the container is ``--rm``. ``env_keys`` are the harness's declared env
-    vars, forwarded into the container from the launch process env.
+    :func:`worktree_sandbox`; egress (``deny`` → ``--network none``; ``allowlist`` → an internal
+    network + filtered proxy) is the wrapped :func:`egress_for`; the container is ``--rm``.
+    ``env_keys`` are the harness's declared env vars, forwarded from the launch process env.
     """
     runtime = _resolve_runtime()
-    _resolve_image(spec)  # fail fast before provisioning a worktree
-    async with worktree_sandbox(repo_root, base_ref) as wt:
-        prefix = _build_exec_prefix(runtime, wt.root, spec, env_keys)
+    _resolve_image(spec)  # fail fast before provisioning anything
+    run_id = uuid.uuid4().hex
+    async with (
+        worktree_sandbox(repo_root, base_ref) as wt,
+        egress_for(runtime, spec.network, spec.allow, run_id) as eg,
+    ):
+        prefix = _build_exec_prefix(
+            runtime,
+            wt.root,
+            spec,
+            env_keys,
+            network_args=eg.network_args,
+            inline_env=eg.env,
+        )
         yield SandboxHandle(
             root=wt.root, kind="container", network=spec.network, exec_prefix=prefix
         )
