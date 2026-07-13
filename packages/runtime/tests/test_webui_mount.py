@@ -35,7 +35,7 @@ def _app_with_portal(monkeypatch: pytest.MonkeyPatch, static: Path | None) -> Fa
         return {"status": "ok"}
 
     mounted = mount_webui(app)
-    app.state._webui_mounted = mounted  # type: ignore[attr-defined]
+    app.state._webui_mounted = mounted
     return app
 
 
