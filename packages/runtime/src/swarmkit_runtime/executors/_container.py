@@ -27,6 +27,7 @@ from pathlib import Path
 
 from ._adapter_spec import SandboxSpec
 from ._egress import egress_for
+from ._image import build_harness_image
 from ._protocol import ExecutorError
 from ._run import SandboxHandle
 from ._sandbox import worktree_sandbox
@@ -57,22 +58,29 @@ def _resolve_runtime() -> str:
     )
 
 
-def _resolve_image(spec: SandboxSpec) -> str:
-    """The image the harness runs in: ``sandbox.image`` else ``$SWARMKIT_HARNESS_IMAGE``. A
-    ``build`` block (build-in-sandbox) is handled in task #19; until then it is a clear error, not a
-    guessed base image."""
-    image = spec.image or os.environ.get("SWARMKIT_HARNESS_IMAGE", "").strip()
-    if image:
-        return image
-    if spec.build is not None:
-        raise ExecutorError(
-            "sandbox.build is set but building the harness image is not yet available in this "
-            "build (task #19). Set sandbox.image or $SWARMKIT_HARNESS_IMAGE meanwhile."
-        )
+def _validate_image_source(spec: SandboxSpec) -> None:
+    """Fail fast (before provisioning) when no image source is configured. A prebuilt ``image`` or
+    ``$SWARMKIT_HARNESS_IMAGE`` or a ``build`` block is required — never a guessed base image."""
+    if spec.image or os.environ.get("SWARMKIT_HARNESS_IMAGE", "").strip() or spec.build is not None:
+        return
     raise ExecutorError(
         "sandbox.kind is container but no image is configured. Set sandbox.image, sandbox.build, "
         "or $SWARMKIT_HARNESS_IMAGE — SwarmKit publishes no default image, and will not guess one."
     )
+
+
+async def _resolve_image(
+    runtime: str, spec: SandboxSpec, adapter_id: str, workspace_root: Path
+) -> str:
+    """The image the harness runs in. A prebuilt ``sandbox.image`` (or ``$SWARMKIT_HARNESS_IMAGE``)
+    wins; else a ``build`` block is built once + cached (build-in-sandbox); else a clear error."""
+    prebuilt = spec.image or os.environ.get("SWARMKIT_HARNESS_IMAGE", "").strip()
+    if prebuilt:
+        return prebuilt
+    if spec.build is not None:
+        return await build_harness_image(runtime, adapter_id, spec.build, workspace_root)
+    _validate_image_source(spec)  # raises — no source at all
+    raise AssertionError  # unreachable; keeps mypy happy about the return
 
 
 def _resource_args(spec: SandboxSpec) -> list[str]:
@@ -115,6 +123,7 @@ def _build_exec_prefix(
     host_worktree: Path,
     spec: SandboxSpec,
     env_keys: Sequence[str],
+    image: str,
     *,
     network_args: Sequence[str] = (),
     inline_env: dict[str, str] | None = None,
@@ -129,7 +138,7 @@ def _build_exec_prefix(
         *network_args,
         *_env_forward_args(env_keys),
         *_env_inline_args(inline_env or {}),
-        _resolve_image(spec),
+        image,
     )
 
 
@@ -139,28 +148,33 @@ async def container_sandbox(
     base_ref: str,
     spec: SandboxSpec,
     *,
+    adapter_id: str = "harness",
     env_keys: Sequence[str] = (),
 ) -> AsyncIterator[SandboxHandle]:
     """Provision a container sandbox for the harness and yield its :class:`SandboxHandle`.
 
     Fails loud (``ExecutorError``) when no container runtime or resolvable image is available —
-    never a silent unsandboxed run. The worktree checkout + teardown are the wrapped
+    never a silent unsandboxed run. Image resolution builds a ``sandbox.build`` block once + caches
+    it (build-in-sandbox). The worktree checkout + teardown are the wrapped
     :func:`worktree_sandbox`; egress (``deny`` → ``--network none``; ``allowlist`` → an internal
     network + filtered proxy) is the wrapped :func:`egress_for`; the container is ``--rm``.
     ``env_keys`` are the harness's declared env vars, forwarded from the launch process env.
     """
     runtime = _resolve_runtime()
-    _resolve_image(spec)  # fail fast before provisioning anything
+    _validate_image_source(spec)  # fail fast before provisioning anything
+    workspace_root = Path(repo_root).resolve()
     run_id = uuid.uuid4().hex
     async with (
         worktree_sandbox(repo_root, base_ref) as wt,
         egress_for(runtime, spec.network, spec.allow, run_id) as eg,
     ):
+        image = await _resolve_image(runtime, spec, adapter_id, workspace_root)
         prefix = _build_exec_prefix(
             runtime,
             wt.root,
             spec,
             env_keys,
+            image,
             network_args=eg.network_args,
             inline_env=eg.env,
         )

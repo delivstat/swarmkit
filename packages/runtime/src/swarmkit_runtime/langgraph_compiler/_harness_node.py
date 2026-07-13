@@ -253,7 +253,10 @@ def _sandbox_for(
     Returns ``(context_manager, persistent)``."""
     spec = _effective_sandbox(agent, sandbox_spec)
     if spec is not None and spec.is_container and not _container_disabled():
-        return container_sandbox(root, base_ref, spec, env_keys=env_keys), False
+        cm = container_sandbox(
+            root, base_ref, spec, adapter_id=agent.executor.kind, env_keys=env_keys
+        )
+        return cm, False
     if spec is not None and spec.is_container and _container_disabled():
         _logger.info("container sandbox disabled by env; using native worktree for %s", agent.id)
 
