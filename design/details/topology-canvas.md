@@ -1,8 +1,14 @@
 ---
-status: draft
+status: accepted
 ---
 
 # Topology canvas — one graph, two modes (edit + examine-run)
+
+> **Implementation (M20).** Slice 2 (view-only graph) = task #16; slice 5 (edit on canvas) = task
+> #17; slices 3 + 7 (examine-run + fleet read-only) = task #18. React Flow 19-compatible package is
+> `@xyflow/react` (v12, the successor to `reactflow`). Auto-layout is a pure in-repo tidy-tree helper
+> (`lib/topology-graph.ts`) — no `dagre`/`elkjs` dependency for the tree case; revisit only if a
+> non-tree layout is needed.
 
 Companion to `workspace-ui.md` (this is its "topology graph editor" slice, expanded) and reusing the
 observability reads (`/observability/runs/{id}/trace`). A visual, node-and-edge canvas for a
