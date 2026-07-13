@@ -39,8 +39,8 @@ from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
 from ._routes_review import _register_review_routes
-from ._webui import mount_webui
 from ._services import ArtifactService
+from ._webui import mount_webui
 
 logger = logging.getLogger("swarmkit.server")
 
