@@ -6,6 +6,12 @@ import { TopologyCanvas } from "@/components/topology-canvas";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { JsonSchema } from "@/lib/schema-form";
+import {
+	type RawAgent,
+	addChild,
+	removeAgent,
+	reparent,
+} from "@/lib/topology-edit";
 import type { ResolvedAgent, SkillItem, TopologyDetail } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 import { useRefOptions } from "@/lib/use-ref-options";
@@ -705,6 +711,7 @@ export default function ComposerPage() {
 	const [activeView, setActiveView] = useState<
 		"structure" | "relationships" | "network" | "canvas" | "form"
 	>("structure");
+	const [canvasEditing, setCanvasEditing] = useState(false);
 	const [topologySchema, setTopologySchema] = useState<JsonSchema | null>(null);
 	const [formObj, setFormObj] = useState<Record<string, unknown>>({});
 	const refOptions = useRefOptions();
@@ -781,6 +788,38 @@ export default function ComposerPage() {
 		} finally {
 			setSaving(false);
 		}
+	};
+
+	// Canvas edit: apply a pure structural op to the raw `agents.root` tree and round-trip through
+	// YAML (invariant #1 — no second source of truth). A no-op op (returns the same tree) is skipped.
+	const applyCanvasEdit = (fn: (root: RawAgent) => RawAgent) => {
+		if (!topologyYaml) return;
+		let obj: Record<string, unknown>;
+		try {
+			obj = (load(topologyYaml) as Record<string, unknown>) ?? {};
+		} catch {
+			return;
+		}
+		const agents = obj.agents as { root?: RawAgent } | undefined;
+		const root = agents?.root;
+		if (!root) return;
+		const next = fn(root);
+		if (next === root) return;
+		obj.agents = { ...agents, root: next };
+		handleSave(dump(obj));
+	};
+
+	const addCanvasAgent = () => {
+		if (!topologyDetail) return;
+		const existing = new Set(
+			flattenAgents(topologyDetail.resolved).map((a) => a.id),
+		);
+		let n = existing.size + 1;
+		while (existing.has(`agent-${n}`)) n += 1;
+		const parentId = selectedAgentId ?? topologyDetail.resolved.id;
+		applyCanvasEdit((root) =>
+			addChild(root, parentId, { id: `agent-${n}`, role: "worker" }),
+		);
 	};
 
 	const selectedAgent =
@@ -1002,11 +1041,55 @@ export default function ComposerPage() {
 						/>
 					)}
 					{activeView === "canvas" && topologyDetail && (
-						<div className="h-full">
-							<TopologyCanvas
-								root={topologyDetail.resolved}
-								onSelect={setSelectedAgentId}
-							/>
+						<div className="flex flex-col h-full">
+							<div
+								className="flex items-center gap-2 px-3 py-1.5 border-b text-xs"
+								style={{ borderColor: "var(--border)" }}
+							>
+								<button
+									type="button"
+									onClick={() => setCanvasEditing((v) => !v)}
+									className="px-2.5 py-1 rounded font-medium"
+									style={{
+										background: canvasEditing ? "var(--accent)" : "var(--bg)",
+										color: canvasEditing ? "var(--accent-fg)" : "var(--fg)",
+										border: "1px solid var(--border)",
+									}}
+								>
+									{canvasEditing ? "Editing" : "Edit"}
+								</button>
+								{canvasEditing && (
+									<>
+										<button
+											type="button"
+											onClick={addCanvasAgent}
+											disabled={saving}
+											className="px-2.5 py-1 rounded disabled:opacity-40"
+											style={{ border: "1px solid var(--border)" }}
+										>
+											＋ agent
+											{selectedAgentId ? ` under ${selectedAgentId}` : ""}
+										</button>
+										<span style={{ color: "var(--fg-muted)" }}>
+											drag between nodes to delegate · Delete removes a node
+											{saving ? " · saving…" : ""}
+										</span>
+									</>
+								)}
+							</div>
+							<div className="flex-1">
+								<TopologyCanvas
+									root={topologyDetail.resolved}
+									onSelect={setSelectedAgentId}
+									editable={canvasEditing}
+									onConnect={(source, target) =>
+										applyCanvasEdit((root) => reparent(root, target, source))
+									}
+									onDeleteNode={(id) =>
+										applyCanvasEdit((root) => removeAgent(root, id))
+									}
+								/>
+							</div>
 						</div>
 					)}
 				</div>
