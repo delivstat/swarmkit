@@ -41,7 +41,7 @@ def fake_docker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SWARMKIT_CONTAINER_RUNTIME", raising=False)
     monkeypatch.delenv("SWARMKIT_HARNESS_IMAGE", raising=False)
     monkeypatch.setattr(
-        C.shutil, "which", lambda name: f"/usr/bin/{name}" if name == "docker" else None
+        shutil, "which", lambda name: f"/usr/bin/{name}" if name == "docker" else None
     )
 
 
@@ -50,28 +50,28 @@ def fake_docker(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_prefers_docker_then_podman(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SWARMKIT_CONTAINER_RUNTIME", raising=False)
-    monkeypatch.setattr(C.shutil, "which", lambda n: "/x" if n in ("docker", "podman") else None)
+    monkeypatch.setattr(shutil, "which", lambda n: "/x" if n in ("docker", "podman") else None)
     assert C._resolve_runtime() == "docker"
-    monkeypatch.setattr(C.shutil, "which", lambda n: "/x" if n == "podman" else None)
+    monkeypatch.setattr(shutil, "which", lambda n: "/x" if n == "podman" else None)
     assert C._resolve_runtime() == "podman"
 
 
 def test_runtime_override_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SWARMKIT_CONTAINER_RUNTIME", "podman")
-    monkeypatch.setattr(C.shutil, "which", lambda n: "/x" if n == "podman" else None)
+    monkeypatch.setattr(shutil, "which", lambda n: "/x" if n == "podman" else None)
     assert C._resolve_runtime() == "podman"
 
 
 def test_no_runtime_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SWARMKIT_CONTAINER_RUNTIME", raising=False)
-    monkeypatch.setattr(C.shutil, "which", lambda n: None)
+    monkeypatch.setattr(shutil, "which", lambda n: None)
     with pytest.raises(ExecutorError, match="no container runtime"):
         C._resolve_runtime()
 
 
 def test_override_not_on_path_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SWARMKIT_CONTAINER_RUNTIME", "nerdctl")
-    monkeypatch.setattr(C.shutil, "which", lambda n: None)
+    monkeypatch.setattr(shutil, "which", lambda n: None)
     with pytest.raises(ExecutorError, match="nerdctl"):
         C._resolve_runtime()
 
@@ -174,7 +174,7 @@ async def test_provision_no_runtime_fails_before_worktree(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("SWARMKIT_CONTAINER_RUNTIME", raising=False)
-    monkeypatch.setattr(C.shutil, "which", lambda n: None)
+    monkeypatch.setattr(shutil, "which", lambda n: None)
     with pytest.raises(ExecutorError, match="no container runtime"):
         async with container_sandbox(repo, "HEAD", SandboxSpec(kind="container", image="i")):
             pass
