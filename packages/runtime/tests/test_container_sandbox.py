@@ -125,6 +125,7 @@ def test_exec_prefix_full_shape() -> None:
         spec,
         ("ANTHROPIC_API_KEY", "FOO"),
         "my:tag",
+        Path("/tmp/wt"),
         network_args=("--network", "none"),
     )
     assert prefix[0:4] == ("docker", "run", "--rm", "-i")
@@ -146,12 +147,32 @@ def test_allowlist_injects_proxy_env_inline() -> None:
         SandboxSpec(kind="container", image="i", network="allowlist"),
         (),
         "i",
+        Path("/tmp/wt"),
         network_args=("--network", "swarmkit-sbx-abc"),
         inline_env={"HTTPS_PROXY": "http://swarmkit-proxy-abc:8888"},
     )
     assert "--network" in prefix and "swarmkit-sbx-abc" in prefix
     # inline env is KEY=VALUE (a non-secret proxy var), distinct from name-only forwarding
     assert "HTTPS_PROXY=http://swarmkit-proxy-abc:8888" in prefix
+
+
+def test_mounts_are_bind_mounted_relative_to_workspace() -> None:
+    from swarmkit_runtime.executors._adapter_spec import MountSpec  # noqa: PLC0415
+
+    spec = SandboxSpec(
+        kind="container",
+        image="i",
+        mounts=(
+            MountSpec(source="knowledge", target="/kb", mode="ro"),
+            MountSpec(source="/abs/cfg", target="/cfg", mode="rw"),
+        ),
+    )
+    prefix = C._build_exec_prefix(
+        "docker", Path("/tmp/wt"), spec, (), "i", Path("/ws"), network_args=("--network", "none")
+    )
+    # relative source resolves under the workspace root; absolute is used as-is; mode preserved
+    assert "/ws/knowledge:/kb:ro" in prefix
+    assert "/abs/cfg:/cfg:rw" in prefix
 
 
 def test_minimal_prefix_no_limits() -> None:
@@ -161,6 +182,7 @@ def test_minimal_prefix_no_limits() -> None:
         SandboxSpec(kind="container", image="i"),
         (),
         "i",
+        Path("/w"),
         network_args=("--network", "none"),
     )
     assert prefix == (
@@ -239,3 +261,28 @@ async def test_e2e_container_edit_reaches_host_diff(repo: Path) -> None:
         assert (handle.root / "f.txt").read_text() == "edited\n"
         diff = await collect_diff(handle)
         assert "edited" in diff and "f.txt" in diff
+
+
+@pytest.mark.asyncio
+async def test_e2e_extra_mount_is_readable_in_container(repo: Path) -> None:
+    """A real container can read an extra sandbox.mount (e.g. a knowledge-base dir)."""
+    if not _E2E or shutil.which("docker") is None:
+        pytest.skip("set SWARMKIT_E2E=1 with docker on PATH (+ alpine) to run the real mount e2e")
+    from swarmkit_runtime.executors._adapter_spec import MountSpec  # noqa: PLC0415
+
+    (repo / "kb").mkdir()
+    (repo / "kb" / "note.txt").write_text("KB_CONTENT\n")
+    spec = SandboxSpec(
+        kind="container",
+        image=_IMAGE,
+        network="deny",
+        mounts=(MountSpec(source="kb", target="/kb", mode="ro"),),
+    )
+    async with container_sandbox(repo, "HEAD", spec) as handle:
+        argv = [*handle.exec_prefix, "cat", "/kb/note.txt"]
+        proc = await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        out, err = await proc.communicate()
+        assert proc.returncode == 0, err.decode()
+        assert b"KB_CONTENT" in out

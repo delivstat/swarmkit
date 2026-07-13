@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -241,6 +241,7 @@ def _sandbox_for(
     base_ref: str,
     sandbox_spec: SandboxSpec | None = None,
     env_keys: tuple[str, ...] = (),
+    mcp_configs: Mapping[str, Any] | None = None,
 ) -> tuple[Any, bool]:
     """Choose the harness's execution sandbox. Precedence (most-specific first, but *disable always
     wins*):
@@ -254,7 +255,12 @@ def _sandbox_for(
     spec = _effective_sandbox(agent, sandbox_spec)
     if spec is not None and spec.is_container and not _container_disabled():
         cm = container_sandbox(
-            root, base_ref, spec, adapter_id=agent.executor.kind, env_keys=env_keys
+            root,
+            base_ref,
+            spec,
+            adapter_id=agent.executor.kind,
+            env_keys=env_keys,
+            mcp_configs=mcp_configs,
         )
         return cm, False
     if spec is not None and spec.is_container and _container_disabled():
@@ -290,17 +296,20 @@ async def run_harness_node(
     driver: InteractionDriver | None = None,
     review_queue: ReviewQueue | None = None,
     model_provider: ModelProviderProtocol | None = None,
+    mcp_manager: Any = None,
 ) -> dict[str, Any]:
     """Execute an agent whose ``executor.kind`` is not ``model``.
 
     Returns the standard node result dict. Errors (preflight, sandbox, no result) become a failure
     result, never an exception — a harness node fails on an edge rather than crashing the graph.
     ``executor`` / ``driver`` / ``review_queue`` are injectable for testing; in production they are
-    built from ``agent.executor`` + the workspace.
+    built from ``agent.executor`` + the workspace. ``mcp_manager`` supplies the workspace's MCP
+    server configs so a container-sandboxed harness can reach http MCP servers (stdio ones warn).
     """
     agent_id = agent.id
     kind = agent.executor.kind
     root = Path(workspace_root) if workspace_root is not None else None
+    mcp_configs = getattr(mcp_manager, "configs", None)
 
     try:
         runner = executor if executor is not None else _build_executor(agent.executor, root)
@@ -316,7 +325,9 @@ async def run_harness_node(
     budget = _budget_from_config(dict(agent.executor.config))
     task = _task_spec(agent, state, root)
     relay = _relay_ctx(agent, root, driver, review_queue, model_provider)
-    return await _execute(agent, state, governance, runner, task, budget, root, kind, relay)
+    return await _execute(
+        agent, state, governance, runner, task, budget, root, kind, relay, mcp_configs
+    )
 
 
 class _Meter:
@@ -400,6 +411,7 @@ async def _execute(  # noqa: PLR0912, PLR0915
     root: Path,
     kind: str,
     relay: _RelayCtx,
+    mcp_configs: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     agent_id = agent.id
     ref = agent.executor.ref or ""
@@ -416,7 +428,7 @@ async def _execute(  # noqa: PLR0912, PLR0915
     sandbox_spec = adapter_spec.sandbox if adapter_spec is not None else None
     env_keys = adapter_spec.env_keys() if adapter_spec is not None else ()
     sandbox_cm, persistent = _sandbox_for(
-        agent, root, task.base_ref or "HEAD", sandbox_spec, env_keys
+        agent, root, task.base_ref or "HEAD", sandbox_spec, env_keys, mcp_configs
     )
     try:
         async with sandbox_cm as sandbox:

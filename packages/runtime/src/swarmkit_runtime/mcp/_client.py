@@ -104,6 +104,11 @@ class MCPClientManager:
         self._cache_hits = 0
         self._cache_misses = 0
 
+    @property
+    def configs(self) -> dict[str, MCPServerConfig]:
+        """The resolved MCP server configs, keyed by id (read-only view for reachability checks)."""
+        return dict(self._configs)
+
     async def start_all(self) -> None:
         """Eagerly open every configured server's session.
 

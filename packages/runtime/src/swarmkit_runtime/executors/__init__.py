@@ -49,6 +49,7 @@ from swarmkit_runtime.executors._events import (
 )
 from swarmkit_runtime.executors._image import build_harness_image
 from swarmkit_runtime.executors._interaction import InteractionDriver, NoInteractionDriver
+from swarmkit_runtime.executors._mcp_reach import mcp_reachability
 from swarmkit_runtime.executors._model import ModelExecutor
 from swarmkit_runtime.executors._protocol import Executor, ExecutorError, ResolvedExecutor
 from swarmkit_runtime.executors._registry import ExecutorRegistry, default_executor_registry
@@ -105,6 +106,7 @@ __all__ = [
     "launch_fingerprint",
     "load_adapter_specs",
     "load_workspace_adapter_specs",
+    "mcp_reachability",
     "parse_adapter_spec",
     "worktree_sandbox",
 ]

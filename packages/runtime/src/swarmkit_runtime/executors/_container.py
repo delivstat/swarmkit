@@ -18,22 +18,27 @@ torn down by the wrapped :func:`worktree_sandbox`.
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from ._adapter_spec import SandboxSpec
 from ._egress import egress_for
 from ._image import build_harness_image
+from ._mcp_reach import mcp_reachability
 from ._protocol import ExecutorError
 from ._run import SandboxHandle
 from ._sandbox import worktree_sandbox
 
 # Where the worktree is mounted inside the container; the harness runs here.
 _CONTAINER_WORKDIR = "/workspace"
+
+_logger = logging.getLogger(__name__)
 
 
 def _resolve_runtime() -> str:
@@ -94,10 +99,16 @@ def _resource_args(spec: SandboxSpec) -> list[str]:
     return args
 
 
-def _mount_args(host_worktree: Path, spec: SandboxSpec) -> list[str]:
+def _mount_args(host_worktree: Path, spec: SandboxSpec, workspace_root: Path) -> list[str]:
     """The worktree is bind-mounted read-write at the workdir so the harness's writes land on the
-    host worktree (where ``collect_diff`` reads them). Extra ``sandbox.mounts`` land in task #20."""
-    return ["-v", f"{host_worktree}:{_CONTAINER_WORKDIR}", "-w", _CONTAINER_WORKDIR]
+    host worktree (where ``collect_diff`` reads them), plus any extra ``sandbox.mounts`` (a KB dir,
+    shared config, a second source tree). A mount ``source`` relative to the workspace root."""
+    args = ["-v", f"{host_worktree}:{_CONTAINER_WORKDIR}", "-w", _CONTAINER_WORKDIR]
+    for mount in spec.mounts:
+        src = Path(mount.source)
+        resolved = src if src.is_absolute() else (workspace_root / src)
+        args += ["-v", f"{resolved.resolve()}:{mount.target}:{mount.mode}"]
+    return args
 
 
 def _env_forward_args(env_keys: Sequence[str]) -> list[str]:
@@ -124,6 +135,7 @@ def _build_exec_prefix(
     spec: SandboxSpec,
     env_keys: Sequence[str],
     image: str,
+    workspace_root: Path,
     *,
     network_args: Sequence[str] = (),
     inline_env: dict[str, str] | None = None,
@@ -133,13 +145,29 @@ def _build_exec_prefix(
         "run",
         "--rm",
         "-i",
-        *_mount_args(host_worktree, spec),
+        *_mount_args(host_worktree, spec, workspace_root),
         *_resource_args(spec),
         *network_args,
         *_env_forward_args(env_keys),
         *_env_inline_args(inline_env or {}),
         image,
     )
+
+
+def _effective_allow(spec: SandboxSpec, mcp_configs: Mapping[str, Any]) -> tuple[str, ...]:
+    """The egress allowlist plus any **http** MCP servers' hostnames (so a containerized harness can
+    reach them), deduped. **stdio** MCP servers can't cross the container boundary — warn, don't
+    bridge (a v1 limitation; sidecar/shim deferred)."""
+    if not spec.is_container or spec.network != "allowlist":
+        return spec.allow
+    http_hosts, stdio_ids = mcp_reachability(mcp_configs)
+    if stdio_ids:
+        _logger.warning(
+            "container sandbox with network=allowlist cannot reach stdio MCP server(s) %s — they "
+            "speak over local pipes; use an http MCP server or drop the container sandbox for them",
+            ", ".join(stdio_ids),
+        )
+    return tuple(dict.fromkeys([*spec.allow, *http_hosts]))
 
 
 @asynccontextmanager
@@ -150,6 +178,7 @@ async def container_sandbox(
     *,
     adapter_id: str = "harness",
     env_keys: Sequence[str] = (),
+    mcp_configs: Mapping[str, Any] | None = None,
 ) -> AsyncIterator[SandboxHandle]:
     """Provision a container sandbox for the harness and yield its :class:`SandboxHandle`.
 
@@ -159,14 +188,16 @@ async def container_sandbox(
     :func:`worktree_sandbox`; egress (``deny`` → ``--network none``; ``allowlist`` → an internal
     network + filtered proxy) is the wrapped :func:`egress_for`; the container is ``--rm``.
     ``env_keys`` are the harness's declared env vars, forwarded from the launch process env.
+    ``mcp_configs`` extends an allowlist with http MCP servers' hostnames (stdio ones warn).
     """
     runtime = _resolve_runtime()
     _validate_image_source(spec)  # fail fast before provisioning anything
     workspace_root = Path(repo_root).resolve()
+    allow = _effective_allow(spec, mcp_configs or {})
     run_id = uuid.uuid4().hex
     async with (
         worktree_sandbox(repo_root, base_ref) as wt,
-        egress_for(runtime, spec.network, spec.allow, run_id) as eg,
+        egress_for(runtime, spec.network, allow, run_id) as eg,
     ):
         image = await _resolve_image(runtime, spec, adapter_id, workspace_root)
         prefix = _build_exec_prefix(
@@ -175,6 +206,7 @@ async def container_sandbox(
             spec,
             env_keys,
             image,
+            workspace_root,
             network_args=eg.network_args,
             inline_env=eg.env,
         )
