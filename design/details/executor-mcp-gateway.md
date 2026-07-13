@@ -100,7 +100,8 @@ adapter declares (opencode etc. get their own `optional_args` when verified).
 ## PR slices
 
 1. **Extract `governed_mcp_call`** — one shared governed path; `_execute_mcp_tool` delegates to it.
-   Pure refactor, existing tests stay green. (design = this note)
+   Pure refactor, existing tests stay green. **SHIPPED (runtime 1.92.0, PR #565)** — `mcp/_governed.py`
+   (`check_mcp_permission` + `governed_mcp_call` + `MCPCallDenied`).
 2. **Ephemeral gateway + config gen + `task.mcp_config`** — the in-process MCP server (grant-filtered,
    governed), per-run token, config generation, the `task.mcp_config` substitution var, and
    `claude-code.yaml` `optional_args`. Native (worktree) path. Unit tests (gateway lists only grants;

@@ -22,6 +22,9 @@ class TaskSpec:
     context_files: Mapping[str, str] = field(default_factory=dict)  # e.g. {"CLAUDE.md": "..."}
     mcp_tools: Sequence[str] = field(default_factory=tuple)
     base_ref: str | None = None
+    # Path to a generated harness-native MCP config pointing at the governed gateway (set by the
+    # harness node once the gateway is up). Exposed as {task.mcp_config} for an adapter to consume.
+    mcp_config: str = ""
 
 
 @dataclass(frozen=True)

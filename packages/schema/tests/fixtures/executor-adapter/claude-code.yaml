@@ -22,6 +22,11 @@ spec:
       # surface for relay; unset (the default) means all tools, so relay never engages.
       - when: config.allowed_tools
         args: [--allowedTools, "{config.allowed_tools}"]
+      # The governed MCP gateway: SwarmKit generates this config (pointing the harness at an
+      # in-process gateway that routes every MCP call through governance + audit) and sets
+      # task.mcp_config when the agent has granted MCP tools. Absent ⇒ the harness gets no MCP.
+      - when: task.mcp_config
+        args: [--mcp-config, "{task.mcp_config}"]
   auth:
     default: subscription
     modes:
