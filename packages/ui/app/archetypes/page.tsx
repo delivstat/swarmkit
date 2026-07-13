@@ -71,8 +71,7 @@ function ArchetypeEditor({
 
 	useEffect(() => {
 		if (archetypeId) {
-			const base =
-				process.env.NEXT_PUBLIC_SWARMKIT_API ?? "http://localhost:8000";
+			const base = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "";
 			Promise.all([
 				api.archetypeDetail(archetypeId),
 				fetch(`${base}/api/archetypes/${archetypeId}/yaml`).then((r) =>

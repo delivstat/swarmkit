@@ -74,8 +74,7 @@ function SkillEditor({
 
 	useEffect(() => {
 		if (skillId) {
-			const base =
-				process.env.NEXT_PUBLIC_SWARMKIT_API ?? "http://localhost:8000";
+			const base = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "";
 			fetch(`${base}/api/skills/${skillId}/yaml`)
 				.then((r) => r.json())
 				.then((data) => {

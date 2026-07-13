@@ -5,7 +5,7 @@
  * advertises its issuer/audience.
  */
 
-const BASE = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "http://localhost:8000";
+const BASE = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "";
 
 export type AuthMode = "none" | "api_key" | "jwt";
 
