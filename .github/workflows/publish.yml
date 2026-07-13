@@ -34,20 +34,25 @@ jobs:
       - name: Build packages
         run: uv build --all-packages
 
-      # --check-url skips files already on PyPI instead of erroring. The two packages version
-      # independently, so a runtime-only release (runtime bumped, schema unchanged) must not fail on
-      # re-uploading the existing schema — and vice versa. New versions still publish normally.
-      - name: Publish swarmkit-schema
-        run: uv publish --check-url https://pypi.org/simple/ dist/swarmkit_schema-*.tar.gz dist/swarmkit_schema-*.whl
+      # The packages version independently, so a tag often bumps only some of them. Publish a package
+      # only when its version isn't already on PyPI — skip-by-existence, not `--check-url`: a rebuilt
+      # sdist of an unchanged version isn't byte-identical, and `--check-url` errors on that hash
+      # mismatch (it verifies content) instead of skipping. A new version always publishes.
+      - name: Publish to PyPI
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
-
-      - name: Publish swarmkit-runtime
-        run: uv publish --check-url https://pypi.org/simple/ dist/swarmkit_runtime-*.tar.gz dist/swarmkit_runtime-*.whl
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
-
-      - name: Publish swarmkit-webui
-        run: uv publish --check-url https://pypi.org/simple/ dist/swarmkit_webui-*.tar.gz dist/swarmkit_webui-*.whl
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          publish_if_new() {
+            local pkg="$1" dist_prefix="$2" ver
+            ver=$(uv version --package "$pkg" --short 2>/dev/null) || {
+              echo "!! could not read version for $pkg"; return 1; }
+            if curl -sf -o /dev/null "https://pypi.org/pypi/$pkg/$ver/json"; then
+              echo "== $pkg $ver already on PyPI — skipping"
+            else
+              echo "== publishing $pkg $ver"
+              uv publish dist/${dist_prefix}-${ver}.tar.gz dist/${dist_prefix}-${ver}-*.whl
+            fi
+          }
+          publish_if_new swarmkit-schema  swarmkit_schema
+          publish_if_new swarmkit-runtime swarmkit_runtime
+          publish_if_new swarmkit-webui   swarmkit_webui
