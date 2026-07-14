@@ -70,6 +70,14 @@ describe("fieldKind", () => {
 		expect(fieldKind({ type: "integer" })).toBe("number");
 		expect(fieldKind({ type: "string" })).toBe("string");
 		expect(fieldKind({ type: "string" }, "prompt")).toBe("text");
+		// nested prompt fields + prose-y names → textarea, not a single-line input
+		expect(fieldKind({ type: "string" }, "system")).toBe("text");
+		expect(fieldKind({ type: "string" }, "persona")).toBe("text");
+		expect(fieldKind({ type: "string" }, "system_prompt")).toBe("text");
+		expect(fieldKind({ type: "string" }, "description")).toBe("text");
+		// short/id-like names stay single-line
+		expect(fieldKind({ type: "string" }, "name")).toBe("string");
+		expect(fieldKind({ type: "string" }, "id")).toBe("string");
 		expect(fieldKind({ type: "array", items: {} })).toBe("array");
 		expect(fieldKind({ type: "object", properties: {} })).toBe("object");
 		expect(fieldKind({ oneOf: [] })).toBe("json"); // empty union → JSON

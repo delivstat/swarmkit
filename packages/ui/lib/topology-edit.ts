@@ -61,6 +61,36 @@ export function removeAgent(root: RawAgent, id: string): RawAgent {
 	return next;
 }
 
+/** Add `skill` to an agent's `skills` list. No-op if the agent is missing or already has it. */
+export function addSkill(
+	root: RawAgent,
+	agentId: string,
+	skill: string,
+): RawAgent {
+	const next = clone(root);
+	const node = find(next, agentId)?.node;
+	if (!node) return root;
+	const skills = Array.isArray(node.skills) ? (node.skills as string[]) : [];
+	if (skills.includes(skill)) return root;
+	node.skills = [...skills, skill];
+	return next;
+}
+
+/** Remove `skill` from an agent's `skills` list. No-op if the agent or the skill is absent. */
+export function removeSkill(
+	root: RawAgent,
+	agentId: string,
+	skill: string,
+): RawAgent {
+	const next = clone(root);
+	const node = find(next, agentId)?.node;
+	if (!node || !Array.isArray(node.skills)) return root;
+	const skills = node.skills as string[];
+	if (!skills.includes(skill)) return root;
+	node.skills = skills.filter((s) => s !== skill);
+	return next;
+}
+
 /** Re-parent an agent (draw a delegation edge from `newParentId` to `id`). Refused (returns
  * unchanged) for the root, an unknown node/parent, a no-op move, or a move that would form a cycle
  * (making a node a child of its own descendant). */
