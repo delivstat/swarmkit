@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/cn";
 import {
 	Activity,
 	Box,
@@ -17,6 +16,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { cn } from "@/lib/utils";
 
 const NAV = [
 	{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -36,15 +37,10 @@ export function Sidebar() {
 	const pathname = usePathname();
 
 	return (
-		<nav
-			className="flex flex-col gap-1 p-3 w-56 shrink-0 border-r"
-			style={{ background: "var(--bg-sidebar)", borderColor: "var(--border)" }}
-		>
-			<div className="px-3 py-4 mb-2">
-				<h1 className="text-lg font-bold tracking-tight">SwarmKit</h1>
-				<p className="text-xs" style={{ color: "var(--fg-muted)" }}>
-					Runtime Dashboard
-				</p>
+		<nav className="flex w-56 shrink-0 flex-col gap-1 border-r bg-card p-3">
+			<div className="mb-2 px-3 py-4">
+				<h1 className="text-lg font-semibold tracking-tight">SwarmKit</h1>
+				<p className="text-xs text-muted-foreground">Runtime Dashboard</p>
 			</div>
 			{NAV.map(({ href, label, icon: Icon }) => {
 				const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -53,12 +49,11 @@ export function Sidebar() {
 						key={href}
 						href={href}
 						className={cn(
-							"flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
-							active ? "font-medium" : "opacity-70 hover:opacity-100",
+							"flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+							active
+								? "bg-accent font-medium text-accent-foreground"
+								: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
 						)}
-						style={
-							active ? { background: "var(--border)", color: "var(--fg)" } : {}
-						}
 					>
 						<Icon size={16} />
 						{label}
@@ -66,11 +61,9 @@ export function Sidebar() {
 				);
 			})}
 
-			<div className="mt-auto px-3 py-2">
-				<Box size={14} className="inline mr-1.5 opacity-50" />
-				<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-					v1.2.58
-				</span>
+			<div className="mt-auto flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground">
+				<Box size={14} className="opacity-50" />
+				<span>v1.2.58</span>
 			</div>
 		</nav>
 	);
