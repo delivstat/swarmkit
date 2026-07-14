@@ -1,6 +1,3 @@
-import { type ClassValue, clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-export function cn(...inputs: ClassValue[]) {
-	return twMerge(clsx(inputs));
-}
+// Back-compat re-export. `cn` now lives in `lib/utils.ts` (shadcn's `@/lib/utils` convention);
+// surfaces still importing `@/lib/cn` keep working until they're migrated.
+export { cn } from "./utils";
