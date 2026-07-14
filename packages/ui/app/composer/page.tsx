@@ -1,20 +1,5 @@
 "use client";
 
-import { Card, CardTitle } from "@/components/card";
-import { SchemaForm } from "@/components/schema-form";
-import { TopologyCanvas } from "@/components/topology-canvas";
-import { api } from "@/lib/api";
-import { cn } from "@/lib/cn";
-import type { JsonSchema } from "@/lib/schema-form";
-import {
-	type RawAgent,
-	addChild,
-	removeAgent,
-	reparent,
-} from "@/lib/topology-edit";
-import type { ResolvedAgent, SkillItem, TopologyDetail } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
-import { useRefOptions } from "@/lib/use-ref-options";
 import { dump, load } from "js-yaml";
 import {
 	ChevronDown,
@@ -28,11 +13,52 @@ import {
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { Card, CardTitle } from "@/components/card";
+import { SchemaForm } from "@/components/schema-form";
+import { TopologyCanvas } from "@/components/topology-canvas";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
+import type { JsonSchema } from "@/lib/schema-form";
+import {
+	type RawAgent,
+	addChild,
+	removeAgent,
+	reparent,
+} from "@/lib/topology-edit";
+import type { ResolvedAgent, TopologyDetail } from "@/lib/types";
+import { usePoll } from "@/lib/use-poll";
+import { useRefOptions } from "@/lib/use-ref-options";
+import { cn } from "@/lib/utils";
+
+// Role → accent color (as a text-color class) + icon. Borders/dots/icons pick it up via currentColor,
+// so a dynamic per-role accent needs no inline style.
 const ROLE_STYLES: Record<string, { color: string; icon: typeof Crown }> = {
-	root: { color: "var(--accent)", icon: Crown },
-	leader: { color: "var(--warning)", icon: Shield },
-	worker: { color: "var(--success)", icon: User },
+	root: { color: "text-sky-500", icon: Crown },
+	leader: { color: "text-warning", icon: Shield },
+	worker: { color: "text-success", icon: User },
 };
+
+function roleStyle(role: string) {
+	return ROLE_STYLES[role] ?? ROLE_STYLES.worker;
+}
 
 function AgentNode({
 	agent,
@@ -47,7 +73,7 @@ function AgentNode({
 }) {
 	const [expanded, setExpanded] = useState(true);
 	const hasChildren = agent.children && agent.children.length > 0;
-	const style = ROLE_STYLES[agent.role] ?? ROLE_STYLES.worker;
+	const style = roleStyle(agent.role);
 	const Icon = style?.icon ?? User;
 	const isSelected = selectedId === agent.id;
 
@@ -56,14 +82,13 @@ function AgentNode({
 			<button
 				type="button"
 				onClick={() => onSelect(agent.id)}
+				style={{ paddingLeft: `${depth * 20 + 12}px` }}
 				className={cn(
-					"flex items-center gap-2 w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-					isSelected ? "font-medium" : "hover:opacity-80",
+					"flex w-full items-center gap-2 rounded-md py-2 pr-3 text-left text-sm transition-colors",
+					isSelected
+						? "bg-accent font-medium text-accent-foreground"
+						: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
 				)}
-				style={{
-					paddingLeft: `${depth * 20 + 12}px`,
-					background: isSelected ? "var(--border)" : undefined,
-				}}
 			>
 				{hasChildren ? (
 					<button
@@ -72,27 +97,21 @@ function AgentNode({
 							e.stopPropagation();
 							setExpanded(!expanded);
 						}}
-						className="p-0.5 -ml-1"
+						className="-ml-1 p-0.5"
 					>
 						{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
 					</button>
 				) : (
 					<span className="w-4" />
 				)}
-				<Icon size={14} style={{ color: style?.color }} />
-				<span>{agent.id}</span>
+				<Icon size={14} className={cn("shrink-0", style?.color)} />
+				<span className="text-foreground">{agent.id}</span>
 				{agent.source_archetype && (
-					<span
-						className="text-xs px-1.5 py-0.5 rounded"
-						style={{
-							background: "var(--bg)",
-							color: "var(--fg-muted)",
-						}}
-					>
+					<Badge variant="secondary" className="font-normal">
 						{agent.source_archetype}
-					</span>
+					</Badge>
 				)}
-				<span className="text-xs ml-auto" style={{ color: "var(--fg-muted)" }}>
+				<span className="ml-auto text-xs text-muted-foreground">
 					{agent.skills.length > 0 && `${agent.skills.length} skills`}
 				</span>
 			</button>
@@ -126,7 +145,7 @@ function PropertyPanel({
 	saving: boolean;
 	validationResult: { valid: boolean; errors?: { message: string }[] } | null;
 }) {
-	const style = ROLE_STYLES[agent.role] ?? ROLE_STYLES.worker;
+	const style = roleStyle(agent.role);
 	const [editingYaml, setEditingYaml] = useState(false);
 	const [yamlContent, setYamlContent] = useState(yaml ?? "");
 
@@ -138,59 +157,45 @@ function PropertyPanel({
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<div>
-					<h3 className="text-lg font-bold">{agent.id}</h3>
-					<div className="flex items-center gap-2 mt-1">
-						<span
-							className="text-xs px-2 py-0.5 rounded-full font-medium"
-							style={{
-								color: style?.color,
-								border: `1px solid ${style?.color}40`,
-							}}
+					<h3 className="text-lg font-semibold">{agent.id}</h3>
+					<div className="mt-1 flex items-center gap-2">
+						<Badge
+							variant="outline"
+							className={cn("border-current", style?.color)}
 						>
 							{agent.role}
-						</span>
+						</Badge>
 						{agent.source_archetype && (
-							<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+							<span className="text-xs text-muted-foreground">
 								archetype: {agent.source_archetype}
 							</span>
 						)}
 					</div>
 				</div>
 				<div className="flex gap-2">
-					<button
+					<Button
 						type="button"
+						variant="outline"
+						size="sm"
 						onClick={() => setEditingYaml(!editingYaml)}
-						className="text-xs px-2.5 py-1 rounded"
-						style={{ border: "1px solid var(--border)" }}
 					>
 						{editingYaml ? "View" : "YAML"}
-					</button>
+					</Button>
 					{editingYaml && (
-						<button
+						<Button
 							type="button"
+							size="sm"
 							onClick={() => onSave(yamlContent)}
 							disabled={saving}
-							className="text-xs px-2.5 py-1 rounded font-medium disabled:opacity-40"
-							style={{
-								background: "var(--accent)",
-								color: "var(--accent-fg)",
-							}}
 						>
-							{saving ? "Saving..." : "Save"}
-						</button>
+							{saving ? "Saving…" : "Save"}
+						</Button>
 					)}
 				</div>
 			</div>
 
 			{validationResult && !validationResult.valid && (
-				<div
-					className="text-xs p-2 rounded"
-					style={{
-						background: "var(--bg)",
-						border: "1px solid var(--error)",
-						color: "var(--error)",
-					}}
-				>
+				<div className="rounded-md border border-destructive p-2 text-xs text-destructive">
 					{validationResult.errors?.map((e, i) => (
 						<div key={`err-${e.message.slice(0, 20)}-${i}`}>{e.message}</div>
 					))}
@@ -198,29 +203,21 @@ function PropertyPanel({
 			)}
 
 			{editingYaml ? (
-				<div>
-					<textarea
-						className="w-full font-mono text-xs p-3 rounded border resize-none"
-						style={{
-							background: "var(--bg)",
-							borderColor: "var(--border)",
-							color: "var(--fg)",
-							minHeight: "400px",
-						}}
-						value={yamlContent}
-						onChange={(e) => setYamlContent(e.target.value)}
-						spellCheck={false}
-					/>
-				</div>
+				<Textarea
+					className="min-h-[400px] font-mono text-xs"
+					value={yamlContent}
+					onChange={(e) => setYamlContent(e.target.value)}
+					spellCheck={false}
+				/>
 			) : (
 				<>
 					{agent.model && (
 						<Card>
 							<CardTitle>Model</CardTitle>
-							<div className="text-sm space-y-1">
+							<div className="space-y-1 text-sm">
 								{Object.entries(agent.model).map(([k, v]) => (
 									<div key={k} className="flex justify-between">
-										<span style={{ color: "var(--fg-muted)" }}>{k}</span>
+										<span className="text-muted-foreground">{k}</span>
 										<span className="font-mono text-xs">{String(v)}</span>
 									</div>
 								))}
@@ -231,22 +228,15 @@ function PropertyPanel({
 					<Card>
 						<CardTitle>Skills ({agent.skills.length})</CardTitle>
 						{agent.skills.length === 0 ? (
-							<p className="text-sm" style={{ color: "var(--fg-muted)" }}>
+							<p className="text-sm text-muted-foreground">
 								No skills assigned
 							</p>
 						) : (
 							<div className="flex flex-wrap gap-1.5">
 								{agent.skills.map((s) => (
-									<span
-										key={s}
-										className="text-xs px-2 py-1 rounded"
-										style={{
-											background: "var(--bg)",
-											border: "1px solid var(--border)",
-										}}
-									>
+									<Badge key={s} variant="secondary" className="font-normal">
 										{s}
-									</span>
+									</Badge>
 								))}
 							</div>
 						)}
@@ -257,18 +247,17 @@ function PropertyPanel({
 							<CardTitle>Children ({agent.children.length})</CardTitle>
 							<div className="space-y-1">
 								{agent.children.map((c) => {
-									const cs = ROLE_STYLES[c.role] ?? ROLE_STYLES.worker;
+									const cs = roleStyle(c.role);
 									return (
 										<div key={c.id} className="flex items-center gap-2 text-sm">
 											<span
-												className="w-2 h-2 rounded-full"
-												style={{ background: cs?.color }}
+												className={cn(
+													"size-2 rounded-full bg-current",
+													cs?.color,
+												)}
 											/>
 											<span>{c.id}</span>
-											<span
-												className="text-xs"
-												style={{ color: "var(--fg-muted)" }}
-											>
+											<span className="text-xs text-muted-foreground">
 												{c.role}
 											</span>
 										</div>
@@ -292,87 +281,63 @@ function RelationshipsView({
 	root: ResolvedAgent;
 	onSelect: (id: string) => void;
 }) {
-	const style = ROLE_STYLES[agent.role] ?? ROLE_STYLES.worker;
+	const style = roleStyle(agent.role);
 	const Icon = style?.icon ?? User;
 	const parent = findParent(root, agent.id);
 
 	return (
-		<div className="p-4 flex flex-col items-center gap-6 min-h-full">
+		<div className="flex min-h-full flex-col items-center gap-6 p-4">
 			{/* Parent */}
 			{parent && (
 				<>
 					<button
 						type="button"
 						onClick={() => onSelect(parent.id)}
-						className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm hover:opacity-80"
-						style={{
-							background: "var(--bg-sidebar)",
-							border: "1px solid var(--border)",
-						}}
+						className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm hover:bg-accent/50"
 					>
-						<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-							parent
-						</span>
+						<span className="text-xs text-muted-foreground">parent</span>
 						<span className="font-medium">{parent.id}</span>
 					</button>
-					<div className="w-px h-4" style={{ background: "var(--border)" }} />
+					<div className="h-4 w-px bg-border" />
 				</>
 			)}
 
 			{/* Selected agent — center */}
 			<div
-				className="px-6 py-4 rounded-xl text-center"
-				style={{
-					background: "var(--bg-sidebar)",
-					border: `2px solid ${style?.color}`,
-				}}
+				className={cn(
+					"rounded-xl border-2 border-current bg-card px-6 py-4 text-center",
+					style?.color,
+				)}
 			>
-				<Icon
-					size={24}
-					className="mx-auto mb-1"
-					style={{ color: style?.color }}
-				/>
-				<div className="font-bold text-lg">{agent.id}</div>
-				<div className="text-xs" style={{ color: "var(--fg-muted)" }}>
+				<Icon size={24} className="mx-auto mb-1" />
+				<div className="text-lg font-semibold text-foreground">{agent.id}</div>
+				<div className="text-xs text-muted-foreground">
 					{agent.role}
 					{agent.source_archetype && ` · ${agent.source_archetype}`}
 				</div>
 				{agent.model && (
-					<div
-						className="text-xs mt-1 font-mono"
-						style={{ color: "var(--fg-muted)" }}
-					>
+					<div className="mt-1 font-mono text-xs text-muted-foreground">
 						{((agent.model as Record<string, unknown>).name as string) ?? ""}
 					</div>
 				)}
 			</div>
 
 			{/* Connections row */}
-			<div className="flex gap-8 items-start">
+			<div className="flex items-start gap-8">
 				{/* Skills (left) */}
 				<div className="space-y-2">
-					<div
-						className="text-xs font-semibold text-center"
-						style={{ color: "var(--fg-muted)" }}
-					>
+					<div className="text-center text-xs font-semibold text-muted-foreground">
 						Skills
 					</div>
 					{agent.skills.length === 0 ? (
-						<div
-							className="text-xs text-center"
-							style={{ color: "var(--fg-muted)" }}
-						>
+						<div className="text-center text-xs text-muted-foreground">
 							none
 						</div>
 					) : (
 						agent.skills.map((s) => (
 							<div
 								key={s}
-								className="text-xs px-3 py-1.5 rounded"
-								style={{
-									background: "var(--bg)",
-									border: "1px solid var(--border)",
-								}}
+								className="rounded-md border bg-background px-3 py-1.5 text-xs"
 							>
 								{s}
 							</div>
@@ -383,31 +348,23 @@ function RelationshipsView({
 				{/* Children (center) */}
 				{agent.children && agent.children.length > 0 && (
 					<div className="space-y-2">
-						<div
-							className="text-xs font-semibold text-center"
-							style={{ color: "var(--fg-muted)" }}
-						>
+						<div className="text-center text-xs font-semibold text-muted-foreground">
 							Children
 						</div>
 						{agent.children.map((c) => {
-							const cs = ROLE_STYLES[c.role] ?? ROLE_STYLES.worker;
+							const cs = roleStyle(c.role);
 							return (
 								<button
 									key={c.id}
 									type="button"
 									onClick={() => onSelect(c.id)}
-									className="flex items-center gap-2 text-xs px-3 py-1.5 rounded w-full hover:opacity-80"
-									style={{
-										background: "var(--bg)",
-										border: "1px solid var(--border)",
-									}}
+									className="flex w-full items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-xs hover:bg-accent/50"
 								>
 									<span
-										className="w-2 h-2 rounded-full"
-										style={{ background: cs?.color }}
+										className={cn("size-2 rounded-full bg-current", cs?.color)}
 									/>
 									<span>{c.id}</span>
-									<span style={{ color: "var(--fg-muted)" }}>{c.role}</span>
+									<span className="text-muted-foreground">{c.role}</span>
 								</button>
 							);
 						})}
@@ -430,9 +387,9 @@ function NetworkView({
 	const allAgents = flattenAgents(root);
 
 	return (
-		<div className="p-6 flex flex-wrap gap-3 content-start">
+		<div className="flex flex-wrap content-start gap-3 p-6">
 			{allAgents.map((agent) => {
-				const style = ROLE_STYLES[agent.role] ?? ROLE_STYLES.worker;
+				const style = roleStyle(agent.role);
 				const Icon = style?.icon ?? User;
 				const isSelected = selectedId === agent.id;
 				const parent = findParent(root, agent.id);
@@ -443,45 +400,34 @@ function NetworkView({
 						type="button"
 						onClick={() => onSelect(agent.id)}
 						className={cn(
-							"flex flex-col items-center gap-1 px-4 py-3 rounded-lg text-xs transition-all",
-							isSelected ? "ring-2" : "hover:opacity-80",
+							"flex flex-col items-center gap-1 rounded-lg border-2 bg-card px-4 py-3 text-xs transition-all",
+							style?.color,
+							isSelected
+								? "border-current"
+								: "border-border hover:bg-accent/50",
 						)}
-						style={{
-							background: "var(--bg-sidebar)",
-							border: `2px solid ${isSelected ? style?.color : "var(--border)"}`,
-						}}
 					>
-						<Icon size={18} style={{ color: style?.color }} />
-						<span className="font-medium">{agent.id}</span>
-						<span style={{ color: "var(--fg-muted)" }}>
+						<Icon size={18} />
+						<span className="font-medium text-foreground">{agent.id}</span>
+						<span className="text-muted-foreground">
 							{agent.skills.length} skills
 						</span>
 						{parent && (
-							<span style={{ color: "var(--fg-muted)" }}>← {parent.id}</span>
+							<span className="text-muted-foreground">← {parent.id}</span>
 						)}
 					</button>
 				);
 			})}
 
 			{/* Edges */}
-			<div
-				className="w-full mt-4 pt-4 border-t"
-				style={{ borderColor: "var(--border)" }}
-			>
-				<div
-					className="text-xs font-semibold mb-2"
-					style={{ color: "var(--fg-muted)" }}
-				>
+			<div className="mt-4 w-full border-t pt-4">
+				<div className="mb-2 text-xs font-semibold text-muted-foreground">
 					Delegation paths
 				</div>
 				{allAgents
 					.filter((a) => a.children && a.children.length > 0)
 					.map((a) => (
-						<div
-							key={a.id}
-							className="text-xs mb-1"
-							style={{ color: "var(--fg-muted)" }}
-						>
+						<div key={a.id} className="mb-1 text-xs text-muted-foreground">
 							{a.id} → {a.children?.map((c) => c.id).join(", ")}
 						</div>
 					))}
@@ -580,63 +526,38 @@ function NewTopologyDialog({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 flex items-center justify-center z-50"
-			style={{ background: "rgba(0,0,0,0.5)" }}
-		>
-			<Card className="w-96">
-				<CardTitle>New Topology</CardTitle>
-				<label
-					htmlFor="topo-name"
-					className="block text-sm mb-1"
-					style={{ color: "var(--fg-muted)" }}
-				>
-					Name (kebab-case)
-				</label>
-				<input
-					id="topo-name"
-					className="w-full px-3 py-2 rounded border text-sm mb-3"
-					style={{
-						background: "var(--bg)",
-						borderColor: "var(--border)",
-						color: "var(--fg)",
-					}}
-					placeholder="my-topology"
-					value={name}
-					onChange={(e) => setName(e.target.value)}
-					onKeyDown={(e) => {
-						if (e.key === "Enter") handleCreate();
-					}}
-				/>
-				{error && (
-					<p className="text-xs mb-3" style={{ color: "var(--error)" }}>
-						{error}
-					</p>
-				)}
-				<div className="flex gap-2 justify-end">
-					<button
-						type="button"
-						onClick={onClose}
-						className="px-3 py-1.5 text-sm rounded border"
-						style={{ borderColor: "var(--border)" }}
-					>
+		<Dialog open onOpenChange={(o) => !o && onClose()}>
+			<DialogContent className="sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle>New Topology</DialogTitle>
+				</DialogHeader>
+				<div className="space-y-1.5">
+					<Label htmlFor="topo-name">Name (kebab-case)</Label>
+					<Input
+						id="topo-name"
+						placeholder="my-topology"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") handleCreate();
+						}}
+					/>
+					{error && <p className="text-xs text-destructive">{error}</p>}
+				</div>
+				<DialogFooter>
+					<Button type="button" variant="outline" onClick={onClose}>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						onClick={handleCreate}
 						disabled={creating || !name.trim()}
-						className="px-3 py-1.5 text-sm rounded font-medium disabled:opacity-40"
-						style={{
-							background: "var(--accent)",
-							color: "var(--accent-fg)",
-						}}
 					>
-						{creating ? "Creating..." : "Create"}
-					</button>
-				</div>
-			</Card>
-		</div>
+						{creating ? "Creating…" : "Create"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -667,23 +588,15 @@ function TopologyFormView({
 }) {
 	if (!schema) {
 		return (
-			<div className="p-4 text-sm" style={{ color: "var(--fg-muted)" }}>
-				Loading schema…
-			</div>
+			<div className="p-4 text-sm text-muted-foreground">Loading schema…</div>
 		);
 	}
 	return (
 		<div className="flex-1 overflow-y-auto p-4">
 			<div className="mb-3 flex justify-end">
-				<button
-					type="button"
-					onClick={onSave}
-					disabled={saving}
-					className="rounded px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-					style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
-				>
+				<Button type="button" size="sm" onClick={onSave} disabled={saving}>
 					{saving ? "Saving…" : "Save"}
-				</button>
+				</Button>
 			</div>
 			<SchemaForm
 				schema={schema}
@@ -694,6 +607,15 @@ function TopologyFormView({
 		</div>
 	);
 }
+
+const VIEWS = [
+	"structure",
+	"relationships",
+	"network",
+	"canvas",
+	"form",
+] as const;
+type View = (typeof VIEWS)[number];
 
 export default function ComposerPage() {
 	const searchParams = useSearchParams();
@@ -708,9 +630,7 @@ export default function ComposerPage() {
 	);
 	const [topologyYaml, setTopologyYaml] = useState<string | null>(null);
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-	const [activeView, setActiveView] = useState<
-		"structure" | "relationships" | "network" | "canvas" | "form"
-	>("structure");
+	const [activeView, setActiveView] = useState<View>("structure");
 	const [canvasEditing, setCanvasEditing] = useState(false);
 	const [topologySchema, setTopologySchema] = useState<JsonSchema | null>(null);
 	const [formObj, setFormObj] = useState<Record<string, unknown>>({});
@@ -779,11 +699,7 @@ export default function ComposerPage() {
 		} catch (err) {
 			setValidationResult({
 				valid: false,
-				errors: [
-					{
-						message: err instanceof Error ? err.message : String(err),
-					},
-				],
+				errors: [{ message: err instanceof Error ? err.message : String(err) }],
 			});
 		} finally {
 			setSaving(false);
@@ -827,98 +743,70 @@ export default function ComposerPage() {
 			? findAgent(topologyDetail.resolved, selectedAgentId)
 			: null;
 
+	const showsTree =
+		activeView === "structure" ||
+		activeView === "relationships" ||
+		activeView === "network";
+
 	return (
-		<div className="flex flex-col h-[calc(100vh-3rem)] -m-6">
+		<div className="-m-6 flex h-[calc(100vh-3rem)] flex-col">
 			{/* Header */}
-			<div
-				className="flex items-center gap-4 px-4 py-2 border-b shrink-0"
-				style={{ borderColor: "var(--border)" }}
-			>
-				<Layers size={18} style={{ color: "var(--accent)" }} />
-				<span className="font-bold">Composer</span>
+			<div className="flex shrink-0 items-center gap-3 border-b px-4 py-2">
+				<Layers size={18} className="text-sky-500" />
+				<span className="font-semibold">Composer</span>
 
-				<select
-					className="px-2 py-1 rounded border text-sm"
-					style={{
-						background: "var(--bg)",
-						borderColor: "var(--border)",
-						color: "var(--fg)",
-					}}
-					value={selectedTopology ?? ""}
-					onChange={(e) => {
-						if (e.target.value) loadTopology(e.target.value);
-					}}
+				<Select
+					value={selectedTopology ?? undefined}
+					onValueChange={(v) => loadTopology(v)}
 				>
-					<option value="">Select topology...</option>
-					{topologyNames?.map((name) => (
-						<option key={name} value={name}>
-							{name}
-						</option>
-					))}
-				</select>
+					<SelectTrigger className="h-8 w-52">
+						<SelectValue placeholder="Select topology…" />
+					</SelectTrigger>
+					<SelectContent>
+						{topologyNames?.map((name) => (
+							<SelectItem key={name} value={name}>
+								{name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 
-				<button
-					type="button"
-					onClick={() => setShowNewDialog(true)}
-					className="flex items-center gap-1 text-xs px-2.5 py-1 rounded font-medium"
-					style={{
-						background: "var(--accent)",
-						color: "var(--accent-fg)",
-					}}
-				>
-					<Plus size={12} />
-					New
-				</button>
+				<Button type="button" size="sm" onClick={() => setShowNewDialog(true)}>
+					<Plus size={12} /> New
+				</Button>
 
 				{topologyDetail && (
 					<>
-						<span
-							className="text-xs px-2 py-0.5 rounded"
-							style={{
-								background: "var(--bg-sidebar)",
-								color: "var(--fg-muted)",
-							}}
-						>
-							v{topologyDetail.version}
-						</span>
-						<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+						<Badge variant="secondary">v{topologyDetail.version}</Badge>
+						<span className="text-xs text-muted-foreground">
 							{countAgents(topologyDetail.resolved)} agents
 						</span>
 					</>
 				)}
 
 				{topologyDetail && (
-					<button
+					<Button
 						type="button"
+						variant={yamlPanelOpen ? "secondary" : "outline"}
+						size="sm"
 						onClick={() => setYamlPanelOpen(!yamlPanelOpen)}
-						className={cn(
-							"text-xs px-2.5 py-1 rounded",
-							yamlPanelOpen ? "font-medium" : "opacity-60",
-						)}
-						style={{ border: "1px solid var(--border)" }}
 					>
 						{yamlPanelOpen ? "Hide YAML" : "YAML"}
-					</button>
+					</Button>
 				)}
 
-				<div
-					className="flex ml-auto rounded-md overflow-hidden border"
-					style={{ borderColor: "var(--border)" }}
-				>
-					{(
-						["structure", "relationships", "network", "canvas", "form"] as const
-					).map((view) => (
+				<div className="ml-auto flex overflow-hidden rounded-md border">
+					{VIEWS.map((view) => (
 						<button
 							key={view}
 							type="button"
 							onClick={() => setActiveView(view)}
 							className={cn(
-								"px-3 py-1 text-xs capitalize",
-								activeView === view ? "font-medium" : "opacity-60",
+								"px-3 py-1 text-xs capitalize transition-colors",
+								activeView === view
+									? "bg-accent font-medium text-accent-foreground"
+									: "text-muted-foreground hover:bg-accent/50",
 							)}
-							style={{
-								background: activeView === view ? "var(--border)" : "var(--bg)",
-							}}
 						>
 							{view}
 						</button>
@@ -929,57 +817,30 @@ export default function ComposerPage() {
 			{/* Content */}
 			<div className="flex flex-1 overflow-hidden">
 				{/* Left: Agent Tree */}
-				<div
-					className="w-72 shrink-0 border-r overflow-y-auto"
-					style={{ borderColor: "var(--border)" }}
-				>
-					{!topologyDetail && !loading && (
-						<div
-							className="p-4 text-sm text-center"
-							style={{ color: "var(--fg-muted)" }}
-						>
-							Select a topology to begin editing
-						</div>
-					)}
-					{loading && (
-						<div
-							className="p-4 text-sm text-center"
-							style={{ color: "var(--fg-muted)" }}
-						>
-							Loading...
-						</div>
-					)}
-					{topologyDetail && activeView === "structure" && (
-						<div className="py-2">
-							<AgentNode
-								agent={topologyDetail.resolved}
-								depth={0}
-								selectedId={selectedAgentId}
-								onSelect={setSelectedAgentId}
-							/>
-						</div>
-					)}
-					{topologyDetail && activeView === "relationships" && (
-						<div className="py-2">
-							<AgentNode
-								agent={topologyDetail.resolved}
-								depth={0}
-								selectedId={selectedAgentId}
-								onSelect={setSelectedAgentId}
-							/>
-						</div>
-					)}
-					{topologyDetail && activeView === "network" && (
-						<div className="py-2">
-							<AgentNode
-								agent={topologyDetail.resolved}
-								depth={0}
-								selectedId={selectedAgentId}
-								onSelect={setSelectedAgentId}
-							/>
-						</div>
-					)}
-				</div>
+				{showsTree && (
+					<div className="w-72 shrink-0 overflow-y-auto border-r">
+						{!topologyDetail && !loading && (
+							<div className="p-4 text-center text-sm text-muted-foreground">
+								Select a topology to begin editing
+							</div>
+						)}
+						{loading && (
+							<div className="p-4 text-center text-sm text-muted-foreground">
+								Loading…
+							</div>
+						)}
+						{topologyDetail && (
+							<div className="py-2">
+								<AgentNode
+									agent={topologyDetail.resolved}
+									depth={0}
+									selectedId={selectedAgentId}
+									onSelect={setSelectedAgentId}
+								/>
+							</div>
+						)}
+					</div>
+				)}
 
 				{/* Right: View content */}
 				<div className="flex-1 overflow-y-auto">
@@ -996,10 +857,7 @@ export default function ComposerPage() {
 					{activeView === "structure" && (
 						<div className="p-4">
 							{!selectedAgent && topologyDetail && (
-								<div
-									className="text-sm text-center py-12"
-									style={{ color: "var(--fg-muted)" }}
-								>
+								<div className="py-12 text-center text-sm text-muted-foreground">
 									Select an agent from the tree
 								</div>
 							)}
@@ -1026,10 +884,7 @@ export default function ComposerPage() {
 					{activeView === "relationships" &&
 						topologyDetail &&
 						!selectedAgent && (
-							<div
-								className="text-sm text-center py-12 p-4"
-								style={{ color: "var(--fg-muted)" }}
-							>
+							<div className="p-4 py-12 text-center text-sm text-muted-foreground">
 								Select an agent to view relationships
 							</div>
 						)}
@@ -1041,36 +896,29 @@ export default function ComposerPage() {
 						/>
 					)}
 					{activeView === "canvas" && topologyDetail && (
-						<div className="flex flex-col h-full">
-							<div
-								className="flex items-center gap-2 px-3 py-1.5 border-b text-xs"
-								style={{ borderColor: "var(--border)" }}
-							>
-								<button
+						<div className="flex h-full flex-col">
+							<div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs">
+								<Button
 									type="button"
+									variant={canvasEditing ? "secondary" : "outline"}
+									size="sm"
 									onClick={() => setCanvasEditing((v) => !v)}
-									className="px-2.5 py-1 rounded font-medium"
-									style={{
-										background: canvasEditing ? "var(--accent)" : "var(--bg)",
-										color: canvasEditing ? "var(--accent-fg)" : "var(--fg)",
-										border: "1px solid var(--border)",
-									}}
 								>
 									{canvasEditing ? "Editing" : "Edit"}
-								</button>
+								</Button>
 								{canvasEditing && (
 									<>
-										<button
+										<Button
 											type="button"
+											variant="outline"
+											size="sm"
 											onClick={addCanvasAgent}
 											disabled={saving}
-											className="px-2.5 py-1 rounded disabled:opacity-40"
-											style={{ border: "1px solid var(--border)" }}
 										>
-											＋ agent
+											<Plus size={12} /> agent
 											{selectedAgentId ? ` under ${selectedAgentId}` : ""}
-										</button>
-										<span style={{ color: "var(--fg-muted)" }}>
+										</Button>
+										<span className="text-muted-foreground">
 											drag between nodes to delegate · Delete removes a node
 											{saving ? " · saving…" : ""}
 										</span>
@@ -1097,49 +945,27 @@ export default function ComposerPage() {
 
 			{/* Bottom: YAML Panel */}
 			{yamlPanelOpen && topologyDetail && (
-				<div
-					className="border-t shrink-0"
-					style={{ borderColor: "var(--border)", height: "280px" }}
-				>
-					<div
-						className="flex items-center justify-between px-3 py-1.5 border-b"
-						style={{
-							borderColor: "var(--border)",
-							background: "var(--bg-sidebar)",
-						}}
-					>
+				<div className="h-[280px] shrink-0 border-t">
+					<div className="flex items-center justify-between border-b bg-card px-3 py-1.5">
 						<span className="text-xs font-medium">
 							Topology YAML — {selectedTopology}
 						</span>
-						<div className="flex gap-2">
+						<div className="flex items-center gap-2">
 							{yamlDraft !== topologyYaml && (
-								<span
-									className="text-xs px-1.5 py-0.5 rounded"
-									style={{ color: "var(--warning)" }}
-								>
-									unsaved
-								</span>
+								<Badge variant="warning">unsaved</Badge>
 							)}
-							<button
+							<Button
 								type="button"
+								size="sm"
 								onClick={() => handleSave(yamlDraft)}
 								disabled={saving || yamlDraft === topologyYaml}
-								className="text-xs px-2.5 py-0.5 rounded font-medium disabled:opacity-40"
-								style={{
-									background: "var(--accent)",
-									color: "var(--accent-fg)",
-								}}
 							>
-								{saving ? "Saving..." : "Save"}
-							</button>
+								{saving ? "Saving…" : "Save"}
+							</Button>
 						</div>
 					</div>
-					<textarea
-						className="w-full h-[calc(100%-32px)] font-mono text-xs p-3 resize-none border-0 outline-none"
-						style={{
-							background: "var(--bg)",
-							color: "var(--fg)",
-						}}
+					<Textarea
+						className="h-[calc(100%-40px)] resize-none rounded-none border-0 font-mono text-xs focus-visible:ring-0"
 						value={yamlDraft}
 						onChange={(e) => setYamlDraft(e.target.value)}
 						spellCheck={false}
