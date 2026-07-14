@@ -99,7 +99,7 @@
 	--bg-sidebar: var(--card);
 	--fg: var(--foreground);
 	--fg-muted: var(--muted-foreground);
-	--accent-fg: var(--primary-foreground);
+	--accent-fg: var(--accent-foreground);
 	--error: var(--destructive);
 }
 

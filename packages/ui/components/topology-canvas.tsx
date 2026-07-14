@@ -25,9 +25,12 @@ import {
 import { Crown, Shield, User } from "lucide-react";
 import { useMemo } from "react";
 
+// Dynamic per-node colors (role accent + run-status ring) stay inline: a node card colors its icon,
+// border and cost line independently, so a single currentColor can't drive all three. Values resolve
+// against the design tokens; `root` uses sky (the old `--accent` blue is now a neutral token).
 const WORKER_STYLE = { color: "var(--success)", icon: User };
 const ROLE_STYLE: Record<string, { color: string; icon: typeof Crown }> = {
-	root: { color: "var(--accent)", icon: Crown },
+	root: { color: "#0ea5e9", icon: Crown },
 	leader: { color: "var(--warning)", icon: Shield },
 	worker: WORKER_STYLE,
 };
@@ -49,16 +52,14 @@ function AgentCard({ data, selected }: NodeProps<AgentNode>) {
 	const notFired = data.examine && !run;
 	const ring = run
 		? run.status === "error"
-			? "var(--error)"
+			? "var(--destructive)"
 			: "var(--success)"
 		: undefined;
 	return (
 		<div
-			className="rounded-lg px-3 py-2 text-xs shadow-sm"
+			className="min-w-[150px] rounded-lg border-2 bg-card px-3 py-2 text-xs text-card-foreground shadow-sm"
 			style={{
-				background: "var(--bg-sidebar)",
-				border: `2px solid ${selected ? style.color : (ring ?? "var(--border)")}`,
-				minWidth: 150,
+				borderColor: selected ? style.color : (ring ?? "var(--border)"),
 				opacity: notFired ? 0.45 : 1,
 			}}
 		>
@@ -71,7 +72,7 @@ function AgentCard({ data, selected }: NodeProps<AgentNode>) {
 				<Icon size={14} style={{ color: style.color }} />
 				<span>{data.id}</span>
 			</div>
-			<div className="mt-0.5" style={{ color: "var(--fg-muted)" }}>
+			<div className="mt-0.5 text-muted-foreground">
 				{data.role}
 				{data.archetype ? ` · ${data.archetype}` : ""}
 			</div>
@@ -81,7 +82,7 @@ function AgentCard({ data, selected }: NodeProps<AgentNode>) {
 					{formatTokens(run.tokens)} tok
 				</div>
 			) : (
-				<div style={{ color: "var(--fg-muted)" }}>
+				<div className="text-muted-foreground">
 					{data.examine
 						? "did not fire"
 						: `${data.skillCount} skill${data.skillCount === 1 ? "" : "s"}`}
