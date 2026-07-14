@@ -929,9 +929,15 @@ export default function ComposerPage() {
 											{selectedAgentId ? ` under ${selectedAgentId}` : ""}
 										</Button>
 										<span className="text-muted-foreground">
-											drag from the palette · drag between nodes to delegate ·
-											Delete removes a node{saving ? " · saving…" : ""}
+											click the palette to add · drag between nodes to delegate
+											· Delete removes a node{saving ? " · saving…" : ""}
 										</span>
+										{validationResult && !validationResult.valid && (
+											<span className="ml-auto truncate text-destructive">
+												save rejected:{" "}
+												{validationResult.errors?.[0]?.message ?? "invalid"}
+											</span>
+										)}
 									</>
 								)}
 							</div>
