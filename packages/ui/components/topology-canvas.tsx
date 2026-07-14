@@ -21,9 +21,11 @@ import {
 	Position,
 	ReactFlow,
 	type ReactFlowProps,
+	useEdgesState,
+	useNodesState,
 } from "@xyflow/react";
 import { Crown, Shield, User } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 // Dynamic per-node colors (role accent + run-status ring) stay inline: a node card colors its icon,
 // border and cost line independently, so a single currentColor can't drive all three. Values resolve
@@ -148,7 +150,7 @@ export function TopologyCanvas({
 	className,
 }: TopologyCanvasProps) {
 	const examine = overlay !== undefined;
-	const { nodes, edges } = useMemo(() => {
+	const graph = useMemo(() => {
 		const g = topologyToGraph(root);
 		const nodes = g.nodes.map((n) => ({
 			...n,
@@ -158,6 +160,18 @@ export function TopologyCanvas({
 		})) as AgentNode[];
 		return { nodes, edges: g.edges as Edge[] };
 	}, [root, overlay, examine]);
+
+	// React Flow needs a change handler to own selection/interaction state — without it, controlled
+	// `nodes` can't be selected, so the Delete key has nothing to remove. `useNodesState` provides it;
+	// we re-seed whenever the (draft) topology changes, which also re-runs the tidy-tree layout.
+	const [nodes, setNodes, onNodesChange] = useNodesState<AgentNode>(
+		graph.nodes,
+	);
+	const [edges, setEdges, onEdgesChange] = useEdgesState(graph.edges);
+	useEffect(() => {
+		setNodes(graph.nodes);
+		setEdges(graph.edges);
+	}, [graph, setNodes, setEdges]);
 
 	const onNodeClick: ReactFlowProps["onNodeClick"] = (_e, node) =>
 		onSelect?.(node.id);
@@ -218,6 +232,8 @@ export function TopologyCanvas({
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}
+				onNodesChange={onNodesChange}
+				onEdgesChange={onEdgesChange}
 				nodeTypes={NODE_TYPES}
 				onNodeClick={onNodeClick}
 				onConnect={handleConnect}
