@@ -8,10 +8,11 @@ import {
 	Layers,
 	Plus,
 	Shield,
+	Trash2,
 	User,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Card, CardTitle } from "@/components/card";
 import { SchemaForm } from "@/components/schema-form";
@@ -446,6 +447,19 @@ function flattenAgents(agent: ResolvedAgent): ResolvedAgent[] {
 	return result;
 }
 
+/** Render a raw (unsaved, staged) agent tree on the canvas. The canvas only needs id/role/archetype/
+ * skills/children — all present raw — so a staged edit shows without a server round-trip. */
+function rawToDisplay(raw: RawAgent): ResolvedAgent {
+	return {
+		id: raw.id,
+		role: typeof raw.role === "string" ? raw.role : "worker",
+		source_archetype: typeof raw.archetype === "string" ? raw.archetype : null,
+		model: (raw.model as Record<string, unknown> | null) ?? null,
+		skills: Array.isArray(raw.skills) ? (raw.skills as string[]) : [],
+		children: (raw.children ?? []).map(rawToDisplay),
+	};
+}
+
 function findParent(
 	root: ResolvedAgent,
 	childId: string,
@@ -634,6 +648,9 @@ export default function ComposerPage() {
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 	const [activeView, setActiveView] = useState<View>("structure");
 	const [canvasEditing, setCanvasEditing] = useState(false);
+	// Staged canvas edits: the raw topology YAML the canvas is editing, unsaved until "Save" commits
+	// it. Null ⇒ no pending edits (canvas shows the server-resolved tree). Not auto-saved.
+	const [canvasDraft, setCanvasDraft] = useState<string | null>(null);
 	const [topologySchema, setTopologySchema] = useState<JsonSchema | null>(null);
 	const [formObj, setFormObj] = useState<Record<string, unknown>>({});
 	const refOptions = useRefOptions();
@@ -679,6 +696,7 @@ export default function ComposerPage() {
 				setFormObj({});
 			}
 			setSelectedAgentId(detail.resolved.id);
+			setCanvasDraft(null); // fresh topology → no pending canvas edits
 		} catch {
 			setTopologyDetail(null);
 			setTopologyYaml(null);
@@ -687,8 +705,8 @@ export default function ComposerPage() {
 		}
 	};
 
-	const handleSave = async (yaml: string) => {
-		if (!selectedTopology) return;
+	const handleSave = async (yaml: string): Promise<boolean> => {
+		if (!selectedTopology) return false;
 		setSaving(true);
 		setValidationResult(null);
 		try {
@@ -698,23 +716,27 @@ export default function ComposerPage() {
 				setTopologyYaml(yaml);
 				await loadTopology(selectedTopology);
 			}
+			return result.valid;
 		} catch (err) {
 			setValidationResult({
 				valid: false,
 				errors: [{ message: err instanceof Error ? err.message : String(err) }],
 			});
+			return false;
 		} finally {
 			setSaving(false);
 		}
 	};
 
-	// Canvas edit: apply a pure structural op to the raw `agents.root` tree and round-trip through
-	// YAML (invariant #1 — no second source of truth). A no-op op (returns the same tree) is skipped.
+	// Canvas edit: apply a pure structural op to the raw `agents.root` tree and STAGE it (round-trips
+	// through YAML — invariant #1, no second source of truth). Edits accumulate on `canvasDraft` and
+	// are not saved until "Save" commits them. A no-op op (returns the same tree) is skipped.
 	const applyCanvasEdit = (fn: (root: RawAgent) => RawAgent) => {
-		if (!topologyYaml) return;
+		const src = canvasDraft ?? topologyYaml;
+		if (!src) return;
 		let obj: Record<string, unknown>;
 		try {
-			obj = (load(topologyYaml) as Record<string, unknown>) ?? {};
+			obj = (load(src) as Record<string, unknown>) ?? {};
 		} catch {
 			return;
 		}
@@ -724,15 +746,44 @@ export default function ComposerPage() {
 		const next = fn(root);
 		if (next === root) return;
 		obj.agents = { ...agents, root: next };
-		handleSave(dump(obj));
+		setCanvasDraft(dump(obj));
+	};
+
+	// The tree the canvas renders while editing: the staged draft if any, else the server-resolved
+	// tree. Parsed once per draft change.
+	const canvasDraftRoot = useMemo(() => {
+		if (!canvasDraft) return null;
+		try {
+			const obj = load(canvasDraft) as Record<string, unknown>;
+			const root = (obj.agents as { root?: RawAgent } | undefined)?.root;
+			return root ? rawToDisplay(root) : null;
+		} catch {
+			return null;
+		}
+	}, [canvasDraft]);
+
+	const canvasRoot = canvasDraftRoot ?? topologyDetail?.resolved ?? null;
+	const canvasDirty = canvasDraft !== null;
+
+	const saveCanvasDraft = async () => {
+		if (!canvasDraft) return;
+		const ok = await handleSave(canvasDraft);
+		if (ok) setCanvasDraft(null); // committed; canvas falls back to the reloaded resolved tree
+	};
+
+	const removeCanvasAgent = () => {
+		if (!selectedAgentId || selectedAgentId === topologyDetail?.resolved.id)
+			return; // never the root
+		applyCanvasEdit((root) => removeAgent(root, selectedAgentId));
 	};
 
 	// Add an agent under `targetId` (a node dropped onto), else the selected agent, else the root.
 	// A palette archetype instantiates that archetype (raw `archetype:` key); otherwise a blank worker.
 	const addCanvasAgent = (targetId?: string | null, archetypeId?: string) => {
 		if (!topologyDetail) return;
+		// Unique-id against the STAGED tree, so successive adds before a save don't collide.
 		const existing = new Set(
-			flattenAgents(topologyDetail.resolved).map((a) => a.id),
+			flattenAgents(canvasRoot ?? topologyDetail.resolved).map((a) => a.id),
 		);
 		const base = archetypeId ?? "agent";
 		let n = existing.size + 1;
@@ -930,9 +981,50 @@ export default function ComposerPage() {
 											<Plus size={12} /> agent
 											{selectedAgentId ? ` under ${selectedAgentId}` : ""}
 										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											onClick={removeCanvasAgent}
+											disabled={
+												saving ||
+												!selectedAgentId ||
+												selectedAgentId === topologyDetail.resolved.id
+											}
+										>
+											<Trash2 size={12} /> remove
+											{selectedAgentId &&
+											selectedAgentId !== topologyDetail.resolved.id
+												? ` ${selectedAgentId}`
+												: ""}
+										</Button>
+										<div className="ml-2 flex items-center gap-2 border-l pl-2">
+											<Button
+												type="button"
+												size="sm"
+												onClick={saveCanvasDraft}
+												disabled={!canvasDirty || saving}
+											>
+												{saving ? "Saving…" : "Save"}
+											</Button>
+											{canvasDirty && (
+												<>
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														onClick={() => setCanvasDraft(null)}
+														disabled={saving}
+													>
+														Discard
+													</Button>
+													<Badge variant="warning">unsaved</Badge>
+												</>
+											)}
+										</div>
 										<span className="text-muted-foreground">
-											click the palette to add · drag between nodes to delegate
-											· Delete removes a node{saving ? " · saving…" : ""}
+											palette adds · click a node then Delete/remove · drag
+											between nodes to delegate
 										</span>
 										{validationResult && !validationResult.valid && (
 											<span className="ml-auto truncate text-destructive">
@@ -962,7 +1054,7 @@ export default function ComposerPage() {
 								)}
 								<div className="flex-1">
 									<TopologyCanvas
-										root={topologyDetail.resolved}
+										root={canvasRoot}
 										onSelect={setSelectedAgentId}
 										editable={canvasEditing}
 										onConnect={(source, target) =>
