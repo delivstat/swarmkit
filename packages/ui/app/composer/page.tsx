@@ -940,6 +940,16 @@ export default function ComposerPage() {
 									<TopologyPalette
 										archetypes={refOptions.archetype ?? []}
 										skills={refOptions.skill ?? []}
+										selectedId={selectedAgentId}
+										onAddAgent={(archetypeId) =>
+											addCanvasAgent(null, archetypeId)
+										}
+										onAddSkill={(skillId) =>
+											addCanvasSkill(
+												selectedAgentId ?? topologyDetail.resolved.id,
+												skillId,
+											)
+										}
 									/>
 								)}
 								<div className="flex-1">

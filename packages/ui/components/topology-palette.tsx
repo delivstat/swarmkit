@@ -1,67 +1,100 @@
 "use client";
 
-import { GripVertical, Puzzle, User } from "lucide-react";
+import { GripVertical, Plus, Puzzle, User } from "lucide-react";
 
 import { PALETTE_MIME, type PaletteDrag } from "@/components/topology-canvas";
 import { cn } from "@/lib/utils";
 
-/** A single draggable palette chip. Sets the shared drag payload so the canvas' drop handler knows
- * what to add and where. */
+/** A palette chip. Primary interaction is **click to add** (reliable everywhere); it is also
+ * draggable onto the canvas as a bonus (drop on a specific node to target it). */
 function Chip({
 	label,
 	icon: Icon,
 	payload,
+	onAdd,
+	disabled,
 }: {
 	label: string;
 	icon: typeof User;
 	payload: PaletteDrag;
+	onAdd: () => void;
+	disabled?: boolean;
 }) {
 	return (
-		<div
-			draggable
+		<button
+			type="button"
+			draggable={!disabled}
+			onClick={onAdd}
+			disabled={disabled}
 			onDragStart={(e) => {
 				e.dataTransfer.setData(PALETTE_MIME, JSON.stringify(payload));
 				e.dataTransfer.effectAllowed = "copy";
 			}}
 			className={cn(
-				"flex cursor-grab items-center gap-1.5 rounded-md border bg-card px-2 py-1 text-xs",
-				"transition-colors hover:bg-accent active:cursor-grabbing",
+				"group flex w-full items-center gap-1.5 rounded-md border bg-card px-2 py-1 text-left text-xs",
+				"transition-colors hover:bg-accent disabled:opacity-50",
+				disabled ? "cursor-not-allowed" : "cursor-pointer",
 			)}
-			title="Drag onto the canvas"
+			title={
+				disabled
+					? "Select an agent first"
+					: "Click to add · or drag onto a node"
+			}
 		>
 			<GripVertical className="size-3 shrink-0 text-muted-foreground" />
 			<Icon className="size-3.5 shrink-0" />
-			<span className="truncate">{label}</span>
-		</div>
+			<span className="flex-1 truncate">{label}</span>
+			<Plus className="size-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-70" />
+		</button>
 	);
 }
 
-/** The canvas edit palette: draggable archetypes (+ a blank worker) that drop onto the canvas to add
- * an agent, and skills that drop onto an agent node to attach. Round-trips through the same YAML edit
- * ops as every other canvas change. */
+/** The canvas edit palette. Click an archetype (or the blank worker) to add an agent under the
+ * selected node (or root); click a skill to attach it to the selected agent. Chips are also draggable
+ * onto the canvas — drop on a node to target it specifically. Every add round-trips through the same
+ * pure YAML edit ops as the rest of the canvas. */
 export function TopologyPalette({
 	archetypes,
 	skills,
+	selectedId,
+	onAddAgent,
+	onAddSkill,
 }: {
 	archetypes: string[];
 	skills: string[];
+	/** The currently-selected agent id — where clicks add. Null ⇒ adds under root. */
+	selectedId: string | null;
+	onAddAgent: (archetypeId?: string) => void;
+	onAddSkill: (skillId: string) => void;
 }) {
+	const target = selectedId ?? "root";
 	return (
 		<div className="flex w-56 shrink-0 flex-col gap-3 overflow-y-auto border-r p-3 text-sm">
+			<p className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+				Adding under{" "}
+				<span className="font-medium text-foreground">{target}</span>. Click a
+				node to change target.
+			</p>
+
 			<div>
 				<p className="mb-1 font-medium">Agents</p>
 				<p className="mb-2 text-xs text-muted-foreground">
-					Drag onto the canvas — drop on a node to nest under it, else under the
-					selected agent.
+					Click to add a child · or drag onto a node to nest under it.
 				</p>
 				<div className="space-y-1">
-					<Chip label="blank worker" icon={User} payload={{ kind: "worker" }} />
+					<Chip
+						label="blank worker"
+						icon={User}
+						payload={{ kind: "worker" }}
+						onAdd={() => onAddAgent()}
+					/>
 					{archetypes.map((a) => (
 						<Chip
 							key={a}
 							label={a}
 							icon={User}
 							payload={{ kind: "archetype", value: a }}
+							onAdd={() => onAddAgent(a)}
 						/>
 					))}
 				</div>
@@ -70,7 +103,7 @@ export function TopologyPalette({
 			<div>
 				<p className="mb-1 font-medium">Skills</p>
 				<p className="mb-2 text-xs text-muted-foreground">
-					Drag onto an agent node to attach it.
+					Click to attach to the selected agent · or drag onto an agent node.
 				</p>
 				<div className="space-y-1">
 					{skills.length === 0 ? (
@@ -84,6 +117,7 @@ export function TopologyPalette({
 								label={s}
 								icon={Puzzle}
 								payload={{ kind: "skill", value: s }}
+								onAdd={() => onAddSkill(s)}
 							/>
 						))
 					)}
