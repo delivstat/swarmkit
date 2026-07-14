@@ -1,7 +1,10 @@
 "use client";
 
+import { useCallback } from "react";
+
 import { Card, CardTitle } from "@/components/card";
 import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import type {
 	CanaryStatus,
@@ -10,7 +13,6 @@ import type {
 	ValidateResponse,
 } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
-import { useCallback } from "react";
 
 function HealthCard() {
 	const fetchHealth = useCallback(() => api.health(), []);
@@ -19,29 +21,18 @@ function HealthCard() {
 	return (
 		<Card>
 			<CardTitle>Health</CardTitle>
-			{loading && <p className="text-sm opacity-50">Connecting...</p>}
+			{loading && <p className="text-sm text-muted-foreground">Connecting…</p>}
 			{error && (
 				<div className="flex items-center gap-2">
-					<span
-						className="w-2 h-2 rounded-full"
-						style={{ background: "var(--error)" }}
-					/>
-					<span className="text-sm" style={{ color: "var(--error)" }}>
-						Offline
-					</span>
+					<span className="size-2 rounded-full bg-destructive" />
+					<span className="text-sm text-destructive">Offline</span>
 				</div>
 			)}
 			{data && (
 				<div className="flex items-center gap-2">
-					<span
-						className="w-2 h-2 rounded-full"
-						style={{ background: "var(--success)" }}
-					/>
+					<span className="size-2 rounded-full bg-success" />
 					<span className="text-sm font-medium">Online</span>
-					<span
-						className="text-xs ml-auto"
-						style={{ color: "var(--fg-muted)" }}
-					>
+					<span className="ml-auto text-xs text-muted-foreground">
 						{data.workspace}
 					</span>
 				</div>
@@ -61,21 +52,15 @@ function ValidationCard() {
 			<div className="grid grid-cols-3 gap-3 text-center">
 				<div>
 					<p className="text-2xl font-bold">{data.topologies.length}</p>
-					<p className="text-xs" style={{ color: "var(--fg-muted)" }}>
-						topologies
-					</p>
+					<p className="text-xs text-muted-foreground">topologies</p>
 				</div>
 				<div>
 					<p className="text-2xl font-bold">{data.skills.length}</p>
-					<p className="text-xs" style={{ color: "var(--fg-muted)" }}>
-						skills
-					</p>
+					<p className="text-xs text-muted-foreground">skills</p>
 				</div>
 				<div>
 					<p className="text-2xl font-bold">{data.archetypes.length}</p>
-					<p className="text-xs" style={{ color: "var(--fg-muted)" }}>
-						archetypes
-					</p>
+					<p className="text-xs text-muted-foreground">archetypes</p>
 				</div>
 			</div>
 		</Card>
@@ -94,47 +79,34 @@ function RecentJobs() {
 	return (
 		<Card className="col-span-2">
 			<CardTitle>Recent Jobs</CardTitle>
-			<div className="flex gap-4 mb-3 text-sm">
+			<div className="mb-3 flex gap-4 text-sm">
 				<span>
 					<span className="font-bold">{running}</span>{" "}
-					<span style={{ color: "var(--fg-muted)" }}>running</span>
+					<span className="text-muted-foreground">running</span>
 				</span>
 				<span>
 					<span className="font-bold">{completed}</span>{" "}
-					<span style={{ color: "var(--fg-muted)" }}>completed</span>
+					<span className="text-muted-foreground">completed</span>
 				</span>
 				<span>
 					<span className="font-bold">{failed}</span>{" "}
-					<span style={{ color: "var(--fg-muted)" }}>failed</span>
+					<span className="text-muted-foreground">failed</span>
 				</span>
 			</div>
 			{jobs.length === 0 ? (
-				<p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-					No jobs yet
-				</p>
+				<p className="text-sm text-muted-foreground">No jobs yet</p>
 			) : (
 				<div className="space-y-2">
 					{jobs.map((job) => (
 						<div
 							key={job.job_id}
-							className="flex items-center gap-3 text-sm py-1.5 px-2 rounded"
-							style={{ background: "var(--bg)" }}
+							className="flex items-center gap-3 rounded-md bg-muted px-2 py-1.5 text-sm"
 						>
 							<StatusBadge status={job.status} />
 							<span className="font-mono text-xs">{job.job_id}</span>
-							<span style={{ color: "var(--fg-muted)" }}>{job.topology}</span>
-							{job.version && (
-								<span
-									className="text-xs px-1.5 py-0.5 rounded"
-									style={{ background: "var(--border)" }}
-								>
-									v{job.version}
-								</span>
-							)}
-							<span
-								className="ml-auto text-xs"
-								style={{ color: "var(--fg-muted)" }}
-							>
+							<span className="text-muted-foreground">{job.topology}</span>
+							{job.version && <Badge variant="secondary">v{job.version}</Badge>}
+							<span className="ml-auto text-xs text-muted-foreground">
 								{new Date(job.created_at).toLocaleTimeString()}
 							</span>
 						</div>
@@ -153,7 +125,7 @@ function CanarySummary() {
 		return (
 			<Card>
 				<CardTitle>Canary</CardTitle>
-				<p className="text-sm" style={{ color: "var(--fg-muted)" }}>
+				<p className="text-sm text-muted-foreground">
 					No canary routes configured
 				</p>
 			</Card>
@@ -166,16 +138,12 @@ function CanarySummary() {
 			<div className="space-y-3">
 				{data.routes.map((route) => (
 					<div key={route.topology}>
-						<p className="text-sm font-medium mb-1">{route.topology}</p>
+						<p className="mb-1 text-sm font-medium">{route.topology}</p>
 						<div className="flex gap-2">
 							{route.versions.map((v) => (
 								<div
 									key={v.version}
-									className="text-xs px-2 py-1 rounded"
-									style={{
-										background: "var(--bg)",
-										border: "1px solid var(--border)",
-									}}
+									className="rounded-md border bg-background px-2 py-1 text-xs"
 								>
 									v{v.version} <span className="font-bold">{v.weight}%</span>
 								</div>
@@ -191,7 +159,7 @@ function CanarySummary() {
 export default function DashboardPage() {
 	return (
 		<div>
-			<h2 className="text-xl font-bold mb-4">Dashboard</h2>
+			<h2 className="mb-4 text-xl font-bold">Dashboard</h2>
 			<div className="grid grid-cols-3 gap-4">
 				<HealthCard />
 				<ValidationCard />
