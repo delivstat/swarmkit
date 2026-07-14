@@ -51,9 +51,13 @@ async function get<T>(path: string): Promise<T> {
 	return res.json() as Promise<T>;
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function send<T>(
+	method: "POST" | "PUT",
+	path: string,
+	body?: unknown,
+): Promise<T> {
 	const res = await fetch(`${BASE}${path}`, {
-		method: "POST",
+		method,
 		headers: authHeaders({ "Content-Type": "application/json" }),
 		body: body ? JSON.stringify(body) : undefined,
 	});
@@ -64,6 +68,10 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
 	}
 	return res.json() as Promise<T>;
 }
+
+const post = <T>(path: string, body?: unknown) => send<T>("POST", path, body);
+// Artifact writes are PUT /api/<kind>/<id> — a POST to those routes 405s (silent save failure).
+const put = <T>(path: string, body?: unknown) => send<T>("PUT", path, body);
 
 export const api = {
 	health: () => get<HealthResponse>("/health"),
@@ -179,17 +187,17 @@ export const api = {
 		get<ArchetypeDetail>(`/api/archetypes/${id}`),
 	skillDetail: (id: string) => get<SkillDetail>(`/api/skills/${id}`),
 	saveTopology: (id: string, yaml: string, dryRun = false) =>
-		post<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/topologies/${id}`,
 			{ yaml, dry_run: dryRun },
 		),
 	saveSkill: (id: string, yaml: string) =>
-		post<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/skills/${id}`,
 			{ yaml },
 		),
 	saveArchetype: (id: string, yaml: string) =>
-		post<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/archetypes/${id}`,
 			{ yaml },
 		),
