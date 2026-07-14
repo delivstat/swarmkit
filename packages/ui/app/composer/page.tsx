@@ -739,8 +739,10 @@ export default function ComposerPage() {
 		while (existing.has(`${base}-${n}`)) n += 1;
 		const id = `${base}-${n}`;
 		const parentId = targetId ?? selectedAgentId ?? topologyDetail.resolved.id;
+		// `role` is required on every agent (even one referencing an archetype); default new children
+		// to `worker`. The archetype still supplies the model/prompt/skills.
 		const child: RawAgent = archetypeId
-			? { id, archetype: archetypeId }
+			? { id, role: "worker", archetype: archetypeId }
 			: { id, role: "worker" };
 		applyCanvasEdit((root) => addChild(root, parentId, child));
 	};
