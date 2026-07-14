@@ -1,8 +1,28 @@
 "use client";
 
-import { Card, CardTitle } from "@/components/card";
+import { MessageCircle, Plus, Send } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/cn";
 import type {
 	ConversationDetail,
 	ConversationListItem,
@@ -10,10 +30,7 @@ import type {
 	TraceData,
 } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
-import { MessageCircle, Plus, Send } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { cn } from "@/lib/utils";
 
 function ConversationList({
 	conversations,
@@ -27,27 +44,15 @@ function ConversationList({
 	onCreate: () => void;
 }) {
 	return (
-		<div
-			className="w-64 shrink-0 border-r flex flex-col h-full"
-			style={{ borderColor: "var(--border)" }}
-		>
-			<div className="p-3 border-b" style={{ borderColor: "var(--border)" }}>
-				<button
-					type="button"
-					onClick={onCreate}
-					className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded text-sm font-medium"
-					style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
-				>
-					<Plus size={14} />
-					New Chat
-				</button>
+		<div className="flex h-full w-64 shrink-0 flex-col border-r">
+			<div className="border-b p-3">
+				<Button type="button" className="w-full" onClick={onCreate}>
+					<Plus size={14} /> New Chat
+				</Button>
 			</div>
-			<div className="flex-1 overflow-y-auto p-2 space-y-1">
+			<div className="flex-1 space-y-1 overflow-y-auto p-2">
 				{conversations.length === 0 && (
-					<p
-						className="text-xs p-3 text-center"
-						style={{ color: "var(--fg-muted)" }}
-					>
+					<p className="p-3 text-center text-xs text-muted-foreground">
 						No conversations yet
 					</p>
 				)}
@@ -57,12 +62,11 @@ function ConversationList({
 						type="button"
 						onClick={() => onSelect(conv.id)}
 						className={cn(
-							"w-full text-left px-3 py-2 rounded text-sm transition-colors",
+							"w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
 							activeId === conv.id
-								? "font-medium"
-								: "opacity-70 hover:opacity-100",
+								? "bg-accent font-medium text-accent-foreground"
+								: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
 						)}
-						style={activeId === conv.id ? { background: "var(--border)" } : {}}
 					>
 						<div className="flex items-center gap-2">
 							<MessageCircle size={12} />
@@ -70,10 +74,7 @@ function ConversationList({
 								{conv.last_message || conv.topology}
 							</span>
 						</div>
-						<div
-							className="text-xs mt-0.5 pl-5"
-							style={{ color: "var(--fg-muted)" }}
-						>
+						<div className="mt-0.5 pl-5 text-xs text-muted-foreground">
 							{conv.turns} turns
 						</div>
 					</button>
@@ -93,21 +94,16 @@ function MessageBubble({
 	const isHuman = turn.role === "human";
 	const isError = !isHuman && turn.content.startsWith("Error:");
 	return (
-		<div className={cn("flex mb-4", isHuman ? "justify-end" : "justify-start")}>
+		<div className={cn("mb-4 flex", isHuman ? "justify-end" : "justify-start")}>
 			<div
 				className={cn(
-					"max-w-[75%] px-4 py-2.5 rounded-2xl text-sm",
-					isHuman ? "rounded-br-sm" : "rounded-bl-sm",
-				)}
-				style={{
-					background: isHuman
-						? "var(--accent)"
+					"max-w-[75%] rounded-2xl px-4 py-2.5 text-sm",
+					isHuman
+						? "rounded-br-sm bg-sky-600 text-white"
 						: isError
-							? "var(--bg)"
-							: "var(--bg-sidebar)",
-					color: isHuman ? "var(--accent-fg)" : "var(--fg)",
-					border: isError ? "1px solid var(--error)" : undefined,
-				}}
+							? "rounded-bl-sm border border-destructive bg-background"
+							: "rounded-bl-sm bg-card",
+				)}
 			>
 				{isHuman ? (
 					<div className="whitespace-pre-wrap">{turn.content}</div>
@@ -116,7 +112,7 @@ function MessageBubble({
 						<Markdown remarkPlugins={[remarkGfm]}>{turn.content}</Markdown>
 					</div>
 				)}
-				<div className="flex items-center gap-2 mt-1">
+				<div className="mt-1 flex items-center gap-2">
 					{turn.timestamp && (
 						<span className="text-xs opacity-60">
 							{new Date(turn.timestamp).toLocaleTimeString()}
@@ -143,17 +139,15 @@ function MessageBubble({
 						</span>
 					)}
 					{isError && onRetry && (
-						<button
+						<Button
 							type="button"
+							variant="destructive"
+							size="sm"
+							className="ml-auto h-6 px-2 text-xs"
 							onClick={onRetry}
-							className="text-xs px-2 py-0.5 rounded font-medium ml-auto"
-							style={{
-								background: "var(--error)",
-								color: "var(--accent-fg)",
-							}}
 						>
 							Retry
-						</button>
+						</Button>
 					)}
 				</div>
 			</div>
@@ -174,55 +168,43 @@ function ThinkingIndicator({ progressLines }: { progressLines: string[] }) {
 		progressLines.length > 0 ? progressLines[progressLines.length - 1] : null;
 
 	return (
-		<div className="flex justify-start mb-4">
-			<div
-				className="max-w-[85%] px-4 py-3 rounded-2xl rounded-bl-sm text-sm"
-				style={{ background: "var(--bg-sidebar)" }}
-			>
+		<div className="mb-4 flex justify-start">
+			<div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-card px-4 py-3 text-sm">
 				<div className="flex items-center gap-2">
 					<span className="flex gap-1">
 						<span
-							className="w-1.5 h-1.5 rounded-full animate-bounce"
-							style={{ background: "var(--accent)", animationDelay: "0ms" }}
+							className="size-1.5 animate-bounce rounded-full bg-sky-500"
+							style={{ animationDelay: "0ms" }}
 						/>
 						<span
-							className="w-1.5 h-1.5 rounded-full animate-bounce"
-							style={{ background: "var(--accent)", animationDelay: "150ms" }}
+							className="size-1.5 animate-bounce rounded-full bg-sky-500"
+							style={{ animationDelay: "150ms" }}
 						/>
 						<span
-							className="w-1.5 h-1.5 rounded-full animate-bounce"
-							style={{ background: "var(--accent)", animationDelay: "300ms" }}
+							className="size-1.5 animate-bounce rounded-full bg-sky-500"
+							style={{ animationDelay: "300ms" }}
 						/>
 					</span>
-					<span className="text-xs" style={{ color: "var(--fg-muted)" }}>
-						{elapsed}s
-					</span>
+					<span className="text-xs text-muted-foreground">{elapsed}s</span>
 					{progressLines.length > 1 && (
 						<button
 							type="button"
 							onClick={() => setExpanded((e) => !e)}
-							className="text-xs ml-auto"
-							style={{ color: "var(--accent)" }}
+							className="ml-auto text-xs text-sky-500"
 						>
 							{expanded ? "hide log" : `${progressLines.length} steps`}
 						</button>
 					)}
 				</div>
-				<div
-					className="text-xs font-mono mt-1.5"
-					style={{ color: "var(--fg-muted)" }}
-				>
-					{latest ?? "Starting agent..."}
+				<div className="mt-1.5 font-mono text-xs text-muted-foreground">
+					{latest ?? "Starting agent…"}
 				</div>
 				{expanded && progressLines.length > 1 && (
-					<div
-						className="mt-2 pt-2 border-t space-y-0.5 max-h-32 overflow-y-auto"
-						style={{ borderColor: "var(--border)" }}
-					>
+					<div className="mt-2 max-h-32 space-y-0.5 overflow-y-auto border-t pt-2">
 						{progressLines.slice(0, -1).map((line, i) => (
 							<div
 								key={`progress-${i}-${line.slice(0, 20)}`}
-								className="text-xs font-mono opacity-50"
+								className="font-mono text-xs opacity-50"
 							>
 								{line}
 							</div>
@@ -252,19 +234,12 @@ function TracePanel({ trace }: { trace: TraceData }) {
 	if (totalToolCalls === 0) return null;
 
 	return (
-		<div className="flex justify-start mb-2">
-			<div
-				className="max-w-[85%] px-3 py-2 rounded-lg text-xs"
-				style={{
-					background: "var(--bg)",
-					border: "1px solid var(--border)",
-				}}
-			>
+		<div className="mb-2 flex justify-start">
+			<div className="max-w-[85%] rounded-lg border bg-background px-3 py-2 text-xs">
 				<button
 					type="button"
 					onClick={() => setExpanded(!expanded)}
-					className="flex items-center gap-2 w-full text-left"
-					style={{ color: "var(--fg-muted)" }}
+					className="flex w-full items-center gap-2 text-left text-muted-foreground"
 				>
 					<span>{expanded ? "▼" : "▶"}</span>
 					<span className="font-medium">Tool calls ({totalToolCalls})</span>
@@ -277,35 +252,26 @@ function TracePanel({ trace }: { trace: TraceData }) {
 							step.tool_calls.map((tc) => (
 								<div
 									key={`${step.agent_id}-${tc.tool_name}-${tc.duration_ms}`}
-									className="flex flex-col gap-0.5 py-1 border-t"
-									style={{ borderColor: "var(--border)" }}
+									className="flex flex-col gap-0.5 border-t py-1"
 								>
 									<div className="flex items-center gap-2">
-										<span
-											className="px-1.5 py-0.5 rounded font-mono"
-											style={{
-												background: "var(--bg-sidebar)",
-											}}
-										>
+										<span className="rounded bg-card px-1.5 py-0.5 font-mono">
 											{tc.tool_name}
 										</span>
-										<span style={{ color: "var(--fg-muted)" }}>
+										<span className="text-muted-foreground">
 											{(tc.duration_ms / 1000).toFixed(1)}s
 										</span>
-										<span style={{ color: "var(--fg-muted)" }}>
+										<span className="text-muted-foreground">
 											{tc.result_length > 1024
 												? `${(tc.result_length / 1024).toFixed(1)}KB`
 												: `${tc.result_length}B`}
 										</span>
 										{tc.error && (
-											<span style={{ color: "var(--error)" }}>{tc.error}</span>
+											<span className="text-destructive">{tc.error}</span>
 										)}
 									</div>
 									{Object.keys(tc.arguments).length > 0 && (
-										<div
-											className="font-mono pl-2"
-											style={{ color: "var(--fg-muted)" }}
-										>
+										<div className="pl-2 font-mono text-muted-foreground">
 											{Object.entries(tc.arguments).map(([k, v]) => (
 												<span key={k} className="mr-2">
 													{k}=
@@ -353,18 +319,9 @@ function EventsSummary({
 	if (events.length === 0 && !usage) return null;
 
 	return (
-		<div className="flex justify-start mb-4">
-			<div
-				className="max-w-[85%] px-3 py-2 rounded-lg text-xs"
-				style={{
-					background: "var(--bg)",
-					border: "1px solid var(--border)",
-				}}
-			>
-				<div
-					className="flex items-center gap-3 mb-1.5"
-					style={{ color: "var(--fg-muted)" }}
-				>
+		<div className="mb-4 flex justify-start">
+			<div className="max-w-[85%] rounded-lg border bg-background px-3 py-2 text-xs">
+				<div className="mb-1.5 flex items-center gap-3 text-muted-foreground">
 					<span className="font-medium">Run details</span>
 					{usage && (
 						<>
@@ -377,21 +334,13 @@ function EventsSummary({
 					)}
 				</div>
 				{usage && Object.keys(usage.by_model).length > 0 && (
-					<div
-						className="flex gap-3 mb-1.5 pb-1.5 border-b"
-						style={{ borderColor: "var(--border)" }}
-					>
+					<div className="mb-1.5 flex gap-3 border-b pb-1.5">
 						{Object.entries(usage.by_model).map(([model, tokens]) => (
 							<span key={model} className="flex items-center gap-1">
-								<span
-									className="px-1 py-0.5 rounded"
-									style={{
-										background: "var(--bg-sidebar)",
-									}}
-								>
+								<span className="rounded bg-card px-1 py-0.5">
 									{model.split("/").pop()}
 								</span>
-								<span style={{ color: "var(--fg-muted)" }}>
+								<span className="text-muted-foreground">
 									{(
 										((tokens as Record<string, number>)?.input ?? 0) +
 										((tokens as Record<string, number>)?.output ?? 0)
@@ -409,27 +358,21 @@ function EventsSummary({
 						>
 							<span>{EVENT_ICONS[e.event_type] ?? "•"}</span>
 							<span className="font-medium">{e.agent_id}</span>
-							<span style={{ color: "var(--fg-muted)" }}>
+							<span className="text-muted-foreground">
 								{e.event_type.replace("agent.", "").replace("tool.", "")}
 							</span>
 							{e.model && (
-								<span
-									className="px-1 py-0.5 rounded"
-									style={{
-										background: "var(--bg-sidebar)",
-										color: "var(--fg-muted)",
-									}}
-								>
+								<span className="rounded bg-card px-1 py-0.5 text-muted-foreground">
 									{e.model}
 								</span>
 							)}
 							{e.duration_ms != null && (
-								<span style={{ color: "var(--fg-muted)" }}>
+								<span className="text-muted-foreground">
 									{(e.duration_ms / 1000).toFixed(1)}s
 								</span>
 							)}
 							{e.tokens != null && (
-								<span style={{ color: "var(--fg-muted)" }}>
+								<span className="text-muted-foreground">
 									{e.tokens.toLocaleString()} tok
 								</span>
 							)}
@@ -476,8 +419,8 @@ function ChatArea({
 
 	if (!conversation) {
 		return (
-			<div className="flex-1 flex items-center justify-center">
-				<div className="text-center" style={{ color: "var(--fg-muted)" }}>
+			<div className="flex flex-1 items-center justify-center">
+				<div className="text-center text-muted-foreground">
 					<MessageCircle size={48} className="mx-auto mb-3 opacity-30" />
 					<p className="text-sm">Select a conversation or start a new one</p>
 				</div>
@@ -486,30 +429,21 @@ function ChatArea({
 	}
 
 	return (
-		<div className="flex-1 flex flex-col h-full">
-			<div
-				className="px-4 py-3 border-b flex items-center gap-3"
-				style={{ borderColor: "var(--border)" }}
-			>
+		<div className="flex h-full flex-1 flex-col">
+			<div className="flex items-center gap-3 border-b px-4 py-3">
 				<span className="font-medium">{conversation.topology}</span>
-				<span
-					className="text-xs px-2 py-0.5 rounded"
-					style={{ background: "var(--bg-sidebar)", color: "var(--fg-muted)" }}
-				>
+				<span className="rounded bg-card px-2 py-0.5 text-xs text-muted-foreground">
 					{conversation.id}
 				</span>
-				<span className="text-xs ml-auto" style={{ color: "var(--fg-muted)" }}>
+				<span className="ml-auto text-xs text-muted-foreground">
 					{conversation.turns.length} turns
 				</span>
 			</div>
 
 			<div className="flex-1 overflow-y-auto p-4">
 				{conversation.turns.length === 0 && (
-					<div
-						className="text-center py-12"
-						style={{ color: "var(--fg-muted)" }}
-					>
-						<p className="text-sm">Start the conversation...</p>
+					<div className="py-12 text-center text-muted-foreground">
+						<p className="text-sm">Start the conversation…</p>
 					</div>
 				)}
 				{conversation.turns.map((turn, idx) => (
@@ -531,31 +465,26 @@ function ChatArea({
 				<div ref={bottomRef} />
 			</div>
 
-			<div className="p-3 border-t" style={{ borderColor: "var(--border)" }}>
+			<div className="border-t p-3">
 				<div className="flex gap-2">
-					<textarea
-						className="flex-1 px-3 py-2 rounded-lg border text-sm resize-none"
-						style={{
-							background: "var(--bg)",
-							borderColor: "var(--border)",
-							color: "var(--fg)",
-						}}
+					<Textarea
+						className="flex-1 resize-none"
 						rows={2}
-						placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+						placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
 						value={input}
 						onChange={(e) => setInput(e.target.value)}
 						onKeyDown={handleKeyDown}
 						disabled={sending}
 					/>
-					<button
+					<Button
 						type="button"
+						size="icon"
+						className="h-auto self-stretch"
 						onClick={handleSend}
 						disabled={sending || !input.trim()}
-						className="px-4 py-3 rounded-lg self-end disabled:opacity-40 transition-opacity"
-						style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
 					>
 						<Send size={20} />
-					</button>
+					</Button>
 				</div>
 			</div>
 		</div>
@@ -586,57 +515,40 @@ function NewChatDialog({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 flex items-center justify-center z-50"
-			style={{ background: "rgba(0,0,0,0.5)" }}
-		>
-			<Card className="w-96">
-				<CardTitle>New Conversation</CardTitle>
-				<label
-					htmlFor="topology-select"
-					className="block text-sm mb-1"
-					style={{ color: "var(--fg-muted)" }}
-				>
-					Topology
-				</label>
-				<select
-					id="topology-select"
-					className="w-full px-3 py-2 rounded border text-sm mb-4"
-					style={{
-						background: "var(--bg)",
-						borderColor: "var(--border)",
-						color: "var(--fg)",
-					}}
-					value={selected}
-					onChange={(e) => setSelected(e.target.value)}
-				>
-					{topologies.map((t) => (
-						<option key={t} value={t}>
-							{t}
-						</option>
-					))}
-				</select>
-				<div className="flex gap-2 justify-end">
-					<button
-						type="button"
-						onClick={onClose}
-						className="px-3 py-1.5 text-sm rounded border"
-						style={{ borderColor: "var(--border)" }}
-					>
+		<Dialog open onOpenChange={(o) => !o && onClose()}>
+			<DialogContent className="sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle>New Conversation</DialogTitle>
+				</DialogHeader>
+				<div className="space-y-1.5">
+					<Label htmlFor="topology-select">Topology</Label>
+					<Select value={selected} onValueChange={setSelected}>
+						<SelectTrigger id="topology-select">
+							<SelectValue placeholder="Select topology…" />
+						</SelectTrigger>
+						<SelectContent>
+							{topologies.map((t) => (
+								<SelectItem key={t} value={t}>
+									{t}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+				<DialogFooter>
+					<Button type="button" variant="outline" onClick={onClose}>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						onClick={create}
 						disabled={creating || !selected}
-						className="px-3 py-1.5 text-sm rounded font-medium disabled:opacity-40"
-						style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
 					>
-						{creating ? "Creating..." : "Start Chat"}
-					</button>
-				</div>
-			</Card>
-		</div>
+						{creating ? "Creating…" : "Start Chat"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -757,7 +669,7 @@ export default function ChatPage() {
 	};
 
 	return (
-		<div className="flex h-[calc(100vh-3rem)] -m-6">
+		<div className="-m-6 flex h-[calc(100vh-3rem)]">
 			<ConversationList
 				conversations={conversations ?? []}
 				activeId={activeId}
