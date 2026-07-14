@@ -17,10 +17,13 @@ from swarmkit_runtime.server._webui import mount_webui
 
 @pytest.fixture
 def portal(tmp_path: Path) -> Path:
-    """A minimal built portal: index shell + a real deep-link page + a JS asset."""
+    """A minimal built portal: index shell + a real deep-link page + a page whose route collides
+    with an API endpoint (``jobs``) + a JS asset."""
     (tmp_path / "index.html").write_text("<html>INDEX-SHELL</html>", encoding="utf-8")
     (tmp_path / "composer").mkdir()
     (tmp_path / "composer" / "index.html").write_text("<html>COMPOSER</html>", encoding="utf-8")
+    (tmp_path / "jobs").mkdir()
+    (tmp_path / "jobs" / "index.html").write_text("<html>JOBS-PAGE</html>", encoding="utf-8")
     (tmp_path / "_next").mkdir()
     (tmp_path / "_next" / "app.js").write_text("console.log(1)", encoding="utf-8")
     return tmp_path
@@ -33,6 +36,11 @@ def _app_with_portal(monkeypatch: pytest.MonkeyPatch, static: Path | None) -> Fa
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    # An API endpoint whose path collides with the SPA's `/jobs` page (the collision this guards).
+    @app.get("/jobs")
+    async def jobs() -> list[str]:
+        return []
 
     mounted = mount_webui(app)
     app.state._webui_mounted = mounted
@@ -71,6 +79,39 @@ def test_api_routes_win_over_the_static_mount(
 ) -> None:
     client = TestClient(_app_with_portal(monkeypatch, portal))
     r = client.get("/health")
+    assert r.status_code == 200 and r.json() == {"status": "ok"}
+
+
+def test_html_navigation_to_a_colliding_page_redirects_to_the_spa(
+    portal: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A browser navigating to bare `/jobs` (Accept: text/html) must reach the SPA page, not the
+    # colliding `/jobs` API endpoint. It 307s to the trailing-slash form the static export ships.
+    client = TestClient(_app_with_portal(monkeypatch, portal))
+    r = client.get("/jobs", headers={"accept": "text/html"}, follow_redirects=False)
+    assert r.status_code == 307
+    assert r.headers["location"] == "/jobs/"
+    # following it lands on the real page
+    followed = client.get("/jobs", headers={"accept": "text/html"})
+    assert "JOBS-PAGE" in followed.text
+
+
+def test_fetch_to_a_colliding_path_still_hits_the_api(
+    portal: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A data fetch (Accept: */*, as `fetch()` sends) to `/jobs` is NOT redirected — the API wins,
+    # so the portal's own data calls keep working.
+    client = TestClient(_app_with_portal(monkeypatch, portal))
+    r = client.get("/jobs", headers={"accept": "*/*"}, follow_redirects=False)
+    assert r.status_code == 200 and r.json() == []
+
+
+def test_navigation_redirect_only_fires_for_built_pages(
+    portal: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `/health` has no SPA page → an HTML GET is not redirected; the API answers.
+    client = TestClient(_app_with_portal(monkeypatch, portal))
+    r = client.get("/health", headers={"accept": "text/html"}, follow_redirects=False)
     assert r.status_code == 200 and r.json() == {"status": "ok"}
 
 

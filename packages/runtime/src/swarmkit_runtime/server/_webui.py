@@ -37,6 +37,40 @@ def _spa_staticfiles() -> type:
     return _SPAStaticFiles
 
 
+def _add_navigation_redirect(app: FastAPI, static: str) -> None:
+    """Disambiguate page routes that collide with API endpoints (e.g. ``/jobs`` — a page *and* the
+    job-list endpoint). The portal is a static export with ``trailingSlash``, so each page lives at
+    ``/<route>/``; the API owns the bare ``/<route>``. A browser *navigation* sends ``Accept:
+    text/html``, so for such a request to a bare path that has a built page
+    (``<static>/<route>/index.html``) we 307 to the slash form and the SPA serves it. A ``fetch()``
+    (``Accept: */*``) is untouched — the data API still wins. Runs before routing, so it beats the
+    colliding endpoint."""
+    from collections.abc import Awaitable, Callable  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    from starlette.requests import Request  # noqa: PLC0415
+    from starlette.responses import RedirectResponse, Response  # noqa: PLC0415
+
+    root = Path(static)
+
+    @app.middleware("http")
+    async def _spa_navigation_redirect(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        if request.method in ("GET", "HEAD"):
+            path = request.url.path
+            if (
+                "text/html" in request.headers.get("accept", "")
+                and not path.endswith("/")
+                and (root / path.lstrip("/") / "index.html").is_file()
+            ):
+                target = f"{path}/"
+                if request.url.query:
+                    target = f"{target}?{request.url.query}"
+                return RedirectResponse(target, status_code=307)
+        return await call_next(request)
+
+
 def mount_webui(app: FastAPI) -> bool:
     """Mount the static portal at ``/`` if the ``swarmkit-webui`` package is installed and built.
     Returns whether it was mounted. Call **last** in the app factory (after all API routes)."""
@@ -47,6 +81,7 @@ def mount_webui(app: FastAPI) -> bool:
     static = swarmkit_webui.static_dir()
     if static is None:
         return False
+    _add_navigation_redirect(app, str(static))
     app.mount("/", _spa_staticfiles()(directory=str(static), html=True), name="webui")
     logger.info("web portal mounted at / (swarmkit-webui %s)", swarmkit_webui.__version__)
     return True
