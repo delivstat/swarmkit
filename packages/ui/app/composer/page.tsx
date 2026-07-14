@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardTitle } from "@/components/card";
 import { SchemaForm } from "@/components/schema-form";
 import { TopologyCanvas } from "@/components/topology-canvas";
+import { TopologyPalette } from "@/components/topology-palette";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,7 @@ import type { JsonSchema } from "@/lib/schema-form";
 import {
 	type RawAgent,
 	addChild,
+	addSkill,
 	removeAgent,
 	reparent,
 } from "@/lib/topology-edit";
@@ -725,18 +727,26 @@ export default function ComposerPage() {
 		handleSave(dump(obj));
 	};
 
-	const addCanvasAgent = () => {
+	// Add an agent under `targetId` (a node dropped onto), else the selected agent, else the root.
+	// A palette archetype instantiates that archetype (raw `archetype:` key); otherwise a blank worker.
+	const addCanvasAgent = (targetId?: string | null, archetypeId?: string) => {
 		if (!topologyDetail) return;
 		const existing = new Set(
 			flattenAgents(topologyDetail.resolved).map((a) => a.id),
 		);
+		const base = archetypeId ?? "agent";
 		let n = existing.size + 1;
-		while (existing.has(`agent-${n}`)) n += 1;
-		const parentId = selectedAgentId ?? topologyDetail.resolved.id;
-		applyCanvasEdit((root) =>
-			addChild(root, parentId, { id: `agent-${n}`, role: "worker" }),
-		);
+		while (existing.has(`${base}-${n}`)) n += 1;
+		const id = `${base}-${n}`;
+		const parentId = targetId ?? selectedAgentId ?? topologyDetail.resolved.id;
+		const child: RawAgent = archetypeId
+			? { id, archetype: archetypeId }
+			: { id, role: "worker" };
+		applyCanvasEdit((root) => addChild(root, parentId, child));
 	};
+
+	const addCanvasSkill = (agentId: string, skillId: string) =>
+		applyCanvasEdit((root) => addSkill(root, agentId, skillId));
 
 	const selectedAgent =
 		topologyDetail && selectedAgentId
@@ -912,31 +922,41 @@ export default function ComposerPage() {
 											type="button"
 											variant="outline"
 											size="sm"
-											onClick={addCanvasAgent}
+											onClick={() => addCanvasAgent()}
 											disabled={saving}
 										>
 											<Plus size={12} /> agent
 											{selectedAgentId ? ` under ${selectedAgentId}` : ""}
 										</Button>
 										<span className="text-muted-foreground">
-											drag between nodes to delegate · Delete removes a node
-											{saving ? " · saving…" : ""}
+											drag from the palette · drag between nodes to delegate ·
+											Delete removes a node{saving ? " · saving…" : ""}
 										</span>
 									</>
 								)}
 							</div>
-							<div className="flex-1">
-								<TopologyCanvas
-									root={topologyDetail.resolved}
-									onSelect={setSelectedAgentId}
-									editable={canvasEditing}
-									onConnect={(source, target) =>
-										applyCanvasEdit((root) => reparent(root, target, source))
-									}
-									onDeleteNode={(id) =>
-										applyCanvasEdit((root) => removeAgent(root, id))
-									}
-								/>
+							<div className="flex flex-1 overflow-hidden">
+								{canvasEditing && (
+									<TopologyPalette
+										archetypes={refOptions.archetype ?? []}
+										skills={refOptions.skill ?? []}
+									/>
+								)}
+								<div className="flex-1">
+									<TopologyCanvas
+										root={topologyDetail.resolved}
+										onSelect={setSelectedAgentId}
+										editable={canvasEditing}
+										onConnect={(source, target) =>
+											applyCanvasEdit((root) => reparent(root, target, source))
+										}
+										onDeleteNode={(id) =>
+											applyCanvasEdit((root) => removeAgent(root, id))
+										}
+										onAddChild={addCanvasAgent}
+										onAddSkill={addCanvasSkill}
+									/>
+								</div>
 							</div>
 						</div>
 					)}

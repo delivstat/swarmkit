@@ -150,13 +150,37 @@ export function activeVariant(vs: Variant[], value: unknown): number {
 	return 0;
 }
 
-/** Long free-text fields get a textarea instead of a single-line input. */
-const TEXT_FIELDS = new Set([
+/** Long free-text fields get a textarea instead of a single-line input. Matched by exact name or by
+ * a prose-y substring — so nested prompt fields (`prompt.system`, `prompt.persona`) and the many
+ * `*_prompt`/`*description*` variants are caught, not just a top-level `prompt`. */
+const TEXT_FIELD_NAMES = new Set([
+	"system",
+	"persona",
+	"user",
+	"goal",
+	"guidance",
+	"content",
+	"template",
+	"message",
+	"summary",
+	"notes",
+	"body",
+	"context",
+]);
+const TEXT_FIELD_SUBSTRINGS = [
 	"prompt",
 	"description",
-	"instructions",
-	"system_prompt",
-]);
+	"instruction",
+	"persona",
+];
+
+/** Whether a string field named `name` should render as a multi-line textarea. */
+export function isLongText(name: string): boolean {
+	const n = name.toLowerCase();
+	return (
+		TEXT_FIELD_NAMES.has(n) || TEXT_FIELD_SUBSTRINGS.some((s) => n.includes(s))
+	);
+}
 
 /** Classify a (resolved) schema node into a render kind. `name` lets us pick a textarea for known
  * long-text fields. Unknown shapes (oneOf/anyOf/etc.) fall back to a raw-JSON editor. */
@@ -175,7 +199,7 @@ export function fieldKind(schema: JsonSchema, name = ""): FieldKind {
 	if (mapValueSchema(schema)) return "map";
 	if (type === "object" || schema.properties || Array.isArray(schema.allOf))
 		return "object";
-	if (type === "string") return TEXT_FIELDS.has(name) ? "text" : "string";
+	if (type === "string") return isLongText(name) ? "text" : "string";
 	return "json";
 }
 

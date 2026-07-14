@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
 	type RawAgent,
 	addChild,
+	addSkill,
 	removeAgent,
+	removeSkill,
 	reparent,
 } from "./topology-edit";
 
@@ -77,6 +79,43 @@ describe("reparent", () => {
 		expect(reparent(t, "w1", "lead")).toBe(t); // already there
 	});
 });
+
+describe("addSkill / removeSkill", () => {
+	it("adds a skill to an agent, creating the list, and de-dupes", () => {
+		const one = addSkill(tree(), "w1", "code-review");
+		expect(find(one, "w1")?.skills).toEqual(["code-review"]);
+		// second distinct skill appends
+		const two = addSkill(one, "w1", "lint");
+		expect(find(two, "w1")?.skills).toEqual(["code-review", "lint"]);
+		// re-adding the same skill is a no-op (same reference back)
+		expect(addSkill(two, "w1", "lint")).toBe(two);
+	});
+
+	it("removes a skill; no-op for an absent skill or agent", () => {
+		const withSkills = addSkill(addSkill(tree(), "qa", "a"), "qa", "b");
+		const removed = removeSkill(withSkills, "qa", "a");
+		expect(find(removed, "qa")?.skills).toEqual(["b"]);
+		expect(removeSkill(withSkills, "qa", "missing")).toBe(withSkills);
+		expect(removeSkill(withSkills, "nope", "a")).toBe(withSkills);
+	});
+
+	it("leaves other agents' skills untouched", () => {
+		const t = addSkill(tree(), "w1", "x");
+		const t2 = addSkill(t, "qa", "y");
+		expect(find(t2, "w1")?.skills).toEqual(["x"]);
+		expect(find(t2, "qa")?.skills).toEqual(["y"]);
+	});
+});
+
+// Small locator for the skill assertions (the tree helper doesn't expose one).
+function find(root: RawAgent, id: string): RawAgent | null {
+	if (root.id === id) return root;
+	for (const c of root.children ?? []) {
+		const hit = find(c, id);
+		if (hit) return hit;
+	}
+	return null;
+}
 
 describe("YAML round-trip fidelity", () => {
 	it("preserves untouched fields through a dump→load cycle", () => {

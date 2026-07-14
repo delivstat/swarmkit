@@ -99,6 +99,16 @@ function AgentCard({ data, selected }: NodeProps<AgentNode>) {
 
 const NODE_TYPES = { agent: AgentCard };
 
+/** dataTransfer MIME the palette (archetype/skill/worker chips) and the canvas drop handler share. */
+export const PALETTE_MIME = "application/swarmkit-node";
+
+/** A palette drag payload — `kind: "archetype"` carries an archetype id in `value`, `"skill"` a skill
+ * id, `"worker"` is a blank agent. Set on dragstart, read on drop. */
+export interface PaletteDrag {
+	kind: "archetype" | "skill" | "worker";
+	value?: string;
+}
+
 export interface TopologyCanvasProps {
 	root: ResolvedAgent | null | undefined;
 	/** Called when a node (agent) is clicked — the id, for a detail panel. */
@@ -109,6 +119,11 @@ export interface TopologyCanvasProps {
 	onConnect?: (source: string, target: string) => void;
 	/** Delete an agent (and its subtree). */
 	onDeleteNode?: (agentId: string) => void;
+	/** Palette drop: add a child agent. `targetId` is the node dropped onto (else null → the caller
+	 * picks a parent, e.g. the selected node or root); `archetypeId` instantiates that archetype. */
+	onAddChild?: (targetId: string | null, archetypeId?: string) => void;
+	/** Palette drop of a skill onto an agent node. */
+	onAddSkill?: (agentId: string, skillId: string) => void;
 	/** Examine mode: a run overlay keyed by agent id. Present ⇒ nodes show cost/duration/status and
 	 * non-fired agents dim. Read-only regardless of `editable`. */
 	overlay?: Record<string, NodeRun>;
@@ -127,6 +142,8 @@ export function TopologyCanvas({
 	editable = false,
 	onConnect,
 	onDeleteNode,
+	onAddChild,
+	onAddSkill,
 	overlay,
 	className,
 }: TopologyCanvasProps) {
@@ -153,8 +170,51 @@ export function TopologyCanvas({
 		for (const n of deleted) onDeleteNode?.(n.id);
 	};
 
+	const dnd = editable && !examine && (onAddChild || onAddSkill);
+
+	// Palette drop: find the agent node under the cursor (if any) via the DOM — React Flow tags each
+	// node wrapper with `data-id` — so we avoid flow-coordinate math. A skill must land on a node; an
+	// archetype/worker can land anywhere (null target → the composer parents it under the selection).
+	const handleDrop = (e: React.DragEvent) => {
+		e.preventDefault();
+		const raw = e.dataTransfer.getData(PALETTE_MIME);
+		if (!raw) return;
+		let payload: { kind: string; value?: string };
+		try {
+			payload = JSON.parse(raw);
+		} catch {
+			return;
+		}
+		const el = document.elementFromPoint(
+			e.clientX,
+			e.clientY,
+		) as Element | null;
+		const targetId =
+			el?.closest(".react-flow__node")?.getAttribute("data-id") ?? null;
+		if (payload.kind === "skill") {
+			if (targetId && payload.value) onAddSkill?.(targetId, payload.value);
+		} else {
+			onAddChild?.(
+				targetId,
+				payload.kind === "archetype" ? payload.value : undefined,
+			);
+		}
+	};
+
 	return (
-		<div className={className} style={{ width: "100%", height: "100%" }}>
+		<div
+			className={className}
+			style={{ width: "100%", height: "100%" }}
+			onDragOver={
+				dnd
+					? (e) => {
+							e.preventDefault();
+							e.dataTransfer.dropEffect = "copy";
+						}
+					: undefined
+			}
+			onDrop={dnd ? handleDrop : undefined}
+		>
 			<ReactFlow
 				nodes={nodes}
 				edges={edges}
