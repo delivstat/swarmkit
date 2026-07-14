@@ -1,8 +1,13 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { Card, CardTitle } from "@/components/card";
 import { StatusBadge } from "@/components/status-badge";
 import { TopologyCanvas } from "@/components/topology-canvas";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import {
 	executorBadge,
@@ -18,9 +23,7 @@ import type {
 	TraceSpan,
 } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 
 function EventStream({ jobId }: { jobId: string }) {
 	const [events, setEvents] = useState<string[]>([]);
@@ -57,29 +60,17 @@ function EventStream({ jobId }: { jobId: string }) {
 			<CardTitle>
 				Event Stream{" "}
 				{connected && (
-					<span
-						className="text-xs font-normal ml-2"
-						style={{ color: "var(--success)" }}
-					>
-						live
-					</span>
+					<span className="ml-2 text-xs font-normal text-success">live</span>
 				)}
 			</CardTitle>
-			<div
-				className="font-mono text-xs space-y-1 max-h-64 overflow-y-auto p-2 rounded"
-				style={{ background: "var(--bg)" }}
-			>
+			<div className="max-h-64 space-y-1 overflow-y-auto rounded-md bg-muted p-2 font-mono text-xs">
 				{events.length === 0 && (
-					<p style={{ color: "var(--fg-muted)" }}>Waiting for events...</p>
+					<p className="text-muted-foreground">Waiting for events…</p>
 				)}
 				{events.map((event) => (
 					<div
 						key={`${jobId}-${event}`}
-						style={{
-							color: event.startsWith("[done]")
-								? "var(--success)"
-								: "var(--fg)",
-						}}
+						className={cn(event.startsWith("[done]") && "text-success")}
 					>
 						{event}
 					</div>
@@ -93,9 +84,7 @@ function EventStream({ jobId }: { jobId: string }) {
 function Stat({ label, value }: { label: string; value: string }) {
 	return (
 		<div>
-			<div className="text-xs" style={{ color: "var(--fg-muted)" }}>
-				{label}
-			</div>
+			<div className="text-xs text-muted-foreground">{label}</div>
 			<div className="text-sm font-medium">{value}</div>
 		</div>
 	);
@@ -109,7 +98,7 @@ function UsageCard({ jobId }: { jobId: string }) {
 	return (
 		<Card>
 			<CardTitle>Usage &amp; cost</CardTitle>
-			<div className="grid grid-cols-2 gap-3 sm:grid-cols-5 mt-2">
+			<div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-5">
 				<Stat label="Cost" value={formatUsd(data.total_cost_usd)} />
 				<Stat label="LLM calls" value={String(data.total_calls)} />
 				<Stat label="Input" value={formatTokens(data.total_input_tokens)} />
@@ -157,53 +146,39 @@ function TraceWaterfall({ runId }: { runId: string }) {
 							className="flex items-center gap-2 text-xs"
 						>
 							<div
-								className="flex w-48 shrink-0 items-center gap-1 font-mono"
-								style={{
-									paddingLeft: depth * 12,
-									color: span.error ? "var(--error)" : "var(--fg)",
-								}}
+								className={cn(
+									"flex w-48 shrink-0 items-center gap-1 font-mono",
+									span.error && "text-destructive",
+								)}
+								style={{ paddingLeft: depth * 12 }}
 								title={span.error ?? span.name}
 							>
 								<span className="truncate">{span.name}</span>
 								{badge && (
-									<span
-										className="shrink-0 rounded px-1 text-[10px]"
-										style={{
-											background: "var(--bg)",
-											color: "var(--accent)",
-											border: "1px solid var(--accent)",
-										}}
+									<Badge
+										variant="outline"
+										className="shrink-0 px-1 py-0 text-[10px]"
 										title={`executor: ${badge}`}
 									>
 										{badge}
-									</span>
+									</Badge>
 								)}
 							</div>
-							<div
-								className="relative h-4 flex-1 rounded"
-								style={{ background: "var(--bg)" }}
-							>
+							<div className="relative h-4 flex-1 rounded bg-muted">
 								<div
-									className="absolute h-4 rounded"
-									style={{
-										left: `${offset}%`,
-										width: `${width}%`,
-										background: span.error ? "var(--error)" : "var(--accent)",
-									}}
+									className={cn(
+										"absolute h-4 rounded",
+										span.error ? "bg-destructive" : "bg-sky-500",
+									)}
+									style={{ left: `${offset}%`, width: `${width}%` }}
 								/>
 							</div>
 							{cost > 0 && (
-								<div
-									className="w-14 shrink-0 text-right"
-									style={{ color: "var(--fg-muted)" }}
-								>
+								<div className="w-14 shrink-0 text-right text-muted-foreground">
 									{formatUsd(cost)}
 								</div>
 							)}
-							<div
-								className="w-16 shrink-0 text-right"
-								style={{ color: "var(--fg-muted)" }}
-							>
+							<div className="w-16 shrink-0 text-right text-muted-foreground">
 								{span.duration_ms}ms
 							</div>
 						</div>
@@ -237,11 +212,11 @@ function RunGraph({ runId, topology }: { runId: string; topology: string }) {
 	return (
 		<Card>
 			<CardTitle>Run graph</CardTitle>
-			<p className="text-xs mb-2" style={{ color: "var(--fg-muted)" }}>
+			<p className="mb-2 text-xs text-muted-foreground">
 				The run over the topology — green fired, red errored, dimmed did not
 				fire.
 			</p>
-			<div style={{ height: 440 }}>
+			<div className="h-[440px]">
 				<TopologyCanvas root={detail.resolved} overlay={overlay} />
 			</div>
 		</Card>
@@ -256,22 +231,15 @@ function JobDetail() {
 
 	return (
 		<div>
-			<h2 className="text-xl font-bold mb-4">
+			<h2 className="mb-4 text-xl font-bold">
 				Job{" "}
-				<span
-					className="font-mono text-base"
-					style={{ color: "var(--fg-muted)" }}
-				>
+				<span className="font-mono text-base text-muted-foreground">
 					{jobId}
 				</span>
 			</h2>
 
-			{loading && <p className="text-sm opacity-50">Loading...</p>}
-			{error && (
-				<p className="text-sm" style={{ color: "var(--error)" }}>
-					{error}
-				</p>
-			)}
+			{loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+			{error && <p className="text-sm text-destructive">{error}</p>}
 
 			{job && (
 				<div className="grid gap-4">
@@ -283,10 +251,7 @@ function JobDetail() {
 					{job.output && (
 						<Card>
 							<CardTitle>Output</CardTitle>
-							<pre
-								className="text-sm whitespace-pre-wrap p-3 rounded max-h-96 overflow-y-auto"
-								style={{ background: "var(--bg)" }}
-							>
+							<pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">
 								{job.output}
 							</pre>
 						</Card>
@@ -295,10 +260,7 @@ function JobDetail() {
 					{job.error && (
 						<Card>
 							<CardTitle>Error</CardTitle>
-							<pre
-								className="text-sm whitespace-pre-wrap p-3 rounded"
-								style={{ background: "var(--bg)", color: "var(--error)" }}
-							>
+							<pre className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm text-destructive">
 								{job.error}
 							</pre>
 						</Card>
@@ -320,7 +282,9 @@ function JobDetail() {
 // useSearchParams must sit under a Suspense boundary for the static export prerender.
 export default function JobPage() {
 	return (
-		<Suspense fallback={<p className="text-sm opacity-50">Loading…</p>}>
+		<Suspense
+			fallback={<p className="text-sm text-muted-foreground">Loading…</p>}
+		>
 			<JobDetail />
 		</Suspense>
 	);

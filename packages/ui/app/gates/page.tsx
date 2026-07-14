@@ -1,10 +1,14 @@
 "use client";
 
+import { useCallback, useState } from "react";
+
 import { Card, CardTitle } from "@/components/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import type { ReviewGate } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
-import { useCallback, useState } from "react";
 
 /** Pending harness gates — §6.2 permission approvals and §6.3 input requests — resolved by a human.
  * Same review queue + HTTP API the CLI (`swarmkit review`) and fleet UI use, so a gate resolves
@@ -29,23 +33,17 @@ export default function GatesPage() {
 
 	return (
 		<div>
-			<h2 className="text-xl font-bold mb-4">Gates</h2>
-			<p className="text-sm mb-4" style={{ color: "var(--fg-muted)" }}>
+			<h2 className="mb-4 text-xl font-bold">Gates</h2>
+			<p className="mb-4 text-sm text-muted-foreground">
 				Harness runs paused for a human decision — permission approvals and
 				input questions. Resolving here is the same action as{" "}
 				<code>swarmkit review</code>.
 			</p>
 
-			{loading && <p className="text-sm opacity-50">Loading…</p>}
-			{error && (
-				<p className="text-sm" style={{ color: "var(--error)" }}>
-					{error}
-				</p>
-			)}
+			{loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+			{error && <p className="text-sm text-destructive">{error}</p>}
 			{data && data.length === 0 && (
-				<p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-					No pending gates.
-				</p>
+				<p className="text-sm text-muted-foreground">No pending gates.</p>
 			)}
 
 			<div className="grid gap-3">
@@ -75,21 +73,11 @@ function GateCard({
 	return (
 		<Card>
 			<div className="flex items-center gap-2">
-				<span
-					className="rounded px-1.5 py-0.5 text-[10px] uppercase"
-					style={{
-						background: "var(--bg)",
-						color: "var(--accent)",
-						border: "1px solid var(--accent)",
-					}}
-				>
+				<Badge variant="outline" className="uppercase">
 					{gate.kind}
-				</span>
+				</Badge>
 				<CardTitle>{gate.agent_id}</CardTitle>
-				<span
-					className="ml-auto font-mono text-xs"
-					style={{ color: "var(--fg-muted)" }}
-				>
+				<span className="ml-auto font-mono text-xs text-muted-foreground">
 					{gate.id.slice(0, 12)}
 				</span>
 			</div>
@@ -101,27 +89,24 @@ function GateCard({
 						<code className="font-mono">{gate.capability}</code>
 					</p>
 					<div className="mt-3 flex gap-2">
-						<button
+						<Button
 							type="button"
+							size="sm"
 							disabled={busy}
 							onClick={() => act(() => api.reviewApprove(gate.id), gate.id)}
-							className="rounded px-3 py-1 text-sm"
-							style={{ background: "var(--accent)", color: "var(--bg)" }}
 						>
 							Approve
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
+							variant="outline"
+							size="sm"
 							disabled={busy}
+							className="border-destructive text-destructive hover:bg-destructive/10"
 							onClick={() => act(() => api.reviewReject(gate.id), gate.id)}
-							className="rounded px-3 py-1 text-sm"
-							style={{
-								border: "1px solid var(--error)",
-								color: "var(--error)",
-							}}
 						>
 							Reject
-						</button>
+						</Button>
 					</div>
 				</>
 			)}
@@ -131,46 +116,38 @@ function GateCard({
 					<p className="mt-2 text-sm">{gate.question}</p>
 					<div className="mt-2 flex flex-wrap gap-2">
 						{gate.options.map((opt) => (
-							<button
+							<Button
 								type="button"
 								key={opt}
+								variant="outline"
+								size="sm"
 								disabled={busy}
 								onClick={() =>
 									act(() => api.reviewAnswer(gate.id, opt), gate.id)
 								}
-								className="rounded px-3 py-1 text-sm"
-								style={{
-									border: "1px solid var(--accent)",
-									color: "var(--accent)",
-								}}
 							>
 								{opt}
-							</button>
+							</Button>
 						))}
 					</div>
 					{gate.free_text_allowed && (
 						<div className="mt-2 flex gap-2">
-							<input
+							<Input
 								value={text}
 								onChange={(e) => setText(e.target.value)}
 								placeholder="Or type an answer…"
-								className="flex-1 rounded px-2 py-1 text-sm"
-								style={{
-									background: "var(--bg)",
-									border: "1px solid var(--border)",
-								}}
+								className="flex-1"
 							/>
-							<button
+							<Button
 								type="button"
+								size="sm"
 								disabled={busy || !text}
 								onClick={() =>
 									act(() => api.reviewAnswer(gate.id, text), gate.id)
 								}
-								className="rounded px-3 py-1 text-sm"
-								style={{ background: "var(--accent)", color: "var(--bg)" }}
 							>
 								Answer
-							</button>
+							</Button>
 						</div>
 					)}
 				</>
