@@ -1,11 +1,12 @@
 "use client";
 
+import { useCallback } from "react";
+
 import { Card } from "@/components/card";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
 import type { TriggerConfig } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
-import { useCallback } from "react";
 
 export default function TriggersPage() {
 	const fetchTriggers = useCallback(() => api.triggers(), []);
@@ -16,47 +17,31 @@ export default function TriggersPage() {
 
 	return (
 		<div>
-			<h2 className="text-xl font-bold mb-4">Triggers</h2>
-			{loading && <p className="text-sm opacity-50">Loading...</p>}
-			{error && (
-				<p className="text-sm" style={{ color: "var(--error)" }}>
-					{error}
-				</p>
-			)}
+			<h2 className="mb-4 text-xl font-bold">Triggers</h2>
+			{loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+			{error && <p className="text-sm text-destructive">{error}</p>}
 			{data && data.length === 0 && (
 				<Card>
-					<p className="text-sm" style={{ color: "var(--fg-muted)" }}>
+					<p className="text-sm text-muted-foreground">
 						No triggers configured.
 					</p>
 				</Card>
 			)}
 			{data && data.length > 0 && (
-				<div
-					className="rounded-lg border overflow-hidden"
-					style={{ borderColor: "var(--border)" }}
-				>
+				<div className="overflow-hidden rounded-lg border">
 					<table className="w-full text-sm">
 						<thead>
-							<tr
-								style={{
-									background: "var(--bg-sidebar)",
-									color: "var(--fg-muted)",
-								}}
-							>
-								<th className="text-left px-4 py-2 font-medium">ID</th>
-								<th className="text-left px-4 py-2 font-medium">Type</th>
-								<th className="text-left px-4 py-2 font-medium">Status</th>
-								<th className="text-left px-4 py-2 font-medium">Targets</th>
-								<th className="text-left px-4 py-2 font-medium">Config</th>
+							<tr className="bg-muted text-muted-foreground">
+								<th className="px-4 py-2 text-left font-medium">ID</th>
+								<th className="px-4 py-2 text-left font-medium">Type</th>
+								<th className="px-4 py-2 text-left font-medium">Status</th>
+								<th className="px-4 py-2 text-left font-medium">Targets</th>
+								<th className="px-4 py-2 text-left font-medium">Config</th>
 							</tr>
 						</thead>
 						<tbody>
 							{data.map((trigger) => (
-								<tr
-									key={trigger.id}
-									className="border-t"
-									style={{ borderColor: "var(--border)" }}
-								>
+								<tr key={trigger.id} className="border-t">
 									<td className="px-4 py-2 font-medium">{trigger.id}</td>
 									<td className="px-4 py-2">{trigger.type}</td>
 									<td className="px-4 py-2">
@@ -64,13 +49,10 @@ export default function TriggersPage() {
 											status={trigger.enabled ? "completed" : "failed"}
 										/>
 									</td>
-									<td className="px-4 py-2 text-xs font-mono">
+									<td className="px-4 py-2 font-mono text-xs">
 										{trigger.targets.join(", ")}
 									</td>
-									<td
-										className="px-4 py-2 text-xs"
-										style={{ color: "var(--fg-muted)" }}
-									>
+									<td className="px-4 py-2 text-xs text-muted-foreground">
 										{Object.entries(trigger.config)
 											.map(([k, v]) => `${k}=${String(v)}`)
 											.join(", ") || "-"}

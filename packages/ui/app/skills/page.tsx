@@ -1,21 +1,35 @@
 "use client";
 
-import { Card, CardTitle } from "@/components/card";
-import { SchemaForm } from "@/components/schema-form";
-import { api } from "@/lib/api";
-import type { JsonSchema } from "@/lib/schema-form";
-import type { SkillDetail, SkillItem } from "@/lib/types";
-import { usePoll } from "@/lib/use-poll";
-import { useRefOptions } from "@/lib/use-ref-options";
 import { dump, load } from "js-yaml";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import { Card } from "@/components/card";
+import { SchemaForm } from "@/components/schema-form";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
+import type { JsonSchema } from "@/lib/schema-form";
+import type { SkillItem } from "@/lib/types";
+import { usePoll } from "@/lib/use-poll";
+import { useRefOptions } from "@/lib/use-ref-options";
+import { cn } from "@/lib/utils";
+
 const CATEGORY_COLORS: Record<string, string> = {
-	capability: "var(--accent)",
-	decision: "var(--warning)",
-	coordination: "var(--success)",
-	persistence: "var(--fg-muted)",
+	capability: "text-sky-500",
+	decision: "text-warning",
+	coordination: "text-success",
+	persistence: "text-muted-foreground",
 };
 
 const NEW_SKILL_TEMPLATE = `apiVersion: swarmkit/v1
@@ -129,30 +143,17 @@ function SkillEditor({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 flex items-center justify-center z-50"
-			style={{ background: "rgba(0,0,0,0.5)" }}
-		>
-			<Card className="w-[600px] max-h-[80vh] overflow-y-auto">
-				<CardTitle>{isNew ? "New Skill" : `Edit: ${skillId}`}</CardTitle>
+		<Dialog open onOpenChange={(o) => !o && onClose()}>
+			<DialogContent className="max-h-[85vh] gap-3 overflow-y-auto sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>{isNew ? "New Skill" : `Edit: ${skillId}`}</DialogTitle>
+				</DialogHeader>
 
 				{isNew && (
-					<div className="mb-3">
-						<label
-							htmlFor="skill-name"
-							className="block text-sm mb-1"
-							style={{ color: "var(--fg-muted)" }}
-						>
-							Skill ID (kebab-case)
-						</label>
-						<input
+					<div className="space-y-1.5">
+						<Label htmlFor="skill-name">Skill ID (kebab-case)</Label>
+						<Input
 							id="skill-name"
-							className="w-full px-3 py-2 rounded border text-sm"
-							style={{
-								background: "var(--bg)",
-								borderColor: "var(--border)",
-								color: "var(--fg)",
-							}}
 							placeholder="my-skill"
 							value={newName}
 							onChange={(e) => setNewName(e.target.value)}
@@ -160,7 +161,7 @@ function SkillEditor({
 					</div>
 				)}
 
-				<div className="mb-3 flex gap-1 text-xs">
+				<div className="flex overflow-hidden rounded-md border text-xs">
 					{(["form", "yaml"] as const).map((m) => (
 						<button
 							key={m}
@@ -180,12 +181,12 @@ function SkillEditor({
 									}
 								}
 							}}
-							className="rounded px-2 py-1 font-medium disabled:opacity-40"
-							style={{
-								background: mode === m ? "var(--accent)" : "transparent",
-								color: mode === m ? "var(--accent-fg)" : "var(--fg-muted)",
-								border: "1px solid var(--border)",
-							}}
+							className={cn(
+								"px-3 py-1 font-medium transition-colors disabled:opacity-40",
+								mode === m
+									? "bg-accent text-accent-foreground"
+									: "text-muted-foreground hover:bg-accent/50",
+							)}
 						>
 							{m === "form" ? "Form" : "YAML"}
 						</button>
@@ -193,9 +194,9 @@ function SkillEditor({
 				</div>
 
 				{loading ? (
-					<p className="text-sm opacity-50">Loading...</p>
+					<p className="text-sm text-muted-foreground">Loading…</p>
 				) : mode === "form" && schema ? (
-					<div className="mb-3 max-h-[50vh] overflow-y-auto pr-1">
+					<div className="max-h-[50vh] overflow-y-auto pr-1">
 						<SchemaForm
 							schema={schema}
 							value={obj}
@@ -204,50 +205,26 @@ function SkillEditor({
 						/>
 					</div>
 				) : (
-					<textarea
-						className="w-full font-mono text-xs p-3 rounded border resize-none mb-3"
-						style={{
-							background: "var(--bg)",
-							borderColor: "var(--border)",
-							color: "var(--fg)",
-							minHeight: "300px",
-						}}
+					<Textarea
+						className="min-h-[300px] font-mono text-xs"
 						value={yaml}
 						onChange={(e) => setBoth(e.target.value)}
 						spellCheck={false}
 					/>
 				)}
 
-				{error && (
-					<p className="text-xs mb-3" style={{ color: "var(--error)" }}>
-						{error}
-					</p>
-				)}
+				{error && <p className="text-xs text-destructive">{error}</p>}
 
-				<div className="flex gap-2 justify-end">
-					<button
-						type="button"
-						onClick={onClose}
-						className="px-3 py-1.5 text-sm rounded border"
-						style={{ borderColor: "var(--border)" }}
-					>
+				<DialogFooter>
+					<Button type="button" variant="outline" onClick={onClose}>
 						Cancel
-					</button>
-					<button
-						type="button"
-						onClick={handleSave}
-						disabled={saving}
-						className="px-3 py-1.5 text-sm rounded font-medium disabled:opacity-40"
-						style={{
-							background: "var(--accent)",
-							color: "var(--accent-fg)",
-						}}
-					>
-						{saving ? "Saving..." : "Save"}
-					</button>
-				</div>
-			</Card>
-		</div>
+					</Button>
+					<Button type="button" onClick={handleSave} disabled={saving}>
+						{saving ? "Saving…" : "Save"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -261,27 +238,14 @@ export default function SkillsPage() {
 
 	return (
 		<div>
-			<div className="flex items-center justify-between mb-4">
+			<div className="mb-4 flex items-center justify-between">
 				<h2 className="text-xl font-bold">Skills</h2>
-				<button
-					type="button"
-					onClick={() => setEditingSkill("new")}
-					className="flex items-center gap-1 text-xs px-2.5 py-1 rounded font-medium"
-					style={{
-						background: "var(--accent)",
-						color: "var(--accent-fg)",
-					}}
-				>
-					<Plus size={12} />
-					New Skill
-				</button>
+				<Button type="button" size="sm" onClick={() => setEditingSkill("new")}>
+					<Plus size={12} /> New Skill
+				</Button>
 			</div>
-			{loading && <p className="text-sm opacity-50">Loading...</p>}
-			{error && (
-				<p className="text-sm" style={{ color: "var(--error)" }}>
-					{error}
-				</p>
-			)}
+			{loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+			{error && <p className="text-sm text-destructive">{error}</p>}
 			{data && (
 				<div className="grid grid-cols-2 gap-3">
 					{data.map((skill) => (
@@ -289,24 +253,24 @@ export default function SkillsPage() {
 							<div className="flex items-center justify-between">
 								<span className="font-medium">{skill.id}</span>
 								<div className="flex items-center gap-2">
-									<span
-										className="text-xs px-2 py-0.5 rounded-full border"
-										style={{
-											color:
-												CATEGORY_COLORS[skill.category] ?? "var(--fg-muted)",
-											borderColor: `${CATEGORY_COLORS[skill.category] ?? "var(--fg-muted)"}40`,
-										}}
+									<Badge
+										variant="outline"
+										className={cn(
+											"border-current",
+											CATEGORY_COLORS[skill.category] ??
+												"text-muted-foreground",
+										)}
 									>
 										{skill.category || "unknown"}
-									</span>
-									<button
+									</Badge>
+									<Button
 										type="button"
+										variant="outline"
+										size="sm"
 										onClick={() => setEditingSkill(skill.id)}
-										className="text-xs px-2 py-0.5 rounded"
-										style={{ border: "1px solid var(--border)" }}
 									>
 										View
-									</button>
+									</Button>
 								</div>
 							</div>
 						</Card>

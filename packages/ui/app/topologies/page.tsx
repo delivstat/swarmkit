@@ -1,10 +1,20 @@
 "use client";
 
-import { Card, CardTitle } from "@/components/card";
-import { api } from "@/lib/api";
-import { usePoll } from "@/lib/use-poll";
 import Link from "next/link";
 import { useCallback, useState } from "react";
+
+import { Card } from "@/components/card";
+import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
+import { usePoll } from "@/lib/use-poll";
 
 function RunDialog({
 	topology,
@@ -31,50 +41,32 @@ function RunDialog({
 	};
 
 	return (
-		<div
-			className="fixed inset-0 flex items-center justify-center z-50"
-			style={{ background: "rgba(0,0,0,0.5)" }}
-		>
-			<Card className="w-[480px]">
-				<CardTitle>Run {topology}</CardTitle>
-				<textarea
-					className="w-full p-2 rounded text-sm border mb-3 resize-none"
-					style={{
-						background: "var(--bg)",
-						borderColor: "var(--border)",
-						color: "var(--fg)",
-					}}
+		<Dialog open onOpenChange={(o) => !o && onClose()}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Run {topology}</DialogTitle>
+				</DialogHeader>
+				<Textarea
 					rows={4}
-					placeholder="Enter input for the topology..."
+					placeholder="Enter input for the topology…"
 					value={input}
 					onChange={(e) => setInput(e.target.value)}
 				/>
-				{result && (
-					<p className="text-xs mb-3" style={{ color: "var(--fg-muted)" }}>
-						{result}
-					</p>
-				)}
-				<div className="flex gap-2 justify-end">
-					<button
-						type="button"
-						onClick={onClose}
-						className="px-3 py-1.5 text-sm rounded border"
-						style={{ borderColor: "var(--border)" }}
-					>
+				{result && <p className="text-xs text-muted-foreground">{result}</p>}
+				<DialogFooter>
+					<Button type="button" variant="outline" onClick={onClose}>
 						Close
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						onClick={submit}
 						disabled={submitting || !input.trim()}
-						className="px-3 py-1.5 text-sm rounded font-medium disabled:opacity-40"
-						style={{ background: "var(--accent)", color: "var(--accent-fg)" }}
 					>
-						{submitting ? "Running..." : "Run"}
-					</button>
-				</div>
-			</Card>
-		</div>
+						{submitting ? "Running…" : "Run"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -85,13 +77,9 @@ export default function TopologiesPage() {
 
 	return (
 		<div>
-			<h2 className="text-xl font-bold mb-4">Topologies</h2>
-			{loading && <p className="text-sm opacity-50">Loading...</p>}
-			{error && (
-				<p className="text-sm" style={{ color: "var(--error)" }}>
-					{error}
-				</p>
-			)}
+			<h2 className="mb-4 text-xl font-bold">Topologies</h2>
+			{loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+			{error && <p className="text-sm text-destructive">{error}</p>}
 			{data && (
 				<div className="grid grid-cols-2 gap-3">
 					{data.map((name) => (
@@ -99,26 +87,16 @@ export default function TopologiesPage() {
 							<div className="flex items-center justify-between">
 								<span className="font-medium">{name}</span>
 								<div className="flex gap-2">
-									<Link
-										href={`/composer?topology=${name}`}
-										className="text-xs px-2.5 py-1 rounded font-medium"
-										style={{
-											border: "1px solid var(--border)",
-										}}
-									>
-										Edit
-									</Link>
-									<button
+									<Button asChild variant="outline" size="sm">
+										<Link href={`/composer?topology=${name}`}>Edit</Link>
+									</Button>
+									<Button
 										type="button"
+										size="sm"
 										onClick={() => setRunTarget(name)}
-										className="text-xs px-2.5 py-1 rounded font-medium"
-										style={{
-											background: "var(--accent)",
-											color: "var(--accent-fg)",
-										}}
 									>
 										Run
-									</button>
+									</Button>
 								</div>
 							</div>
 						</Card>

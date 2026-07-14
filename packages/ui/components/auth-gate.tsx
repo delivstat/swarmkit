@@ -1,5 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { AuthProvider, useAuth } from "react-oidc-context";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
 	type AuthInfo,
 	fetchAuthInfo,
@@ -8,15 +13,10 @@ import {
 } from "@/lib/auth-info";
 import { oidcSettings } from "@/lib/oidc-config";
 import { setAccessToken, setUnauthorizedHandler } from "@/lib/token-store";
-import { useEffect, useState } from "react";
-import { AuthProvider, useAuth } from "react-oidc-context";
 
 function Centered({ children }: { children: React.ReactNode }) {
 	return (
-		<div
-			className="flex h-screen w-full flex-col items-center justify-center gap-4 p-6 text-center"
-			style={{ color: "var(--fg)" }}
-		>
+		<div className="flex h-screen w-full flex-col items-center justify-center gap-4 p-6 text-center text-foreground">
 			{children}
 		</div>
 	);
@@ -26,9 +26,7 @@ function Title({ subtitle }: { subtitle: string }) {
 	return (
 		<div className="space-y-1">
 			<h1 className="text-xl font-semibold">SwarmKit Workspace</h1>
-			<p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-				{subtitle}
-			</p>
+			<p className="text-sm text-muted-foreground">{subtitle}</p>
 		</div>
 	);
 }
@@ -55,18 +53,13 @@ function OidcGate({ children }: { children: React.ReactNode }) {
 			<Centered>
 				<Title subtitle="This workspace requires sign-in." />
 				{auth.error ? (
-					<p className="max-w-md text-sm" style={{ color: "var(--error)" }}>
+					<p className="max-w-md text-sm text-destructive">
 						{auth.error.message}
 					</p>
 				) : null}
-				<button
-					type="button"
-					onClick={() => void auth.signinRedirect()}
-					className="rounded-md px-4 py-2 text-sm font-medium"
-					style={{ background: "var(--accent)", color: "var(--bg)" }}
-				>
+				<Button type="button" onClick={() => void auth.signinRedirect()}>
 					Sign in with your identity provider
-				</button>
+				</Button>
 			</Centered>
 		);
 	}
@@ -105,21 +98,13 @@ function ApiKeyGate({ children }: { children: React.ReactNode }) {
 					setKey(value);
 				}}
 			>
-				<input
+				<Input
 					type="password"
 					value={draft}
 					onChange={(e) => setDraft(e.target.value)}
 					placeholder="Bearer API key"
-					className="rounded-md border px-3 py-2 text-sm"
-					style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
 				/>
-				<button
-					type="submit"
-					className="rounded-md px-4 py-2 text-sm font-medium"
-					style={{ background: "var(--accent)", color: "var(--bg)" }}
-				>
-					Continue
-				</button>
+				<Button type="submit">Continue</Button>
 			</form>
 		</Centered>
 	);
