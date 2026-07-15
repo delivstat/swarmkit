@@ -6,7 +6,30 @@ high-severity scenarios to a **cloud** VLM (fast + accurate) and routine ones to
 **Design references:** the three tiers (detect / recognize / **reason**) and the `scenario:` schema
 in `scenario-studio.md`; the cloud-VLM `_vlm_answer` shape from `scenario-studio-phase2-quickmode.md`;
 the local/cloud model split in `two-layer-vision-models.md` / `model-runtime-options.md`.
-**Status:** proposal.
+**Status:** proposal → **Slice 1 implemented** (the runtime gate).
+
+## Implemented (slice 1) — the escalate gate in the fire path
+
+`frigate/server.py` now honours `severity` + `escalate` on a rule. A matched rule with an
+`escalate` block routes through `_deliver_escalated` instead of firing instantly: it waits for the
+snapshot, asks the VLM a grounded yes/no (`_vlm_confirm` — cloud for `critical`/`auto`, local
+otherwise, cloud→local fallback), and fires the alert + actions **only on a matching answer**. A
+trusted "no" is a near-miss (no alert); when verification is impossible a `critical` rule fires
+`(unverified)` — never missed. `cooldown_s` rate-limits; a `notify` action raises an urgent
+"notifying <contact>" alert. Cloud/local provider is now logged (diagnosable). Tests: `test_escalate.py`.
+
+Slice 1 gates on the **existing flat `condition`** string (e.g. `"person"`) — an escalate rule is:
+
+```json
+{ "condition": "person", "severity": "critical",
+  "escalate": { "tier": "cloud", "prompt": "Is a person holding a weapon or dangerous object (knife, gun, stick)?",
+                "require": "yes", "cooldown_s": 30 },
+  "actions": [ {"type": "alert"}, {"type": "notify", "contact": "me"} ] }
+```
+
+**Follow-ups (later slices):** the richer `detect:`/structured-`condition` schema below, NL authoring
+("alert me if someone has a weapon") → an escalate rule, the dashboard UI + privacy notice, and the
+per-day cloud budget cap.
 
 ## The one honest tension, up front
 
