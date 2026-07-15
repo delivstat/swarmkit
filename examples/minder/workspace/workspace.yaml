@@ -77,6 +77,14 @@ mcp_servers:
       # camera tiers, replacing Frigate genai.
       MINDER_DESCRIBE: "${MINDER_DESCRIBE}"
       MINDER_DESCRIBE_TIMEOUT: "${MINDER_DESCRIBE_TIMEOUT}"
+      # Describe provider: "ollama" (local VLM, zero-cloud) or "openrouter" (cloud
+      # VLM — higher-fidelity "what it sees"). Set to openrouter here; the cloud
+      # call only fires on a live alert that produced a snapshot, and falls back to
+      # the local VLM if the key is missing or the call fails.
+      MINDER_DESCRIBE_PROVIDER: "openrouter"
+      MINDER_CLOUD_VISION_MODEL: "google/gemini-2.5-flash"
+      # Cloud key — provided via env, never hardcoded. Absent ⇒ describe stays local.
+      MINDER_OPENROUTER_KEY: "${MINDER_OPENROUTER_KEY}"
       # Recording for event clips (the config generator sets Frigate's record block).
       MINDER_RECORD: "${MINDER_RECORD}"
       MINDER_RECORD_DAYS: "${MINDER_RECORD_DAYS}"
