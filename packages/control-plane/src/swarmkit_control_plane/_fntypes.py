@@ -33,6 +33,8 @@ DeployFn = Callable[..., Awaitable[dict[str, Any]]]
 JobsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 # (endpoint, token_ref) -> serve /jobs/history list (per-run cost/status detail)
 RunsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
+# (endpoint, token_ref, run_id) -> serve run span tree, or None when no trace exists for that run
+RunTraceFn = Callable[[str, str, str], Awaitable[dict[str, Any] | None]]
 # (endpoint, token_ref) -> serve /review list (pending harness permission/input gates)
 GatesFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 # (endpoint, token_ref, item_id, action, answer) -> updated gate (approve|reject|answer)

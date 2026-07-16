@@ -31,6 +31,7 @@ __all__ = [
     "fetch_capabilities",
     "fetch_jobs",
     "fetch_manifest",
+    "fetch_run_trace",
     "fetch_runs",
     "fetch_state",
     "fetch_usage",
@@ -188,6 +189,20 @@ async def fetch_runs(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
     async with ServeClient(endpoint, token_ref) as serve:
         runs: list[dict[str, Any]] = serve.ok(await serve.get("/jobs/history"), "/jobs/history")
     return runs
+
+
+async def fetch_run_trace(endpoint: str, token_ref: str, run_id: str) -> dict[str, Any] | None:
+    """Federated live-query of a finished run's span tree (GET /observability/runs/<id>/trace) — the
+    "details" lane (design 24), pulled on demand and **not stored**. Returns the span-tree dict, or
+    ``None`` when the instance has no trace for that run (a real 404, not a failure). Raises
+    ConnectorError on any connection/auth failure so the caller can report the instance offline."""
+    path = f"/observability/runs/{run_id}/trace"
+    async with ServeClient(endpoint, token_ref) as serve:
+        resp = await serve.get(path)
+        if resp.status_code == 404:
+            return None
+        trace: dict[str, Any] = serve.ok(resp, path)
+    return trace
 
 
 async def fetch_canary(endpoint: str, token_ref: str) -> dict[str, Any]:

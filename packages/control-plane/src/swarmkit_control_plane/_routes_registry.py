@@ -28,6 +28,7 @@ from swarmkit_control_plane._fntypes import (
     RegisterFn,
     ResolveGateFn,
     RunsFn,
+    RunTraceFn,
     StateArtifactsFn,
     StateFn,
     StateManifestFn,
@@ -193,6 +194,34 @@ def _mount_instance_runs(app: FastAPI, registry: SqliteRegistry, runs: RunsFn) -
             _log.warning("runs fetch failed for %s: %s", instance_id, exc)
             return {"reachable": False, "reason": "unreachable", "runs": []}
         return {"reachable": True, "reason": None, "runs": fetched}
+
+
+def _mount_instance_run_trace(
+    app: FastAPI, registry: SqliteRegistry, run_trace: RunTraceFn
+) -> None:
+    """Federated per-run trace — the span tree behind one completed run, for the fleet run graph
+    (fleet-run-graph.md, task #25). Same "details" lane as /runs: fetched live from the owner
+    instance, **never stored**. The span-tree shape is forwarded verbatim from the instance's
+    /observability/runs/<id>/trace."""
+
+    @app.get("/instances/{instance_id}/runs/{run_id}/trace")
+    async def instance_run_trace(instance_id: str, run_id: str) -> dict[str, Any]:
+        """GET the run's span tree from the owner instance, live. Always 200 with a
+        ``{reachable, reason, trace}`` envelope (mirrors /runs): ``reachable`` + trace;
+        ``reachable`` + ``reason="no-trace"`` (instance 404 — no trace for that run);
+        ``reachable=false`` with ``poll-mode`` (Mode-B) or ``unreachable`` (direct, no answer)."""
+        inst = registry.get(instance_id)
+        if inst is None:
+            raise HTTPException(404, "instance not found")
+        if inst.connection != "direct":
+            return {"reachable": False, "reason": "poll-mode", "trace": None}
+        try:
+            trace = await run_trace(inst.endpoint, inst.token_ref, run_id)
+        except ConnectorError as exc:
+            registry.update_health(instance_id, health="unreachable")
+            _log.warning("run-trace fetch failed for %s: %s", instance_id, exc)
+            return {"reachable": False, "reason": "unreachable", "trace": None}
+        return {"reachable": True, "reason": None if trace else "no-trace", "trace": trace}
 
 
 def _mount_instance_gates(
