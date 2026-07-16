@@ -164,10 +164,51 @@ Semantics:
 - Resolution records each approver's identity + role + timestamp in the append-only audit log.
 - The advancing trigger fires only when quorum is met across **distinct** identities (one
   person holding two roles counts once per role, but cannot self-satisfy a two-identity rule).
-- Rejection by any required party fails the gate and routes back to the prior stage.
+- Each resolution is one of three outcomes: `approve` / `changes-requested` / `reject` (see
+  "Rework + re-approval").
 
 This is the one genuinely new governance primitive; everything else composes existing pieces.
 It is built first (see test plan) and is generally useful beyond this example.
+
+### How gates wait (LangGraph checkpoints)
+
+A gate compiles to a **LangGraph `interrupt()` backed by a checkpointer**: on reaching the gate,
+the run persists its full state to the DB and the invocation *returns* — no process parked, no
+compute burned. Resume is a later `Command(resume=…)` on the persisted `thread_id`. A multi-week
+wait costs one DB row. For multi-party, the checkpoint carries the **running tally** ("2 of 4
+approved, waiting on infosec + cio") durably across weeks and across people — the gate node
+re-interrupts after each approval with the updated tally persisted, proceeding only at quorum.
+
+This is why the wait is *not* the durability risk (see Constraints): the residual concern is
+state-schema evolution over long horizons, which per-stage runs mitigate. Human resumes come
+through the gate (LangGraph); external-system resumes ("build ready", "defect fixed") come
+through the controller — complementary, both async, both persisted.
+
+## Rework + re-approval
+
+Two loops at two levels — they look alike but live in different places.
+
+**Intra-stage rework loop (inside one SwarmKit run).** On a `changes-requested` resolution, the
+reviewer's comments (free-text on the gate) flow back to the **drafting agent**, which revises the
+artifact incorporating them, and the gate **re-opens** — same run, the checkpoint persisting the
+revise → re-review cycle. Repeats until approved. The whole episode — every cycle, comment, and
+approval — stays in **one self-contained audit sub-trace**. Applies uniformly to any artifact:
+design, code (comments → dev agent revises the diff), test plan, defect analysis.
+
+Per-gate policy `on_revision` decides what a revision does to prior approvals:
+- `reset_all` (default) — a revised artifact invalidates prior approvals; all required roles
+  re-approve. Honest for a single shared document (a change to the integration section affects
+  every team).
+- `reconfirm_changed` — only roles whose concerns were addressed re-review; unaffected prior
+  approvals carry or get a lighter re-confirm task.
+- *(future)* section-scoped approval — an OMS-only change re-triggers only `oms-lead`.
+
+**Cross-stage defect loop (controller-driven).** Steps 7–8's cycle — SIT finds a defect → back to
+build → fix → re-test + regression — is *not* rework inside one run; it spans stages and is fired
+by external events. The controller owns it: `defect.raised` kicks a `defect-triage` run (dev-agent
+first analysis + candidate fixes), `defect.fixed` kicks a `re-test` run (targeted test +
+regression) — each a fresh bounded run, all correlated by `requirement_id`. The defect's history
+is the sequence of correlated runs.
 
 ### Where each gate's approvers land (all configurable)
 
@@ -208,8 +249,11 @@ runbook. Mostly static (edited on change): app architecture, compliance policy, 
 ## Constraints
 
 - Multi-party approval set is new (build first).
-- Long-running durable saga across many human waits + the defect loop — a real test of
-  checkpoint/resume.
+- The multi-week *wait* is **not** a durability risk: gates are LangGraph interrupts backed by a
+  checkpointer, so a parked run is a DB row, not a held process (see "How gates wait"). The real
+  residual risk is **checkpoint state-schema evolution** over long horizons — a checkpoint pins
+  the graph definition it was created against, so mid-flight topology changes make old-checkpoint
+  resume fragile. Per-stage runs mitigate this (each uses the current definition and closes).
 - Real, distinct human approvers in the demo (not simulated).
 - Build/deploy stop at the boundary; harness runs against demo repos, infra steps mocked.
 - Deterministic (transitions, gate-counting) vs LLM (drafting, analysis, synthesis) split is
