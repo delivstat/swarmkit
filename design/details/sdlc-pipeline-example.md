@@ -61,6 +61,9 @@ Archetypes: `business-analyst`, `solution-architect` (per app), `integration-arc
 `developer` (harness executor, per app), `qa-engineer` (per app), `sit-qa`, `pt-engineer`,
 `release-coordinator`, `support-engineer`, `release-orchestrator`.
 
+Approver roles (data, in the role registry — extend freely): `oms-lead`, `web-lead`,
+`mobile-lead`, `infosec-lead`, `qa-lead`, `pt-lead`, `eng-manager`, `cio`.
+
 Topology (delegation tree; pipeline *sequencing* is triggers + gates, not hardcoded flow):
 
 ```
@@ -84,33 +87,78 @@ The 16 steps are **not** hardcoded control flow. The pipeline is a state machine
   they resolve.
 - A **Knowledge Curator** owns the shared KBs so every stage reads a consistent picture.
 
-## New capability: multi-party approval sets
+## New capability: configurable multi-party approval sets
 
 Today's gate (`ReviewGate`) is one question → one resolver. This example needs an **approval
-set**: a gate that stays open until **K distinct human identities** holding a scope have each
-approved. Example: `design:approve` held by `oms-lead`, `web-lead`, `mobile-lead`,
-`infosec-lead`; the consolidated-design gate emits four tasks and advances only when all four
-resolve. This is the one genuinely new governance primitive; everything else composes existing
-pieces. It is built first (see test plan) and is generally useful beyond this example.
+set**: a gate that stays open until the **roles it requires** have each approved, by **distinct
+human identities**. The required roles and the quorum rule are **per-gate configuration**
+(data), not hardcoded — different gates need different approvers, and that must be tunable
+without touching code (the "everything configurable" invariant).
 
-Design of the approval set:
-- A gate carries `required_approvals: [{scope, quorum}]` (e.g. one `design:approve` per app +
-  InfoSec, quorum = all).
-- Resolution records each approver's identity + timestamp in the append-only audit log.
-- The advancing trigger fires only when quorum is met across **distinct** identities.
+Two artifacts:
+
+1. **Role registry** (workspace-level IAM data) — maps each role to a governance scope and the
+   human identities that hold it:
+   ```yaml
+   roles:
+     - id: oms-lead        scope: design:approve   members: [alice]
+     - id: web-lead        scope: design:approve   members: [bob]
+     - id: mobile-lead     scope: design:approve   members: [carol]
+     - id: infosec-lead    scope: security:approve members: [dana]
+     - id: qa-lead         scope: testplan:approve members: [erin]
+     - id: pt-lead         scope: perf:approve     members: [frank]
+     - id: eng-manager     scope: release:approve  members: [grace]
+     - id: cio             scope: release:approve  members: [heidi]
+   ```
+
+2. **Per-gate approval policy** — each gate declares which roles must approve and the quorum:
+   ```yaml
+   gate: consolidated-design-approval
+   required_approvals:
+     - { role: oms-lead,    quorum: all }
+     - { role: web-lead,    quorum: all }
+     - { role: mobile-lead, quorum: all }
+     - { role: infosec-lead, quorum: all }
+   ```
+   Quorum per entry is `all` (every named role), `any`, or `k-of` a role group — so a gate can
+   require, e.g., *all* app leads but *any two of* a reviewer pool.
+
+Semantics:
+- The gate emits **one task per required role**, routed to that role's members.
+- Resolution records each approver's identity + role + timestamp in the append-only audit log.
+- The advancing trigger fires only when quorum is met across **distinct** identities (one
+  person holding two roles counts once per role, but cannot self-satisfy a two-identity rule).
 - Rejection by any required party fails the gate and routes back to the prior stage.
+
+This is the one genuinely new governance primitive; everything else composes existing pieces.
+It is built first (see test plan) and is generally useful beyond this example.
+
+### Where each gate's approvers land (all configurable)
+
+| Gate | Required roles (example config) |
+| --- | --- |
+| Consolidated design | oms-lead, web-lead, mobile-lead, infosec-lead |
+| Test plan | qa-lead |
+| Performance plan | pt-lead |
+| Code review (per app) | that app's lead |
+| SIT sign-off | qa-lead |
+| PT sign-off | pt-lead |
+| Final release sign-off | eng-manager, cio |
+| Prod deploy | eng-manager, cio (human-only scope) |
 
 ## Automation map (agent-first, human-gated)
 
 | Step | Automation | Gate |
 | --- | --- | --- |
 | Requirement handover | intake → impact analysis + kicks per-app architects → first-draft designs before a human touches it | architects review drafts |
-| Consolidated design | integration-architect fixes integration patterns (payloads, channels, integration type) at design time | approval set: each app team + InfoSec |
-| Build | harness dev agents implement against scoped repos; unit + regression on commit | code review (per team) |
+| Consolidated design | integration-architect fixes integration patterns (payloads, channels, integration type) at design time | app leads + infosec-lead |
+| Test plan | test-plan agent drafts cases from BRD + consolidated design | qa-lead |
+| Build | harness dev agents implement against scoped repos; unit + regression on commit | code review (per-app lead) |
 | Defect | dev-agent produces first analysis + candidate fixes + clarifying query to QA | human dev reviews the analysis |
-| QA / SIT | test-plan agent drafts cases from BRD + consolidated design; runs new + regression on build-ready; re-runs targeted test + regression on defect-fixed | QA signs off SIT |
-| PT | pt-engineer runs perf on exposed services + cross-app regression | PT sign-off |
-| Deploy | release-coordinator assembles the package | multi-party deploy sign-off; prod deploy scope is human-only |
+| QA / SIT | runs new + regression on build-ready; re-runs targeted test + regression on defect-fixed | qa-lead signs off SIT |
+| PT | pt-engineer runs perf on exposed services + cross-app regression; PT plan drafted for approval | pt-lead (plan + sign-off) |
+| Final sign-off | release-coordinator assembles the package + release notes | eng-manager + cio |
+| Deploy | deploy package promoted | eng-manager + cio; prod deploy scope is human-only |
 
 ## Knowledge bases (Curator-owned)
 
