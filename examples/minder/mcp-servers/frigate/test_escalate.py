@@ -142,17 +142,23 @@ def test_cloud_tier_grabs_hires_snapshot():
     print("ok  cloud tier grabs a hi-res main-stream snapshot")
 
 
-def test_local_tier_uses_detect_snapshot():
-    # A warning (local) rule keeps the cheap detect snapshot — no hi-res grab.
-    alerts, _ = _harness(answer="Yes.", snapshot=_snapshot())
-    called = {"hires": False}
-    f._hires_snapshot = lambda cam: called.__setitem__("hires", True) or ""  # type: ignore
+def test_local_tier_also_grabs_hires():
+    # Both tiers get the full-res frame — a small VLM resolves a gesture far better
+    # at full res than at 352x288, and escalate runs async so latency is fine.
+    alerts, _ = _harness(answer="Yes.")
+    got = {}
+
+    def _hires(cam):
+        got["cam"] = cam
+        return _snapshot()
+
+    f._hires_snapshot = _hires  # type: ignore
     # no explicit tier → auto → warning → local
     rule = _rule(severity="warning", escalate={"prompt": "waving?", "require": "yes"})
     f._deliver_escalated(rule, _EV, 1000.0)
-    assert called["hires"] is False, "local tier must not grab a hi-res frame"
+    assert got.get("cam") == "Gate", "local tier should also grab a hi-res frame"
     assert len(alerts) == 1
-    print("ok  local tier uses the detect snapshot (no hi-res grab)")
+    print("ok  local tier also grabs the hi-res frame")
 
 
 def test_match_prefers_escalate_over_broad_plain():

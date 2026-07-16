@@ -845,7 +845,7 @@ HIRES_TIMEOUT_S = int(os.environ.get("MINDER_HIRES_TIMEOUT", "15"))
 
 def _hires_snapshot(camera: str) -> str:
     """A full-resolution frame grabbed from the camera's MAIN RTSP stream via ffmpeg
-    (for the cloud escalate tier). The 352x288 detect snapshot Frigate serves can't
+    (for an escalate check, cloud or local). The 352x288 detect snapshot Frigate serves can't
     resolve a gesture/weapon/detail, but a strong cloud VLM handles full-res fine — so
     for cloud we grab one main-stream frame. Credentials are injected from
     MINDER_CAM_USER/PASS. "" on any failure → the caller falls back to the detect
@@ -894,9 +894,9 @@ def _deliver_escalated(rule: dict, ev: dict, now: float) -> None:
     + actions only on a matching answer. A trusted 'no' suppresses the alert (the whole
     point); when verification is impossible a *critical* rule fires 'unverified'.
 
-    For the **cloud** tier the snapshot is a full-res main-stream grab (`_hires_snapshot`)
-    — the detect stream's 352x288 is too small for gestures/detail; local tier keeps the
-    cheap detect snapshot."""
+    Either tier gets a full-res main-stream grab (`_hires_snapshot`) — the detect
+    stream's 352x288 is too small for gestures/detail for local *and* cloud VLMs —
+    falling back to the detect snapshot on a grab failure."""
     esc = rule.get("escalate") or {}
     cam = ev["camera"]
     severity = (rule.get("severity") or "warning").lower()
@@ -909,9 +909,13 @@ def _deliver_escalated(rule: dict, ev: dict, now: float) -> None:
         key = f"escalate|{cam}|{rule.get('condition')}"
         if now - state.get(key, 0) < cooldown:
             return
-        snapshot = _hires_snapshot(cam) if tier == "cloud" else ""
+        # Full-res main-stream frame for EITHER tier — both the cloud and the local
+        # VLM resolve gestures/detail far better than the 352x288 detect snapshot.
+        # This runs in a background thread, so the extra grab/inference latency never
+        # blocks the alert path. Falls back to the detect snapshot on a grab failure.
+        snapshot = _hires_snapshot(cam)
         if not snapshot:
-            snapshot = _escalate_snapshot(ev)  # fall back to the detect-stream snapshot
+            snapshot = _escalate_snapshot(ev)
         answer, provider = "", ""
         if snapshot:
             try:
