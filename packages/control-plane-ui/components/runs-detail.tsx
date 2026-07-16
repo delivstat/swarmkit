@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 
+import { RunGraph } from "@/components/run-graph";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -50,6 +51,7 @@ export function RunsDetail({
 		{ refreshInterval: 5000 },
 	);
 	const [query, setQuery] = useState("");
+	const [graphRun, setGraphRun] = useState<string | null>(null);
 
 	const runs = data?.runs ?? [];
 	const filtered = useMemo(() => {
@@ -67,73 +69,110 @@ export function RunsDetail({
 			: "Instance unavailable — the panel couldn’t fetch live run detail right now.";
 
 	return (
-		<Card>
-			<CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
-				<CardTitle>Runs on {instanceName}</CardTitle>
-				{reachable && runs.length > 0 ? (
-					<input
-						aria-label="Search runs"
-						placeholder="Search topology, status, id…"
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						className="h-8 w-56 rounded-md border border-input bg-background px-2 text-sm"
-					/>
-				) : null}
-			</CardHeader>
-			<CardContent className="p-0">
-				{error ? (
-					<p className="p-6 text-sm text-muted-foreground">
-						Couldn’t reach the control plane: {error}
-					</p>
-				) : loading ? (
-					<p className="p-6 text-sm text-muted-foreground">Loading…</p>
-				) : !reachable ? (
-					<p className="p-6 text-sm text-muted-foreground">{unavailableMsg}</p>
-				) : runs.length === 0 ? (
-					<p className="p-6 text-sm text-muted-foreground">
-						No runs recorded on this instance yet.
-					</p>
-				) : filtered.length === 0 ? (
-					<p className="p-6 text-sm text-muted-foreground">
-						No runs match “{query}”.
-					</p>
-				) : (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Topology</TableHead>
-								<TableHead>Status</TableHead>
-								<TableHead className="text-right">Input</TableHead>
-								<TableHead className="text-right">Output</TableHead>
-								<TableHead className="text-right">Cost</TableHead>
-								<TableHead>When</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{filtered.map((r) => (
-								<TableRow key={r.job_id}>
-									<TableCell className="font-medium">{r.topology}</TableCell>
-									<TableCell>
-										<Badge variant={statusVariant(r.status)}>{r.status}</Badge>
-									</TableCell>
-									<TableCell className="text-right tabular-nums">
-										{num(r.usage_input_tokens)}
-									</TableCell>
-									<TableCell className="text-right tabular-nums">
-										{num(r.usage_output_tokens)}
-									</TableCell>
-									<TableCell className="text-right tabular-nums">
-										{cost(r)}
-									</TableCell>
-									<TableCell className="text-xs text-muted-foreground">
-										{r.completed_at ?? r.created_at ?? "—"}
-									</TableCell>
+		<div className="space-y-4">
+			<Card>
+				<CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+					<CardTitle>Runs on {instanceName}</CardTitle>
+					{reachable && runs.length > 0 ? (
+						<input
+							aria-label="Search runs"
+							placeholder="Search topology, status, id…"
+							value={query}
+							onChange={(e) => setQuery(e.target.value)}
+							className="h-8 w-56 rounded-md border border-input bg-background px-2 text-sm"
+						/>
+					) : null}
+				</CardHeader>
+				<CardContent className="p-0">
+					{error ? (
+						<p className="p-6 text-sm text-muted-foreground">
+							Couldn’t reach the control plane: {error}
+						</p>
+					) : loading ? (
+						<p className="p-6 text-sm text-muted-foreground">Loading…</p>
+					) : !reachable ? (
+						<p className="p-6 text-sm text-muted-foreground">
+							{unavailableMsg}
+						</p>
+					) : runs.length === 0 ? (
+						<p className="p-6 text-sm text-muted-foreground">
+							No runs recorded on this instance yet.
+						</p>
+					) : filtered.length === 0 ? (
+						<p className="p-6 text-sm text-muted-foreground">
+							No runs match “{query}”.
+						</p>
+					) : (
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Topology</TableHead>
+									<TableHead>Status</TableHead>
+									<TableHead className="text-right">Input</TableHead>
+									<TableHead className="text-right">Output</TableHead>
+									<TableHead className="text-right">Cost</TableHead>
+									<TableHead>When</TableHead>
+									<TableHead className="text-right" />
 								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				)}
-			</CardContent>
-		</Card>
+							</TableHeader>
+							<TableBody>
+								{filtered.map((r) => (
+									<TableRow key={r.job_id}>
+										<TableCell className="font-medium">{r.topology}</TableCell>
+										<TableCell>
+											<Badge variant={statusVariant(r.status)}>
+												{r.status}
+											</Badge>
+										</TableCell>
+										<TableCell className="text-right tabular-nums">
+											{num(r.usage_input_tokens)}
+										</TableCell>
+										<TableCell className="text-right tabular-nums">
+											{num(r.usage_output_tokens)}
+										</TableCell>
+										<TableCell className="text-right tabular-nums">
+											{cost(r)}
+										</TableCell>
+										<TableCell className="text-xs text-muted-foreground">
+											{r.completed_at ?? r.created_at ?? "—"}
+										</TableCell>
+										<TableCell className="text-right">
+											<button
+												type="button"
+												onClick={() =>
+													setGraphRun((cur) =>
+														cur === r.job_id ? null : r.job_id,
+													)
+												}
+												className="text-xs text-primary hover:underline"
+											>
+												{graphRun === r.job_id ? "hide graph" : "graph"}
+											</button>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					)}
+				</CardContent>
+			</Card>
+			{graphRun ? (
+				<Card>
+					<CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+						<CardTitle>Run graph — {graphRun}</CardTitle>
+						<button
+							type="button"
+							onClick={() => setGraphRun(null)}
+							className="text-xs text-muted-foreground hover:text-foreground"
+						>
+							Close
+						</button>
+					</CardHeader>
+					<CardContent className="p-0">
+						<RunGraph instanceId={instanceId} runId={graphRun} />
+					</CardContent>
+				</Card>
+			) : null}
+		</div>
 	);
 }

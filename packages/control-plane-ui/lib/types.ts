@@ -211,6 +211,26 @@ export interface RunsEnvelope {
 	runs: RunRow[];
 }
 
+/** One OpenTelemetry-style span in a run's trace tree (topology.run → agent.step.<id> → tool.call).
+ * Shape is forwarded verbatim from the instance's /observability/runs/<id>/trace. */
+export interface TraceSpan {
+	name: string;
+	start_ns: number;
+	end_ns: number;
+	duration_ms: number;
+	attributes: Record<string, unknown>;
+	error?: string | null;
+	children: TraceSpan[];
+}
+
+/** GET /instances/{id}/runs/{run}/trace — federated per-run span tree with a reachability envelope
+ * (design 24). `reason` adds "no-trace" (instance reachable but no trace recorded for that run). */
+export interface RunTraceEnvelope {
+	reachable: boolean;
+	reason: "poll-mode" | "unreachable" | "no-trace" | null;
+	trace: TraceSpan | null;
+}
+
 /** A pending harness gate on an instance — §6.2 permission or §6.3 input awaiting a human. */
 export interface ReviewGate {
 	id: string;

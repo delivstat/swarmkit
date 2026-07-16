@@ -24,6 +24,7 @@ import type {
 	RefreshResult,
 	RegisterResult,
 	ReviewGate,
+	RunTraceEnvelope,
 	RunsEnvelope,
 	SyncResult,
 	UsageRow,
@@ -161,6 +162,12 @@ export const api = {
 	instanceJobs: (id: string) => request<Job[]>(`/instances/${id}/jobs`),
 	// Federated per-run history (design 24) — live per-run cost detail, never stored on the panel.
 	instanceRuns: (id: string) => request<RunsEnvelope>(`/instances/${id}/runs`),
+	// Federated per-run trace (design 24, fleet-run-graph.md) — the run's span tree for the run
+	// graph; live-pulled from the owner instance, never stored.
+	instanceRunTrace: (id: string, runId: string) =>
+		request<RunTraceEnvelope>(
+			`/instances/${id}/runs/${encodeURIComponent(runId)}/trace`,
+		),
 	// Federated harness gates (§6.2 permission / §6.3 input) — live-pulled, resolved via the same
 	// /review API the CLI + serve UI use.
 	instanceGates: (id: string) =>
