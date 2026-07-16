@@ -361,12 +361,15 @@ problems vanish.
 Dozens of requirements share three codebases, one shared design surface, and a few scarce
 approvers. The hard problems are all contention:
 
-- **Shared-surface contention.** Two requirements editing the same OMS↔Web integration contract
-  produce conflicting consolidated designs. The shared artifacts (consolidated design, e2e suite,
-  integration contracts) get **optimistic-concurrency versioning**: a stage reads a version, and
-  its gate re-validates against HEAD before commit; a conflict routes back to
-  `integration-architect` to reconcile. *(Open question: lock-per-requirement vs
-  merge-and-reconcile.)*
+- **Shared-surface contention (decided: lock the integration contract per requirement).** The
+  shared integration contract is a **locked resource**. A requirement acquires the lock on the
+  specific contract(s) it touches when its consolidated-design stage begins, holds it through
+  design approval (the new contract version is committed), then releases; other requirements
+  needing the same contract **queue** behind it. Cross-cutting design work is thereby serialised
+  per contract — correct and simple. Locks are **per-contract (per app-pair), not global**, so
+  unrelated requirements proceed in parallel. A held lock is visible on the board and carries the
+  same SLA/escalation as a gate, so a stuck lock is surfaced, not silent. Non-shared artifacts
+  (per-app code, test cases) stay optimistic/versioned — only the shared contract locks.
 - **Codebase drift.** A design approved weeks ago was written against code that later requirements
   have since changed. The build stage **re-bases against HEAD and re-runs the judge** before a
   human sees the diff; a material drift re-opens the design gate.
@@ -404,34 +407,60 @@ a regulated retailer:
   MTTR fall directly out of per-requirement run correlation; DORA/SAST/DAST sign-offs are audit
   records, not spreadsheets. This is the headline for the target audience.
 - **Pipeline-wide view.** Beyond one run's trace, operators need a **cross-requirement board** —
-  every in-flight requirement and the gate it sits at, plus throughput/bottleneck per gate. Reuses
-  the existing runs/trace federation; the new surface is the requirement-correlated board.
+  every in-flight requirement and the gate/lock it sits at, plus throughput/bottleneck per gate.
+  Decided in scope for v1; backed by a shared namespaced space (see "The board").
 
 ## Human task surface
 
 Humans are the scarce resource, so their experience is first-class:
 
-- **Per-role queues.** A qa-lead sees one queue of pending gate tasks across *all* requirements
-  (the existing review-queue / gates surface, filtered by role) — not a hunt through runs.
+- **Per-role queues.** A qa-lead sees one queue of pending gate tasks across *all* requirements —
+  a query on their namespace in the shared board (see below), not a hunt through runs.
 - **Notification routing.** Gate tasks notify via configurable channels — reuse Minder's
   channel-adapter model (`project_minder_channels`: Slack/Telegram/email), config-driven, no code
   per channel.
 - **Context in the task.** Each task carries the artifact + judge score + reviewer findings +
   diff-since-last-approval, so a human decides in one place.
 
+## The board: a shared, namespaced coordination space
+
+Decided in scope for v1 — it is the operator's primary surface at scale. Rather than a bespoke
+status DB, the board is a **shared, namespaced coordination space**: a GBrain-style knowledge graph
+exposed over MCP (`reference_gbrain`: git-backed, hybrid search, self-wiring). Every team and
+requirement writes under its **namespace** (`req/<id>`, `app:oms`, `role:qa-lead`), but it is one
+common space — so separation *and* a single queryable org-wide view come from one substrate:
+
+- **Write-scoping = the same IAM discipline.** A team/agent writes only its namespace; the common
+  *read* space is the shared view. No new access model — it reuses the per-app scoping.
+- **Derives the pipeline view.** In-flight requirements and the gate/lock each sits at, throughput
+  and bottleneck per gate, held integration-contract locks — all queries over the space.
+- **Derives the per-role queues.** A qa-lead's pending tasks across all requirements is a query on
+  `role:qa-lead`. Org board and human task surface are the same substrate, different views.
+- **Not the source of record.** Three distinct roles: the append-only **audit** is authoritative;
+  the Curator **KBs** are the artifact store; the **board** is a live coordination/status surface
+  derived from and annotating them.
+
+This is a second reuse of an existing SwarmKit-adjacent building block (GBrain as a workspace MCP
+server), not net-new infrastructure.
+
 ## What is framework vs what is example
 
-This design straddles two layers, and the mandatory workflow means the **framework parts each land
-as their own design note + PR**, with the example *consuming* them:
+This design straddles two layers. Decided: the **framework parts each land as their own design
+note + PR** (each is independently useful and independently testable), with the example
+*consuming* them. The five net-new capability notes:
 
-- **Net-new framework capabilities** (their own notes): configurable multi-party approval sets +
-  role registry; the gate-funnel composition (validate → judge → review → approve); the controller
-  + stage-graph schema; the harness-reviewer pattern; per-role task queues + notification routing.
-- **Example content** (this workspace): the SDLC archetype/skill library, the three apps' KBs +
-  mock MCP servers, the role-registry members, the stage-graph instance, and the demo.
+1. `multi-party-approval` — role registry + per-gate approval policy (all/any/k-of) + `on_revision`.
+2. `gate-funnel` — the reusable gate composition validate → judge → review → approve.
+3. `pipeline-controller` — the controller + stage-graph schema + saga semantics (per-requirement
+   state, contract locks, compensation, webhook idempotency/reconciliation).
+4. `harness-reviewer` — the investigative (non-coding) harness reviewer pattern.
+5. `task-surface-and-board` — per-role queues + notification routing + the shared namespaced board.
 
-The framework capabilities are the early build-order slices precisely because the example cannot
-exist without them.
+**Example content** (this workspace, its own PR): the SDLC archetype/skill library, the three
+apps' KBs + mock MCP servers, the role-registry members, the stage-graph instance, and the demo.
+
+The five capabilities are the early build-order slices precisely because the example cannot exist
+without them.
 
 ## Growth (the third pillar, made real)
 
@@ -523,18 +552,17 @@ scale mechanisms).
 8. SIT + PT (cross-app) with mock rigs; `security-consultant` review pre-release; defect loop
    (controller-driven re-test triggers).
 9. Deploy package + support handover; full `just demo-sdlc`.
-10. Scale mechanisms: shared-surface versioning, drift re-base, gate SLA/escalation, cancellation
-    + compensation, webhook idempotency, the cross-requirement board — demonstrated on 2–3
-    concurrent requirements.
+10. Scale mechanisms: per-requirement contract locking, drift re-base, gate SLA/escalation,
+    cancellation + compensation, webhook idempotency, and the shared namespaced board (org view +
+    per-role queues) — demonstrated on 2–3 concurrent requirements.
 
-## Open questions
+## Decisions (resolved in review)
 
-- **Shared-surface concurrency model** — lock the integration contract per-requirement (simple,
-  serialises cross-cutting work) vs merge-and-reconcile via `integration-architect` (higher
-  throughput, harder). Decide before slice 5; affects the stage-graph schema.
-- **Cross-requirement board scope** — is the pipeline-wide board in v1, or a fast-follow after the
-  single-requirement demo lands? It is the operator's primary surface at scale but not needed to
-  prove the pattern.
-- **Program vs example split ownership** — confirm the five framework capabilities get their own
-  design notes now (design-only PRs) vs one umbrella note. Recommendation: separate notes, because
-  each is independently useful and independently testable.
+- **Shared-surface concurrency** — *lock the integration contract per requirement* (per-contract,
+  not global; non-shared artifacts stay optimistic). See "Many requirements in flight".
+- **Cross-requirement board** — *in scope for v1*, backed by a shared namespaced coordination
+  space (GBrain-style MCP). See "The board".
+- **Program split** — *separate design note + PR per framework capability* (five notes, listed in
+  "What is framework vs what is example"); the example workspace is its own PR.
+
+No open questions remain; the design is ready to decompose into the five capability notes.
