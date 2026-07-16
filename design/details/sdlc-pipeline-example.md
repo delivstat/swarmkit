@@ -70,9 +70,10 @@ Archetypes: `business-analyst`, `solution-architect` (per app), `integration-arc
 Approver roles (data, in the role registry — extend freely): `oms-lead`, `web-lead`,
 `mobile-lead`, `infosec-lead`, `qa-lead`, `pt-lead`, `eng-manager`, `cio`.
 
-Outside SwarmKit: a thin **`controller`** (`examples/sdlc-pipeline/controller/`) — holds
-per-requirement state, listens for enterprise events (mock driver in the example), and kicks the
-next stage's SwarmKit run. Not an agent; not part of the topology.
+Outside SwarmKit: a **`controller`** — holds per-requirement state, listens for enterprise events
+(mock driver in the example), and kicks the next stage's SwarmKit run. It is a **reusable
+reference component driven by a declarative stage-graph** (data), *not* per-example code (see
+"Reusable, showcase-class artifacts"). Not an agent; not part of the topology.
 
 Topology (delegation tree; pipeline *sequencing* is triggers + gates, not hardcoded flow):
 
@@ -123,6 +124,47 @@ For the **shipped example**, the controller's external events are faked by a sma
 script (no Jira/CI needed to run the demo), but the event-source seam is explicit: swap the mock
 driver for real webhooks and it is a real deployment. The example teaches the hybrid, not a toy.
 
+## Reusable, showcase-class artifacts
+
+This is not throwaway example glue — it ships a **reusable kit** that another pipeline (or
+another org's SDLC) can adopt by configuration. Reusability rides on the primitives that
+*travel*: skills, archetypes, and declarative harness adapters (the only extension primitives),
+plus a data-driven controller. Everything below is versioned, documented, and library-publishable.
+
+- **Archetypes (roles).** `business-analyst`, `solution-architect`, `integration-architect`,
+  `developer` (harness), `qa-engineer`, `sit-qa`, `pt-engineer`, `release-coordinator`,
+  `support-engineer`, `release-orchestrator` — a reusable SDLC role library.
+- **Skills.** The determination + coordination capabilities, each a standalone skill:
+  impact-analysis (decision), consolidated-design synthesis (coordination), defect-triage
+  (decision), test-plan generation (capability), code-review determination (decision),
+  PT analysis (decision), and the **multi-party approval request** (coordination) — reusable in
+  any workspace, not just this one.
+- **Governance: multi-party approval.** Enforcement stays in the `GovernanceProvider` / policy
+  engine (invariant 3 & 6 — reserved human scopes are structural, an agent cannot self-approve);
+  the reusable surface is the **role-registry schema** + the **per-gate approval-policy schema**
+  (all / any / k-of). A skill lets an agent *request* the gate; the engine *enforces* it.
+- **Controller + stage-graph schema.** The controller is a reference component that interprets a
+  declarative **stage-graph artifact** (stages, their SwarmKit topology, entry/exit events,
+  gates) — so a new pipeline is *data*, not new controller code. Keeps topology-as-data spirit at
+  the sequencing layer.
+- **Harness adapters.** Bundled declarative `adapter.yaml` for `claude-code` and `opencode`
+  (executors-are-data — no per-harness Python), reusable by any harness-executor agent.
+
+The example workspace is then a thin *composition* of these reusable parts + org-specific data
+(the three apps' KBs, the role registry's members, the stage-graph). That composition is the demo;
+the parts are the product.
+
+## Harness showcase (claude-code / opencode)
+
+The `developer` archetype is a **harness executor** (invariant 2: `harness` is an executor kind
+alongside `model`). Per app, in a container sandbox scoped to that app's repo, the harness
+(claude-code or opencode, selected by config — never hardcoded) opens a session, implements the
+approved design, runs unit + regression, and **produces a candidate diff**. That diff is the
+determination artifact; the **code-review gate** (per-app lead) and the team's external merge/CI
+finalize it — consistent with "actual coding + deployment happen separately". This is the first
+example to exercise a session-holding, diff-producing harness end-to-end, and it swaps harnesses
+by changing one `executor` field, proving the abstraction.
+
 ## New capability: configurable multi-party approval sets
 
 Today's gate (`ReviewGate`) is one question → one resolver. This example needs an **approval
@@ -147,17 +189,21 @@ Two artifacts:
      - id: cio             scope: release:approve  members: [heidi]
    ```
 
-2. **Per-gate approval policy** — each gate declares which roles must approve and the quorum:
+2. **Per-gate approval policy** — each gate declares one or more approval *rules*, each a group
+   of roles plus a quorum mode. v1 supports all three modes:
    ```yaml
    gate: consolidated-design-approval
-   required_approvals:
-     - { role: oms-lead,    quorum: all }
-     - { role: web-lead,    quorum: all }
-     - { role: mobile-lead, quorum: all }
-     - { role: infosec-lead, quorum: all }
+   rules:
+     - { roles: [oms-lead, web-lead, mobile-lead], quorum: all }   # every app lead
+     - { roles: [infosec-lead],                    quorum: all }   # infosec required
+     - { roles: [arch-reviewer-a, arch-reviewer-b, arch-reviewer-c], quorum: { k-of: 2 } }
    ```
-   Quorum per entry is `all` (every named role), `any`, or `k-of` a role group — so a gate can
-   require, e.g., *all* app leads but *any two of* a reviewer pool.
+   - `all` — every role in the group must approve.
+   - `any` — one role in the group suffices (e.g. either on-call SRE).
+   - `k-of: N` — any N distinct role-holders in the group (e.g. any 2 of a reviewer pool).
+
+   A gate advances only when **all** its rules are satisfied. Modelling groups explicitly (rather
+   than per-role quorum) is what makes `k-of` well-defined.
 
 Semantics:
 - The gate emits **one task per required role**, routed to that role's members.
@@ -230,7 +276,7 @@ is the sequence of correlated runs.
 | Requirement handover | intake → impact analysis + kicks per-app architects → first-draft designs before a human touches it | architects review drafts |
 | Consolidated design | integration-architect fixes integration patterns (payloads, channels, integration type) at design time | app leads + infosec-lead |
 | Test plan | test-plan agent drafts cases from BRD + consolidated design | qa-lead |
-| Build | harness dev agents implement against scoped repos; unit + regression on commit | code review (per-app lead) |
+| Build | harness dev agents (claude-code / opencode, sandboxed, scoped repo) implement the design → candidate diff + unit/regression | code review (per-app lead) |
 | Defect | dev-agent produces first analysis + candidate fixes + clarifying query to QA | human dev reviews the analysis |
 | QA / SIT | runs new + regression on build-ready; re-runs targeted test + regression on defect-fixed | qa-lead signs off SIT |
 | PT | pt-engineer runs perf on exposed services + cross-app regression; PT plan drafted for approval | pt-lead (plan + sign-off) |
@@ -262,16 +308,25 @@ runbook. Mostly static (edited on change): app architecture, compliance policy, 
 
 ## Test plan
 
-- **Approval set (unit):** quorum across distinct identities; duplicate approver rejected;
-  any-party rejection fails the gate and routes back; audit records each approval.
-- **Schema validation:** every topology/archetype/skill/trigger/workspace YAML validates
-  against the canonical schemas.
-- **Trigger graph (unit):** each state change fires the correct next stage; defect loop
-  cycles back; advance only on quorum.
+- **Approval set (unit):** all three quorum modes — `all` (every role), `any` (one suffices),
+  `k-of: N` (any N distinct role-holders); quorum counted across distinct identities; duplicate
+  approver rejected; a gate advances only when every rule is satisfied; `changes-requested`
+  re-opens per `on_revision` policy (`reset_all` vs `reconfirm_changed`); audit records each
+  approval with identity + role.
+- **Role-registry + approval-policy schema:** valid configs parse; a rule referencing an unknown
+  role is rejected; `k-of` with N > group size is rejected.
+- **Harness adapter (unit):** the `developer` archetype resolves to the configured harness
+  (`claude-code` / `opencode`) via `executor` field; swapping the field swaps the adapter with no
+  other change (proves executors-are-data).
+- **Schema validation:** every topology/archetype/skill/trigger/workspace + stage-graph YAML
+  validates against the canonical schemas.
+- **Controller stage-graph (unit):** each external event advances the correct stage; the
+  cross-stage defect loop re-kicks build/re-test on `defect.raised`/`defect.fixed`; runs correlate
+  by `requirement_id`.
 - **Pipeline dry-run (integration):** one requirement through intake → consolidated design →
-  build (mock harness) → SIT (mock) → PT (mock) → deploy package, with mock MCP servers and
-  scripted gate resolutions; asserts one audit trail, correct per-app scoping (an OMS agent
-  denied a Web resource), and consistent KB state.
+  build (harness against a demo repo) → SIT (mock) → PT (mock) → deploy package, with mock MCP
+  servers and scripted gate resolutions; asserts one correlated audit trail, correct per-app
+  scoping (an OMS agent denied a Web resource), and consistent KB state.
 
 ## Demo plan
 
@@ -282,12 +337,16 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 
 ## Build order (proposed slices)
 
-1. Multi-party approval set (governance) + tests — the enabling primitive.
-2. Archetypes + one-app (OMS) intake → design → approval as **one bounded stage run**, mock MCP
-   — proves scoping + gates + the agent-determination-only shape.
-3. The `controller` seam: per-requirement state + a mock event driver that kicks stage runs and
-   correlates them by `requirement_id`. Establishes the orchestration boundary early.
-4. Consolidated design across all three apps (the cross-cutting synthesis).
-5. Harness build + code-review gate against a demo repo.
-6. SIT + PT (cross-app) with mock rigs; defect loop (controller-driven re-test triggers).
-7. Deploy package + support handover; full `just demo-sdlc`.
+1. Multi-party approval set (governance) — role-registry + approval-policy schemas, all three
+   quorum modes (`all`/`any`/`k-of`), `on_revision` policy + tests. The enabling primitive.
+2. Reusable archetype library (SDLC roles) + skills (impact-analysis, synthesis, defect-triage,
+   test-plan, code-review, PT) as standalone library artifacts.
+3. One-app (OMS) intake → design → approval as **one bounded stage run**, mock MCP — proves
+   scoping + gates + the agent-determination-only shape.
+4. The `controller` + **stage-graph schema**: data-driven sequencing, per-requirement state, a
+   mock event driver correlating runs by `requirement_id`. Establishes the reusable boundary.
+5. Consolidated design across all three apps (the cross-cutting synthesis).
+6. Harness build (bundled `claude-code`/`opencode` adapter, sandboxed, candidate diff) +
+   code-review gate against a demo repo — the executor showcase.
+7. SIT + PT (cross-app) with mock rigs; defect loop (controller-driven re-test triggers).
+8. Deploy package + support handover; full `just demo-sdlc`.
