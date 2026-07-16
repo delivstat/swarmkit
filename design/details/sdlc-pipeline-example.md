@@ -18,6 +18,24 @@ workspace, with an **agent doing the first-pass toil at every step** and humans 
 decision. The demo walks one requirement from intake to a deploy-ready package, with real
 human approvals along the way.
 
+## System at a glance
+
+One requirement is a **saga**. The controller advances it stage by stage on external events; each
+stage is a bounded SwarmKit run where agents draft, a gate funnel (validate → judge → reviewer)
+filters, and a multi-party human approval set signs off; every run is correlated by
+`requirement_id` into one audit trail. Three layers, cleanly separated:
+
+- **Sequencing (outside SwarmKit):** the controller + a data stage-graph — reacts to enterprise
+  events, holds weeks-long state, contains no logic-in-agents.
+- **Determination (inside, per stage):** archetype agents (some harness executors) produce
+  artifacts, scoped by per-app IAM so teams stay walled except at the shared surface.
+- **Governance (inside, per artifact):** the gate funnel + multi-party human approval, all
+  append-only audited; humans own every reserved-scope decision.
+
+The document is in two halves: the **core model** (roles, boundary, gates, KBs — one requirement)
+and **operating at scale** (many requirements in flight: contention, failure, DORA, the human
+surface). Read the first for *how it works*, the second for *whether it survives a real org*.
+
 ## Non-goals
 
 - Not full automation. Humans own every gate; agents draft, analyse, and coordinate between
@@ -227,6 +245,19 @@ Semantics:
 This is the one genuinely new governance primitive; everything else composes existing pieces.
 It is built first (see test plan) and is generally useful beyond this example.
 
+### Where each gate's approvers land (all configurable)
+
+| Gate | Required roles (example config) |
+| --- | --- |
+| Consolidated design | oms-lead, web-lead, mobile-lead, infosec-lead |
+| Test plan | qa-lead |
+| Performance plan | pt-lead |
+| Code review (per app) | that app's lead |
+| SIT sign-off | qa-lead |
+| PT sign-off | pt-lead |
+| Final release sign-off | eng-manager, cio |
+| Prod deploy | eng-manager, cio (human-only scope) |
+
 ### How gates wait (LangGraph checkpoints)
 
 A gate compiles to a **LangGraph `interrupt()` backed by a checkpointer**: on reaching the gate,
@@ -294,19 +325,6 @@ first analysis + candidate fixes), `defect.fixed` kicks a `re-test` run (targete
 regression) — each a fresh bounded run, all correlated by `requirement_id`. The defect's history
 is the sequence of correlated runs.
 
-### Where each gate's approvers land (all configurable)
-
-| Gate | Required roles (example config) |
-| --- | --- |
-| Consolidated design | oms-lead, web-lead, mobile-lead, infosec-lead |
-| Test plan | qa-lead |
-| Performance plan | pt-lead |
-| Code review (per app) | that app's lead |
-| SIT sign-off | qa-lead |
-| PT sign-off | pt-lead |
-| Final release sign-off | eng-manager, cio |
-| Prod deploy | eng-manager, cio (human-only scope) |
-
 ## Automation map (agent-first, human-gated)
 
 | Step | Automation | Gate |
@@ -329,6 +347,103 @@ decisions/ADR (audit trail) · env/infra inventory · runbook/support handover.
 
 Refreshed **per requirement**: BRD, consolidated design, test cases, defects, decisions,
 runbook. Mostly static (edited on change): app architecture, compliance policy, env inventory.
+
+---
+
+# Operating at scale
+
+Everything above is the **unit** — one requirement. A real org runs dozens concurrently over
+weeks, and that is where the design is actually tested. This half does not pretend the hard
+problems vanish.
+
+## Many requirements in flight (contention)
+
+Dozens of requirements share three codebases, one shared design surface, and a few scarce
+approvers. The hard problems are all contention:
+
+- **Shared-surface contention.** Two requirements editing the same OMS↔Web integration contract
+  produce conflicting consolidated designs. The shared artifacts (consolidated design, e2e suite,
+  integration contracts) get **optimistic-concurrency versioning**: a stage reads a version, and
+  its gate re-validates against HEAD before commit; a conflict routes back to
+  `integration-architect` to reconcile. *(Open question: lock-per-requirement vs
+  merge-and-reconcile.)*
+- **Codebase drift.** A design approved weeks ago was written against code that later requirements
+  have since changed. The build stage **re-bases against HEAD and re-runs the judge** before a
+  human sees the diff; a material drift re-opens the design gate.
+- **Approver bottleneck.** eng-manager/cio gate *every* release and become the constraint.
+  Mitigations are data, not code: batchable gates, delegation/`k-of` pools, and SLA + escalation
+  (below). The pipeline should *surface* throughput per gate, not hide the bottleneck.
+- **KB write concurrency.** The Curator serialises writes per KB; each stage run pins the KB
+  versions it read (like the codebase), so a run sees a consistent snapshot.
+
+v1 of the example demonstrates these mechanisms on 2–3 concurrent requirements; it does not claim
+to have solved org-wide throughput.
+
+## Time, failure, and cancellation
+
+Weeks-long sagas fail and get abandoned; the happy path is the minority case.
+
+- **Gate SLA + escalation.** Each gate carries an SLA; on breach the task escalates (next role up)
+  and/or notifies — data on the gate. Prevents silent multi-week stalls.
+- **Stage-run failure ≠ wait.** A wait is a persisted checkpoint (cheap). A *failure* — harness
+  crash, provider outage, MCP unreachable — is different: the controller retries the stage run
+  **idempotently**, and a poisoned stage surfaces to a human, never silently drops the requirement.
+- **Cancellation + compensation.** A requirement can be withdrawn at any stage. The controller
+  runs the stage-graph's declared **compensation** for stages already passed (revoke a draft, close
+  open gate tasks, mark KB entries superseded). A saga needs an unwind path.
+- **Webhook robustness.** External events duplicate, arrive out of order, or go missing. The
+  controller dedupes on an **idempotency key** per (requirement, event) and periodically
+  **reconciles** its state against the source systems — never trusting a single delivery.
+
+## Governance payoff: DORA + pipeline observability
+
+The correlated append-only audit is not just compliance evidence — it is the product's payoff for
+a regulated retailer:
+
+- **DORA + compliance out of the box.** Lead time, deployment frequency, change-failure rate, and
+  MTTR fall directly out of per-requirement run correlation; DORA/SAST/DAST sign-offs are audit
+  records, not spreadsheets. This is the headline for the target audience.
+- **Pipeline-wide view.** Beyond one run's trace, operators need a **cross-requirement board** —
+  every in-flight requirement and the gate it sits at, plus throughput/bottleneck per gate. Reuses
+  the existing runs/trace federation; the new surface is the requirement-correlated board.
+
+## Human task surface
+
+Humans are the scarce resource, so their experience is first-class:
+
+- **Per-role queues.** A qa-lead sees one queue of pending gate tasks across *all* requirements
+  (the existing review-queue / gates surface, filtered by role) — not a hunt through runs.
+- **Notification routing.** Gate tasks notify via configurable channels — reuse Minder's
+  channel-adapter model (`project_minder_channels`: Slack/Telegram/email), config-driven, no code
+  per channel.
+- **Context in the task.** Each task carries the artifact + judge score + reviewer findings +
+  diff-since-last-approval, so a human decides in one place.
+
+## What is framework vs what is example
+
+This design straddles two layers, and the mandatory workflow means the **framework parts each land
+as their own design note + PR**, with the example *consuming* them:
+
+- **Net-new framework capabilities** (their own notes): configurable multi-party approval sets +
+  role registry; the gate-funnel composition (validate → judge → review → approve); the controller
+  + stage-graph schema; the harness-reviewer pattern; per-role task queues + notification routing.
+- **Example content** (this workspace): the SDLC archetype/skill library, the three apps' KBs +
+  mock MCP servers, the role-registry members, the stage-graph instance, and the demo.
+
+The framework capabilities are the early build-order slices precisely because the example cannot
+exist without them.
+
+## Growth (the third pillar, made real)
+
+The intro claims growth-through-authoring; this is where it shows up rather than being asserted:
+
+- A **recurring class of requirement** (e.g. "add a new payment provider") that keeps re-deriving
+  the same design → gap-detection surfaces it → a human authors a reusable skill/playbook → the
+  next such requirement starts from it. Gated authoring, per §12.
+- A **fourth application** joins → author a new per-app archetype set + KB, register it in the role
+  registry and stage-graph. The pipeline grows by authoring, no engine change.
+
+---
 
 ## Constraints
 
@@ -381,7 +496,14 @@ watch intake produce impact analysis + per-app first-draft designs, resolve the 
 design gate as distinct identities, let the build/SIT/PT stages run against mocks, and produce
 a deploy-ready package — with the full audit trail printed. Terminal transcript in the PR body.
 
-## Build order (proposed slices)
+## Build order (a program, not one feature)
+
+This is a **program of features**, not a single PR — the framework capabilities (slices 1–3, 5)
+each land as their own design note + PR per the mandatory workflow; the example workspace composes
+them. The **first shippable increment / minimal lovable demo** is slices 1→4: one app, one
+requirement, the full gate funnel + multi-party approval, mock MCP — enough to *see* the pattern
+work end to end. Everything after widens coverage (three apps, harness build, cross-app test,
+scale mechanisms).
 
 1. Multi-party approval set (governance) — role-registry + approval-policy schemas, all three
    quorum modes (`all`/`any`/`k-of`), `on_revision` policy + tests. The enabling primitive.
@@ -401,3 +523,18 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 8. SIT + PT (cross-app) with mock rigs; `security-consultant` review pre-release; defect loop
    (controller-driven re-test triggers).
 9. Deploy package + support handover; full `just demo-sdlc`.
+10. Scale mechanisms: shared-surface versioning, drift re-base, gate SLA/escalation, cancellation
+    + compensation, webhook idempotency, the cross-requirement board — demonstrated on 2–3
+    concurrent requirements.
+
+## Open questions
+
+- **Shared-surface concurrency model** — lock the integration contract per-requirement (simple,
+  serialises cross-cutting work) vs merge-and-reconcile via `integration-architect` (higher
+  throughput, harder). Decide before slice 5; affects the stage-graph schema.
+- **Cross-requirement board scope** — is the pipeline-wide board in v1, or a fast-follow after the
+  single-requirement demo lands? It is the operator's primary surface at scale but not needed to
+  prove the pattern.
+- **Program vs example split ownership** — confirm the five framework capabilities get their own
+  design notes now (design-only PRs) vs one umbrella note. Recommendation: separate notes, because
+  each is independently useful and independently testable.
