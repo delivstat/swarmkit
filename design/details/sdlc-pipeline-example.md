@@ -65,7 +65,8 @@ Skills and resources are granted to **identities, scoped to an app**:
 
 Archetypes: `business-analyst`, `solution-architect` (per app), `integration-architect`,
 `developer` (harness executor, per app), `qa-engineer` (per app), `sit-qa`, `pt-engineer`,
-`release-coordinator`, `support-engineer`, `release-orchestrator`.
+`release-coordinator`, `support-engineer`, `release-orchestrator`. Reviewer archetypes (harness
+executors, for investigative outside review): `architect-reviewer`, `security-consultant`.
 
 Approver roles (data, in the role registry — extend freely): `oms-lead`, `web-lead`,
 `mobile-lead`, `infosec-lead`, `qa-lead`, `pt-lead`, `eng-manager`, `cio`.
@@ -132,13 +133,15 @@ another org's SDLC) can adopt by configuration. Reusability rides on the primiti
 plus a data-driven controller. Everything below is versioned, documented, and library-publishable.
 
 - **Archetypes (roles).** `business-analyst`, `solution-architect`, `integration-architect`,
-  `developer` (harness), `qa-engineer`, `sit-qa`, `pt-engineer`, `release-coordinator`,
-  `support-engineer`, `release-orchestrator` — a reusable SDLC role library.
+  `developer` (harness), `architect-reviewer` + `security-consultant` (harness reviewers),
+  `qa-engineer`, `sit-qa`, `pt-engineer`, `release-coordinator`, `support-engineer`,
+  `release-orchestrator` — a reusable SDLC role library.
 - **Skills.** The determination + coordination capabilities, each a standalone skill:
   impact-analysis (decision), consolidated-design synthesis (coordination), defect-triage
   (decision), test-plan generation (capability), code-review determination (decision),
-  PT analysis (decision), and the **multi-party approval request** (coordination) — reusable in
-  any workspace, not just this one.
+  PT analysis (decision), **artifact-judge** (decision — the LLM-as-judge gate, one reusable
+  skill parameterised by rubric per artifact), and the **multi-party approval request**
+  (coordination) — reusable in any workspace, not just this one.
 - **Governance: multi-party approval.** Enforcement stays in the `GovernanceProvider` / policy
   engine (invariant 3 & 6 — reserved human scopes are structural, an agent cannot self-approve);
   the reusable surface is the **role-registry schema** + the **per-gate approval-policy schema**
@@ -164,6 +167,14 @@ determination artifact; the **code-review gate** (per-app lead) and the team's e
 finalize it — consistent with "actual coding + deployment happen separately". This is the first
 example to exercise a session-holding, diff-producing harness end-to-end, and it swaps harnesses
 by changing one `executor` field, proving the abstraction.
+
+**Harness beyond coding — reviewer/consultant.** The `architect-reviewer` and
+`security-consultant` archetypes are *also* harness executors, but for **investigative outside
+review** rather than authoring. Given read-scoped access to the repo + KBs, the harness opens a
+session and *investigates* — cross-checks the consolidated design against the actual code and
+integration points, hunts for security gaps against the compliance KB — and returns findings.
+This is layer 3 of the gate funnel, and it shows the harness is not just a coder: a stateless
+model call judges the text it is handed; a harness reviewer goes and looks.
 
 ## New capability: configurable multi-party approval sets
 
@@ -229,6 +240,33 @@ This is why the wait is *not* the durability risk (see Constraints): the residua
 state-schema evolution over long horizons, which per-stage runs mitigate. Human resumes come
 through the gate (LangGraph); external-system resumes ("build ready", "defect fixed") come
 through the controller — complementary, both async, both persisted.
+
+## Gate layers: every artifact is judged before a human sees it
+
+Each artifact (design, consolidated design, test plan, diff, defect analysis, PT plan, release
+package) passes a **quality funnel** — cheap → expensive → human — so humans only ever review
+drafts that already cleared automated checks. SwarmKit supports this natively via governance
+decision skills + structured-output validation (`project_governance_decision_skills`,
+`feedback_structured_output_priority`); we make it standard on every artifact.
+
+1. **Structured-output validation (deterministic).** Shape/schema correctness with field-level
+   auto-correction (the Rynko pattern). No LLM. Eliminates shape hallucination before any judge.
+2. **LLM-as-judge gate (governance decision skill).** A rubric-scored critique of the artifact
+   against its acceptance criteria (design vs BRD; test plan coverage vs design; diff vs design +
+   lint/test signal). On fail → the critique flows back to the drafting agent as an **auto-retry
+   loop** (bounded), before a human is ever paged. This is the judicial pillar (§8).
+3. **Harness reviewer (heavyweight gates only).** An *investigative* outside review by a harness
+   executor (see reviewer archetypes) — it opens the repo + KBs, cross-checks the artifact
+   against real code/architecture, and produces findings. Used at the consolidated-design and
+   pre-release gates, where a text-only judge is not enough.
+4. **Human multi-party approval (binding).** The reserved-scope sign-off. It sees only artifacts
+   that passed 1–3, with the judge score + reviewer findings attached as context — so humans
+   review *quality* drafts and spend their attention on judgement, not defect-hunting.
+
+Non-negotiable: layers 1–3 are **advisory** — they gate *advancement to human review* and drive
+the retry loop, but they **never** substitute for the human decision on a reserved scope
+(invariant 6). An artifact cannot reach a human gate *without* passing the judge; it can never
+*bypass* the human gate by passing it.
 
 ## Rework + re-approval
 
@@ -318,6 +356,14 @@ runbook. Mostly static (edited on change): app architecture, compliance policy, 
 - **Harness adapter (unit):** the `developer` archetype resolves to the configured harness
   (`claude-code` / `opencode`) via `executor` field; swapping the field swaps the adapter with no
   other change (proves executors-are-data).
+- **Gate funnel (unit + integration):** structured-output validation auto-corrects a malformed
+  field; the artifact-judge fails a below-rubric draft and the critique drives a bounded retry
+  that then passes; a judged-pass artifact reaches the human gate with score + findings attached;
+  and — the invariant — an artifact can neither reach a human gate without passing the judge nor
+  bypass the human gate by passing it.
+- **Harness reviewer (integration):** `architect-reviewer` (read-scoped) surfaces a planted
+  design/code mismatch; `security-consultant` surfaces a planted compliance gap; findings land on
+  the relevant gate.
 - **Schema validation:** every topology/archetype/skill/trigger/workspace + stage-graph YAML
   validates against the canonical schemas.
 - **Controller stage-graph (unit):** each external event advances the correct stage; the
@@ -340,13 +386,18 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 1. Multi-party approval set (governance) — role-registry + approval-policy schemas, all three
    quorum modes (`all`/`any`/`k-of`), `on_revision` policy + tests. The enabling primitive.
 2. Reusable archetype library (SDLC roles) + skills (impact-analysis, synthesis, defect-triage,
-   test-plan, code-review, PT) as standalone library artifacts.
-3. One-app (OMS) intake → design → approval as **one bounded stage run**, mock MCP — proves
-   scoping + gates + the agent-determination-only shape.
-4. The `controller` + **stage-graph schema**: data-driven sequencing, per-requirement state, a
+   test-plan, code-review, PT, **artifact-judge**) as standalone library artifacts.
+3. The **gate funnel**: structured-output validation → artifact-judge decision skill (fail →
+   bounded auto-retry to the drafter) → human gate, wired so every artifact is judged before a
+   human sees it, and layers 1–3 can never bypass the human gate.
+4. One-app (OMS) intake → design → judge → approval as **one bounded stage run**, mock MCP —
+   proves scoping + the full gate funnel + the agent-determination-only shape.
+5. The `controller` + **stage-graph schema**: data-driven sequencing, per-requirement state, a
    mock event driver correlating runs by `requirement_id`. Establishes the reusable boundary.
-5. Consolidated design across all three apps (the cross-cutting synthesis).
-6. Harness build (bundled `claude-code`/`opencode` adapter, sandboxed, candidate diff) +
+6. Consolidated design across all three apps (synthesis) + the `architect-reviewer` harness as
+   layer-3 investigative review before the design gate.
+7. Harness build (bundled `claude-code`/`opencode` adapter, sandboxed, candidate diff) +
    code-review gate against a demo repo — the executor showcase.
-7. SIT + PT (cross-app) with mock rigs; defect loop (controller-driven re-test triggers).
-8. Deploy package + support handover; full `just demo-sdlc`.
+8. SIT + PT (cross-app) with mock rigs; `security-consultant` review pre-release; defect loop
+   (controller-driven re-test triggers).
+9. Deploy package + support handover; full `just demo-sdlc`.
