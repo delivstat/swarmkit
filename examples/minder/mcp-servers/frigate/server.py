@@ -661,7 +661,11 @@ def _local_vlm(img_b64: str, prompt: str, num_predict: int = 80) -> str:
             "stream": False,
             "think": False,
             "keep_alive": -1,
-            "options": {"temperature": 0.1, "num_gpu": DESCRIBE_NUM_GPU, "num_predict": num_predict},
+            "options": {
+                "temperature": 0.1,
+                "num_gpu": DESCRIBE_NUM_GPU,
+                "num_predict": num_predict,
+            },
         }
     ).encode()
     try:

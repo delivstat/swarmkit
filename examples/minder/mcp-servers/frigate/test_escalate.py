@@ -42,7 +42,7 @@ def _harness(*, answer, provider="cloud", snapshot=None):
     state: dict = {}
     f.write_alert = lambda msg, cam="", snap="", vid="": alerts.append((msg, cam))  # type: ignore
     f.execute_device_action = lambda d, a: f"{a} {d}"  # type: ignore
-    f._escalate_snapshot = lambda ev: ("" if snapshot is None else snapshot)  # type: ignore
+    f._escalate_snapshot = lambda ev: "" if snapshot is None else snapshot  # type: ignore
     f._vlm_confirm = lambda img, q, tier, model="": (answer, provider)  # type: ignore
     f.load_monitor_state = lambda: state  # type: ignore
     f.save_monitor_state = state.update  # type: ignore
