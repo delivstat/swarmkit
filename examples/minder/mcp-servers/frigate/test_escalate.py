@@ -124,6 +124,35 @@ def test_cooldown_suppresses_refire():
     print("ok  cooldown_s suppresses a re-fire within the window")
 
 
+def test_match_prefers_escalate_over_broad_plain():
+    # The user's real case: a broad "all cameras / person…" rule listed BEFORE a
+    # specific Office escalate rule. The escalate rule must still win.
+    fired = {}
+    f._fire = lambda rule, ev, now, live: fired.update(rule=rule) or "live"  # type: ignore
+    plain = {"cameras": ["all"], "condition": "person standing at the gate or entrance"}
+    esc = {
+        "cameras": ["Office"],
+        "condition": "person",
+        "severity": "critical",
+        "escalate": {"prompt": "weapon?"},
+    }
+    active = [plain, esc]  # plain first, as saved
+    ev = {"camera": "Office", "label": "person"}
+    f._match_and_fire_event(ev, active, {}, 1000.0, True)
+    assert fired.get("rule") is esc, "escalate rule should win over the broad plain rule"
+    print("ok  _match_and_fire_event prefers the escalate rule over a broad plain rule")
+
+
+def test_match_plain_still_fires_without_escalate():
+    fired = {}
+    f._fire = lambda rule, ev, now, live: fired.update(rule=rule) or "live"  # type: ignore
+    plain = {"cameras": ["all"], "condition": "person"}
+    ev = {"camera": "Office", "label": "person"}
+    f._match_and_fire_event(ev, [plain], {}, 1000.0, True)
+    assert fired.get("rule") is plain
+    print("ok  a plain rule still fires when no escalate rule matches")
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):
