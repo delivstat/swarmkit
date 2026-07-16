@@ -599,15 +599,22 @@ def _describe_prompt(label: str, cam: str = "", condition: str = "") -> str:
     )
 
 
-def _describe_via_cloud(img_b64: str, prompt: str) -> str:
-    """Describe a snapshot with a cloud VLM (OpenRouter, OpenAI-compatible chat).
-    Empty string without a key or on ANY error — same graceful contract as the
-    local path, so the caller can fall back to Ollama."""
+def _log(msg: str) -> None:
+    """Diagnostic line to stderr (stdout is the MCP protocol). Makes the describe/
+    escalate provider path visible — so a silent cloud→local fallback (wrong-colour
+    local answers) is diagnosable instead of a mystery."""
+    print(f"[minder.frigate] {msg}", file=sys.stderr, flush=True)
+
+
+def _cloud_vlm(img_b64: str, prompt: str, model: str = "") -> str:
+    """One cloud VLM call (OpenRouter, OpenAI-compatible vision chat). Empty string
+    without a key or on ANY error — the caller falls back to local. `model` overrides
+    the default MINDER_CLOUD_VISION_MODEL (per-rule escalate override)."""
     if not OPENROUTER_KEY:
         return ""
     payload = json.dumps(
         {
-            "model": CLOUD_VISION_MODEL,
+            "model": model or CLOUD_VISION_MODEL,
             "messages": [
                 {
                     "role": "user",
@@ -635,8 +642,41 @@ def _describe_via_cloud(img_b64: str, prompt: str) -> str:
         )
         r = json.loads(urllib.request.urlopen(req, timeout=DESCRIBE_TIMEOUT).read())
         return ((r.get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
-    except Exception:
+    except Exception as e:
+        _log(f"cloud VLM failed ({model or CLOUD_VISION_MODEL}): {e}")
         return ""  # graceful — caller falls back to the local VLM
+
+
+# Back-compat alias (older callers / tests): the fixed-model cloud describe.
+def _describe_via_cloud(img_b64: str, prompt: str) -> str:
+    return _cloud_vlm(img_b64, prompt)
+
+
+def _local_vlm(img_b64: str, prompt: str, num_predict: int = 80) -> str:
+    """One local VLM call (Ollama). Low temperature for grounded fact. Empty on error."""
+    payload = json.dumps(
+        {
+            "model": VISION_MODEL,
+            "messages": [{"role": "user", "content": prompt, "images": [img_b64]}],
+            "stream": False,
+            "think": False,
+            "keep_alive": -1,
+            "options": {
+                "temperature": 0.1,
+                "num_gpu": DESCRIBE_NUM_GPU,
+                "num_predict": num_predict,
+            },
+        }
+    ).encode()
+    try:
+        req = urllib.request.Request(
+            f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"}
+        )
+        r = json.loads(urllib.request.urlopen(req, timeout=DESCRIBE_TIMEOUT).read())
+        return (r.get("message", {}).get("content") or "").strip()
+    except Exception as e:
+        _log(f"local VLM failed: {e}")
+        return ""
 
 
 def _describe_snapshot(path: str, label: str = "", cam: str = "", condition: str = "") -> str:
@@ -651,31 +691,15 @@ def _describe_snapshot(path: str, label: str = "", cam: str = "", condition: str
         return ""
     prompt = _describe_prompt(label, cam, condition)
     if DESCRIBE_PROVIDER == "openrouter" and OPENROUTER_KEY:
-        cloud = _describe_via_cloud(img, prompt)
+        cloud = _cloud_vlm(img, prompt)
         if cloud:
+            _log(f"describe: cloud VLM ({CLOUD_VISION_MODEL})")
             return cloud
-        # cloud miss/failure → fall through to the local VLM (never drop the description)
-    payload = json.dumps(
-        {
-            "model": VISION_MODEL,
-            "messages": [{"role": "user", "content": prompt, "images": [img]}],
-            "stream": False,
-            "think": False,
-            "keep_alive": -1,
-            # Low temperature: we want grounded fact, not creative prose — higher
-            # temp is where the invented plate numbers and phantom people come from.
-            # One sentence (~80 tokens) leaves less room to drift into fiction.
-            "options": {"temperature": 0.1, "num_gpu": DESCRIBE_NUM_GPU, "num_predict": 80},
-        }
-    ).encode()
-    try:
-        req = urllib.request.Request(
-            f"{OLLAMA_URL}/api/chat", data=payload, headers={"Content-Type": "application/json"}
-        )
-        r = json.loads(urllib.request.urlopen(req, timeout=DESCRIBE_TIMEOUT).read())
-        return (r.get("message", {}).get("content") or "").strip()
-    except Exception:
-        return ""  # graceful — no description, the alert already went out
+        _log("describe: cloud unavailable → local VLM fallback")
+    out = _local_vlm(img, prompt)
+    if out:
+        _log(f"describe: local VLM ({VISION_MODEL})")
+    return out
 
 
 def _await_media(fetch: Callable[[], str], timeout_s: float) -> str:
@@ -742,6 +766,137 @@ def _deliver_ha_media(ev: dict, cam: str, condition: str = "") -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+# ---- Severity + VLM escalation (design/scenario-studio-severity-escalation.md) ----
+# A rule may carry `severity` (info|warning|critical) + an `escalate` block. When
+# present, the deterministic match is only a PRE-FILTER: a VLM answers a grounded
+# yes/no on the alert snapshot, and the alert + actions fire only on a matching
+# answer. Cloud tier for critical (auto), local otherwise; cloud failure falls back
+# to local. A verdict we trust wins; when verification is impossible a *critical* rule
+# still fires (flagged "unverified") so we never miss it. `cooldown_s` rate-limits.
+
+_YES_RE = re.compile(r"^\W*(yes|yeah|yep|yup|true|affirmative)\b", re.I)
+_SEVERITY_TAG = {"critical": "🚨 CRITICAL", "warning": "⚠️", "info": "🔵"}
+
+
+def _is_yes(answer: str) -> bool:
+    """A confirmation counts as yes only when the answer STARTS with yes (we prompt
+    for 'yes/no first'), so 'No, just a neighbour' isn't misread as a match."""
+    return bool(_YES_RE.match((answer or "").strip()))
+
+
+def _escalate_tier(rule: dict) -> str:
+    """The VLM tier for a rule's escalate block: explicit `tier` wins; `auto`/absent
+    maps from severity — critical → cloud, else local."""
+    tier = ((rule.get("escalate") or {}).get("tier") or "auto").lower()
+    if tier in ("cloud", "local"):
+        return tier
+    return "cloud" if (rule.get("severity") or "").lower() == "critical" else "local"
+
+
+def _vlm_confirm(img_b64: str, question: str, tier: str, model: str = "") -> tuple[str, str]:
+    """Ask the VLM a grounded yes/no about the snapshot. Returns (answer, provider)
+    where provider is "cloud" | "local" | "" (all failed). tier=cloud tries cloud then
+    falls back to local; tier=local goes straight to Ollama."""
+    prompt = (
+        "You are a home-security camera assistant. Answer with 'yes' or 'no' as the "
+        "FIRST word, then a short reason based only on what you actually see. "
+        f"Question: {question}"
+    )
+    if tier == "cloud":
+        ans = _cloud_vlm(img_b64, prompt, model)
+        if ans:
+            return ans, "cloud"
+        _log("escalate: cloud VLM unavailable → local fallback")
+    ans = _local_vlm(img_b64, prompt, num_predict=60)
+    return (ans, "local") if ans else ("", "")
+
+
+def _escalate_snapshot(ev: dict) -> str:
+    """Fetch the snapshot for an escalate decision — a Frigate event snapshot or an
+    HA live frame — reusing the normal media waits. "" if none is available."""
+    if ev.get("source") == "frigate" and ev.get("event_id"):
+        return _await_media(lambda: get_event_snapshot(ev["event_id"]), SNAPSHOT_WAIT_S)
+    ref = ev.get("snapshot_ref") or ""
+    if ev.get("source") == "ha" and ref.startswith("ha:"):
+        MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        out = MEDIA_DIR / (str(ev.get("event_id", "esc")).replace(":", "_") + ".jpg")
+        return ha_camera_snapshot(ref.split("ha:", 1)[1], str(out))
+    return ""
+
+
+def _run_escalated_actions(rule: dict, cam: str) -> None:
+    """Fire a confirmed escalate rule's non-alert actions: device actions and
+    `notify` (an urgent alert naming the contact — the channel adapters fan it out)."""
+    for act in rule.get("actions") or []:
+        t = act.get("type")
+        if t == "device":
+            try:
+                write_alert(execute_device_action(act["device"], act["action"]), cam)
+            except Exception as e:
+                write_alert(f"device {act.get('device')} failed: {e}", cam)
+        elif t == "notify":
+            who = act.get("contact") or act.get("to") or "contact"
+            write_alert(f"🔔 Escalation: notifying {who} — {cam}", cam)
+
+
+def _deliver_escalated(rule: dict, ev: dict, now: float) -> None:
+    """Escalate path: gate the alert on a VLM confirmation. In a daemon thread (never
+    blocks the poller): rate-limit, fetch the snapshot, ask the VLM, and fire the alert
+    + actions only on a matching answer. A trusted 'no' suppresses the alert (the whole
+    point); when verification is impossible a *critical* rule fires 'unverified'."""
+    esc = rule.get("escalate") or {}
+    cam = ev["camera"]
+    severity = (rule.get("severity") or "warning").lower()
+    cooldown = int(esc.get("cooldown_s", ALERT_COOLDOWN_S))
+    require = (esc.get("require") or "yes").lower()
+
+    def _run() -> None:
+        state = load_monitor_state()
+        key = f"escalate|{cam}|{rule.get('condition')}"
+        if now - state.get(key, 0) < cooldown:
+            return
+        snapshot = _escalate_snapshot(ev)
+        answer, provider = "", ""
+        if snapshot:
+            try:
+                img = base64.b64encode(Path(snapshot).read_bytes()).decode()
+                answer, provider = _vlm_confirm(
+                    img, esc.get("prompt", ""), _escalate_tier(rule), esc.get("model", "")
+                )
+            except Exception as e:
+                _log(f"escalate: confirm error on {cam}: {e}")
+        confirmed = _is_yes(answer) if require == "yes" else (require in answer.lower())
+        got_verdict = bool(snapshot and answer)
+
+        if got_verdict and not confirmed:
+            _log(f"escalate near-miss {cam} ({rule.get('condition')}): {answer[:70]!r}")
+            state[key] = now
+            save_monitor_state(state)
+            return
+        unconfirmed = False
+        if not got_verdict:
+            if severity != "critical":
+                _log(f"escalate: unverifiable {cam} ({rule.get('condition')}), non-critical → drop")
+                return
+            unconfirmed = True  # critical + unverifiable → alert anyway, flagged
+
+        state[key] = now
+        save_monitor_state(state)
+        tag = _SEVERITY_TAG.get(severity, "⚠️")
+        note = f" — {answer}" if answer else ""
+        flag = " (unverified)" if unconfirmed else ""
+        base = rule.get("condition") or ev.get("label") or "alert"
+        _log(f"escalate FIRE {cam} [{severity}] via {provider or 'none'}")
+        write_alert(f"{tag} {base} — {cam}{note}{flag}", cam, snapshot or "")
+        _run_escalated_actions(rule, cam)
+        if RECORD_ENABLED and ev.get("source") == "frigate" and ev.get("event_id"):
+            video = _await_media(lambda: get_event_clip(ev["event_id"]), CLIP_WAIT_S)
+            if video:
+                write_alert("", cam, "", video)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
     """Fire a matched rule — live writes the real alert + runs device actions;
     shadow only logs the would-be alert for parallel-run comparison.
@@ -766,6 +921,11 @@ def _fire(rule: dict, ev: dict, now: float, live: bool) -> str:
             }
         )
         return "shadow"
+    # Escalate rules don't fire instantly — the VLM confirmation is the gate. Route the
+    # whole decision (snapshot → VLM yes/no → alert + actions) to the escalated path.
+    if rule.get("escalate"):
+        _deliver_escalated(rule, ev, now)
+        return "escalate"
     notes = []
     for act in actions:
         if act.get("type") == "device":
