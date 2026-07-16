@@ -2753,6 +2753,8 @@ async function loadDashRules() {
           ${ruleCamerasLabel(r)} &bull; ${r.schedule || 'always'}
           ${(r.actions || []).filter(a => a.type === 'device').map(a =>
             ` &bull; ${a.action === 'turn_on' ? '⚡ on' : '⚡ off'}: ${a.device}`).join('')}
+          ${r.escalate ? ` &bull; <span style="color:var(--accent)">🛡️ AI-verify (${r.severity || 'warning'})</span>` : ''}
+          ${(r.actions || []).some(a => a.type === 'notify') ? ' &bull; 🔔 notify' : ''}
         </div>
       </div>
     `).join('');
@@ -3255,6 +3257,24 @@ function dashEditRule(i) {
           <option value="turn_off" ${dev.action === 'turn_off' ? 'selected' : ''}>turn off</option>
         </select></label>
       <label class="re-row"><input type="checkbox" id="re-en-${i}" ${r.enabled !== false ? 'checked' : ''}> Enabled</label>
+      <div style="border-top:1px solid var(--border);padding-top:0.5rem">
+        <label class="re-row"><input type="checkbox" id="re-esc-${i}" ${r.escalate ? 'checked' : ''} onchange="document.getElementById('re-esc-box-${i}').style.display=this.checked?'':'none'"> 🛡️ Verify with a stronger AI before alerting</label>
+        <div id="re-esc-box-${i}" class="rule-edit" style="display:${r.escalate ? '' : 'none'};padding-left:1.2rem;margin-top:0.4rem">
+          <label class="re-l">Ask the AI — alert only if it answers yes
+            <textarea id="re-esc-prompt-${i}" class="re-raw" style="min-height:3rem" spellcheck="false" placeholder="e.g. Is a person holding a weapon or dangerous object (knife, gun, stick)?">${esc((r.escalate || {}).prompt || '')}</textarea></label>
+          <label class="re-l">Severity
+            <select id="re-sev-${i}">
+              <option value="warning" ${(r.severity || 'warning') === 'warning' ? 'selected' : ''}>warning — local AI</option>
+              <option value="critical" ${r.severity === 'critical' ? 'selected' : ''}>critical — cloud AI (fast + accurate; sends the snapshot to the cloud)</option>
+              <option value="info" ${r.severity === 'info' ? 'selected' : ''}>info — local AI</option>
+            </select></label>
+          <label class="re-l">Re-check cooldown (seconds)
+            <input id="re-esc-cd-${i}" type="number" min="0" value="${(r.escalate || {}).cooldown_s || 60}"></label>
+        </div>
+      </div>
+      <label class="re-row"><input type="checkbox" id="re-notify-${i}" ${(r.actions || []).some(a => a.type === 'notify') ? 'checked' : ''}> 🔔 Notify a contact on alert</label>
+      <label class="re-l">Contact (name / handle)
+        <input id="re-notify-to-${i}" value="${esc(((r.actions || []).find(a => a.type === 'notify') || {}).contact || '')}" placeholder="e.g. me"></label>
       <div class="re-adv"><a href="#" onclick="dashToggleRaw(${i});return false">▸ Advanced: edit raw JSON</a></div>
       <textarea id="re-raw-${i}" class="re-raw" style="display:none" spellcheck="false">${JSON.stringify(r, null, 2)}</textarea>
       <div class="btn-row">
@@ -3294,7 +3314,24 @@ async function dashSaveRule(i) {
     const dev = document.getElementById('re-dev-' + i).value.trim();
     const op = document.getElementById('re-op-' + i).value;
     if (dev && op) actions.push({ type: 'device', device: dev, action: op });
+    if (document.getElementById('re-notify-' + i).checked) {
+      const to = document.getElementById('re-notify-to-' + i).value.trim() || 'contact';
+      actions.push({ type: 'notify', contact: to });
+    }
     rule.actions = actions;
+    // Threat escalation: severity + a VLM-verify gate. Tier is derived from severity
+    // (auto: critical→cloud, else local), so we store prompt + cooldown only.
+    if (document.getElementById('re-esc-' + i).checked) {
+      rule.severity = document.getElementById('re-sev-' + i).value;
+      rule.escalate = {
+        prompt: document.getElementById('re-esc-prompt-' + i).value.trim(),
+        require: 'yes',
+        cooldown_s: parseInt(document.getElementById('re-esc-cd-' + i).value, 10) || 60,
+      };
+    } else {
+      delete rule.escalate;
+      delete rule.severity;
+    }
   }
   const prev = state.rules[i];
   state.rules[i] = rule;
