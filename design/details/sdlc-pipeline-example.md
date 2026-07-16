@@ -28,6 +28,10 @@ human approvals along the way.
   by mock MCP servers in the shipped example.
 - Not a fleet. This is one workspace, not one-instance-per-team (see "Why one workspace").
 - Not simulated approvers. The demo uses real, distinct human identities resolving real tasks.
+- **Not a workflow/BPM engine.** SwarmKit owns bounded per-stage runs + governance gates, not
+  the weeks-long cross-system state machine. That belongs to an external controller (see
+  "Orchestration boundary"). Same split as Minder: the application owns logic/state, agents do
+  determination.
 
 ## Why one workspace (not one instance per team)
 
@@ -39,8 +43,10 @@ instances, those cross-cutting steps would have to federate across instance boun
 (cross-instance messaging, shared pipeline state, multi-panel approval) — hand-built
 distributed coordination that a single workspace provides for free.
 
-Decision: **one workspace = one pipeline run = one audit trail = one consolidated design.**
-Team *separation* is IAM scoping *inside* the workspace, not instance boundaries.
+Decision: **one workspace, one correlated audit trail, one consolidated design.** Team
+*separation* is IAM scoping *inside* the workspace, not instance boundaries. (Note: "one
+workspace" does not mean "one mega-run" — see "Orchestration boundary". The pipeline is a
+series of per-stage runs in that one workspace, correlated by `requirement_id`.)
 
 ## Access separation (inside one topology)
 
@@ -64,6 +70,10 @@ Archetypes: `business-analyst`, `solution-architect` (per app), `integration-arc
 Approver roles (data, in the role registry — extend freely): `oms-lead`, `web-lead`,
 `mobile-lead`, `infosec-lead`, `qa-lead`, `pt-lead`, `eng-manager`, `cio`.
 
+Outside SwarmKit: a thin **`controller`** (`examples/sdlc-pipeline/controller/`) — holds
+per-requirement state, listens for enterprise events (mock driver in the example), and kicks the
+next stage's SwarmKit run. Not an agent; not part of the topology.
+
 Topology (delegation tree; pipeline *sequencing* is triggers + gates, not hardcoded flow):
 
 ```
@@ -77,15 +87,41 @@ release-orchestrator (root)            — owns pipeline state; advances on trig
 └── release-coordinator + support-handover
 ```
 
-The 16 steps are **not** hardcoded control flow. The pipeline is a state machine expressed as
-**triggers + durable state + human gates**:
+The 16 steps are **not** hardcoded control flow, and — critically — they are **not** one giant
+SwarmKit run either. See the orchestration boundary below.
 
-- Triggers move work between stages: `requirement.created` → intake; `design.approved-by-all`
-  → build; `build.ready-in-qa` → sit; `defect.raised` → defect-triage; `defect.fixed` →
-  targeted re-test + regression.
-- Human gates (review-queue tasks) sit between stages; the run parks on a checkpoint until
-  they resolve.
+## Orchestration boundary: SwarmKit determines + governs; a controller sequences
+
+Same split as Minder (`feedback_llm_language_code_doing`): the application owns logic and state;
+agents do determination only. An enterprise SDLC's real state machine is driven by events that
+live in *other systems* (Confluence/Jira transitions, CI build results, Git merges, SAST/DAST
+webhooks), so making SwarmKit's internal trigger scheduler the source of truth for them would be
+fiction — and would quietly turn SwarmKit into a weeks-long BPM engine, which is not a pillar.
+
+Draw the boundary at **durable cross-system waits**:
+
+- **Inside SwarmKit — each pipeline *stage* is one bounded topology run**: the stage's agents
+  (determination) **plus that stage's human gate**. The run parks on the gate until humans
+  resolve, then completes. Bounded, resumable, and it *includes* the approval — the gate + audit
+  + IAM scoping is exactly SwarmKit's strength. No stage run lives longer than draft → gate → done.
+- **Outside SwarmKit — a thin `controller`** holds the weeks-long state + `requirement_id` and
+  reacts to **real enterprise-system webhooks** by kicking the next SwarmKit run. This is the
+  Minder "application" role: a small app, not logic-in-agents. Stage-advancing triggers are
+  **external**; intra-stage flow (agent → gate → agent) is **internal**.
+- **Audit** is assembled **across** per-stage runs by `requirement_id` correlation (SwarmKit
+  already aggregates across runs for the fleet usage/eval/audit rollups) — per-stage traces plus
+  one correlated view, cleaner than a multi-week span that never closes.
+- **The multi-party approval gate stays a SwarmKit governance primitive** (state of record +
+  append-only audit + reserved human scopes); the controller only *observes* resolution to advance.
 - A **Knowledge Curator** owns the shared KBs so every stage reads a consistent picture.
+
+Stage transitions (each a real-world event the controller listens for): `requirement.created` →
+intake; `design.approved-by-all` → build; `build.ready-in-qa` → sit; `defect.raised` →
+defect-triage; `defect.fixed` → targeted re-test + regression.
+
+For the **shipped example**, the controller's external events are faked by a small local driver
+script (no Jira/CI needed to run the demo), but the event-source seam is explicit: swap the mock
+driver for real webhooks and it is a real deployment. The example teaches the hybrid, not a toy.
 
 ## New capability: configurable multi-party approval sets
 
@@ -203,8 +239,11 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 ## Build order (proposed slices)
 
 1. Multi-party approval set (governance) + tests — the enabling primitive.
-2. Archetypes + one-app (OMS) intake → design → approval, mock MCP — proves scoping + gates.
-3. Consolidated design across all three apps (the cross-cutting synthesis).
-4. Harness build + code-review gate against a demo repo.
-5. SIT + PT (cross-app) with mock rigs; defect loop.
-6. Deploy package + support handover; full `just demo-sdlc`.
+2. Archetypes + one-app (OMS) intake → design → approval as **one bounded stage run**, mock MCP
+   — proves scoping + gates + the agent-determination-only shape.
+3. The `controller` seam: per-requirement state + a mock event driver that kicks stage runs and
+   correlates them by `requirement_id`. Establishes the orchestration boundary early.
+4. Consolidated design across all three apps (the cross-cutting synthesis).
+5. Harness build + code-review gate against a demo repo.
+6. SIT + PT (cross-app) with mock rigs; defect loop (controller-driven re-test triggers).
+7. Deploy package + support handover; full `just demo-sdlc`.
