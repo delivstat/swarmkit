@@ -1063,9 +1063,14 @@ def _active_rules(rules: list[dict]) -> list[dict]:
 def _match_and_fire_event(
     ev: dict, active: list[dict], state: dict, now: float, live: bool
 ) -> dict | None:
-    """Match ONE normalized event against the active rules and fire the first
-    match (object label + camera + cooldown). Mutates `state` (cooldown). Shared
-    by the cron poller and the MQTT subscriber so they never double-fire."""
+    """Match ONE normalized event against the active rules and fire the best match.
+    An **escalate** (AI-verify) rule takes precedence over a plain rule for the same
+    event, so a broad "person" rule can't shadow a specific escalate rule (e.g. a
+    per-camera "person → is it a weapon?" gate). Among same-priority matches the first
+    in file order wins. Mutates `state` (cooldown). Shared by the cron poller and the
+    MQTT subscriber so they never double-fire."""
+    plain: dict | None = None
+    escalated: dict | None = None
     for rule in active:
         if rule.get("at_time"):
             continue  # time rules handled separately
@@ -1077,16 +1082,22 @@ def _match_and_fire_event(
         if rule_zone and (ev.get("zone") or "") != _zone_key(ev["camera"], rule_zone):
             continue  # zone presence rule: the event must be inside that zone
         labels = _condition_to_labels(rule.get("condition", ""))
-        if not labels:
-            continue  # non-object condition → not answerable from the stream
-        if ev["label"] not in labels:
-            continue
-        key = f"{ev['camera']}|{rule.get('condition')}"
-        if now - state.get(key, 0) < ALERT_COOLDOWN_S:
-            continue
-        state[key] = now
-        return {"camera": ev["camera"], "label": ev["label"], "mode": _fire(rule, ev, now, live)}
-    return None
+        if not labels or ev["label"] not in labels:
+            continue  # non-object condition or wrong object → not this rule
+        if rule.get("escalate"):
+            escalated = escalated or rule  # first escalate match wins (highest priority)
+        else:
+            plain = plain or rule
+    rule = escalated or plain
+    if rule is None:
+        return None
+    # Cooldown is per (camera, condition) — the chosen rule's own key. If it's cooling
+    # down we suppress this event rather than fall back to a lesser rule (no double alert).
+    key = f"{ev['camera']}|{rule.get('condition')}"
+    if now - state.get(key, 0) < ALERT_COOLDOWN_S:
+        return None
+    state[key] = now
+    return {"camera": ev["camera"], "label": ev["label"], "mode": _fire(rule, ev, now, live)}
 
 
 # ---- Scenario Studio Phase 1: count conditions ----
