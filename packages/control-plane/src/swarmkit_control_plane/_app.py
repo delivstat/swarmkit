@@ -23,6 +23,7 @@ from swarmkit_control_plane._connector import (
     fetch_gates,
     fetch_jobs,
     fetch_manifest,
+    fetch_run_trace,
     fetch_runs,
     fetch_state,
     fetch_usage,
@@ -55,6 +56,7 @@ from swarmkit_control_plane._fntypes import (
     RegisterFn,
     ResolveGateFn,
     RunsFn,
+    RunTraceFn,
     StateArtifactsFn,
     StateFn,
     StateManifestFn,
@@ -81,6 +83,7 @@ from swarmkit_control_plane._routes_registry import (
     _mount_fleet_identity,
     _mount_instance_canary,
     _mount_instance_gates,
+    _mount_instance_run_trace,
     _mount_instance_runs,
     _mount_instances,
     _mount_join,
@@ -113,6 +116,7 @@ def create_app(
     deploy: DeployFn = push_artifact,
     jobs: JobsFn = fetch_jobs,
     runs: RunsFn = fetch_runs,
+    run_trace: RunTraceFn = fetch_run_trace,
     gates: GatesFn = fetch_gates,
     resolve_gate: ResolveGateFn = resolve_gate_conn,
     canary: CanaryFn = fetch_canary,
@@ -202,6 +206,7 @@ def create_app(
 
     _mount_instances(app, registry, verify, jobs, author)
     _mount_instance_runs(app, registry, runs)
+    _mount_instance_run_trace(app, registry, run_trace)
     _mount_instance_gates(app, registry, gates, resolve_gate)
     _mount_instance_canary(app, registry, canary, canary_promote, canary_rollback, canary_start)
     _mount_token_routes(app, registry, verify)
