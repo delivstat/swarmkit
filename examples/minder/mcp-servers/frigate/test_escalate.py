@@ -43,6 +43,7 @@ def _harness(*, answer, provider="cloud", snapshot=None):
     f.write_alert = lambda msg, cam="", snap="", vid="": alerts.append((msg, cam))  # type: ignore
     f.execute_device_action = lambda d, a: f"{a} {d}"  # type: ignore
     f._escalate_snapshot = lambda ev: "" if snapshot is None else snapshot  # type: ignore
+    f._hires_snapshot = lambda cam: ""  # type: ignore  # cloud falls back to the stubbed detect snapshot
     f._vlm_confirm = lambda img, q, tier, model="": (answer, provider)  # type: ignore
     f.load_monitor_state = lambda: state  # type: ignore
     f.save_monitor_state = state.update  # type: ignore
@@ -122,6 +123,42 @@ def test_cooldown_suppresses_refire():
     f._deliver_escalated(_rule(), _EV, 1005.0)  # within cooldown_s=30
     assert len(alerts) == 1, alerts
     print("ok  cooldown_s suppresses a re-fire within the window")
+
+
+def test_cloud_tier_grabs_hires_snapshot():
+    # A critical (cloud) rule must request a full-res main-stream frame, not the
+    # 352x288 detect snapshot on which a gesture/detail is unresolvable.
+    alerts, _ = _harness(answer="Yes, waving.")
+    got = {}
+
+    def _hires(cam):
+        got["cam"] = cam
+        return _snapshot()
+
+    f._hires_snapshot = _hires  # type: ignore
+    f._deliver_escalated(_rule(), _EV, 1000.0)  # severity critical → cloud tier
+    assert got.get("cam") == "Gate", "cloud tier should request a hi-res snapshot"
+    assert len(alerts) == 1
+    print("ok  cloud tier grabs a hi-res main-stream snapshot")
+
+
+def test_local_tier_also_grabs_hires():
+    # Both tiers get the full-res frame — a small VLM resolves a gesture far better
+    # at full res than at 352x288, and escalate runs async so latency is fine.
+    alerts, _ = _harness(answer="Yes.")
+    got = {}
+
+    def _hires(cam):
+        got["cam"] = cam
+        return _snapshot()
+
+    f._hires_snapshot = _hires  # type: ignore
+    # no explicit tier → auto → warning → local
+    rule = _rule(severity="warning", escalate={"prompt": "waving?", "require": "yes"})
+    f._deliver_escalated(rule, _EV, 1000.0)
+    assert got.get("cam") == "Gate", "local tier should also grab a hi-res frame"
+    assert len(alerts) == 1
+    print("ok  local tier also grabs the hi-res frame")
 
 
 def test_match_prefers_escalate_over_broad_plain():
