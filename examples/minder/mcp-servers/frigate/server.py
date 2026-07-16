@@ -11,6 +11,7 @@ import base64
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -839,29 +840,84 @@ def _run_escalated_actions(rule: dict, cam: str) -> None:
             write_alert(f"🔔 Escalation: notifying {who} — {cam}", cam)
 
 
+HIRES_TIMEOUT_S = int(os.environ.get("MINDER_HIRES_TIMEOUT", "15"))
+
+
+def _hires_snapshot(camera: str) -> str:
+    """A full-resolution frame grabbed from the camera's MAIN RTSP stream via ffmpeg
+    (for the cloud escalate tier). The 352x288 detect snapshot Frigate serves can't
+    resolve a gesture/weapon/detail, but a strong cloud VLM handles full-res fine — so
+    for cloud we grab one main-stream frame. Credentials are injected from
+    MINDER_CAM_USER/PASS. "" on any failure → the caller falls back to the detect
+    snapshot (never drop the check over a grab hiccup)."""
+    try:
+        cams = json.loads((DATA_DIR / "cameras.json").read_text())
+    except Exception:
+        return ""
+    cam = next((c for c in cams if _slug(c.get("name", "")) == _slug(camera)), None)
+    rtsp = (cam or {}).get("rtsp_url", "")
+    if not rtsp.startswith("rtsp://"):
+        return ""
+    user = urllib.parse.quote(os.environ.get("MINDER_CAM_USER", "admin"))
+    pw = urllib.parse.quote(os.environ.get("MINDER_CAM_PASS", ""))
+    authed = rtsp.replace("rtsp://", f"rtsp://{user}:{pw}@", 1)
+    out = str(MEDIA_DIR / f"_hires_{_slug(camera)}.jpg")
+    try:
+        MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-rtsp_transport",
+                "tcp",
+                "-i",
+                authed,
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                out,
+            ],
+            capture_output=True,
+            timeout=HIRES_TIMEOUT_S,
+            check=True,
+        )
+        return out if Path(out).exists() else ""
+    except Exception as e:
+        _log(f"hi-res grab failed for {camera}: {e}")
+        return ""
+
+
 def _deliver_escalated(rule: dict, ev: dict, now: float) -> None:
     """Escalate path: gate the alert on a VLM confirmation. In a daemon thread (never
     blocks the poller): rate-limit, fetch the snapshot, ask the VLM, and fire the alert
     + actions only on a matching answer. A trusted 'no' suppresses the alert (the whole
-    point); when verification is impossible a *critical* rule fires 'unverified'."""
+    point); when verification is impossible a *critical* rule fires 'unverified'.
+
+    For the **cloud** tier the snapshot is a full-res main-stream grab (`_hires_snapshot`)
+    — the detect stream's 352x288 is too small for gestures/detail; local tier keeps the
+    cheap detect snapshot."""
     esc = rule.get("escalate") or {}
     cam = ev["camera"]
     severity = (rule.get("severity") or "warning").lower()
     cooldown = int(esc.get("cooldown_s", ALERT_COOLDOWN_S))
     require = (esc.get("require") or "yes").lower()
+    tier = _escalate_tier(rule)
 
     def _run() -> None:
         state = load_monitor_state()
         key = f"escalate|{cam}|{rule.get('condition')}"
         if now - state.get(key, 0) < cooldown:
             return
-        snapshot = _escalate_snapshot(ev)
+        snapshot = _hires_snapshot(cam) if tier == "cloud" else ""
+        if not snapshot:
+            snapshot = _escalate_snapshot(ev)  # fall back to the detect-stream snapshot
         answer, provider = "", ""
         if snapshot:
             try:
                 img = base64.b64encode(Path(snapshot).read_bytes()).decode()
                 answer, provider = _vlm_confirm(
-                    img, esc.get("prompt", ""), _escalate_tier(rule), esc.get("model", "")
+                    img, esc.get("prompt", ""), tier, esc.get("model", "")
                 )
             except Exception as e:
                 _log(f"escalate: confirm error on {cam}: {e}")
