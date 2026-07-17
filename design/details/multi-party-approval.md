@@ -85,6 +85,24 @@ authorities — the example needs `design:approve` from the app leads **and** `s
 InfoSec, which neither scope-per-role nor scope-per-gate could express. Validation: every role in a
 rule must confer that rule's scope. The gate advances only when **every** rule is satisfied.
 
+### Task decomposition (one task per role)
+
+A gate **fans out into one task per required role** — `Approval from role:<name>`, assigned to
+that role's members. A role-task completes when **any one member** of the role approves (a role is
+a single slot; multiple members just means anyone eligible can fill it). Quorum is counted over
+**completed role-tasks**:
+
+- `all` — every role-task in the rule completed.
+- `any` — at least one role-task completed (the rest auto-close).
+- `k-of: N` — any N role-tasks completed.
+
+A person who holds **two required roles gets two tasks and completes each separately** — one
+deliberate, attributable sign-off *per capacity* ("approved as `oms-lead`", "approved as
+`web-lead`"), not one click standing in for two responsibilities. This is the explicit,
+audit-friendly model; the small extra cost for dual-hatted people buys unambiguous accountability.
+
+Independence (four-eyes) is a **separate axis** from task completion — see "Overlapping roles".
+
 ### Resolution model
 
 Each resolution is one of three outcomes, authenticated to a human identity:
@@ -113,36 +131,31 @@ The policy engine, on each resolution:
 1. **Authenticates** the resolver to a human identity (not an agent).
 2. Checks the identity is a member of a named role that **confers the rule's scope**; rejects
    otherwise.
-3. Applies the approval to every role the identity holds that the gate still needs (see
-   "Overlapping roles"), subject to the distinct-identity constraints of `k-of` and
-   `min_distinct_approvers`.
+3. Completes **exactly the role-task the resolution was submitted for** — a person with two role-
+   tasks completes each separately; no single action covers multiple roles.
 4. Enforces **`exclude_author`** — the identity that authored/submitted the artifact cannot approve
    it (segregation of duties; important for DORA/audit).
 5. Refuses to advance until every rule's quorum **and** any `min_distinct_approvers` floor is met.
 
 ### Overlapping roles (one person, several hats)
 
-Tasks are emitted to **identities, not abstract roles**, so a person who holds two required roles
-gets **one task** for the gate — never two for the same decision. What their approval satisfies is
-a **per-gate policy**:
+A person holding two required roles gets **two tasks** and completes **both, separately** — one
+attributable sign-off per capacity. Their two completions satisfy their two roles; that is the
+point, not a shortcut. So task completion is purely per-role.
 
-- **Default — role coverage.** `all` / `any` count *roles covered*: one approval satisfies every
-  required role the identity legitimately holds. If Alice is both `oms-lead` and `web-lead`, her
-  single approval covers both — there is no one else to ask, and double-clicking is busywork, not
-  governance.
-- **Four-eyes — distinct identities.** When the intent is *independent* review by different people,
-  say so and the count becomes *distinct identities*, not role coverage:
-  - `k-of: N` within a rule is inherently distinct-people (Alice counts once even if she is in the
-    pool twice);
-  - `min_distinct_approvers: N` at the gate level is a blanket floor — at least N different humans
-    must have approved, regardless of how roles overlap, so one dual-hatted person cannot satisfy
-    the whole gate alone.
+**Independence is a separate axis.** Because a dual-role person *can* complete two role-tasks, a
+gate that also needs genuine four-eyes adds a distinct-identity floor on top:
 
-The rule of thumb: `all`/`any` mean "each authority signed" (a person may wear several hats);
-`k-of`/`min_distinct_approvers` mean "N independent people looked". Overlap is most suspect when the
-roles exercise *different scopes* (e.g. the same person as both design approver and independent
-security sign-off) — `min_distinct_approvers` (or simply not placing one person in both roles)
-guards that, as an explicit policy choice, never a hardcoded heuristic.
+- `min_distinct_approvers: N` at the gate level — at least N **different humans** must have approved
+  across all completed role-tasks, regardless of overlap. So one dual-hatted person completing two
+  role-tasks satisfies the roles but **not** a `min_distinct_approvers: 2` floor; a second identity
+  is still required.
+
+Keep the two axes distinct: **which roles signed** (task completion, `all`/`any`/`k-of`) versus
+**how many independent people signed** (`min_distinct_approvers`). Overlap is most suspect when the
+roles exercise *different scopes* (the same person as both design approver and independent security
+sign-off) — `min_distinct_approvers`, or simply not placing one person in both roles, guards that as
+an explicit policy choice, never a hardcoded heuristic.
 
 ```yaml
 approval:
@@ -157,8 +170,10 @@ existing reserved scopes.
 
 ### Audit
 
-Every resolution appends one event: `{gate_id, correlation_id, role, identity, outcome, comment?,
-ts}`. Append-only from the executive perspective (§8.3). This record *is* the approval evidence
+Every role-task completion appends one event: `{gate_id, correlation_id, role, identity, outcome,
+comment?, ts}` — so a person acting in two capacities produces **two** events, one per role, each
+independently attributable. Append-only from the executive perspective (§8.3). This record *is* the
+approval evidence
 (who signed off, when) that DORA/compliance reporting reads — no separate spreadsheet.
 
 ## Eject
@@ -175,10 +190,12 @@ invariant 7 holds. The role registry + policy eject as the node's static config.
   `k-of: N` with N > group size is rejected; a scope with no member (no role confers it) is rejected.
 - **Quorum modes:** `all` / `any` / `k-of: N` each advance exactly at their threshold; `k-of`
   counts **distinct** identities; a duplicate approval from the same identity does not double-count.
-- **Overlapping roles:** a person holding two required roles gets **one** task; by default their
-  single approval covers both roles (`all` satisfied); with `min_distinct_approvers: 2` the same
-  gate is *not* satisfied until a second distinct identity approves; `k-of: 2` over a pool cannot be
-  met by one dual-membership person.
+- **Task decomposition:** a gate fans out into one task per required role; a role-task completes on
+  the first approval by **any** member of that role; `all` needs every role-task, `k-of: N` needs N.
+- **Overlapping roles:** a person holding two required roles gets **two** tasks and must complete
+  **both** separately to satisfy both roles (one action does not cover two); with
+  `min_distinct_approvers: 2` the gate is still unsatisfied after that person's two completions until
+  a second distinct identity approves.
 - **Reserved-scope enforcement:** an agent principal cannot be granted a registry-bound scope; an
   agent-authenticated resolution is refused.
 - **Segregation of duties:** with `exclude_author: true`, the author's approval is refused; with
