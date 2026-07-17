@@ -113,11 +113,44 @@ The policy engine, on each resolution:
 1. **Authenticates** the resolver to a human identity (not an agent).
 2. Checks the identity is a member of a named role that **confers the rule's scope**; rejects
    otherwise.
-3. Enforces **distinct identities** — one person holding two roles counts once per role but cannot
-   alone satisfy a multi-identity rule (e.g. `k-of: 2`).
+3. Applies the approval to every role the identity holds that the gate still needs (see
+   "Overlapping roles"), subject to the distinct-identity constraints of `k-of` and
+   `min_distinct_approvers`.
 4. Enforces **`exclude_author`** — the identity that authored/submitted the artifact cannot approve
    it (segregation of duties; important for DORA/audit).
-5. Refuses to advance until every rule's quorum is met.
+5. Refuses to advance until every rule's quorum **and** any `min_distinct_approvers` floor is met.
+
+### Overlapping roles (one person, several hats)
+
+Tasks are emitted to **identities, not abstract roles**, so a person who holds two required roles
+gets **one task** for the gate — never two for the same decision. What their approval satisfies is
+a **per-gate policy**:
+
+- **Default — role coverage.** `all` / `any` count *roles covered*: one approval satisfies every
+  required role the identity legitimately holds. If Alice is both `oms-lead` and `web-lead`, her
+  single approval covers both — there is no one else to ask, and double-clicking is busywork, not
+  governance.
+- **Four-eyes — distinct identities.** When the intent is *independent* review by different people,
+  say so and the count becomes *distinct identities*, not role coverage:
+  - `k-of: N` within a rule is inherently distinct-people (Alice counts once even if she is in the
+    pool twice);
+  - `min_distinct_approvers: N` at the gate level is a blanket floor — at least N different humans
+    must have approved, regardless of how roles overlap, so one dual-hatted person cannot satisfy
+    the whole gate alone.
+
+The rule of thumb: `all`/`any` mean "each authority signed" (a person may wear several hats);
+`k-of`/`min_distinct_approvers` mean "N independent people looked". Overlap is most suspect when the
+roles exercise *different scopes* (e.g. the same person as both design approver and independent
+security sign-off) — `min_distinct_approvers` (or simply not placing one person in both roles)
+guards that, as an explicit policy choice, never a hardcoded heuristic.
+
+```yaml
+approval:
+  rules:
+    - { scope: design:approve,   roles: [oms-lead, web-lead, mobile-lead], quorum: all }
+    - { scope: security:approve, roles: [infosec-lead],                    quorum: all }
+  min_distinct_approvers: 2     # optional four-eyes floor across the whole gate
+```
 
 None of this is promptable or agent-reachable; it is the same class of structural gate as the
 existing reserved scopes.
@@ -140,8 +173,12 @@ invariant 7 holds. The role registry + policy eject as the node's static config.
   validate; a rule referencing an unknown role is rejected; a role in a rule that does **not**
   confer the rule's scope is rejected; a gate spanning two scopes (design + security) validates;
   `k-of: N` with N > group size is rejected; a scope with no member (no role confers it) is rejected.
-- **Quorum modes:** `all` / `any` / `k-of: N` each advance exactly at their threshold, counted
-  across **distinct** identities; a duplicate approval from the same identity does not double-count.
+- **Quorum modes:** `all` / `any` / `k-of: N` each advance exactly at their threshold; `k-of`
+  counts **distinct** identities; a duplicate approval from the same identity does not double-count.
+- **Overlapping roles:** a person holding two required roles gets **one** task; by default their
+  single approval covers both roles (`all` satisfied); with `min_distinct_approvers: 2` the same
+  gate is *not* satisfied until a second distinct identity approves; `k-of: 2` over a pool cannot be
+  met by one dual-membership person.
 - **Reserved-scope enforcement:** an agent principal cannot be granted a registry-bound scope; an
   agent-authenticated resolution is refused.
 - **Segregation of duties:** with `exclude_author: true`, the author's approval is refused; with
