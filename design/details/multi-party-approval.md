@@ -38,35 +38,39 @@ validated artifacts (canonical schema), not runtime flags.
 
 ### Role registry (new IAM artifact)
 
-A workspace-level artifact mapping each role to a governance scope and the human identities that
-hold it. Versioned like any artifact (people join/leave, so it changes independently of topology).
+A workspace-level artifact mapping each role to the human identities that hold it and the
+governance scopes it confers. A role carries **many scopes** (standard RBAC: identity → role →
+scopes) — a lead approves designs *and* code *and* deploys, and membership then lives in **one
+place per person**, so a handover is a single edit and cannot silently drift. Versioned like any
+artifact (people join/leave independently of topology).
 
 ```yaml
 apiVersion: swarmkit/v1
 kind: RoleRegistry
 roles:
-  - { id: oms-lead,     scope: design:approve,   members: [alice] }
-  - { id: infosec-lead, scope: security:approve, members: [dana] }
-  - { id: eng-manager,  scope: release:approve,  members: [grace] }
-  - { id: cio,          scope: release:approve,  members: [heidi] }
+  - { id: oms-lead,     members: [alice], scopes: [design:approve, code:approve, deploy:approve] }
+  - { id: infosec-lead, members: [dana],  scopes: [security:approve] }
+  - { id: eng-manager,  members: [grace], scopes: [release:approve, code:approve] }
+  - { id: cio,          members: [heidi], scopes: [release:approve] }
 ```
 
-**Registry-driven reserved scopes.** Any scope bound in the registry is a *human-identity scope*:
+**Registry-driven reserved scopes.** Any scope conferred by any role is a *human-identity scope*:
 the policy engine refuses to grant it to a non-human (agent) principal — the same structural
 mechanism as the existing reserved scopes (`skills:activate`, `iam:modify`, …), but driven by the
 registry rather than a hardcoded list (no hardcoded scope names — "everything configurable").
 
 ### Per-gate approval policy
 
-A gate declares one or more approval **rules**, each a group of roles + a quorum mode:
+A gate declares one or more approval **rules**, each naming the **scope** being exercised, the
+group of roles that may exercise it, and a quorum mode:
 
 ```yaml
 gate: consolidated-design-approval
 approval:
   rules:
-    - { roles: [oms-lead, web-lead, mobile-lead], quorum: all }
-    - { roles: [infosec-lead],                    quorum: all }
-    - { roles: [rev-a, rev-b, rev-c],             quorum: { k-of: 2 } }
+    - { scope: design:approve,   roles: [oms-lead, web-lead, mobile-lead], quorum: all }
+    - { scope: security:approve, roles: [infosec-lead],                    quorum: all }
+    - { scope: design:approve,   roles: [rev-a, rev-b, rev-c],             quorum: { k-of: 2 } }
   exclude_author: true        # segregation of duties (default true)
   on_revision: reset_all      # reset_all | reconfirm_changed
 ```
@@ -75,8 +79,11 @@ approval:
 - `any` — one role in the group suffices.
 - `k-of: N` — any N **distinct** role-holders in the group.
 
-The gate advances only when **every** rule is satisfied. Modelling groups explicitly (not
-per-role quorum) is what makes `k-of` well-defined.
+The **rule** names its scope so a multi-scope role stays unambiguous (the role says what a person
+*can* do; the rule says what is *being asked* here), and a single gate can span multiple
+authorities — the example needs `design:approve` from the app leads **and** `security:approve` from
+InfoSec, which neither scope-per-role nor scope-per-gate could express. Validation: every role in a
+rule must confer that rule's scope. The gate advances only when **every** rule is satisfied.
 
 ### Resolution model
 
@@ -104,7 +111,8 @@ weeks and across people, and a parked gate costs one DB row (no held process).
 
 The policy engine, on each resolution:
 1. **Authenticates** the resolver to a human identity (not an agent).
-2. Checks the identity **holds the role's scope** via the registry; rejects otherwise.
+2. Checks the identity is a member of a named role that **confers the rule's scope**; rejects
+   otherwise.
 3. Enforces **distinct identities** — one person holding two roles counts once per role but cannot
    alone satisfy a multi-identity rule (e.g. `k-of: 2`).
 4. Enforces **`exclude_author`** — the identity that authored/submitted the artifact cannot approve
@@ -128,9 +136,10 @@ invariant 7 holds. The role registry + policy eject as the node's static config.
 
 ## Test plan
 
-- **Schema (Python + TS):** RoleRegistry and gate `approval` blocks validate; a rule referencing
-  an unknown role is rejected; `k-of: N` with N > group size is rejected; a scope with no members
-  is rejected.
+- **Schema (Python + TS):** RoleRegistry (roles carry many scopes) and gate `approval` blocks
+  validate; a rule referencing an unknown role is rejected; a role in a rule that does **not**
+  confer the rule's scope is rejected; a gate spanning two scopes (design + security) validates;
+  `k-of: N` with N > group size is rejected; a scope with no member (no role confers it) is rejected.
 - **Quorum modes:** `all` / `any` / `k-of: N` each advance exactly at their threshold, counted
   across **distinct** identities; a duplicate approval from the same identity does not double-count.
 - **Reserved-scope enforcement:** an agent principal cannot be granted a registry-bound scope; an
