@@ -160,10 +160,15 @@ async def _deliver_alert(alert: dict) -> None:
 
 
 def main() -> None:
-    from alert_bus import wait_for_token
+    import threading
+
+    from alert_bus import wait_for_token, watch_token
 
     # Idle until a token is configured (dashboard or env) — no restart to enable.
     token = wait_for_token("discord")
+    # ...and exit (to idle) if the channel is later disabled/replaced — no restart
+    # to disable, symmetric with enabling.
+    threading.Thread(target=watch_token, args=("discord", token), daemon=True).start()
     log.info("Minder Discord bot starting as thin adapter...")
     client.run(token, log_handler=None)
 

@@ -3536,7 +3536,11 @@ async function loadChannels() {
       <div class="card" style="margin-bottom:0.75rem">
         <div style="display:flex; justify-content:space-between; align-items:center">
           <strong>${c.name}</strong>
-          <span class="badge ${c.configured ? 'badge-success' : 'badge-warning'}">${c.configured ? 'configured' : 'not set up'}</span>
+          ${!c.configured
+            ? '<span class="badge badge-warning">not set up</span>'
+            : c.enabled
+              ? '<span class="badge badge-success">active</span>'
+              : '<span class="badge">disabled</span>'}
         </div>
         <div style="font-size:0.82rem; color:var(--text-dim); margin:0.5rem 0">${c.help}</div>
         ${invite}
@@ -3544,7 +3548,14 @@ async function loadChannels() {
           <input type="password" id="ch-token-${c.id}" style="font-family:monospace"
                  placeholder="${c.configured ? '•••••• (set — paste to replace)' : 'paste the bot token'}">
         </div>
-        <button class="btn btn-primary" onclick="saveChannel('${c.id}', '${c.name}')">${c.configured ? 'Update' : 'Connect'} ${c.name}</button>
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="saveChannel('${c.id}', '${c.name}')">${c.configured ? 'Update' : 'Connect'} ${c.name}</button>
+          ${c.configured
+            ? (c.enabled
+                ? `<button class="btn btn-secondary" onclick="toggleChannel('${c.id}', '${c.name}', false)">Disable</button>`
+                : `<button class="btn btn-primary" onclick="toggleChannel('${c.id}', '${c.name}', true)">Enable</button>`)
+            : ''}
+        </div>
       </div>`;
     }).join('');
   } catch (e) {
@@ -3559,6 +3570,19 @@ async function saveChannel(id, name) {
   try {
     await api('/ops/channels/' + id, { method: 'POST', body: { token, enabled: true } });
     toast(name + ' connected — activates within ~15s');
+    loadChannels();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+// Toggle a configured channel on/off without re-entering its token. The backend
+// preserves the saved token (only overwrites when a token is sent), so this flips
+// `enabled`; the adapter picks it up within ~15s — no container restart.
+async function toggleChannel(id, name, enabled) {
+  try {
+    await api('/ops/channels/' + id, { method: 'POST', body: { enabled } });
+    toast(name + (enabled ? ' enabled — activates within ~15s' : ' disabled — stops within ~15s'));
     loadChannels();
   } catch (e) {
     toast(e.message, true);

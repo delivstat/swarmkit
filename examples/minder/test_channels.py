@@ -42,6 +42,33 @@ def test_legacy_telegram_top_level():
     print("ok  legacy top-level telegram_token resolves")
 
 
+def test_disabled_telegram_over_legacy():
+    # Enabling Telegram writes BOTH channels.telegram.token and the legacy
+    # top-level telegram_token, so a disable must win over the legacy fallback —
+    # otherwise Telegram can never be turned off from the dashboard.
+    _cfg({"channels": {"telegram": {"enabled": False, "token": "TG1"}}, "telegram_token": "TG1"})
+    assert alert_bus.channel_token("telegram") == ""
+    print("ok  disabled telegram wins over legacy telegram_token")
+
+
+def test_disabled_over_env():
+    _cfg({"channels": {"discord": {"enabled": False, "token": "D1"}}})
+    os.environ["MINDER_DISCORD_TOKEN"] = "ENVTOK"
+    try:
+        assert alert_bus.channel_token("discord") == ""  # disable wins over env too
+    finally:
+        os.environ.pop("MINDER_DISCORD_TOKEN", None)
+    print("ok  disabled channel wins over env fallback")
+
+
+def test_reenable_restores_token():
+    _cfg({"channels": {"discord": {"enabled": False, "token": "D1"}}})
+    assert alert_bus.channel_token("discord") == ""
+    _cfg({"channels": {"discord": {"enabled": True, "token": "D1"}}})
+    assert alert_bus.channel_token("discord") == "D1"  # flip back on, no token re-entry
+    print("ok  re-enabling restores the saved token")
+
+
 def test_env_fallback():
     _cfg({})
     os.environ["MINDER_DISCORD_TOKEN"] = "ENVTOK"
@@ -56,5 +83,8 @@ if __name__ == "__main__":
     test_config_token()
     test_disabled_channel_ignored()
     test_legacy_telegram_top_level()
+    test_disabled_telegram_over_legacy()
+    test_disabled_over_env()
+    test_reenable_restores_token()
     test_env_fallback()
     print("\nALL CHANNELS TESTS PASSED")
