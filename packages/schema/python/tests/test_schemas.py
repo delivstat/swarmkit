@@ -16,6 +16,7 @@ ALL: tuple[SchemaName, ...] = (
     "workspace",
     "trigger",
     "executor-adapter",
+    "role-registry",
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures"
@@ -87,6 +88,17 @@ def test_trigger_valid_fixtures(fixture: Path) -> None:
 def test_trigger_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("trigger", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("role-registry"), ids=lambda p: p.name)
+def test_role_registry_valid_fixtures(fixture: Path) -> None:
+    validate("role-registry", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("role-registry-invalid"), ids=lambda p: p.name)
+def test_role_registry_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("role-registry", _load_yaml(fixture))
 
 
 @pytest.mark.parametrize("fixture", _fixtures("executor-adapter"), ids=lambda p: p.name)

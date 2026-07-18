@@ -18,6 +18,7 @@ const ALL_SCHEMAS: SchemaName[] = [
 	"workspace",
 	"trigger",
 	"executor-adapter",
+	"role-registry",
 ];
 
 function fixtures(kind: string): string[] {
@@ -80,4 +81,10 @@ describeFixtures(
 	"executor-adapter",
 	"executor-adapter-invalid",
 	"executor-adapter",
+);
+describeFixtures(
+	"role-registry",
+	"role-registry",
+	"role-registry-invalid",
+	"role-registry",
 );

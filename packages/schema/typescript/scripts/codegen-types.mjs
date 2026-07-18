@@ -37,6 +37,7 @@ const ARTIFACTS = {
   workspace: "SwarmKitWorkspace",
   trigger: "SwarmKitTrigger",
   "executor-adapter": "SwarmKitExecutorAdapter",
+  "role-registry": "SwarmKitRoleRegistry",
 };
 
 // quicktype names recursive leaf types as "<root-name minus last character>"

@@ -1,0 +1,9 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: bad-scope
+  name: Scope missing the resource:action colon
+roles:
+  - id: oms-lead
+    members: [alice]
+    scopes: [designapprove]

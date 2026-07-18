@@ -1,0 +1,9 @@
+apiVersion: swarmkit/v1
+kind: Role
+metadata:
+  id: wrong-kind
+  name: Wrong kind constant
+roles:
+  - id: oms-lead
+    members: [alice]
+    scopes: [design:approve]

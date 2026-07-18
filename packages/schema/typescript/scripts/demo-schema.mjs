@@ -13,7 +13,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { parse as parseYaml } from "yaml";
 
-const ALLOWED = ["topology", "skill", "archetype", "workspace", "trigger"];
+const ALLOWED = ["topology", "skill", "archetype", "workspace", "trigger", "role-registry"];
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SCHEMAS_ROOT = resolve(here, "..", "..", "schemas");

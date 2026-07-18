@@ -1,0 +1,6 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: no-roles
+  name: Registry with no roles
+roles: []

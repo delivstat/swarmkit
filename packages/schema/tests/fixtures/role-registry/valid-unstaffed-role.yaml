@@ -1,0 +1,9 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: unstaffed
+  name: Registry with an unstaffed role
+roles:
+  - id: cio
+    members: []
+    scopes: [release:approve]
