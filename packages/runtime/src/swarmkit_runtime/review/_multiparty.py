@@ -103,9 +103,7 @@ def collect_resolutions(
         item = queue.get(role_task_item_id(gate_id, task.rule_index, task.role))
         if item is None or item.status == "pending":
             continue
-        outcome: Literal["approve", "reject"] = (
-            "approve" if item.status == "approved" else "reject"
-        )
+        outcome: Literal["approve", "reject"] = "approve" if item.status == "approved" else "reject"
         out.append(
             Resolution(
                 identity=item.answer,
