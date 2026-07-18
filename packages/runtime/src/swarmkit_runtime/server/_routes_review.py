@@ -9,7 +9,7 @@ only; the queue is append-only from the agent's perspective (invariant #4).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -19,6 +19,13 @@ from swarmkit_runtime.review import FileReviewQueue, ReviewItem
 
 class AnswerRequest(BaseModel):
     answer: str
+
+
+class ResolveRequest(BaseModel):
+    """Resolve a multi-party approval role-task, recording the resolver identity."""
+
+    identity: str
+    outcome: Literal["approve", "reject"]
 
 
 def _item_to_dict(item: ReviewItem) -> dict[str, Any]:
@@ -99,4 +106,16 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
         if body.answer.isdigit() and 0 <= int(body.answer) < len(options):
             resolved = str(options[int(body.answer)])
         queue.answer_input(item.id, resolved)
+        return _item_to_dict(_find(queue, item.id))
+
+    @app.post("/review/{item_id}/resolve")
+    async def resolve_multiparty_task(item_id: str, body: ResolveRequest) -> dict[str, Any]:
+        """Resolve a multi-party approval role-task, recording the resolver identity so the
+        approval engine can verify membership (needed for rejects as well as approves)."""
+        queue = _queue()
+        item = _find(queue, item_id)
+        status: Literal["approved", "rejected"] = (
+            "approved" if body.outcome == "approve" else "rejected"
+        )
+        queue.record_resolution(item.id, status, body.identity)
         return _item_to_dict(_find(queue, item.id))
