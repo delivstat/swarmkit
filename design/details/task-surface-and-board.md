@@ -57,8 +57,16 @@ A role's queue is a query on `role:<name>` — every pending gate task for that 
 requirements, not a hunt through runs. Each task entry carries the **provenance bundle** the funnel
 assembled (`gate-funnel`): the artifact, the judge score + critique, attached reviewer findings, the
 retry count, and the diff-since-last-approval — so a human decides in one place with full context.
-Resolving a task calls back to the gate (the approval is recorded by `multi-party-approval`; the queue
-is just the surface).
+
+**Source of record vs projection — the task does *not* live in the board.** A task's authoritative
+state is SwarmKit governance: a parked approval **gate** (a run on its checkpoint `interrupt()`,
+surfaced via serve `/review`) plus the append-only **audit** where `multi-party-approval` records each
+resolution. The board holds only a **namespaced projection** of those tasks so the cross-requirement,
+per-role query is one lookup — read-optimised, derived from and reconciled against the gate/audit, and
+losslessly rebuildable from them. **Resolving a task writes back to the gate/audit, never to the
+board.** (The projection earns its place for the cross-requirement query and as the shared space where
+teams also write status/notes; the tasks do not depend on it for correctness — a live aggregation over
+`/review` + `/audit` is an equally valid backing.)
 
 ### The cross-requirement board
 
