@@ -136,7 +136,9 @@ useful runtime change — flagged, not built here):
    (the DORA view). Likely a small `serve` run-metadata addition.
 2. **Gate-resolution notification.** When a gate resolves, the controller must learn of it — a
    webhook/callback from `serve` (or a poll of the gates API) so it can emit the stage's `success`.
-   Reuses the existing review-gate state; adds a notification edge.
+   Reuses the existing review-gate state; adds a notification edge. (The controller only *learns*
+   the gate resolved; the approval *pause* itself is a SwarmKit checkpoint resumed by humans — see
+   `orchestration-pause-model.md` for the two-kinds-of-pause model.)
 
 Everything else (kick a run, read run status, read the gate queue) already exists.
 
