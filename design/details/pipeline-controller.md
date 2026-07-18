@@ -36,6 +36,11 @@ reusable artifact schema (canonical), so a different pipeline is new *data*, not
 (topology-as-data spirit at the sequencing layer). Its persisted saga state is its own store
 (SQLite/Postgres), separate from SwarmKit's.
 
+The stage-graph is **authored/edited in the composer** (`composer-pluggable-artifact-types.md`) —
+form + canvas, `ref`-validated against the workspace, and, because editing the pipeline is a
+`topologies:modify`-class act, routed through the growth-loop proposal → approval path. The controller
+reads only the **published** version.
+
 ## API shape
 
 ### Stage-graph (the pipeline as data)
