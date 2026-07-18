@@ -389,10 +389,16 @@ async def post_init(app: Application) -> None:
 
 
 def main() -> None:
-    from alert_bus import wait_for_token
+    import threading
+
+    from alert_bus import wait_for_token, watch_token
 
     # Idle until a token is configured (dashboard or env) — no restart to enable.
     token = wait_for_token("telegram")
+
+    # ...and exit (to idle) if the channel is later disabled/replaced — no restart
+    # to disable, symmetric with enabling.
+    threading.Thread(target=watch_token, args=("telegram", token), daemon=True).start()
 
     # concurrent_updates: handle messages from multiple people at once instead
     # of strictly one-at-a-time. Non-model work (RTSP capture, YOLO, HA calls)

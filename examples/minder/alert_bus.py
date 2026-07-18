@@ -40,7 +40,14 @@ def channel_token(channel_id: str) -> str:
         except (json.JSONDecodeError, ValueError):
             cfg = {}
     ch = (cfg.get("channels") or {}).get(channel_id) or {}
-    if ch.get("token") and ch.get("enabled", True):
+    # An explicit dashboard entry is authoritative: if it exists and is disabled,
+    # the channel is OFF — do not fall through to the legacy or env token. (Enabling
+    # a channel also writes the legacy top-level `telegram_token`, so without this a
+    # disabled Telegram would still resolve via that fallback and could not be turned
+    # off from the dashboard.)
+    if ch and not ch.get("enabled", True):
+        return ""
+    if ch.get("token"):
         return str(ch["token"])
     if channel_id == "telegram" and cfg.get("telegram_token"):
         return str(cfg["telegram_token"])
@@ -62,6 +69,26 @@ def wait_for_token(channel_id: str, interval: int = 15) -> str:
             log.info("[%s] no token yet — waiting (configure in the dashboard)", channel_id)
             logged = True
         time.sleep(interval)
+
+
+def watch_token(channel_id: str, current: str, interval: int = 15) -> None:
+    """Daemon loop: exit the process when the channel's token changes — cleared,
+    disabled, or replaced in the dashboard. The entrypoint supervises adapters with
+    `until` (restart on non-zero exit), so exiting drops the adapter back into
+    `wait_for_token`: it idles if the channel was disabled, or reconnects with the
+    new token if it was replaced. This makes *disabling* a channel take effect with
+    no container restart, symmetric with enabling. Run as a daemon thread after
+    `wait_for_token` returns."""
+    import time
+
+    while True:
+        time.sleep(interval)
+        if channel_token(channel_id) != current:
+            log.info(
+                "[%s] token changed in dashboard (disabled/replaced) — exiting to reload",
+                channel_id,
+            )
+            os._exit(3)  # non-zero → supervisor restarts us into wait_for_token
 
 
 def start_alert_subscriber(
