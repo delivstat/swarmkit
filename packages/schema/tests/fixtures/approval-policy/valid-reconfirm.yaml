@@ -1,0 +1,5 @@
+rules:
+  - scope: release:approve
+    roles: [eng-manager, cio]
+    quorum: all
+on_revision: reconfirm_changed

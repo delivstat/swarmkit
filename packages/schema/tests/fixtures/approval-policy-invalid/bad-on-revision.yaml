@@ -1,0 +1,5 @@
+rules:
+  - scope: design:approve
+    roles: [oms-lead]
+    quorum: all
+on_revision: keep-some

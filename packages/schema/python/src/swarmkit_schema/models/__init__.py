@@ -11,6 +11,8 @@ from .archetype import SwarmKitArchetype
 from .workspace import SwarmKitWorkspace
 from .trigger import SwarmKitTrigger
 from .executor_adapter import SwarmKitExecutorAdapter
+from .role_registry import SwarmKitRoleRegistry
+from .approval_policy import SwarmKitApprovalPolicy
 
 __all__ = [
     "SwarmKitTopology",
@@ -19,4 +21,6 @@ __all__ = [
     "SwarmKitWorkspace",
     "SwarmKitTrigger",
     "SwarmKitExecutorAdapter",
+    "SwarmKitRoleRegistry",
+    "SwarmKitApprovalPolicy",
 ]

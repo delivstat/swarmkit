@@ -12,6 +12,9 @@
 import addFormats from "ajv-formats";
 import Ajv2020, { type ValidateFunction } from "ajv/dist/2020.js";
 
+import approvalPolicySchema from "../../schemas/approval-policy.schema.json" with {
+	type: "json",
+};
 import archetypeSchema from "../../schemas/archetype.schema.json" with {
 	type: "json",
 };
@@ -39,6 +42,9 @@ import registerRequestSchema from "../../schemas/protocol/register-request.schem
 import registerResponseSchema from "../../schemas/protocol/register-response.schema.json" with {
 	type: "json",
 };
+import roleRegistrySchema from "../../schemas/role-registry.schema.json" with {
+	type: "json",
+};
 import skillSchema from "../../schemas/skill.schema.json" with { type: "json" };
 import topologySchema from "../../schemas/topology.schema.json" with {
 	type: "json",
@@ -56,7 +62,9 @@ export type SchemaName =
 	| "archetype"
 	| "workspace"
 	| "trigger"
-	| "executor-adapter";
+	| "executor-adapter"
+	| "role-registry"
+	| "approval-policy";
 
 const SCHEMAS = {
 	topology: topologySchema,
@@ -65,6 +73,8 @@ const SCHEMAS = {
 	workspace: workspaceSchema,
 	trigger: triggerSchema,
 	"executor-adapter": executorAdapterSchema,
+	"role-registry": roleRegistrySchema,
+	"approval-policy": approvalPolicySchema,
 } as const;
 
 // Fleet-enrollment wire schemas (design details/control-plane/19-fleet-enrollment-protocol.md).

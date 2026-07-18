@@ -90,11 +90,13 @@ demo-skill-schema:      (_demo-schema "skill")
 demo-archetype-schema:  (_demo-schema "archetype")
 demo-workspace-schema:  (_demo-schema "workspace")
 demo-trigger-schema:    (_demo-schema "trigger")
+demo-role-registry-schema: (_demo-schema "role-registry")
+demo-approval-policy-schema: (_demo-schema "approval-policy")
 
 # Aggregate: run every per-artifact demo. Exit criterion for Milestone 0 —
-# all five schemas exercised in both Python and TypeScript against committed
+# all core schemas exercised in both Python and TypeScript against committed
 # valid + invalid fixtures.
-demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema
+demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
 # Demo the published fleet-enrollment protocol schemas (register/join + InstanceState, design 19):
 # validate every committed protocol fixture + show the cross-file $ref enforcing nested state.

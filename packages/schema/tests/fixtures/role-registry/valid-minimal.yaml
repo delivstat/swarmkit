@@ -1,0 +1,9 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: minimal-roles
+  name: Minimal registry
+roles:
+  - id: approver
+    members: [alice]
+    scopes: [design:approve]

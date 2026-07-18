@@ -1,0 +1,4 @@
+rules:
+  - scope: design:approve
+    roles: [oms-lead]
+    quorum: any

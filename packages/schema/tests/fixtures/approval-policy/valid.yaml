@@ -1,0 +1,13 @@
+rules:
+  - scope: design:approve
+    roles: [oms-lead, web-lead, mobile-lead]
+    quorum: all
+  - scope: security:approve
+    roles: [infosec-lead]
+    quorum: all
+  - scope: design:approve
+    roles: [rev-a, rev-b, rev-c]
+    quorum: { k-of: 2 }
+exclude_author: true
+on_revision: reset_all
+min_distinct_approvers: 2

@@ -8,3 +8,5 @@ export type { SwarmKitArchetype } from "./archetype.js";
 export type { SwarmKitWorkspace } from "./workspace.js";
 export type { SwarmKitTrigger } from "./trigger.js";
 export type { SwarmKitExecutorAdapter } from "./executor-adapter.js";
+export type { SwarmKitRoleRegistry } from "./role-registry.js";
+export type { SwarmKitApprovalPolicy } from "./approval-policy.js";

@@ -1,0 +1,9 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: bad-role-id
+  name: Role id violates the identifier pattern
+roles:
+  - id: OMS-Lead
+    members: [alice]
+    scopes: [design:approve]

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/role-registry.schema.json",
+  "title": "SwarmKit RoleRegistry",
+  "description": "Workspace-level IAM registry mapping roles to the human identities that hold them and the governance scopes they confer. A role carries many scopes (RBAC: identity -> role -> scopes), so membership lives in one place per person. Consumed by multi-party approval gates. See design/details/multi-party-approval.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "roles"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "RoleRegistry" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/role" },
+      "description": "The roles in this workspace. Role ids must be unique (enforced at load time — JSON Schema cannot express object-field uniqueness)."
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "scope": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$",
+      "description": "A governance scope of the form `<resource>:<action>`, e.g. `design:approve`. Any scope conferred by a role is a human-identity scope — the policy engine refuses to grant it to a non-human (agent) principal."
+    },
+    "role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "members", "scopes"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "members": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Human identity references that hold this role. May be empty for an unstaffed role; a gate requiring an unstaffed role cannot reach quorum."
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/scope" },
+          "description": "Governance scopes this role confers. A role carries many scopes so a handover is a single membership edit."
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      }
+    }
+  }
+}

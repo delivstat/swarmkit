@@ -1,0 +1,9 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: empty-scopes
+  name: Role confers no scope
+roles:
+  - id: oms-lead
+    members: [alice]
+    scopes: []

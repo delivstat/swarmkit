@@ -76,7 +76,15 @@ def main() -> int:
         print("usage: demo_schema.py <artifact>", file=sys.stderr)
         return 2
     schema = sys.argv[1]
-    if schema not in ("topology", "skill", "archetype", "workspace", "trigger"):
+    if schema not in (
+        "topology",
+        "skill",
+        "archetype",
+        "workspace",
+        "trigger",
+        "role-registry",
+        "approval-policy",
+    ):
         print(f"unknown schema: {schema}", file=sys.stderr)
         return 2
     return demo(schema)  # type: ignore[arg-type]
