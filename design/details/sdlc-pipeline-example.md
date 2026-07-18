@@ -410,6 +410,32 @@ a regulated retailer:
   every in-flight requirement and the gate/lock it sits at, plus throughput/bottleneck per gate.
   Decided in scope for v1; backed by a shared namespaced space (see "The board").
 
+## Closing the loop: metrics drive pipeline improvement
+
+The audit is not only a compliance record and a DORA report — it is the **measurement substrate for
+improving the pipeline itself**, closing onto the third pillar (growth-through-authoring). This is
+**not new machinery**: SwarmKit already has the growth loop — gap → proposal → human approval →
+publish (`packages/control-plane` proposal queue) — and the **eval harness** (`eval-harness.md`,
+implemented) as its "measure/test" gate (§12: gap → author → test → publish). The pipeline's own
+metrics are simply another **signal** into that loop.
+
+- **What is measured** (from the correlated audit + the controller's saga timeline): the four DORA
+  keys — deployment frequency (deploy-stage completions), lead time (`requirement.created` → prod),
+  change-failure rate, MTTR — plus SAST/DAST outcomes (compliance-gate audit records) and per-gate
+  throughput/bottleneck (the board). *Caveat:* change-failure rate and MTTR need **prod signal**
+  (incident/rollback data), which the example mocks; the rest fall straight out of correlation.
+- **How it improves the pipeline** (human-gated): a metric that flags waste becomes a growth signal →
+  a **proposal** a human approves, scored by the eval harness before publish. The design gate
+  dominating lead time surfaces the approver bottleneck (tune quorum / batch); a stage with high
+  change-failure rate → tighten its judge rubric or add a harness reviewer; a requirement class that
+  always round-trips (payments → security) → author a pre-check skill so it is caught earlier.
+- **Never autonomous.** The pipeline *proposes* changes to itself; humans approve. Changes to gates,
+  topologies, or IAM ride the reserved human scopes (`topologies:modify`, `iam:modify`) — no agent can
+  self-rewire the process, by construction.
+
+In one line: **the pipeline that ships software also measures and improves how it ships software —
+with a human approving every change to itself.**
+
 ## Human task surface
 
 Humans are the scarce resource, so their experience is first-class:
