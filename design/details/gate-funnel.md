@@ -11,8 +11,11 @@ into one reusable unit, with the control flow, the bounded retry loop, and the s
 invariant that the automated layers **filter but never decide**.
 
 It composes existing pieces and sibling capabilities; it does not redefine them:
-- **Layer 1 — structured-output validation:** existing (`constrained-output-schema.md`,
-  structured-output governance).
+- **Layer 1 — structured-output validation:** SwarmKit's **native** four-tier output governance,
+  Tiers 0–2 (all deterministic): `constrained-output-schema.md` (implemented) +
+  `structured-output-governance.md`. This is the runtime's own schema-constrained decoding + JSON-
+  Schema check + business-rule field checks with field-specific auto-correction — **no Rynko or
+  external dependency** (Rynko is only the credited inspiration in that note, not a component).
 - **Layer 2 — LLM-as-judge:** an existing governance **decision skill** (`decision-skills.md`,
   `governance-decision-skills.md`), instantiated as the rubric-parameterised `artifact-judge`.
 - **Layer 3 — harness review:** sibling `design/details/harness-reviewer.md`.
@@ -53,7 +56,7 @@ artifact: consolidated-design
 funnel:
   validate:                              # layer 1 — deterministic, no LLM
     schema: schemas/consolidated-design.json
-    autocorrect: true                    # field-level repair (Rynko); unrepairable → retry
+    autocorrect: true                    # native field-specific re-prompt (Tier 1–2); unrepairable → retry
   judge:                                 # layer 2 — governance decision skill
     skill: artifact-judge
     rubric: rubrics/consolidated-design.md
@@ -80,9 +83,11 @@ draft ─▶ validate ─(ok)▶ judge ─(pass)▶ review ─(no route-back)▶
                     retry: critique/findings ─▶ drafting agent revises ─▶ re-enter at validate
 ```
 
-- **validate**: schema-checks + auto-repairs the draft; an unrepairable shape is a retry (the judge
-  never sees malformed input — kills shape hallucination up front).
-- **judge**: scores against the rubric; `< threshold` is a retry carrying the critique.
+- **validate** (native Tiers 0–2): structured generation + JSON-Schema check + business-rule field
+  checks, with field-specific auto-correction re-prompts; a shape that auto-correction cannot repair
+  is a retry (the judge never sees malformed input — kills shape hallucination up front).
+- **judge** (native Tier 3 — an LLM-as-judge decision skill): scores against the rubric; `< threshold`
+  is a retry carrying the critique.
 - **review** (optional): the harness reviewer investigates and returns findings; findings at or
   above `route_back_at` retry (carrying the findings), the rest **attach** and travel to the human.
 - **approve**: the binding human layer (per-role tasks, quorum, `min_distinct_approvers` — sibling
