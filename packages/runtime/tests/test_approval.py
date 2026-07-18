@@ -51,7 +51,7 @@ def approve(identity: str, role: str, scope: str) -> Resolution:
 # ---- quorum: all -------------------------------------------------------------
 
 
-def test_all_needs_every_role():
+def test_all_needs_every_role() -> None:
     policy = ApprovalPolicy(
         rules=(Rule("design:approve", ("oms-lead", "web-lead", "mobile-lead"), "all"),)
     )
@@ -80,7 +80,7 @@ def test_all_needs_every_role():
     assert ev.outstanding == ()
 
 
-def test_any_one_role_suffices():
+def test_any_one_role_suffices() -> None:
     policy = ApprovalPolicy(rules=(Rule("design:approve", ("oms-lead", "web-lead"), "any"),))
     ev = evaluate(policy, REGISTRY, [approve("bob", "web-lead", "design:approve")])
     assert ev.status is GateStatus.APPROVED
@@ -89,7 +89,7 @@ def test_any_one_role_suffices():
 # ---- quorum: k-of (distinct identities) --------------------------------------
 
 
-def test_k_of_needs_n_distinct_identities():
+def test_k_of_needs_n_distinct_identities() -> None:
     policy = ApprovalPolicy(rules=(Rule("design:approve", ("rev-a", "rev-b", "rev-c"), KOf(2)),))
     # one approver -> pending
     ev = evaluate(policy, REGISTRY, [approve("erin", "rev-a", "design:approve")])
@@ -103,7 +103,7 @@ def test_k_of_needs_n_distinct_identities():
     assert ev.status is GateStatus.APPROVED
 
 
-def test_k_of_not_met_by_one_person_holding_two_roles():
+def test_k_of_not_met_by_one_person_holding_two_roles() -> None:
     # frank holds rev-b AND rev-c; completing both role-tasks is still ONE identity
     policy = ApprovalPolicy(rules=(Rule("design:approve", ("rev-a", "rev-b", "rev-c"), KOf(2)),))
     ev = evaluate(
@@ -117,7 +117,7 @@ def test_k_of_not_met_by_one_person_holding_two_roles():
 # ---- per-role tasks + overlapping roles --------------------------------------
 
 
-def test_tasks_are_one_per_role():
+def test_tasks_are_one_per_role() -> None:
     policy = ApprovalPolicy(
         rules=(
             Rule("design:approve", ("oms-lead", "web-lead"), "all"),
@@ -132,7 +132,7 @@ def test_tasks_are_one_per_role():
     ]
 
 
-def test_two_member_role_completed_by_any_member():
+def test_two_member_role_completed_by_any_member() -> None:
     policy = ApprovalPolicy(rules=(Rule("release:approve", ("eng-manager",), "all"),))
     ev = evaluate(policy, REGISTRY, [approve("heidi", "eng-manager", "release:approve")])
     assert ev.status is GateStatus.APPROVED
@@ -141,7 +141,7 @@ def test_two_member_role_completed_by_any_member():
 # ---- multi-scope gate --------------------------------------------------------
 
 
-def test_gate_spans_two_scopes():
+def test_gate_spans_two_scopes() -> None:
     policy = ApprovalPolicy(
         rules=(
             Rule("design:approve", ("oms-lead",), "all"),
@@ -166,7 +166,7 @@ def test_gate_spans_two_scopes():
 # ---- min_distinct_approvers (four-eyes floor) --------------------------------
 
 
-def test_min_distinct_approvers_blocks_single_dual_role_person():
+def test_min_distinct_approvers_blocks_single_dual_role_person() -> None:
     # alice holds design:approve; a contrived gate asking her for two design roles
     reg = RoleRegistry(
         roles={
@@ -194,7 +194,7 @@ def test_min_distinct_approvers_blocks_single_dual_role_person():
 # ---- exclude_author ----------------------------------------------------------
 
 
-def test_exclude_author_bars_self_approval():
+def test_exclude_author_bars_self_approval() -> None:
     policy = ApprovalPolicy(
         rules=(Rule("design:approve", ("oms-lead",), "all"),), exclude_author=True
     )
@@ -204,7 +204,7 @@ def test_exclude_author_bars_self_approval():
     assert ev.status is GateStatus.PENDING  # alice's approval doesn't count — she authored it
 
 
-def test_exclude_author_false_allows_self_approval():
+def test_exclude_author_false_allows_self_approval() -> None:
     policy = ApprovalPolicy(
         rules=(Rule("design:approve", ("oms-lead",), "all"),), exclude_author=False
     )
@@ -217,7 +217,7 @@ def test_exclude_author_false_allows_self_approval():
 # ---- terminal outcomes -------------------------------------------------------
 
 
-def test_reject_is_terminal():
+def test_reject_is_terminal() -> None:
     policy = ApprovalPolicy(rules=(Rule("design:approve", ("oms-lead", "web-lead"), "all"),))
     ev = evaluate(
         policy,
@@ -230,7 +230,7 @@ def test_reject_is_terminal():
     assert ev.status is GateStatus.REJECTED
 
 
-def test_changes_requested_routes_to_rework():
+def test_changes_requested_routes_to_rework() -> None:
     policy = ApprovalPolicy(rules=(Rule("design:approve", ("oms-lead",), "all"),))
     ev = evaluate(
         policy, REGISTRY, [Resolution("alice", "oms-lead", "design:approve", "changes-requested")]
@@ -241,7 +241,7 @@ def test_changes_requested_routes_to_rework():
 # ---- structural validation ---------------------------------------------------
 
 
-def test_resolution_error_cases():
+def test_resolution_error_cases() -> None:
     policy = ApprovalPolicy(rules=(Rule("design:approve", ("oms-lead",), "all"),))
     # unknown role
     assert resolution_error(REGISTRY, policy, approve("x", "ghost", "design:approve")) is not None
@@ -264,7 +264,7 @@ def test_resolution_error_cases():
     )
 
 
-def test_invalid_resolutions_are_ignored_by_evaluate():
+def test_invalid_resolutions_are_ignored_by_evaluate() -> None:
     policy = ApprovalPolicy(rules=(Rule("design:approve", ("oms-lead",), "all"),))
     # bob is not a member of oms-lead — his approval must not satisfy the gate
     ev = evaluate(policy, REGISTRY, [approve("bob", "oms-lead", "design:approve")])
@@ -274,7 +274,7 @@ def test_invalid_resolutions_are_ignored_by_evaluate():
 # ---- on_revision -------------------------------------------------------------
 
 
-def test_on_revision_reset_all_clears_prior_approvals():
+def test_on_revision_reset_all_clears_prior_approvals() -> None:
     policy = ApprovalPolicy(
         rules=(Rule("design:approve", ("oms-lead",), "all"),), on_revision="reset_all"
     )
@@ -282,7 +282,7 @@ def test_on_revision_reset_all_clears_prior_approvals():
     assert after_revision(prior, policy, changed_scopes=["design:approve"]) == ()
 
 
-def test_on_revision_reconfirm_changed_keeps_unaffected():
+def test_on_revision_reconfirm_changed_keeps_unaffected() -> None:
     policy = ApprovalPolicy(
         rules=(
             Rule("design:approve", ("oms-lead",), "all"),
@@ -302,7 +302,7 @@ def test_on_revision_reconfirm_changed_keeps_unaffected():
 # ---- builders from schema dicts ----------------------------------------------
 
 
-def test_from_dict_builders():
+def test_from_dict_builders() -> None:
     reg = RoleRegistry.from_dict(
         {
             "apiVersion": "swarmkit/v1",
@@ -329,7 +329,7 @@ def test_from_dict_builders():
     assert policy.min_distinct_approvers == 2
 
 
-def test_from_dict_rejects_bad_quorum():
+def test_from_dict_rejects_bad_quorum() -> None:
     with pytest.raises(ValueError):
         ApprovalPolicy.from_dict(
             {"rules": [{"scope": "a:b", "roles": ["r"], "quorum": "majority"}]}
