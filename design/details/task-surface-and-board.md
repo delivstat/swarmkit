@@ -81,12 +81,6 @@ task, two surfaces.
 
 The board never becomes the source of record; it derives from and annotates the other three.
 
-## Eject
-
-The board/queues are services over an MCP space, not part of a topology run, so there is no LangGraph
-eject. The MCP space is portable (git-backed); a real deployment can point the same queue/board
-services at its own space. Like the controller, this is deliberately not a runtime feature.
-
 ## Test plan
 
 - **Namespace write-scoping:** a writer in `app:oms` cannot write `app:web` or `role:qa-lead`; the

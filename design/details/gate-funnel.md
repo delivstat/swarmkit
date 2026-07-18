@@ -122,13 +122,6 @@ validation result, the judge score + critique, the attached reviewer findings, t
 the diff-since-last-approval. `task-surface-and-board` renders it; the funnel produces it, so a human
 decides in one place with the full automated context.
 
-## Eject
-
-The funnel ejects as a LangGraph subgraph: a validate node, a judge node with a conditional edge
-(`pass → next`, `fail → drafter`, guarded by a retry counter in state), an optional review node, and
-the human `interrupt()` for approval — with **no** edge skipping the interrupt. The advisory
-invariant is therefore visible in the generated code, satisfying invariant 7.
-
 ## Test plan
 
 - **Schema (Python + TS):** a funnel with only `approve` validates (degenerate = plain gate); a
@@ -144,7 +137,6 @@ invariant is therefore visible in the generated code, satisfying invariant 7.
   attached — it neither loops forever nor drops nor silently advances.
 - **Provenance:** the human task carries artifact + validate result + judge score + findings + retry
   count + diff.
-- **Eject:** the generated subgraph contains the human interrupt on every path to `done`.
 
 ## Demo plan
 

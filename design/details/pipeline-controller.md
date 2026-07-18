@@ -20,8 +20,8 @@ weeks-long BPM engine.
 ## Non-goals
 
 - **Not a SwarmKit runtime feature.** The controller is a reference component; it drives SwarmKit
-  over stable serve APIs. It needs no eject story (it is not a run). It names the two small serve
-  seams it depends on (below) rather than embedding itself in the runtime.
+  over stable serve APIs. It names the two small serve seams it depends on (below) rather than
+  embedding itself in the runtime.
 - **Not the gates.** Approval and the quality funnel are `multi-party-approval` / `gate-funnel`; the
   controller *waits on* a gate's resolution to advance, it does not implement the gate.
 - **Not the board/queues.** Surfacing state to humans is `task-surface-and-board`; the controller is
@@ -134,13 +134,6 @@ useful runtime change — flagged, not built here):
    Reuses the existing review-gate state; adds a notification edge.
 
 Everything else (kick a run, read run status, read the gate queue) already exists.
-
-## Eject
-
-Not applicable in the topology sense — the controller is not a run and produces no LangGraph. Its
-*analogue* of an ejection story is that the stage-graph is plain data and the controller is small,
-readable reference code: a real deployment can reimplement it against the same serve APIs. Invariant
-7 is about runtime features; this is deliberately not one.
 
 ## Test plan
 

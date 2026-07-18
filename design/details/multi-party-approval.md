@@ -176,12 +176,6 @@ independently attributable. Append-only from the executive perspective (§8.3). 
 approval evidence
 (who signed off, when) that DORA/compliance reporting reads — no separate spreadsheet.
 
-## Eject
-
-The approval set ejects as a LangGraph interrupt node whose reducer accumulates approvals into
-state and whose condition gates the outgoing edge on quorum — expressible in generated code, so
-invariant 7 holds. The role registry + policy eject as the node's static config.
-
 ## Test plan
 
 - **Schema (Python + TS):** RoleRegistry (roles carry many scopes) and gate `approval` blocks

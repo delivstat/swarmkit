@@ -83,12 +83,6 @@ The *investigation* is LLM/harness work (judgement); the **findings schema valid
 deterministic (structured-output governance). So a malformed finding is caught mechanically before it
 reaches the gate — the same validate-then-judge discipline as everywhere else.
 
-## Eject
-
-The reviewer ejects like any harness-executor node: a node invoking the harness adapter with a
-read-only scope and a structured-output constraint. Its findings are node output. Nothing here needs
-a bespoke ejection path beyond the existing executor eject.
-
 ## Test plan
 
 - **Scope enforcement:** an `architect-reviewer` write attempt is refused (empty write scope); a read
