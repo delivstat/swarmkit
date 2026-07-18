@@ -1,0 +1,4 @@
+rules:
+  - scope: design:approve
+    roles: []
+    quorum: all

@@ -23,7 +23,14 @@ from referencing import Registry, Resource
 __version__ = "0.0.1"
 
 SchemaName = Literal[
-    "topology", "skill", "archetype", "workspace", "trigger", "executor-adapter", "role-registry"
+    "topology",
+    "skill",
+    "archetype",
+    "workspace",
+    "trigger",
+    "executor-adapter",
+    "role-registry",
+    "approval-policy",
 ]
 
 #: Fleet-enrollment wire schemas (design details/control-plane/19-fleet-enrollment-protocol.md).

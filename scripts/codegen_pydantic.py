@@ -35,6 +35,7 @@ ARTIFACTS: dict[str, str] = {
     "trigger": "SwarmKitTrigger",
     "executor-adapter": "SwarmKitExecutorAdapter",
     "role-registry": "SwarmKitRoleRegistry",
+    "approval-policy": "SwarmKitApprovalPolicy",
 }
 
 
