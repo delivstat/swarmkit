@@ -30,6 +30,12 @@ graph (`reference_gbrain`: git-backed, hybrid search, namespaced). It is a works
 new bespoke infrastructure (a second reuse of an existing building block). The task-queue and
 notification-routing pieces are thin services over it.
 
+**No separate portal.** All the human surfaces here — queues, board, and the run view below — are
+**views over serve's existing APIs** (`/run`, `/jobs`, `/observability/runs/{id}/*`, `/review`,
+`/audit`), rendered by the serve-hosted webui and control-plane-ui. A thin, role-oriented client
+(for non-technical approvers who should not read a span tree) is warranted only as a *serve client*,
+never a re-implemented backend — the control-plane-ui pattern (`feedback_control_plane_standalone`).
+
 ## API shape
 
 ### The shared namespaced space
@@ -81,6 +87,37 @@ task, two surfaces.
 
 The board never becomes the source of record; it derives from and annotates the other three.
 
+## Complete run view (inspect every node)
+
+The board answers "where is each requirement"; the run view answers "**what did each agent do**" — for
+*every* node, not only document-producers. The run graph (nodes = agents, edges = delegation — the
+existing run-graph / topology-run overlay) is the entry point, and **every node expands** into a
+detail drawer:
+
+- **Input / output** — what the agent received and produced.
+- **Decision** — for a decision skill: verdict / reasoning / confidence.
+- **Gates** — any gate the node hit: the gate, question, options, current state.
+- **Approvals** — for an approval gate: each per-role record (identity, role, outcome, timestamp,
+  comment) from `multi-party-approval`.
+- **Tool calls** — name, args, result.
+- **Cost / perf** — tokens in/out, cost, duration; **errors**; executor kind (model/harness) + ref.
+
+This is a **framework** observability surface (it benefits every swarm), so it **extends** the run
+graph — a node-detail drawer over the graph control-plane-ui / serve webui already render — rather
+than adding a view. Two framework seams it needs (flagged, not built here — each independently useful):
+
+1. **Persist agent output content.** `agent.completed` records `result_length` today, not the text,
+   and `AuditEvent.outputs` exists but is unfilled — populate it (**redactable**) so the drawer can
+   show the actual output. Decision verdict/reasoning/confidence are already recorded.
+2. **Run-view enrichment endpoint.** `GET /observability/runs/{id}/view` joins **trace** (node
+   structure + metadata) + **audit** (decisions, gates, approvals, tool events — correlated by
+   `run_id` + `agent_id` + `parent_event_id`, which already exist) + **review** (approval records)
+   into one node-detail tree, so the UI makes one call and correlation lives server-side.
+
+**Redaction is first-class.** "Everything is viewable" and "this is a compliance-audited pipeline"
+are in tension: persisted outputs can carry sensitive data, so the stored content honours a redaction
+policy — the responsible flip-side of full visibility.
+
 ## Test plan
 
 - **Namespace write-scoping:** a writer in `app:oms` cannot write `app:web` or `role:qa-lead`; the
@@ -93,6 +130,10 @@ The board never becomes the source of record; it derives from and annotates the 
   escalates to the next role; adding a channel is config only (no code).
 - **Derivation, not record:** the board reflects controller/audit state and never diverges as the
   source of truth (a reconcile against controller state is idempotent).
+- **Complete run view:** every node expands to show I/O, decision verdict/reasoning, gates hit,
+  per-role approval records, tool calls, cost/errors; a non-document agent still shows its output; the
+  enrichment endpoint correlates a decision/approval event to the right node; redacted fields render
+  as redacted, not omitted.
 
 ## Demo plan
 
