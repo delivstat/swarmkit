@@ -77,6 +77,16 @@ OPENROUTER_URL = os.environ.get("OPENROUTER_URL", "https://openrouter.ai/api/v1"
 OPENROUTER_KEY = os.environ.get("MINDER_OPENROUTER_KEY", "") or os.environ.get(
     "OPENROUTER_API_KEY", ""
 )
+# Feature flag: route the escalate VLM confirm through SwarmKit's ModelProvider (image as a
+# ContentBlock) instead of the direct-HTTP _cloud_vlm/_local_vlm — same model + keys, a parallel
+# path so we can A/B whether going through the framework abstraction affects latency. Default off,
+# so the current behaviour is unchanged until explicitly enabled. See
+# examples/minder/design/vision-via-swarmkit.md.
+VISION_VIA_SWARMKIT = os.environ.get("MINDER_VISION_VIA_SWARMKIT", "off").lower() in (
+    "on",
+    "1",
+    "true",
+)
 # Recording: needed for event clips (Minder attaches the clip to alerts). Records
 # motion segments only (not 24/7) with a short retain, so disk stays bounded.
 RECORD_ENABLED = os.environ.get("MINDER_RECORD", "on").lower() in ("on", "1", "true")
@@ -803,6 +813,22 @@ def _vlm_confirm(img_b64: str, question: str, tier: str, model: str = "") -> tup
         "FIRST word, then a short reason based only on what you actually see. "
         f"Question: {question}"
     )
+    t0 = time.monotonic()
+    if VISION_VIA_SWARMKIT:
+        ans, provider = _vlm_confirm_swarmkit(img_b64, prompt, tier, model)
+        path = "swarmkit"
+    else:
+        ans, provider = _vlm_confirm_direct(img_b64, prompt, tier, model)
+        path = "direct"
+    _log(
+        f"VLM confirm via={path} tier={tier} provider={provider or 'none'} "
+        f"{(time.monotonic() - t0) * 1000:.0f}ms"
+    )
+    return ans, provider
+
+
+def _vlm_confirm_direct(img_b64: str, prompt: str, tier: str, model: str) -> tuple[str, str]:
+    """The original path: hand-rolled HTTP to OpenRouter / Ollama."""
     if tier == "cloud":
         ans = _cloud_vlm(img_b64, prompt, model)
         if ans:
@@ -810,6 +836,55 @@ def _vlm_confirm(img_b64: str, question: str, tier: str, model: str = "") -> tup
         _log("escalate: cloud VLM unavailable → local fallback")
     ans = _local_vlm(img_b64, prompt, num_predict=60)
     return (ans, "local") if ans else ("", "")
+
+
+def _vlm_confirm_swarmkit(img_b64: str, prompt: str, tier: str, model: str) -> tuple[str, str]:
+    """The SwarmKit path: same tier + fallback, but the model call goes through
+    ``swarmkit_runtime.model_providers`` (invariant 4) with the image as a ContentBlock."""
+    if tier == "cloud":
+        ans = _vlm_provider_call(img_b64, prompt, model or CLOUD_VISION_MODEL, "cloud")
+        if ans:
+            return ans, "cloud"
+        _log("escalate: swarmkit cloud unavailable → local fallback")
+    ans = _vlm_provider_call(img_b64, prompt, VISION_MODEL, "local")
+    return (ans, "local") if ans else ("", "")
+
+
+def _vlm_provider_call(img_b64: str, prompt: str, model: str, kind: str) -> str:
+    """One VLM completion through a SwarmKit ModelProvider. "" on any failure (mirrors the direct
+    helpers, so the caller's fallback + unverifiable logic is unchanged)."""
+    import asyncio
+
+    try:
+        from swarmkit_runtime.model_providers import CompletionRequest
+        from swarmkit_runtime.model_providers._types import ContentBlock, Message
+
+        if kind == "cloud":
+            from swarmkit_runtime.model_providers._openai import OpenAIModelProvider
+
+            provider = OpenAIModelProvider(api_key=OPENROUTER_KEY, base_url=OPENROUTER_URL)
+        else:
+            from swarmkit_runtime.model_providers._ollama import OllamaModelProvider
+
+            provider = OllamaModelProvider(base_url=OLLAMA_URL)
+
+        msg = Message(
+            role="user",
+            content=[
+                ContentBlock(type="text", text=prompt),
+                ContentBlock(type="image", image_data=img_b64, image_media_type="image/jpeg"),
+            ],
+        )
+        req = CompletionRequest(model=model, messages=[msg], max_tokens=120)
+
+        async def _call():
+            return await provider.complete(req)
+
+        resp = asyncio.run(_call())
+        return "".join(b.text or "" for b in resp.content if b.type == "text").strip()
+    except Exception as e:
+        _log(f"swarmkit {kind} VLM failed ({model}): {e}")
+        return ""
 
 
 def _escalate_snapshot(ev: dict) -> str:
