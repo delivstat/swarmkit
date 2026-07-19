@@ -13,6 +13,9 @@ import tempfile
 
 import server as f
 
+# Capture the real dispatcher before any _harness test reassigns f._vlm_confirm to a stub.
+_REAL_VLM_CONFIRM = f._vlm_confirm
+
 
 class _SyncThread:
     """Run the escalate worker inline so the test is deterministic (no real thread)."""
@@ -230,6 +233,24 @@ def test_global_cooldown_still_applies_without_rule_value():
     f._match_and_fire_event(ev, [rule], state, 1100.0, True)  # 100s < 600 → suppressed
     assert fires == [1000.0], fires
     print("ok  a rule without cooldown_s keeps the global 600s cadence")
+
+
+def test_vision_flag_routes_swarmkit_vs_direct():
+    # MINDER_VISION_VIA_SWARMKIT flips _vlm_confirm between the SwarmKit ModelProvider path and
+    # the direct-HTTP path — the parallel-run flag for the latency A/B. Both return the same shape.
+    calls: list = []
+    f._vlm_confirm_swarmkit = lambda img, prompt, tier, model: (  # type: ignore
+        calls.append("swarmkit") or ("Yes.", "cloud")
+    )
+    f._vlm_confirm_direct = lambda img, prompt, tier, model: (  # type: ignore
+        calls.append("direct") or ("Yes.", "cloud")
+    )
+    f.VISION_VIA_SWARMKIT = True  # type: ignore
+    assert _REAL_VLM_CONFIRM("img", "dangerous?", "cloud") == ("Yes.", "cloud")
+    f.VISION_VIA_SWARMKIT = False  # type: ignore
+    assert _REAL_VLM_CONFIRM("img", "dangerous?", "cloud") == ("Yes.", "cloud")
+    assert calls == ["swarmkit", "direct"], calls
+    print("ok  MINDER_VISION_VIA_SWARMKIT routes _vlm_confirm to swarmkit vs direct")
 
 
 if __name__ == "__main__":
