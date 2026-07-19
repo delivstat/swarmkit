@@ -116,9 +116,10 @@ services:
       # bootstrap training labels — the trained detector runs fully local.
       - MINDER_OPENROUTER_KEY=${MINDER_OPENROUTER_KEY:-}
       - MINDER_CLOUD_VISION_MODEL=${MINDER_CLOUD_VISION_MODEL:-google/gemini-2.5-flash}
-      # Feature flag: route the escalate VLM confirm through SwarmKit's ModelProvider (vs direct
-      # HTTP) — a parallel path for a latency A/B. See design/vision-via-swarmkit.md. Default off.
-      - MINDER_VISION_VIA_SWARMKIT=${MINDER_VISION_VIA_SWARMKIT:-off}
+      # Route the escalate VLM confirm through SwarmKit's ModelProvider (vs direct HTTP). Now the
+      # default (on): the live A/B showed median latency parity with the direct path, and this gives
+      # config + ModelProvider consistency. Set =off to fall back. See design/vision-via-swarmkit.md.
+      - MINDER_VISION_VIA_SWARMKIT=${MINDER_VISION_VIA_SWARMKIT:-on}
       # Two model layers for vision (design/two-layer-vision-models.md):
       # LAYER 1 — per-alert enrichment in the Frigate poller (high frequency).
       #   MINDER_DESCRIBE_PROVIDER: "ollama" (local VLM, default — zero-cloud) or
