@@ -1,7 +1,9 @@
 # Artifact env-variable substitution (runtime)
 
 **Scope:** runtime (artifact load path)
-**Status:** proposed
+**Status:** implemented — runtime 1.97.0 (PR #605)
+**Related:** [`workspace-env-config.md`](workspace-env-config.md) (the two-file
+workspace property map this builds on)
 
 ## Problem
 
@@ -25,23 +27,55 @@ without code.
   a library ships working out-of-box: `name: ${SDLC_REASONING_MODEL:-moonshotai/kimi-k2.5}`.
 - **`$${...}`** — a literal `${...}` (escape), for the rare artifact that must contain the sequence.
 
+## Resolution order
+
+Per `${NAME}`, the resolver tries, in order:
+
+1. **Workspace property map** — dotted paths from `workspace.env.yaml` /
+   `workspace.env.{SWARMKIT_ENV}.yaml` (see
+   [`workspace-env-config.md`](workspace-env-config.md)). Empty when there is no
+   env file, so the remaining steps still apply.
+2. **OS environment** — `os.environ[NAME]`.
+3. **Inline default** — the text after `:-`, when written `${NAME:-default}`.
+4. **Left literal** — an unresolved ref with no default is emitted unchanged.
+
+The property map winning over the OS environment lets a workspace pin a value
+while an env-only deployment (no env file) falls through to steps 2–4.
+
 ## Rules
 
-- **Fail loud on an undefined variable with no default.** A missing `${VAR}` (no `:-default`) is a
-  configuration error → raise, don't silently expand to empty. (This tightens the current MCP
-  behaviour, which warns + empties; that lenient path stays for backward-compat where it is already
-  relied on, or is migrated in the same change — see test plan.)
-- **Load-time, once.** Substitution runs when the artifact text is loaded, before schema validation,
-  so validators + the runtime see resolved values. Applied to string scalars anywhere in the tree.
-- **Strings only.** Numbers/bools are untouched; a `${VAR}` only expands inside a string value.
-- **No recursion.** The result of a substitution is not itself re-scanned (avoids surprise + loops).
+- **Unresolved-with-no-default is left literal, not fail-loud.** A missing
+  `${VAR}` with no `:-default` is emitted unchanged (`${VAR}`) rather than
+  raising or expanding to empty. This is the backward-compatibility guarantee: an
+  artifact that already contains a `${...}` sequence never regresses when this
+  default turns on. (The design first proposed fail-loud; the shipped behaviour is
+  leave-literal, chosen so enabling substitution across *all* artifacts could not
+  break any existing workspace. A future `swarmkit validate` warning is the place
+  to surface unresolved refs — see open questions in
+  [`workspace-env-config.md`](workspace-env-config.md).)
+- **Load-time, once.** Substitution runs when the workspace is resolved
+  (`_apply_env_interpolation` in `resolver/__init__.py`), before schema
+  validation, so validators + the runtime see resolved values.
+- **Whole tree.** String scalars anywhere in the parsed artifact tree are
+  expanded; dicts and lists are traversed recursively.
+- **Strings only.** Numbers/bools are untouched; a `${VAR}` only expands inside a
+  string value.
+- **No recursion.** The result of a substitution is not itself re-scanned (avoids
+  surprise + loops).
 
 ## Where it hooks
 
-A single load-time pass at the artifact-load choke point: after `yaml.safe_load`, walk the parsed
-structure and expand every string scalar (or expand on the raw text before parse — decided in the
-design/impl, leaning post-parse walk so escaping + non-string values are unambiguous). Reuse the
-existing `${…}` regex from `mcp/_client`. The MCP env path collapses onto the same helper.
+A single load-time pass, post-parse (chosen over raw-text expansion so escaping +
+non-string values are unambiguous). `resolve_workspace` calls
+`_apply_env_interpolation` after discovery and before schema validation
+(`packages/runtime/src/swarmkit_runtime/resolver/__init__.py`); it walks each
+artifact's `raw` dict tree and expands string scalars in place. The engine lives in
+`resolver/_env_config.py`:
+
+- `load_env_config(workspace_root)` builds the flat dotted property map (empty if
+  no env file), resolving `${ENV_VAR}` in property values.
+- `interpolate_dict` / `interpolate_value` apply the four-step resolution to an
+  artifact tree; `$${...}` escapes to a literal `${...}`.
 
 ## Non-goals
 
@@ -53,19 +87,22 @@ existing `${…}` regex from `mcp/_client`. The MCP env path collapses onto the 
 
 ## Test plan
 
+Covered by `packages/runtime/tests/test_env_config.py`:
+
 - **Basic:** `${VAR}` expands; `${VAR:-default}` uses the default when unset and the value when set.
-- **Fail-loud:** an undefined `${VAR}` with no default raises a clear error naming the var + artifact.
+- **Order:** property map wins over env; env wins over default.
+- **Leave-literal:** an undefined `${VAR}` with no default is emitted unchanged (not raised, not
+  emptied), including via `_apply_env_interpolation` with **no** `workspace.env.yaml`.
 - **Escape:** `$${X}` yields literal `${X}`.
-- **All kinds:** substitution applies in topology, skill, archetype, workspace, trigger fixtures.
-- **Order:** substitution happens before schema validation (a `${VAR}` that resolves to an invalid
-  value is caught by the validator, not silently accepted).
-- **MCP parity:** existing MCP env expansion still works through the unified helper.
+- **Whole tree:** substitution recurses through nested dicts and lists.
+- **Property map load:** default vs named env file, `SWARMKIT_ENV` selection, fallback, absent/invalid
+  YAML.
 
-## Demo plan
+## Demo
 
-`just demo-env-substitution` (or a script): load an archetype whose `model.name` is
-`${DEMO_MODEL:-default-model}`, show it resolving to the default with the var unset and to the
-override with it set, and show a missing-no-default ref failing loud.
+`packages/runtime/demos/env_substitution.py` (`uv run python …`) runs the real resolver — no model
+calls — and prints each mode: default-when-unset, env-overrides-default, property-map-wins, `$${VAR}`
+escape, and unresolved-left-literal.
 
 ## Consumers
 
