@@ -1,7 +1,7 @@
 # Artifact env-variable substitution (runtime)
 
 **Scope:** runtime (artifact load path)
-**Status:** implemented — runtime 1.97.0 (PR #605)
+**Status:** implemented — runtime 1.98.0 (PR #605)
 **Related:** [`workspace-env-config.md`](workspace-env-config.md) (the two-file
 workspace property map this builds on)
 

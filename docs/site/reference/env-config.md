@@ -2,6 +2,44 @@
 
 Separate environment-specific values (URLs, credentials, feature flags) from structural workspace config so the same workspace runs in dev, staging, and prod without editing `workspace.yaml`.
 
+There are two layers, and you can use either or both:
+
+- **Env references in any artifact** (runtime 1.98.0+) — `${VAR}`, `${VAR:-default}`, and `$${VAR}` resolve in **every** artifact (topology, skill, archetype, workspace, trigger), with or without an env file. This is the quick path for making a reusable library model- or endpoint-configurable. See [Env references in any artifact](#env-references-in-any-artifact) below.
+- **The workspace property map** — a `workspace.env.yaml` file that maps dotted `${property.path}` references in `workspace.yaml` to real values, with per-environment overrides. This is the structured path for the two-file dev/staging/prod split described in the rest of this page.
+
+The two layers compose: a `${NAME}` reference resolves from the property map first, then the OS environment, then a `:-default`, then is left literal.
+
+## Env references in any artifact
+
+Any string in any artifact can reference the environment — no env file required. This is resolved at load time, before schema validation, so the runtime and validators see the resolved value.
+
+```yaml
+# archetypes/reasoner.yaml — ships working out-of-the-box, overridable per deployment
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: reasoner
+defaults:
+  model:
+    provider: ${SDLC_REASONING_PROVIDER:-openrouter}
+    name: ${SDLC_REASONING_MODEL:-moonshotai/kimi-k2.5}
+```
+
+Syntax:
+
+- **`${VAR}`** — the value of `VAR`.
+- **`${VAR:-default}`** — `VAR` if set, else `default`. Defaults let a reusable library run out-of-the-box while staying configurable.
+- **`$${VAR}`** — a literal `${VAR}` (escape), for the rare artifact that must contain the sequence.
+
+Resolution order for each `${NAME}`:
+
+1. **Workspace property map** — dotted paths from `workspace.env.yaml` (the layer documented below); empty when there is no env file.
+2. **OS environment** — `os.environ[NAME]`.
+3. **Inline default** — the text after `:-`.
+4. **Left literal** — an unresolved reference with no default is emitted unchanged, so artifacts that already contain `${...}` never regress.
+
+Because an unresolved reference is left literal rather than raising, enabling this across all artifacts is backward compatible: workspaces with no env file and no references behave exactly as before.
+
 ## File layout
 
 ```
@@ -77,7 +115,7 @@ Each environment can have its own env file with different credentials, endpoints
 2. **Phase 2:** Resolve `${ENV_VAR}` in property values from OS environment (`${GITHUB_TOKEN}` → actual token)
 3. **Phase 3:** Replace `${property.path}` references in workspace.yaml with resolved values
 
-This means environment variables are only interpolated in the env file, not scattered across all YAML files.
+Keeping `${ENV_VAR}` in the env file concentrates secret interpolation in one place. (Env references also work directly in any artifact — see [Env references in any artifact](#env-references-in-any-artifact) — but routing secrets through the env file keeps them auditable in a single file.)
 
 ## Backward compatibility
 
@@ -86,7 +124,7 @@ Existing workspaces without `workspace.env.yaml` work unchanged. Property refere
 ## Best practices
 
 - **Add `workspace.env*.yaml` to `.gitignore`** — never commit credentials
-- **Use `${ENV_VAR}` only in the env file** — keeps interpolation in one place
+- **Route secrets through the env file** — put `${ENV_VAR}` for credentials in `workspace.env.yaml` so secret interpolation stays auditable in one place, even though env references work in any artifact
 - **Create a `workspace.env.example.yaml`** with placeholder values for team onboarding
 - **Use named env files for each environment** — `workspace.env.dev.yaml`, `workspace.env.staging.yaml`, `workspace.env.prod.yaml`
 
