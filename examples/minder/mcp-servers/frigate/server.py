@@ -1120,6 +1120,22 @@ def _active_rules(rules: list[dict]) -> list[dict]:
     ]
 
 
+def _rule_cooldown(rule: dict) -> float:
+    """The presence-cooldown interval for a rule: its own declared cadence if any, else the
+    global ``ALERT_COOLDOWN_S``. A rule may set ``escalate.cooldown_s`` or a top-level
+    ``cooldown_s`` — so a rule with ``cooldown_s: 2`` re-fires in 2s instead of being trapped
+    behind the global default. Keeps the upstream presence gate consistent with the same
+    cadence the escalate delivery already honours."""
+    esc = rule.get("escalate") or {}
+    for v in (esc.get("cooldown_s"), rule.get("cooldown_s")):
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+    return ALERT_COOLDOWN_S
+
+
 def _match_and_fire_event(
     ev: dict, active: list[dict], state: dict, now: float, live: bool
 ) -> dict | None:
@@ -1153,8 +1169,11 @@ def _match_and_fire_event(
         return None
     # Cooldown is per (camera, condition) — the chosen rule's own key. If it's cooling
     # down we suppress this event rather than fall back to a lesser rule (no double alert).
+    # The rule's own declared cadence wins over the global default: a rule that sets
+    # escalate.cooldown_s (or a top-level cooldown_s) re-fires on that interval instead of
+    # being trapped behind ALERT_COOLDOWN_S. Otherwise the global default applies.
     key = f"{ev['camera']}|{rule.get('condition')}"
-    if now - state.get(key, 0) < ALERT_COOLDOWN_S:
+    if now - state.get(key, 0) < _rule_cooldown(rule):
         return None
     state[key] = now
     return {"camera": ev["camera"], "label": ev["label"], "mode": _fire(rule, ev, now, live)}

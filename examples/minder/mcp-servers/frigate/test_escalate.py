@@ -190,6 +190,48 @@ def test_match_plain_still_fires_without_escalate():
     print("ok  a plain rule still fires when no escalate rule matches")
 
 
+def test_rule_cooldown_prefers_rule_value():
+    f.ALERT_COOLDOWN_S = 600
+    assert f._rule_cooldown({"escalate": {"cooldown_s": 2}}) == 2.0  # escalate.cooldown_s wins
+    assert f._rule_cooldown({"cooldown_s": 5}) == 5.0  # top-level cooldown_s
+    assert f._rule_cooldown({"condition": "person"}) == 600  # neither → global default
+    print("ok  _rule_cooldown: a rule's cooldown_s wins, else the global default")
+
+
+def test_per_rule_cooldown_not_trapped_by_global():
+    # A rule with escalate.cooldown_s: 2 must re-fire after 2s even though the global is 600 —
+    # the presence gate uses the rule's cadence, not the global default (the live-tested bug).
+    f.ALERT_COOLDOWN_S = 600
+    fires: list = []
+    f._fire = lambda rule, ev, now, live: fires.append(now) or "escalate"  # type: ignore
+    rule = {
+        "cameras": ["Office"],
+        "condition": "person",
+        "escalate": {"tier": "cloud", "prompt": "?", "cooldown_s": 2},
+    }
+    ev = {"camera": "Office", "label": "person"}
+    state: dict = {}
+    f._match_and_fire_event(ev, [rule], state, 1000.0, True)  # fires @1000
+    f._match_and_fire_event(ev, [rule], state, 1001.0, True)  # within 2s → suppressed
+    f._match_and_fire_event(ev, [rule], state, 1003.0, True)  # past 2s → re-fires
+    assert fires == [1000.0, 1003.0], fires
+    print("ok  a rule's cooldown_s governs the presence gate (not the global 600s)")
+
+
+def test_global_cooldown_still_applies_without_rule_value():
+    # A rule with no cooldown_s stays on the global default (no regression).
+    f.ALERT_COOLDOWN_S = 600
+    fires: list = []
+    f._fire = lambda rule, ev, now, live: fires.append(now) or "live"  # type: ignore
+    rule = {"cameras": ["Office"], "condition": "person"}
+    ev = {"camera": "Office", "label": "person"}
+    state: dict = {}
+    f._match_and_fire_event(ev, [rule], state, 1000.0, True)  # fires @1000
+    f._match_and_fire_event(ev, [rule], state, 1100.0, True)  # 100s < 600 → suppressed
+    assert fires == [1000.0], fires
+    print("ok  a rule without cooldown_s keeps the global 600s cadence")
+
+
 if __name__ == "__main__":
     for _name, _fn in sorted(globals().items()):
         if _name.startswith("test_") and callable(_fn):
