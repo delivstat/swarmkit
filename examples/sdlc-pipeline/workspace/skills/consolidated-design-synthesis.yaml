@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: consolidated-design-synthesis
+  name: Consolidated Design Synthesis
+  description: >
+    Coordinate the per-app design drafts into one consolidated design, fixing the
+    cross-app integration contracts (payloads, channels, integration type).
+category: coordination
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are given the per-app solution designs. Produce one consolidated design that
+    reconciles them and pins the integration contracts between apps: payload shapes,
+    channels/transport, and integration type. Call out conflicts you resolved and any
+    contract that could not be settled.
+provenance:
+  authored_by: human
+  version: 1.0.0

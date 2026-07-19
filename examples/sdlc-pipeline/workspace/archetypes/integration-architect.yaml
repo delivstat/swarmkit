@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: integration-architect
+  name: Integration Architect
+  description: >
+    Cross-app architect. Synthesises the per-app drafts into one consolidated design,
+    fixing the integration contracts (payloads, channels, integration type) at design
+    time. Reads across all apps; writes only the shared design artifacts.
+role: worker
+defaults:
+  model:
+    provider: ${SDLC_WRITING_PROVIDER:-openrouter}
+    name: ${SDLC_WRITING_MODEL:-deepseek/deepseek-v3}
+    temperature: 0.3
+  prompt:
+    system: >
+      You are the integration architect. Merge the per-app designs into one consolidated
+      design and pin the cross-app integration contracts. Resolve conflicts between drafts
+      and make the seams explicit.
+  skills:
+    - consolidated-design-synthesis
+  iam:
+    base_scope: [app:read, kb:read, kb:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

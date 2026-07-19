@@ -1,0 +1,26 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: business-analyst
+  name: Business Analyst
+  description: >
+    Ingests a requirement (BRD), runs an impact analysis to determine which
+    applications are affected, and hands off to the architects.
+role: leader
+defaults:
+  model:
+    provider: ${SDLC_WRITING_PROVIDER:-openrouter}
+    name: ${SDLC_WRITING_MODEL:-deepseek/deepseek-v3}
+    temperature: 0.3
+  prompt:
+    system: >
+      You are a business analyst. Read the requirement, identify the business flows
+      it touches, and produce a clear, testable summary plus the list of affected
+      applications with rationale.
+  skills:
+    - impact-analysis
+  iam:
+    base_scope: [kb:read, kb:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

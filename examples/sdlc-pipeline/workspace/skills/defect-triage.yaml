@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: defect-triage
+  name: Defect Triage
+  description: >
+    First analysis of a defect: likely cause, candidate fixes, and a clarifying query to
+    QA — produced by an agent so a human developer reviews an analysis, not a blank page.
+category: decision
+outputs:
+  type: object
+  properties:
+    reasoning:
+      type: string
+    candidate_fixes:
+      type: array
+      items:
+        type: string
+    query_to_qa:
+      type: string
+  required: [reasoning, candidate_fixes]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Given a defect (repro, logs, the change under test), produce a first analysis: the
+    most likely cause, a short list of candidate fixes, and a clarifying question for QA
+    if the report is ambiguous.
+provenance:
+  authored_by: human
+  version: 1.0.0

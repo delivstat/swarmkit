@@ -1,0 +1,26 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: developer
+  name: Developer (harness)
+  description: >
+    Per-app developer. A harness executor: in a sandbox scoped to its app's repo it
+    implements the approved design, runs unit + regression, and produces a candidate
+    diff. The code-review gate + external merge finalize it.
+role: worker
+executor:
+  kind: harness
+  ref: claude-code
+defaults:
+  prompt:
+    system: >
+      You implement the approved design in this repository. Make the change, keep it
+      minimal and consistent with the surrounding code, run the tests, and produce a
+      reviewable diff. Do not merge or deploy.
+  skills:
+    - defect-triage
+  iam:
+    base_scope: [repo:write, ci:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

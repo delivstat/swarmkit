@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: release-coordinator
+  name: Release Coordinator
+  description: >
+    Assembles the deployment package + release notes from the approved artifacts and
+    prepares it for the final sign-off and prod deploy (both human-gated).
+role: leader
+defaults:
+  model:
+    provider: ${SDLC_WRITING_PROVIDER:-openrouter}
+    name: ${SDLC_WRITING_MODEL:-deepseek/deepseek-v3}
+    temperature: 0.2
+  prompt:
+    system: >
+      You are the release coordinator. Assemble the deployment package and release notes
+      from the approved design, diffs, and test results. Summarise what is shipping and the
+      residual risks for the sign-off.
+  iam:
+    base_scope: [repo:read, kb:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
