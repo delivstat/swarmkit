@@ -97,6 +97,24 @@ class FileReviewQueue:
         _record_approval_wait(data)
         return True
 
+    def record_resolution(
+        self, item_id: str, status: Literal["approved", "rejected"], answer: str
+    ) -> bool:
+        """Resolve an item recording both the outcome and the resolver identity in ``answer``.
+
+        Used by multi-party approval role-tasks, where a reject must also carry the resolver
+        identity so the engine can verify the rejecter was an eligible member of the role.
+        """
+        path = self._dir / f"{item_id}.json"
+        if not path.exists():
+            return False
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["status"] = status
+        data["answer"] = answer
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _record_approval_wait(data)
+        return True
+
 
 def create_review_item(
     *,
