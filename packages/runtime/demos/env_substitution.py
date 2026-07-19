@@ -10,11 +10,12 @@ $${VAR} (escape). Resolution order per ${NAME}: workspace property map -> OS env
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from swarmkit_runtime.resolver._env_config import interpolate_dict
 
 
-def show(label: str, artifact: dict, properties: dict[str, str] | None = None) -> None:
+def show(label: str, artifact: dict[str, Any], properties: dict[str, str] | None = None) -> None:
     out = interpolate_dict(artifact, properties or {})
     print(f"  {label}")
     print(f"    in : {artifact}")
