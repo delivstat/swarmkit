@@ -24,6 +24,7 @@ from pathlib import Path
 from swarmkit_runtime.governance._approval import (
     ApprovalPolicy,
     KOf,
+    Resolution,
     Role,
     RoleRegistry,
     Rule,
@@ -60,7 +61,7 @@ DESIGN_GATE = ApprovalPolicy(
 )
 
 
-def _print_status(policy: ApprovalPolicy, resolutions: list) -> None:
+def _print_status(policy: ApprovalPolicy, resolutions: list[Resolution]) -> None:
     ev = evaluate(policy, REGISTRY, resolutions)
     outstanding = ", ".join(f"{t.role}" for t in ev.outstanding) or "—"
     print(
