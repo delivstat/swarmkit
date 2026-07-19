@@ -1,0 +1,32 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: security-consultant
+  name: Security Consultant (harness)
+  description: >
+    Investigative security review. A read-only harness executor that hunts for gaps
+    against the compliance / SAST / DAST KB (data-residency, authz, injection surfaces)
+    that a design read alone would miss. Returns evidence-bearing findings.
+role: worker
+executor:
+  kind: harness
+  ref: claude-code
+defaults:
+  prompt:
+    system: >
+      You are an independent security consultant. Investigate the change against the
+      compliance and security KB: data residency, authorization, injection and secret
+      exposure. Return findings with evidence. Read only.
+  output_schema:
+    type: object
+    properties:
+      findings:
+        type: array
+        items:
+          type: object
+    required: [findings]
+  iam:
+    base_scope: [app:read, kb:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

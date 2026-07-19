@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: test-plan-generation
+  name: Test Plan Generation
+  description: >
+    Produce a test plan (feature + regression cases) from the BRD and the consolidated
+    design, each case mapped to the acceptance criteria it verifies.
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: >
+    From the requirement and the consolidated design, produce a test plan: feature cases
+    and regression cases. For each case give the steps, expected result, and the
+    acceptance criterion it verifies. Cover the cross-app business flows for SIT.
+provenance:
+  authored_by: human
+  version: 1.0.0

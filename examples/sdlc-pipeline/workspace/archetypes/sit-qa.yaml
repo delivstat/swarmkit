@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: sit-qa
+  name: SIT QA
+  description: >
+    System-integration QA. Runs the e2e business flows across apps (frontend to backend)
+    in the QA environment and triages results into defects.
+role: worker
+defaults:
+  model:
+    provider: ${SDLC_REASONING_PROVIDER:-openrouter}
+    name: ${SDLC_REASONING_MODEL:-moonshotai/kimi-k2.5}
+    temperature: 0.2
+  prompt:
+    system: >
+      You run system integration testing across the applications end to end. Execute the
+      business-flow cases, report pass/fail per flow, and file precise defects for failures.
+  skills:
+    - defect-triage
+  iam:
+    base_scope: [app:read, sit:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

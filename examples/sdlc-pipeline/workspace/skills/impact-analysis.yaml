@@ -1,0 +1,32 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: impact-analysis
+  name: Impact Analysis
+  description: >
+    Decide which applications a requirement affects, and why, from the BRD and the
+    per-app architecture KBs.
+category: decision
+outputs:
+  type: object
+  properties:
+    affected_apps:
+      type: array
+      items:
+        type: string
+    reasoning:
+      type: string
+    open_questions:
+      type: array
+      items:
+        type: string
+  required: [affected_apps, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Given the requirement and the applications' architecture summaries, decide which
+    apps are affected and why. Return affected_apps (ids), rationale, and any
+    open_questions that need answering before design.
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: support-engineer
+  name: Support Engineer
+  description: >
+    Produces the support runbook and handover docs from the shipped requirement, and
+    monitors prod for regressions post-deploy.
+role: worker
+defaults:
+  model:
+    provider: ${SDLC_WRITING_PROVIDER:-openrouter}
+    name: ${SDLC_WRITING_MODEL:-deepseek/deepseek-v3}
+    temperature: 0.3
+  prompt:
+    system: >
+      You are a support engineer. Write the runbook and handover notes for what shipped:
+      what changed, how to operate it, known issues, and rollback. Keep it operator-ready.
+  iam:
+    base_scope: [kb:read, kb:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

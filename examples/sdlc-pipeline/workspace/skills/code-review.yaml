@@ -1,0 +1,31 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: code-review
+  name: Code Review Determination
+  description: >
+    Automated code-review determination on a candidate diff: pass/fail against the
+    approved design + lint/test signal, with the reasons. Precedes the human code-review gate.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-changes]
+    findings:
+      type: array
+      items:
+        type: string
+    reasoning:
+      type: string
+  required: [verdict, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Review the candidate diff against the approved design and the lint/test results.
+    Decide a verdict (pass / fail / needs-changes), list the findings that drove it, and
+    give the reasoning. Judge correctness and design-fidelity, not style nits.
+provenance:
+  authored_by: human
+  version: 1.0.0

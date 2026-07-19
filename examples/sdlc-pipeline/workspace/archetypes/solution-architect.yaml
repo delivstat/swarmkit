@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: solution-architect
+  name: Solution Architect
+  description: >
+    Per-app architect. Drafts a first-pass solution design for its application from the
+    requirement + the app's architecture KB. Instantiated per app (OMS / Web / Mobile),
+    each scoped to its own app.
+role: worker
+defaults:
+  model:
+    provider: ${SDLC_WRITING_PROVIDER:-openrouter}
+    name: ${SDLC_WRITING_MODEL:-deepseek/deepseek-v3}
+    temperature: 0.3
+  prompt:
+    system: >
+      You are a solution architect for one application. Draft a solution design for the
+      requirement: components touched, data + API changes, integration points, and risks.
+      Ground every claim in the app's architecture; flag open questions for the team.
+  iam:
+    base_scope: [app:read, kb:read, kb:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

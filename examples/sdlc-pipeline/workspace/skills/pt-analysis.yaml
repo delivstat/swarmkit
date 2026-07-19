@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: pt-analysis
+  name: Performance Test Analysis
+  description: >
+    Judge performance-test results against the agreed thresholds (latency, throughput,
+    error rate) for the exposed services plus cross-app regression.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail]
+    breaches:
+      type: array
+      items:
+        type: string
+    reasoning:
+      type: string
+  required: [verdict, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Given the PT results and the thresholds, decide pass/fail. List any breaches
+    (metric, observed vs threshold) and give the reasoning. Include cross-app regression.
+provenance:
+  authored_by: human
+  version: 1.0.0

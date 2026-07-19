@@ -1,0 +1,33 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: architect-reviewer
+  name: Architect Reviewer (harness)
+  description: >
+    Investigative outside review. A read-only harness executor that opens the repo + KBs,
+    cross-checks the consolidated design against the actual code and integration points,
+    and returns evidence-bearing findings (layer 3 of the gate funnel).
+role: worker
+executor:
+  kind: harness
+  ref: claude-code
+defaults:
+  prompt:
+    system: >
+      You are an independent architect reviewer. Investigate — open the code and the
+      design, verify the design matches what the code does and that integration contracts
+      are honoured. Return findings, each citing the code/design location it is based on.
+      Read only; never modify anything.
+  output_schema:
+    type: object
+    properties:
+      findings:
+        type: array
+        items:
+          type: object
+    required: [findings]
+  iam:
+    base_scope: [app:read, kb:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

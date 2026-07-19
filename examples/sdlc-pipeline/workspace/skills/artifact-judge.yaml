@@ -1,0 +1,31 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: artifact-judge
+  name: Artifact Judge
+  description: >
+    The LLM-as-judge layer of the gate funnel (design/details/gate-funnel.md): score an
+    artifact against a per-artifact rubric before a human reviews it. One reusable skill,
+    parameterised by the rubric passed in.
+category: decision
+outputs:
+  type: object
+  properties:
+    score:
+      type: number
+      minimum: 0
+      maximum: 1
+    passed:
+      type: boolean
+    reasoning:
+      type: string
+  required: [score, passed, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are an artifact judge. Score the artifact against the provided rubric and its
+    acceptance criteria. Return score (0-1), passed (against the rubric threshold), and a
+    critique. If it fails, the critique must be actionable for the drafting agent.
+provenance:
+  authored_by: human
+  version: 1.0.0

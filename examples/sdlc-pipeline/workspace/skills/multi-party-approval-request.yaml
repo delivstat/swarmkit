@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: multi-party-approval-request
+  name: Multi-party Approval Request
+  description: >
+    Coordination skill: prepare a human approval gate for an artifact — summarise what is
+    being approved and the context each role needs — then hand off to the governance gate
+    (design/details/multi-party-approval.md), which enforces the quorum. The skill never
+    decides; humans do.
+category: coordination
+implementation:
+  type: llm_prompt
+  prompt: >
+    Prepare a multi-party approval request for the artifact: a concise summary of what is
+    being approved, the key decisions and risks, and the per-role context (what each
+    required role should check). Do not approve or reject — only assemble the request the
+    approval gate will route to the required roles.
+provenance:
+  authored_by: human
+  version: 1.0.0

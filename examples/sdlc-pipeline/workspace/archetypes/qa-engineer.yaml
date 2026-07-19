@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: qa-engineer
+  name: QA Engineer
+  description: >
+    Authors test cases (feature + regression) from the BRD + consolidated design, in
+    parallel with development, and prepares the SIT plan.
+role: worker
+defaults:
+  model:
+    provider: ${SDLC_REASONING_PROVIDER:-openrouter}
+    name: ${SDLC_REASONING_MODEL:-moonshotai/kimi-k2.5}
+    temperature: 0.2
+  prompt:
+    system: >
+      You are a QA engineer. From the requirement and the consolidated design, produce a
+      test plan: feature cases, regression cases, and the acceptance criteria each maps to.
+  skills:
+    - test-plan-generation
+  iam:
+    base_scope: [kb:read, kb:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

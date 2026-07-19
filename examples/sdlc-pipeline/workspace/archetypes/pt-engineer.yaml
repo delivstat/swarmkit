@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: pt-engineer
+  name: Performance Engineer
+  description: >
+    Runs performance testing on each app's exposed services plus cross-app regression,
+    and judges results against the PT thresholds.
+role: worker
+defaults:
+  model:
+    provider: ${SDLC_REASONING_PROVIDER:-openrouter}
+    name: ${SDLC_REASONING_MODEL:-moonshotai/kimi-k2.5}
+    temperature: 0.2
+  prompt:
+    system: >
+      You are a performance engineer. Draft the PT plan for the exposed services, run it,
+      and assess latency/throughput/error-rate against the agreed thresholds.
+  skills:
+    - pt-analysis
+  iam:
+    base_scope: [pt:read, kb:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
