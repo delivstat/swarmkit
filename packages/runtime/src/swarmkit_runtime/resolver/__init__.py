@@ -339,10 +339,12 @@ def errors_or_raise(
 
 
 def _apply_env_interpolation(ws_root: Path, artifacts: Sequence[DiscoveredArtifact]) -> None:
-    """Apply workspace.env.yaml property interpolation to all artifacts.
+    """Apply property + env-variable interpolation to all artifacts.
 
-    Modifies artifact.raw dicts in place before schema validation.
-    If no env file exists, this is a no-op (backward compatible).
+    Modifies artifact.raw dicts in place before schema validation. Resolves
+    ``${property.path}`` from workspace.env.yaml, ``${ENV_VAR}`` from the OS environment,
+    and ``${VAR:-default}`` — so an artifact is env-configurable even with no env file
+    (the property map is simply empty then). ``$${VAR}`` escapes to a literal.
     """
     from swarmkit_runtime.resolver._env_config import (  # noqa: PLC0415
         interpolate_dict,
@@ -350,8 +352,6 @@ def _apply_env_interpolation(ws_root: Path, artifacts: Sequence[DiscoveredArtifa
     )
 
     properties = load_env_config(ws_root)
-    if not properties:
-        return
 
     for artifact in artifacts:
         if hasattr(artifact, "raw") and isinstance(artifact.raw, dict):
