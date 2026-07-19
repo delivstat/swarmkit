@@ -2899,7 +2899,7 @@ wheels = [
 
 [[package]]
 name = "swarmkit-control-plane"
-version = "0.43.0"
+version = "0.44.0"
 source = { editable = "packages/control-plane" }
 dependencies = [
     { name = "cryptography" },
@@ -2926,7 +2926,7 @@ requires-dist = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.96.0"
+version = "1.98.0"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -3016,7 +3016,7 @@ provides-extras = ["serve", "ui", "dev"]
 
 [[package]]
 name = "swarmkit-schema"
-version = "1.16.0"
+version = "1.17.0"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },
