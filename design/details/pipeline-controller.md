@@ -67,37 +67,44 @@ reads only the **published** version.
 
 ### Stage-graph (the pipeline as data)
 
+# `when` is the entry-event field (NOT `on` — a bare `on` key is coerced to boolean by YAML 1.1
+# parsers like PyYAML). metadata.id, not a top-level id, per the artifact envelope.
 ```yaml
 apiVersion: swarmkit/v1
 kind: StageGraph
-id: sdlc-pipeline
+metadata:
+  id: sdlc-pipeline
+  name: SDLC Pipeline
+  description: One requirement across intake, design, build, and SIT.
 stages:
   - id: intake
-    topology: sdlc/intake
-    on: [requirement.created]                 # entry event(s)
+    topology: sdlc-intake
+    when: [requirement.created]               # entry event(s)
     success: design.kickoff                    # signal emitted on clean completion
   - id: design
-    topology: sdlc/design
-    on: [design.kickoff]
+    topology: sdlc-design
+    when: [design.kickoff]
     locks: [contract:oms-web, contract:oms-inventory]   # acquired before the run starts
     gate: consolidated-design-approval         # a gate-funnel gate (sibling); run parks on it
     success: design.approved                   # emitted when the gate approves
     release_locks_on: design.approved          # contract held through approval, then released
-    compensation: sdlc/compensate-design       # topology to run if the requirement is cancelled
+    compensation: sdlc-compensate-design       # topology to run if the requirement is cancelled
   - id: build
-    topology: sdlc/build
-    on: [design.approved]
+    topology: sdlc-build
+    when: [design.approved]
     success: build.ready-in-qa
   - id: sit
-    topology: sdlc/sit
-    on: [build.ready-in-qa]                    # EXTERNAL event (CI) — not a SwarmKit signal
+    topology: sdlc-sit
+    when: [build.ready-in-qa]                  # EXTERNAL event (CI) — not a SwarmKit signal
     success: sit.passed
 loops:                                          # cross-stage edges (the defect cycle)
-  - on: defect.raised -> defect-triage
-  - on: defect.fixed  -> re-test
+  - when: defect.raised
+    to: defect-triage
+  - when: defect.fixed
+    to: re-test
 ```
 
-- `on` events are **external** enterprise events (Jira/CI/Git/SAST webhooks) *or* signals emitted by
+- `when` events are **external** enterprise events (Jira/CI/Git/SAST webhooks) *or* signals emitted by
   a prior stage's `success`. The controller treats both uniformly as inbound events.
 - `gate` names a gate that the stage's SwarmKit run parks on; the controller learns the resolution
   via the gate-resolution seam (below) and emits the stage's `success` signal.

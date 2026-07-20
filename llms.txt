@@ -18,7 +18,7 @@
 
 ## Schemas
 
-Six canonical artifact schemas (JSON Schema 2020-12):
+Seven canonical artifact schemas (JSON Schema 2020-12):
 
 - [topology.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/topology.schema.json)
 - [skill.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/skill.schema.json)
@@ -26,6 +26,7 @@ Six canonical artifact schemas (JSON Schema 2020-12):
 - [workspace.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/workspace.schema.json)
 - [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json)
 - [funnel.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/funnel.schema.json): a reusable per-artifact quality gate — see Funnel below.
+- [stage-graph.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/stage-graph.schema.json): a pipeline as data — an ordered set of bounded stages a controller sequences as a saga; see StageGraph below.
 
 ## Funnel (per-artifact quality gate)
 
@@ -91,6 +92,81 @@ provenance:
 - [Funnel reference](https://github.com/delivstat/swarmkit/blob/main/docs/site/reference/funnel.md): layers, the fixed control flow, the advisory (structural) invariant, referenced-by-id.
 - [Gate funnel design note](https://github.com/delivstat/swarmkit/blob/main/design/details/gate-funnel.md): composition, control flow, bounded retry, the structural invariant, provenance bundle.
 - [Example funnel artifact](https://github.com/delivstat/swarmkit/blob/main/examples/sdlc-pipeline/workspace/funnels/consolidated-design-approval.yaml): all four layers, referenced by id from an SDLC pipeline node.
+
+## StageGraph (pipeline as data)
+
+A **StageGraph** is a first-class artifact (`kind: StageGraph`) — a whole pipeline expressed as data: an ordered set of bounded `stages[]` that a **controller** sequences as a **saga**, correlated by `requirement_id` and advanced by external enterprise events (Jira/CI/Git/SAST) or signals emitted by a prior stage. Each stage kicks a SwarmKit topology run; the runtime only ever runs the bounded stages. The controller — a reference component under `examples/sdlc-pipeline/controller/`, **not** the SwarmKit runtime — owns the durable weeks-long per-requirement state (current stage, held locks, pending gate, attempt counts, status), reacts to events with dedup + reconciliation, manages integration-contract locks, and unwinds on cancel. A different pipeline is new *data*, not new controller code — topology-as-data applied at the sequencing layer.
+
+Each `stages[]` entry has: `id`, `topology` (the run it kicks), `when` (entry event(s) — one arrival starts the stage), `success` (the signal emitted on clean completion, which drives the next stage's `when`), `locks` (integration-contract lock ids, acquired all-or-none in fixed order before the run starts), `release_locks_on` (the signal that releases those locks — e.g. hold a contract through approval, then release), `gate` (a `Funnel` id the run parks on; the controller emits `success` when it resolves), and `compensation` (a topology run to unwind the stage if the requirement is cancelled after it passed). Top-level `loops[]` are cross-stage edges (the defect cycle): each `{when, to}` routes an inbound event to a stage id.
+
+**The entry-event field is `when`, not `on`.** A bare `on:` key is coerced to the boolean `true` by YAML 1.1 parsers, so the schema uses `when` for both a stage's entry events and a loop's trigger. The design note's early YAML sketch predates this and shows `on:` — the canonical schema and all authored artifacts use `when`.
+
+Minimal (two sequential stages, event-driven):
+
+```yaml
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: sdlc-pipeline
+  name: SDLC Pipeline
+  description: Intake a requirement, then kick off design once intake completes.
+stages:
+  - id: intake
+    topology: sdlc-intake
+    when: [requirement.created]      # entry event(s) — NOT `on:` (YAML coerces it to a boolean)
+    success: design.kickoff          # signal emitted on clean completion
+  - id: design
+    topology: sdlc-design
+    when: [design.kickoff]
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Fuller (locks, a Funnel gate, compensation, and the defect loop):
+
+```yaml
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: sdlc-pipeline
+  name: SDLC Pipeline
+  description: >
+    A requirement sequenced across intake, design (contract-locked, gated by a
+    Funnel), build, and SIT as a saga, with a defect cycle.
+stages:
+  - id: intake
+    topology: sdlc-intake
+    when: [requirement.created]
+    success: design.kickoff
+  - id: design
+    topology: sdlc-design
+    when: [design.kickoff]
+    locks: [contract-oms-web, contract-oms-inventory]   # all-or-none, fixed order, before the run
+    gate: consolidated-design-approval                   # a Funnel id; the run parks on it
+    success: design.approved                             # emitted when the gate approves
+    release_locks_on: design.approved                    # contract held through approval, then freed
+    compensation: sdlc-compensate-design                 # unwind topology if the requirement cancels
+  - id: build
+    topology: sdlc-build
+    when: [design.approved]
+    success: build.ready-in-qa
+  - id: sit
+    topology: sdlc-sit
+    when: [build.ready-in-qa]                            # EXTERNAL event (CI), not a SwarmKit signal
+    success: sit.passed
+loops:                                                    # cross-stage edges (the defect cycle)
+  - when: defect.raised
+    to: defect-triage
+  - when: defect.fixed
+    to: re-test
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+- [StageGraph reference](https://github.com/delivstat/swarmkit/blob/main/docs/site/reference/stage-graph.md): the stage/loop fields, the saga/controller framing, the `when`-not-`on` gotcha, referenced-by-id.
+- [Pipeline controller design note](https://github.com/delivstat/swarmkit/blob/main/design/details/pipeline-controller.md): the controller as a reference component, saga state, event dedup + reconciliation, contract locking, compensation, and the two serve seams it depends on.
 
 ## Reference workspace
 
