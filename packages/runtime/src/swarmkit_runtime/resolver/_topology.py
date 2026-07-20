@@ -22,21 +22,23 @@ from swarmkit_runtime.executors import ResolvedExecutor
 from swarmkit_runtime.skills import ResolvedSkill
 from swarmkit_runtime.workspace import DiscoveredArtifact
 
-from ._resolved import ResolvedAgent, ResolvedTopology
+from ._resolved import ResolvedAgent, ResolvedFunnel, ResolvedTopology
 
 
 def build_topology_registry(
     artifacts: Iterable[DiscoveredArtifact],
     skills: Mapping[str, ResolvedSkill],
     archetypes: Mapping[str, ResolvedArchetype],
+    funnels: Mapping[str, ResolvedFunnel] | None = None,
 ) -> tuple[Mapping[str, ResolvedTopology], list[ResolutionError]]:
     errors: list[ResolutionError] = []
     registry: dict[str, ResolvedTopology] = {}
+    funnels = funnels or {}
 
     for artifact in artifacts:
         if artifact.kind != "topology":
             continue
-        resolved, sub_errors = _resolve_topology(artifact, skills, archetypes)
+        resolved, sub_errors = _resolve_topology(artifact, skills, archetypes, funnels)
         errors.extend(sub_errors)
         if resolved is None:
             continue
@@ -67,6 +69,7 @@ def _resolve_topology(
     artifact: DiscoveredArtifact,
     skills: Mapping[str, ResolvedSkill],
     archetypes: Mapping[str, ResolvedArchetype],
+    funnels: Mapping[str, ResolvedFunnel],
 ) -> tuple[ResolvedTopology | None, list[ResolutionError]]:
     errors: list[ResolutionError] = []
     try:
@@ -94,6 +97,7 @@ def _resolve_topology(
         parent_path=[],
         skills=skills,
         archetypes=archetypes,
+        funnels=funnels,
         seen_ids=seen_ids,
         artifact_path=artifact.path,
     )
@@ -128,6 +132,7 @@ def _resolve_agent(
     parent_path: Sequence[str | int],
     skills: Mapping[str, ResolvedSkill],
     archetypes: Mapping[str, ResolvedArchetype],
+    funnels: Mapping[str, ResolvedFunnel],
     seen_ids: set[str],
     artifact_path: Path,
 ) -> tuple[ResolvedAgent | None, list[ResolutionError]]:
@@ -189,6 +194,10 @@ def _resolve_agent(
     prompt = _merge_prompt(archetype, raw_agent)
     iam = _merge_iam(archetype, raw_agent)
     output_schema, output_schema_disabled = _merge_output_schema(archetype, raw_agent)
+    funnel, funnel_errors = _resolve_funnel(
+        raw_agent, agent_id, funnels, parent_path, artifact_path
+    )
+    errors.extend(funnel_errors)
     skills_resolved, skill_errors = _merge_and_resolve_skills(
         archetype,
         raw_agent,
@@ -208,6 +217,7 @@ def _resolve_agent(
             parent_path=[*parent_path, "children", index],
             skills=skills,
             archetypes=archetypes,
+            funnels=funnels,
             seen_ids=seen_ids,
             artifact_path=artifact_path,
         )
@@ -232,6 +242,7 @@ def _resolve_agent(
             iam=iam,
             output_schema=output_schema,
             output_schema_disabled=output_schema_disabled,
+            funnel=funnel,
             children=tuple(resolved_children),
             depends_on=depends_on,
             source_archetype=str(archetype_id) if archetype_id else None,
@@ -246,6 +257,43 @@ def _resolve_agent(
 
 
 # ---- merge helpers -----------------------------------------------------
+
+
+def _resolve_funnel(
+    raw_agent: Mapping[str, Any],
+    agent_id: str,
+    funnels: Mapping[str, ResolvedFunnel],
+    parent_path: Sequence[str | int],
+    artifact_path: Path,
+) -> tuple[ResolvedFunnel | None, list[ResolutionError]]:
+    """Resolve an agent's optional ``funnel: <id>`` reference against the funnel registry.
+
+    A funnel is a first-class artifact referenced by id (design/details/gate-funnel.md);
+    the node names the gate, the registry holds it. An unknown reference is a structured
+    resolution error. Returns ``(ResolvedFunnel_or_None, errors)``.
+    """
+    ref = raw_agent.get("funnel")
+    if ref is None:
+        return None, []
+    funnel_id = str(ref)
+    resolved = funnels.get(funnel_id)
+    if resolved is None:
+        return None, [
+            ResolutionError(
+                code="agent.unknown-funnel",
+                message=(
+                    f"Agent {agent_id!r} references funnel {funnel_id!r} which is not "
+                    "defined in this workspace."
+                ),
+                artifact_path=artifact_path,
+                yaml_pointer=_pointer_with(parent_path, "funnel"),
+                suggestion=(
+                    f"Define a Funnel artifact with metadata.id={funnel_id!r} under "
+                    "funnels/, or change the reference to an existing funnel."
+                ),
+            )
+        ]
+    return resolved, []
 
 
 def _merge_model(

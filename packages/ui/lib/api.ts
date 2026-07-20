@@ -78,6 +78,10 @@ export const api = {
 	topologies: () => get<string[]>("/topologies"),
 	skills: () => get<SkillItem[]>("/skills"),
 	archetypes: () => get<string[]>("/archetypes"),
+	// Funnel artifacts (design/details/gate-funnel.md). These mirror the topology/skill/archetype
+	// CRUD naming. The runtime may not serve them yet — callers treat them best-effort (a failed
+	// list leaves the picker empty; a failed save surfaces a "not wired" notice).
+	funnels: () => get<string[]>("/funnels"),
 	validate: () => get<ValidateResponse>("/validate"),
 	triggers: () => get<TriggerConfig[]>("/triggers"),
 	canary: () => get<CanaryStatus>("/canary"),
@@ -199,6 +203,12 @@ export const api = {
 	saveArchetype: (id: string, yaml: string) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/archetypes/${id}`,
+			{ yaml },
+		),
+	funnelYaml: (id: string) => get<{ yaml: string }>(`/api/funnels/${id}/yaml`),
+	saveFunnel: (id: string, yaml: string) =>
+		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+			`/api/funnels/${id}`,
 			{ yaml },
 		),
 	reloadWorkspace: () => post<{ valid: boolean }>("/api/reload"),

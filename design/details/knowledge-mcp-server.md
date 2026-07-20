@@ -70,7 +70,7 @@ simple term-frequency ranking — no embeddings required.
 ### `get_schema`
 
 ```
-get_schema(artifact_type: "topology" | "skill" | "archetype" | "workspace" | "trigger") → object
+get_schema(artifact_type: "topology" | "skill" | "archetype" | "workspace" | "trigger" | "funnel") → object
 ```
 
 Returns the canonical JSON Schema for the named artifact type. This
@@ -105,7 +105,9 @@ list_schemas() → string[]
 ```
 
 Returns the list of available schema names: `["topology", "skill",
-"archetype", "workspace", "trigger"]`.
+"archetype", "workspace", "trigger", "funnel"]`. The list is derived by
+globbing `packages/schema/schemas/*.schema.json`, so a newly added
+schema surfaces automatically.
 
 ### `get_error_reference`
 

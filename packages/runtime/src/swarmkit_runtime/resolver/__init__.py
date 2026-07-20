@@ -41,9 +41,11 @@ from swarmkit_runtime.workspace import (
     discover,
 )
 
+from ._funnels import build_funnel_registry
 from ._resolved import (
     AgentRole,
     ResolvedAgent,
+    ResolvedFunnel,
     ResolvedTopology,
     ResolvedTrigger,
     ResolvedWorkspace,
@@ -388,7 +390,10 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     errors.extend(skill_errors)
     archetypes, arch_errors = build_archetype_registry(artifacts, skills)
     errors.extend(arch_errors)
-    topologies, topo_errors = build_topology_registry(artifacts, skills, archetypes)
+    # Funnels resolve before topologies so a node's `funnel: <id>` reference can be verified.
+    funnels, funnel_errors = build_funnel_registry(artifacts)
+    errors.extend(funnel_errors)
+    topologies, topo_errors = build_topology_registry(artifacts, skills, archetypes, funnels)
     errors.extend(topo_errors)
     triggers, trigger_errors = build_trigger_registry(artifacts, topologies)
     errors.extend(trigger_errors)
@@ -425,6 +430,7 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
         skills=skills,
         archetypes=archetypes,
         triggers=tuple(triggers),
+        funnels=funnels,
     )
 
 
@@ -433,6 +439,7 @@ __all__ = [
     "ResolutionError",
     "ResolutionErrors",
     "ResolvedAgent",
+    "ResolvedFunnel",
     "ResolvedTopology",
     "ResolvedTrigger",
     "ResolvedWorkspace",

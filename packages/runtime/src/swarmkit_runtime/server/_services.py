@@ -31,7 +31,12 @@ from ._jobs import Job, JobStore, _start_job
 
 logger = logging.getLogger("swarmkit.server")
 
-_ARTIFACT_DIRS = {"topology": "topologies", "skill": "skills", "archetype": "archetypes"}
+_ARTIFACT_DIRS = {
+    "topology": "topologies",
+    "skill": "skills",
+    "archetype": "archetypes",
+    "funnel": "funnels",
+}
 
 
 class ServiceError(Exception):
@@ -244,6 +249,9 @@ class ArtifactService:
                 "source_archetype": agent.source_archetype,
                 "model": dict(agent.model) if agent.model else None,
                 "skills": [s.id for s in agent.skills],
+                # Funnel gate reference (by id) — lets the composer light the "gated" badge
+                # on server-loaded topologies (design/details/gate-funnel.md).
+                "funnel": agent.funnel.id if getattr(agent, "funnel", None) else None,
             }
             if agent.children:
                 result["children"] = [_agent_to_dict(c) for c in agent.children]

@@ -11,6 +11,9 @@ export interface AgentNodeData {
 	role: string;
 	archetype: string | null;
 	skillCount: number;
+	/** Whether this agent's output passes through a Funnel quality gate (design/details/gate-funnel.md).
+	 * Drives the "gated" badge on the card. */
+	hasFunnel: boolean;
 	[key: string]: unknown; // React Flow's node data is an open record
 }
 
@@ -78,6 +81,11 @@ export function topologyToGraph(
 				role: agent.role,
 				archetype: agent.source_archetype,
 				skillCount: agent.skills?.length ?? 0,
+				// A funnel id (string) or a staged raw funnel value both count; empty string / null do not.
+				hasFunnel:
+					typeof agent.funnel === "string"
+						? agent.funnel.length > 0
+						: agent.funnel != null,
 			},
 		});
 		return x;

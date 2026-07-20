@@ -31,6 +31,7 @@ SchemaName = Literal[
     "executor-adapter",
     "role-registry",
     "approval-policy",
+    "funnel",
 ]
 
 #: Fleet-enrollment wire schemas (design details/control-plane/19-fleet-enrollment-protocol.md).

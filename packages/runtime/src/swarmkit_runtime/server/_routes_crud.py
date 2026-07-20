@@ -93,6 +93,13 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 
+    @app.get("/api/funnels/{funnel_id}/yaml")
+    async def get_funnel_yaml(funnel_id: str) -> dict[str, str]:
+        try:
+            return {"yaml": service.read_yaml("funnel", funnel_id)}
+        except ServiceError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
     # ---- Write endpoints ----
 
     @app.put("/api/topologies/{topology_id}")
@@ -122,6 +129,10 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
     @app.put("/api/archetypes/{archetype_id}")
     async def put_archetype(archetype_id: str, request: Request) -> dict[str, Any]:
         return await _put(request, service, "archetype", archetype_id, parse_check=False)
+
+    @app.put("/api/funnels/{funnel_id}")
+    async def put_funnel(funnel_id: str, request: Request) -> dict[str, Any]:
+        return await _put(request, service, "funnel", funnel_id, parse_check=False)
 
     @app.post("/api/reload")
     async def reload_workspace(request: Request) -> dict[str, Any]:

@@ -1,0 +1,12 @@
+# Invalid — provenance is required on a funnel artifact (design §6.4 family).
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: no-prov
+  name: No Provenance
+  description: This funnel is missing its required provenance block.
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead]
+      quorum: all

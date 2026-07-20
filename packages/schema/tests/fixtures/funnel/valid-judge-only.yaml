@@ -1,0 +1,22 @@
+# Common shape — validate + judge + approve, no heavyweight review layer.
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: impact-analysis-gate
+  name: Impact Analysis Gate
+  description: Judge the impact analysis against its rubric, then a lead signs off.
+validate:
+  autocorrect: true
+judge:
+  skill: artifact-judge
+  rubric: rubrics/impact-analysis.md
+  threshold: 0.75
+  max_retries: 3
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead, web-lead]
+      quorum: { k-of: 1 }
+provenance:
+  authored_by: authored_by_swarm
+  version: 0.2.0

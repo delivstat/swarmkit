@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: with-funnel
+  version: 0.1.0
+agents:
+  root:
+    id: coordinator
+    role: root
+    children:
+      - id: designer
+        role: worker
+        funnel: consolidated-design-gate

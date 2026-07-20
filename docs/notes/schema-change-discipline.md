@@ -74,5 +74,5 @@ Similarly, generated models must never drift from the schema. A hand-edited pyda
 ## See also
 
 - `packages/schema/CLAUDE.md` — per-package invariants.
-- `design/details/topology-schema-v1.md` (and the four siblings for skill / archetype / workspace / trigger) — where the decisions behind the current schema shape are recorded.
+- `design/details/topology-schema-v1.md` (and the four siblings for skill / archetype / workspace / trigger; the funnel schema's decisions live in `design/details/gate-funnel.md`) — where the decisions behind the current schema shape are recorded.
 - `design/IMPLEMENTATION-PLAN.md` Milestone 0 — lists the codegen PRs (#14 pydantic, #15 TS types).

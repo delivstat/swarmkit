@@ -23,8 +23,26 @@ describe("topologyToGraph", () => {
 		expect(g.nodes[0]).toMatchObject({
 			id: "root",
 			type: "agent",
-			data: { id: "root", role: "root", skillCount: 2 },
+			data: { id: "root", role: "root", skillCount: 2, hasFunnel: false },
 		});
+	});
+
+	it("flags hasFunnel from a funnel id (string) or a raw inline value, but not empty/absent", () => {
+		const withId: ResolvedAgent = {
+			...agent("a", "worker"),
+			funnel: "my-gate",
+		};
+		const withInline: ResolvedAgent = {
+			...agent("b", "worker"),
+			funnel: { approve: { rules: [] } },
+		};
+		const withEmpty: ResolvedAgent = { ...agent("c", "worker"), funnel: "" };
+		expect(topologyToGraph(withId).nodes[0]?.data.hasFunnel).toBe(true);
+		expect(topologyToGraph(withInline).nodes[0]?.data.hasFunnel).toBe(true);
+		expect(topologyToGraph(withEmpty).nodes[0]?.data.hasFunnel).toBe(false);
+		expect(topologyToGraph(agent("d", "worker")).nodes[0]?.data.hasFunnel).toBe(
+			false,
+		);
 	});
 
 	it("makes an edge per delegation and a node per agent", () => {
