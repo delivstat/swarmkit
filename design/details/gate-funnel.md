@@ -10,6 +10,29 @@ chains *structured-output validation → LLM-as-judge → (optional) harness rev
 into one reusable unit, with the control flow, the bounded retry loop, and the structural
 invariant that the automated layers **filter but never decide**.
 
+## Implementation status
+
+Implemented (slice 3). What shipped, and where it refines this note:
+
+- **Funnel is a first-class artifact** (`kind: Funnel`, `metadata` + `provenance`), not an
+  inline gate block. A topology node references it by id — `funnel: <id>` with
+  `x-swarmkit-ref: funnel` — matching the reference-not-inline invariant (skills/archetypes).
+  The `approve` layer mirrors `SwarmKitApprovalPolicy` inline. Schema:
+  `packages/schema/schemas/funnel.schema.json`.
+- **Runtime:** funnels are discovered under `funnels/`, resolved into a workspace funnel
+  registry, and bound to the node (`ResolvedAgent.funnel`). `compile_funnel_gate`
+  (`langgraph_compiler/_gate_funnel.py`) compiles the gate subgraph; the structural invariant
+  is asserted on the *compiled graph* (only `approve` reaches the terminal). The `approve`
+  layer is wired to the real `resolve_multiparty` engine via `build_multiparty_approver`.
+- **Audit:** decision-skill verdicts (the judge included) now emit an append-only
+  `decision.evaluated` audit event through the `GovernanceProvider` seam.
+- **Control flow is fixed, not user-drawn.** A funnel configures the layers and toggles the
+  optional ones; it does not rewire the graph — that is what keeps the invariant load-bearing.
+  The composer's funnel editor is a structured pipeline editor, not a free-form canvas.
+- **Slice-4 boundary:** binding the gate into a *live multi-agent topology run* (the drafter
+  re-running the gated agent inside the loop) is the one-app stage-run slice. Slice 3 delivers
+  the funnel artifact, its compilation, the invariant, and the real approve/judge wiring.
+
 It composes existing pieces and sibling capabilities; it does not redefine them:
 - **Layer 1 — structured-output validation:** SwarmKit's **native** four-tier output governance,
   Tiers 0–2 (all deterministic): `constrained-output-schema.md` (implemented) +

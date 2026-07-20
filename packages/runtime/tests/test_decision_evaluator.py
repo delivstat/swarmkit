@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.governance._decision_evaluator import _parse_result
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.governance._skill_backed import SkillBackedGovernanceProvider
@@ -104,3 +105,33 @@ class TestSkillBackedGovernanceProvider:
         )
         assert result.verdict == "fail"
         assert "not found" in result.reasoning
+
+    @pytest.mark.asyncio
+    async def test_decision_verdict_is_audited(self) -> None:
+        # Governance decisions (the judge layer of a gate funnel included) must be
+        # recorded on the append-only audit log, not just returned to the caller.
+        events: list[AuditEvent] = []
+
+        class _Recording(MockGovernanceProvider):
+            async def record_event(self, event: AuditEvent) -> None:
+                events.append(event)
+
+        provider = SkillBackedGovernanceProvider(
+            base=_Recording(allow_all=True),
+            skills={},
+            model_provider=MockModelProvider(),
+            model_name="mock",
+        )
+        await provider.evaluate_decision_skill(
+            skill_id="artifact-judge",
+            trigger="post_output",
+            agent_id="designer",
+            content="a draft",
+        )
+        decision_events = [e for e in events if e.event_type == "decision.evaluated"]
+        assert len(decision_events) == 1
+        event = decision_events[0]
+        assert event.skill_id == "artifact-judge"
+        assert event.skill_category == "decision"
+        assert event.verdict == "fail"  # missing skill fails closed, and it is recorded
+        assert event.payload["trigger"] == "post_output"

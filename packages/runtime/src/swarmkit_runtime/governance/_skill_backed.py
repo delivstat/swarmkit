@@ -7,6 +7,7 @@ executor + model provider.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from swarmkit_runtime.governance import (
@@ -20,6 +21,14 @@ from swarmkit_runtime.governance import (
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.skills import ResolvedSkill
+
+# DecisionSkillResult.verdict -> AuditEvent.verdict (the audit enum spells the
+# revision case "needs-review"; the decision case "needs-revision").
+_AUDIT_VERDICT: dict[str, Any] = {
+    "pass": "pass",
+    "fail": "fail",
+    "needs-revision": "needs-review",
+}
 
 
 class SkillBackedGovernanceProvider(GovernanceProvider):
@@ -90,18 +99,20 @@ class SkillBackedGovernanceProvider(GovernanceProvider):
         if skill is None:
             # Fail closed: a binding that references a missing skill is a misconfigured gate;
             # blocking (not silently approving) surfaces the error instead of hiding it.
-            return DecisionSkillResult(
+            result = DecisionSkillResult(
                 skill_id=skill_id,
                 verdict="fail",
                 confidence=0.0,
                 reasoning=f"Decision skill '{skill_id}' not found in workspace (blocking).",
             )
+            await self._record_decision(result, agent_id=agent_id, trigger=trigger)
+            return result
 
         from swarmkit_runtime.governance._decision_evaluator import (  # noqa: PLC0415
             evaluate_skill,
         )
 
-        return await evaluate_skill(
+        result = await evaluate_skill(
             skill=skill,
             agent_id=agent_id,
             trigger=trigger,
@@ -110,4 +121,33 @@ class SkillBackedGovernanceProvider(GovernanceProvider):
             model_name=self._model_name,
             mcp_manager=self._mcp_manager,
             context=context,
+        )
+        await self._record_decision(result, agent_id=agent_id, trigger=trigger)
+        return result
+
+    async def _record_decision(
+        self, result: DecisionSkillResult, *, agent_id: str, trigger: str
+    ) -> None:
+        """Emit an append-only audit event for a decision-skill verdict.
+
+        Governance decisions — the judicial pillar (§8) — must be recorded, not just
+        surfaced to the caller. This lights up audit for every decision skill (the gate
+        funnel's artifact-judge included) through the shared GovernanceProvider seam.
+        """
+        await self._base.record_event(
+            AuditEvent(
+                event_type="decision.evaluated",
+                agent_id=agent_id,
+                timestamp=datetime.now(tz=UTC),
+                skill_id=result.skill_id,
+                skill_category="decision",
+                verdict=_AUDIT_VERDICT.get(result.verdict),
+                reasoning=result.reasoning,
+                confidence=result.confidence,
+                payload={
+                    "trigger": trigger,
+                    "verdict": result.verdict,
+                    "flagged_items": list(result.flagged_items),
+                },
+            )
         )

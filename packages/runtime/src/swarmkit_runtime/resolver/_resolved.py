@@ -11,13 +11,33 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from swarmkit_schema.models import SwarmKitTopology, SwarmKitTrigger, SwarmKitWorkspace
+from swarmkit_schema.models import (
+    SwarmKitFunnel,
+    SwarmKitTopology,
+    SwarmKitTrigger,
+    SwarmKitWorkspace,
+)
 
 from swarmkit_runtime.archetypes import ResolvedArchetype
 from swarmkit_runtime.executors import ResolvedExecutor
 from swarmkit_runtime.skills import ResolvedSkill
 
 AgentRole = Literal["root", "leader", "worker"]
+
+
+@dataclass(frozen=True)
+class ResolvedFunnel:
+    """A Funnel artifact, schema-validated and ready for the compiler.
+
+    A funnel is a reusable per-artifact quality gate (design/details/gate-funnel.md):
+    ``validate -> judge -> (review) -> approve``. ``spec`` is the schema-validated raw
+    mapping the compiler reads to build the gate subgraph; ``raw`` is the typed model.
+    """
+
+    id: str
+    raw: SwarmKitFunnel
+    source_path: Path
+    spec: Mapping[str, Any]
 
 
 @dataclass(frozen=True)
@@ -41,6 +61,10 @@ class ResolvedAgent:
     iam: Mapping[str, Any] | None
     output_schema: Mapping[str, Any] | None = None
     output_schema_disabled: bool = False
+    # Optional per-artifact quality gate on this agent's output (design/details/gate-funnel.md).
+    # Resolved from the node's ``funnel: <id>`` reference against the workspace funnel registry;
+    # the compiler wraps the node in a gate subgraph (validate -> judge -> approve) when present.
+    funnel: ResolvedFunnel | None = None
     children: tuple[ResolvedAgent, ...] = field(default_factory=tuple)
     depends_on: tuple[str, ...] = field(default_factory=tuple)
     source_archetype: str | None = None
@@ -81,11 +105,13 @@ class ResolvedWorkspace:
     skills: Mapping[str, ResolvedSkill]
     archetypes: Mapping[str, ResolvedArchetype]
     triggers: Sequence[ResolvedTrigger]
+    funnels: Mapping[str, ResolvedFunnel] = field(default_factory=dict)
 
 
 __all__ = [
     "AgentRole",
     "ResolvedAgent",
+    "ResolvedFunnel",
     "ResolvedTopology",
     "ResolvedTrigger",
     "ResolvedWorkspace",
