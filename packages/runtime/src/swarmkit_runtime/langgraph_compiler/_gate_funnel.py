@@ -279,9 +279,7 @@ def build_multiparty_approver(
     return approver
 
 
-def build_decision_judge(
-    spec: dict[str, Any], *, governance: Any, agent_id: str
-) -> Judge | None:
+def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str) -> Judge | None:
     """Bind the funnel's ``judge`` layer to the governance decision-skill seam.
 
     Returns a :class:`Judge` that scores an artifact with the funnel's ``judge.skill``
@@ -346,8 +344,6 @@ async def run_agent_funnel_gate(
         author=author,
         **resolve_kwargs,
     )
-    compiled = compile_funnel_gate(
-        funnel_spec, drafter=drafter, approver=approver, judge=judge
-    )
+    compiled = compile_funnel_gate(funnel_spec, drafter=drafter, approver=approver, judge=judge)
     result = await compiled.ainvoke({"artifact": initial_artifact, "retries": 0})
     return cast(FunnelGateState, result)

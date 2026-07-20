@@ -118,9 +118,7 @@ class StageRunner:
                 )
             prior = stage_result.artifact
 
-        return StageRunResult(
-            requirement_id=requirement_id, status="completed", stages=results
-        )
+        return StageRunResult(requirement_id=requirement_id, status="completed", stages=results)
 
     async def _run_gated_stage(
         self,
@@ -155,9 +153,7 @@ class StageRunner:
             provenance=provenance,
         )
 
-    async def _check_scope(
-        self, agent: ResolvedAgent, requirement_id: str
-    ) -> StageResult | None:
+    async def _check_scope(self, agent: ResolvedAgent, requirement_id: str) -> StageResult | None:
         """Deny a stage whose agent lacks the scopes its work requires (IAM scoping).
 
         The agent's ``iam.base_scope`` is what it holds; ``iam.elevated_scopes`` (if any)
