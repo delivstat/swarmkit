@@ -1,0 +1,13 @@
+# Common shape — validate + judge + approve, no heavyweight review layer.
+validate:
+  autocorrect: true
+judge:
+  skill: artifact-judge
+  rubric: rubrics/impact-analysis.md
+  threshold: 0.75
+  max_retries: 3
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead, web-lead]
+      quorum: { k-of: 1 }

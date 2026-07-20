@@ -1,0 +1,9 @@
+# Invalid — judge threshold must be within 0..1.
+judge:
+  skill: artifact-judge
+  threshold: 1.5
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead]
+      quorum: all

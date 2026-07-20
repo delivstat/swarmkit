@@ -358,6 +358,10 @@ class Agent(BaseModel):
     iam: Iam | None = None
     output_schema: dict[str, Any] | None = None
     intent_monitoring: IntentMonitoring | None = None
+    funnel: dict[str, Any] | None = Field(
+        None,
+        description="Optional per-artifact quality gate on this agent's output: validate -> judge -> (review) -> multi-party human approval (design/details/gate-funnel.md). Validated against the funnel schema at load time. When present, the agent's output must clear the automated layers and a human approval before the run advances.",
+    )
     children: list[ChildAgent] | None = Field(
         None,
         description="Nested agents. Tree structure, one parent per agent (design §5.2).",

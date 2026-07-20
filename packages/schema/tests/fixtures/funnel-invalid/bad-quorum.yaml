@@ -1,0 +1,6 @@
+# Invalid — quorum must be "all", "any", or {k-of: N}.
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead]
+      quorum: majority

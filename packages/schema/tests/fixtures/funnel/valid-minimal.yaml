@@ -1,0 +1,6 @@
+# Degenerate funnel — only the required approve layer; a plain multi-party gate.
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead]
+      quorum: any

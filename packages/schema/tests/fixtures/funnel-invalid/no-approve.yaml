@@ -1,0 +1,6 @@
+# Invalid — `approve` is required; a funnel with no human exit is rejected.
+validate:
+  autocorrect: true
+judge:
+  skill: artifact-judge
+  threshold: 0.8

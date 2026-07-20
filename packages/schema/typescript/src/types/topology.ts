@@ -28,7 +28,14 @@ export interface Root {
     /**
      * Nested agents. Tree structure, one parent per agent (design §5.2).
      */
-    children?:          ChildElement[];
+    children?: ChildElement[];
+    /**
+     * Optional per-artifact quality gate on this agent's output: validate -> judge -> (review)
+     * -> multi-party human approval (design/details/gate-funnel.md). Validated against the
+     * funnel schema at load time. When present, the agent's output must clear the automated
+     * layers and a human approval before the run advances.
+     */
+    funnel?:            { [key: string]: any };
     iam?:               Iam;
     id:                 string;
     intent_monitoring?: IntentMonitoring;
@@ -51,7 +58,14 @@ export interface ChildElement {
     /**
      * Nested agents. Tree structure, one parent per agent (design §5.2).
      */
-    children?:          ChildElement[];
+    children?: ChildElement[];
+    /**
+     * Optional per-artifact quality gate on this agent's output: validate -> judge -> (review)
+     * -> multi-party human approval (design/details/gate-funnel.md). Validated against the
+     * funnel schema at load time. When present, the agent's output must clear the automated
+     * layers and a human approval before the run advances.
+     */
+    funnel?:            { [key: string]: any };
     iam?:               Iam;
     id:                 string;
     intent_monitoring?: IntentMonitoring;

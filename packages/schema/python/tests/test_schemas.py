@@ -18,6 +18,7 @@ ALL: tuple[SchemaName, ...] = (
     "executor-adapter",
     "role-registry",
     "approval-policy",
+    "funnel",
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures"
@@ -122,6 +123,17 @@ def test_approval_policy_valid_fixtures(fixture: Path) -> None:
 def test_approval_policy_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("approval-policy", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("funnel"), ids=lambda p: p.name)
+def test_funnel_valid_fixtures(fixture: Path) -> None:
+    validate("funnel", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("funnel-invalid"), ids=lambda p: p.name)
+def test_funnel_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("funnel", _load_yaml(fixture))
 
 
 def test_workspace_reference_fields_carry_x_swarmkit_ref() -> None:

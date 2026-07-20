@@ -13,6 +13,7 @@ from .trigger import SwarmKitTrigger
 from .executor_adapter import SwarmKitExecutorAdapter
 from .role_registry import SwarmKitRoleRegistry
 from .approval_policy import SwarmKitApprovalPolicy
+from .funnel import SwarmKitFunnel
 
 __all__ = [
     "SwarmKitTopology",
@@ -23,4 +24,5 @@ __all__ = [
     "SwarmKitExecutorAdapter",
     "SwarmKitRoleRegistry",
     "SwarmKitApprovalPolicy",
+    "SwarmKitFunnel",
 ]

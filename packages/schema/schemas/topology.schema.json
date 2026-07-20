@@ -110,6 +110,11 @@
           ]
         },
         "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" },
+        "funnel": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Optional per-artifact quality gate on this agent's output: validate -> judge -> (review) -> multi-party human approval (design/details/gate-funnel.md). Validated against the funnel schema at load time. When present, the agent's output must clear the automated layers and a human approval before the run advances."
+        },
         "children": {
           "type": "array",
           "items": { "$ref": "#/$defs/child_agent" },

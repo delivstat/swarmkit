@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/funnel.schema.json",
+  "title": "SwarmKitFunnel",
+  "description": "Per-artifact quality gate composition: chains structured-output validation -> LLM-as-judge -> optional harness review -> multi-party human approval into one reusable gate. Every layer is optional except `approve`; present layers run in fixed order (validate, judge, review, approve). The automated layers filter and drive a bounded retry loop but never decide — the only exit is through `approve`. Embedded config consumed by gate nodes — not a standalone artifact (no apiVersion/kind). See design/details/gate-funnel.md.",
+  "type": "object",
+  "required": ["approve"],
+  "additionalProperties": false,
+  "properties": {
+    "validate": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Layer 1 (deterministic, no LLM): structured-output validation with field-specific auto-correction. A shape auto-correction cannot repair is a retry — the judge never sees malformed input.",
+      "properties": {
+        "schema": {
+          "type": "string",
+          "description": "Path (workspace-relative) to a JSON Schema the artifact must satisfy."
+        },
+        "autocorrect": {
+          "type": "boolean",
+          "description": "Default true. Re-prompt the drafter with field-specific corrections before treating an invalid shape as a retry."
+        }
+      }
+    },
+    "judge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["skill"],
+      "description": "Layer 2: an LLM-as-judge governance decision skill that scores the artifact against a rubric. Below `threshold` drives a bounded retry carrying the critique back to the drafter.",
+      "properties": {
+        "skill": {
+          "$ref": "#/$defs/identifier",
+          "description": "Decision-skill ID (category: decision), e.g. artifact-judge."
+        },
+        "rubric": {
+          "type": "string",
+          "description": "Path (workspace-relative) to the rubric the judge scores against."
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Default 0.8. Judge score below this is a retry."
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Default 2. Retries before the funnel escalates to a human with the last critique attached — it never drops or silently advances."
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archetype"],
+      "description": "Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings at or above `route_back_at` retry; the rest attach to the human task.",
+      "properties": {
+        "archetype": {
+          "$ref": "#/$defs/identifier",
+          "description": "Reviewer archetype ID, e.g. architect-reviewer, security-consultant."
+        },
+        "read_scope": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Read-only IAM scopes the reviewer is granted for its investigation."
+        },
+        "route_back_at": {
+          "enum": ["low", "medium", "high", "critical"],
+          "description": "Default high. Findings at or above this severity retry; lower findings attach and travel to the human."
+        }
+      }
+    },
+    "approve": {
+      "$ref": "#/$defs/approval_policy",
+      "description": "Layer 4 (required): the multi-party human approval set. The only exit from the funnel to `done`."
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "scope": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+    },
+    "approval_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rules"],
+      "description": "Mirrors SwarmKitApprovalPolicy (design/details/multi-party-approval.md): the rules that must ALL be satisfied for the human gate to advance, plus segregation-of-duties controls.",
+      "properties": {
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/rule" },
+          "description": "Every rule must be satisfied for the gate to advance."
+        },
+        "exclude_author": {
+          "type": "boolean",
+          "description": "Default true. The identity that authored the artifact cannot approve it (segregation of duties)."
+        },
+        "on_revision": {
+          "enum": ["reset_all", "reconfirm_changed"],
+          "description": "Default reset_all. What a revision does to prior approvals: reset_all invalidates all; reconfirm_changed keeps approvals whose scope was not affected."
+        },
+        "min_distinct_approvers": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional four-eyes floor: at least N distinct human identities must approve across all completed role-tasks."
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "roles", "quorum"],
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/scope",
+          "description": "The authority exercised by this rule. Every role in `roles` must confer it (validated against the role registry at load time)."
+        },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/identifier" },
+          "description": "The group of roles that may exercise this rule's scope."
+        },
+        "quorum": { "$ref": "#/$defs/quorum" }
+      }
+    },
+    "quorum": {
+      "description": "all = every role in the group must approve; any = one role suffices; {k-of: N} = any N distinct role-holders.",
+      "oneOf": [
+        { "enum": ["all", "any"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["k-of"],
+          "properties": {
+            "k-of": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    }
+  }
+}

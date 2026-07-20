@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: with-funnel
+  version: 0.1.0
+agents:
+  root:
+    id: coordinator
+    role: root
+    children:
+      - id: designer
+        role: worker
+        funnel:
+          judge:
+            skill: artifact-judge
+            rubric: rubrics/design.md
+            threshold: 0.8
+            max_retries: 2
+          approve:
+            rules:
+              - scope: design:approve
+                roles: [oms-lead, web-lead]
+                quorum: all
+            min_distinct_approvers: 2

@@ -39,6 +39,7 @@ const ARTIFACTS = {
   "executor-adapter": "SwarmKitExecutorAdapter",
   "role-registry": "SwarmKitRoleRegistry",
   "approval-policy": "SwarmKitApprovalPolicy",
+  funnel: "SwarmKitFunnel",
 };
 
 // quicktype names recursive leaf types as "<root-name minus last character>"
