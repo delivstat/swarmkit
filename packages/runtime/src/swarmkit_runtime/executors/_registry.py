@@ -30,14 +30,39 @@ class ExecutorRegistry:
     def resolve(self, block: Any | None) -> ResolvedExecutor:
         """Resolve an archetype's ``executor`` block (a pydantic ``Executor`` or ``None``) to a
         :class:`ResolvedExecutor`. ``None`` → the default ``model`` executor (backward compat).
-        Raises :class:`ExecutorError` on an unknown kind or invalid config."""
+
+        The canonical harness shape is ``kind: harness`` + ``ref: <adapter-id>`` (design §4.2/§5):
+        the adapter is selected by ``ref`` and its config validated against that adapter. The legacy
+        shape names the adapter directly as the kind (``kind: claude-code``) and still resolves.
+        Raises :class:`ExecutorError` on an unknown kind/adapter or invalid config.
+        """
         kind = getattr(block, "kind", None) or "model"
+        ref = getattr(block, "ref", None)
+        config: Mapping[str, Any] = getattr(block, "config", None) or {}
+
+        if kind == "harness":
+            if not ref:
+                raise ExecutorError(
+                    "executor kind 'harness' requires a `ref` naming the adapter "
+                    f"(known adapters: {self._adapter_kinds()})"
+                )
+            executor = self._kinds.get(ref)
+            if executor is None or executor.kind == "model":
+                raise ExecutorError(
+                    f"unknown harness adapter ref {ref!r}; known adapters: {self._adapter_kinds()}"
+                )
+            executor.validate_config(config)
+            return ResolvedExecutor(kind="harness", ref=ref, config=dict(config))
+
         executor = self._kinds.get(kind)
         if executor is None:
             raise ExecutorError(f"unknown executor kind {kind!r}; registered: {self.kinds()}")
-        config: Mapping[str, Any] = getattr(block, "config", None) or {}
         executor.validate_config(config)
-        return ResolvedExecutor(kind=kind, ref=getattr(block, "ref", None), config=dict(config))
+        return ResolvedExecutor(kind=kind, ref=ref, config=dict(config))
+
+    def _adapter_kinds(self) -> list[str]:
+        """Registered declarative-adapter ids (every kind except the built-in ``model``)."""
+        return sorted(k for k in self._kinds if k != "model")
 
 
 def default_executor_registry(

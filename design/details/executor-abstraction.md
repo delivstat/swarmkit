@@ -126,7 +126,7 @@ executor:
 ### 4.2 Rules
 
 1. `executor` is **optional**; absence means `kind: model` with the archetype's existing model configuration. Full backward compatibility — no existing workspace artifact changes meaning.
-2. `executor.kind` values are **not a closed enum in core**. Core validates that `kind` matches a registered executor plugin; the plugin supplies the JSON Schema used to validate its own `config` block. Adding a new executor kind must require zero core schema changes.
+2. `executor.kind` values are **not a closed enum in core**. Core validates that `kind` matches a registered executor plugin; the plugin supplies the JSON Schema used to validate its own `config` block. Adding a new executor kind must require zero core schema changes. The canonical harness shape is **`kind: harness` + `ref: <adapter-id>`** — the adapter is selected by `ref` (so a topology can swap `claude-code`→`codex` by overriding `ref`, per rule 4, without changing `kind`). For back-compat the runtime also accepts a registered adapter id **directly as the kind** (`kind: claude-code`); both resolve to the same declarative adapter.
 3. `executor.config` is opaque to core and owned by the adapter. Core owns and enforces `sandbox`, `budget`, and `telemetry` uniformly across all kinds.
 4. A topology may override archetype executor fields per node instance (e.g., tighten a budget), but may not change `kind` — swapping delegation semantics is an archetype-level decision and must be reviewed as one.
 

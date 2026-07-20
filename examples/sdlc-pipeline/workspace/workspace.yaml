@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: sdlc-pipeline
+  name: SDLC Pipeline
+  description: >
+    The SDLC pipeline example workspace. Slice 4 runs a single bounded stage run for one
+    app (OMS): intake -> design -> judge -> approval, proving IAM scoping + the gate funnel
+    + the agent-determination-only shape. MCP servers (Confluence/Jira/Git/CI) are mocked in
+    the demo — configured, never coded per-vendor (design/details/sdlc-pipeline-example.md).
+governance:
+  provider: mock

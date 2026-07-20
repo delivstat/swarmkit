@@ -89,21 +89,23 @@ def _build_executor(resolved: ResolvedExecutor, workspace_root: Path | None) -> 
     special-cased in code. An otherwise-unknown kind raises.
     """
     specs = load_adapter_specs(workspace_root)
-    spec = specs.get(resolved.kind)
+    adapter_id = resolved.adapter_id  # `ref` for `kind: harness`, else the kind itself
+    spec = specs.get(adapter_id)
     if spec is None:
         raise ExecutorError(
-            f"no adapter for executor kind {resolved.kind!r} (known adapters: {sorted(specs)})"
+            f"no adapter for executor kind {resolved.kind!r} (ref={resolved.ref!r}); "
+            f"known adapters: {sorted(specs)}"
         )
     # Launch-block review gate (§5.2): a workspace-authored adapter's launch surface — a command
     # line run on the host — must be human-approved (and re-approved on change). Bundled reference
     # adapters are pre-vetted, so they bypass. This is a human-only scope: approval is a CLI action
     # (`swarmkit adapters approve`), never something an agent can grant.
-    if workspace_root is not None and resolved.kind in load_workspace_adapter_specs(workspace_root):  # noqa: SIM102
+    if workspace_root is not None and adapter_id in load_workspace_adapter_specs(workspace_root):  # noqa: SIM102
         if not is_launch_approved(workspace_root, spec):
             raise ExecutorError(
-                f"adapter {resolved.kind!r} launch block is not approved — a workspace adapter's "
+                f"adapter {adapter_id!r} launch block is not approved — a workspace adapter's "
                 f"launch command must be human-reviewed before it can run. Approve it with "
-                f"`swarmkit adapters approve {resolved.kind}` after inspecting its launch."
+                f"`swarmkit adapters approve {adapter_id}` after inspecting its launch."
             )
     credential = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CODEX_API_KEY")
     return DeclarativeExecutor(spec, config=resolved.config, model_provider_credential=credential)
@@ -195,7 +197,7 @@ def _relay_ctx(
     driver_mode: str | None = None
     max_wait: float | None = None
     if root is not None:
-        spec = load_adapter_specs(root).get(agent.executor.kind)
+        spec = load_adapter_specs(root).get(agent.executor.adapter_id)
         if spec is not None:
             on_unanswerable = spec.on_unanswerable
             driver_mode = spec.interaction_driver
@@ -259,7 +261,7 @@ def _sandbox_for(
             root,
             base_ref,
             spec,
-            adapter_id=agent.executor.kind,
+            adapter_id=agent.executor.adapter_id,
             env_keys=env_keys,
             mcp_configs=mcp_configs,
         )
@@ -308,7 +310,8 @@ async def run_harness_node(
     server configs so a container-sandboxed harness can reach http MCP servers (stdio ones warn).
     """
     agent_id = agent.id
-    kind = agent.executor.kind
+    # Label harness runs by the adapter id (`claude-code`), not the generic `harness` kind.
+    kind = agent.executor.adapter_id
     root = Path(workspace_root) if workspace_root is not None else None
 
     try:
@@ -495,7 +498,7 @@ async def _execute(  # noqa: PLR0912, PLR0915
         if run_id is not None:
             await runner.cancel(run_id)
 
-    adapter_spec = load_adapter_specs(root).get(agent.executor.kind)
+    adapter_spec = load_adapter_specs(root).get(agent.executor.adapter_id)
     sandbox_spec = adapter_spec.sandbox if adapter_spec is not None else None
     env_keys = adapter_spec.env_keys() if adapter_spec is not None else ()
     sandbox_cm, persistent = _sandbox_for(

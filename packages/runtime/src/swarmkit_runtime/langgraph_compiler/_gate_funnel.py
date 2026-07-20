@@ -23,12 +23,13 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from itertools import pairwise
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 _DEFAULT_MAX_RETRIES = 2
+_DEFAULT_THRESHOLD = 0.8
 
 
 class FunnelGateState(TypedDict, total=False):
@@ -276,3 +277,73 @@ def build_multiparty_approver(
         return ApproveOutcome(approved=decision.approved, detail=decision.reason or "")
 
     return approver
+
+
+def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str) -> Judge | None:
+    """Bind the funnel's ``judge`` layer to the governance decision-skill seam.
+
+    Returns a :class:`Judge` that scores an artifact with the funnel's ``judge.skill``
+    (an audited decision skill) and passes when the verdict is ``pass`` *and* the
+    confidence clears ``judge.threshold``. Returns ``None`` when there is no judge layer.
+    """
+    judge_cfg = spec.get("judge")
+    if not judge_cfg:
+        return None
+    skill_id = str(judge_cfg["skill"])
+    threshold = float(judge_cfg.get("threshold", _DEFAULT_THRESHOLD))
+
+    async def judge(artifact: str) -> JudgeOutcome:
+        result = await governance.evaluate_decision_skill(
+            skill_id=skill_id,
+            trigger="post_output",
+            agent_id=agent_id,
+            content=artifact,
+        )
+        passed = result.verdict == "pass" and result.confidence >= threshold
+        return JudgeOutcome(passed=passed, score=result.confidence, critique=result.reasoning)
+
+    return judge
+
+
+async def run_agent_funnel_gate(
+    funnel_spec: dict[str, Any],
+    *,
+    produce: Callable[[str | None], Awaitable[str]],
+    governance: Any,
+    review_queue: Any,
+    role_registry: Any,
+    topology_id: str,
+    agent_id: str,
+    gate_id: str | None = None,
+    author: str | None = None,
+    initial_artifact: str = "",
+    **resolve_kwargs: Any,
+) -> FunnelGateState:
+    """Run a funnel gate around an agent's production and return the terminal state.
+
+    Shared by both funnel bindings (the in-node gate in the compiler and the
+    :class:`StageRunner`). ``produce(critique)`` runs the agent to draft/revise the
+    artifact (the drafter; ``critique`` is ``None`` on the first pass). The judge is the
+    funnel's decision skill (audited); the approve layer is the real multi-party engine.
+    Returns the compiled gate's final ``FunnelGateState`` (``outcome`` + ``provenance``).
+    """
+    gate = gate_id or f"{topology_id}:{agent_id}"
+
+    async def drafter(state: FunnelGateState) -> str:
+        return await produce(state.get("critique"))
+
+    judge = build_decision_judge(funnel_spec, governance=governance, agent_id=agent_id)
+    approver = build_multiparty_approver(
+        funnel_spec,
+        governance=governance,
+        review_queue=review_queue,
+        registry=role_registry,
+        topology_id=topology_id,
+        agent_id=agent_id,
+        gate_id=gate,
+        author=author,
+        **resolve_kwargs,
+    )
+    compiled = compile_funnel_gate(funnel_spec, drafter=drafter, approver=approver, judge=judge)
+    result = await compiled.ainvoke({"artifact": initial_artifact, "retries": 0})
+    return cast(FunnelGateState, result)

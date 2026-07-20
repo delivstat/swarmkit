@@ -20,6 +20,7 @@ from swarmkit_schema.models import (
 
 from swarmkit_runtime.archetypes import ResolvedArchetype
 from swarmkit_runtime.executors import ResolvedExecutor
+from swarmkit_runtime.governance._approval import RoleRegistry
 from swarmkit_runtime.skills import ResolvedSkill
 
 AgentRole = Literal["root", "leader", "worker"]
@@ -106,6 +107,9 @@ class ResolvedWorkspace:
     archetypes: Mapping[str, ResolvedArchetype]
     triggers: Sequence[ResolvedTrigger]
     funnels: Mapping[str, ResolvedFunnel] = field(default_factory=dict)
+    # Merged role registry from all discovered role-registry artifacts. Empty when none.
+    # Consumed by multi-party approval (a funnel's approve layer) to map roles -> identities.
+    role_registry: RoleRegistry = field(default_factory=lambda: RoleRegistry(roles={}))
 
 
 __all__ = [

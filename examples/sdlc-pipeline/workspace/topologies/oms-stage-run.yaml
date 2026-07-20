@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: oms-stage-run
+  version: 0.1.0
+# The one-app (OMS) bounded stage run: a coordinator sequences intake -> design, and the
+# design stage is gated by the OMS design funnel (judge -> multi-party approval). The
+# StageRunner runs the coordinator's children as ordered stages; the design node carries
+# the funnel. IAM scopes are per app (kb:*/app:read) — an OMS agent cannot reach a Web
+# resource. See design/details/sdlc-pipeline-example.md (build order item 4).
+agents:
+  root:
+    id: coordinator
+    role: root
+    prompt:
+      system: >
+        Sequence the OMS requirement through intake then design. You determine the stage;
+        deterministic code runs it. Do not perform the work yourself.
+    children:
+      - id: intake
+        role: leader
+        archetype: business-analyst
+        iam:
+          base_scope: [kb:read, kb:write, app:oms:read]
+      - id: designer
+        role: worker
+        archetype: solution-architect
+        funnel: oms-design-gate
+        iam:
+          base_scope: [kb:read, kb:write, app:oms:read]

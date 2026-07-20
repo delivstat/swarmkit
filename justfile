@@ -98,6 +98,16 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Demo the gate funnel (slice 3): the validate->judge->approve subgraph + structural invariant,
+# real multi-party approval, bounded retry, and retry-exhaustion escalation.
+demo-gate-funnel:
+    uv run python packages/runtime/demos/gate_funnel.py
+
+# Demo the one-app (OMS) bounded stage run (slice 4): intake -> design -> judge -> approval, with
+# IAM scoping + the gate funnel + the agent-determination-only shape.
+demo-sdlc:
+    uv run python examples/sdlc-pipeline/demo_oms_stage_run.py
+
 # Demo the published fleet-enrollment protocol schemas (register/join + InstanceState, design 19):
 # validate every committed protocol fixture + show the cross-file $ref enforcing nested state.
 demo-protocol-schema:

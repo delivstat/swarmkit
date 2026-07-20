@@ -94,13 +94,15 @@ export interface Executor {
      */
     config?: { [key: string]: any };
     /**
-     * Executor kind — `model` (default) or a registered plugin kind (e.g. `harness`). Validated
-     * against the executor registry at runtime, not a closed enum in core.
+     * Executor kind — `model` (default) or `harness` (run a coding/agentic harness via its
+     * adapter — set `ref` to the adapter id, e.g. `claude-code`). A registered adapter id may
+     * also be used directly as the kind (legacy). Validated against the executor registry at
+     * runtime, not a closed enum in core.
      */
     kind: string;
     /**
-     * What the executor resolves: a model id for kind: model, or an adapter id (e.g.
-     * `claude-code`) for kind: harness.
+     * What the executor resolves: for `kind: harness`, the adapter id (e.g. `claude-code`,
+     * `opencode`) — required; for `kind: model`, an optional model id.
      */
     ref?: string;
     /**

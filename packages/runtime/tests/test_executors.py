@@ -40,9 +40,37 @@ def test_resolve_model_block_carries_ref_and_config() -> None:
     )
 
 
-def test_resolve_unknown_kind_raises() -> None:
+def test_resolve_harness_by_ref() -> None:
+    # Canonical harness shape (design §4.2/§5): kind: harness + ref: <adapter-id>.
     block = SimpleNamespace(kind="harness", ref="claude-code", config={})
-    with pytest.raises(ExecutorError, match="unknown executor kind 'harness'"):
+    resolved = default_executor_registry().resolve(block)
+    assert resolved == ResolvedExecutor(kind="harness", ref="claude-code", config={})
+    assert resolved.adapter_id == "claude-code"
+
+
+def test_resolve_adapter_id_as_kind_is_legacy_compatible() -> None:
+    # The legacy shape names the adapter directly as the kind; still resolves.
+    block = SimpleNamespace(kind="claude-code", ref=None, config={})
+    resolved = default_executor_registry().resolve(block)
+    assert resolved.kind == "claude-code"
+    assert resolved.adapter_id == "claude-code"
+
+
+def test_resolve_harness_without_ref_raises() -> None:
+    block = SimpleNamespace(kind="harness", ref=None, config={})
+    with pytest.raises(ExecutorError, match="requires a `ref`"):
+        default_executor_registry().resolve(block)
+
+
+def test_resolve_harness_with_unknown_ref_raises() -> None:
+    block = SimpleNamespace(kind="harness", ref="no-such-harness", config={})
+    with pytest.raises(ExecutorError, match="unknown harness adapter ref"):
+        default_executor_registry().resolve(block)
+
+
+def test_resolve_unknown_kind_raises() -> None:
+    block = SimpleNamespace(kind="banana", ref=None, config={})
+    with pytest.raises(ExecutorError, match="unknown executor kind 'banana'"):
         default_executor_registry().resolve(block)
 
 
@@ -76,4 +104,6 @@ def test_resolution_rejects_an_unknown_executor_kind_in_a_workspace() -> None:
     _registry, errors = build_archetype_registry(artifacts, skills)
     codes = [e.code for e in errors]
     assert "archetype.executor-invalid" in codes
-    assert "harness" in next(e.message for e in errors if e.code == "archetype.executor-invalid")
+    assert "not-a-real-executor" in next(
+        e.message for e in errors if e.code == "archetype.executor-invalid"
+    )

@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: sdlc-roles
+  name: SDLC role registry
+roles:
+  - id: oms-lead
+    members: [alice]
+    scopes: [design:approve]
+  - id: web-lead
+    members: [bob]
+    scopes: [design:approve]
+  - id: infosec-lead
+    members: [dana]
+    scopes: [security:approve]

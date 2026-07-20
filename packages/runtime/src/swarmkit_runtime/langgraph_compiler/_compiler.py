@@ -85,6 +85,8 @@ def compile_topology(
     planning_config: PlanningConfig | None = None,
     synthesis_config: Any = None,
     memory_store: Any = None,
+    review_queue: Any = None,
+    role_registry: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -120,6 +122,18 @@ def compile_topology(
             synthesis_config=synthesis_config,
             memory_store=memory_store,
         )
+        # In-node funnel gate: if the agent references a funnel and the gate deps are wired,
+        # wrap the node so a live run produces -> judges -> parks for multi-party approval,
+        # retrying the agent on failure. The structural invariant lives in the gate subgraph.
+        if agent.funnel is not None and review_queue is not None:
+            node_fn = _wrap_with_funnel_gate(
+                node_fn,
+                agent,
+                topology.id,
+                governance=governance,
+                review_queue=review_queue,
+                role_registry=role_registry,
+            )
         graph.add_node(agent.id, node_fn)
 
     graph.add_edge(START, topology.root.id)
@@ -497,6 +511,60 @@ def _build_agent_node(  # noqa: PLR0915
 
     node_fn.__name__ = f"agent_{agent.id}"
     return node_fn
+
+
+def _wrap_with_funnel_gate(
+    node_fn: Any,
+    agent: ResolvedAgent,
+    topology_id: str,
+    *,
+    governance: GovernanceProvider,
+    review_queue: Any,
+    role_registry: Any,
+) -> Any:
+    """Wrap a gated agent's node so a live run routes its output through its funnel.
+
+    The wrapped node runs the funnel gate (validate -> judge -> multi-party approve, with
+    a bounded retry that re-invokes the agent carrying the gate critique). The run advances
+    only on human approval; a rejection surfaces as a gate-rejected agent result. The
+    ``approve`` layer blocks on ``resolve_multiparty`` — the same engine used elsewhere.
+    """
+    from swarmkit_runtime.langgraph_compiler._gate_funnel import (  # noqa: PLC0415
+        run_agent_funnel_gate,
+    )
+
+    funnel = agent.funnel
+    assert funnel is not None
+
+    async def gated_node(state: SwarmState) -> dict[str, Any]:
+        captured: dict[str, Any] = {}
+
+        async def produce(critique: str | None) -> str:
+            run_state = state
+            if critique:
+                revised = f"{state.get('input', '')}\n\n[Revise per gate critique]: {critique}"
+                run_state = {**state, "input": revised}
+            out = await node_fn(run_state)
+            captured["out"] = out
+            return str((out.get("agent_results") or {}).get(agent.id, ""))
+
+        gate_state = await run_agent_funnel_gate(
+            dict(funnel.spec),
+            produce=produce,
+            governance=governance,
+            review_queue=review_queue,
+            role_registry=role_registry,
+            topology_id=topology_id,
+            agent_id=agent.id,
+        )
+        out: dict[str, Any] = captured.get("out", {})
+        if gate_state.get("outcome") != "approved":
+            critique = (gate_state.get("provenance") or {}).get("critique") or ""
+            return _make_result(agent.id, f"[GATE REJECTED] {critique}".strip())
+        return out
+
+    gated_node.__name__ = f"gated_{agent.id}"
+    return gated_node
 
 
 # ---- routing / edges ----------------------------------------------------

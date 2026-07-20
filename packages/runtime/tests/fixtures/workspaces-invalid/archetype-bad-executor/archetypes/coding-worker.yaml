@@ -1,16 +1,15 @@
-# Archetype declaring an executor kind that is not registered (harness lands in P2). Resolution must
-# reject it — archetype.executor-invalid — rather than silently ignore an unknown execution mode.
+# Archetype declaring an executor kind that is not registered. Resolution must reject it —
+# archetype.executor-invalid — rather than silently ignore an unknown execution mode.
 apiVersion: swarmkit/v1
 kind: Archetype
 metadata:
   id: coding-worker
   name: Coding Worker
-  description: Declares a not-yet-registered executor kind; resolution must reject it.
+  description: Declares a not-registered executor kind; resolution must reject it.
 role: worker
 defaults: {}
 executor:
-  kind: harness
-  ref: claude-code
+  kind: not-a-real-executor
 provenance:
   authored_by: human
   version: 0.1.0

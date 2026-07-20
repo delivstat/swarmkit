@@ -39,6 +39,19 @@ class ResolvedExecutor:
     ref: str | None = None
     config: Mapping[str, Any] = field(default_factory=dict)
 
+    @property
+    def adapter_id(self) -> str:
+        """The declarative-adapter id this executor runs.
+
+        The canonical harness shape is ``kind: harness`` + ``ref: <adapter-id>`` (design §4.2/§5),
+        where ``ref`` selects the adapter. The legacy shape names the adapter directly as the kind
+        (``kind: claude-code``); both resolve to the same adapter here. ``model`` never reaches a
+        declarative adapter, so this is only meaningful for harness executors.
+        """
+        if self.kind == "harness" and self.ref:
+            return self.ref
+        return self.kind
+
 
 class Executor(ABC):
     """A registered executor kind. Owns validation of its opaque ``config`` block (§4.2)."""
