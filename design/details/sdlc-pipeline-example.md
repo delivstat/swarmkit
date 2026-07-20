@@ -553,9 +553,13 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 
 ## Build order (a program, not one feature)
 
-**Status:** slices 1–4 shipped. 1 multi-party approval (v1.97.0), 2 reusable
+**Status:** slices 1–5 shipped. 1 multi-party approval (v1.97.0), 2 reusable
 archetype/skill library (#604), 3 the gate funnel as a first-class `kind: Funnel`
-artifact (#608), 4 the one-app (OMS) bounded stage run — `StageRunner` +
+artifact (#608), 5 the `controller` + `kind: StageGraph` artifact — pipeline-as-data
+discovered + ref-checked into the workspace, and a reference saga controller
+(`examples/sdlc-pipeline/controller/`, `just demo-pipeline-controller`) that sequences
+bounded stage runs over an injectable seam (event dedup + reconciliation, per-contract
+locking, cancellation + compensation). 4 the one-app (OMS) bounded stage run — `StageRunner` +
 in-node gate embedding + role-registry resolution, with the OMS example
 (`examples/sdlc-pipeline/`, `just demo-sdlc`) proving IAM scoping + the gate funnel +
 the agent-determination-only shape. The bounded stage runner is the deliberate

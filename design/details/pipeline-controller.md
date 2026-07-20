@@ -10,6 +10,28 @@ per-requirement state, reacts to real enterprise events, kicks the next SwarmKit
 integration-contract locks, and unwinds cleanly on cancellation. It is not an agent and not part of
 any topology.
 
+## Implementation status
+
+Implemented (slice 5). What shipped, and where it refines this note:
+
+- **StageGraph is a first-class artifact** (`kind: StageGraph`, discovered under `pipelines/`),
+  resolved into `ResolvedWorkspace.stage_graphs` with every reference verified (stage
+  `topology`/`compensation` exist, `gate` is a known Funnel, unique stage ids, `loops[].to`
+  names a real stage). The runtime resolves + ref-checks it; it does not execute it. Schema:
+  `packages/schema/schemas/stage-graph.schema.json`. Note the entry-event field is **`when`**,
+  not `on` — a bare `on` key is coerced to boolean `True` by YAML 1.1 parsers (PyYAML, the
+  runtime's), which would silently break the graph.
+- **The controller** lives at `examples/sdlc-pipeline/controller/` — a self-contained saga
+  service (per-requirement state, event dedup + reconciliation, per-contract all-or-none
+  locking, failure-vs-wait, cancellation + compensation). It drives bounded stage runs over an
+  **injectable seam** (`run_stage`) rather than embedding the runtime: the demo/tests wire the
+  slice-4 `StageRunner`; production wires a `serve` HTTP client.
+- **The two serve seams**, in this reference build: *run correlation* is provided by the
+  StageRunner stamping `requirement_id` on every stage run's audit events; *gate-resolution
+  notification* is delivered as the stage-run result (the gated stage run parks on the gate and
+  returns its terminal outcome to the controller). The HTTP `correlation_id` on run-kick and a
+  push callback remain the production hardening, unchanged in shape.
+
 ## Goal
 
 Turn a pipeline definition into **data** (a stage-graph artifact) and run it as a **saga**: a
