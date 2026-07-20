@@ -9,8 +9,7 @@ metadata:
     diff. The code-review gate + external merge finalize it.
 role: worker
 executor:
-  kind: harness
-  ref: claude-code
+  kind: claude-code
 defaults:
   prompt:
     system: >

@@ -9,8 +9,7 @@ metadata:
     that a design read alone would miss. Returns evidence-bearing findings.
 role: worker
 executor:
-  kind: harness
-  ref: claude-code
+  kind: claude-code
 defaults:
   prompt:
     system: >

@@ -9,8 +9,7 @@ metadata:
     and returns evidence-bearing findings (layer 3 of the gate funnel).
 role: worker
 executor:
-  kind: harness
-  ref: claude-code
+  kind: claude-code
 defaults:
   prompt:
     system: >
