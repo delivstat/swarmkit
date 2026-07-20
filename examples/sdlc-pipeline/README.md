@@ -1,8 +1,9 @@
-# SDLC pipeline example — reusable archetype + skill library
+# SDLC pipeline example
 
-Slice 2 of the SDLC pipeline example (design/details/sdlc-pipeline-example.md): the reusable
-**archetype + skill library** the pipeline is composed from. The workspace, topologies, stage-graph,
-KBs, and mock MCP servers come in later slices.
+The SDLC pipeline example (design/details/sdlc-pipeline-example.md). Slice 2 shipped the reusable
+**archetype + skill library**; slice 4 adds the **one-app (OMS) bounded stage run** — a workspace,
+a role registry, a design funnel, and the intake→design topology. The multi-app synthesis,
+stage-graph controller, harness build, and KBs come in later slices.
 
 ## Archetypes (`workspace/archetypes/`)
 
@@ -47,6 +48,26 @@ runtime artifact env-substitution feature, design/details/artifact-env-substitut
 
 Harness archetypes (`developer`, `architect-reviewer`, `security-consultant`) use the `claude-code`
 adapter, not a model.
+
+## The OMS stage run (slice 4)
+
+One requirement flows through a bounded, deterministic stage sequence — the
+agent-determination-only shape (code sequences the stages; agents only produce artifacts
+and verdicts):
+
+- `roles/sdlc-roles.yaml` — the role registry (oms-lead / web-lead / infosec-lead → identities).
+- `funnels/oms-design-gate.yaml` — the OMS design gate: `judge` (`artifact-judge`) → multi-party
+  `approve` (both leads, `min_distinct_approvers: 2`).
+- `topologies/oms-stage-run.yaml` — `coordinator → intake (business-analyst) → designer
+  (solution-architect, `funnel: oms-design-gate`)`.
+
+The `StageRunner` runs the stages; the design stage blocks on its funnel (judge → real
+multi-party approval, retry re-runs the architect). IAM scopes are per app, so an OMS agent
+cannot reach a Web resource.
+
+```
+just demo-sdlc      # intake → design → judge → approval, a bounded retry, and an IAM-scope denial
+```
 
 ## Validate
 
