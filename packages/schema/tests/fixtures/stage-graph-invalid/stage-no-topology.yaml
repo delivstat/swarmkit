@@ -1,0 +1,13 @@
+# Invalid — a stage must name the topology it kicks.
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: bad-stage
+  name: Bad Stage
+  description: This stage is missing its required topology reference.
+stages:
+  - id: intake
+    when: [requirement.created]
+provenance:
+  authored_by: human
+  version: 1.0.0

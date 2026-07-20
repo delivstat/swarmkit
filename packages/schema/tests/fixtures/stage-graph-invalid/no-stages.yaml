@@ -1,0 +1,11 @@
+# Invalid — at least one stage is required.
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: empty
+  name: Empty
+  description: A pipeline with no stages is not runnable.
+stages: []
+provenance:
+  authored_by: human
+  version: 1.0.0

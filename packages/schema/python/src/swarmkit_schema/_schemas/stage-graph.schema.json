@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/stage-graph.schema.json",
+  "title": "SwarmKitStageGraph",
+  "description": "A pipeline as data: an ordered set of bounded stages a controller sequences as a saga, correlated by requirement_id and advanced by external events or prior-stage signals. Each stage kicks a SwarmKit topology run; a stage may hold integration-contract locks, park on a gate (a Funnel), and declare a compensation topology for cancellation. `loops` are cross-stage edges (the defect cycle). The controller (a reference component, not the runtime) owns the durable weeks-long state; SwarmKit only runs the bounded stages. See design/details/pipeline-controller.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "stages", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "StageGraph" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/stage" },
+      "description": "The pipeline's stages. Stage ids must be unique."
+    },
+    "loops": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/loop" },
+      "description": "Cross-stage edges (e.g. the defect cycle): an inbound event routes to a stage."
+    },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "event": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]*$",
+      "description": "An external enterprise event (Jira/CI/Git/SAST) or a signal emitted by a prior stage's `success`. The controller treats both uniformly."
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "topology"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "topology": {
+          "$ref": "#/$defs/identifier",
+          "x-swarmkit-ref": "topology",
+          "description": "The topology this stage kicks as a bounded run."
+        },
+        "when": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/event" },
+          "description": "Entry event(s): the stage starts when one of these arrives (external event or a prior stage's signal). Named `when` (not `on`) because YAML 1.1 parsers coerce a bare `on` key to a boolean."
+        },
+        "success": {
+          "$ref": "#/$defs/event",
+          "description": "The signal emitted on clean stage completion (drives the next stage's `on`)."
+        },
+        "locks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Integration-contract lock ids acquired (all-or-none, fixed order) before the run starts."
+        },
+        "release_locks_on": {
+          "$ref": "#/$defs/event",
+          "description": "The signal whose arrival releases this stage's locks (e.g. hold the contract through approval, then release)."
+        },
+        "gate": {
+          "$ref": "#/$defs/identifier",
+          "x-swarmkit-ref": "funnel",
+          "description": "A Funnel gate the stage's run parks on; the controller emits `success` when it resolves."
+        },
+        "compensation": {
+          "$ref": "#/$defs/identifier",
+          "x-swarmkit-ref": "topology",
+          "description": "Topology run to unwind this stage if the requirement is cancelled after the stage passed."
+        }
+      }
+    },
+    "loop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["when", "to"],
+      "properties": {
+        "when": {
+          "$ref": "#/$defs/event",
+          "description": "The event that triggers this cross-stage edge (e.g. defect.raised)."
+        },
+        "to": {
+          "$ref": "#/$defs/identifier",
+          "description": "The stage id this event routes to (must be a stage in this graph)."
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 10 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authored_by", "version"],
+      "properties": {
+        "authored_by": {
+          "enum": [
+            "human",
+            "authored_by_swarm",
+            "derived_from_template",
+            "imported_from_registry",
+            "vendor_published"
+          ]
+        },
+        "authored_date": { "type": "string", "format": "date" },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "registry": { "type": "string" },
+        "vendor": { "type": "string" }
+      }
+    }
+  }
+}

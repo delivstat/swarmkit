@@ -1,0 +1,15 @@
+# Invalid — a loop edge requires both `on` and `to`.
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: bad-loop
+  name: Bad Loop
+  description: This loop edge is missing its target stage.
+stages:
+  - id: intake
+    topology: oms-intake
+loops:
+  - when: defect.raised
+provenance:
+  authored_by: human
+  version: 1.0.0

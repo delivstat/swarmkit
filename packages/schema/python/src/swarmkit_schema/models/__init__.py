@@ -14,6 +14,7 @@ from .executor_adapter import SwarmKitExecutorAdapter
 from .role_registry import SwarmKitRoleRegistry
 from .approval_policy import SwarmKitApprovalPolicy
 from .funnel import SwarmKitFunnel
+from .stage_graph import SwarmKitStageGraph
 
 __all__ = [
     "SwarmKitTopology",
@@ -25,4 +26,5 @@ __all__ = [
     "SwarmKitRoleRegistry",
     "SwarmKitApprovalPolicy",
     "SwarmKitFunnel",
+    "SwarmKitStageGraph",
 ]
