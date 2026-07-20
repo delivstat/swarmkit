@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from swarmkit_schema.models import (
     SwarmKitFunnel,
+    SwarmKitStageGraph,
     SwarmKitTopology,
     SwarmKitTrigger,
     SwarmKitWorkspace,
@@ -37,6 +38,22 @@ class ResolvedFunnel:
 
     id: str
     raw: SwarmKitFunnel
+    source_path: Path
+    spec: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class ResolvedStageGraph:
+    """A StageGraph artifact, schema-validated with every reference verified.
+
+    A stage graph (design/details/pipeline-controller.md) is the pipeline as data: the
+    reference controller sequences its stages as a saga. ``spec`` is the validated raw
+    mapping the controller reads; ``raw`` is the typed model. The runtime does not execute
+    it — it resolves + ref-checks it so the controller consumes a verified graph.
+    """
+
+    id: str
+    raw: SwarmKitStageGraph
     source_path: Path
     spec: Mapping[str, Any]
 
@@ -110,12 +127,16 @@ class ResolvedWorkspace:
     # Merged role registry from all discovered role-registry artifacts. Empty when none.
     # Consumed by multi-party approval (a funnel's approve layer) to map roles -> identities.
     role_registry: RoleRegistry = field(default_factory=lambda: RoleRegistry(roles={}))
+    # StageGraph artifacts, ref-checked against topologies + funnels. The reference pipeline
+    # controller consumes these; the runtime does not execute them.
+    stage_graphs: Mapping[str, ResolvedStageGraph] = field(default_factory=dict)
 
 
 __all__ = [
     "AgentRole",
     "ResolvedAgent",
     "ResolvedFunnel",
+    "ResolvedStageGraph",
     "ResolvedTopology",
     "ResolvedTrigger",
     "ResolvedWorkspace",

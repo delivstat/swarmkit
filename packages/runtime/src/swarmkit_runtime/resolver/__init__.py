@@ -46,11 +46,13 @@ from ._resolved import (
     AgentRole,
     ResolvedAgent,
     ResolvedFunnel,
+    ResolvedStageGraph,
     ResolvedTopology,
     ResolvedTrigger,
     ResolvedWorkspace,
 )
 from ._roles import build_role_registry
+from ._stage_graphs import build_stage_graph_registry
 from ._topology import build_topology_registry
 from ._triggers import build_trigger_registry
 
@@ -400,6 +402,9 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     errors.extend(topo_errors)
     triggers, trigger_errors = build_trigger_registry(artifacts, topologies)
     errors.extend(trigger_errors)
+    # Stage graphs resolve last — they reference topologies + funnels + their own stages.
+    stage_graphs, sg_errors = build_stage_graph_registry(artifacts, topologies, funnels)
+    errors.extend(sg_errors)
 
     if errors:
         raise ResolutionErrors(errors)
@@ -435,6 +440,7 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
         triggers=tuple(triggers),
         funnels=funnels,
         role_registry=role_registry,
+        stage_graphs=stage_graphs,
     )
 
 
@@ -444,6 +450,7 @@ __all__ = [
     "ResolutionErrors",
     "ResolvedAgent",
     "ResolvedFunnel",
+    "ResolvedStageGraph",
     "ResolvedTopology",
     "ResolvedTrigger",
     "ResolvedWorkspace",
