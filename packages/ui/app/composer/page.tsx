@@ -456,6 +456,11 @@ function rawToDisplay(raw: RawAgent): ResolvedAgent {
 		source_archetype: typeof raw.archetype === "string" ? raw.archetype : null,
 		model: (raw.model as Record<string, unknown> | null) ?? null,
 		skills: Array.isArray(raw.skills) ? (raw.skills as string[]) : [],
+		// Carry the node's funnel gate (a Funnel id, or a raw inline value) so the canvas can show the
+		// "gated" badge on a staged edit — previously dropped here.
+		funnel:
+			(raw.funnel as string | Record<string, unknown> | null | undefined) ??
+			null,
 		children: (raw.children ?? []).map(rawToDisplay),
 	};
 }

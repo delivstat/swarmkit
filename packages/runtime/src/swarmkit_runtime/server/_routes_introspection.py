@@ -85,6 +85,10 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
     async def list_archetypes(request: Request) -> list[str]:
         return sorted(_get_runtime(request).workspace.archetypes.keys())
 
+    @app.get("/funnels")
+    async def list_funnels(request: Request) -> list[str]:
+        return sorted(_get_runtime(request).workspace.funnels.keys())
+
     @app.get("/validate")
     async def validate_workspace(request: Request) -> dict[str, Any]:
         rt = _get_runtime(request)

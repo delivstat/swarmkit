@@ -24,7 +24,7 @@ import {
 	useEdgesState,
 	useNodesState,
 } from "@xyflow/react";
-import { Crown, Shield, User } from "lucide-react";
+import { Crown, Funnel, Shield, User } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
 // Dynamic per-node colors (role accent + run-status ring) stay inline: a node card colors its icon,
@@ -73,6 +73,16 @@ function AgentCard({ data, selected }: NodeProps<AgentNode>) {
 			<div className="flex items-center gap-1.5 font-medium">
 				<Icon size={14} style={{ color: style.color }} />
 				<span>{data.id}</span>
+				{data.hasFunnel ? (
+					// Mirrors the run-overlay affordance: a small marker on the card when the node carries a
+					// per-artifact quality gate (its output must clear the funnel before the run advances).
+					<span
+						className="ml-auto inline-flex items-center gap-0.5 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground"
+						title="Output passes through a Funnel quality gate"
+					>
+						<Funnel size={9} /> gated
+					</span>
+				) : null}
 			</div>
 			<div className="mt-0.5 text-muted-foreground">
 				{data.role}
