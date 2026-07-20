@@ -14,6 +14,7 @@ import {
 	ScrollText,
 	Timer,
 	Users,
+	Workflow,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -31,6 +32,7 @@ const NAV = [
 	{ href: "/skills", label: "Skills", icon: Puzzle },
 	{ href: "/archetypes", label: "Archetypes", icon: Users },
 	{ href: "/funnels", label: "Funnels", icon: Funnel },
+	{ href: "/pipelines", label: "Pipelines", icon: Workflow },
 	{ href: "/canary", label: "Canary", icon: ListChecks },
 	{ href: "/triggers", label: "Triggers", icon: Timer },
 ] as const;
