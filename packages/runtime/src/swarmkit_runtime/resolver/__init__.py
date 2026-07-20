@@ -50,6 +50,7 @@ from ._resolved import (
     ResolvedTrigger,
     ResolvedWorkspace,
 )
+from ._roles import build_role_registry
 from ._topology import build_topology_registry
 from ._triggers import build_trigger_registry
 
@@ -393,6 +394,8 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     # Funnels resolve before topologies so a node's `funnel: <id>` reference can be verified.
     funnels, funnel_errors = build_funnel_registry(artifacts)
     errors.extend(funnel_errors)
+    role_registry, role_errors = build_role_registry(artifacts)
+    errors.extend(role_errors)
     topologies, topo_errors = build_topology_registry(artifacts, skills, archetypes, funnels)
     errors.extend(topo_errors)
     triggers, trigger_errors = build_trigger_registry(artifacts, topologies)
@@ -431,6 +434,7 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
         archetypes=archetypes,
         triggers=tuple(triggers),
         funnels=funnels,
+        role_registry=role_registry,
     )
 
 
