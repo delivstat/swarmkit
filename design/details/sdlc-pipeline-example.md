@@ -560,10 +560,11 @@ in-node gate embedding + role-registry resolution, with the OMS example
 (`examples/sdlc-pipeline/`, `just demo-sdlc`) proving IAM scoping + the gate funnel +
 the agent-determination-only shape. The bounded stage runner is the deliberate
 precursor to slice 5's data-driven controller. Next: slice 5 (controller + stage-graph
-schema). Note: slice 4 corrected three slice-2 harness archetypes that used the
-never-registered executor kind `harness`; the `kind: harness` + `ref:` shape the
-archetype schema documents is not implemented by the runtime executor registry (which
-registers concrete adapter kinds) — a follow-up for the executor abstraction.
+schema). Note: slice 4 also closed a design-vs-runtime gap it surfaced — the executor
+registry now resolves the canonical `kind: harness` + `ref: <adapter-id>` shape (design
+executor-abstraction.md §4.2/§5), selecting the adapter by `ref`; naming an adapter id
+directly as the kind still works (legacy). The three harness archetypes use `kind:
+harness, ref: claude-code`.
 
 This is a **program of features**, not a single PR — the framework capabilities (slices 1–3, 5)
 each land as their own design note + PR per the mandatory workflow; the example workspace composes

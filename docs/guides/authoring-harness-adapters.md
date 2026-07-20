@@ -142,7 +142,8 @@ By default a harness runs in an ephemeral, isolated git worktree (produce a diff
 
 ```yaml
 executor:
-  kind: claude-code
+  kind: harness
+  ref: claude-code
   config:
     working_dir: coding-worker   # persistent (under the workspace root); omit for the isolated worktree
 ```

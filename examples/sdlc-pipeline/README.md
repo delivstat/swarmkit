@@ -46,8 +46,8 @@ runtime artifact env-substitution feature, design/details/artifact-env-substitut
 | `SDLC_REASONING_PROVIDER` / `SDLC_REASONING_MODEL` | `openrouter` / `moonshotai/kimi-k2.5` | orchestrator, qa, sit-qa, pt |
 | `SDLC_WRITING_PROVIDER` / `SDLC_WRITING_MODEL` | `openrouter` / `deepseek/deepseek-v3` | analyst, architects, coordinator, support |
 
-Harness archetypes (`developer`, `architect-reviewer`, `security-consultant`) use the `claude-code`
-adapter, not a model.
+Harness archetypes (`developer`, `architect-reviewer`, `security-consultant`) run a coding harness,
+not a model — `executor: { kind: harness, ref: claude-code }` (design executor-abstraction.md §4.2).
 
 ## The OMS stage run (slice 4)
 
