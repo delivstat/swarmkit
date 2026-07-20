@@ -27,6 +27,14 @@ KBs, and mock MCP servers come in later slices.
 (decision) · `test-plan-generation` (capability) · `code-review` (decision) · `pt-analysis`
 (decision) · `artifact-judge` (decision) · `multi-party-approval-request` (coordination).
 
+## Funnels (`workspace/funnels/`)
+
+`consolidated-design-approval` — a first-class `kind: Funnel` artifact (the pipeline's first
+consumer of the gate funnel, design/details/gate-funnel.md). It chains all four layers on the
+consolidated-design artifact: deterministic `validate` → `judge` (`artifact-judge`) →
+`review` (`architect-reviewer`, read-only) → multi-party `approve`. Referenced by id from a
+topology node's `funnel:` field. See the [funnel reference](../../docs/site/reference/funnel.md).
+
 ## Model configuration (env, two tiers)
 
 Archetype models are **not hardcoded** — they reference env vars with defaults (resolved by the

@@ -86,6 +86,7 @@ nav:
     - Notifications: reference/notifications.md
     - Skills catalogue: reference/skills.md
     - Archetypes catalogue: reference/archetypes.md
+    - Funnel artifact: reference/funnel.md
   - Releases:
     - v1.2: releases/v1.2.md
     - v1.1: releases/v1.1.md

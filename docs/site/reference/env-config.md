@@ -4,7 +4,7 @@ Separate environment-specific values (URLs, credentials, feature flags) from str
 
 There are two layers, and you can use either or both:
 
-- **Env references in any artifact** (runtime 1.98.0+) — `${VAR}`, `${VAR:-default}`, and `$${VAR}` resolve in **every** artifact (topology, skill, archetype, workspace, trigger), with or without an env file. This is the quick path for making a reusable library model- or endpoint-configurable. See [Env references in any artifact](#env-references-in-any-artifact) below.
+- **Env references in any artifact** (runtime 1.98.0+) — `${VAR}`, `${VAR:-default}`, and `$${VAR}` resolve in **every** artifact (topology, skill, archetype, workspace, trigger, funnel), with or without an env file. This is the quick path for making a reusable library model- or endpoint-configurable. See [Env references in any artifact](#env-references-in-any-artifact) below.
 - **The workspace property map** — a `workspace.env.yaml` file that maps dotted `${property.path}` references in `workspace.yaml` to real values, with per-environment overrides. This is the structured path for the two-file dev/staging/prod split described in the rest of this page.
 
 The two layers compose: a `${NAME}` reference resolves from the property map first, then the OS environment, then a `:-default`, then is left literal.

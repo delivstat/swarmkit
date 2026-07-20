@@ -18,13 +18,79 @@
 
 ## Schemas
 
-Five canonical artifact schemas (JSON Schema 2020-12):
+Six canonical artifact schemas (JSON Schema 2020-12):
 
 - [topology.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/topology.schema.json)
 - [skill.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/skill.schema.json)
 - [archetype.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/archetype.schema.json)
 - [workspace.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/workspace.schema.json)
 - [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json)
+- [funnel.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/funnel.schema.json): a reusable per-artifact quality gate — see Funnel below.
+
+## Funnel (per-artifact quality gate)
+
+A **Funnel** is a first-class artifact (`kind: Funnel`) — a reusable per-artifact quality gate that chains *structured-output validation → LLM-as-judge → optional harness review → multi-party human approval* into one composition. Referenced by id from a topology node's `funnel:` field, so the same gate applies to many nodes/stages. Every layer is optional except `approve`; present layers always run in the fixed order `validate → judge → review → approve`. The automated layers **filter and drive a bounded retry loop but never decide** — the only exit is through `approve`. The control flow is compiler-owned and fixed; a funnel configures the layers, it does not rewire the graph. On retry exhaustion the funnel escalates to a human with the last critique attached — it never drops the requirement or silently advances.
+
+Layers: `validate` (deterministic, native structured-output validation + field-specific auto-correction — the judge never sees malformed input), `judge` (a decision skill scoring against a rubric with a `threshold` and bounded `max_retries`), `review` (optional heavyweight harness reviewer; findings at or above `route_back_at` retry, the rest attach to the human task), `approve` (required multi-party approval set — rules, quorum, `min_distinct_approvers`, `exclude_author`).
+
+Minimal (degenerate to a plain multi-party gate):
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: design-signoff
+  name: Design Sign-off
+  description: A plain multi-party human approval gate on the design artifact.
+approve:
+  rules:
+    - scope: design:approve
+      roles: [tech-lead]
+      quorum: all
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Full (all four layers):
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: consolidated-design-approval
+  name: Consolidated Design Approval
+  description: Full four-layer gate — validate, judge, architect review, then multi-party approval.
+validate:
+  schema: schemas/consolidated-design.json   # workspace-relative JSON Schema
+  autocorrect: true                          # field-specific re-prompt before treating as a retry
+judge:
+  skill: artifact-judge                       # a decision-category skill (LLM-as-judge)
+  rubric: rubrics/consolidated-design.md
+  threshold: 0.8                              # score below this is a retry
+  max_retries: 2                              # then escalate to a human, never drop
+review:
+  archetype: architect-reviewer               # harness reviewer archetype
+  read_scope: [app:oms, app:web, app:mobile]  # read-only IAM scopes for the investigation
+  route_back_at: high                         # findings >= this retry; lower ones attach
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead, web-lead, mobile-lead]
+      quorum: all
+    - scope: security:approve
+      roles: [infosec-lead]
+      quorum: all
+  exclude_author: true                        # segregation of duties (default)
+  min_distinct_approvers: 2                    # four-eyes floor
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+- [Funnel reference](https://github.com/delivstat/swarmkit/blob/main/docs/site/reference/funnel.md): layers, the fixed control flow, the advisory (structural) invariant, referenced-by-id.
+- [Gate funnel design note](https://github.com/delivstat/swarmkit/blob/main/design/details/gate-funnel.md): composition, control flow, bounded retry, the structural invariant, provenance bundle.
+- [Example funnel artifact](https://github.com/delivstat/swarmkit/blob/main/examples/sdlc-pipeline/workspace/funnels/consolidated-design-approval.yaml): all four layers, referenced by id from an SDLC pipeline node.
 
 ## Reference workspace
 
