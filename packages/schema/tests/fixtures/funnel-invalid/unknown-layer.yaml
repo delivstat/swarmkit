@@ -1,8 +1,0 @@
-# Invalid — unknown top-level layer key (additionalProperties: false).
-verify:
-  skill: something
-approve:
-  rules:
-    - scope: design:approve
-      roles: [oms-lead]
-      quorum: all

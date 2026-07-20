@@ -1,9 +1,0 @@
-# Invalid — the judge layer requires a `skill` id.
-judge:
-  rubric: rubrics/consolidated-design.md
-  threshold: 0.8
-approve:
-  rules:
-    - scope: design:approve
-      roles: [oms-lead]
-      quorum: all

@@ -1,6 +1,15 @@
 # Invalid — `approve` is required; a funnel with no human exit is rejected.
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: no-human
+  name: No Human Gate
+  description: This funnel has automated layers but no approval layer.
 validate:
   autocorrect: true
 judge:
   skill: artifact-judge
   threshold: 0.8
+provenance:
+  authored_by: human
+  version: 1.0.0

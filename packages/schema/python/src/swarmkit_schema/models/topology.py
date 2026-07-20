@@ -358,9 +358,10 @@ class Agent(BaseModel):
     iam: Iam | None = None
     output_schema: dict[str, Any] | None = None
     intent_monitoring: IntentMonitoring | None = None
-    funnel: dict[str, Any] | None = Field(
+    funnel: str | None = Field(
         None,
-        description="Optional per-artifact quality gate on this agent's output: validate -> judge -> (review) -> multi-party human approval (design/details/gate-funnel.md). Validated against the funnel schema at load time. When present, the agent's output must clear the automated layers and a human approval before the run advances.",
+        description="Optional reference (by id) to a Funnel artifact — a reusable per-artifact quality gate on this agent's output: validate -> judge -> (review) -> multi-party human approval (design/details/gate-funnel.md). When set, the agent's output must clear the funnel's automated layers and a human approval before the run advances.",
+        pattern="^[a-z][a-z0-9-]*$",
     )
     children: list[ChildAgent] | None = Field(
         None,

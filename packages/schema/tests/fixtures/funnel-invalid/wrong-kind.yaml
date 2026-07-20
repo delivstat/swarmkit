@@ -1,0 +1,15 @@
+# Invalid — kind must be the const "Funnel".
+apiVersion: swarmkit/v1
+kind: Gate
+metadata:
+  id: wrong-kind
+  name: Wrong Kind
+  description: This artifact declares the wrong kind for a funnel.
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead]
+      quorum: all
+provenance:
+  authored_by: human
+  version: 1.0.0

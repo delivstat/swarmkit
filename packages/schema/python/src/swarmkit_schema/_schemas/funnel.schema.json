@@ -2,11 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.swarmkit.dev/v1/funnel.schema.json",
   "title": "SwarmKitFunnel",
-  "description": "Per-artifact quality gate composition: chains structured-output validation -> LLM-as-judge -> optional harness review -> multi-party human approval into one reusable gate. Every layer is optional except `approve`; present layers run in fixed order (validate, judge, review, approve). The automated layers filter and drive a bounded retry loop but never decide — the only exit is through `approve`. Embedded config consumed by gate nodes — not a standalone artifact (no apiVersion/kind). See design/details/gate-funnel.md.",
+  "description": "A reusable per-artifact quality gate: chains structured-output validation -> LLM-as-judge -> optional harness review -> multi-party human approval into one composition. A first-class, standalone artifact (like a skill or archetype) so the same gate can be referenced by id from many nodes/stages. Every layer is optional except `approve`; present layers run in fixed order (validate, judge, review, approve). The automated layers filter and drive a bounded retry loop but never decide — the only exit is through `approve`. The control flow is compiler-owned and fixed; a funnel configures the layers, it does not rewire the graph. See design/details/gate-funnel.md.",
   "type": "object",
-  "required": ["approve"],
+  "required": ["apiVersion", "kind", "metadata", "approve", "provenance"],
   "additionalProperties": false,
   "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "Funnel" },
+    "metadata": { "$ref": "#/$defs/metadata" },
     "validate": {
       "type": "object",
       "additionalProperties": false,
@@ -73,7 +76,8 @@
     "approve": {
       "$ref": "#/$defs/approval_policy",
       "description": "Layer 4 (required): the multi-party human approval set. The only exit from the funnel to `done`."
-    }
+    },
+    "provenance": { "$ref": "#/$defs/provenance" }
   },
   "$defs": {
     "identifier": {
@@ -83,6 +87,40 @@
     "scope": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 10 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authored_by", "version"],
+      "properties": {
+        "authored_by": {
+          "enum": [
+            "human",
+            "authored_by_swarm",
+            "derived_from_template",
+            "imported_from_registry",
+            "vendor_published"
+          ]
+        },
+        "authored_date": { "type": "string", "format": "date" },
+        "version": { "$ref": "#/$defs/semver" },
+        "registry": { "type": "string" },
+        "vendor": { "type": "string" }
+      }
     },
     "approval_policy": {
       "type": "object",

@@ -1,4 +1,10 @@
 # Invalid — judge threshold must be within 0..1.
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: bad-threshold
+  name: Bad Threshold
+  description: The judge threshold is outside the allowed range.
 judge:
   skill: artifact-judge
   threshold: 1.5
@@ -7,3 +13,6 @@ approve:
     - scope: design:approve
       roles: [oms-lead]
       quorum: all
+provenance:
+  authored_by: human
+  version: 1.0.0

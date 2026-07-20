@@ -30,12 +30,12 @@ export interface Root {
      */
     children?: ChildElement[];
     /**
-     * Optional per-artifact quality gate on this agent's output: validate -> judge -> (review)
-     * -> multi-party human approval (design/details/gate-funnel.md). Validated against the
-     * funnel schema at load time. When present, the agent's output must clear the automated
-     * layers and a human approval before the run advances.
+     * Optional reference (by id) to a Funnel artifact — a reusable per-artifact quality gate on
+     * this agent's output: validate -> judge -> (review) -> multi-party human approval
+     * (design/details/gate-funnel.md). When set, the agent's output must clear the funnel's
+     * automated layers and a human approval before the run advances.
      */
-    funnel?:            { [key: string]: any };
+    funnel?:            string;
     iam?:               Iam;
     id:                 string;
     intent_monitoring?: IntentMonitoring;
@@ -60,12 +60,12 @@ export interface ChildElement {
      */
     children?: ChildElement[];
     /**
-     * Optional per-artifact quality gate on this agent's output: validate -> judge -> (review)
-     * -> multi-party human approval (design/details/gate-funnel.md). Validated against the
-     * funnel schema at load time. When present, the agent's output must clear the automated
-     * layers and a human approval before the run advances.
+     * Optional reference (by id) to a Funnel artifact — a reusable per-artifact quality gate on
+     * this agent's output: validate -> judge -> (review) -> multi-party human approval
+     * (design/details/gate-funnel.md). When set, the agent's output must clear the funnel's
+     * automated layers and a human approval before the run advances.
      */
-    funnel?:            { [key: string]: any };
+    funnel?:            string;
     iam?:               Iam;
     id:                 string;
     intent_monitoring?: IntentMonitoring;

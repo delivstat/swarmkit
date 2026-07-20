@@ -10,15 +10,4 @@ agents:
     children:
       - id: designer
         role: worker
-        funnel:
-          judge:
-            skill: artifact-judge
-            rubric: rubrics/design.md
-            threshold: 0.8
-            max_retries: 2
-          approve:
-            rules:
-              - scope: design:approve
-                roles: [oms-lead, web-lead]
-                quorum: all
-            min_distinct_approvers: 2
+        funnel: consolidated-design-gate

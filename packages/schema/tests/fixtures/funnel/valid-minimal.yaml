@@ -1,6 +1,15 @@
 # Degenerate funnel — only the required approve layer; a plain multi-party gate.
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: quick-approval
+  name: Quick Approval
+  description: A single-role sign-off gate with no automated pre-checks.
 approve:
   rules:
     - scope: design:approve
       roles: [oms-lead]
       quorum: any
+provenance:
+  authored_by: human
+  version: 0.1.0

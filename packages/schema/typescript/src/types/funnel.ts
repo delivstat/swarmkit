@@ -3,15 +3,17 @@
 // This file is generated from the canonical JSON Schema. Do not edit by hand.
 // Regenerate with: just schema-codegen-ts
 /**
- * Per-artifact quality gate composition: chains structured-output validation ->
- * LLM-as-judge -> optional harness review -> multi-party human approval into one reusable
- * gate. Every layer is optional except `approve`; present layers run in fixed order
- * (validate, judge, review, approve). The automated layers filter and drive a bounded retry
- * loop but never decide — the only exit is through `approve`. Embedded config consumed by
- * gate nodes — not a standalone artifact (no apiVersion/kind). See
- * design/details/gate-funnel.md.
+ * A reusable per-artifact quality gate: chains structured-output validation -> LLM-as-judge
+ * -> optional harness review -> multi-party human approval into one composition. A
+ * first-class, standalone artifact (like a skill or archetype) so the same gate can be
+ * referenced by id from many nodes/stages. Every layer is optional except `approve`;
+ * present layers run in fixed order (validate, judge, review, approve). The automated
+ * layers filter and drive a bounded retry loop but never decide — the only exit is through
+ * `approve`. The control flow is compiler-owned and fixed; a funnel configures the layers,
+ * it does not rewire the graph. See design/details/gate-funnel.md.
  */
 export interface SwarmKitFunnel {
+    apiVersion: APIVersion;
     /**
      * Layer 4 (required): the multi-party human approval set. The only exit from the funnel to
      * `done`.
@@ -22,7 +24,10 @@ export interface SwarmKitFunnel {
      * rubric. Below `threshold` drives a bounded retry carrying the critique back to the
      * drafter.
      */
-    judge?: Judge;
+    judge?:     Judge;
+    kind:       Kind;
+    metadata:   Metadata;
+    provenance: Provenance;
     /**
      * Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings
      * at or above `route_back_at` retry; the rest attach to the human task.
@@ -35,6 +40,8 @@ export interface SwarmKitFunnel {
      */
     validate?: Validate;
 }
+
+export type APIVersion = "swarmkit/v1";
 
 /**
  * Layer 4 (required): the multi-party human approval set. The only exit from the funnel to
@@ -120,6 +127,24 @@ export interface Judge {
      */
     threshold?: number;
 }
+
+export type Kind = "Funnel";
+
+export interface Metadata {
+    description: string;
+    id:          string;
+    name:        string;
+}
+
+export interface Provenance {
+    authored_by:    AuthoredBy;
+    authored_date?: Date;
+    registry?:      string;
+    vendor?:        string;
+    version:        string;
+}
+
+export type AuthoredBy = "human" | "authored_by_swarm" | "derived_from_template" | "imported_from_registry" | "vendor_published";
 
 /**
  * Layer 3 (optional; heavyweight gates only): an investigative harness reviewer. Findings

@@ -1,4 +1,10 @@
 # Full funnel — all four layers, the heavyweight design gate from the SDLC example.
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: consolidated-design-gate
+  name: Consolidated Design Gate
+  description: The multi-app design approval gate — validate, judge, architect review, then sign-off.
 validate:
   schema: schemas/consolidated-design.json
   autocorrect: true
@@ -22,3 +28,6 @@ approve:
   exclude_author: true
   on_revision: reset_all
   min_distinct_approvers: 2
+provenance:
+  authored_by: human
+  version: 1.0.0
