@@ -108,6 +108,11 @@ demo-gate-funnel:
 demo-sdlc:
     uv run python examples/sdlc-pipeline/demo_oms_stage_run.py
 
+# Demo the OMS pipeline driven by the Temporal orchestrator (orchestration-provider-seam.md).
+# Needs the orchestrator group: `uv sync --group orchestrator`.
+demo-pipeline-temporal:
+    uv run python examples/sdlc-pipeline/demo_pipeline_temporal.py
+
 # Demo the SDLC pipeline controller (slice 5): a saga sequenced across intake -> design (gate) ->
 # build -> sit over a scripted run_stage seam — event dedup, dropped-event reconciliation,
 # per-contract lock serialisation, and cancellation with reverse-order compensation.

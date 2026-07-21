@@ -90,6 +90,28 @@ Design: [`pipeline-controller.md`](../../design/details/pipeline-controller.md).
 just demo-pipeline-controller   # one requirement through the pipeline + duplicate/dropped/contended/cancelled scenarios
 ```
 
+## Orchestration: the pluggable sequencing seam
+
+Pipeline *sequencing* is a **provider seam**, not a bespoke engine
+([`orchestration-provider-seam.md`](../../design/details/orchestration-provider-seam.md)). SwarmKit
+keeps the `StageGraph` spec, the governed stage runs, and the correlated audit; the durable
+saga substrate is delegated. Two adapters implement `OrchestrationProvider`:
+
+- **Reference controller** (`controller/`) — the zero-infra, in-memory option (slice 5).
+- **Temporal** (`orchestrator/temporal/`) — the production adapter: a single data-driven Temporal
+  workflow interprets any StageGraph (stages → activities that run governed SwarmKit stage runs;
+  gate resolutions + external events → signals; compensation → the saga pattern). The graph stays
+  data — one workflow runs any pipeline.
+
+```
+uv sync --group orchestrator     # installs temporalio (kept out of the core deps)
+just demo-pipeline-temporal      # the OMS pipeline on Temporal (in-process test env, no server)
+uv run pytest packages/runtime/tests/test_orchestration_temporal.py -m integration
+```
+
+The Temporal tests run under the SDK's in-process time-skipping environment — no external server —
+and are gated `integration` (deselected in default CI, which does not install temporalio).
+
 ## Validate
 
 ```

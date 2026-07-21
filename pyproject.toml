@@ -19,6 +19,12 @@ dev = [
     # regenerated whenever a schema changes (`just schema-codegen`).
     "datamodel-code-generator>=0.26",
 ]
+# Optional: the production pipeline orchestrator (design/details/orchestration-provider-seam.md).
+# Not installed by default (CI syncs `--group dev`); install with `uv sync --group orchestrator`
+# to run the Temporal adapter + its `-m integration` tests. Kept out of the core runtime deps.
+orchestrator = [
+    "temporalio>=1.30",
+]
 
 [tool.uv.workspace]
 members = [
@@ -94,10 +100,14 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
+# The Temporal orchestration integration test imports the sdlc-example orchestrator (untyped, via
+# sys.path) + the optional temporalio dep; it is exercised by pytest (`-m integration`), not mypy.
+exclude = ['packages/runtime/tests/test_orchestration_temporal\.py$']
 
-# AGT v3.x (public preview) doesn't ship py.typed markers yet.
+# AGT v3.x (public preview) doesn't ship py.typed markers yet. temporalio is optional (installed
+# only with the `orchestrator` group), so treat it as missing-ok for a default (no-temporalio) check.
 [[tool.mypy.overrides]]
-module = ["agent_os.*", "agent_control_plane.*", "agentmesh.*", "agent_sre.*", "google.*", "langgraph.*", "langchain_core.*", "langsmith.*"]
+module = ["agent_os.*", "agent_control_plane.*", "agentmesh.*", "agent_sre.*", "google.*", "langgraph.*", "langchain_core.*", "langsmith.*", "temporalio.*", "nexus_rpc.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
