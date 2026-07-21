@@ -17,6 +17,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SchemaForm } from "@/components/schema-form";
 import { StageGraphCanvas } from "@/components/stage-graph-canvas";
+import { StageGraphEditor } from "@/components/stage-graph-editor";
+import { StageInspector } from "@/components/stage-inspector";
+import { StagePalette } from "@/components/stage-palette";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +35,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import type { JsonSchema } from "@/lib/schema-form";
 import { readStages, stageGraphToGraph } from "@/lib/stage-graph";
+import {
+	addLoop,
+	addStage,
+	deleteLoop,
+	deleteSignalEdge,
+	drawSignalEdge,
+	removeStage,
+	removeWhenEvent,
+} from "@/lib/stage-graph-edit";
 import { useRefOptions } from "@/lib/use-ref-options";
 import { cn } from "@/lib/utils";
 
@@ -216,6 +228,9 @@ export default function PipelinesPage() {
 	const [yamlDraft, setYamlDraft] = useState("");
 	const [mode, setMode] = useState<EditorMode>("form");
 	const [selectedStage, setSelectedStage] = useState<string | null>(null);
+	// Canvas sub-mode: read-only DAG (view) vs. the editing surface (edit). The read-only view is
+	// always available (design/details/pipeline-editor-canvas.md — three views of one document).
+	const [canvasEditable, setCanvasEditable] = useState(false);
 	const [showNew, setShowNew] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -290,6 +305,14 @@ export default function PipelinesPage() {
 		setMode(next);
 	};
 
+	// Canvas gestures apply a pure mutation (lib/stage-graph-edit.ts) to the authoritative document.
+	// The YAML/form views stay in lockstep because they all read `obj`.
+	const mutate = (next: Record<string, unknown>) => setObj(next);
+
+	// FOLLOW-UP (design/details/pipeline-editor-canvas.md §Save & governance): editing a pipeline is a
+	// `topologies:modify`-class act, so save should route through the growth-loop propose → approve
+	// path (a diffed, human-approved change) rather than a silent write. That governance path is not
+	// wired yet; for v1 we use the existing validated `api.saveStageGraph`.
 	const handleSave = async () => {
 		const source = mode === "yaml" ? safeParse(yamlDraft) : obj;
 		if (!source) {
@@ -431,21 +454,90 @@ export default function PipelinesPage() {
 					)}
 
 					{hasPipelineOpen && mode === "canvas" && (
-						<div className="flex flex-1 flex-col overflow-hidden">
-							<div className="relative min-h-[240px] flex-1 border-b">
-								<StageGraphCanvas
-									graph={obj}
-									selectedStage={selectedStage}
-									onSelectStage={setSelectedStage}
+						<div className="flex flex-1 overflow-hidden">
+							{canvasEditable && (
+								<StagePalette
+									topologies={refOptions.topology ?? []}
+									onAddStage={(t) => {
+										const next = addStage(obj, t);
+										mutate(next);
+									}}
 								/>
-							</div>
-							<div className="flex h-[38%] shrink-0 flex-col overflow-hidden">
-								<div className="border-b px-3 py-1.5 text-xs text-muted-foreground">
-									read-only · click a stage to inspect · edit in the form or
-									yaml view
+							)}
+							<div className="flex flex-1 flex-col overflow-hidden">
+								<div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs">
+									<div className="flex overflow-hidden rounded-md border">
+										{(["view", "edit"] as const).map((v) => {
+											const on = (v === "edit") === canvasEditable;
+											return (
+												<button
+													key={v}
+													type="button"
+													onClick={() => setCanvasEditable(v === "edit")}
+													className={cn(
+														"px-2 py-0.5 text-xs capitalize transition-colors",
+														on
+															? "bg-accent font-medium text-accent-foreground"
+															: "text-muted-foreground hover:bg-accent/50",
+													)}
+												>
+													{v}
+												</button>
+											);
+										})}
+									</div>
+									<span className="text-muted-foreground">
+										{canvasEditable
+											? "drag right→left handles to wire a signal · top→top for a loop · Delete removes · click a stage to configure"
+											: "read-only · click a stage to inspect"}
+									</span>
 								</div>
-								<div className="flex-1 overflow-y-auto">
-									<StageDetail obj={obj} selectedStage={selectedStage} />
+								<div className="relative min-h-[240px] flex-1 border-b">
+									{canvasEditable ? (
+										<StageGraphEditor
+											graph={obj}
+											refOptions={refOptions}
+											selectedStage={selectedStage}
+											onSelectStage={setSelectedStage}
+											editable
+											onAddStage={(t) => mutate(addStage(obj, t))}
+											onDrawSignal={(s, t) => mutate(drawSignalEdge(obj, s, t))}
+											onAddLoop={(t, w) => mutate(addLoop(obj, t, w))}
+											onDeleteSignal={(s, t) =>
+												mutate(deleteSignalEdge(obj, s, t))
+											}
+											onDeleteLoop={(t, w) => mutate(deleteLoop(obj, t, w))}
+											onRemoveStage={(id) => {
+												mutate(removeStage(obj, id));
+												if (selectedStage === id) setSelectedStage(null);
+											}}
+											onRemoveExternalEntry={(st, ev) =>
+												mutate(removeWhenEvent(obj, st, ev))
+											}
+										/>
+									) : (
+										<StageGraphCanvas
+											graph={obj}
+											selectedStage={selectedStage}
+											onSelectStage={setSelectedStage}
+										/>
+									)}
+								</div>
+								<div className="flex h-[42%] shrink-0 flex-col overflow-hidden">
+									<div className="flex-1 overflow-y-auto">
+										{canvasEditable ? (
+											<StageInspector
+												doc={obj}
+												stageId={selectedStage}
+												refOptions={refOptions}
+												onChange={mutate}
+												onRenamed={setSelectedStage}
+												onDeleted={() => setSelectedStage(null)}
+											/>
+										) : (
+											<StageDetail obj={obj} selectedStage={selectedStage} />
+										)}
+									</div>
 								</div>
 							</div>
 						</div>

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	type StageGraphDoc,
+	emittedSignals,
+	externalEntries,
 	readLoops,
 	readStages,
 	stageGraphToGraph,
@@ -214,5 +216,37 @@ describe("stageGraphToGraph", () => {
 	it("tolerates a null/undefined document", () => {
 		expect(stageGraphToGraph(null).nodes).toEqual([]);
 		expect(stageGraphToGraph(undefined).edges).toEqual([]);
+	});
+});
+
+describe("emittedSignals / externalEntries", () => {
+	it("collects the signals stages emit as success", () => {
+		expect(emittedSignals(sdlc())).toEqual(
+			new Set([
+				"design.kickoff",
+				"design.approved",
+				"build.ready",
+				"sit.passed",
+				"defect.fixed",
+			]),
+		);
+	});
+
+	it("derives an external entry for a when event no stage emits", () => {
+		// `requirement.created` (intake's entry) is emitted by no stage → external.
+		expect(externalEntries(sdlc())).toEqual([
+			{ stage: "intake", event: "requirement.created" },
+		]);
+	});
+
+	it("does not treat an internally-emitted when event as external", () => {
+		const entries = externalEntries(
+			graph([
+				{ id: "a", topology: "t", success: "go" },
+				{ id: "b", topology: "t", when: ["go", "webhook.fired"] },
+			]),
+		);
+		// `go` is internal (a emits it); only `webhook.fired` is external.
+		expect(entries).toEqual([{ stage: "b", event: "webhook.fired" }]);
 	});
 });
