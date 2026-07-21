@@ -3,8 +3,8 @@
 // The Pipelines surface (design/details/pipeline-controller.md): author/inspect StageGraph artifacts —
 // the pipeline as data. A controller sequences the stages as a saga; here we edit the definition
 // (metadata + stages + loops) and visualize the wiring. Mirrors how funnels are surfaced (list +
-// editor), but the primary editor is the whole-artifact schema FORM (+ raw YAML) — the canvas is a
-// READ-ONLY DAG view, because a stage graph is wired by signal (`success` → `when`), not drawn.
+// editor). The canvas has a view/edit toggle (the Edit button jumps straight to canvas edit): view
+// is the read-only DAG, edit drops topologies + wires stages (design/details/pipeline-editor-canvas.md).
 //
 // Defensive by design: the runtime already serves the stage-graph schema (GET /api/schema/stage-graph)
 // and `@swarmkit/schema` validates locally, but the pipeline CRUD routes (/pipelines,
@@ -12,7 +12,16 @@
 // runtime rejects surfaces a clear "not persisted" notice rather than failing silently.
 
 import { dump, load } from "js-yaml";
-import { Boxes, Funnel, Lock, Plus, Undo2, Workflow, Zap } from "lucide-react";
+import {
+	Boxes,
+	Funnel,
+	Lock,
+	Pencil,
+	Plus,
+	Undo2,
+	Workflow,
+	Zap,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { SchemaForm } from "@/components/schema-form";
@@ -377,7 +386,25 @@ export default function PipelinesPage() {
 					</>
 				)}
 				{hasPipelineOpen && (
-					<div className="ml-auto flex overflow-hidden rounded-md border">
+					<Button
+						type="button"
+						size="sm"
+						variant={
+							mode === "canvas" && canvasEditable ? "default" : "outline"
+						}
+						className="ml-auto gap-1.5"
+						onClick={() => {
+							setModeSynced("canvas");
+							setCanvasEditable(true);
+						}}
+						title="Edit the pipeline visually — drop topologies, wire stages, configure gates & locks"
+					>
+						<Pencil size={13} />
+						Edit
+					</Button>
+				)}
+				{hasPipelineOpen && (
+					<div className="flex overflow-hidden rounded-md border">
 						{(["canvas", "form", "yaml"] as const).map((m) => (
 							<button
 								key={m}
