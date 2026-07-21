@@ -1,0 +1,14 @@
+# Invalid — event names must match the event pattern.
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: bad-event
+  name: Bad Event
+  description: The entry event uses characters outside the allowed event pattern.
+stages:
+  - id: intake
+    topology: oms-intake
+    when: ["Requirement Created!"]
+provenance:
+  authored_by: human
+  version: 1.0.0

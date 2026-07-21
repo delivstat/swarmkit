@@ -36,6 +36,7 @@ _ARTIFACT_DIRS = {
     "skill": "skills",
     "archetype": "archetypes",
     "funnel": "funnels",
+    "stage-graph": "pipelines",
 }
 
 

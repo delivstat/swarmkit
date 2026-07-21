@@ -37,6 +37,7 @@ ARTIFACTS: dict[str, str] = {
     "role-registry": "SwarmKitRoleRegistry",
     "approval-policy": "SwarmKitApprovalPolicy",
     "funnel": "SwarmKitFunnel",
+    "stage-graph": "SwarmKitStageGraph",
 }
 
 

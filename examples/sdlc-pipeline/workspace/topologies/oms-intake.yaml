@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: oms-intake
+  version: 0.1.0
+# Intake stage (slice 5): a bounded run where the business analyst ingests the BRD and
+# produces an impact analysis. Root-only + tiny — the controller (not the runtime) kicks
+# this as one stage of the oms-pipeline stage-graph. See design/details/pipeline-controller.md.
+agents:
+  root:
+    id: intake
+    role: root
+    archetype: business-analyst
+    iam:
+      base_scope: [kb:read, kb:write, app:oms:read]

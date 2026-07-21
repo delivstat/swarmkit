@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: oms-design
+  version: 0.1.0
+# Design stage (slice 5): the OMS solution architect drafts a design. In the stage-graph this
+# stage holds the integration-contract locks and parks on the `oms-design-gate` funnel; the
+# controller owns the lock + the wait, this topology owns only the determination (root-only,
+# tiny). See design/details/pipeline-controller.md.
+agents:
+  root:
+    id: designer
+    role: root
+    archetype: solution-architect
+    iam:
+      base_scope: [kb:read, kb:write, app:oms:read]

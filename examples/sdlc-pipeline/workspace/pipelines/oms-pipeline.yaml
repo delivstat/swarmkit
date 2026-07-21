@@ -1,0 +1,46 @@
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: oms-pipeline
+  name: OMS delivery pipeline
+  description: >
+    The one-app (OMS) delivery pipeline as data (slice 5). A requirement is a saga the
+    reference controller sequences: intake -> design (holds the integration-contract locks and
+    parks on the design gate) -> build (its success is an external CI event) -> sit. The defect
+    loop re-kicks build on defect.raised and sit on defect.fixed. The controller — not the
+    runtime — owns the durable weeks-long state; SwarmKit only runs the bounded stages.
+    See design/details/pipeline-controller.md.
+stages:
+  - id: intake
+    topology: oms-intake
+    when: [requirement.created]
+    success: design.kickoff
+  - id: design
+    topology: oms-design
+    when: [design.kickoff]
+    # Acquired all-or-none in a fixed global order before the run; held across approval.
+    locks: [contract:oms-inventory, contract:oms-web]
+    gate: oms-design-gate
+    success: design.approved
+    release_locks_on: design.approved
+    compensation: oms-compensate-design
+  - id: build
+    topology: oms-build
+    when: [design.approved]
+    # EXTERNAL event (CI), not a SwarmKit signal — the controller waits for the webhook or
+    # recovers it via reconciliation; it does not emit build.ready-in-qa itself.
+    success: build.ready-in-qa
+    compensation: oms-compensate-build
+  - id: sit
+    topology: oms-sit
+    when: [build.ready-in-qa]
+    success: sit.passed
+loops:
+  # The cross-stage defect cycle: a defect routes back to build; its fix re-triggers sit.
+  - when: defect.raised
+    to: build
+  - when: defect.fixed
+    to: sit
+provenance:
+  authored_by: human
+  version: 1.0.0

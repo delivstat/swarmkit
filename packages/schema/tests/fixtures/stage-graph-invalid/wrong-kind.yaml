@@ -1,0 +1,13 @@
+# Invalid — kind must be the const "StageGraph".
+apiVersion: swarmkit/v1
+kind: Pipeline
+metadata:
+  id: wrong-kind
+  name: Wrong Kind
+  description: This artifact declares the wrong kind for a stage graph.
+stages:
+  - id: intake
+    topology: oms-intake
+provenance:
+  authored_by: human
+  version: 1.0.0

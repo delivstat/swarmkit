@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: oms-compensate-build
+  version: 0.1.0
+# Compensation for the build stage (slice 5): when a requirement is cancelled after build
+# passed, the controller runs this to unwind it — revoke the candidate diff and reset the QA
+# environment. Root-only + tiny. See design/details/pipeline-controller.md.
+agents:
+  root:
+    id: build-unwinder
+    role: root
+    archetype: release-coordinator
+    iam:
+      base_scope: [repo:write, ci:read, app:oms:read]

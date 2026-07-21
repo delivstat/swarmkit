@@ -82,6 +82,10 @@ export const api = {
 	// CRUD naming. The runtime may not serve them yet — callers treat them best-effort (a failed
 	// list leaves the picker empty; a failed save surfaces a "not wired" notice).
 	funnels: () => get<string[]>("/funnels"),
+	// StageGraph artifacts (design/details/pipeline-controller.md) — the pipeline as data. Same
+	// best-effort posture as funnels: the runtime may not serve these CRUD routes yet (a failed list
+	// leaves the surface empty, a failed save surfaces a "not wired" notice), so callers gate on them.
+	pipelines: () => get<string[]>("/pipelines"),
 	validate: () => get<ValidateResponse>("/validate"),
 	triggers: () => get<TriggerConfig[]>("/triggers"),
 	canary: () => get<CanaryStatus>("/canary"),
@@ -209,6 +213,13 @@ export const api = {
 	saveFunnel: (id: string, yaml: string) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/funnels/${id}`,
+			{ yaml },
+		),
+	stageGraphYaml: (id: string) =>
+		get<{ yaml: string }>(`/api/pipelines/${id}/yaml`),
+	saveStageGraph: (id: string, yaml: string) =>
+		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+			`/api/pipelines/${id}`,
 			{ yaml },
 		),
 	reloadWorkspace: () => post<{ valid: boolean }>("/api/reload"),

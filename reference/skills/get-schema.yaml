@@ -5,7 +5,7 @@ metadata:
   name: Get Artifact Schema
   description: >
     Returns the canonical JSON Schema for a SwarmKit artifact type
-    (topology, skill, archetype, workspace, trigger, funnel). Used by
+    (topology, skill, archetype, workspace, trigger, funnel, stage-graph). Used by
     the schema drafter to generate correct YAML.
 category: capability
 implementation:

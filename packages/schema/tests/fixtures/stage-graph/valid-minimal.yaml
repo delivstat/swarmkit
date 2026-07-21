@@ -1,0 +1,15 @@
+# Minimal — a single-stage pipeline.
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: single-stage
+  name: Single Stage
+  description: A one-stage pipeline kicked by a single entry event.
+stages:
+  - id: intake
+    topology: oms-intake
+    when: [requirement.created]
+    success: intake.done
+provenance:
+  authored_by: human
+  version: 0.1.0

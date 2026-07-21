@@ -69,6 +69,27 @@ cannot reach a Web resource.
 just demo-sdlc      # intake → design → judge → approval, a bounded retry, and an IAM-scope denial
 ```
 
+## The pipeline controller (slice 5)
+
+The pipeline as data + the saga that runs it. `pipelines/oms-pipeline.yaml` is a
+`kind: StageGraph` — intake → design (gated + contract-locked) → build → sit, with a
+defect loop. The **controller** (`controller/`) is a self-contained, runtime-free service
+that sequences a requirement across those stages over an injectable `run_stage` seam:
+
+- durable per-requirement saga state; events deduped on `(requirement_id, event, source_event_id)`;
+- **reconciliation** recovers a dropped event by pulling source state;
+- **per-contract locking** — all-or-none in fixed order; a contended requirement parks and resumes;
+- **failure vs wait** — a park is free state; a failed run retries idempotently, then surfaces to a human;
+- **cancellation** unwinds with each passed stage's `compensation` run in reverse order.
+
+It drives SwarmKit only inside bounded stage runs (the slice-4 `StageRunner`) — the Minder
+split: the app owns weeks-long logic + state, SwarmKit does bounded determination + governance.
+Design: [`pipeline-controller.md`](../../design/details/pipeline-controller.md).
+
+```
+just demo-pipeline-controller   # one requirement through the pipeline + duplicate/dropped/contended/cancelled scenarios
+```
+
 ## Validate
 
 ```
