@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: oms-compensate-design
+  version: 0.1.0
+# Compensation for the design stage (slice 5): when a requirement is cancelled after design
+# passed, the controller runs this to unwind it — revoke the design draft and mark the shared
+# integration-contract entries superseded. Root-only + tiny. See design/details/pipeline-controller.md.
+agents:
+  root:
+    id: design-unwinder
+    role: root
+    archetype: release-coordinator
+    iam:
+      base_scope: [kb:read, kb:write, app:oms:read]

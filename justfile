@@ -108,6 +108,12 @@ demo-gate-funnel:
 demo-sdlc:
     uv run python examples/sdlc-pipeline/demo_oms_stage_run.py
 
+# Demo the SDLC pipeline controller (slice 5): a saga sequenced across intake -> design (gate) ->
+# build -> sit over a scripted run_stage seam — event dedup, dropped-event reconciliation,
+# per-contract lock serialisation, and cancellation with reverse-order compensation.
+demo-pipeline-controller:
+    uv run python examples/sdlc-pipeline/demo_pipeline_controller.py
+
 # Demo the published fleet-enrollment protocol schemas (register/join + InstanceState, design 19):
 # validate every committed protocol fixture + show the cross-file $ref enforcing nested state.
 demo-protocol-schema:

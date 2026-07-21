@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: oms-sit
+  version: 0.1.0
+# SIT stage (slice 5): the SIT QA engineer runs the end-to-end business-flow tests once the
+# build is ready in QA. Terminal stage of the oms-pipeline (its `success` sit.passed is consumed
+# by no other stage). Root-only + tiny. See design/details/pipeline-controller.md.
+agents:
+  root:
+    id: sit-runner
+    role: root
+    archetype: sit-qa
+    iam:
+      base_scope: [kb:read, kb:write, app:oms:read]

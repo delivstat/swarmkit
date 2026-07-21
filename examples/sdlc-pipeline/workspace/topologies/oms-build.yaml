@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: oms-build
+  version: 0.1.0
+# Build stage (slice 5): the OMS developer (a harness executor) implements the approved design
+# and produces a candidate diff. Its `success` (build.ready-in-qa) is an EXTERNAL CI event, so
+# the controller waits for the webhook (or recovers it via reconciliation) rather than emitting
+# it itself. Root-only + tiny. See design/details/pipeline-controller.md.
+agents:
+  root:
+    id: builder
+    role: root
+    archetype: developer
+    iam:
+      base_scope: [repo:write, ci:read, app:oms:read]
