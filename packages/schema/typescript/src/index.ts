@@ -48,6 +48,9 @@ import registerResponseSchema from "../../schemas/protocol/register-response.sch
 import roleRegistrySchema from "../../schemas/role-registry.schema.json" with {
 	type: "json",
 };
+import contractSchema from "../../schemas/contract.schema.json" with {
+	type: "json",
+};
 import skillSchema from "../../schemas/skill.schema.json" with { type: "json" };
 import stageGraphSchema from "../../schemas/stage-graph.schema.json" with {
 	type: "json",
@@ -72,7 +75,8 @@ export type SchemaName =
 	| "role-registry"
 	| "approval-policy"
 	| "funnel"
-	| "stage-graph";
+	| "stage-graph"
+	| "contract";
 
 const SCHEMAS = {
 	topology: topologySchema,
@@ -85,6 +89,7 @@ const SCHEMAS = {
 	"approval-policy": approvalPolicySchema,
 	funnel: funnelSchema,
 	"stage-graph": stageGraphSchema,
+	contract: contractSchema,
 } as const;
 
 // Fleet-enrollment wire schemas (design details/control-plane/19-fleet-enrollment-protocol.md).

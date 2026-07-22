@@ -55,8 +55,8 @@
         },
         "locks": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Integration-contract lock ids acquired (all-or-none, fixed order) before the run starts."
+          "items": { "$ref": "#/$defs/identifier", "x-swarmkit-ref": "contract" },
+          "description": "Integration contracts (by id) this stage holds — acquired all-or-none in fixed order before the run, released on `release_locks_on`. Each references a Contract artifact (design/details/contract-registry.md)."
         },
         "release_locks_on": {
           "$ref": "#/$defs/event",

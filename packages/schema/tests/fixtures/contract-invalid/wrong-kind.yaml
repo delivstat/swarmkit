@@ -1,0 +1,11 @@
+# Invalid — kind must be the const "Contract".
+apiVersion: swarmkit/v1
+kind: Interface
+metadata:
+  id: wrong-kind
+  name: Wrong Kind
+  description: This artifact declares the wrong kind for a contract.
+parties: [oms, web]
+provenance:
+  authored_by: human
+  version: 1.0.0

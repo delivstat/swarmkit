@@ -37,6 +37,7 @@ _ARTIFACT_DIRS = {
     "archetype": "archetypes",
     "funnel": "funnels",
     "stage-graph": "pipelines",
+    "contract": "contracts",
 }
 
 

@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Contract
+metadata:
+  id: oms-web
+  name: OMS ↔ Web order API
+  description: The order-submission and status API OMS exposes to the Web storefront.
+parties: [oms, web]
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,11 @@
+# Minimal — id/name/description + the two parties + provenance.
+apiVersion: swarmkit/v1
+kind: Contract
+metadata:
+  id: oms-inventory
+  name: OMS ↔ Inventory
+  description: The stock reservation contract between OMS and Inventory.
+parties: [oms, inventory]
+provenance:
+  authored_by: human
+  version: 0.1.0

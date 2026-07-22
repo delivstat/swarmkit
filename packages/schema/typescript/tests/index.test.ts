@@ -22,6 +22,7 @@ const ALL_SCHEMAS: SchemaName[] = [
 	"approval-policy",
 	"funnel",
 	"stage-graph",
+	"contract",
 ];
 
 function fixtures(kind: string): string[] {
@@ -99,3 +100,4 @@ describeFixtures(
 );
 describeFixtures("funnel", "funnel", "funnel-invalid", "funnel");
 describeFixtures("stage-graph", "stage-graph", "stage-graph-invalid", "stage-graph");
+describeFixtures("contract", "contract", "contract-invalid", "contract");

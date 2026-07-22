@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Contract
+metadata:
+  id: oms-inventory
+  name: OMS ↔ Inventory reservation
+  description: The stock reservation and release contract between OMS and Inventory.
+parties: [oms, inventory]
+provenance:
+  authored_by: human
+  version: 1.0.0

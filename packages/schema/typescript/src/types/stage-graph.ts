@@ -68,7 +68,9 @@ export interface StageElement {
     gate?: string;
     id:    string;
     /**
-     * Integration-contract lock ids acquired (all-or-none, fixed order) before the run starts.
+     * Integration contracts (by id) this stage holds — acquired all-or-none in fixed order
+     * before the run, released on `release_locks_on`. Each references a Contract artifact
+     * (design/details/contract-registry.md).
      */
     locks?: string[];
     /**

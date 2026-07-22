@@ -13,7 +13,7 @@ stages:
   - id: design
     topology: oms-design
     when: [design.kickoff]
-    locks: [contract:oms-web, contract:oms-inventory]
+    locks: [oms-web, oms-inventory]
     gate: oms-design-gate
     success: design.approved
     release_locks_on: design.approved

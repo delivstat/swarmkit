@@ -12,3 +12,4 @@ export type { SwarmKitRoleRegistry } from "./role-registry.js";
 export type { SwarmKitApprovalPolicy } from "./approval-policy.js";
 export type { SwarmKitFunnel } from "./funnel.js";
 export type { SwarmKitStageGraph } from "./stage-graph.js";
+export type { SwarmKitContract } from "./contract.js";

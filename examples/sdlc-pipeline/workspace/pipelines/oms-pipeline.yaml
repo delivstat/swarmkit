@@ -19,7 +19,7 @@ stages:
     topology: oms-design
     when: [design.kickoff]
     # Acquired all-or-none in a fixed global order before the run; held across approval.
-    locks: [contract:oms-inventory, contract:oms-web]
+    locks: [oms-inventory, oms-web]
     gate: oms-design-gate
     success: design.approved
     release_locks_on: design.approved

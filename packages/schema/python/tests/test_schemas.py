@@ -20,6 +20,7 @@ ALL: tuple[SchemaName, ...] = (
     "approval-policy",
     "funnel",
     "stage-graph",
+    "contract",
 )
 
 FIXTURE_ROOT = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures"
@@ -146,6 +147,17 @@ def test_stage_graph_valid_fixtures(fixture: Path) -> None:
 def test_stage_graph_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("stage-graph", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("contract"), ids=lambda p: p.name)
+def test_contract_valid_fixtures(fixture: Path) -> None:
+    validate("contract", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("contract-invalid"), ids=lambda p: p.name)
+def test_contract_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("contract", _load_yaml(fixture))
 
 
 def test_workspace_reference_fields_carry_x_swarmkit_ref() -> None:
