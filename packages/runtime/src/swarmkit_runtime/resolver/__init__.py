@@ -407,9 +407,7 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     contracts, contract_errors = build_contract_registry(artifacts)
     errors.extend(contract_errors)
     # Stage graphs resolve last — they reference topologies + funnels + contracts + own stages.
-    stage_graphs, sg_errors = build_stage_graph_registry(
-        artifacts, topologies, funnels, contracts
-    )
+    stage_graphs, sg_errors = build_stage_graph_registry(artifacts, topologies, funnels, contracts)
     errors.extend(sg_errors)
 
     if errors:

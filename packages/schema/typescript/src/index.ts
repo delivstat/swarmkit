@@ -18,6 +18,9 @@ import approvalPolicySchema from "../../schemas/approval-policy.schema.json" wit
 import archetypeSchema from "../../schemas/archetype.schema.json" with {
 	type: "json",
 };
+import contractSchema from "../../schemas/contract.schema.json" with {
+	type: "json",
+};
 import executorAdapterSchema from "../../schemas/executor-adapter.schema.json" with {
 	type: "json",
 };
@@ -46,9 +49,6 @@ import registerResponseSchema from "../../schemas/protocol/register-response.sch
 	type: "json",
 };
 import roleRegistrySchema from "../../schemas/role-registry.schema.json" with {
-	type: "json",
-};
-import contractSchema from "../../schemas/contract.schema.json" with {
 	type: "json",
 };
 import skillSchema from "../../schemas/skill.schema.json" with { type: "json" };
