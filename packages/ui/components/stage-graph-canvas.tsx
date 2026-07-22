@@ -11,8 +11,9 @@
 // never editable and nodes are never draggable/connectable/deletable.
 
 import "@xyflow/react/dist/style.css";
+import { contractLabel } from "@/lib/contract";
 import type { StageGraphDoc, StageNodeData } from "@/lib/stage-graph";
-import { stageGraphToGraph } from "@/lib/stage-graph";
+import { contendedContracts, stageGraphToGraph } from "@/lib/stage-graph";
 import {
 	Background,
 	Controls,
@@ -28,16 +29,28 @@ import {
 	useEdgesState,
 	useNodesState,
 } from "@xyflow/react";
-import { Boxes, Funnel, Lock, RotateCcw, Undo2 } from "lucide-react";
+import { Boxes, Funnel, Link2, Lock, RotateCcw, Undo2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
 interface CanvasStageData extends StageNodeData {
 	selected?: boolean;
+	/** Contract id → parties, for labelling contended locks by the apps they bind (if fetched). */
+	contractParties?: Record<string, string[]>;
 }
 type StageFlowNode = Node<CanvasStageData, "stage">;
 
+/** The tooltip for the contended-lock badge: each shared contract labelled by its parties (if known),
+ * one per line — so hovering a contended stage says exactly which contracts it shares. */
+function contendedTitle(
+	contended: string[],
+	parties: Record<string, string[]> | undefined,
+): string {
+	return contended.map((c) => contractLabel(c, parties?.[c] ?? [])).join("\n");
+}
+
 /** A custom node = one pipeline stage. Entry stages ring in sky; the selected stage rings in its
- * accent. Small markers flag a gate, held locks, and a compensation topology. */
+ * accent. Small markers flag a gate, held locks, a contended (shared) contract, and a compensation
+ * topology. */
 function StageCard({ data }: NodeProps<StageFlowNode>) {
 	const entryColor = "#0ea5e9";
 	const accent = data.selected
@@ -45,6 +58,7 @@ function StageCard({ data }: NodeProps<StageFlowNode>) {
 		: data.isEntry
 			? entryColor
 			: "var(--border)";
+	const contended = data.contendedLocks ?? [];
 	return (
 		<div
 			className="min-w-[170px] rounded-lg border-2 bg-card px-3 py-2 text-xs text-card-foreground shadow-sm"
@@ -69,6 +83,15 @@ function StageCard({ data }: NodeProps<StageFlowNode>) {
 					{data.locks.length > 0 ? (
 						<Lock size={11} aria-label={`holds ${data.locks.length} lock(s)`} />
 					) : null}
+					{contended.length > 0 ? (
+						<Link2
+							size={12}
+							style={{ color: "var(--warning)" }}
+							aria-label={`shares ${contended.length} contract(s) with another stage`}
+						>
+							<title>{contendedTitle(contended, data.contractParties)}</title>
+						</Link2>
+					) : null}
 					{data.gate ? <Funnel size={11} aria-label="parks on a gate" /> : null}
 					{data.compensation ? (
 						<Undo2 size={11} aria-label="has a compensation topology" />
@@ -78,6 +101,16 @@ function StageCard({ data }: NodeProps<StageFlowNode>) {
 			<div className="mt-0.5 truncate text-muted-foreground">
 				{data.topology ? `→ ${data.topology}` : "no topology"}
 			</div>
+			{contended.length > 0 ? (
+				<div
+					className="mt-0.5 flex items-center gap-1 truncate text-[10px]"
+					style={{ color: "var(--warning)" }}
+					title={contendedTitle(contended, data.contractParties)}
+				>
+					<Link2 size={10} />
+					<span className="truncate">shared: {contended.join(", ")}</span>
+				</div>
+			) : null}
 			{data.isEntry ? (
 				<div className="mt-0.5 text-[10px] uppercase tracking-wide text-sky-500">
 					entry
@@ -111,6 +144,9 @@ export interface StageGraphCanvasProps {
 	/** The stage whose read-only detail panel is open, for the ring highlight. */
 	selectedStage: string | null;
 	onSelectStage: (id: string) => void;
+	/** Contract id → parties, to label contended (shared) locks by the apps they bind. Optional — the
+	 * contention highlight works from lock ids alone; parties only enrich the tooltip when fetched. */
+	contractParties?: Record<string, string[]>;
 	className?: string;
 }
 
@@ -123,6 +159,7 @@ export function StageGraphCanvas({
 	graph: doc,
 	selectedStage,
 	onSelectStage,
+	contractParties,
 	className,
 }: StageGraphCanvasProps) {
 	const projection = useMemo(() => stageGraphToGraph(doc), [doc]);
@@ -130,7 +167,7 @@ export function StageGraphCanvas({
 	const flow = useMemo(() => {
 		const nodes = projection.nodes.map((n) => ({
 			...n,
-			data: { ...n.data, selected: selectedStage === n.id },
+			data: { ...n.data, selected: selectedStage === n.id, contractParties },
 		})) as StageFlowNode[];
 		const edges: Edge[] = projection.edges.map((e) => {
 			const s = EDGE_STYLE[e.kind];
@@ -152,7 +189,7 @@ export function StageGraphCanvas({
 			};
 		});
 		return { nodes, edges };
-	}, [projection, selectedStage]);
+	}, [projection, selectedStage, contractParties]);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState<StageFlowNode>(
 		flow.nodes,
@@ -166,6 +203,7 @@ export function StageGraphCanvas({
 	const onNodeClick: ReactFlowProps["onNodeClick"] = (_e, node) =>
 		onSelectStage(node.id);
 
+	const contendedCount = useMemo(() => contendedContracts(doc).length, [doc]);
 	const empty = projection.nodes.length === 0;
 
 	return (
@@ -210,6 +248,13 @@ export function StageGraphCanvas({
 						/>
 						loop (defect cycle)
 					</div>
+					{contendedCount > 0 && (
+						<div className="flex items-center gap-1.5">
+							<Link2 size={10} style={{ color: "var(--warning)" }} />
+							{contendedCount} shared contract
+							{contendedCount === 1 ? "" : "s"}
+						</div>
+					)}
 					{projection.externalLoops.length > 0 && (
 						<div className="flex items-center gap-1.5">
 							<RotateCcw size={10} />

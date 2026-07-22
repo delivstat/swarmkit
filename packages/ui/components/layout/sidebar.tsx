@@ -5,6 +5,7 @@ import {
 	Box,
 	Funnel,
 	GitBranch,
+	Handshake,
 	Inbox,
 	LayoutDashboard,
 	ListChecks,
@@ -33,6 +34,7 @@ const NAV = [
 	{ href: "/archetypes", label: "Archetypes", icon: Users },
 	{ href: "/funnels", label: "Funnels", icon: Funnel },
 	{ href: "/pipelines", label: "Pipelines", icon: Workflow },
+	{ href: "/contracts", label: "Contracts", icon: Handshake },
 	{ href: "/canary", label: "Canary", icon: ListChecks },
 	{ href: "/triggers", label: "Triggers", icon: Timer },
 ] as const;

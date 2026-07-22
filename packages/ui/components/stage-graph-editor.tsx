@@ -17,12 +17,14 @@
 // (editable=false) reproduces the old canvas so the page can offer view-vs-edit.
 
 import "@xyflow/react/dist/style.css";
+import { contractLabel } from "@/lib/contract";
 import type { RefOptions } from "@/lib/schema-form";
 import {
 	type ExternalEntry,
 	type StageGraphDoc,
 	type StageLoop,
 	type StageNodeData,
+	contendedContracts,
 	externalEntries,
 	readStages,
 	stageGraphToGraph,
@@ -51,6 +53,7 @@ import {
 	AlertTriangle,
 	Boxes,
 	Funnel,
+	Link2,
 	Lock,
 	RotateCcw,
 	Undo2,
@@ -67,8 +70,19 @@ interface CanvasStageData extends StageNodeData {
 	selected?: boolean;
 	editable?: boolean;
 	issues?: StageIssue[];
+	/** Contract id → parties, for labelling contended locks by the apps they bind (if fetched). */
+	contractParties?: Record<string, string[]>;
 }
 type StageFlowNode = Node<CanvasStageData, "stage">;
+
+/** The tooltip for the contended-lock badge: each shared contract labelled by its parties (if known),
+ * one per line. */
+function contendedTitle(
+	contended: string[],
+	parties: Record<string, string[]> | undefined,
+): string {
+	return contended.map((c) => contractLabel(c, parties?.[c] ?? [])).join("\n");
+}
 
 /** A stage card — the editable node. Entry stages / the selection ring in sky; a validation badge
  * (error → destructive, else warning) summarizes inline issues. Four handles: left/right drive
@@ -77,6 +91,7 @@ function StageCard({ data }: NodeProps<StageFlowNode>) {
 	const issues = data.issues ?? [];
 	const hasError = issues.some((i) => i.level === "error");
 	const hasWarn = issues.length > 0;
+	const contended = data.contendedLocks ?? [];
 	const accent = data.selected || data.isEntry ? SKY : "var(--border)";
 	return (
 		<div
@@ -104,6 +119,15 @@ function StageCard({ data }: NodeProps<StageFlowNode>) {
 					{data.locks.length > 0 ? (
 						<Lock size={11} aria-label={`holds ${data.locks.length} lock(s)`} />
 					) : null}
+					{contended.length > 0 ? (
+						<Link2
+							size={12}
+							style={{ color: "var(--warning)" }}
+							aria-label={`shares ${contended.length} contract(s) with another stage`}
+						>
+							<title>{contendedTitle(contended, data.contractParties)}</title>
+						</Link2>
+					) : null}
 					{data.gate ? <Funnel size={11} aria-label="parks on a gate" /> : null}
 					{data.compensation ? (
 						<Undo2 size={11} aria-label="has a compensation topology" />
@@ -124,6 +148,16 @@ function StageCard({ data }: NodeProps<StageFlowNode>) {
 			<div className="mt-0.5 truncate text-muted-foreground">
 				{data.topology ? `→ ${data.topology}` : "no topology"}
 			</div>
+			{contended.length > 0 ? (
+				<div
+					className="mt-0.5 flex items-center gap-1 truncate text-[10px]"
+					style={{ color: "var(--warning)" }}
+					title={contendedTitle(contended, data.contractParties)}
+				>
+					<Link2 size={10} />
+					<span className="truncate">shared: {contended.join(", ")}</span>
+				</div>
+			) : null}
 			{data.isEntry ? (
 				<div className="mt-0.5 text-[10px] uppercase tracking-wide text-sky-500">
 					entry
@@ -213,6 +247,9 @@ export interface StageGraphEditorProps {
 	onRemoveExternalEntry?: (stage: string, event: string) => void;
 	/** Palette drop / drag of a topology onto the canvas ⇒ add a stage bound to it. */
 	onAddStage?: (topology: string) => void;
+	/** Contract id → parties, to label contended (shared) locks by the apps they bind. Optional — the
+	 * contention highlight works from lock ids alone; parties only enrich the tooltip when fetched. */
+	contractParties?: Record<string, string[]>;
 	className?: string;
 }
 
@@ -237,10 +274,12 @@ export function StageGraphEditor({
 	onRemoveStage,
 	onRemoveExternalEntry,
 	onAddStage,
+	contractParties,
 	className,
 }: StageGraphEditorProps) {
 	const projection = useMemo(() => stageGraphToGraph(doc), [doc]);
 	const externals = useMemo(() => externalEntries(doc), [doc]);
+	const contendedCount = useMemo(() => contendedContracts(doc).length, [doc]);
 	const issues = useMemo(
 		() => issuesByStage(validateStageGraph(doc, refOptions)),
 		[doc, refOptions],
@@ -256,6 +295,7 @@ export function StageGraphEditor({
 				selected: selectedStage === n.id,
 				editable,
 				issues: issues.get(n.id) ?? [],
+				contractParties,
 			},
 		})) as StageFlowNode[];
 
@@ -345,7 +385,7 @@ export function StageGraphEditor({
 			nodes: [...stageNodes, ...pinNodes] as Node[],
 			edges: [...graphEdges, ...pinEdges],
 		};
-	}, [projection, externals, issues, selectedStage, editable]);
+	}, [projection, externals, issues, selectedStage, editable, contractParties]);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>(flow.nodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(flow.edges);
@@ -472,6 +512,13 @@ export function StageGraphEditor({
 						/>
 						loop (defect cycle)
 					</div>
+					{contendedCount > 0 && (
+						<div className="flex items-center gap-1.5">
+							<Link2 size={10} style={{ color: "var(--warning)" }} />
+							{contendedCount} shared contract
+							{contendedCount === 1 ? "" : "s"}
+						</div>
+					)}
 				</div>
 			)}
 		</div>

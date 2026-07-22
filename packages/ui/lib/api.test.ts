@@ -82,3 +82,33 @@ describe("observability endpoints", () => {
 		expect(urlOf(fetchMock)).toMatch(/\/audit$/);
 	});
 });
+
+describe("contract endpoints", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	const callOf = (m: ReturnType<typeof vi.fn>) =>
+		m.mock.calls[0] as [string, RequestInit];
+
+	it("lists contracts at /contracts", async () => {
+		const fetchMock = stubFetch(200);
+		await api.contracts();
+		const [url, init] = callOf(fetchMock);
+		expect(url).toMatch(/\/contracts$/);
+		expect(init?.method ?? "GET").toBe("GET");
+	});
+
+	it("reads a contract's yaml at /api/contracts/{id}/yaml", async () => {
+		const fetchMock = stubFetch(200);
+		await api.contractYaml("oms-web");
+		expect(callOf(fetchMock)[0]).toContain("/api/contracts/oms-web/yaml");
+	});
+
+	it("saves a contract via PUT /api/contracts/{id}", async () => {
+		const fetchMock = stubFetch(200);
+		await api.saveContract("oms-web", "kind: Contract\n");
+		const [url, init] = callOf(fetchMock);
+		expect(url).toContain("/api/contracts/oms-web");
+		expect(init.method).toBe("PUT");
+		expect(String(init.body)).toContain("Contract");
+	});
+});

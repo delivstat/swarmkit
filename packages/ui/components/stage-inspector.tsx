@@ -133,7 +133,6 @@ export function StageInspector({
 	onDeleted,
 }: StageInspectorProps) {
 	const [idDraft, setIdDraft] = useState("");
-	const [lockDraft, setLockDraft] = useState("");
 	const [entryDraft, setEntryDraft] = useState("");
 	const [loopDraft, setLoopDraft] = useState("");
 
@@ -158,6 +157,8 @@ export function StageInspector({
 	const doc0 = (doc ?? {}) as Record<string, unknown>;
 	const topologies = refOptions.topology ?? [];
 	const funnels = refOptions.funnel ?? [];
+	const contracts = refOptions.contract ?? [];
+	const availableContracts = contracts.filter((c) => !stage.locks.includes(c));
 	const events = knownEvents(doc);
 	const externalsHere = externalEntries(doc).filter((e) => e.stage === stageId);
 	const loopsHere = readLoops(doc).filter((l) => l.to === stageId);
@@ -222,7 +223,7 @@ export function StageInspector({
 				/>
 			</Section>
 
-			<Section title="Locks">
+			<Section title="Locks (integration contracts)">
 				<div className="flex flex-wrap gap-1">
 					{stage.locks.length === 0 ? (
 						<span className="text-xs text-muted-foreground">none</span>
@@ -241,32 +242,30 @@ export function StageInspector({
 						))
 					)}
 				</div>
-				<div className="flex items-center gap-2">
-					<Input
-						className="h-8 font-mono text-xs"
-						placeholder="contract:oms-web"
-						value={lockDraft}
-						onChange={(e) => setLockDraft(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === "Enter" && lockDraft.trim()) {
-								onChange(addLock(doc0, stageId, lockDraft.trim()));
-								setLockDraft("");
+				{/* A contract picker, not free text: each lock references a real Contract artifact
+				    (design/details/contract-registry.md), so we offer the workspace's contracts (minus the
+				    ones already held) rather than a typo-prone text box. */}
+				<Select
+					value=""
+					onValueChange={(v) => v && onChange(addLock(doc0, stageId, v))}
+				>
+					<SelectTrigger className="h-8 text-xs">
+						<SelectValue
+							placeholder={
+								availableContracts.length
+									? "+ add contract…"
+									: "no contracts in workspace"
 							}
-						}}
-					/>
-					<Button
-						type="button"
-						size="sm"
-						variant="outline"
-						disabled={!lockDraft.trim()}
-						onClick={() => {
-							onChange(addLock(doc0, stageId, lockDraft.trim()));
-							setLockDraft("");
-						}}
-					>
-						Add
-					</Button>
-				</div>
+						/>
+					</SelectTrigger>
+					<SelectContent>
+						{availableContracts.map((c) => (
+							<SelectItem key={c} value={c}>
+								{c}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 			</Section>
 
 			<Section title="Release locks on">
