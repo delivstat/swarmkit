@@ -211,6 +211,20 @@ export function refType(schema: JsonSchema): string | null {
 	return typeof ref === "string" ? ref : null;
 }
 
+/** The artifact ref type for an ARRAY field's elements — a multi-select chips picker. Taken from
+ * `x-swarmkit-ref` on the array node (the common convention, e.g. a topology's `skills`) or, failing
+ * that, on its `items` (the stage-graph `locks` → contract shape). Null when the field is not an
+ * array or is not a ref array. Lets `locks` become a contract picker without a schema change. */
+export function arrayRefType(
+	root: JsonSchema,
+	schema: JsonSchema,
+): string | null {
+	if (schema.type !== "array") return null;
+	const own = refType(schema);
+	if (own) return own;
+	return refType(normalizeSchema(root, (schema.items ?? {}) as JsonSchema));
+}
+
 /** Options for reference pickers: artifact type → available ids in the workspace. */
 export type RefOptions = Record<string, string[]>;
 

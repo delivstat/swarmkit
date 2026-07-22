@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from swarmkit_schema.models import (
+    SwarmKitContract,
     SwarmKitFunnel,
     SwarmKitStageGraph,
     SwarmKitTopology,
@@ -56,6 +57,20 @@ class ResolvedStageGraph:
     raw: SwarmKitStageGraph
     source_path: Path
     spec: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class ResolvedContract:
+    """An integration Contract artifact (design/details/contract-registry.md).
+
+    The agreed interface between apps, referenced by a stage's ``locks``. ``parties`` are the apps
+    it binds. Not executed — it makes lock ids a checked, pickable vocabulary.
+    """
+
+    id: str
+    raw: SwarmKitContract
+    source_path: Path
+    parties: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -130,11 +145,15 @@ class ResolvedWorkspace:
     # StageGraph artifacts, ref-checked against topologies + funnels. The reference pipeline
     # controller consumes these; the runtime does not execute them.
     stage_graphs: Mapping[str, ResolvedStageGraph] = field(default_factory=dict)
+    # Integration contracts (id -> ResolvedContract). A StageGraph's stage `locks` reference these;
+    # the orchestrator's lock manager serialises requirements on them.
+    contracts: Mapping[str, ResolvedContract] = field(default_factory=dict)
 
 
 __all__ = [
     "AgentRole",
     "ResolvedAgent",
+    "ResolvedContract",
     "ResolvedFunnel",
     "ResolvedStageGraph",
     "ResolvedTopology",

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import archetypeSchema from "../../schema/schemas/archetype.schema.json";
 import skillSchema from "../../schema/schemas/skill.schema.json";
+import stageGraphSchema from "../../schema/schemas/stage-graph.schema.json";
 import topologySchema from "../../schema/schemas/topology.schema.json";
 import {
 	type JsonSchema,
+	arrayRefType,
 	fieldKind,
 	mapValueSchema,
 	mergeAllOf,
@@ -238,6 +240,43 @@ describe("refType", () => {
 			"x-swarmkit-ref": "archetype",
 		});
 		expect(refType(r)).toBe("archetype");
+	});
+});
+
+describe("arrayRefType", () => {
+	it("reads the ref from the array node (the common convention)", () => {
+		expect(
+			arrayRefType(ROOT, {
+				type: "array",
+				"x-swarmkit-ref": "skill",
+				items: { type: "string" },
+			}),
+		).toBe("skill");
+	});
+
+	it("reads the ref from the items node (the stage-graph `locks` shape)", () => {
+		expect(
+			arrayRefType(ROOT, {
+				type: "array",
+				items: { type: "string", "x-swarmkit-ref": "contract" },
+			}),
+		).toBe("contract");
+	});
+
+	it("is null for a plain string array and for a non-array", () => {
+		expect(
+			arrayRefType(ROOT, { type: "array", items: { type: "string" } }),
+		).toBeNull();
+		expect(arrayRefType(ROOT, { type: "string" })).toBeNull();
+	});
+
+	it("resolves the real stage-graph `locks` field to a contract picker", () => {
+		// The load-bearing check: `locks` renders as a contract chips-picker, not free text.
+		const root = stageGraphSchema as JsonSchema;
+		const defs = root.$defs as Record<string, JsonSchema>;
+		const stageProps = defs.stage?.properties as Record<string, JsonSchema>;
+		const locks = normalizeSchema(root, stageProps.locks as JsonSchema);
+		expect(arrayRefType(root, locks)).toBe("contract");
 	});
 });
 

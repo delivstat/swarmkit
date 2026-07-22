@@ -14,6 +14,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
+class Identifier(RootModel[str]):
+    root: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
+
+
 class Event(RootModel[str]):
     root: str = Field(
         ...,
@@ -42,9 +46,9 @@ class Stage(BaseModel):
         description="The signal emitted on clean stage completion (drives the next stage's `on`).",
         pattern="^[a-z][a-z0-9._-]*$",
     )
-    locks: list[str] | None = Field(
+    locks: list[Identifier] | None = Field(
         None,
-        description="Integration-contract lock ids acquired (all-or-none, fixed order) before the run starts.",
+        description="Integration contracts (by id) this stage holds — acquired all-or-none in fixed order before the run, released on `release_locks_on`. Each references a Contract artifact (design/details/contract-registry.md).",
     )
     release_locks_on: str | None = Field(
         None,

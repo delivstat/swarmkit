@@ -1,0 +1,11 @@
+# Invalid — a contract binds at least two parties.
+apiVersion: swarmkit/v1
+kind: Contract
+metadata:
+  id: lonely
+  name: Lonely
+  description: A contract with a single party is not an interface between apps.
+parties: [oms]
+provenance:
+  authored_by: human
+  version: 1.0.0

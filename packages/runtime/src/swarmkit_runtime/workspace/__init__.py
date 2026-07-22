@@ -27,6 +27,7 @@ ArtifactKind = Literal[
     "funnel",
     "role-registry",
     "stage-graph",
+    "contract",
 ]
 
 # Directory → expected artifact kind.
@@ -42,6 +43,7 @@ _KIND_DIRS: dict[str, ArtifactKind] = {
     "funnels": "funnel",
     "roles": "role-registry",
     "pipelines": "stage-graph",
+    "contracts": "contract",
 }
 
 # What the artifact's ``kind:`` field should say for each internal kind.
@@ -55,6 +57,7 @@ _EXPECTED_KIND_STR: dict[ArtifactKind, str] = {
     "funnel": "Funnel",
     "role-registry": "RoleRegistry",
     "stage-graph": "StageGraph",
+    "contract": "Contract",
 }
 
 _YAML_SUFFIXES = frozenset({".yaml", ".yml"})

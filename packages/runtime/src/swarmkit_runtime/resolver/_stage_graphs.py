@@ -18,15 +18,17 @@ from swarmkit_schema.models import SwarmKitStageGraph
 from swarmkit_runtime.errors import ResolutionError
 from swarmkit_runtime.workspace import DiscoveredArtifact
 
-from ._resolved import ResolvedFunnel, ResolvedStageGraph, ResolvedTopology
+from ._resolved import ResolvedContract, ResolvedFunnel, ResolvedStageGraph, ResolvedTopology
 
 
 def build_stage_graph_registry(
     artifacts: Iterable[DiscoveredArtifact],
     topologies: Mapping[str, ResolvedTopology],
     funnels: Mapping[str, ResolvedFunnel],
+    contracts: Mapping[str, ResolvedContract] | None = None,
 ) -> tuple[dict[str, ResolvedStageGraph], list[ResolutionError]]:
     """Build the ``id -> ResolvedStageGraph`` registry, verifying every reference."""
+    contracts = contracts or {}
     errors: list[ResolutionError] = []
     graphs: dict[str, ResolvedStageGraph] = {}
 
@@ -63,7 +65,7 @@ def build_stage_graph_registry(
             )
             continue
 
-        errors.extend(_check_refs(raw, artifact, topologies, funnels))
+        errors.extend(_check_refs(raw, artifact, topologies, funnels, contracts))
         graphs[graph_id] = ResolvedStageGraph(
             id=graph_id, raw=model, source_path=artifact.path, spec=raw
         )
@@ -76,6 +78,7 @@ def _check_refs(
     artifact: DiscoveredArtifact,
     topologies: Mapping[str, ResolvedTopology],
     funnels: Mapping[str, ResolvedFunnel],
+    contracts: Mapping[str, ResolvedContract],
 ) -> list[ResolutionError]:
     errors: list[ResolutionError] = []
     stages = raw.get("stages") or []
@@ -127,6 +130,16 @@ def _check_refs(
                     f"{base}/gate",
                 )
             )
+        for lock_index, lock in enumerate(stage.get("locks") or []):
+            if str(lock) not in contracts:
+                errors.append(
+                    _err(
+                        "stage-graph.unknown-contract",
+                        f"Stage {sid!r} locks contract {str(lock)!r} which is not defined here.",
+                        artifact,
+                        f"{base}/locks/{lock_index}",
+                    )
+                )
 
     loops = raw.get("loops") or []
     for index, loop in enumerate(loops):

@@ -42,6 +42,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
+import { readContract } from "@/lib/contract";
 import type { JsonSchema } from "@/lib/schema-form";
 import { readStages, stageGraphToGraph } from "@/lib/stage-graph";
 import {
@@ -366,6 +367,51 @@ export default function PipelinesPage() {
 	const hasPipelineOpen = savedObj !== null;
 	const stageCount = useMemo(() => readStages(obj).length, [obj]);
 
+	// Contract-contention parties: for the contracts actually referenced as `locks` in THIS pipeline
+	// (a bounded set), fetch each Contract's `parties` so the canvas can label a contended contract by
+	// the apps it binds. Keyed on the set of lock ids so we refetch only when that set changes, not on
+	// every keystroke. Best-effort: an unfetchable contract simply yields no party label.
+	const lockKey = useMemo(
+		() =>
+			[...new Set(readStages(obj).flatMap((s) => s.locks))].sort().join("\n"),
+		[obj],
+	);
+	const [contractParties, setContractParties] = useState<
+		Record<string, string[]>
+	>({});
+	useEffect(() => {
+		const ids = lockKey ? lockKey.split("\n") : [];
+		if (ids.length === 0) {
+			setContractParties({});
+			return;
+		}
+		let cancelled = false;
+		Promise.all(
+			ids.map((id) =>
+				api
+					.contractYaml(id)
+					.then(
+						(r) =>
+							[
+								id,
+								readContract((load(r.yaml) as Record<string, unknown>) ?? {})
+									.parties,
+							] as [string, string[]],
+					)
+					.catch(() => [id, [] as string[]] as [string, string[]]),
+			),
+		).then((entries) => {
+			if (cancelled) return;
+			const map: Record<string, string[]> = {};
+			for (const [id, parties] of entries)
+				if (parties.length) map[id] = parties;
+			setContractParties(map);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [lockKey]);
+
 	return (
 		<div className="-m-6 flex h-[calc(100vh-3rem)] flex-col">
 			{/* Header */}
@@ -524,6 +570,7 @@ export default function PipelinesPage() {
 										<StageGraphEditor
 											graph={obj}
 											refOptions={refOptions}
+											contractParties={contractParties}
 											selectedStage={selectedStage}
 											onSelectStage={setSelectedStage}
 											editable
@@ -547,6 +594,7 @@ export default function PipelinesPage() {
 											graph={obj}
 											selectedStage={selectedStage}
 											onSelectStage={setSelectedStage}
+											contractParties={contractParties}
 										/>
 									)}
 								</div>

@@ -18,7 +18,7 @@
 
 ## Schemas
 
-Seven canonical artifact schemas (JSON Schema 2020-12):
+Eight canonical artifact schemas (JSON Schema 2020-12):
 
 - [topology.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/topology.schema.json)
 - [skill.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/skill.schema.json)
@@ -27,6 +27,7 @@ Seven canonical artifact schemas (JSON Schema 2020-12):
 - [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json)
 - [funnel.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/funnel.schema.json): a reusable per-artifact quality gate — see Funnel below.
 - [stage-graph.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/stage-graph.schema.json): a pipeline as data — an ordered set of bounded stages a controller sequences as a saga; see StageGraph below.
+- [contract.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/contract.schema.json): an integration contract — the agreed interface between apps, referenced by a StageGraph stage's `locks`; see Contract below.
 
 ## Funnel (per-artifact quality gate)
 
@@ -167,6 +168,46 @@ provenance:
 
 - [StageGraph reference](https://github.com/delivstat/swarmkit/blob/main/docs/site/reference/stage-graph.md): the stage/loop fields, the saga/controller framing, the `when`-not-`on` gotcha, referenced-by-id.
 - [Pipeline controller design note](https://github.com/delivstat/swarmkit/blob/main/design/details/pipeline-controller.md): the controller as a reference component, saga state, event dedup + reconciliation, contract locking, compensation, and the two serve seams it depends on.
+
+## Contract (integration contract between apps)
+
+A **Contract** is a first-class artifact (`kind: Contract`) — the agreed interface between two (or more) applications, identified by id. It is what makes a StageGraph stage's `locks` real: a lock **is** an integration contract, so a stage's `locks: [oms-web, oms-inventory]` mean "hold the OMS↔Web and OMS↔Inventory interfaces while I change them, so no concurrent requirement commits a conflicting version." Making the contract an artifact turns those lock ids from free-form strings (where a typo silently becomes a *different* lock and two requirements that should serialise don't) into a **checked, pickable vocabulary**: the resolver rejects a lock that names no contract, and the pipeline's contention overlay ("which stages fight over the same contract") is exact. A contract is **not executed** — the controller/orchestrator is still the lock manager; the registry only makes the vocabulary real and records which apps each lock binds.
+
+Fields: `parties` (required, ≥2 app ids — what makes it a contract, an interface *between* apps; drives the contention/ownership display; app ids are free strings, apps are not artifacts) and `interface` (optional — a pointer to where the interface spec itself lives, an API/event schema; not interpreted by core, it is documentation + a handle for reviewers). Core does not parse or diff the `interface` — identity + locking only, not interface compatibility.
+
+Minimal:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Contract
+metadata:
+  id: oms-web
+  name: OMS ↔ Web order API
+  description: The order-submission + status API OMS exposes to the Web storefront.
+parties: [oms, web]            # the apps this contract binds (>= 2)
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Fuller (with an `interface` pointer):
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Contract
+metadata:
+  id: oms-inventory
+  name: OMS ↔ Inventory reservation API
+  description: The stock-reservation + release events OMS exchanges with Inventory.
+parties: [oms, inventory]              # >= 2 app ids
+interface: schemas/oms-inventory.json  # optional pointer to the interface spec; not parsed by core
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+- [Contract reference](https://github.com/delivstat/swarmkit/blob/main/docs/site/reference/contract.md): the fields, the locking/contention framing, referenced-by-`locks`, and the runtime ref-check.
+- [Integration-contract registry design note](https://github.com/delivstat/swarmkit/blob/main/design/details/contract-registry.md): why lock ids become a checked vocabulary, the StageGraph lock ref-check, and the non-goals (no interface-content validation, no app artifacts, no new lock manager).
 
 ## Reference workspace
 

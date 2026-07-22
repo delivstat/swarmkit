@@ -41,10 +41,12 @@ from swarmkit_runtime.workspace import (
     discover,
 )
 
+from ._contracts import build_contract_registry
 from ._funnels import build_funnel_registry
 from ._resolved import (
     AgentRole,
     ResolvedAgent,
+    ResolvedContract,
     ResolvedFunnel,
     ResolvedStageGraph,
     ResolvedTopology,
@@ -402,8 +404,10 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     errors.extend(topo_errors)
     triggers, trigger_errors = build_trigger_registry(artifacts, topologies)
     errors.extend(trigger_errors)
-    # Stage graphs resolve last — they reference topologies + funnels + their own stages.
-    stage_graphs, sg_errors = build_stage_graph_registry(artifacts, topologies, funnels)
+    contracts, contract_errors = build_contract_registry(artifacts)
+    errors.extend(contract_errors)
+    # Stage graphs resolve last — they reference topologies + funnels + contracts + own stages.
+    stage_graphs, sg_errors = build_stage_graph_registry(artifacts, topologies, funnels, contracts)
     errors.extend(sg_errors)
 
     if errors:
@@ -441,6 +445,7 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
         funnels=funnels,
         role_registry=role_registry,
         stage_graphs=stage_graphs,
+        contracts=contracts,
     )
 
 
@@ -449,6 +454,7 @@ __all__ = [
     "ResolutionError",
     "ResolutionErrors",
     "ResolvedAgent",
+    "ResolvedContract",
     "ResolvedFunnel",
     "ResolvedStageGraph",
     "ResolvedTopology",

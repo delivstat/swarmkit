@@ -86,6 +86,10 @@ export const api = {
 	// best-effort posture as funnels: the runtime may not serve these CRUD routes yet (a failed list
 	// leaves the surface empty, a failed save surfaces a "not wired" notice), so callers gate on them.
 	pipelines: () => get<string[]>("/pipelines"),
+	// Contract artifacts (design/details/contract-registry.md) — integration contracts a stage's
+	// `locks` reference (a checked, pickable vocabulary instead of free strings). Same best-effort
+	// posture as funnels/pipelines: the CRUD routes may not be wired yet, so callers gate on them.
+	contracts: () => get<string[]>("/contracts"),
 	validate: () => get<ValidateResponse>("/validate"),
 	triggers: () => get<TriggerConfig[]>("/triggers"),
 	canary: () => get<CanaryStatus>("/canary"),
@@ -220,6 +224,13 @@ export const api = {
 	saveStageGraph: (id: string, yaml: string) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/pipelines/${id}`,
+			{ yaml },
+		),
+	contractYaml: (id: string) =>
+		get<{ yaml: string }>(`/api/contracts/${id}/yaml`),
+	saveContract: (id: string, yaml: string) =>
+		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
+			`/api/contracts/${id}`,
 			{ yaml },
 		),
 	reloadWorkspace: () => post<{ valid: boolean }>("/api/reload"),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	type StageGraphDoc,
+	contendedContracts,
 	emittedSignals,
 	externalEntries,
 	readLoops,
@@ -248,5 +249,54 @@ describe("emittedSignals / externalEntries", () => {
 		);
 		// `go` is internal (a emits it); only `webhook.fired` is external.
 		expect(entries).toEqual([{ stage: "b", event: "webhook.fired" }]);
+	});
+});
+
+describe("contendedContracts", () => {
+	it("groups a lock held by two stages as contention", () => {
+		const doc = graph([
+			{ id: "design", topology: "t", locks: ["oms-web"] },
+			{ id: "build", topology: "t", locks: ["oms-web"] },
+		]);
+		expect(contendedContracts(doc)).toEqual([
+			{ contract: "oms-web", stages: ["design", "build"] },
+		]);
+	});
+
+	it("omits a lock held by only one stage", () => {
+		const doc = graph([
+			{ id: "design", topology: "t", locks: ["oms-web", "solo"] },
+			{ id: "build", topology: "t", locks: ["oms-web"] },
+		]);
+		const contended = contendedContracts(doc);
+		expect(contended.map((c) => c.contract)).toEqual(["oms-web"]);
+	});
+
+	it("does not count the same stage twice for a duplicated lock", () => {
+		const doc = graph([
+			{ id: "design", topology: "t", locks: ["oms-web", "oms-web"] },
+		]);
+		// One distinct holder → not contention.
+		expect(contendedContracts(doc)).toEqual([]);
+	});
+
+	it("is empty for a graph with no shared locks", () => {
+		expect(contendedContracts(sdlc())).toEqual([]);
+	});
+
+	it("flags the contended locks on each node's data", () => {
+		const doc = graph([
+			{ id: "design", topology: "t", locks: ["oms-web", "solo"] },
+			{ id: "build", topology: "t", locks: ["oms-web"] },
+		]);
+		const nodes = stageGraphToGraph(doc).nodes;
+		const byId = Object.fromEntries(nodes.map((n) => [n.id, n.data]));
+		expect(byId.design?.contendedLocks).toEqual(["oms-web"]);
+		expect(byId.build?.contendedLocks).toEqual(["oms-web"]);
+	});
+
+	it("leaves contendedLocks empty when a lock is not shared", () => {
+		const nodes = stageGraphToGraph(sdlc()).nodes;
+		for (const n of nodes) expect(n.data.contendedLocks).toEqual([]);
 	});
 });

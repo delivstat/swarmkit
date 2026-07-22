@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/contract.schema.json",
+  "title": "SwarmKitContract",
+  "description": "An integration contract: the agreed interface between two (or more) applications, identified by id. A first-class artifact so a pipeline's stage `locks` reference real contracts (a checked, pickable vocabulary) instead of free strings — no typo'd lock silently fails to serialise two requirements. The contract is not executed; it makes lock ids real and carries which apps it binds. See design/details/contract-registry.md.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "parties", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "swarmkit/v1" },
+    "kind": { "const": "Contract" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "parties": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "The applications this contract binds (at least two) — what makes it a contract (an interface between apps). Drives the pipeline's contention/ownership display. App ids are free strings."
+    },
+    "interface": {
+      "type": "string",
+      "description": "Optional pointer to where the interface itself lives (an API/event schema). Not interpreted by core — documentation + a handle for reviewers."
+    },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 10 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authored_by", "version"],
+      "properties": {
+        "authored_by": {
+          "enum": [
+            "human",
+            "authored_by_swarm",
+            "derived_from_template",
+            "imported_from_registry",
+            "vendor_published"
+          ]
+        },
+        "authored_date": { "type": "string", "format": "date" },
+        "version": { "$ref": "#/$defs/semver" },
+        "registry": { "type": "string" },
+        "vendor": { "type": "string" }
+      }
+    }
+  }
+}
