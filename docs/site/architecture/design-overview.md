@@ -15,7 +15,7 @@ The authoritative architecture is [`design/SwarmKit-Design-v0.6.md`](https://git
 | Component | Language | Role |
 |-----------|----------|------|
 | **swarmkit-runtime** | Python | Topology interpreter, LangGraph compiler, skill execution, governance, CLI + HTTP server |
-| **swarmkit-schema** | JSON Schema + Python + TypeScript | Canonical schemas for 7 artifact types (including the `StageGraph` pipeline-as-data), validators, codegen |
+| **swarmkit-schema** | JSON Schema + Python + TypeScript | Canonical schemas for 8 artifact types (including the `StageGraph` pipeline-as-data and the `Contract` integration contract its stage locks reference), validators, codegen |
 | **swarmkit-ui** | Next.js | Topology composer, dashboard (v1.1 — CLI is the v1.0 entry point) |
 
 ## How LangGraph is used

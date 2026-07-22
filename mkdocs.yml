@@ -88,6 +88,7 @@ nav:
     - Archetypes catalogue: reference/archetypes.md
     - Funnel artifact: reference/funnel.md
     - StageGraph artifact: reference/stage-graph.md
+    - Contract artifact: reference/contract.md
   - Releases:
     - v1.2: releases/v1.2.md
     - v1.1: releases/v1.1.md

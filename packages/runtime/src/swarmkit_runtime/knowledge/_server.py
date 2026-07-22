@@ -252,7 +252,8 @@ def get_schema(
 ) -> dict[str, Any]:
     """Return the canonical JSON Schema for a SwarmKit artifact type.
 
-    Valid types: topology, skill, archetype, workspace, trigger, funnel, stage-graph.
+    Valid types: topology, skill, archetype, workspace, trigger, funnel, stage-graph,
+    contract.
     """
     root = _get_repo_root()
     schema_path = root / "packages" / "schema" / "schemas" / f"{artifact_type}.schema.json"
@@ -399,6 +400,7 @@ _YAML_SUBDIRS = {
     "schedules",
     "funnels",
     "pipelines",
+    "contracts",
 }
 _TEST_SUBDIRS = {"tests"}
 _ALLOWED_SUBDIRS = _YAML_SUBDIRS | _TEST_SUBDIRS

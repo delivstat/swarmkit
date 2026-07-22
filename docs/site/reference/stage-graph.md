@@ -29,7 +29,7 @@ Each entry in `stages[]` describes one bounded run and how the saga enters and l
 | `topology` | yes | The topology this stage kicks as a bounded SwarmKit run. |
 | `when` | no | Entry event(s). The stage starts when **one** of these arrives — an external enterprise event or a prior stage's `success` signal. The controller treats both uniformly. |
 | `success` | no | The signal emitted on clean stage completion; it drives the next stage's `when` (and can release locks via `release_locks_on`). |
-| `locks` | no | Integration-contract lock ids acquired **all-or-none, in a fixed global order**, *before* the run starts (deadlock avoidance; unrelated requirements on disjoint contracts still run in parallel). |
+| `locks` | no | Ids that reference [Contract](contract.md) artifacts by id — the integration contracts this stage holds, acquired **all-or-none, in a fixed global order**, *before* the run starts (deadlock avoidance; unrelated requirements on disjoint contracts still run in parallel). The resolver ref-checks each lock against the workspace's contracts; an unknown contract is rejected. |
 | `release_locks_on` | no | The signal whose arrival releases this stage's locks — e.g. hold a contract through approval, then release on `design.approved`. |
 | `gate` | no | A `Funnel` id the stage's run parks on. The controller learns the resolution via the gate-resolution seam and emits the stage's `success`. |
 | `compensation` | no | A topology run that unwinds this stage if the requirement is cancelled *after* the stage passed (revoke a draft, supersede KB entries, etc.). |
@@ -46,7 +46,7 @@ The design note's early YAML sketch shows `on:` — it predates this decision. T
 
 ## Referenced-by-id validation
 
-Because `topology`, `compensation`, and `gate` are id references, a stage graph is only valid against a workspace that contains those artifacts. The composer (and workspace resolution) `ref`-validate the graph: a stage naming an unknown topology, an undefined gate, or a `loops` edge to an unknown stage is rejected before publish.
+Because `topology`, `compensation`, `gate`, and each `locks` entry are id references, a stage graph is only valid against a workspace that contains those artifacts. The composer (and workspace resolution) `ref`-validate the graph: a stage naming an unknown topology, an undefined gate, a lock naming a [Contract](contract.md) that does not exist, or a `loops` edge to an unknown stage is rejected before publish.
 
 ## Schema shape
 
@@ -62,7 +62,7 @@ stages:                       # at least one; ids unique
     topology: <topology id>              # the bounded run this stage kicks
     when: [<event>, ...]                 # entry event(s) — NOT `on:`
     success: <event>                     # emitted on clean completion
-    locks: [<contract lock id>, ...]     # all-or-none, fixed order, before the run
+    locks: [<contract id>, ...]          # Contract references; all-or-none, fixed order, before the run
     release_locks_on: <event>            # signal that releases the locks
     gate: <funnel id>                    # a Funnel the run parks on
     compensation: <topology id>          # unwind run on cancel-after-pass
