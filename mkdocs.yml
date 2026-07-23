@@ -99,8 +99,9 @@ nav:
     - Role registry artifact: reference/role-registry.md
     - Approval policy artifact: reference/approval-policy.md
   - Releases:
-    - v1.2: releases/v1.2.md
-    - v1.1: releases/v1.1.md
+    - Changelog (all versions): releases/changelog.md
+    - "v1.2 notes": releases/v1.2.md
+    - "v1.1 notes": releases/v1.1.md
 
 markdown_extensions:
   - pymdownx.highlight:
