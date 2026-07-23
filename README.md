@@ -74,7 +74,7 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 | Governance / permissions | IAM scopes + policy engine (AGT) | DIY | None | None |
 | Audit trail | Hash-chained, append-only | DIY | None | None |
 | Human-in-the-loop | Native approval gates in YAML | Manual interrupt points | None | None |
-| Escape hatch | `swarmkit eject` to pure LangGraph (planned) | N/A | None | None |
+| Escape hatch / lock-in | Open YAML topologies + OSS runtime — no proprietary format or platform | N/A | Python classes | Vendor SDK |
 | Model support | 7 providers (Anthropic, OpenAI, Google, Ollama, ...) | Any | Multiple | Claude only |
 
 ## Quick start
@@ -473,7 +473,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. Runtime is at v1.98.0: M0–M9 complete; serve + canary, harness executors, and the delivery-pipeline stack (StageGraph + saga controller, funnels, contracts, multi-party approval) all shipped. Next: `swarmkit eject` + launch prep. The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. Runtime is at v1.98.0: M0–M9 complete; serve + canary, harness executors, and the delivery-pipeline stack (StageGraph + saga controller, funnels, contracts, multi-party approval) all shipped. Next: installable expertise packages + launch prep. The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 

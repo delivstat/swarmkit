@@ -169,7 +169,6 @@ Credentials are **never** in topology YAML. Topologies are shareable artifacts; 
 - **Topology loader** — after archetype merge, validates that every distinct `provider` referenced in the topology is registered. Fails fast with a list of missing providers.
 - **LangGraph compiler (M3)** — agent node functions receive a `ModelProvider` instance (resolved from the registry) and call `.complete(...)` / `.stream(...)`. No SDK imports outside provider modules.
 - **Authoring swarms (M7, M8)** — use the same abstraction. A user who only has Ollama installed can still author skills locally.
-- **`swarmkit eject` (M9)** — emits code that imports the same provider module. Ejected code depends on `swarmkit-runtime` at minimum; for full independence users can copy the provider they use. Document this trade.
 
 ## Non-negotiable invariant (lands with this PR)
 

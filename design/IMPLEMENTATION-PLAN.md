@@ -38,7 +38,7 @@ status: active
 | 2 | M7 | Intent drift detection | ✅ | IntentObserver, schema extension, compiler wiring, authoring integration |
 | 3 | M8 | MCP integration layer | ✅ | Lazy startup, permission tiers, multimodal, document reader, MarkItDown |
 | 3 | M9 | Reference topologies + structured delegation | 🟡 | Structured delegation ✅, structured comms ✅, Sterling log analyser ✅, reference topologies remaining |
-| 4 | M10 | Serve + eject + canary | 🟡 | `swarmkit serve` ✅ (HTTP, auth, MCP, triggers, canary). Eject remaining |
+| 4 | M10 | Serve + canary | ✅ | `swarmkit serve` ✅ (HTTP, auth, MCP, triggers, canary). Eject dropped |
 | 4 | M12 | UI dashboard + chat | ✅ | Dashboard (8 pages), chat UI, SQLite persistence, workspace memory |
 | 4 | M13 | Topology Composer | ✅ | Three-view editor (Structure/Relationships/Network), YAML editing, create new, CRUD API |
 | 4 | M14 | Cost optimization | ✅ | Dual model (tool/synthesis split), accurate token tracking, configurable store backend |
@@ -463,9 +463,9 @@ Replace prose between agents with structured JSON. Research-backed: 55-87% token
 
 Ship-ready for open-source users. Everything needed for public launch.
 
-### M10 — Serve + eject + canary 🟡
+### M10 — Serve + canary ✅
 
-**Goal:** all three execution modes from §14.1 + the eject escape hatch + canary deployments.
+**Goal:** the execution modes from §14.1 + canary deployments.
 
 **Design reference:** §14.1, §14.4. `design/details/serve-and-auth.md`. `design/details/market-analysis-and-risk-mitigations.md` (canary feature adoption from AgentField analysis).
 
@@ -481,11 +481,9 @@ Ship-ready for open-source users. Everything needed for public launch.
 - [x] **Conversation endpoints** — create, list, send message via HTTP. PR #262.
 - [x] **Serve CLI reference** — real test outputs documented at `docs/reference/serve-cli-tests.md`. PR #267.
 
-#### Eject (remaining)
+#### Eject (dropped)
 
-- [ ] `design/eject.md` — generated project structure, dependency pinning, README template
-- [ ] **`swarmkit eject <topology>`** — writes standalone LangGraph Python code. CLAUDE.md invariant #7. LangGraph platform risk mitigation.
-- [ ] Ejected code runs without swarmkit installed — CI verification
+`swarmkit eject` (code-export to standalone LangGraph) is **no longer planned**. As the runtime grew, features stopped being expressible as standalone generated code. The no-lock-in guarantee is now the portability of the open topology data plus the OSS runtime (CLAUDE.md invariant #7 — reframed from "eject must stay intact" to "topologies stay portable, open data"), not code generation.
 
 #### Canary deployments (remaining)
 
@@ -509,7 +507,7 @@ server:
 
 Design note: `design/details/canary-deployments.md`. User guide: `docs/reference/canary-deployments.md`.
 
-**Exit demo:** eject the code-review swarm → install in fresh venv → runs without SwarmKit. `swarmkit serve` accepts HTTP triggers ✅. Canary deployment routes 10% traffic to new version, auto-promotes after 50 successful runs with low drift ✅.
+**Exit demo:** `swarmkit serve` accepts HTTP triggers ✅. Canary deployment routes 10% traffic to new version, auto-promotes after 50 successful runs with low drift ✅.
 
 ### M12 — UI dashboard + chat + persistence ✅
 
@@ -587,7 +585,7 @@ fixes a latent serve-concurrency clobber); OTel metrics (`swarmkit.compression.*
 savings + CLI run-summary line; `knowledge.search_docs` `min_score`/relative-cutoff lossless
 retrieval lever. Resolves the design note's open questions #2 (retrieve governance) and #3
 (per-surface policy). See `design/details/context-compression.md`.
-Deferred: eject codegen (blocked on M9 eject stub); a concrete LLM-summarizer lossy backend
+Deferred: a concrete LLM-summarizer lossy backend
 (needs an async compression boundary); durable cross-process original store (only needed across a
 process boundary, which a single run never crosses).
 

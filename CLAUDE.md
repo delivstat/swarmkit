@@ -79,13 +79,13 @@ The design doc is detailed and opinionated. Before making a non-trivial change, 
 
 These hold across the whole repo. Individual package `CLAUDE.md`s add more.
 
-1. **Topology-as-data, always.** No generating Python as the output of a "topology compiler" — we interpret. `swarmkit eject` is the one path that produces code, and it's a user-facing export, not a runtime mechanism.
+1. **Topology-as-data, always.** No generating Python as the output of a "topology compiler" — we interpret. Swarms stay portable, open data (YAML/JSON), never generated code.
 2. **Skills are the only *capability* extension primitive.** When tempted to add a parallel *capability* mechanism, ask how it could be a skill category or a composed skill instead. *Node execution* is a separate provider seam — the `executor` abstraction (`design/details/executor-abstraction.md`), where `model` and `harness` are kinds — parallel to `ModelProvider`/`GovernanceProvider`, not a capability primitive. (A session-holding, diff-producing harness is an executor; a stateless answer-and-return consult is still a skill.)
 3. **All governance goes through the `GovernanceProvider` interface** (design §8.5). Only `packages/runtime/src/swarmkit_runtime/governance/` imports AGT directly.
 4. **All LLM calls go through the `ModelProvider` interface** (`design/details/model-provider-abstraction.md`). Only `packages/runtime/src/swarmkit_runtime/model_providers/` imports `anthropic` / `openai` / `google-genai` / Ollama's HTTP client. Same shape as the governance rule; same reasoning — no vendor lock-in at framework level.
 5. **Audit log is append-only from executive perspective.** No update/delete path exposed to agents, ever (design §8.3, §8.7).
 6. **Human approval gates are structural, not prompt-suggested.** Scopes reserved for human identity (`skills:activate`, `mcp_servers:deploy`, `topologies:modify`, `iam:modify`) are enforced by the policy engine — no agent can be granted them regardless of prompt (design §8.7).
-7. **Eject must stay intact.** Any runtime feature needs an ejection story — if it can't be expressed in generated LangGraph code, reconsider.
+7. **Topologies stay portable, open data.** Swarms are interpretable YAML/JSON any conformant runtime can run — the no-lock-in guarantee is the openness of the artifacts plus the OSS runtime, not a code-export escape hatch. (`swarmkit eject` was dropped: as the runtime grew, features stopped being expressible as standalone generated LangGraph code.)
 8. **v1.0 UI is deferred.** CLI chat mode is the v1.0 on-ramp. Do not add UI features before the design question in §15.3 is re-confirmed.
 
 ## Style

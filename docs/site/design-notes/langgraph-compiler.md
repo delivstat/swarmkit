@@ -31,9 +31,6 @@ The compiler is in `packages/runtime/src/swarmkit_runtime/compiler/`.
 - **Decision skills (LLM judges).** Tier 2/3 evaluation lands in M4.
 - **Streaming to the user.** M3 returns the final state. Streaming UX
   lands with the CLI observability primitives (M4 tasks #35/#36).
-- **Eject.** `swarmkit eject` (M9) needs the compiler to produce
-  readable code. For M3, the compiler produces a runnable graph object
-  in memory, not source code.
 
 ## Context model — leader-mediated interaction
 

@@ -60,7 +60,7 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 | Governance / permissions | IAM scopes + policy engine (AGT) | DIY | None | None |
 | Audit trail | Hash-chained, append-only | DIY | None | None |
 | Human-in-the-loop | Native approval gates in YAML | Manual interrupt points | None | None |
-| Escape hatch | `swarmkit eject` to pure LangGraph (planned) | N/A | None | None |
+| Escape hatch / lock-in | Open YAML topologies + OSS runtime — no proprietary format or platform | N/A | Python classes | Vendor SDK |
 | Model support | 7 providers (Anthropic, OpenAI, Google, Ollama, ...) | Any | Multiple | Claude only |
 
 ## Quick start
@@ -170,7 +170,7 @@ swarmkit review list my-swarm/                 # pending human reviews
 swarmkit gaps my-swarm/                        # recorded skill gaps
 ```
 
-**Coming soon:** `swarmkit eject` (export a topology to standalone LangGraph code) and installable expertise packages.
+**Coming soon:** installable expertise packages.
 
 ## Reference topologies
 
@@ -227,7 +227,7 @@ See the [Implementation Plan](architecture/implementation-plan.md) for the full 
 |---|---|---|
 | M8 | Knowledge + skills ecosystem: skill registry CLI, user knowledge server | Done |
 | M9 | Reference topologies: code review + skill authoring swarms runnable e2e | Done |
-| M10 | Eject + execution modes: HTTP server, canary deployments (`swarmkit eject` still planned) | Serve + canary done |
+| M10 | Execution modes: HTTP server, canary deployments | Done |
 | M11 | Launch prep: docs site, PyPI/npm publish, expertise packages (planned) | Docs + publish done |
 
 ## For LLMs
