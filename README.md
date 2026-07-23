@@ -70,7 +70,7 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 | Multi-agent orchestration | Declarative hierarchy + DAG | Manual graph construction | Role-based | Single agent loop |
 | Delivery pipelines | StageGraph + durable saga controller, funnels, integration contracts — as data | DIY | None | None |
 | Tool integration | 7,000+ MCP servers via YAML config | Build or wire yourself | Built-in + MCP | Built-in harness + MCP |
-| Coding-harness execution | Claude Code / opencode / any JSONL harness as a governed node — declarative adapters, worktree/container sandbox, relay approvals | DIY | None | It *is* the harness (single agent) |
+| Coding-harness execution | Any JSONL harness (Claude Code, opencode, …) as a governed node — **add one with a declarative `adapter.yaml`, no code**; worktree/container sandbox, relay approvals | DIY | None | It *is* the harness (single agent) |
 | Governance / permissions | IAM scopes + policy engine (AGT) | DIY | None | None |
 | Audit trail | Hash-chained, append-only | DIY | None | None |
 | Human-in-the-loop | Native approval gates in YAML | Manual interrupt points | None | None |
