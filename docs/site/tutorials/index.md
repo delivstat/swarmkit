@@ -47,4 +47,8 @@ Each level has:
 
 Working examples for each level are at `examples/tutorials/`.
 
+## Beyond the tutorials
+
+After Level 16, see the **[SDLC pipeline walkthrough](../sdlc-example/)** — a video tour of a production delivery pipeline that combines the level features with the orchestration primitives: [Funnels](../reference/funnel.md), [StageGraphs](../reference/stage-graph.md), and [Contracts](../reference/contract.md).
+
 Start with [Level 1: Hello World](01-hello-world.md).

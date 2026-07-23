@@ -98,7 +98,7 @@ swarmkit edit my-swarm/ --input "Add a security scan"  # modify via conversation
 
 ## How it works
 
-![SwarmKit architecture](../images/architecture.svg)
+![SwarmKit architecture](images/architecture.svg)
 
 ## Key features
 
@@ -170,7 +170,7 @@ swarmkit review list my-swarm/                 # pending human reviews
 swarmkit gaps my-swarm/                        # recorded skill gaps
 ```
 
-**Coming soon:** OpenTelemetry integration (traces + metrics), intent drift detection, local prompt ring buffer, governance circuit breakers.
+**Coming soon:** `swarmkit eject` (export a topology to standalone LangGraph code) and installable expertise packages.
 
 ## Reference topologies
 
@@ -202,7 +202,7 @@ See the [Implementation Plan](architecture/implementation-plan.md) for the full 
 
 | # | Milestone | Status |
 |---|---|---|
-| M0 | Schemas (5 artifact types, dual-language validators, codegen) | Done |
+| M0 | Schemas (dual-language validators, codegen; 11 artifact kinds today) | Done |
 | M1 | Topology loading and resolution | Done |
 | M2 | GovernanceProvider + AGT integration | Done |
 | M2.5 | ModelProvider abstraction (7 built-in providers) | Done |
@@ -221,12 +221,14 @@ See the [Implementation Plan](architecture/implementation-plan.md) for the full 
 
 ### Phase 3-4 — Ecosystem + production readiness
 
+> This roadmap is the original phased plan. Development is well past it — the runtime is at **1.98.0**, and features that shipped after M11 (first-class [Funnels](reference/funnel.md), [StageGraph pipelines](reference/stage-graph.md), integration [Contracts](reference/contract.md), multi-party approval, and [executor harnesses](reference/executor-adapter.md)) aren't in this table. See the [implementation plan](architecture/implementation-plan.md) for current status.
+
 | # | Milestone | Status |
 |---|---|---|
-| M8 | Knowledge + skills ecosystem: skill registry CLI, user knowledge server | Planned |
-| M9 | Reference topologies: code review + skill authoring swarms runnable e2e | Planned |
-| M10 | Eject + execution modes: `swarmkit eject`, HTTP server, canary deployments | Planned |
-| M11 | Launch prep: docs site, PyPI/npm publish, expertise packages | Planned |
+| M8 | Knowledge + skills ecosystem: skill registry CLI, user knowledge server | Done |
+| M9 | Reference topologies: code review + skill authoring swarms runnable e2e | Done |
+| M10 | Eject + execution modes: HTTP server, canary deployments (`swarmkit eject` still planned) | Serve + canary done |
+| M11 | Launch prep: docs site, PyPI/npm publish, expertise packages (planned) | Docs + publish done |
 
 ## For LLMs
 
