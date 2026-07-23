@@ -107,13 +107,13 @@ Or more precisely: SwarmKit is the open-source agent orchestrator. Rynko is the 
 
 **Mitigations:**
 
-1. **`swarmkit eject` (M9).** Generates standalone LangGraph Python code from any topology. If LangChain restricts their ecosystem, users can eject and run vanilla LangGraph. This is already a design commitment (CLAUDE.md invariant #7: "Eject must stay intact").
+1. **Portable, open topology data.** A topology is open YAML/JSON, not a proprietary format — any conformant runtime can interpret it, and the runtime itself is OSS. If LangChain restricts their ecosystem, users aren't locked into SwarmKit-the-code or LangGraph-the-platform; the artifacts are theirs. (A `swarmkit eject` code-export was originally planned as the escape hatch but dropped as the runtime outgrew standalone codegen — the portability of the data is the durable guarantee.)
 
 2. **Pluggable compiler target.** The topology-as-data model does not depend on LangGraph. The compiler is designed as a translation layer — LangGraph is the first backend, not the only possible one. A future compiler target (e.g., direct async Python, or a different graph runtime) is architecturally feasible.
 
 3. **Value is in the ops layer, not the runtime.** Even if LangGraph adds YAML support, they don't have SwarmKit's governance model, separation of powers, skill authoring loop, or the Rynko ops platform. The framework is the wedge; the ops layer is the moat.
 
-**Action:** monitor LangGraph Cloud roadmap actively. Maintain eject as a first-class feature. Keep compiler target abstraction clean.
+**Action:** monitor LangGraph Cloud roadmap actively. Keep the compiler-target abstraction clean (LangGraph is the first backend, not the only possible one) and the topology schema engine-agnostic.
 
 ### Risk 2: Context-switching friction for prompt debugging (MEDIUM)
 
@@ -180,7 +180,7 @@ governance:
 
 2. **Conversational skill authoring.** The CLI uses an LLM to create new skills and write MCP servers via conversation. Human approval required before adding to the topology. This bridges "no-code" and "pro-code" without polluting the YAML.
 
-3. **`swarmkit eject` as the ultimate escape hatch.** If YAML truly isn't enough, the user ejects to pure Python and has full control. Clean exit, no lock-in.
+3. **Open data as the escape hatch.** Topologies are open YAML any conformant runtime can run, and the runtime is OSS — no proprietary format, no platform lock-in. If YAML truly isn't enough, drop to the runtime's Python provider seams (ModelProvider, GovernanceProvider, executors) rather than being trapped.
 
 ## Version control of generated assets
 
