@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SDLC pipeline — a SwarmKit video walkthrough</title>
+  <meta name="description" content="A guided, video walkthrough of the SwarmKit SDLC delivery pipeline example: topologies, archetypes, skills, funnels, the pipeline StageGraph, and contracts.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap bar">
+    <span class="brand">swarm<b>kit</b> · sdlc example</span>
+    <nav>
+      <a href="#how">how</a>
+      <a href="#topologies">topologies</a>
+      <a href="#archetypes">archetypes</a>
+      <a href="#skills">skills</a>
+      <a href="#funnels">funnels</a>
+      <a href="#pipelines">pipelines</a>
+      <a href="#contracts">contracts</a>
+      <a href="#run">run it</a>
+    </nav>
+    <span class="util">
+      <a class="fact" href="https://github.com/delivstat/swarmkit" style="text-decoration:none">GitHub</a>
+      <button class="theme" id="theme" type="button" aria-label="Toggle theme">◐ theme</button>
+    </span>
+  </div>
+</header>
+
+<main>
+<section class="hero" style="border-bottom:none">
+  <div class="wrap">
+    <div class="eyebrow">SwarmKit · guided walkthrough</div>
+    <h1>One requirement, from intake to shipped.</h1>
+    <p class="lede">A video tour of the OMS delivery pipeline example — every screen and every artifact, shown running in the composer.</p>
+
+    <div class="player">
+      <video controls preload="none" playsinline poster="assets/img/pipelines-01-canvas.png">
+        <source src="assets/videos/full-tour.webm" type="video/webm">
+        Your browser can't play this video. <a href="assets/videos/full-tour.webm">Download it</a> instead.
+      </video>
+    </div>
+    <p class="vcap"><b>The full walkthrough</b> — ~4 min, seven chapters. Each section below has its own shorter clip and a written explanation. Every frame is captured live from the running UI.</p>
+
+    <div class="facts">
+      <span class="fact"><b>12</b> archetypes</span>
+      <span class="fact"><b>8</b> skills</span>
+      <span class="fact"><b>2</b> funnels</span>
+      <span class="fact"><b>1</b> StageGraph</span>
+      <span class="fact"><b>2</b> contracts</span>
+      <span class="fact"><b>7</b> topologies</span>
+      <span class="fact">examples/sdlc-pipeline</span>
+    </div>
+  </div>
+</section>
+
+<!-- HOW -->
+<section id="how">
+  <div class="wrap">
+    <div class="chapter"><span class="n">00</span> The idea <span class="rule"></span></div>
+    <h2>What you're looking at</h2>
+    <p>The example runs a single order-management requirement through the whole software lifecycle — intake, design, human sign-off, build, and system-integration test — with <strong>real governance</strong>: a design gate a judge scores and two human leads must approve, integration contracts that serialise conflicting work, and a saga that survives duplicate webhooks, dropped events, contention, and cancellation.</p>
+    <div class="pillars">
+      <div class="pillar"><div class="pt">Topology is data</div><div class="pd">Every agent, gate, and the pipeline itself is a YAML file the runtime interprets. Nothing here is bespoke Python.</div></div>
+      <div class="pillar"><div class="pt">Determination, not orchestration</div><div class="pd">Agents produce artifacts and verdicts; deterministic code sequences the stages. The app owns the weeks-long state, SwarmKit owns the bounded, governed steps.</div></div>
+      <div class="pillar"><div class="pt">Governance is structural</div><div class="pd">The only exit from a design gate is a human approval — enforced by the compiler, not suggested by a prompt.</div></div>
+    </div>
+    <h3>Base runtime, or just this example?</h3>
+    <p>A fair question while reading this: which of these are SwarmKit, and which are the demo? The <strong>artifact kinds are all part of the runtime + schema base</strong> — including <code>Funnel</code>, <code>StageGraph</code>, and <code>Contract</code>. Each has a canonical JSON Schema, a resolver in the runtime, a <code>swarmkit&nbsp;serve</code> endpoint, and an auto-generated composer form. This example only authors <em>instances</em> of them.</p>
+    <div class="basecols">
+      <div class="basecol base">
+        <div class="bh">First-class in the runtime + schema</div>
+        <ul class="clean">
+          <li><strong>Topology · Archetype · Skill</strong> — the core mental model.</li>
+          <li><strong>RoleRegistry · ApprovalPolicy</strong> — human identity + approval rules.</li>
+          <li><strong>Funnel</strong> — the reusable quality gate.</li>
+          <li><strong>StageGraph</strong> — the pipeline-as-data spec.</li>
+          <li><strong>Contract</strong> — the lock vocabulary. <em>Not custom to this example.</em></li>
+          <li><strong>Trigger · ExecutorAdapter</strong> — ingress + executor kinds.</li>
+        </ul>
+      </div>
+      <div class="basecol example">
+        <div class="bh">Authored for this example</div>
+        <ul class="clean">
+          <li>The <strong>instances</strong> — the OMS topologies, <code>oms-pipeline</code>, <code>oms-design-gate</code>, and the two contracts.</li>
+          <li>The <strong>pipeline controller</strong> (<code>examples/sdlc-pipeline/controller/</code>) and the <strong>Temporal orchestrator</strong> — application code that implements the runtime's <code>OrchestrationProvider</code> seam. SwarmKit provides the StageGraph spec, the governed stage runs, and the correlated audit; the durable saga substrate is the app's.</li>
+        </ul>
+      </div>
+    </div>
+    <p>Each chapter below opens one part of the composer, explains <strong>what it achieves</strong>, and shows it running.</p>
+  </div>
+</section>
+
+<!-- TOPOLOGIES -->
+<section id="topologies">
+  <div class="wrap">
+    <div class="chapter"><span class="n">01</span> Topologies <span class="rule"></span></div>
+    <h2>The swarms, as data</h2>
+    <p class="achieves">Achieves: a whole delivery org — agents, roles, and who-delegates-to-whom — authored and inspected as files, with four ways to see the same topology.</p>
+    <p>A <strong>topology</strong> is a swarm: agents with roles, wired into a delegation tree. Opening one in the Composer gives you four views of the same document — <strong>Structure</strong> (the org chart), <strong>Relationships</strong> (a parent and its children), <strong>Network</strong> (the flat communication graph), and <strong>Canvas</strong> (an editable node-graph). Click any agent to see its resolved detail — archetype, model, IAM scopes — and its raw YAML.</p>
+
+    <div class="player">
+      <video controls preload="none" playsinline poster="assets/img/topologies-07-agent-yaml.png">
+        <source src="assets/videos/topologies.webm" type="video/webm">
+        <a href="assets/videos/topologies.webm">Download the clip</a>.
+      </video>
+    </div>
+    <p class="vcap">Opening <b>oms-stage-run</b>, walking its four views, then drilling into the <b>designer</b> agent and its YAML.</p>
+
+    <div class="shots">
+      <figure><img loading="lazy" src="assets/img/topologies-07-agent-yaml.png" alt="Composer with the agent tree, the designer's model detail, and the live topology YAML">
+        <figcaption>The Composer resolves the topology: the agent tree, the selected agent's model (openrouter · deepseek-v3), and the live YAML panel.</figcaption></figure>
+      <figure><img loading="lazy" src="assets/img/topologies-05-canvas.png" alt="The topology as an editable node-graph on the canvas">
+        <figcaption>The Canvas view — the same swarm as a node-graph, ready to edit.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHETYPES -->
+<section id="archetypes">
+  <div class="wrap">
+    <div class="chapter"><span class="n">02</span> Archetypes <span class="rule"></span></div>
+    <h2>Reusable agent templates</h2>
+    <p class="achieves">Achieves: define an agent once — role, executor, default skills — and reuse it across topologies; choose per archetype whether it thinks (model) or works a repo (harness).</p>
+    <p>An <strong>archetype</strong> is a template an agent instantiates. The interesting choice it captures is the <strong>executor</strong>. Most archetypes are <strong>model</strong> executors — they reason and return an artifact. Three (<code>developer</code>, <code>architect-reviewer</code>, <code>security-consultant</code>) are <strong>harness</strong> executors: they run a coding harness — a session that reads a repo and produces a diff — not a single model call. That distinction is one line of data on the archetype, not a code branch.</p>
+
+    <div class="player">
+      <video controls preload="none" playsinline poster="assets/img/archetypes-02-developer-form.png">
+        <source src="assets/videos/archetypes.webm" type="video/webm">
+        <a href="assets/videos/archetypes.webm">Download the clip</a>.
+      </video>
+    </div>
+    <p class="vcap">Opening <b>developer</b> (a harness executor) and <b>business-analyst</b> (a model executor), in both the form and the YAML.</p>
+
+    <div class="filetab">workspace/archetypes/developer.yaml</div>
+    <pre class="code"><code><span class="yk">executor</span>:
+  <span class="yk">kind</span>: <span class="ys">harness</span>        <span class="yc"># a session-holding, diff-producing coding harness…</span>
+  <span class="yk">ref</span>: <span class="ys">claude-code</span>    <span class="yc"># …resolved from the bundled adapter library</span></code></pre>
+
+    <div class="shots">
+      <figure><img loading="lazy" src="assets/img/archetypes-02-developer-form.png" alt="The developer archetype form">
+        <figcaption><b>developer</b> — a worker whose executor is a harness; it runs a coding session and returns a diff.</figcaption></figure>
+      <figure><img loading="lazy" src="assets/img/archetypes-04-business-analyst.png" alt="The business-analyst archetype">
+        <figcaption><b>business-analyst</b> — a model executor; it reasons and returns an artifact (intake + impact analysis).</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- SKILLS -->
+<section id="skills">
+  <div class="wrap">
+    <div class="chapter"><span class="n">03</span> Skills <span class="rule"></span></div>
+    <h2>The one extension primitive</h2>
+    <p class="achieves">Achieves: every capability an agent gains — a tool, a judgement, a coordination step, a memory — is expressed through one mental model instead of many parallel mechanisms.</p>
+    <p>SwarmKit has a single way to extend a swarm: the <strong>skill</strong>, tagged with a category — <strong>capability</strong>, <strong>decision</strong>, <strong>coordination</strong>, or persistence. The SDLC workspace ships eight. A <code>decision</code> skill like <code>artifact-judge</code> scores an artifact against a rubric and returns a verdict — a funnel's judge layer calls exactly this. A <code>coordination</code> skill like <code>multi-party-approval-request</code> gathers sign-offs from several human parties — which is what a funnel's approve layer runs.</p>
+
+    <div class="player">
+      <video controls preload="none" playsinline poster="assets/img/skills-02-judge-form.png">
+        <source src="assets/videos/skills.webm" type="video/webm">
+        <a href="assets/videos/skills.webm">Download the clip</a>.
+      </video>
+    </div>
+    <p class="vcap">Opening <b>artifact-judge</b> (a decision skill) and <b>multi-party-approval-request</b> (a coordination skill).</p>
+
+    <div class="shots">
+      <figure><img loading="lazy" src="assets/img/skills-02-judge-form.png" alt="The artifact-judge skill form over the category-badged list">
+        <figcaption>Each skill carries its category badge. <b>artifact-judge</b> is a decision skill — the judge layer of every gate.</figcaption></figure>
+      <figure><img loading="lazy" src="assets/img/skills-04-approval.png" alt="The multi-party-approval-request skill">
+        <figcaption><b>multi-party-approval-request</b> — a coordination skill that gathers human sign-offs.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- FUNNELS -->
+<section id="funnels">
+  <div class="wrap">
+    <div class="chapter"><span class="n">04</span> Funnels <span class="rule"></span></div>
+    <h2>Quality gates as data</h2>
+    <p class="achieves">Achieves: a reusable, four-layer approval gate with a structural guarantee — nothing reaches "done" except a human sign-off.</p>
+    <p>A <strong>funnel</strong> is a first-class gate artifact. It chains up to four layers over an artifact — deterministic <strong>validate</strong>, an LLM-as-judge <strong>judge</strong>, an investigative harness <strong>review</strong>, and a multi-party human <strong>approve</strong> — and there is exactly one way out: the approve layer. The compiler enforces that invariant; you cannot wire a funnel whose judge or review can reach the terminal on its own. Because it's referenced by id, the same gate can guard any stage in any pipeline.</p>
+
+    <div class="player">
+      <video controls preload="none" playsinline poster="assets/img/funnels-01-overview.png">
+        <source src="assets/videos/funnels.webm" type="video/webm">
+        <a href="assets/videos/funnels.webm">Download the clip</a>.
+      </video>
+    </div>
+    <p class="vcap">The four-layer gate on the canvas, selecting the judge layer, and the terminal approve layer up close.</p>
+
+    <div class="shots">
+      <figure><img loading="lazy" src="assets/img/funnels-01-overview.png" alt="The funnel canvas showing draft to done through four layers">
+        <figcaption>draft → validate → judge → review → approve → done, with retry and escalate loops.</figcaption></figure>
+      <figure><img loading="lazy" src="assets/img/funnels-03-approve.png" alt="The approve layer up close">
+        <figcaption>The approve layer is the sole terminal — enforced by the compiler, not a prompt.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINES -->
+<section id="pipelines">
+  <div class="wrap">
+    <div class="chapter"><span class="n">05</span> Pipelines <span class="rule"></span></div>
+    <h2>The delivery pipeline as a StageGraph</h2>
+    <p class="achieves">Achieves: the whole intake→design→build→sit journey authored as one data file, sequenced by a durable saga that handles gates, contract locks, external events, defect loops, and cancellation.</p>
+    <p>A <strong>StageGraph</strong> wires stages by the events that enter and leave them. The <code>design</code> stage holds two contract locks and blocks on a gate; <code>build</code>'s success is a genuinely external event — a CI webhook. The editor draws it on a canvas: hover a stage or an edge for a <strong>×</strong> to remove it, drop topologies from the palette, and configure each stage through a form generated from the schema — where <code>topology</code>, <code>gate</code>, and <code>locks</code> are pickers over real workspace values, not free text.</p>
+
+    <div class="player">
+      <video controls preload="none" playsinline poster="assets/img/pipelines-02-design-zoom.png">
+        <source src="assets/videos/pipelines.webm" type="video/webm">
+        <a href="assets/videos/pipelines.webm">Download the clip</a>.
+      </video>
+    </div>
+    <p class="vcap">The StageGraph canvas, the design stage up close, edit mode with hover-delete, the schema form, and the ref dropdown.</p>
+
+    <div class="filetab">workspace/pipelines/oms-pipeline.yaml</div>
+    <pre class="code"><code><span class="yk">stages</span>:
+  - <span class="yk">id</span>: <span class="ys">design</span>
+    <span class="yk">topology</span>: <span class="ys">oms-design</span>
+    <span class="yk">when</span>: [<span class="ys">design.kickoff</span>]
+    <span class="yk">locks</span>: [<span class="ys">oms-inventory, oms-web</span>]   <span class="yc"># all-or-none, held across approval</span>
+    <span class="yk">gate</span>: <span class="ys">oms-design-gate</span>
+    <span class="yk">success</span>: <span class="ys">design.approved</span>
+    <span class="yk">release_locks_on</span>: <span class="ys">design.approved</span>
+    <span class="yk">compensation</span>: <span class="ys">oms-compensate-design</span></code></pre>
+
+    <div class="shots">
+      <figure><img loading="lazy" src="assets/img/pipelines-06-inspector.png" alt="The stage form generated from the schema">
+        <figcaption>The stage form is generated from the schema — Topology and Gate are workspace dropdowns.</figcaption></figure>
+      <figure><img loading="lazy" src="assets/img/pipelines-07-dropdown.png" alt="The Topology ref dropdown open">
+        <figcaption>Every ref is a real, pickable value from the workspace — a typo can't reach the runtime.</figcaption></figure>
+    </div>
+
+    <h3>The saga, running</h3>
+    <p>The reference controller sequences a requirement across those stages and survives everything the real world throws at it. This is the actual output of <code>just demo-pipeline-controller</code> — two requirements, a duplicate webhook, a dropped event, a contract collision, and a cancellation:</p>
+    <div class="term">
+      <div class="barx"><i></i><i></i><i></i><span class="cmd">just demo-pipeline-controller</span></div>
+      <pre><span class="w">STEP 1 — OMS-101 enters (intake → design parks on the gate)</span>
+   OMS-101 status=<span class="a">parked</span>  pending_gate=oms-design-gate  locks=<span class="v">['oms-inventory','oms-web']</span>
+
+<span class="w">STEP 3 — OMS-102 arrives, contends on the same contract</span>
+   OMS-102 status=<span class="a">parked</span>  <span class="d">(contract held by OMS-101 → serialised)</span>
+
+<span class="w">STEP 4 — OMS-101 gate APPROVED → contract released → OMS-102 resumes</span>
+   OMS-101 status=<span class="g">active</span>  locks=[]  <span class="d">(advanced to build)</span>
+
+<span class="w">STEP 6 — OMS-101's 'build.ready-in-qa' webhook was DROPPED; reconciliation recovers</span>
+   OMS-101 status=<span class="g">done</span>  passed=<span class="g">['intake','design','build','sit']</span>
+
+<span class="w">STEP 7 — OMS-102 withdrawn mid-pipeline → compensations run in reverse</span>
+   OMS-102 status=<span class="r">cancelled</span>
+
+<span class="g">✓ pipeline-controller demo complete</span></pre>
+    </div>
+    <div class="note"><span class="lbl">Pluggable sequencing</span>
+      Sequencing is a provider seam, not a bespoke engine. The reference controller is the zero-infra option; a <b>Temporal</b> adapter implements the same interface for production — one data-driven workflow interprets any StageGraph. See <code>design/details/orchestration-provider-seam.md</code>.</div>
+  </div>
+</section>
+
+<!-- CONTRACTS -->
+<section id="contracts">
+  <div class="wrap">
+    <div class="chapter"><span class="n">06</span> Contracts <span class="rule"></span></div>
+    <h2>What the locks actually are</h2>
+    <p class="achieves">Achieves: turns a pipeline's abstract "locks" into a real, checked vocabulary — so two requirements touching the same integration interface can never design concurrently.</p>
+    <p>The design stage holds <code>locks: [oms-inventory, oms-web]</code>. Those aren't free strings — each is a <strong>Contract</strong>: a first-class artifact naming an integration interface and the apps it binds. Making locks real means a typo can't silently fail to serialise two requirements. Locks are acquired all-or-none in a fixed order (no deadlock), held across the approval, and released on <code>design.approved</code>; a second requirement that wants a held contract simply parks and resumes.</p>
+
+    <div class="player">
+      <video controls preload="none" playsinline poster="assets/img/contracts-01-web-parties.png">
+        <source src="assets/videos/contracts.webm" type="video/webm">
+        <a href="assets/videos/contracts.webm">Download the clip</a>.
+      </video>
+    </div>
+    <p class="vcap">Opening <b>oms-web</b> and <b>oms-inventory</b> — the two contracts the design stage holds at once.</p>
+
+    <div class="shots">
+      <figure><img loading="lazy" src="assets/img/contracts-01-web-parties.png" alt="The oms-web contract with oms and web party chips">
+        <figcaption>The <b>oms</b> + <b>web</b> parties — this lock serialises work on the order API.</figcaption></figure>
+      <figure><img loading="lazy" src="assets/img/contracts-02-inventory.png" alt="The oms-inventory contract">
+        <figcaption>The second contract — the OMS ↔ inventory interface.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- RUN -->
+<section id="run">
+  <div class="wrap">
+    <div class="chapter"><span class="n">07</span> Run it <span class="rule"></span></div>
+    <h2>Try it yourself</h2>
+    <p>Everything above is in the repo, and the demos are self-contained — they use fakes for the model and harness seams, so none of them need an API key or a running server.</p>
+    <div class="term">
+      <div class="barx"><i></i><i></i><i></i><span class="cmd">bash</span></div>
+      <pre>just install                  <span class="d"># install both language workspaces</span>
+
+just demo-sdlc                <span class="d"># the bounded stage run + gate + an IAM-scope denial</span>
+just demo-pipeline-controller <span class="d"># the pipeline saga: dup · drop · contend · cancel</span>
+just demo-pipeline-temporal   <span class="d"># the same pipeline on Temporal (in-process, no server)</span>
+
+<span class="d"># the visual composer you just watched:</span>
+uv run swarmkit serve examples/sdlc-pipeline/workspace --port 8000</pre>
+    </div>
+    <div class="runs">
+      <div class="run"><div class="t">sdlc-pipeline-example.md</div><div class="d">the example's build order, slice by slice</div></div>
+      <div class="run"><div class="t">gate-funnel.md</div><div class="d">the four-layer gate + single-exit invariant</div></div>
+      <div class="run"><div class="t">pipeline-controller.md</div><div class="d">the saga, locks, reconciliation, compensation</div></div>
+      <div class="run"><div class="t">contract-registry.md</div><div class="d">contracts as first-class lock vocabulary</div></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p style="color:var(--ink-soft)">This walkthrough is part of the <a href="../">SwarmKit documentation</a>. Source: <a href="https://github.com/delivstat/swarmkit/tree/main/examples/sdlc-pipeline">examples/sdlc-pipeline</a>.</p>
+    <p class="fine">Every video and screenshot on this page was captured live from the running composer.</p>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var KEY = "sk-theme";
+    var btn = document.getElementById("theme");
+    var root = document.documentElement;
+    try { var saved = localStorage.getItem(KEY); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+    function cur() {
+      var attr = root.getAttribute("data-theme");
+      if (attr) return attr;
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    btn.addEventListener("click", function () {
+      var next = cur() === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem(KEY, next); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>

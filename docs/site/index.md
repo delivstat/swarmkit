@@ -4,6 +4,9 @@
 
 Define agents, skills, and governance in a topology file. SwarmKit compiles it to LangGraph and runs it.
 
+!!! tip "Watch it in action"
+    **[SDLC pipeline: a video walkthrough →](sdlc-example/)** — a guided tour of a real delivery pipeline (topologies, archetypes, skills, funnels, the StageGraph, and contracts), each shown running in the composer.
+
 ---
 
 ## The problem
