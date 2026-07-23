@@ -299,7 +299,7 @@
     </div>
     <p class="vcap">A faithful replay of a real run — plan → delegate → design ×2 → synthesize → approval, in ~14 s of agent time.</p>
 
-    <p>The artifacts are real too. A single-agent stage (<code>swarmkit run oms-intake</code>) has the business-analyst call its <code>impact-analysis</code> skill and return a structured analysis — here, verbatim:</p>
+    <p>The artifacts are real too. A single-agent stage (<code>swarmkit run oms-intake</code>) has the business-analyst call its <code>impact-analysis</code> skill and return a structured analysis. Here's an excerpt — the full artifacts this run produced are downloadable just below:</p>
     <div class="term">
       <div class="barx"><i></i><i></i><i></i><span class="cmd">swarmkit run … oms-intake --input "OMS-101: …"</span></div>
       <pre><span class="c">[intake]</span> thinking… <span class="d">(gpt-4o-mini)</span>
@@ -314,6 +314,15 @@
 1. Which applications are in scope for impact?
 2. Are there architectural constraints on the new endpoints?</pre>
     </div>
+
+    <h3>Download the artifacts this run produced</h3>
+    <p>Actual model output, committed to the repo verbatim — the impact analysis, plus the two ~4&nbsp;KB solution designs the <span style="color:var(--lock)">designer</span> worker generated in the flow above:</p>
+    <div class="runs">
+      <a class="run dl" href="assets/artifacts/impact-analysis.txt" download="impact-analysis.md"><div class="t">⬇ impact-analysis.md</div><div class="d">business-analyst · impact analysis</div></a>
+      <a class="run dl" href="assets/artifacts/order-submission-api.txt" download="order-submission-api.md"><div class="t">⬇ order-submission-api.md</div><div class="d">solution-architect · order-submission API (~4.5 KB)</div></a>
+      <a class="run dl" href="assets/artifacts/status-endpoint.txt" download="status-endpoint.md"><div class="t">⬇ status-endpoint.md</div><div class="d">solution-architect · status-endpoint (~4 KB)</div></a>
+    </div>
+
     <div class="note"><span class="lbl">The point</span>
       This is the <b>agent-determination-only</b> shape: within a bounded run an agent thinks, calls a skill, and returns an artifact — and <b>deterministic code</b> (here the coordinator's plan; in production, the pipeline controller) sequences those runs. Governance rides along as skills, not as prompts.</div>
   </div>
