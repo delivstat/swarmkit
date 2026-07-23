@@ -58,6 +58,7 @@ import {
 	RotateCcw,
 	Undo2,
 	Webhook,
+	X,
 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
@@ -72,6 +73,8 @@ interface CanvasStageData extends StageNodeData {
 	issues?: StageIssue[];
 	/** Contract id → parties, for labelling contended locks by the apps they bind (if fetched). */
 	contractParties?: Record<string, string[]>;
+	/** Remove this stage (edit mode) — wired to the delete affordance on the card. */
+	onRemove?: (id: string) => void;
 }
 type StageFlowNode = Node<CanvasStageData, "stage">;
 
@@ -95,9 +98,23 @@ function StageCard({ data }: NodeProps<StageFlowNode>) {
 	const accent = data.selected || data.isEntry ? SKY : "var(--border)";
 	return (
 		<div
-			className="min-w-[170px] rounded-lg border-2 bg-card px-3 py-2 text-xs text-card-foreground shadow-sm"
+			className="group relative min-w-[170px] rounded-lg border-2 bg-card px-3 py-2 text-xs text-card-foreground shadow-sm"
 			style={{ borderColor: accent }}
 		>
+			{data.editable && data.onRemove ? (
+				<button
+					type="button"
+					className="nodrag absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:border-destructive hover:text-destructive group-hover:opacity-100"
+					aria-label={`delete stage ${data.id}`}
+					title="Delete this stage"
+					onClick={(e) => {
+						e.stopPropagation();
+						data.onRemove?.(data.id);
+					}}
+				>
+					<X size={12} />
+				</button>
+			) : null}
 			<Handle
 				id="in"
 				type="target"
@@ -296,6 +313,7 @@ export function StageGraphEditor({
 				editable,
 				issues: issues.get(n.id) ?? [],
 				contractParties,
+				onRemove: onRemoveStage,
 			},
 		})) as StageFlowNode[];
 
@@ -385,7 +403,15 @@ export function StageGraphEditor({
 			nodes: [...stageNodes, ...pinNodes] as Node[],
 			edges: [...graphEdges, ...pinEdges],
 		};
-	}, [projection, externals, issues, selectedStage, editable, contractParties]);
+	}, [
+		projection,
+		externals,
+		issues,
+		selectedStage,
+		editable,
+		contractParties,
+		onRemoveStage,
+	]);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>(flow.nodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(flow.edges);
