@@ -62,6 +62,14 @@ nav:
       - DAG dependency graph: design-notes/dag-dependency-graph.md
       - Conversational authoring: design-notes/conversational-authoring.md
       - Structured output: design-notes/structured-output-governance.md
+      - Executor abstraction: design-notes/executor-abstraction.md
+      - Multi-party approval: design-notes/multi-party-approval.md
+    - Pipelines & orchestration:
+      - Gate funnel: design-notes/gate-funnel.md
+      - Pipeline controller: design-notes/pipeline-controller.md
+      - Orchestration provider seam: design-notes/orchestration-provider-seam.md
+      - Pipeline triggering: design-notes/pipeline-triggering.md
+      - Contract registry: design-notes/contract-registry.md
     - Observability (M6-M7):
       - OpenTelemetry observability: design-notes/opentelemetry-observability.md
       - Intent drift detection: design-notes/intent-drift-detection.md
