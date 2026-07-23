@@ -226,7 +226,13 @@ credentials:
       env: GITHUB_TOKEN
 ```
 
-Environment variables use `${VAR_NAME}` interpolation — resolved at runtime from your shell environment.
+Environment variables use `${VAR}` interpolation, resolved at runtime. As of runtime 1.98.0 this works in **every** artifact (topology, skill, archetype, workspace, trigger, funnel), not just MCP `env:` blocks, and supports defaults:
+
+- `${VAR}` — the value of `VAR` (left literal if unset, so nothing regresses)
+- `${VAR:-default}` — `VAR` if set, else `default` (lets a reusable library run out-of-the-box while staying configurable, e.g. `${SDLC_REASONING_MODEL:-moonshotai/kimi-k2.5}`)
+- `$${VAR}` — a literal `${VAR}` (escape)
+
+Resolution order: workspace property map → OS environment → inline `:-default`. Full detail: [Environment configuration](../reference/env-config.md).
 
 ### 7. Test it
 

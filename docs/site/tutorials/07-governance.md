@@ -10,6 +10,8 @@ Add guardrails that structurally prevent agents from going wrong — not through
 - Output schema validation
 - Gate validators (drop-in JSON Schema)
 - Human-in-the-loop review queues
+- Funnels: reusable multi-layer quality gates with a single human exit
+- Multi-party approval (quorum, distinct approvers)
 - Audit trail configuration
 
 ## Why governance?
@@ -262,6 +264,54 @@ runtime:
         trigger: post_output
         scope: "*"
 ```
+
+### 10. Funnels — reusable multi-layer gates
+
+Section 7's review queue is a single human approver. A **[Funnel](../reference/funnel.md)** (`kind: Funnel`) packages a richer, reusable gate: up to four layers — deterministic **validate**, an LLM-as-judge **judge**, an optional harness **review**, and a multi-party human **approve** — with exactly one exit, the approve layer. The compiler enforces that invariant; a judge or review can never reach "done" on its own. Referenced by id, the same gate guards any agent node or pipeline stage.
+
+```yaml
+# funnels/design-gate.yaml
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: design-gate
+  name: Design Gate
+  description: Judge the solution design, then two leads sign off.
+judge:
+  skill: artifact-judge          # a decision skill returning a rubric score
+  threshold: 0.8                  # below this loops back for a bounded retry
+  max_retries: 2
+approve:                          # required — the sole exit
+  rules:
+    - scope: design:approve
+      roles: [engineering-lead, product-lead]
+      quorum: all
+  min_distinct_approvers: 2
+```
+
+An agent references it with `funnel: design-gate`; a pipeline stage with `gate: design-gate`.
+
+### 11. Multi-party approval
+
+The `approve` layer is an **[approval policy](../reference/approval-policy.md)** — quorum (`all` / `any` / `k-of`), a four-eyes `min_distinct_approvers` floor, and `exclude_author` (default true, so no one approves their own artifact). Approvers are resolved through a **[role registry](../reference/role-registry.md)** — who holds which role:
+
+```yaml
+# roles/leads.yaml
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: leads
+  name: Approval Leads
+roles:
+  - id: engineering-lead
+    members: [alice]
+    scopes: [design:approve]
+  - id: product-lead
+    members: [bob]
+    scopes: [design:approve]
+```
+
+Approval scopes are registry-driven reserved scopes: the policy engine refuses to grant `design:approve` to any agent, so a gate is structurally un-bypassable. See the funnel gate running end-to-end in the **[SDLC walkthrough → Funnels](../sdlc-example/#funnels)**.
 
 ## Your workspace so far
 

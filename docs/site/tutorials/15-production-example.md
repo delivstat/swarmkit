@@ -2,6 +2,9 @@
 
 A complete workspace that combines every feature from Levels 1-14 into a production-ready content review platform.
 
+!!! tip "See a real delivery pipeline, end to end"
+    The workspace below is a teaching example. For a **video walkthrough of a real delivery pipeline** — first-class [Funnels](../reference/funnel.md), a [StageGraph](../reference/stage-graph.md) sequenced by a durable saga controller, and integration [Contracts](../reference/contract.md), each shown running in the composer — see the **[SDLC pipeline walkthrough →](../sdlc-example/)** (source: `examples/sdlc-pipeline`).
+
 ## What you'll build
 
 A **Technical Documentation Review** workspace that:
@@ -256,7 +259,7 @@ swarmkit trace -w .
 13. **Circuit breaker** → enforced $2 max cost, 150 max steps
 14. **Audit trail** → every step logged to SQLite with redaction
 
-This single workspace uses **all 69 SwarmKit features** across a real production workflow.
+This single workspace exercises the Level 1–14 features across a real workflow. For the pipeline-orchestration features that shipped later — first-class **Funnel** gates, **StageGraph** pipelines sequenced by a saga controller, integration **Contracts** with checked locks, and multi-party approval — see [Level 16](16-pipelines.md) and the [SDLC pipeline walkthrough](../sdlc-example/).
 
 ## Features checklist
 
