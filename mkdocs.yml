@@ -28,6 +28,8 @@ nav:
   - Getting started:
     - Installation: getting-started/install.md
     - Hello Swarm: getting-started/hello-swarm.md
+  - Examples:
+    - "SDLC pipeline (video walkthrough)": sdlc-example/index.html
   - Tutorials:
     - Overview: tutorials/index.md
     - "Level 1: Hello World": tutorials/01-hello-world.md
