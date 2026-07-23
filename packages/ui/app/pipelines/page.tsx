@@ -561,7 +561,7 @@ export default function PipelinesPage() {
 									</div>
 									<span className="text-muted-foreground">
 										{canvasEditable
-											? "drag right→left handles to wire a signal · top→top for a loop · Delete removes · click a stage to configure"
+											? "drag right→left handles to wire a signal · top→top for a loop · hover a stage and click × (or select + Delete) to remove · click a stage to configure"
 											: "read-only · click a stage to inspect"}
 									</span>
 								</div>
