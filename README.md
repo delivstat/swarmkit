@@ -68,7 +68,9 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 |---|---|---|---|---|
 | Agent definition | YAML topology | Python code | Python classes | Code + config |
 | Multi-agent orchestration | Declarative hierarchy + DAG | Manual graph construction | Role-based | Single agent loop |
+| Delivery pipelines | StageGraph + durable saga controller, funnels, integration contracts — as data | DIY | None | None |
 | Tool integration | 7,000+ MCP servers via YAML config | Build or wire yourself | Built-in + MCP | Built-in harness + MCP |
+| Coding-harness execution | Claude Code / opencode / any JSONL harness as a governed node — declarative adapters, worktree/container sandbox, relay approvals | DIY | None | It *is* the harness (single agent) |
 | Governance / permissions | IAM scopes + policy engine (AGT) | DIY | None | None |
 | Audit trail | Hash-chained, append-only | DIY | None | None |
 | Human-in-the-loop | Native approval gates in YAML | Manual interrupt points | None | None |
@@ -285,6 +287,19 @@ Per-server and per-tool governance: `permission: open|cautious|strict|readonly` 
 
 Run a coding harness (Claude Code, opencode, and any subprocess that emits line-delimited JSON) as an agent node, not just a model. Harnesses are **data**: a declarative `adapter.yaml` — no per-harness Python — interpreted by one engine, with a bundled library for the big harnesses. Isolated in an ephemeral git worktree by default; mid-run out-of-grant permissions **relay** to a human inbox and resume; repeated approvals **accrue** into a proposed allowlist changeset (`swarmkit trust`). An **opt-in container sandbox** adds real isolation — resource limits, enforced egress (`deny`/`allowlist`), and a `build` step that runs the harness with **no local install** (bring only your API key). Off by default; `SWARMKIT_DISABLE_CONTAINER_SANDBOX` always wins. See [the adapter guide](docs/guides/authoring-harness-adapters.md).
 
+### Pipelines & delivery orchestration (shipped)
+
+Compose bounded swarm runs into a long-running **delivery pipeline**, authored as data. A **StageGraph** (`kind: StageGraph`) wires stages by the events that enter and leave them; a **controller** sequences it as a durable **saga** — deduping events, recovering dropped ones by reconciliation, serialising contended work, and unwinding cancellations with per-stage compensation. Sequencing is a **pluggable seam**: a zero-infra reference controller, or a data-driven **Temporal** adapter (one workflow interprets any StageGraph — the graph stays data; `temporalio` never enters the core runtime).
+
+Governance rides along as data, not prompts:
+
+- **Funnels** (`kind: Funnel`) — reusable multi-layer gates (validate → judge → review → approve) with exactly one exit: a human approval the compiler enforces.
+- **Multi-party approval** — quorum, distinct-approver floors, and author exclusion, with approvers resolved through a **role registry** (`kind: RoleRegistry` + `ApprovalPolicy`); approval scopes are structurally un-grantable to agents.
+- **Integration contracts** (`kind: Contract`) — turn a stage's `locks:` into a checked vocabulary, so two requirements touching the same interface can't proceed concurrently.
+- **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` resolved across every artifact, so a reusable library runs out-of-the-box yet stays configurable.
+
+See it end to end in the **[SDLC pipeline walkthrough](https://delivstat.github.io/swarmkit/sdlc-example/)** — a video tour of the whole thing running in the composer.
+
 ## Complete feature list
 
 ### Topology & Agent Orchestration
@@ -385,6 +400,15 @@ Run a coding harness (Claude Code, opencode, and any subprocess that emits line-
 75. **Opt-in container sandbox** — resource limits + enforced egress (`deny`/`allowlist`); off by default, disable switch always wins
 76. **No-local-install `build`** — provision the harness into a cached image; bring only your API key
 
+### Pipelines & orchestration
+77. **StageGraph pipelines** — a whole delivery pipeline as one data file (`kind: StageGraph`): stages wired by `when`/`success`, `locks`, `gate`, `compensation`, `loops`
+78. **Saga controller** — durable per-requirement sequencing: event dedup, reconciliation of dropped events, contended-lock parking, reverse-order compensation on cancel
+79. **Pluggable orchestration seam** — a reference in-memory controller (zero-infra) or a data-driven Temporal adapter; `temporalio` stays out of the core runtime
+80. **Funnels** — reusable multi-layer quality gates (`kind: Funnel`: validate → judge → review → approve) with a single, compiler-enforced human exit
+81. **Multi-party approval** — quorum / `min_distinct_approvers` / `exclude_author`, roles resolved via `kind: RoleRegistry`; approval scopes un-grantable to agents
+82. **Integration contracts** — `kind: Contract` makes stage `locks` a checked, pickable vocabulary; the contention overlay is exact
+83. **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` across every artifact YAML, with or without an env file
+
 ## Reference topologies
 
 Ships with production-quality topologies you can use immediately:
@@ -449,7 +473,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. M0-M9 complete, M10 serve + canary shipped. Next: eject + launch prep.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. Runtime is at v1.98.0: M0–M9 complete; serve + canary, harness executors, and the delivery-pipeline stack (StageGraph + saga controller, funnels, contracts, multi-party approval) all shipped. Next: `swarmkit eject` + launch prep. The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 
