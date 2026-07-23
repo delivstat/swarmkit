@@ -158,6 +158,9 @@ pre.code code { font-size: 13px; line-height: 1.6; color: var(--ink); white-spac
 .run { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 13px 15px; }
 .run .t { font-family: var(--mono); font-size: 12.5px; color: var(--accent); font-weight: 640; }
 .run .d { font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
+a.run.dl { display: block; transition: border-color .15s ease, transform .15s ease; }
+a.run.dl:hover { text-decoration: none; border-color: var(--accent); transform: translateY(-1px); }
+a.run.dl:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 footer { padding: 44px 0 72px; }
 footer .fine { font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint); margin-top: 20px; }
