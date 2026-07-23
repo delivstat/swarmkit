@@ -36,8 +36,11 @@ import {
 } from "@/lib/stage-graph-validate";
 import {
 	Background,
+	BaseEdge,
 	Controls,
 	type Edge,
+	EdgeLabelRenderer,
+	type EdgeProps,
 	Handle,
 	MarkerType,
 	MiniMap,
@@ -46,6 +49,8 @@ import {
 	Position,
 	ReactFlow,
 	type ReactFlowProps,
+	getBezierPath,
+	getSmoothStepPath,
 	useEdgesState,
 	useNodesState,
 } from "@xyflow/react";
@@ -60,7 +65,7 @@ import {
 	Webhook,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 /** dataTransfer MIME the stage palette and the canvas drop handler share (topology → a new stage). */
 export const STAGE_PALETTE_MIME = "application/swarmkit-stage";
@@ -235,6 +240,70 @@ function ExternalPin({ data }: NodeProps<ExternalFlowNode>) {
 
 const NODE_TYPES = { stage: StageCard, external: ExternalPin };
 
+// The id of the edge currently hovered — provided around ReactFlow so a custom edge can show its
+// delete affordance without the whole graph re-projecting on hover.
+const HoveredEdgeContext = createContext<string | null>(null);
+
+interface DeletableEdgeData {
+	kind: string; // "forward" | "loop" (the projection's edge kind)
+	editable?: boolean;
+	onDelete?: () => void;
+}
+
+/** A signal/loop edge that shows a × at its midpoint on hover (or when selected) in edit mode,
+ * wired to the same deleteSignalEdge / deleteLoop mutations as the Delete key. */
+function DeletableEdge(props: EdgeProps) {
+	const d = props.data as DeletableEdgeData | undefined;
+	const geom = {
+		sourceX: props.sourceX,
+		sourceY: props.sourceY,
+		sourcePosition: props.sourcePosition,
+		targetX: props.targetX,
+		targetY: props.targetY,
+		targetPosition: props.targetPosition,
+	};
+	const [path, labelX, labelY] =
+		d?.kind === "loop" ? getSmoothStepPath(geom) : getBezierPath(geom);
+	const hovered = useContext(HoveredEdgeContext) === props.id;
+	const show = d?.editable && d?.onDelete && (hovered || props.selected);
+	return (
+		<>
+			<BaseEdge
+				id={props.id}
+				path={path}
+				style={props.style}
+				markerEnd={props.markerEnd}
+				label={props.label}
+				labelX={labelX}
+				labelY={labelY}
+				labelStyle={props.labelStyle}
+			/>
+			{show ? (
+				<EdgeLabelRenderer>
+					<button
+						type="button"
+						className="nodrag nopan absolute flex size-4 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm transition-colors hover:border-destructive hover:text-destructive"
+						style={{
+							transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+							pointerEvents: "all",
+						}}
+						aria-label="delete connection"
+						title="Delete this connection"
+						onClick={(e) => {
+							e.stopPropagation();
+							d?.onDelete?.();
+						}}
+					>
+						<X size={9} />
+					</button>
+				</EdgeLabelRenderer>
+			) : null}
+		</>
+	);
+}
+
+const EDGE_TYPES = { deletable: DeletableEdge };
+
 const EDGE_STYLE = {
 	forward: { stroke: "var(--muted-foreground)", dash: undefined },
 	loop: { stroke: "var(--warning)", dash: "5 4" },
@@ -389,10 +458,17 @@ export function StageGraphEditor({
 				target: e.target,
 				...handles,
 				label: e.label,
-				type: e.kind === "loop" ? "smoothstep" : "default",
+				type: "deletable",
 				animated: e.kind === "loop",
 				deletable: editable,
-				data: { kind: e.kind, when: e.label },
+				data: {
+					kind: e.kind,
+					editable,
+					onDelete:
+						e.kind === "loop"
+							? () => onDeleteLoop?.(e.target, e.label)
+							: () => onDeleteSignal?.(e.source, e.target),
+				},
 				labelStyle: { fill: s.stroke, fontSize: 10 },
 				style: { stroke: s.stroke, strokeDasharray: s.dash },
 				markerEnd: { type: MarkerType.ArrowClosed, color: s.stroke },
@@ -411,10 +487,13 @@ export function StageGraphEditor({
 		editable,
 		contractParties,
 		onRemoveStage,
+		onDeleteSignal,
+		onDeleteLoop,
 	]);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState<Node>(flow.nodes);
 	const [edges, setEdges, onEdgesChange] = useEdgesState(flow.edges);
+	const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
 	useEffect(() => {
 		setNodes(flow.nodes);
 		setEdges(flow.edges);
@@ -453,14 +532,10 @@ export function StageGraphEditor({
 	};
 
 	const handleEdgesDelete: ReactFlowProps["onEdgesDelete"] = (deleted) => {
+		// Both delete paths (the Delete key here + the hover × on the edge) go through the same
+		// onDelete closure carried on the edge's data.
 		for (const e of deleted) {
-			const kind = (e.data as { kind?: string } | undefined)?.kind;
-			if (kind === "loop") {
-				const when = (e.data as { when?: string }).when;
-				if (when) onDeleteLoop?.(e.target, when);
-			} else if (kind === "forward") {
-				onDeleteSignal?.(e.source, e.target);
-			}
+			(e.data as DeletableEdgeData | undefined)?.onDelete?.();
 		}
 	};
 
@@ -496,27 +571,34 @@ export function StageGraphEditor({
 					</span>
 				</div>
 			) : (
-				<ReactFlow
-					nodes={nodes}
-					edges={edges}
-					onNodesChange={onNodesChange}
-					onEdgesChange={onEdgesChange}
-					nodeTypes={NODE_TYPES}
-					onNodeClick={onNodeClick}
-					onConnect={editable ? handleConnect : undefined}
-					onNodesDelete={editable ? handleNodesDelete : undefined}
-					onEdgesDelete={editable ? handleEdgesDelete : undefined}
-					fitView
-					nodesDraggable={false}
-					nodesConnectable={editable}
-					edgesFocusable={editable}
-					deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
-					proOptions={{ hideAttribution: true }}
-				>
-					<Background />
-					<Controls showInteractive={false} />
-					<MiniMap pannable zoomable />
-				</ReactFlow>
+				<HoveredEdgeContext.Provider value={hoveredEdge}>
+					<ReactFlow
+						nodes={nodes}
+						edges={edges}
+						onNodesChange={onNodesChange}
+						onEdgesChange={onEdgesChange}
+						nodeTypes={NODE_TYPES}
+						edgeTypes={EDGE_TYPES}
+						onNodeClick={onNodeClick}
+						onConnect={editable ? handleConnect : undefined}
+						onNodesDelete={editable ? handleNodesDelete : undefined}
+						onEdgesDelete={editable ? handleEdgesDelete : undefined}
+						onEdgeMouseEnter={
+							editable ? (_e, edge) => setHoveredEdge(edge.id) : undefined
+						}
+						onEdgeMouseLeave={editable ? () => setHoveredEdge(null) : undefined}
+						fitView
+						nodesDraggable={false}
+						nodesConnectable={editable}
+						edgesFocusable={editable}
+						deleteKeyCode={editable ? ["Backspace", "Delete"] : null}
+						proOptions={{ hideAttribution: true }}
+					>
+						<Background />
+						<Controls showInteractive={false} />
+						<MiniMap pannable zoomable />
+					</ReactFlow>
+				</HoveredEdgeContext.Provider>
 			)}
 			{!empty && (
 				<div className="pointer-events-none absolute bottom-3 left-3 flex flex-col gap-1 rounded-md border bg-card/90 px-2 py-1.5 text-[10px] text-muted-foreground shadow-sm">
