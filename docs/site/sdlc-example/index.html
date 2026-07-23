@@ -19,6 +19,7 @@
       <a href="#funnels">funnels</a>
       <a href="#pipelines">pipelines</a>
       <a href="#contracts">contracts</a>
+      <a href="#see-it-run">see it run</a>
       <a href="#run">run it</a>
     </nav>
     <span class="util">
@@ -282,10 +283,46 @@
   </div>
 </section>
 
+<!-- SEE IT RUN -->
+<section id="see-it-run">
+  <div class="wrap">
+    <div class="chapter"><span class="n">07</span> See it run <span class="rule"></span></div>
+    <h2>The flow, actually running</h2>
+    <p class="achieves">Achieves: the determination-only shape in motion — a real requirement sequenced by a coordinator, delegated to a worker that produces real design artifacts, ending in a governed approval request.</p>
+    <p>Everything above is the <em>authoring</em> surface. This is a <strong>real run</strong> — <code>swarmkit run oms-stage-run</code> against live models (<code>openrouter/gpt-4o-mini</code>), not a mock. Watch how the flow happens: the <strong>coordinator</strong> reads the requirement, builds a scope and a 3-task plan, and <strong>delegates two design tasks to the <span style="color:var(--lock)">designer</span> worker in parallel</strong>. Each produces a genuine ~4&nbsp;KB solution design; the coordinator then reads both results and fires a <code>multi-party-approval-request</code>. Agents produce artifacts and verdicts — <strong>code sequences the work</strong>.</p>
+
+    <div class="player">
+      <video controls preload="none" playsinline poster="assets/img/flow-run-poster.png">
+        <source src="assets/videos/flow-run.mp4" type="video/mp4">
+        <a href="assets/videos/flow-run.mp4">Download the clip</a>.
+      </video>
+    </div>
+    <p class="vcap">A faithful replay of a real run — plan → delegate → design ×2 → synthesize → approval, in ~14 s of agent time.</p>
+
+    <p>The artifacts are real too. A single-agent stage (<code>swarmkit run oms-intake</code>) has the business-analyst call its <code>impact-analysis</code> skill and return a structured analysis — here, verbatim:</p>
+    <div class="term">
+      <div class="barx"><i></i><i></i><i></i><span class="cmd">swarmkit run … oms-intake --input "OMS-101: …"</span></div>
+      <pre><span class="c">[intake]</span> thinking… <span class="d">(gpt-4o-mini)</span>
+<span class="c">[intake]</span> calling <span class="v">impact-analysis</span> → got results <span class="d">(403B)</span>
+<span class="g">[intake] done (6.9s)</span>
+
+<span class="w">### Affected Applications</span>
+- <span class="w">Order Management System (OMS)</span> — new APIs for order submission + status.
+- <span class="w">Web Storefront</span> — integrates with those APIs to submit and poll.
+
+<span class="w">### Open Questions</span>
+1. Which applications are in scope for impact?
+2. Are there architectural constraints on the new endpoints?</pre>
+    </div>
+    <div class="note"><span class="lbl">The point</span>
+      This is the <b>agent-determination-only</b> shape: within a bounded run an agent thinks, calls a skill, and returns an artifact — and <b>deterministic code</b> (here the coordinator's plan; in production, the pipeline controller) sequences those runs. Governance rides along as skills, not as prompts.</div>
+  </div>
+</section>
+
 <!-- RUN -->
 <section id="run">
   <div class="wrap">
-    <div class="chapter"><span class="n">07</span> Run it <span class="rule"></span></div>
+    <div class="chapter"><span class="n">08</span> Run it <span class="rule"></span></div>
     <h2>Try it yourself</h2>
     <p>Everything above is in the repo, and the demos are self-contained — they use fakes for the model and harness seams, so none of them need an API key or a running server.</p>
     <div class="term">
