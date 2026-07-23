@@ -78,6 +78,24 @@ header.site nav a {
 }
 header.site nav a:hover { color: var(--ink); background: var(--surface-2); text-decoration: none; }
 header.site .util { display: flex; gap: 6px; align-items: center; }
+
+/* Mobile: the section links don't fit beside the brand + controls, so drop them to a
+   full-width, horizontally scrollable second row below the top bar. */
+@media (max-width: 720px) {
+  header.site .bar { flex-wrap: wrap; height: auto; padding-top: 8px; padding-bottom: 6px; column-gap: 12px; row-gap: 6px; }
+  header.site .brand { order: 1; }
+  header.site .util { order: 2; margin-left: auto; }
+  header.site nav {
+    order: 3; flex-basis: 100%; width: 100%; margin-left: 0;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    border-top: 1px solid var(--line); padding-top: 6px;
+    scrollbar-width: none;   /* hide the scrollbar; the row still scrolls by swipe */
+  }
+  header.site nav::-webkit-scrollbar { display: none; }
+  header.site nav a { padding: 7px 11px; }   /* larger touch targets */
+  html { scroll-padding-top: 104px; }         /* clear the taller two-row header on anchor jumps */
+}
+
 button.theme {
   font: 600 12px/1 var(--mono); color: var(--ink-soft); background: var(--surface-2); border: 1px solid var(--line);
   border-radius: 8px; padding: 7px 10px; cursor: pointer;
