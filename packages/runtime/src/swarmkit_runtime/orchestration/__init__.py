@@ -51,7 +51,17 @@ class StageOutcome:
 RunStage = Callable[[str, dict[str, Any]], Awaitable[StageOutcome]]
 
 
+# The ingress signal sink: deliver one structured pipeline event to whatever is sequencing the saga
+# (the reference controller, Temporal — behind the ``OrchestrationProvider`` seam). Both arguments
+# are opaque strings — ``(correlation_id, event)`` — so the runtime carries no business vocabulary
+# and no sequencing state. Dedup, start/resume/skip routing, and ordering are the orchestrator's
+# job; the runtime only authorizes, audits, and hands off. Injected by the deployment
+# (``app.state.pipeline_signal``), exactly like :data:`RunStage` — never a business type.
+PipelineSignal = Callable[[str, str], Awaitable[None]]
+
+
 __all__ = [
+    "PipelineSignal",
     "RunStage",
     "StageOutcome",
     "StageStatus",
