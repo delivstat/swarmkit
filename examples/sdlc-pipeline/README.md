@@ -2,8 +2,10 @@
 
 The SDLC pipeline example (design/details/sdlc-pipeline-example.md). Slice 2 shipped the reusable
 **archetype + skill library**; slice 4 adds the **one-app (OMS) bounded stage run** — a workspace,
-a role registry, a design funnel, and the intake→design topology. The multi-app synthesis,
-stage-graph controller, harness build, and KBs come in later slices.
+a role registry, a design funnel, and the intake→design topology; slice 5 adds the **controller +
+stage-graph**; slice 6 adds the **consolidated design across all three apps** (synthesis) with the
+**architect-reviewer harness review** as layer 3 of the design funnel. The harness build and KBs
+come in later slices.
 
 ## Archetypes (`workspace/archetypes/`)
 
@@ -67,6 +69,40 @@ cannot reach a Web resource.
 
 ```
 just demo-sdlc      # intake → design → judge → approval, a bounded retry, and an IAM-scope denial
+```
+
+## The consolidated design (slice 6)
+
+The multi-app design stage: three per-app **solution architects** draft first-pass designs in
+parallel, each **IAM-scoped to its own app** (`app:oms:read` / `app:web:read` / `app:mobile:read`,
+so the teams stay walled), and the cross-cutting **integration architect** synthesises them into
+**one consolidated design** (the `consolidated-design-synthesis` skill) that parks on the
+four-layer `consolidated-design-approval` funnel:
+
+- `topologies/consolidated-design.yaml` — `coordinator → {oms,web,mobile}-designer
+  (solution-architect) → integration-designer (integration-architect, `funnel:
+  consolidated-design-approval`)`. The integration architect reads across all three apps but
+  writes only the shared design artifact.
+- `funnels/consolidated-design-approval.yaml` — `validate` → `judge` (`artifact-judge`) →
+  **`review`** (the `architect-reviewer` **harness**, read-only, layer 3 investigative review)
+  → multi-party `approve` (oms-lead + web-lead + mobile-lead + infosec-lead). A harness finding at
+  or above `route_back_at: high` routes back to a revision before any human is paged; lower
+  findings attach and travel to the approvers.
+- `roles/sdlc-roles.yaml` — now completes the app-lead set with **`mobile-lead`** (carol), so all
+  four required parties resolve to distinct human identities.
+
+The `architect-reviewer` is layer 3 of the gate funnel (design/details/gate-funnel.md,
+harness-reviewer.md): unlike the text-only judge, the harness *investigates* — it opens the repo +
+KBs and cross-checks the consolidated design against the actual code and integration contracts.
+
+> Note: the integration designer runs *after* the three app drafts by children order + the
+> StageRunner/demo sequencing, not a `depends_on` field — that child-agent key is declared in the
+> topology schema but currently rejected by the base agent's `additionalProperties: false` (a
+> JSON Schema `allOf` gotcha; a schema fix is out of scope for this example-only slice).
+
+```
+just demo-consolidated-design   # 3 app designs → consolidation → 4-layer funnel (incl. harness
+                                # review) → 4-party approval, plus a route-back on a HIGH finding
 ```
 
 ## The pipeline controller (slice 5)

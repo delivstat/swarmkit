@@ -553,7 +553,7 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 
 ## Build order (a program, not one feature)
 
-**Status:** slices 1–5 shipped. 1 multi-party approval (v1.97.0), 2 reusable
+**Status:** slices 1–6 shipped. 1 multi-party approval (v1.97.0), 2 reusable
 archetype/skill library (#604), 3 the gate funnel as a first-class `kind: Funnel`
 artifact (#608), 5 the `controller` + `kind: StageGraph` artifact — pipeline-as-data
 discovered + ref-checked into the workspace, and a reference saga controller
@@ -563,8 +563,19 @@ locking, cancellation + compensation). 4 the one-app (OMS) bounded stage run —
 in-node gate embedding + role-registry resolution, with the OMS example
 (`examples/sdlc-pipeline/`, `just demo-sdlc`) proving IAM scoping + the gate funnel +
 the agent-determination-only shape. The bounded stage runner is the deliberate
-precursor to slice 5's data-driven controller. Next: slice 5 (controller + stage-graph
-schema). Note: slice 4 also closed a design-vs-runtime gap it surfaced — the executor
+precursor to slice 5's data-driven controller. 6 the consolidated design across all three
+apps — the `consolidated-design` topology (three per-app solution architects, each
+IAM-scoped to its own app, feeding the integration-architect synthesizer), the
+`architect-reviewer` **harness** as layer-3 investigative review inside the four-layer
+`consolidated-design-approval` funnel (validate → judge → review → multi-party approve),
+and the completed app-lead set (`mobile-lead` added), demoed by
+`just demo-consolidated-design` (3 app drafts → consolidation → 4-layer funnel with the
+harness review + a HIGH-severity route-back → 4-party approval). Slice 6 also surfaced a
+schema gap it did not fix (example-only): the child-agent `depends_on` field is declared in
+the topology schema but rejected by the base agent's `additionalProperties: false` (a JSON
+Schema `allOf` gotcha) — the stage ordering is carried by children order + sequencing until a
+schema fix lands. Next: slice 7 (harness build + code-review gate). Note: slice 4 also closed a
+design-vs-runtime gap it surfaced — the executor
 registry now resolves the canonical `kind: harness` + `ref: <adapter-id>` shape (design
 executor-abstraction.md §4.2/§5), selecting the adapter by `ref`; naming an adapter id
 directly as the kind still works (legacy). The three harness archetypes use `kind:
