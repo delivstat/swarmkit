@@ -66,13 +66,13 @@ def _agent(
 
 
 def _seed_gate(
-    queue: FileReviewQueue, requirement_id: str, agent_id: str, *outcomes: tuple[str, str, str]
+    queue: FileReviewQueue, correlation_id: str, agent_id: str, *outcomes: tuple[str, str, str]
 ) -> None:
-    gate = f"{requirement_id}:{agent_id}"
+    gate = f"{correlation_id}:{agent_id}"
     open_gate(
         queue,
         gate_id=gate,
-        topology_id=requirement_id,
+        topology_id=correlation_id,
         agent_id=agent_id,
         policy=ApprovalPolicy.from_dict(_FUNNEL_DOC["approve"]),
     )
@@ -117,7 +117,7 @@ async def test_gated_stage_run_completes_on_approval() -> None:
         )
         result = await runner.run(
             [_agent("intake"), _agent("designer", funnel=_funnel())],
-            requirement_id="req-1",
+            correlation_id="req-1",
             initial_input="BRD-42",
         )
     assert result.status == "completed"
@@ -144,7 +144,7 @@ async def test_gated_stage_rejected_stops_the_run() -> None:
             max_wait_seconds=1,
         )
         result = await runner.run(
-            [_agent("designer", funnel=_funnel())], requirement_id="req-2", initial_input="BRD"
+            [_agent("designer", funnel=_funnel())], correlation_id="req-2", initial_input="BRD"
         )
     assert result.status == "rejected"
     assert result.stages[-1].outcome == "rejected"
@@ -167,7 +167,7 @@ async def test_iam_scope_denies_cross_app_stage() -> None:
         role_registry=REGISTRY,
         agent_runner=_scripted_runner,
     )
-    result = await runner.run([oms_agent], requirement_id="req-3", initial_input="BRD")
+    result = await runner.run([oms_agent], correlation_id="req-3", initial_input="BRD")
     assert result.status == "denied"
     assert result.stages[-1].outcome == "denied"
 

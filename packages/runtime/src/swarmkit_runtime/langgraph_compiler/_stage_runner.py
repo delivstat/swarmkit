@@ -1,4 +1,4 @@
-"""StageRunner — a bounded, deterministic stage sequence for one requirement.
+"""StageRunner — a bounded, deterministic stage sequence for one pipeline instance.
 
 The agent-determination-only shape (design/details/sdlc-pipeline-example.md, and
 `feedback_llm_language_code_doing`): **deterministic code sequences the stages**;
@@ -9,7 +9,7 @@ approve, retry re-runs the agent) and blocks the sequence until the human signs 
 IAM scoping is enforced per stage through the ``GovernanceProvider``: an agent may only
 exercise the scopes it holds, so an OMS agent is denied a Web-app resource by
 construction. Every stage transition is recorded on the append-only audit log,
-correlated by ``requirement_id``.
+correlated by ``correlation_id``.
 
 This is the bounded precursor to the slice-5 controller (data-driven stage-graph); the
 controller generalises this sequencing, it does not replace the gate mechanics here.
@@ -43,7 +43,7 @@ class StageResult:
 
 @dataclass(frozen=True)
 class StageRunResult:
-    requirement_id: str
+    correlation_id: str
     status: str  # "completed" | "rejected" | "denied"
     stages: list[StageResult] = field(default_factory=list)
     detail: str = ""
@@ -54,7 +54,7 @@ class StageRunResult:
 
 
 class StageRunner:
-    """Sequences a bounded stage chain for one requirement (see module docstring)."""
+    """Sequences a bounded stage chain for one pipeline instance (see module docstring)."""
 
     def __init__(
         self,
@@ -75,18 +75,18 @@ class StageRunner:
         self,
         stages: Sequence[ResolvedAgent],
         *,
-        requirement_id: str,
+        correlation_id: str,
         initial_input: str = "",
     ) -> StageRunResult:
         results: list[StageResult] = []
         prior = initial_input
 
         for agent in stages:
-            denial = await self._check_scope(agent, requirement_id)
+            denial = await self._check_scope(agent, correlation_id)
             if denial is not None:
                 results.append(denial)
                 return StageRunResult(
-                    requirement_id=requirement_id,
+                    correlation_id=correlation_id,
                     status="denied",
                     stages=results,
                     detail=f"stage {agent.id!r} denied by IAM scope",
@@ -100,10 +100,10 @@ class StageRunner:
                 return await self._run_agent(_agent, _prior, critique)
 
             if agent.funnel is not None:
-                stage_result = await self._run_gated_stage(agent, produce, requirement_id)
+                stage_result = await self._run_gated_stage(agent, produce, correlation_id)
             else:
                 artifact = await produce(None)
-                await self._record(agent.id, requirement_id, "stage.produced", {"gated": False})
+                await self._record(agent.id, correlation_id, "stage.produced", {"gated": False})
                 stage_result = StageResult(
                     agent_id=agent.id, artifact=artifact, gated=False, outcome="produced"
                 )
@@ -111,20 +111,20 @@ class StageRunner:
             results.append(stage_result)
             if stage_result.outcome == "rejected":
                 return StageRunResult(
-                    requirement_id=requirement_id,
+                    correlation_id=correlation_id,
                     status="rejected",
                     stages=results,
                     detail=f"stage {agent.id!r} rejected at its funnel gate",
                 )
             prior = stage_result.artifact
 
-        return StageRunResult(requirement_id=requirement_id, status="completed", stages=results)
+        return StageRunResult(correlation_id=correlation_id, status="completed", stages=results)
 
     async def _run_gated_stage(
         self,
         agent: ResolvedAgent,
         produce: Callable[[str | None], Awaitable[str]],
-        requirement_id: str,
+        correlation_id: str,
     ) -> StageResult:
         assert agent.funnel is not None
         state = await run_agent_funnel_gate(
@@ -133,15 +133,15 @@ class StageRunner:
             governance=self._gov,
             review_queue=self._queue,
             role_registry=self._roles,
-            topology_id=requirement_id,
+            topology_id=correlation_id,
             agent_id=agent.id,
-            gate_id=f"{requirement_id}:{agent.id}",
+            gate_id=f"{correlation_id}:{agent.id}",
             **self._resolve_kwargs,
         )
         provenance = state.get("provenance", {})
         await self._record(
             agent.id,
-            requirement_id,
+            correlation_id,
             "stage.gated",
             {"outcome": state.get("outcome"), "retries": provenance.get("retries", 0)},
         )
@@ -153,7 +153,7 @@ class StageRunner:
             provenance=provenance,
         )
 
-    async def _check_scope(self, agent: ResolvedAgent, requirement_id: str) -> StageResult | None:
+    async def _check_scope(self, agent: ResolvedAgent, correlation_id: str) -> StageResult | None:
         """Deny a stage whose agent lacks the scopes its work requires (IAM scoping).
 
         The agent's ``iam.base_scope`` is what it holds; ``iam.elevated_scopes`` (if any)
@@ -174,7 +174,7 @@ class StageRunner:
         if decision.allowed:
             return None
         await self._record(
-            agent.id, requirement_id, "stage.denied", {"missing_scopes": sorted(missing)}
+            agent.id, correlation_id, "stage.denied", {"missing_scopes": sorted(missing)}
         )
         return StageResult(
             agent_id=agent.id,
@@ -184,15 +184,15 @@ class StageRunner:
         )
 
     async def _record(
-        self, agent_id: str, requirement_id: str, event_type: str, payload: dict[str, Any]
+        self, agent_id: str, correlation_id: str, event_type: str, payload: dict[str, Any]
     ) -> None:
         await self._gov.record_event(
             AuditEvent(
                 event_type=event_type,
                 agent_id=agent_id,
                 timestamp=datetime.now(tz=UTC),
-                run_id=requirement_id,
-                payload={"requirement_id": requirement_id, **payload},
+                run_id=correlation_id,
+                payload={"correlation_id": correlation_id, **payload},
             )
         )
 

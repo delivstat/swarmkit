@@ -452,7 +452,7 @@ async def test_real_stage_runner_wired_as_the_seam() -> None:
         async def run_stage(request: StageRunRequest) -> StageRunOutcome:
             seen_ids.append(request.requirement_id)
             result = await runner.run(
-                stages, requirement_id=request.requirement_id, initial_input="BRD"
+                stages, correlation_id=request.requirement_id, initial_input="BRD"
             )
             return StageRunOutcome(status=result.status)
 
