@@ -1,0 +1,13 @@
+# A pipeline_target must carry `emit` (the event to signal). Missing it, the
+# item matches neither branch of the targets union and must be rejected.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: broken-pipeline-target
+  name: Broken Pipeline Target
+type: webhook
+targets:
+  - pipeline: sdlc-pipeline
+    correlation_id: "$.body.correlation_id"
+config:
+  path: /webhooks/ci/build-ready

@@ -2,7 +2,7 @@
 title: Pipeline triggering & ingress
 description: How real-world events start and advance a pipeline — structured webhooks, an MCP tool, and NL/chat interpreted into a structured event — all delivered to the orchestrator's signal seam, with a governance guardrail for who may start or skip a stage.
 tags: [pipeline, triggers, mcp, ingress, governance]
-status: proposed
+status: partially-implemented
 ---
 
 # Pipeline triggering & ingress
@@ -12,7 +12,18 @@ an orchestrator sequences on.
 **Design references:** [`orchestration-provider-seam.md`](orchestration-provider-seam.md) (the
 `signal()` seam this feeds), [`pipeline-controller.md`](pipeline-controller.md) (event model),
 [`trigger` schema](../../packages/schema/schemas/trigger.schema.json) (the mechanism to reuse).
-**Status:** proposed.
+**Status:** partially-implemented.
+
+## Implementation status
+
+- **Trigger pipeline-event target — shipped (schema).** A `Trigger`'s `targets` items are now a union:
+  each item is either a topology id (fires that topology, unchanged) or a **pipeline-event target**
+  `{ pipeline, emit, correlation_id? }` that signals a StageGraph — the "Structured webhook" path
+  above. Landed in `packages/schema/schemas/trigger.schema.json` (schema 1.18.0 / TS 0.8.0), with valid
+  + invalid fixtures. Domain-neutral: the extraction key is `correlation_id` (an opaque handle), **not**
+  a business-specific id — the illustrative `requirement_id` in the YAML below predates that decision.
+- **Not yet:** the receiver that validates the signature, extracts `correlation_id`, dedups, and calls
+  `signal()`; the MCP tool; the interpreter path; and the governance guardrail remain proposed.
 
 ## Why
 

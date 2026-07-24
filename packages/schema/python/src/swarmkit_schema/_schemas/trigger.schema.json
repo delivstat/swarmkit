@@ -21,8 +21,11 @@
     "targets": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/identifier" },
-      "description": "Topology IDs this trigger fires. Fired in parallel."
+      "items": { "oneOf": [
+        { "$ref": "#/$defs/identifier" },
+        { "$ref": "#/$defs/pipeline_target" }
+      ] },
+      "description": "What this trigger fires, in parallel. Each item is either a topology id (fires that topology) or a pipeline-event target (signals a StageGraph)."
     },
     "provider_id": {
       "$ref": "#/$defs/identifier",
@@ -62,6 +65,16 @@
     "identifier": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "pipeline_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pipeline", "emit"],
+      "properties": {
+        "pipeline": { "$ref": "#/$defs/identifier", "description": "The StageGraph id to signal." },
+        "emit": { "type": "string", "minLength": 1, "description": "The pipeline event to signal (matched against stages' `when`), e.g. build.ready-in-qa." },
+        "correlation_id": { "type": "string", "minLength": 1, "description": "How to derive the opaque correlation id from the incoming payload (e.g. a JSONPath like $.body.correlation_id). Domain-neutral — the runtime models no business instance." }
+      }
     },
     "metadata": {
       "type": "object",

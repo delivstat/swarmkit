@@ -1,0 +1,24 @@
+# Webhook whose target is a pipeline event, not a topology.
+# Instead of firing a topology, this signals a StageGraph: on a signed CI
+# payload the receiver derives the correlation id from the body and emits
+# `build.ready-in-qa` into the `sdlc-pipeline` orchestrator. Domain-neutral —
+# `correlation_id` is an opaque handle, not a business instance id.
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: ci-build-ready
+  name: CI Build Ready
+  description: |
+    Signals the SDLC pipeline that a build has landed in QA. HMAC-validated
+    via the standard header; the correlation id is extracted from the payload.
+type: webhook
+targets:
+  - pipeline: sdlc-pipeline
+    emit: build.ready-in-qa
+    correlation_id: "$.body.correlation_id"
+config:
+  path: /webhooks/ci/build-ready
+  auth:
+    method: hmac
+    credentials_ref: ci_webhook_secret
+    header: X-Hub-Signature-256
