@@ -10,6 +10,9 @@ roles:
   - id: web-lead
     members: [bob]
     scopes: [design:approve]
+  - id: mobile-lead
+    members: [carol]
+    scopes: [design:approve]
   - id: infosec-lead
     members: [dana]
     scopes: [security:approve]

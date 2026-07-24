@@ -18,7 +18,16 @@ BASE = pathlib.Path(__file__).parent / "workspace"
 
 def main() -> int:
     ok = bad = 0
-    for kind, sub in (("archetype", "archetypes"), ("skill", "skills")):
+    for kind, sub in (
+        ("archetype", "archetypes"),
+        ("skill", "skills"),
+        ("topology", "topologies"),
+        ("funnel", "funnels"),
+        ("contract", "contracts"),
+        ("role-registry", "roles"),
+        ("trigger", "triggers"),
+        ("stage-graph", "pipelines"),
+    ):
         for f in sorted((BASE / sub).glob("*.yaml")):
             try:
                 validate(kind, yaml.safe_load(f.read_text(encoding="utf-8")))

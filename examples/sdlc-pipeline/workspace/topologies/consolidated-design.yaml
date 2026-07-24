@@ -1,0 +1,48 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: consolidated-design
+  version: 0.1.0
+# Multi-app design stage (slice 6): a coordinator fans out three per-app solution architects
+# (OMS / Web / Mobile, each IAM-scoped to its own app so the teams stay walled) whose first-draft
+# designs feed an integration-architect that synthesises ONE consolidated design (via the
+# consolidated-design-synthesis skill) and parks on the four-layer consolidated-design-approval
+# funnel: validate -> judge -> the architect-reviewer harness review (layer 3, investigative) ->
+# multi-party approval by the app leads + infosec-lead. Cross-cutting agents read across all apps
+# but write only the shared design artifact. See design/details/sdlc-pipeline-example.md (slice 6).
+#
+# Ordering (integration-designer consolidates AFTER the three app drafts) is expressed by the
+# children order + the StageRunner/demo sequencing, not a `depends_on` field: the child-agent
+# `depends_on` key is declared in the topology schema but currently rejected by the base agent's
+# `additionalProperties: false` (a JSON Schema allOf gotcha) — a schema fix, out of scope here.
+agents:
+  root:
+    id: coordinator
+    role: root
+    prompt:
+      system: >
+        Sequence the requirement across the three per-app designers, then the integration
+        architect that consolidates them. You determine the stage; deterministic code runs it.
+        Do not perform the design work yourself.
+    children:
+      - id: oms-designer
+        role: worker
+        archetype: solution-architect
+        iam:
+          base_scope: [kb:read, kb:write, app:oms:read]
+      - id: web-designer
+        role: worker
+        archetype: solution-architect
+        iam:
+          base_scope: [kb:read, kb:write, app:web:read]
+      - id: mobile-designer
+        role: worker
+        archetype: solution-architect
+        iam:
+          base_scope: [kb:read, kb:write, app:mobile:read]
+      - id: integration-designer
+        role: worker
+        archetype: integration-architect
+        funnel: consolidated-design-approval
+        iam:
+          base_scope: [kb:read, kb:write, app:oms:read, app:web:read, app:mobile:read]

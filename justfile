@@ -108,6 +108,13 @@ demo-gate-funnel:
 demo-sdlc:
     uv run python examples/sdlc-pipeline/demo_oms_stage_run.py
 
+# Demo the consolidated design across all three apps (slice 6): three per-app solution architects
+# feed the integration-architect synthesizer, and the four-layer consolidated-design-approval funnel
+# runs — validate -> judge -> the architect-reviewer harness review -> multi-party approval — with a
+# route-back on a HIGH-severity harness finding. Deterministic, faked seams (no keys, no server).
+demo-consolidated-design:
+    uv run python examples/sdlc-pipeline/demo_consolidated_design.py
+
 # Demo the OMS pipeline driven by the Temporal orchestrator (orchestration-provider-seam.md).
 # The orchestrator group (temporalio) is pulled in on demand by `uv run --group orchestrator` —
 # no separate sync, and (this is a virtual uv workspace) no pruning of the workspace members.
