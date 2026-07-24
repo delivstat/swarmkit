@@ -65,6 +65,43 @@ def _check_webhook_signature(
         break
 
 
+def _check_pipeline_webhook_signature(
+    request: Request,
+    raw_body: bytes,
+    trigger_config: dict[str, Any],
+) -> None:
+    """Validate the HMAC signature of a pipeline-event webhook, addressed by *trigger_config*.
+
+    The pipeline webhook path (``POST /hooks/{trigger_id}``) is resolved by trigger id, not by a
+    topology target, so it cannot reuse the topology-target signature match — but it reuses the
+    same HMAC primitive (``validate_webhook_signature``). Raises HTTPException(401) when the
+    trigger declares ``config.auth`` and the signature is absent or wrong; no-ops when the trigger
+    configures no auth or its secret is not present in the environment (same lenient posture as the
+    topology path, so a mis-set secret ref does not hard-fail startup)."""
+    config = trigger_config.get("config") or {}
+    auth = config.get("auth") or {}
+    secret_ref = auth.get("credentials_ref") or config.get("secret_ref")
+    if not secret_ref:
+        return
+    secret = os.environ.get(secret_ref, "")
+    if not secret:
+        logger.warning(
+            "Pipeline webhook trigger secret_ref=%r not found in environment; "
+            "skipping signature validation for trigger=%r",
+            secret_ref,
+            trigger_config.get("id"),
+        )
+        return
+    header_name = auth.get("header", "X-Hub-Signature-256")
+    sig = request.headers.get(header_name, "")
+    if not validate_webhook_signature(raw_body, sig, secret):
+        logger.warning(
+            "Webhook signature validation failed for pipeline trigger=%r",
+            trigger_config.get("id"),
+        )
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+
 def _required_action(method: str, path: str) -> str | None:  # noqa: PLR0911
     """The serve:* tier action a route requires, or None for auth-exempt.
 

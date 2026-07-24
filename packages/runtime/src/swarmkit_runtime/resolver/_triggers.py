@@ -11,6 +11,7 @@ from collections.abc import Iterable, Mapping
 
 from pydantic import ValidationError as PydanticValidationError
 from swarmkit_schema.models import SwarmKitTrigger
+from swarmkit_schema.models.trigger import Identifier, PipelineTarget
 
 from swarmkit_runtime.errors import ResolutionError
 from swarmkit_runtime.workspace import DiscoveredArtifact
@@ -61,10 +62,18 @@ def build_trigger_registry(
             continue
         seen_ids.add(trigger_id)
 
-        targets_raw = raw.get("targets") or []
+        # A trigger's targets are a union: a topology id (an ``Identifier``, ref-checked against the
+        # topology registry) or a pipeline-event target (a ``PipelineTarget`` that signals a
+        # StageGraph — see design/details/pipeline-triggering.md). Only topology-id targets are
+        # ref-checked here; pipeline targets are carried through for the webhook→pipeline ingress
+        # receiver, which resolves them at fire time (the runtime does not execute a StageGraph).
         validated_targets: list[str] = []
-        for index, target_id in enumerate(targets_raw):
-            target_str = str(target_id)
+        pipeline_targets: list[PipelineTarget] = []
+        for index, target in enumerate(model.targets):
+            if isinstance(target, PipelineTarget):
+                pipeline_targets.append(target)
+                continue
+            target_str = target.root if isinstance(target, Identifier) else str(target)
             validated_targets.append(target_str)
             if target_str not in topologies:
                 errors.append(
@@ -91,6 +100,7 @@ def build_trigger_registry(
                 raw=model,
                 source_path=artifact.path,
                 targets=tuple(validated_targets),
+                pipeline_targets=tuple(pipeline_targets),
             )
         )
 

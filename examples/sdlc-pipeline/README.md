@@ -104,9 +104,12 @@ saga substrate is delegated. Two adapters implement `OrchestrationProvider`:
   data — one workflow runs any pipeline.
 
 ```
-uv sync --group orchestrator     # installs temporalio (kept out of the core deps)
 just demo-pipeline-temporal      # the OMS pipeline on Temporal (in-process test env, no server)
-uv run pytest packages/runtime/tests/test_orchestration_temporal.py -m integration
+# `just` uses `uv run --group orchestrator`, which pulls temporalio in on demand. To run the
+# tests directly, sync the group — but this is a *virtual* uv workspace, so you must keep the
+# workspace members (fastapi, swarmkit_runtime) with `--all-packages`, else the sync prunes them:
+uv sync --all-packages --group orchestrator     # installs temporalio (kept out of the core deps)
+uv run --group orchestrator pytest packages/runtime/tests/test_orchestration_temporal.py -m integration
 ```
 
 The Temporal tests run under the SDK's in-process time-skipping environment — no external server —

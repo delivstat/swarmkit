@@ -8,8 +8,8 @@ StageGraph + governed stage runs, sequenced by Temporal instead of the hand-roll
 Shows: intake -> design (parks on its funnel gate, resolved by a signal) -> build -> sit -> done;
 then a second requirement cancelled mid-flight, unwinding with compensation.
 
-Requires the orchestrator group:  uv sync --group orchestrator
-Run it:                           uv run python examples/sdlc-pipeline/demo_pipeline_temporal.py
+Requires the orchestrator group (temporalio) — pulled in on demand, no separate sync:
+Run it:  uv run --group orchestrator python examples/sdlc-pipeline/demo_pipeline_temporal.py
 """
 
 from __future__ import annotations

@@ -60,7 +60,13 @@ def _parse_canary_routes(workspace: Any) -> list[dict[str, Any]]:
 
 
 def _parse_trigger_configs(workspace: Any) -> list[dict[str, Any]]:
-    """Convert resolved triggers to plain dicts for the scheduler."""
+    """Convert resolved triggers to plain dicts for the scheduler + the webhook receivers.
+
+    ``targets`` carries the topology-id targets (the cron scheduler + the topology webhook path).
+    ``pipeline_targets`` carries the pipeline-event targets — ``{pipeline, emit, correlation_id}``
+    — the webhook→pipeline ingress receiver signals a StageGraph with
+    (design/details/pipeline-triggering.md).
+    """
     configs: list[dict[str, Any]] = []
     triggers = getattr(workspace, "triggers", ()) or ()
     for rt in triggers:
@@ -69,12 +75,16 @@ def _parse_trigger_configs(workspace: Any) -> list[dict[str, Any]]:
         config_dict: dict[str, Any] = {}
         if config_obj is not None:
             config_dict = dict(config_obj.model_dump(exclude_none=True))
+        pipeline_targets = [
+            pt.model_dump(exclude_none=True) for pt in getattr(rt, "pipeline_targets", ()) or ()
+        ]
         configs.append(
             {
                 "id": rt.id,
                 "type": raw.type.value,
                 "enabled": raw.enabled if raw.enabled is not None else True,
                 "targets": list(rt.targets),
+                "pipeline_targets": pipeline_targets,
                 "config": config_dict,
             }
         )

@@ -43,9 +43,20 @@ an orchestrator sequences on.
   workspace MCP server routes through the *same* `_ingress_pipeline_event` guardrail; the MCP caller is
   a transport principal (`mcp`) that holds neither reserved scope, so an agent may `emit` but never
   `advance` / `skip` on its own authority.
-- **Not yet (37c):** the webhook `Trigger`-target *receiver* that validates the signature, extracts
-  `correlation_id` from the payload, and calls the ingress; and the NL/chat interpreter router topology.
-  Both feed the ingress front door that now exists.
+- **Webhook → pipeline receiver — shipped (runtime, 1.103.0).** `POST /hooks/{trigger_id}` now routes
+  to the pipeline ingress when the named `Trigger` targets a `pipeline_target` (resolved by trigger id;
+  a topology-id webhook keeps its existing job-start behaviour, back-compat). The receiver validates the
+  trigger's HMAC signature (`_check_pipeline_webhook_signature`, reusing `validate_webhook_signature`),
+  extracts the opaque `correlation_id` from the JSON body via the target's dotted `$.a.b.c` path
+  (`extract_correlation_id` in `triggers/_pipeline_ingress.py` — a tiny resolver, no external jsonpath
+  dep), and calls the *same* `_ingress_pipeline_event` guardrail with `mode="emit"`, `source=
+  webhook:{trigger_id}`. **Scoped emission is structural:** the receiver only ever emits the trigger's
+  *declared* `emit` event(s); a body that asks for a different `event` or a non-`emit` `mode` is a 403 —
+  a webhook can never advance/skip a stage (those stay reserved human-identity operator acts). The
+  resolver now carries pipeline targets through (`ResolvedTrigger.pipeline_targets`) instead of
+  mis-checking them as topology ids. Demo: `just demo-pipeline-trigger`.
+- **Not yet (later PR):** the NL/chat interpreter router topology (path 3 above) — a chat message parsed
+  into a structured event, then emitted via the ingress front door that now exists end-to-end.
 
 ## Why
 

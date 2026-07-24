@@ -20,8 +20,11 @@ dev = [
     "datamodel-code-generator>=0.26",
 ]
 # Optional: the production pipeline orchestrator (design/details/orchestration-provider-seam.md).
-# Not installed by default (CI syncs `--group dev`); install with `uv sync --group orchestrator`
-# to run the Temporal adapter + its `-m integration` tests. Kept out of the core runtime deps.
+# Not installed by default (CI syncs `--group dev`). Run the Temporal adapter with
+# `uv run --group orchestrator ...` (pulls temporalio in on demand). To sync it into the env for
+# its `-m integration` tests, use `uv sync --all-packages --group orchestrator` — this is a virtual
+# uv workspace, so a bare `--group orchestrator` sync would prune the workspace members. Kept out
+# of the core runtime deps.
 orchestrator = [
     "temporalio>=1.30",
 ]

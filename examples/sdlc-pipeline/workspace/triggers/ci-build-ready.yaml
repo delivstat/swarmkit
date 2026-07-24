@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: ci-build-ready
+  name: CI build-ready webhook
+  description: >
+    A signed CI webhook that signals the oms-pipeline StageGraph that a build is ready in QA.
+    The receiver validates the HMAC signature, extracts the opaque correlation_id from the JSON
+    body, and emits build.ready-in-qa on the pipeline ingress front door — the "structured
+    webhook" path of design/details/pipeline-triggering.md. Domain-neutral: correlation_id is an
+    opaque handle, never a business id.
+type: webhook
+targets:
+  - pipeline: oms-pipeline
+    emit: build.ready-in-qa
+    correlation_id: $.correlation_id
+config:
+  auth:
+    method: hmac
+    credentials_ref: CI_WEBHOOK_SECRET
