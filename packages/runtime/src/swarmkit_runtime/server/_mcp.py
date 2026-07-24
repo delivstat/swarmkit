@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import logging
+import typing
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -21,6 +22,66 @@ logger = logging.getLogger("swarmkit.server")
 # ---- MCP optional import ----------------------------------------------------
 
 _mcp_available = importlib.util.find_spec("mcp") is not None
+
+
+_PIPELINE_MODES = ("emit", "advance", "skip")
+
+
+def _register_pipeline_event_tool(mcp_server: Any, app: FastAPI) -> None:
+    """Register the governed ``submit_pipeline_event`` MCP tool.
+
+    For agents, IDEs, and bots (design/details/pipeline-triggering.md §"MCP tool"): a typed,
+    audited front door onto the pipeline signal seam. It routes through the *same*
+    ``_ingress_pipeline_event`` guardrail the HTTP endpoint uses — authorize → audit → deliver —
+    so ``advance`` / ``skip`` still require the reserved human-identity scope. The MCP caller is a
+    transport/agent principal (``mcp``), which under real governance holds neither reserved scope,
+    so an agent may ``emit`` an authorised event but can never advance or skip on its own authority.
+    """
+    from swarmkit_runtime.orchestration import PipelineSignal  # noqa: PLC0415
+
+    from ._routes_pipelines import (  # noqa: PLC0415
+        PipelineIngressError,
+        PipelineMode,
+        _ingress_pipeline_event,
+    )
+
+    async def submit_pipeline_event(
+        pipeline: str,
+        correlation_id: str,
+        event: str,
+        mode: str = "emit",
+    ) -> str:
+        """Signal a structured pipeline event to the orchestrator (emit | advance | skip)."""
+        if mode not in _PIPELINE_MODES:
+            return f"error: mode must be one of {_PIPELINE_MODES}, got {mode!r}"
+        runtime: WorkspaceRuntime | None = getattr(app.state, "runtime", None)
+        if runtime is None:
+            return "error: workspace not loaded yet"
+        seam: PipelineSignal | None = getattr(app.state, "pipeline_signal", None)
+        try:
+            await _ingress_pipeline_event(
+                governance=runtime.governance,
+                signal=seam,
+                correlation_id=correlation_id,
+                event=event,
+                mode=typing.cast(PipelineMode, mode),
+                actor_identity="mcp",
+                source=f"mcp:{pipeline}",
+                source_event_id=None,
+            )
+        except PipelineIngressError as exc:
+            return f"error ({exc.status_code}): {exc.detail}"
+        return f"delivered event {event!r} for {correlation_id!r} on {pipeline!r} (mode={mode})"
+
+    mcp_server.add_tool(
+        submit_pipeline_event,
+        name="submit_pipeline_event",
+        description=(
+            "Signal a structured pipeline event to the orchestrator. mode=emit sends an ordinary "
+            "authorised event; mode=advance/skip start or jump a stage and need an operator's "
+            "reserved scope (governance-gated, audited)."
+        ),
+    )
 
 
 def _mount_mcp(app: FastAPI) -> None:
@@ -61,6 +122,8 @@ def _mount_mcp(app: FastAPI) -> None:
                         return f"Topology: {topo_name} -- {desc}"
 
                 _make_resource(name, description)
+
+            _register_pipeline_event_tool(mcp_server, request.app)
 
             _tools_registered = True
             logger.info(

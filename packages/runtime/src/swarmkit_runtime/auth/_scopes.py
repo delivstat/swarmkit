@@ -29,6 +29,12 @@ RESERVED_SCOPES = frozenset(
         "topologies:modify",
         "iam:modify",
         "audit:modify",
+        # Starting or skipping a pipeline stage mid-saga is a human-identity operator act
+        # (design/details/pipeline-triggering.md §"The governance guardrail"): never grantable via a
+        # transport token, so an agent/webhook can emit an authorised event but can never advance or
+        # skip a stage on its own authority.
+        "pipeline:advance",
+        "pipeline:skip",
     }
 )
 

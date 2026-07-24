@@ -22,8 +22,30 @@ an orchestrator sequences on.
   above. Landed in `packages/schema/schemas/trigger.schema.json` (schema 1.18.0 / TS 0.8.0), with valid
   + invalid fixtures. Domain-neutral: the extraction key is `correlation_id` (an opaque handle), **not**
   a business-specific id — the illustrative `requirement_id` in the YAML below predates that decision.
-- **Not yet:** the receiver that validates the signature, extracts `correlation_id`, dedups, and calls
-  `signal()`; the MCP tool; the interpreter path; and the governance guardrail remain proposed.
+- **Ingress front door + governance guardrail — shipped (runtime, 1.102.0).** `POST /pipelines/signal`
+  turns an authorised outside event into a structured `(correlation_id, event)` and hands it to an
+  **injected** signal sink (`app.state.pipeline_signal`, a `PipelineSignal = (correlation_id, event) ->
+  None` exported from `swarmkit_runtime.orchestration` — the runtime owns no orchestrator, exactly like
+  the `RunStage` run-stage seam). Body: `{ correlation_id, event, source_event_id?, mode }` with
+  `mode ∈ {emit, advance, skip}`. The guardrail (`_ingress_pipeline_event`, shared verbatim by the
+  endpoint and the MCP tool) is **authorize → audit → deliver**: `advance` / `skip` are operator acts
+  that require the caller's identity to hold the reserved scope `pipeline:advance` / `pipeline:skip`
+  through the `GovernanceProvider` (`evaluate_action`) — a denied authorization is a 403; `emit` needs
+  only the serve `run` tier. Every attempt (allowed *or* denied) is recorded append-only on the audit,
+  stamped with the source (`api:<client>` / `mcp:<pipeline>`) and `(correlation_id, event, mode)`, with
+  `source_event_id` passed through for the orchestrator's dedup — the runtime keeps **no** dedup state.
+  Delivery is a sanctioned **503** when the sink is unset.
+- **Reserved scopes — shipped.** `pipeline:advance` and `pipeline:skip` are in `auth/_scopes.py`
+  `RESERVED_SCOPES`, so a transport (api-key / JWT) token can never carry them (`reserved_violations`
+  rejects them at token load) — starting or skipping a stage is structurally un-grantable to an
+  agent/webhook token (CLAUDE.md invariant #6 / design §8.7).
+- **MCP tool — shipped.** `submit_pipeline_event(pipeline, correlation_id, event, mode="emit")` on the
+  workspace MCP server routes through the *same* `_ingress_pipeline_event` guardrail; the MCP caller is
+  a transport principal (`mcp`) that holds neither reserved scope, so an agent may `emit` but never
+  `advance` / `skip` on its own authority.
+- **Not yet (37c):** the webhook `Trigger`-target *receiver* that validates the signature, extracts
+  `correlation_id` from the payload, and calls the ingress; and the NL/chat interpreter router topology.
+  Both feed the ingress front door that now exists.
 
 ## Why
 
