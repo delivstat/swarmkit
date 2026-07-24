@@ -109,15 +109,22 @@ demo-sdlc:
     uv run python examples/sdlc-pipeline/demo_oms_stage_run.py
 
 # Demo the OMS pipeline driven by the Temporal orchestrator (orchestration-provider-seam.md).
-# Needs the orchestrator group: `uv sync --group orchestrator`.
+# The orchestrator group (temporalio) is pulled in on demand by `uv run --group orchestrator` —
+# no separate sync, and (this is a virtual uv workspace) no pruning of the workspace members.
 demo-pipeline-temporal:
-    uv run python examples/sdlc-pipeline/demo_pipeline_temporal.py
+    uv run --group orchestrator python examples/sdlc-pipeline/demo_pipeline_temporal.py
 
 # Demo the SDLC pipeline controller (slice 5): a saga sequenced across intake -> design (gate) ->
 # build -> sit over a scripted run_stage seam — event dedup, dropped-event reconciliation,
 # per-contract lock serialisation, and cancellation with reverse-order compensation.
 demo-pipeline-controller:
     uv run python examples/sdlc-pipeline/demo_pipeline_controller.py
+
+# Demo the webhook -> pipeline ingress path (37c, pipeline-triggering.md): a signed CI webhook
+# emits build.ready-in-qa on the ingress front door and the reference saga advances build -> sit;
+# an unauthorised skip is denied (403) and audited. In-process, no live server, no model calls.
+demo-pipeline-trigger:
+    uv run python examples/sdlc-pipeline/demo_pipeline_trigger.py
 
 # Demo the published fleet-enrollment protocol schemas (register/join + InstanceState, design 19):
 # validate every committed protocol fixture + show the cross-file $ref enforcing nested state.

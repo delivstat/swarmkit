@@ -19,6 +19,7 @@ from swarmkit_schema.models import (
     SwarmKitTrigger,
     SwarmKitWorkspace,
 )
+from swarmkit_schema.models.trigger import PipelineTarget
 
 from swarmkit_runtime.archetypes import ResolvedArchetype
 from swarmkit_runtime.executors import ResolvedExecutor
@@ -118,14 +119,19 @@ class ResolvedTopology:
 
 @dataclass(frozen=True)
 class ResolvedTrigger:
-    """A trigger whose ``targets`` have been verified against the topology
-    registry.
+    """A trigger whose topology-id ``targets`` have been verified against the topology registry.
+
+    ``targets`` holds only the topology-id targets (the scheduler + the topology webhook path
+    consume these). ``pipeline_targets`` holds the pipeline-event targets — ``{pipeline, emit,
+    correlation_id?}`` — the webhook→pipeline ingress receiver signals a StageGraph with
+    (design/details/pipeline-triggering.md). The runtime never executes a StageGraph itself.
     """
 
     id: str
     raw: SwarmKitTrigger
     source_path: Path
     targets: tuple[str, ...]
+    pipeline_targets: tuple[PipelineTarget, ...] = ()
 
 
 @dataclass(frozen=True)
