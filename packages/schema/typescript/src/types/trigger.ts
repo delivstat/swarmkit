@@ -24,9 +24,10 @@ export interface SwarmKitTrigger {
      */
     provider_id?: string;
     /**
-     * Topology IDs this trigger fires. Fired in parallel.
+     * What this trigger fires, in parallel. Each item is either a topology id (fires that
+     * topology) or a pipeline-event target (signals a StageGraph).
      */
-    targets: string[];
+    targets: Target[];
     /**
      * Discriminator; per-type config shape validated at runtime.
      */
@@ -69,6 +70,24 @@ export interface Metadata {
     description?: string;
     id:           string;
     name:         string;
+}
+
+export type Target = SwarmKitTrigge | string;
+
+export interface SwarmKitTrigge {
+    /**
+     * How to derive the opaque correlation id from the incoming payload (e.g. a JSONPath like
+     * $.body.correlation_id). Domain-neutral — the runtime models no business instance.
+     */
+    correlation_id?: string;
+    /**
+     * The pipeline event to signal (matched against stages' `when`), e.g. build.ready-in-qa.
+     */
+    emit: string;
+    /**
+     * The StageGraph id to signal.
+     */
+    pipeline: string;
 }
 
 /**

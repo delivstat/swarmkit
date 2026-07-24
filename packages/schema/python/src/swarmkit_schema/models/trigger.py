@@ -29,6 +29,26 @@ class Identifier(RootModel[str]):
     root: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
 
 
+class PipelineTarget(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    pipeline: str = Field(
+        ..., description="The StageGraph id to signal.", pattern="^[a-z][a-z0-9-]*$"
+    )
+    emit: str = Field(
+        ...,
+        description="The pipeline event to signal (matched against stages' `when`), e.g. build.ready-in-qa.",
+        min_length=1,
+    )
+    correlation_id: str | None = Field(
+        None,
+        description="How to derive the opaque correlation id from the incoming payload (e.g. a JSONPath like $.body.correlation_id). Domain-neutral — the runtime models no business instance.",
+        min_length=1,
+    )
+
+
 class Metadata(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -92,9 +112,9 @@ class SwarmKitTrigger(BaseModel):
     enabled: bool | None = Field(
         None, description="Default true. Disabled triggers load but do not fire."
     )
-    targets: list[Identifier] = Field(
+    targets: list[Identifier | PipelineTarget] = Field(
         ...,
-        description="Topology IDs this trigger fires. Fired in parallel.",
+        description="What this trigger fires, in parallel. Each item is either a topology id (fires that topology) or a pipeline-event target (signals a StageGraph).",
         min_length=1,
     )
     provider_id: str | None = Field(
