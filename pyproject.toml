@@ -116,6 +116,9 @@ testpaths = [
     "packages/runtime/tests",
     "packages/schema/python/tests",
     "packages/control-plane/tests",
+    # The sdlc-pipeline example's controller + Temporal orchestrator carry their own domain
+    # (`requirement_id`); their tests live with the example so the runtime tree stays domain-neutral.
+    "examples/sdlc-pipeline/tests",
 ]
 addopts = "-ra --strict-markers --strict-config -m 'not integration'"
 markers = [
