@@ -103,7 +103,7 @@ async def scenario_clean() -> None:
             max_wait_seconds=1,
         )
         result = await runner.run(
-            _stages(), requirement_id="OMS-42", initial_input="BRD-42: add split shipment"
+            _stages(), correlation_id="OMS-42", initial_input="BRD-42: add split shipment"
         )
     for s in result.stages:
         print(f"   · {s.agent_id:<9} gated={s.gated!s:<5} outcome={s.outcome}")
@@ -122,7 +122,7 @@ async def scenario_retry() -> None:
             agent_runner=_agent_runner,
             max_wait_seconds=1,
         )
-        result = await runner.run(_stages(), requirement_id="OMS-43", initial_input="BRD-43")
+        result = await runner.run(_stages(), correlation_id="OMS-43", initial_input="BRD-43")
     design = result.stages[-1]
     print(f"   design retries={design.provenance['retries']}  outcome={design.outcome}")
     print(f"   RUN STATUS: {result.status.upper()}\n")
@@ -142,7 +142,7 @@ async def scenario_scope_denied() -> None:
         role_registry=_roles(),
         agent_runner=_agent_runner,
     )
-    result = await runner.run([oms_over_reacher], requirement_id="OMS-44", initial_input="BRD-44")
+    result = await runner.run([oms_over_reacher], correlation_id="OMS-44", initial_input="BRD-44")
     print(f"   stage {result.stages[-1].agent_id} outcome={result.stages[-1].outcome}")
     print(f"   RUN STATUS: {result.status.upper()} (denied by IAM scope, not by prompt)\n")
 
