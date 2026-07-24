@@ -2,39 +2,28 @@
 
 Pipeline *sequencing* is a pluggable seam, not a bespoke saga engine. SwarmKit keeps the
 StageGraph spec, the governed stage run, and the correlated audit; a durable-workflow engine
-owns state / timers / signals / locking / compensation. This package defines the seam and its
-adapters:
+owns state / timers / signals / locking / compensation.
+
+The **generic drive contract** the runtime exposes — :class:`StageOutcome`, :data:`StageStatus`,
+:data:`RunStage` (``(correlation_id, stage) -> StageOutcome``) — is imported from the runtime
+(``swarmkit_runtime.orchestration``); it is domain-neutral and stamped only with an opaque
+``correlation_id``.
+
+What an orchestrator *implements* lives here in the example, where the SDLC domain (a
+``requirement_id``) is allowed:
 
 - :class:`OrchestrationProvider` — the interface (start / signal / state / cancel).
+- :class:`SagaView` — the live status of one requirement's pipeline run.
 - ``temporal`` — the production adapter (Temporal; the selected engine).
 - the slice-5 in-memory controller is the zero-infra reference adapter.
-
-The ``run_stage`` seam a provider drives is ``(requirement_id, stage) -> StageOutcome`` — the
-slice-4 StageRunner behind a stable call, stamped with ``correlation_id = requirement_id``.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
-# The drive seam: run a stage's topology as a bounded, governed SwarmKit run.
-# `parked` = the stage produced its artifact and is waiting on its funnel gate (resolved out of
-# band and delivered to the provider as a gate signal); `completed` = clean, ungated finish.
-StageStatus = Literal["completed", "parked", "rejected", "denied", "failed"]
-
-
-@dataclass(frozen=True)
-class StageOutcome:
-    status: StageStatus
-    artifact: str = ""
-    detail: str = ""
-
-
-# Injected by the deployment: production wraps `swarmkit serve`; tests/demo wrap the StageRunner
-# or a scripted stub. Always stamped with the requirement id (the correlation contract).
-RunStage = Callable[[str, dict[str, Any]], Awaitable[StageOutcome]]
+from swarmkit_runtime.orchestration import RunStage, StageOutcome, StageStatus
 
 
 @dataclass

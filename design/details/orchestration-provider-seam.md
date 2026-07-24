@@ -2,7 +2,7 @@
 title: Orchestration provider seam (delegate pipeline sequencing)
 description: Make pipeline sequencing a pluggable provider seam instead of a hand-rolled saga engine. SwarmKit keeps the StageGraph spec, the governed stage run, and the correlated audit; a durable-workflow engine (Temporal, selected) owns state, timers, signals, locking, and compensation.
 tags: [runtime, pipeline, orchestration, controller, architecture-decision]
-status: proposed
+status: partially-implemented
 ---
 
 # Orchestration provider seam
@@ -122,6 +122,33 @@ audit assembles the full cross-stage trail (the DORA view) itself. This is the a
 orchestrates, is the audit split?"* — no: orchestration is delegated, **the governed record is not**.
 Authoring stays in the composer (the StageGraph); the unified audit stays in SwarmKit; only the
 durable sequencing runs on Temporal.
+
+## Implementation status
+
+**Partially implemented.** The split between the two halves of the seam is now realised in code, and
+the runtime-side half is deliberately **domain-neutral** — the correlation key is an opaque
+`correlation_id`, never `requirement_id`.
+
+- **Runtime — the generic drive contract (PART 1).** `swarmkit_runtime.orchestration` exposes only
+  the small, engine-agnostic drive contract: `StageOutcome`, `StageStatus`, and
+  `RunStage = (correlation_id, stage) -> StageOutcome`. It models no business instance; it only
+  stamps `correlation_id` for audit correlation. The `StageRunner`
+  (`langgraph_compiler/_stage_runner.py`) is `correlation_id`-native.
+- **Serve — the drive seam over HTTP.** `server/_routes_pipelines.py` exposes
+  `POST /pipelines/run-stage` (drive one stage as a bounded governed run through an injected
+  `RunStage` seam — production wires it to the `StageRunner`, tests/demos inject a scripted stub) and
+  `GET /pipelines/gate-status/{correlation_id}/{gate}` (an orchestrator *learns* a funnel gate's
+  resolution — approved/rejected/pending — read off the existing review queue; the pause itself
+  stays a SwarmKit checkpoint resumed by humans through `/review`).
+- **Example — what an orchestrator implements (PART 2).** The `OrchestrationProvider` Protocol, the
+  live `SagaView`, the reference in-memory controller, and the Temporal adapter remain in
+  `examples/sdlc-pipeline/orchestrator/`, where the SDLC domain (`requirement_id`) is allowed. They
+  import the drive-contract types from `swarmkit_runtime.orchestration`. The `temporalio` dependency
+  never enters `swarmkit-runtime`.
+
+Still pending: full production wiring of `run-stage` to a `StageRunner` over a live run context, a
+callback (rather than poll-only) gate notification, and the shared seam-conformance suite across the
+reference and Temporal adapters (see the test plan below).
 
 ## What this changes on the roadmap
 
