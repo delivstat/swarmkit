@@ -62,8 +62,8 @@ _GRAPH: dict[str, Any] = {
 
 
 def _scripted_run_stage(record: list[str]):
-    async def run_stage(requirement_id: str, stage: dict[str, Any]) -> StageOutcome:
-        record.append(f"{requirement_id}:{stage['id']}:{stage['topology']}")
+    async def run_stage(correlation_id: str, stage: dict[str, Any]) -> StageOutcome:
+        record.append(f"{correlation_id}:{stage['id']}:{stage['topology']}")
         # A gated stage produces then parks on its funnel gate (resolved via a signal).
         if stage.get("gate"):
             return StageOutcome(status="parked", artifact=f"<{stage['id']}>")

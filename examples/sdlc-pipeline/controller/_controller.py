@@ -1,6 +1,6 @@
 """The pipeline controller — a self-contained saga-sequencing service.
 
-Not a SwarmKit runtime feature and not an agent: the controller owns durable per-requirement
+Not a SwarmKit runtime feature and not an agent: the controller owns durable per-instance
 saga state and drives bounded SwarmKit stage runs over the ``run_stage`` **seam** (design
 "Where it lives" + "SwarmKit seams it depends on"). This is the Minder split
 (``feedback_llm_language_code_doing``): the application owns logic + state; SwarmKit does bounded
@@ -32,7 +32,7 @@ DEFAULT_MAX_ATTEMPTS = 3
 
 
 class PipelineController:
-    """Sequences a requirement across a stage-graph as a durable, event-driven saga."""
+    """Sequences a pipeline instance across a stage-graph as a durable, event-driven saga."""
 
     def __init__(
         self,
@@ -63,28 +63,28 @@ class PipelineController:
 
     # ---- read-side accessors (correlation) -----------------------------------------------
 
-    def saga(self, requirement_id: str) -> SagaState | None:
-        return self._store.get(requirement_id)
+    def saga(self, correlation_id: str) -> SagaState | None:
+        return self._store.get(correlation_id)
 
     def all_sagas(self) -> list[SagaState]:
         return [s for rid in self._store.all_ids() if (s := self._store.get(rid)) is not None]
 
-    def timeline(self, requirement_id: str) -> list[TimelineEntry]:
-        """The correlated saga timeline for a requirement (every run carries its id)."""
-        saga = self._store.get(requirement_id)
+    def timeline(self, correlation_id: str) -> list[TimelineEntry]:
+        """The correlated saga timeline for a correlation id (every run carries its id)."""
+        saga = self._store.get(correlation_id)
         return list(saga.timeline) if saga is not None else []
 
     # ---- inbound events ------------------------------------------------------------------
 
     async def handle_event(self, event: InboundEvent) -> None:
         """React to one inbound event: dedupe, release due locks, then route to a stage."""
-        saga = self._store.get(event.requirement_id)
-        if saga is not None and self._store.seen(event.requirement_id, event.key()):
+        saga = self._store.get(event.correlation_id)
+        if saga is not None and self._store.seen(event.correlation_id, event.key()):
             self._log(saga, None, "event.duplicate", f"{event.event} (dup) ignored")
             return
         if saga is None:
-            saga = self._store.create(event.requirement_id)
-        self._store.mark_seen(event.requirement_id, event.key())
+            saga = self._store.create(event.correlation_id)
+        self._store.mark_seen(event.correlation_id, event.key())
 
         if saga.status in ("cancelled", "done"):
             self._log(saga, None, "event.ignored", f"{event.event} on {saga.status} saga")
@@ -92,7 +92,7 @@ class PipelineController:
 
         self._log(saga, None, "event.received", f"{event.event} (src={event.source_event_id})")
         # Release any locks whose `release_locks_on` signal this event is, before advancing —
-        # a freed contract must be available to a queued requirement.
+        # a freed contract must be available to a queued instance.
         await self._release_for_event(saga, event.event)
 
         route = self._graph.route(event.event)
@@ -101,14 +101,14 @@ class PipelineController:
             return
         await self._start_stage(saga, route.stage, event.payload, is_loop=route.is_loop)
 
-    async def resolve_gate(self, requirement_id: str, *, approved: bool, detail: str = "") -> None:
+    async def resolve_gate(self, correlation_id: str, *, approved: bool, detail: str = "") -> None:
         """Learn that a gate resolved (the gate-resolution seam) and react.
 
         On approval the controller completes the parked stage and emits its ``success`` signal;
         on rejection the stage is a terminal outcome the controller surfaces (design
         "Failure vs wait" — a gate rejection is not a retryable failure).
         """
-        saga = self._store.get(requirement_id)
+        saga = self._store.get(correlation_id)
         if saga is None or saga.pending_gate is None or saga.pending_gate_stage is None:
             return
         stage = self._graph.stage(saga.pending_gate_stage)
@@ -127,17 +127,17 @@ class PipelineController:
             self._store.save(saga)
             self._surface(saga, stage.id, "gate rejected the artifact", detail)
 
-    async def reconcile(self, requirement_id: str | None = None) -> None:
+    async def reconcile(self, correlation_id: str | None = None) -> None:
         """Pull (mock) source-system state and advance any saga past a dropped event.
 
         Events are the fast path; reconciliation is the safety net (design "Reconciliation").
-        For each requirement, every source-confirmed event that has not already been processed
+        For each correlation id, every source-confirmed event that has not already been processed
         and that routes somewhere is delivered — so a saga advances even if the webhook that
         would have carried it went missing.
         """
         if self._source_state is None:
             return
-        ids = [requirement_id] if requirement_id is not None else self._store.all_ids()
+        ids = [correlation_id] if correlation_id is not None else self._store.all_ids()
         for rid in ids:
             saga = self._store.get(rid)
             if saga is None or saga.status in ("cancelled", "done", "failed"):
@@ -149,13 +149,13 @@ class PipelineController:
                 self._log(saga, None, "reconcile.deliver", f"source shows {name}; delivering")
                 await self.handle_event(event)
 
-    async def cancel(self, requirement_id: str, *, detail: str = "") -> None:
-        """Withdraw a requirement: release locks, close gate tasks, compensate in reverse.
+    async def cancel(self, correlation_id: str, *, detail: str = "") -> None:
+        """Withdraw a pipeline instance: release locks, close gate tasks, compensate in reverse.
 
         A saga must have an unwind path (design "Cancellation + compensation"): each
         already-passed stage's ``compensation`` topology runs in reverse order.
         """
-        saga = self._store.get(requirement_id)
+        saga = self._store.get(correlation_id)
         if saga is None or saga.status in ("cancelled", "done"):
             return
         self._log(saga, None, "cancel.requested", detail)
@@ -174,7 +174,7 @@ class PipelineController:
                 continue
             self._log(saga, stage_id, "compensation.run", f"topology={stage.compensation}")
             request = StageRunRequest(
-                requirement_id=requirement_id,
+                correlation_id=correlation_id,
                 stage_id=stage_id,
                 topology=stage.compensation,
                 gate=None,
@@ -213,7 +213,7 @@ class PipelineController:
             return
 
         if stage.locks:
-            if not self._locks.try_acquire(saga.requirement_id, stage.locks):
+            if not self._locks.try_acquire(saga.correlation_id, stage.locks):
                 saga.status = "parked"
                 saga.pending_lock_stage = stage.id
                 saga.pending_lock_payload = payload
@@ -247,7 +247,7 @@ class PipelineController:
             attempt += 1
             saga.attempts[stage.id] = attempt
             request = StageRunRequest(
-                requirement_id=saga.requirement_id,
+                correlation_id=saga.correlation_id,
                 stage_id=stage.id,
                 topology=stage.topology,
                 gate=stage.gate,
@@ -328,10 +328,10 @@ class PipelineController:
         """Emit a stage's ``success`` as an internal inbound signal (the fast path)."""
         self._seq += 1
         event = InboundEvent(
-            requirement_id=saga.requirement_id,
+            correlation_id=saga.correlation_id,
             event=event_name,
             source_event_id=f"signal-{self._seq}",
-            payload=f"<{event_name} for {saga.requirement_id}>",
+            payload=f"<{event_name} for {saga.correlation_id}>",
         )
         await self.handle_event(event)
 
@@ -348,7 +348,7 @@ class PipelineController:
         to_release = tuple(lid for lid in lock_ids if lid in saga.held_locks)
         if not to_release:
             return
-        resumed = self._locks.release(saga.requirement_id, to_release)
+        resumed = self._locks.release(saga.correlation_id, to_release)
         saga.held_locks.difference_update(to_release)
         why = f" on {trigger}" if trigger else ""
         self._log(saga, None, "lock.released", f"{sorted(to_release)}{why}")
@@ -356,8 +356,8 @@ class PipelineController:
         for rid in resumed:
             await self._resume(rid)
 
-    async def _resume(self, requirement_id: str) -> None:
-        saga = self._store.get(requirement_id)
+    async def _resume(self, correlation_id: str) -> None:
+        saga = self._store.get(correlation_id)
         if saga is None or saga.pending_lock_stage is None:
             return
         stage = self._graph.stage(saga.pending_lock_stage)
@@ -369,7 +369,7 @@ class PipelineController:
 
     def _close_gate(self, saga: SagaState, stage_id: str | None, gate: str) -> None:
         if self._on_close_gate is not None:
-            self._on_close_gate(saga.requirement_id, gate)
+            self._on_close_gate(saga.correlation_id, gate)
         self._log(saga, stage_id, "gate.closed", gate)
 
     def _surface(self, saga: SagaState, stage_id: str, reason: str, detail: str) -> None:
@@ -377,7 +377,7 @@ class PipelineController:
         if self._on_surface is not None:
             self._on_surface(
                 SurfaceNotice(
-                    requirement_id=saga.requirement_id,
+                    correlation_id=saga.correlation_id,
                     stage_id=stage_id,
                     reason=reason,
                     detail=detail,
@@ -390,7 +390,7 @@ class PipelineController:
             TimelineEntry(
                 seq=self._log_seq,
                 at=now(),
-                requirement_id=saga.requirement_id,
+                correlation_id=saga.correlation_id,
                 stage_id=stage_id,
                 kind=kind,
                 detail=detail,

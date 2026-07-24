@@ -1,6 +1,6 @@
 """SDLC pipeline controller — a reference saga-sequencing component (SwarmKit slice 5).
 
-A self-contained service that owns durable per-requirement saga state and drives bounded
+A self-contained service that owns durable per-instance saga state and drives bounded
 SwarmKit stage runs over an injected ``run_stage`` seam. It is **not** a SwarmKit runtime feature
 and **not** an agent — it is the "application" half of the Minder split
 (``feedback_llm_language_code_doing``): the app owns logic + state; SwarmKit does bounded

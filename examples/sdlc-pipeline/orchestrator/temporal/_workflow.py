@@ -42,7 +42,7 @@ def _route(graph: dict[str, Any], event: str) -> tuple[dict[str, Any], bool] | N
 
 @workflow.defn
 class PipelineWorkflow:
-    """One requirement's pipeline, run as a durable saga (workflow id = requirement id)."""
+    """One pipeline instance's run, run as a durable saga (workflow id = correlation id)."""
 
     def __init__(self) -> None:
         self._graph: dict[str, Any] = {}
@@ -59,7 +59,7 @@ class PipelineWorkflow:
     @workflow.run
     async def run(self, params: dict[str, Any]) -> dict[str, Any]:
         self._graph = params["graph"]
-        self._req = params["requirement_id"]
+        self._req = params["correlation_id"]
         self._inbox.append(params["initial_event"])
 
         while not self._done:
@@ -109,7 +109,7 @@ class PipelineWorkflow:
         self._status = "active"
         outcome: dict[str, Any] = await workflow.execute_activity(
             _RUN_STAGE,
-            {"requirement_id": self._req, "stage": stage},
+            {"correlation_id": self._req, "stage": stage},
             schedule_to_close_timeout=_STAGE_TIMEOUT,
         )
         status = outcome.get("status")
@@ -151,7 +151,7 @@ class PipelineWorkflow:
             await workflow.execute_activity(
                 _RUN_STAGE,
                 {
-                    "requirement_id": self._req,
+                    "correlation_id": self._req,
                     "stage": {"id": sid, "topology": comp},
                     "compensation": True,
                 },
@@ -160,7 +160,7 @@ class PipelineWorkflow:
 
     def _view(self) -> dict[str, Any]:
         return {
-            "requirement_id": self._req,
+            "correlation_id": self._req,
             "status": self._status,
             "current_stage": self._current,
             "passed_stages": list(self._passed),

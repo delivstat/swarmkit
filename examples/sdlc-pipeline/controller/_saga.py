@@ -1,4 +1,4 @@
-"""Durable per-requirement saga state + its store.
+"""Durable per-instance saga state + its store.
 
 The controller owns the weeks-long state SwarmKit deliberately does *not* hold; every SwarmKit
 run stays bounded (design "Per-requirement saga state"). The design says this store is
@@ -18,11 +18,11 @@ SagaStatus = Literal["active", "parked", "failed", "cancelled", "done"]
 
 @dataclass(frozen=True)
 class TimelineEntry:
-    """One correlated event in a requirement's saga timeline (the DORA/audit view)."""
+    """One correlated event in a pipeline instance's saga timeline (the DORA/audit view)."""
 
     seq: int
     at: datetime
-    requirement_id: str
+    correlation_id: str
     stage_id: str | None
     kind: str
     detail: str
@@ -30,9 +30,9 @@ class TimelineEntry:
 
 @dataclass
 class SagaState:
-    """Everything the controller persists for one ``requirement_id``."""
+    """Everything the controller persists for one ``correlation_id``."""
 
-    requirement_id: str
+    correlation_id: str
     status: SagaStatus = "active"
     # Stages currently in-flight (a SwarmKit run kicked, not yet terminal).
     current_stages: set[str] = field(default_factory=set)
@@ -56,17 +56,17 @@ class SagaState:
 class SagaStore(Protocol):
     """The persistence seam. In production a SQLite/Postgres-backed implementation."""
 
-    def get(self, requirement_id: str) -> SagaState | None: ...
+    def get(self, correlation_id: str) -> SagaState | None: ...
 
-    def create(self, requirement_id: str) -> SagaState: ...
+    def create(self, correlation_id: str) -> SagaState: ...
 
     def save(self, saga: SagaState) -> None: ...
 
     def all_ids(self) -> list[str]: ...
 
-    def seen(self, requirement_id: str, key: tuple[str, str, str]) -> bool: ...
+    def seen(self, correlation_id: str, key: tuple[str, str, str]) -> bool: ...
 
-    def mark_seen(self, requirement_id: str, key: tuple[str, str, str]) -> None: ...
+    def mark_seen(self, correlation_id: str, key: tuple[str, str, str]) -> None: ...
 
 
 class InMemorySagaStore:
@@ -76,25 +76,25 @@ class InMemorySagaStore:
         self._sagas: dict[str, SagaState] = {}
         self._seen: set[tuple[str, str, str]] = set()
 
-    def get(self, requirement_id: str) -> SagaState | None:
-        return self._sagas.get(requirement_id)
+    def get(self, correlation_id: str) -> SagaState | None:
+        return self._sagas.get(correlation_id)
 
-    def create(self, requirement_id: str) -> SagaState:
-        saga = SagaState(requirement_id=requirement_id)
-        self._sagas[requirement_id] = saga
+    def create(self, correlation_id: str) -> SagaState:
+        saga = SagaState(correlation_id=correlation_id)
+        self._sagas[correlation_id] = saga
         return saga
 
     def save(self, saga: SagaState) -> None:
         # In-memory: the object is mutated in place, so this is a persistence-seam marker.
-        self._sagas[saga.requirement_id] = saga
+        self._sagas[saga.correlation_id] = saga
 
     def all_ids(self) -> list[str]:
         return list(self._sagas)
 
-    def seen(self, requirement_id: str, key: tuple[str, str, str]) -> bool:
+    def seen(self, correlation_id: str, key: tuple[str, str, str]) -> bool:
         return key in self._seen
 
-    def mark_seen(self, requirement_id: str, key: tuple[str, str, str]) -> None:
+    def mark_seen(self, correlation_id: str, key: tuple[str, str, str]) -> None:
         self._seen.add(key)
 
 

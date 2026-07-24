@@ -38,7 +38,7 @@ GRAPH: dict[str, Any] = (
 
 
 def _run_stage(record: list[str]) -> Any:
-    async def run_stage(requirement_id: str, stage: dict[str, Any]) -> StageOutcome:
+    async def run_stage(correlation_id: str, stage: dict[str, Any]) -> StageOutcome:
         record.append(stage["id"])
         if stage.get("gate"):  # produce, then park on the funnel gate (resolved via a signal)
             return StageOutcome(status="parked", artifact=f"<{stage['id']}>")
