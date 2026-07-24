@@ -25,29 +25,29 @@ StageRunStatus = Literal["completed", "parked", "rejected", "denied", "failed"]
 class InboundEvent:
     """An event the controller reacts to — an external webhook or a prior-stage signal.
 
-    The idempotency key is ``(requirement_id, event, source_event_id)`` (design
+    The idempotency key is ``(correlation_id, event, source_event_id)`` (design
     "Event model + idempotency"): external webhooks duplicate, arrive out of order, and go
     missing, so a single delivery is never trusted. A repeated key is a no-op.
     """
 
-    requirement_id: str
+    correlation_id: str
     event: str
     source_event_id: str
     payload: str = ""
 
     def key(self) -> tuple[str, str, str]:
-        return (self.requirement_id, self.event, self.source_event_id)
+        return (self.correlation_id, self.event, self.source_event_id)
 
 
 @dataclass(frozen=True)
 class StageRunRequest:
     """What the controller hands the seam to kick one bounded stage run.
 
-    ``requirement_id`` is the correlation id stamped on the run + its audit so the append-only
+    ``correlation_id`` is the correlation id stamped on the run + its audit so the append-only
     audit can be assembled across per-stage runs (design "Run correlation label").
     """
 
-    requirement_id: str
+    correlation_id: str
     stage_id: str
     topology: str
     gate: str | None
@@ -73,7 +73,7 @@ class SurfaceNotice:
     denial, a gate rejection, or a failed compensation.
     """
 
-    requirement_id: str
+    correlation_id: str
     stage_id: str
     reason: str
     detail: str = ""
@@ -83,7 +83,7 @@ class SurfaceNotice:
 # `swarmkit serve` HTTP call. The controller depends on this callable, never on the runtime.
 RunStage = Callable[[StageRunRequest], Awaitable[StageRunOutcome]]
 
-# Mock source-of-truth for reconciliation: given a requirement id, return the set of event
+# Mock source-of-truth for reconciliation: given a correlation id, return the set of event
 # names the source systems (Jira/CI/Git/SAST) currently show as having occurred. In production
 # this polls those systems; in the demo/tests it is a scripted stub.
 SourceStateProvider = Callable[[str], "set[str]"]

@@ -47,9 +47,9 @@ def _load_graph() -> StageGraph:
 
 def make_seam(kicked: list[str]) -> object:
     async def run_stage(request: StageRunRequest) -> StageRunOutcome:
-        # Correlation: every run carries its requirement_id (design "Run correlation label").
+        # Correlation: every run carries its correlation_id (design "Run correlation label").
         label = "compensate " if request.is_compensation else ""
-        kicked.append(f"{request.requirement_id}:{label}{request.topology}")
+        kicked.append(f"{request.correlation_id}:{label}{request.topology}")
         if request.is_compensation:
             return StageRunOutcome(status="completed")
         if request.topology in GATED_TOPOLOGIES:
@@ -59,10 +59,10 @@ def make_seam(kicked: list[str]) -> object:
     return run_stage
 
 
-def print_timeline(controller: PipelineController, requirement_id: str) -> None:
-    saga = controller.saga(requirement_id)
+def print_timeline(controller: PipelineController, correlation_id: str) -> None:
+    saga = controller.saga(correlation_id)
     assert saga is not None
-    print(f"\n── correlated saga timeline: {requirement_id}  [status={saga.status.upper()}] ──")
+    print(f"\n── correlated saga timeline: {correlation_id}  [status={saga.status.upper()}] ──")
     for entry in saga.timeline:
         stage = f"[{entry.stage_id}]" if entry.stage_id else "[-]"
         print(f"  {entry.seq:>3} {stage:<10} {entry.kind:<22} {entry.detail}")
@@ -135,7 +135,7 @@ async def main() -> None:
     print_timeline(controller, "OMS-101")
     print_timeline(controller, "OMS-102")
 
-    print("\n── correlated stage runs (every run stamped with its requirement_id) ──")
+    print("\n── correlated stage runs (every run stamped with its correlation_id) ──")
     for run in kicked:
         print(f"  · {run}")
     print(f"\n  gate tasks closed on resolve/cancel: {closed_gates}")

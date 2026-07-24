@@ -344,14 +344,14 @@ async def test_cancel_releases_lock_and_lets_a_waiter_proceed() -> None:
 # --------------------------------------------------------------------------------------------
 
 
-async def test_every_run_carries_the_requirement_id_and_timeline_correlates() -> None:
+async def test_every_run_carries_the_correlation_id_and_timeline_correlates() -> None:
     seam = _Seam(gated=("oms-design",))
     controller = _controller(_real_graph(), seam, external_events=("build.ready-in-qa",))
     await _drive_to_build_wait(seam, controller, "OMS-77")
-    assert all(c.requirement_id == "OMS-77" for c in seam.calls)
+    assert all(c.correlation_id == "OMS-77" for c in seam.calls)
     timeline = controller.timeline("OMS-77")
     assert timeline
-    assert all(e.requirement_id == "OMS-77" for e in timeline)
+    assert all(e.correlation_id == "OMS-77" for e in timeline)
     assert [e.seq for e in timeline] == sorted(e.seq for e in timeline)
 
 
@@ -450,9 +450,9 @@ async def test_real_stage_runner_wired_as_the_seam() -> None:
         seen_ids: list[str] = []
 
         async def run_stage(request: StageRunRequest) -> StageRunOutcome:
-            seen_ids.append(request.requirement_id)
+            seen_ids.append(request.correlation_id)
             result = await runner.run(
-                stages, correlation_id=request.requirement_id, initial_input="BRD"
+                stages, correlation_id=request.correlation_id, initial_input="BRD"
             )
             return StageRunOutcome(status=result.status)
 

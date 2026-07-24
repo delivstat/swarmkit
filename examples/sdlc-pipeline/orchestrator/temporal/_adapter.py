@@ -21,7 +21,7 @@ _TASK_QUEUE = "sdlc-pipeline"
 
 
 class TemporalOrchestrator:
-    """Drive StageGraphs as durable Temporal workflows (one per requirement)."""
+    """Drive StageGraphs as durable Temporal workflows (one per correlation id)."""
 
     def __init__(
         self, client: Client, run_stage: RunStage, *, task_queue: str = _TASK_QUEUE
@@ -32,47 +32,47 @@ class TemporalOrchestrator:
 
     @activity.defn(name="run_pipeline_stage")
     async def run_stage_activity(self, params: dict[str, Any]) -> dict[str, Any]:
-        outcome = await self._run_stage(str(params["requirement_id"]), dict(params["stage"]))
+        outcome = await self._run_stage(str(params["correlation_id"]), dict(params["stage"]))
         return {"status": outcome.status, "artifact": outcome.artifact, "detail": outcome.detail}
 
     @property
     def activities(self) -> list[Any]:
         return [self.run_stage_activity]
 
-    async def start(self, requirement_id: str, graph: dict[str, Any], initial_event: str) -> None:
+    async def start(self, correlation_id: str, graph: dict[str, Any], initial_event: str) -> None:
         await self._client.start_workflow(
             PipelineWorkflow.run,
-            {"graph": graph, "requirement_id": requirement_id, "initial_event": initial_event},
-            id=requirement_id,
+            {"graph": graph, "correlation_id": correlation_id, "initial_event": initial_event},
+            id=correlation_id,
             task_queue=self._task_queue,
         )
 
-    async def signal_event(self, requirement_id: str, event: str) -> None:
-        handle = self._client.get_workflow_handle(requirement_id)
+    async def signal_event(self, correlation_id: str, event: str) -> None:
+        handle = self._client.get_workflow_handle(correlation_id)
         await handle.signal(PipelineWorkflow.submit_event, event)
 
-    async def resolve_gate(self, requirement_id: str, gate: str, *, approved: bool) -> None:
-        handle = self._client.get_workflow_handle(requirement_id)
+    async def resolve_gate(self, correlation_id: str, gate: str, *, approved: bool) -> None:
+        handle = self._client.get_workflow_handle(correlation_id)
         await handle.signal(PipelineWorkflow.resolve_gate, args=[gate, approved])
 
-    async def cancel(self, requirement_id: str) -> None:
-        handle = self._client.get_workflow_handle(requirement_id)
+    async def cancel(self, correlation_id: str) -> None:
+        handle = self._client.get_workflow_handle(correlation_id)
         await handle.signal(PipelineWorkflow.cancel)
 
-    async def state(self, requirement_id: str) -> SagaView:
-        handle = self._client.get_workflow_handle(requirement_id)
+    async def state(self, correlation_id: str) -> SagaView:
+        handle = self._client.get_workflow_handle(correlation_id)
         view: dict[str, Any] = await handle.query(PipelineWorkflow.view)
         return SagaView(
-            requirement_id=str(view["requirement_id"]),
+            correlation_id=str(view["correlation_id"]),
             status=str(view["status"]),
             current_stage=view["current_stage"],
             passed_stages=list(view["passed_stages"]),
             pending_gate=view["pending_gate"],
         )
 
-    async def result(self, requirement_id: str) -> dict[str, Any]:
+    async def result(self, correlation_id: str) -> dict[str, Any]:
         """Await the pipeline's terminal saga view (test/demo convenience)."""
-        handle = self._client.get_workflow_handle(requirement_id)
+        handle = self._client.get_workflow_handle(correlation_id)
         return await handle.result()
 
 
