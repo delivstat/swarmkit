@@ -15,7 +15,7 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 STUBS: list[tuple[list[str], str]] = [
-    (["eject", "some-topology.yaml"], "eject"),
+    (["stop", "run-123"], "stop"),
 ]
 
 

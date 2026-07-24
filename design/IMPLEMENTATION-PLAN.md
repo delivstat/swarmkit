@@ -602,7 +602,7 @@ process boundary, which a single run never crosses).
 - [x] Docker image build + publish workflow — `docker.yml`, multi-stage Dockerfile, GHCR push on tag
 - [x] PyPI publish workflow — `publish.yml`, trusted publishing on `v*` tags. Both `swarmkit-schema` and `swarmkit-runtime` published
 - [x] PyPI metadata polished — Beta classifier, project URLs (homepage, docs, repo, issues), AI topic classifier
-- [x] CLI unimplemented stubs cleaned up — only `stop` (M6) and `eject` (M9) remain, both with graceful `_not_implemented()` messaging
+- [x] CLI unimplemented stubs cleaned up — only `stop` (M6) remains, with graceful `_not_implemented()` messaging (`eject` dropped)
 - [x] Release notes — v1.1 and v1.2 release notes at `docs/releases/`
 - [ ] ~~Schema hosting on `schemas.swarmkit.dev`~~ — deferred. All validation is local (bundled schemas). Remote `$id` URLs only needed when external tools validate against them. Will use `raw.githubusercontent.com` URLs if needed
 - [x] **Installable expertise packages Phase 1** — `swarmkit mcp-serve` exposes workspace topologies as MCP tools on stdio. `swarmkit publish` bundles workspace into .tar.gz. `swarmkit install` installs from dir/tarball/URL. `swarmkit packages` lists installed. Auto-discovery of installed workspaces. See `design/details/installable-expertise-packages.md`.

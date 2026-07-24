@@ -11,9 +11,6 @@ if TYPE_CHECKING:
 import typer
 
 from ._app import app
-from ._common import (
-    _not_implemented,
-)
 
 # ---- knowledge-server ----------------------------------------------------
 
@@ -105,9 +102,3 @@ def publish(
     from swarmkit_runtime.packages._publisher import publish_package  # noqa: PLC0415
 
     publish_package(workspace_path.resolve(), output.resolve())
-
-
-@app.command()
-def eject(topology: str, output: str = "./generated/") -> None:
-    """Export the LangGraph code the runtime would execute (design §14.4)."""
-    _not_implemented("eject", milestone="M9 (eject)")
