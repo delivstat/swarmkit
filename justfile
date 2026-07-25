@@ -115,6 +115,14 @@ demo-sdlc:
 demo-consolidated-design:
     uv run python examples/sdlc-pipeline/demo_consolidated_design.py
 
+# Demo the harness build (slice 7) — the executor showcase: the `developer` HARNESS executor
+# (`claude-code`, sandboxed) produces a candidate diff against a demo repo, and the `oms-code-review`
+# funnel judges it — a clean review advances, a finding routes the critique back to the harness for a
+# bounded revision before the OMS lead signs off. Deterministic: the real bundled claude-code adapter
+# translates a scripted stream-json transcript; only the subprocess launch is faked (no keys/network).
+demo-harness-build:
+    uv run python examples/sdlc-pipeline/demo_harness_build.py
+
 # Demo the OMS pipeline driven by the Temporal orchestrator (orchestration-provider-seam.md).
 # The orchestrator group (temporalio) is pulled in on demand by `uv run --group orchestrator` —
 # no separate sync, and (this is a virtual uv workspace) no pruning of the workspace members.

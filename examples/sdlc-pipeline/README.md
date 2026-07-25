@@ -151,6 +151,30 @@ uv run --group orchestrator pytest packages/runtime/tests/test_orchestration_tem
 The Temporal tests run under the SDK's in-process time-skipping environment — no external server —
 and are gated `integration` (deselected in default CI, which does not install temporalio).
 
+## The harness build (slice 7)
+
+The executor showcase. The `developer` archetype is a **harness executor**
+(`executor: { kind: harness, ref: claude-code }`, on the archetype). In `oms-build-harness.yaml`
+its node, scoped to the OMS repo, implements the approved design and produces a **candidate diff**
+against a demo repo (`fixtures/demo-repo/` — a stub `orders.py` + README). That diff faces the
+`oms-code-review` funnel: the `code-review` decision skill judges it, and a below-threshold verdict
+routes the critique **back to the harness** for a bounded revision before the OMS lead signs off
+(the human approval is the only exit). Swapping the harness — `claude-code` → `opencode` — is a
+one-field change on the archetype's `executor.ref`: executors-are-data.
+
+The demo is deterministic (no keys, no network, no real harness). It drives the **real bundled
+`claude-code` declarative adapter** — its event-map + interpreter translate a scripted `stream-json`
+transcript into normalized `ExecEvent`s (message, tool_call, usage, result-with-diff) — and fakes
+only the subprocess launch via `DeclarativeExecutor`'s documented `_open_stream` test seam
+(`harness_build.py`). The code-review gate is the slice-6 funnel machinery with a scripted judge +
+the real `resolve_multiparty` engine over a file-backed queue. Two scenarios: a clean build that
+advances first time, and a finding (unguarded lookup) that routes back to the harness, which revises
+and then passes.
+
+```
+just demo-harness-build   # harness → candidate diff → code-review gate: clean-advance + finding-route-back
+```
+
 ## Validate
 
 ```
