@@ -181,6 +181,10 @@ demo-signed-deploy:
 # Regenerate both pydantic models and TypeScript types from the canonical
 # JSON Schemas. Run after any schema edit per
 # docs/notes/schema-change-discipline.md.
+# Regenerate llms-full.txt (the expanded single-file LLM corpus) + its published copy.
+llms-full:
+    uv run python scripts/build_llms_full.py
+
 schema-codegen: schema-codegen-py schema-codegen-ts
 
 schema-codegen-py:
