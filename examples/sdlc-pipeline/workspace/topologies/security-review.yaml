@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: security-review
+  version: 0.1.0
+# Pre-release security review stage (slice 8). The release-coordinator assembles the release
+# package from the approved design + diffs + SIT/PT results and parks on the `security-review-approval`
+# funnel: an investigative `security-consultant` HARNESS review (compliance / SAST / DAST — data
+# residency, authz, injection surfaces) is layer 3, and a HIGH-severity finding routes back before
+# any human is paged; the infosec-lead signs off (the human approval is the only exit). Reads across
+# all three apps (the release surface). See design/details/sdlc-pipeline-example.md (build order
+# item 8) and design/details/gate-funnel.md.
+#
+# Domain-neutral: the runtime seam (the review + its gate) is correlated by a correlation_id
+# supplied per run; this topology carries no requirement_id.
+agents:
+  root:
+    id: release-gate
+    role: root
+    archetype: release-coordinator
+    funnel: security-review-approval
+    iam:
+      base_scope: [kb:read, app:oms:read, app:web:read, app:mobile:read]

@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: pt
+  version: 0.1.0
+# Cross-app performance test (slice 8). The pt-engineer runs a perf test of the exposed services
+# plus cross-app regression against a MOCK RIG (the perf environment is mocked at the demo seam —
+# no real load generator, no network) and uses the `pt-analysis` decision skill to judge the
+# results against the agreed thresholds (latency / throughput / error rate): pass, or a regression
+# that is filed as a defect. Reads across all three apps; writes only the shared PT artifacts.
+# See design/details/sdlc-pipeline-example.md (build order item 8).
+#
+# Domain-neutral: the runtime seam (the PT run + its rig) is correlated by a correlation_id
+# supplied per run; this topology carries no requirement_id.
+agents:
+  root:
+    id: pt-runner
+    role: root
+    archetype: pt-engineer
+    iam:
+      base_scope: [kb:read, app:oms:read, app:web:read, app:mobile:read, pt:read]

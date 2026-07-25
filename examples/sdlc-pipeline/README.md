@@ -175,6 +175,39 @@ and then passes.
 just demo-harness-build   # harness → candidate diff → code-review gate: clean-advance + finding-route-back
 ```
 
+## SIT / PT + defect loop (slice 8)
+
+The cross-app test-and-release half, with the controller-driven defect loop as its centerpiece.
+
+**Cross-app SIT + PT against mock rigs.** `sit.yaml` runs the `sit-qa` engineer's end-to-end
+business flows frontend→backend **across all three apps** (oms/web/mobile) against a **mock QA rig**;
+`pt.yaml` runs the `pt-engineer`'s perf test of the exposed services against a **mock perf rig** and
+uses the `pt-analysis` decision skill to judge the samples against the agreed thresholds (pass, or a
+regression filed as a defect). The rigs are mocked in `sit_pt.py` — no real systems, no network. Both
+topologies read across all three apps (the shared surface) and carry only cross-app read scopes.
+
+**The pre-release security gate.** `security-review.yaml` (a `release-coordinator`) parks on the
+`security-review-approval` funnel: deterministic validate → an artifact-judge score → an
+investigative **`security-consultant` harness review** (compliance / SAST / DAST — data residency,
+authz, injection) whose **HIGH-severity finding routes back** before release (`route_back_at: high`)
+→ the `infosec-lead` signs off (the human approval is the only exit). Same four-layer funnel
+machinery as slice 6, with the security reviewer as layer 3.
+
+**The controller-driven defect loop.** The `sdlc-sit-pt` stage-graph wires
+`build → sit → pt → security-review` with the cross-stage defect cycle (`defect.raised → build`,
+`defect.fixed → sit`). The reference controller sequences it: a requirement reaches SIT, SIT raises
+`defect.raised` → the controller **re-kicks build**; the fix emits `defect.fixed` → the controller
+**re-triggers SIT** → the re-run passes and the saga proceeds through PT and the pre-release security
+gate to `done`. SIT/PT completions arrive as enterprise QA/perf events (the mock rigs report results
+the same way CI does), so the controller waits on them — which is where the defect is injected. The
+demo drives the **reference controller** over a scripted `run_stage` seam (no keys, no network, no
+server) and prints the correlated saga timeline showing the loop.
+
+```
+just demo-defect-loop   # build → sit → defect.raised → build → sit → defect.fixed → … → done
+just demo-sit-pt        # SIT (mock rig) → PT (mock rig, pt-analysis) → security review (harness + infosec sign-off)
+```
+
 ## Validate
 
 ```
