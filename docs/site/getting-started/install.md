@@ -5,11 +5,14 @@
 ```bash
 uv tool install swarmkit-runtime
 
-# With serve mode dependencies (HTTP server, JWT auth, cron triggers)
+# With serve-mode dependencies (HTTP server, JWT auth, cron triggers)
 uv tool install swarmkit-runtime --with "swarmkit-runtime[serve]"
+
+# With serve mode + the hosted web UI (the swarmkit-webui portal that `swarmkit serve` hosts)
+uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"
 ```
 
-This installs `swarmkit` as a globally available CLI tool in an isolated environment — no virtual env needed, no system Python pollution.
+This installs `swarmkit` as a globally available CLI tool in an isolated environment — no virtual env needed, no system Python pollution. `uv` is the recommended way to install and maintain SwarmKit. The `[serve]` extra adds the HTTP server; `[ui]` adds the web portal on top (absent ⇒ `swarmkit serve` runs headless, API only). To add an extra to an existing install, re-run the command — `uv tool install` upgrades in place.
 
 ## From source
 

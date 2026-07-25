@@ -37,10 +37,15 @@ Every artifact is a YAML/JSON file starting with `apiVersion: swarmkit/v1` and a
 
 ## Step 0 — install and scaffold
 
+`uv` is the recommended way to install and maintain SwarmKit — it installs `swarmkit` as an isolated global CLI, no virtual env or system-Python setup needed:
+
 ```bash
-pip install swarmkit-runtime          # the runtime + CLI
-swarmkit init                          # scaffold a workspace through conversation
+curl -LsSf https://astral.sh/uv/install.sh | sh   # if you don't have uv yet
+uv tool install swarmkit-runtime                   # the runtime + `swarmkit` CLI
+swarmkit init                                       # scaffold a workspace through conversation
 ```
+
+Add optional extras with `--with`: `[serve]` (the HTTP server) and `[ui]` (the hosted web portal) — e.g. `uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"`. Re-running `uv tool install` upgrades in place.
 
 `swarmkit init` is a conversational authoring swarm — you describe what you want and it produces the workspace, topology, archetypes, and skills as artifacts you own and can edit. You can equally hand-write the files; the rest of this guide shows the artifacts directly so you can read any workspace, however it was authored.
 
@@ -323,7 +328,7 @@ The `swarmkit serve` HTTP front door receives it: the receiver validates the HMA
 
 Ship it behind the server, watch it, and let it tell you how to grow:
 
-- **Serve.** `swarmkit serve` exposes topologies as async jobs with SSE streaming, an MCP endpoint, pluggable auth (API key / JWT-JWKS), webhook triggers, and canary version routing with auto-promotion. → [Serve mode](../reference/serve.md) · [Tutorial 11: Serve & HTTP API](../tutorials/11-serve-api.md)
+- **Serve.** `swarmkit serve` exposes topologies as async jobs with SSE streaming, an MCP endpoint, pluggable auth (API key / JWT-JWKS), webhook triggers, and canary version routing with auto-promotion. Install with the extras to get the server and the hosted web UI: `uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` — then `swarmkit serve` hosts the portal (dashboard, chat, topology + pipeline canvas) at its own origin; without `[ui]` it runs headless (API only). → [Serve mode](../reference/serve.md) · [Tutorial 11: Serve & HTTP API](../tutorials/11-serve-api.md)
 - **Observe.** Every run is a trace of agent-step spans with token counts. `swarmkit trace <run>`, `swarmkit status`, `swarmkit logs`, `swarmkit why <run>` (LLM post-mortem), `swarmkit ask`. OpenTelemetry export is built in. → [Telemetry](../reference/telemetry.md) · [Human interaction model](../design-notes/human-interaction-model.md)
 - **Remember.** Workspace memory lets agents carry insight across conversations (local JSON or a GBrain backend). → [Workspace memory](../reference/workspace-memory.md) · [Tutorial 9: Conversations & Memory](../tutorials/09-conversations-memory.md)
 - **Grow.** The runtime records capability gaps (`swarmkit gaps`); you author the missing skill through conversation (`swarmkit edit`), test it, and publish — human-approved at every step. → [Skill authoring](../design-notes/topology-skill-authoring.md) · [Tutorial 13: Authoring & Review](../tutorials/13-authoring-review.md)
