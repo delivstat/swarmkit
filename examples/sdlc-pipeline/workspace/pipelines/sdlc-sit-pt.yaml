@@ -1,0 +1,49 @@
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: sdlc-sit-pt
+  name: SDLC SIT / PT + release pipeline
+  description: >
+    The cross-app test-and-release half of the delivery pipeline as data (slice 8). A requirement
+    is a saga the reference controller sequences: build -> sit (cross-app e2e against a mock rig) ->
+    pt (perf against a mock rig, pt-analysis) -> security-review (the security-consultant harness
+    review + infosec-lead sign-off). The cross-stage DEFECT LOOP re-kicks build on defect.raised and
+    re-triggers sit on defect.fixed. SIT and PT completions arrive as enterprise QA/perf events
+    (build.ready-in-qa / sit.passed / pt.passed — the mock rigs report results the same way CI does);
+    the human governance in this half is the pre-release security gate. The controller — not the
+    runtime — owns the durable weeks-long state; SwarmKit only runs the bounded stages. See
+    design/details/pipeline-controller.md and sdlc-pipeline-example.md (build order item 8).
+stages:
+  - id: build
+    topology: oms-build
+    # design.approved is the upstream consolidated-design gate's success (the front half is the
+    # oms-pipeline graph); here it kicks the build. It is also the defect loop's re-entry target.
+    when: [design.approved]
+    # EXTERNAL event (CI) — the controller waits for the webhook / reconciliation, never fabricates it.
+    success: build.ready-in-qa
+    compensation: oms-compensate-build
+  - id: sit
+    topology: sit
+    when: [build.ready-in-qa]
+    # EXTERNAL event: the mock QA rig reports the SIT result (pass) as an enterprise event.
+    success: sit.passed
+  - id: pt
+    topology: pt
+    when: [sit.passed]
+    # EXTERNAL event: the mock perf rig reports the PT result (pass) as an enterprise event.
+    success: pt.passed
+  - id: security-review
+    topology: security-review
+    when: [pt.passed]
+    # The human pre-release gate: security-consultant harness review + infosec-lead sign-off.
+    gate: security-review-approval
+    success: release.approved
+loops:
+  # The cross-stage defect cycle: a defect found in QA routes back to build; its fix re-triggers sit.
+  - when: defect.raised
+    to: build
+  - when: defect.fixed
+    to: sit
+provenance:
+  authored_by: human
+  version: 1.0.0

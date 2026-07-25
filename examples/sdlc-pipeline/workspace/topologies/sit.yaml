@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: sit
+  version: 0.1.0
+# Cross-app system-integration test (slice 8). The sit-qa engineer runs the end-to-end business
+# flows frontend->backend ACROSS all three apps (oms / web / mobile) against MOCK RIGS — the QA
+# environment + downstream systems are mocked at the demo seam (no real systems, no network). It
+# reads across all three apps (the shared surface) but writes only shared defects. A failing flow
+# is filed as a defect via the defect-triage skill, which the controller turns into the cross-stage
+# `defect.raised` loop. See design/details/sdlc-pipeline-example.md (build order item 8).
+#
+# Domain-neutral: the runtime seam (the SIT run + its rig) is correlated by a correlation_id
+# supplied per run; this topology carries no requirement_id.
+agents:
+  root:
+    id: sit-runner
+    role: root
+    archetype: sit-qa
+    iam:
+      base_scope: [kb:read, kb:write, app:oms:read, app:web:read, app:mobile:read, sit:read]

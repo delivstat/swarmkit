@@ -123,6 +123,20 @@ demo-consolidated-design:
 demo-harness-build:
     uv run python examples/sdlc-pipeline/demo_harness_build.py
 
+# Demo the controller-driven defect loop (slice 8) — the centerpiece: the reference controller
+# sequences the sdlc-sit-pt stage-graph and a defect found in SIT re-kicks build (defect.raised) and
+# its fix re-triggers SIT (defect.fixed); the re-run passes and the saga proceeds through PT + the
+# pre-release security gate to done. Deterministic (scripted run_stage seam, mock rigs, no server).
+demo-defect-loop:
+    uv run python examples/sdlc-pipeline/demo_defect_loop.py
+
+# Demo cross-app SIT + PT against mock rigs + the pre-release security review (slice 8): the sit-qa
+# e2e flows across oms/web/mobile, the pt-engineer's perf test judged by pt-analysis, and the
+# security-review-approval funnel — the security-consultant harness review (HIGH finding routes back)
+# then the infosec-lead sign-off. Deterministic, faked seams (no keys, no network, no server).
+demo-sit-pt:
+    uv run python examples/sdlc-pipeline/demo_sit_pt.py
+
 # Demo the OMS pipeline driven by the Temporal orchestrator (orchestration-provider-seam.md).
 # The orchestrator group (temporalio) is pulled in on demand by `uv run --group orchestrator` —
 # no separate sync, and (this is a virtual uv workspace) no pruning of the workspace members.

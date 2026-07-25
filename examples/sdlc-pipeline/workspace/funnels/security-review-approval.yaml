@@ -1,0 +1,34 @@
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: security-review-approval
+  name: Security Review (pre-release)
+  description: >
+    The pre-release security gate (slice 8). A four-layer quality funnel on the release
+    package: deterministic validate -> an artifact-judge rubric score -> an investigative
+    security-consultant HARNESS review (compliance / SAST / DAST — data residency, authz,
+    injection) whose HIGH-severity finding routes back before release -> the infosec-lead
+    signs off (the only exit). See design/details/gate-funnel.md and
+    design/details/sdlc-pipeline-example.md (build order item 8).
+validate:
+  schema: schemas/release-package.json
+  autocorrect: true
+judge:
+  skill: artifact-judge
+  rubric: rubrics/security-review.md
+  threshold: 0.8
+  max_retries: 2
+review:
+  archetype: security-consultant
+  read_scope: [app:oms, app:web, app:mobile]
+  route_back_at: high
+approve:
+  rules:
+    - scope: security:approve
+      roles: [infosec-lead]
+      quorum: all
+  exclude_author: true
+  min_distinct_approvers: 1
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -553,7 +553,7 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 
 ## Build order (a program, not one feature)
 
-**Status:** slices 1–7 shipped. 1 multi-party approval (v1.97.0), 2 reusable
+**Status:** slices 1–8 shipped. 1 multi-party approval (v1.97.0), 2 reusable
 archetype/skill library (#604), 3 the gate funnel as a first-class `kind: Funnel`
 artifact (#608), 5 the `controller` + `kind: StageGraph` artifact — pipeline-as-data
 discovered + ref-checked into the workspace, and a reference saga controller
@@ -583,7 +583,17 @@ Slice 6 also surfaced a
 schema gap it did not fix (example-only): the child-agent `depends_on` field is declared in
 the topology schema but rejected by the base agent's `additionalProperties: false` (a JSON
 Schema `allOf` gotcha) — the stage ordering is carried by children order + sequencing until a
-schema fix lands. Next: slice 8 (SIT + PT cross-app + security-consultant review + defect loop).
+schema fix lands. 8 the cross-app test-and-release half — the cross-app `sit` topology (the
+`sit-qa` engineer's e2e business flows across oms/web/mobile against **mock rigs**) and the `pt`
+topology (the `pt-engineer`'s perf test against a mock rig, judged by the `pt-analysis` decision
+skill), the pre-release `security-review-approval` funnel (the `security-consultant` **harness**
+review as layer 3, a HIGH finding routes back before the `infosec-lead` sign-off), and the
+`sdlc-sit-pt` stage-graph wiring `build → sit → pt → security-review` with the controller-driven
+**defect loop** (`defect.raised → build`, `defect.fixed → sit`), demoed by `just demo-defect-loop`
+(the reference controller re-kicks build on a SIT defect, re-triggers SIT on the fix, then reaches
+`done`) and `just demo-sit-pt` (the mock-rig determination detail). Deterministic — scripted
+`run_stage` seam + faked rigs, no keys/network/server. Next: slice 9 (deploy package + support
+handover; full `just demo-sdlc`).
 Note: slice 4 also closed a
 design-vs-runtime gap it surfaced — the executor
 registry now resolves the canonical `kind: harness` + `ref: <adapter-id>` shape (design
