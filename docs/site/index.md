@@ -7,6 +7,9 @@ Define agents, skills, and governance in a topology file. SwarmKit compiles it t
 !!! tip "Watch it in action"
     **[SDLC pipeline: a video walkthrough →](sdlc-example/)** — a guided tour of a real delivery pipeline (topologies, archetypes, skills, funnels, the StageGraph, and contracts), each shown running in the composer.
 
+!!! abstract "Building a swarm? Start with the playbook"
+    **[Building swarms — the complete playbook →](guides/building-swarms.md)** takes you from one agent to a governed multi-app pipeline, one runnable artifact at a time. For LLMs and coding agents, the compact machine-readable index is published at **[`/llms.txt`](llms.txt)**.
+
 ---
 
 ## The problem

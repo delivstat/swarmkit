@@ -28,6 +28,8 @@ nav:
   - Getting started:
     - Installation: getting-started/install.md
     - Hello Swarm: getting-started/hello-swarm.md
+  - Guides:
+    - "Building swarms (the complete playbook)": guides/building-swarms.md
   - Examples:
     - "SDLC pipeline (video walkthrough)": sdlc-example/index.html
   - Tutorials:
