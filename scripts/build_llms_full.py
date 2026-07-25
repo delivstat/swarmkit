@@ -173,8 +173,7 @@ def main(argv: list[str]) -> int:
         if stale:
             names = ", ".join(str(p.relative_to(REPO_ROOT)) for p in stale)
             print(
-                f"llms-full.txt is stale: {names}\n"
-                "Regenerate: python scripts/build_llms_full.py",
+                f"llms-full.txt is stale: {names}\nRegenerate: python scripts/build_llms_full.py",
                 file=sys.stderr,
             )
             return 1
