@@ -1,11 +1,26 @@
 # SDLC pipeline example
 
-The SDLC pipeline example (design/details/sdlc-pipeline-example.md). Slice 2 shipped the reusable
-**archetype + skill library**; slice 4 adds the **one-app (OMS) bounded stage run** — a workspace,
-a role registry, a design funnel, and the intake→design topology; slice 5 adds the **controller +
-stage-graph**; slice 6 adds the **consolidated design across all three apps** (synthesis) with the
-**architect-reviewer harness review** as layer 3 of the design funnel. The harness build and KBs
-come in later slices.
+The SDLC pipeline example (design/details/sdlc-pipeline-example.md) — **now the complete SDLC
+pipeline**. It models an end-to-end software-delivery lifecycle for a multi-app D2C retailer,
+composed entirely as data in one SwarmKit workspace, with an agent doing the first-pass toil at
+every step and humans owning every gate. One requirement threads the **whole lifecycle** —
+intake → design → build → sit → pt → security-review → deploy → support-handover → done —
+sequenced by the reference controller as a saga, correlated end to end into one audit trail.
+
+**Start here:**
+
+```
+just demo-sdlc      # the capstone: one requirement through the ENTIRE lifecycle to a shipped,
+                    # handed-over change — three human gates, contract locks, one saga timeline
+```
+
+The example was built as a program of slices (design build order): slice 2 the reusable
+**archetype + skill library**; slice 4 the **one-app (OMS) bounded stage run**; slice 5 the
+**controller + stage-graph**; slice 6 the **consolidated design across all three apps** with the
+**architect-reviewer harness review**; slice 7 the **harness build + code-review gate**; slice 8
+the **cross-app SIT / PT + pre-release security review + defect loop**; and slice 9 (the capstone)
+the **deploy package + support handover**, stitching every stage into the full `sdlc-full`
+pipeline behind `just demo-sdlc`.
 
 ## Archetypes (`workspace/archetypes/`)
 
@@ -32,11 +47,22 @@ come in later slices.
 
 ## Funnels (`workspace/funnels/`)
 
-`consolidated-design-approval` — a first-class `kind: Funnel` artifact (the pipeline's first
-consumer of the gate funnel, design/details/gate-funnel.md). It chains all four layers on the
-consolidated-design artifact: deterministic `validate` → `judge` (`artifact-judge`) →
-`review` (`architect-reviewer`, read-only) → multi-party `approve`. Referenced by id from a
-topology node's `funnel:` field. See the [funnel reference](../../docs/site/reference/funnel.md).
+First-class `kind: Funnel` artifacts (the gate-funnel composition, design/details/gate-funnel.md),
+each referenced by id from a topology node's `funnel:` field. See the
+[funnel reference](../../docs/site/reference/funnel.md).
+
+- `consolidated-design-approval` — the design gate: all four layers on the consolidated-design
+  artifact — `validate` → `judge` (`artifact-judge`) → `review` (`architect-reviewer`, read-only) →
+  multi-party `approve` (oms/web/mobile-lead + infosec-lead).
+- `oms-code-review` — the build gate: the `code-review` decision skill → route-back to the harness
+  → OMS-lead sign-off.
+- `security-review-approval` — the pre-release gate: `validate` → `judge` → `review`
+  (`security-consultant` harness) → `infosec-lead` sign-off.
+- `deploy-approval` — the **final release sign-off** (slice 9): deterministic `validate` → the
+  binding multi-party `approve` by the **eng-manager + cio** (the human-only `release:approve`
+  scope, quorum `all`, `min_distinct_approvers: 2`). Deliberately light — the heavyweight harness
+  review already ran at the security gate, so this adds the accountable release decision, not
+  another investigation.
 
 ## Model configuration (env, two tiers)
 
@@ -206,6 +232,37 @@ server) and prints the correlated saga timeline showing the loop.
 ```
 just demo-defect-loop   # build → sit → defect.raised → build → sit → defect.fixed → … → done
 just demo-sit-pt        # SIT (mock rig) → PT (mock rig, pt-analysis) → security review (harness + infosec sign-off)
+```
+
+## The full lifecycle (slice 9) — the capstone
+
+The finale stitches every stage into one pipeline. Two new stages complete the lifecycle:
+
+- `topologies/deploy.yaml` — the `release-coordinator` assembles the **deployment package +
+  release notes** from the approved design, the built + code-reviewed diffs, and the SIT / PT
+  results, then parks on the `deploy-approval` funnel (the eng-manager + cio final sign-off). It
+  assembles and summarises; it does not deploy — the prod deploy authority *is* the human gate.
+- `topologies/support-handover.yaml` — the `support-engineer` produces the operator-ready
+  **runbook / handover** (what changed, how to operate it, known issues, rollback) and sets up
+  prod monitoring. Ungated and terminal: completing it finishes the saga.
+
+`pipelines/sdlc-full.yaml` is the full-lifecycle `kind: StageGraph` — the eight stages in order,
+**intake → design → build → sit → pt → security-review → deploy → support-handover → done** —
+carrying the two multi-party gates (design, security), the final release gate (deploy), the
+integration-contract locks held through design approval, the per-stage compensations, and the
+cross-stage defect loop. `roles/sdlc-roles.yaml` gains **eng-manager** (grace) and **cio** (heidi),
+conferring the human-only `release:approve` scope.
+
+The capstone demo drives the **reference controller** over `sdlc-full` and takes one requirement
+(`OMS-101`) through the ENTIRE lifecycle to a shipped, handed-over change, printing the full
+correlated saga timeline (every stage, in order, one `correlation_id`). Deterministic: the three
+gated stages (design, security, deploy) park on their gate until a scripted human sign-off; CI +
+the mock QA / perf rigs (`build.ready-in-qa` / `sit.passed` / `pt.passed`) arrive externally — no
+keys, no network, no server.
+
+```
+just demo-sdlc            # the full lifecycle: intake → … → deploy → support-handover → done
+just demo-sdlc-stage-run  # the slice-4 one-app bounded stage run (intake → design → judge → approval)
 ```
 
 ## Validate

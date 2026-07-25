@@ -103,9 +103,17 @@ demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-w
 demo-gate-funnel:
     uv run python packages/runtime/demos/gate_funnel.py
 
+# Demo the FULL SDLC lifecycle (slice 9, the capstone): the reference controller drives one
+# requirement through the ENTIRE pipeline — intake -> design -> build -> sit -> pt ->
+# security-review -> deploy -> support-handover -> done — carrying the two multi-party gates, the
+# final release sign-off (eng-manager + cio), the contract locks, and the defect loop. Prints the
+# full correlated saga timeline. Deterministic (scripted run_stage seam, mock rigs, no keys/server).
+demo-sdlc:
+    uv run python examples/sdlc-pipeline/demo_full_sdlc.py
+
 # Demo the one-app (OMS) bounded stage run (slice 4): intake -> design -> judge -> approval, with
 # IAM scoping + the gate funnel + the agent-determination-only shape.
-demo-sdlc:
+demo-sdlc-stage-run:
     uv run python examples/sdlc-pipeline/demo_oms_stage_run.py
 
 # Demo the consolidated design across all three apps (slice 6): three per-app solution architects

@@ -16,3 +16,12 @@ roles:
   - id: infosec-lead
     members: [dana]
     scopes: [security:approve]
+  # The final release sign-off (slice 9): eng-manager + cio confer release:approve for the
+  # deploy-approval gate. release:approve is a human-only scope — the prod deploy sign-off can
+  # never be granted to an agent (design/details/sdlc-pipeline-example.md, automation map).
+  - id: eng-manager
+    members: [grace]
+    scopes: [release:approve]
+  - id: cio
+    members: [heidi]
+    scopes: [release:approve]

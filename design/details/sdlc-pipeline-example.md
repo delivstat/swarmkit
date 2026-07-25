@@ -553,7 +553,7 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 
 ## Build order (a program, not one feature)
 
-**Status:** slices 1–8 shipped. 1 multi-party approval (v1.97.0), 2 reusable
+**Status:** slices 1–9 shipped — the SDLC pipeline example program is complete. 1 multi-party approval (v1.97.0), 2 reusable
 archetype/skill library (#604), 3 the gate funnel as a first-class `kind: Funnel`
 artifact (#608), 5 the `controller` + `kind: StageGraph` artifact — pipeline-as-data
 discovered + ref-checked into the workspace, and a reference saga controller
@@ -592,8 +592,22 @@ review as layer 3, a HIGH finding routes back before the `infosec-lead` sign-off
 **defect loop** (`defect.raised → build`, `defect.fixed → sit`), demoed by `just demo-defect-loop`
 (the reference controller re-kicks build on a SIT defect, re-triggers SIT on the fix, then reaches
 `done`) and `just demo-sit-pt` (the mock-rig determination detail). Deterministic — scripted
-`run_stage` seam + faked rigs, no keys/network/server. Next: slice 9 (deploy package + support
-handover; full `just demo-sdlc`).
+`run_stage` seam + faked rigs, no keys/network/server. 9 the capstone — the deploy + support-handover
+finale that stitches the whole lifecycle together: the `deploy` topology (the `release-coordinator`
+assembles the **deployment package + release notes** from the approved + built + tested artifacts,
+gated by the `deploy-approval` funnel — the **final release sign-off** by `eng-manager` + `cio`, the
+human-only `release:approve` scope) and the `support-handover` topology (the `support-engineer`
+produces the **runbook / handover / prod-monitoring** setup; ungated + terminal), wired into the
+full-lifecycle `sdlc-full` stage-graph (intake → design → build → sit → pt → security-review →
+**deploy → support-handover** → done, carrying the design + security multi-party gates, the
+contract locks, the compensations, and the defect loop). Demoed by `just demo-sdlc`
+(`demo_full_sdlc.py`) — the reference controller drives one requirement (`OMS-101`) through the
+ENTIRE lifecycle to a shipped, handed-over change, printing the full correlated saga timeline; the
+slice-4 one-app stage run is preserved as `just demo-sdlc-stage-run`. Deterministic — scripted
+`run_stage` seam + faked gates/rigs, no keys/network/server. Next: the deferred follow-ups (none
+blocking) — a natural-language / chat pipeline interpreter (submit a BRD in prose), the qa/pt
+sign-off gates as first-class funnels (test-plan + SIT/PT approval), and the child-agent
+`depends_on` schema fix (the `allOf`/`additionalProperties` gotcha slice 6 surfaced).
 Note: slice 4 also closed a
 design-vs-runtime gap it surfaced — the executor
 registry now resolves the canonical `kind: harness` + `ref: <adapter-id>` shape (design

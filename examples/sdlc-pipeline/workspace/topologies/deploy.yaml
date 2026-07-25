@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: deploy
+  version: 0.1.0
+# Deploy stage (slice 9). The release-coordinator assembles the DEPLOYMENT PACKAGE + RELEASE
+# NOTES from the approved consolidated design, the built + code-reviewed diffs, and the SIT / PT
+# results, then parks on the `deploy-approval` funnel: the final human release sign-off by the
+# eng-manager + cio (the human-only release:approve scope). Reads across all three apps (the
+# release surface); it assembles and summarises, it does not deploy — the prod deploy authority
+# is the human gate. See design/details/sdlc-pipeline-example.md (build order item 9).
+#
+# Domain-neutral: the runtime seam (the packaging run + its gate) is correlated by a
+# correlation_id supplied per run; this topology carries no requirement_id.
+agents:
+  root:
+    id: deploy-coordinator
+    role: root
+    archetype: release-coordinator
+    funnel: deploy-approval
+    iam:
+      base_scope: [kb:read, repo:read, app:oms:read, app:web:read, app:mobile:read]
