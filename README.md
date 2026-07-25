@@ -12,7 +12,7 @@
   <a href="https://pypi.org/project/swarmkit-runtime/"><img src="https://img.shields.io/pypi/v/swarmkit-runtime.svg" alt="PyPI" /></a>
   <a href="https://github.com/delivstat/swarmkit/actions"><img src="https://img.shields.io/github/actions/workflow/status/delivstat/swarmkit/ci.yml?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+" />
-  <img src="https://img.shields.io/badge/tests-566-green.svg" alt="566 tests" />
+  <img src="https://img.shields.io/badge/tests-2100+-green.svg" alt="2100+ tests" />
 </p>
 
 <!-- TODO: Record the demo GIF with: vhs scripts/demo.tape -->
@@ -283,7 +283,7 @@ Image content blocks across all 7 model providers. MCP tools can return `ImageCo
 
 Per-server and per-tool governance: `permission: open|cautious|strict|readonly` in workspace.yaml. Reads auto-approved, writes need governance approval, readonly denies mutations.
 
-### Harness executors (M19 — shipped, sandbox rolling out)
+### Harness executors (M19 — shipped)
 
 Run a coding harness (Claude Code, opencode, and any subprocess that emits line-delimited JSON) as an agent node, not just a model. Harnesses are **data**: a declarative `adapter.yaml` — no per-harness Python — interpreted by one engine, with a bundled library for the big harnesses. Isolated in an ephemeral git worktree by default; mid-run out-of-grant permissions **relay** to a human inbox and resume; repeated approvals **accrue** into a proposed allowlist changeset (`swarmkit trust`). An **opt-in container sandbox** adds real isolation — resource limits, enforced egress (`deny`/`allowlist`), and a `build` step that runs the harness with **no local install** (bring only your API key). Off by default; `SWARMKIT_DISABLE_CONTAINER_SANDBOX` always wins. See [the adapter guide](docs/guides/authoring-harness-adapters.md).
 
@@ -409,6 +409,12 @@ See it end to end in the **[SDLC pipeline walkthrough](https://delivstat.github.
 82. **Integration contracts** — `kind: Contract` makes stage `locks` a checked, pickable vocabulary; the contention overlay is exact
 83. **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` across every artifact YAML, with or without an env file
 
+### Fleet & evaluation
+84. **Fleet control plane** — a standalone `swarmkit-control-plane` + panel UI aggregating many `swarmkit serve` instances (SQLite/Postgres); an independent app + client over the serve contract, never a runtime dependency
+85. **Federated run graph** — one run rendered over its agents across instances, from a federated per-run trace endpoint
+86. **Fleet-wide harness cockpit** — resolve harness relay/input gates across the whole fleet from one panel
+87. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
+
 ## Reference topologies
 
 Ships with production-quality topologies you can use immediately:
@@ -473,7 +479,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full 4-phase roadmap. Runtime is at v1.98.0: M0–M9 complete; serve + canary, harness executors, and the delivery-pipeline stack (StageGraph + saga controller, funnels, contracts, multi-party approval) all shipped. Next: installable expertise packages + launch prep. The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.103.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 (delivery pipelines) shipped — StageGraph + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, and the end-to-end SDLC example. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 
