@@ -11,11 +11,13 @@ status: active
 
 **Status:** originally drafted 2026-04-21. Reorganised 2026-05-08 to incorporate product architecture (`product-architecture.md`), OpenTelemetry observability (`opentelemetry-observability.md`), intent drift detection (`intent-drift-detection.md`), market analysis (`market-analysis-and-risk-mitigations.md`), and ecosystem features.
 
+**Current (runtime v1.103.0):** Phases 1–4 shipped. Phase 5 (fleet & self-improvement) is largely shipped — eval harness (M15), fleet aggregation + control-plane/panel UI (M16), the executor/harness-isolation stack (M19), and the topology canvas (M20) all landed; the self-improvement distribution loop (M17) and workflow-archetype interop (M18) are the remaining tails. **Phase 6 — the delivery-pipeline & orchestration layer (M21)** shipped: `StageGraph` + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the pipeline-editor canvas, and the end-to-end SDLC example. Remaining before a public launch: M11 (launch prep) and the M9 reference-topology tail.
+
 **Scope:** this plan covers the **open-source SwarmKit framework** only. The commercial Rynko platform (UI, cloud telemetry, team features) has its own plan — see `design/details/product-architecture.md` for the boundary.
 
 ## How this plan works
 
-- **Phases** group milestones by theme and priority. Phase 1 is complete. Phase 2 is current priority.
+- **Phases** group milestones by theme and priority. Phases 1–4 are complete; Phase 5 (fleet & self-improvement) and Phase 6 (delivery pipelines) are largely shipped — see the overview and the current-status note above for the remaining tails.
 - **Milestones** are coarse checkpoints. Each has an **exit demo** — something a human can watch.
 - One feature = one design note at `design/details/<slug>.md` + one implementation PR.
 - Milestones are mostly sequential but features within a milestone often parallelise.
@@ -43,6 +45,13 @@ status: active
 | 4 | M13 | Topology Composer | ✅ | Three-view editor (Structure/Relationships/Network), YAML editing, create new, CRUD API |
 | 4 | M14 | Cost optimization | ✅ | Dual model (tool/synthesis split), accurate token tracking, configurable store backend |
 | 4 | M11 | Launch prep | 🟡 | `uv tool install swarmkit-runtime` → working swarm in <15 min |
+| 5 | M15 | Eval harness | ✅ | `swarmkit eval` scores a topology + flips exit code (slices 1–2; slice 3 schema-artifact remaining) |
+| 5 | M16 | Fleet aggregation | ✅ | `packages/control-plane` + panel UI: federated per-run trace, fleet run graph, cross-instance views |
+| 5 | M17 | Self-improvement cockpit | 🟡 | Fleet trace/eval views + harness-gate cockpit ✅; automated gap-mining → propose → distribute remaining |
+| 5 | M18 | Workflow archetypes + interop | ⬜ | Sequential/Parallel/Loop archetypes + A2A-as-coordination-skill (proposed) |
+| 5 | M19 | Executor abstraction + harness isolation | ✅ | Harness node (claude-code/opencode) via `adapter.yaml`; relay, trust accrual, container sandbox, MCP gateway |
+| 5 | M20 | Topology canvas | ✅ | React Flow canvas — view + edit (YAML round-trip) + examine-a-run; fleet run-detail port pending |
+| 6 | M21 | Delivery pipelines & orchestration | ✅ | `just demo-sdlc` drives a requirement through the full StageGraph (8 stages, 3 human gates) as a saga |
 
 ## Cross-cutting workstreams
 
@@ -611,14 +620,19 @@ process boundary, which a single run never crosses).
 
 ---
 
-## Phase 5 — Fleet & self-improvement (PROPOSED)
+## Phase 5 — Fleet & self-improvement (LARGELY SHIPPED)
 
 Turns the mature observability + governance foundation into a cross-instance control
 plane and a human-gated self-improvement loop. Self-hostable + OSS (invariant #4);
 Rynko is an optional managed backend, never required. See
 `design/details/fleet-control-plane.md` and `design/details/adk-lessons.md`.
 
-### M15 — Eval harness (slice 1 ✅)
+**Status:** the eval harness (M15), fleet aggregation + the `swarmkit-control-plane`
+panel (M16), the executor/harness-isolation stack (M19), and the topology canvas (M20)
+have shipped. The automated self-improvement distribution loop (M17) and the
+workflow-archetype interop (M18) are the remaining tails.
+
+### M15 — Eval harness (slices 1–2 ✅)
 
 Standalone value (no fleet needed); the "test" gate in growth-through-authoring and
 the "Measure" signal for self-improvement. Borrowed from ADK; reuses decision-skill judges.
@@ -637,17 +651,24 @@ See `design/details/eval-harness.md`.
 **Exit demo:** `swarmkit eval examples/hello-swarm/workspace greeting-evals` scores the
 `hello` topology and prints a pass rate; a failing case flips the exit code to 1.
 
-### M16 — Fleet aggregation (NEW, proposed)
+### M16 — Fleet aggregation ✅
 
-Read-only cross-instance observability. Builds on `distributed-architecture.md`
-(centralized OTel collector) + `opentelemetry-observability.md`.
+Read-only cross-instance observability. Shipped as a **standalone control plane**
+(`packages/control-plane` + `packages/control-plane-ui`, SQLite/Postgres) that talks to
+each `swarmkit serve` instance over the serve contract — an independent app + client, never
+a dependency on the runtime package (contract-not-shared-code across runtime ↔ panel ↔ UI).
 
-- [ ] Instance/tenant resource tagging (`service.instance.id`, `deployment`/tenant).
-- [ ] Documented OTel Collector + backend deployment (Tempo/Jaeger/Grafana or Rynko).
-- [ ] Semantic-summary ingest (aggregated audit + eval + skill-gap signals) into a
-      control-plane store.
+- [x] Instance registration + per-instance identity (encrypted at rest; a fixed
+      `SWARMKIT_CONTROL_PLANE_SECRET_KEY` is required so the panel survives restarts).
+- [x] Federated per-run trace endpoint + the **fleet run graph** — one run rendered over its
+      agents across instances (PRs #592, #593).
+- [x] Cross-instance audit / run / harness-gate views in the panel UI; the harness relay +
+      input cockpit works across the whole fleet.
+- [ ] Optional OTel Collector + external backend (Tempo/Jaeger/Grafana) export — the panel
+      aggregates over the serve contract directly today; a collector path is a follow-on.
 
-**Exit demo:** two `swarmkit serve` instances → one fleet view, correctly tagged.
+**Exit demo:** two `swarmkit serve` instances registered in one panel → a single fleet run
+graph, correctly attributed per instance.
 
 ### M17 — Self-improvement cockpit (NEW, proposed)
 
@@ -671,7 +692,7 @@ Closes the loop: observe → measure → propose → approve → distribute.
 - [ ] A2A agent / sub-swarm / another instance's swarm modelled as a **coordination
       skill** (builds on the A2A adapter + §18).
 
-### M19 — Executor abstraction + harness isolation 🟡
+### M19 — Executor abstraction + harness isolation ✅
 
 **Goal:** run a node as a harness (session-holding, diff-producing subprocess) alongside `model`,
 under the same governance + observability, with a real isolation boundary.
@@ -703,19 +724,64 @@ under the same governance + observability, with a real isolation boundary.
       demo `demos/mcp_gateway.py`.
 - [ ] Verify codex + gemini-cli adapters e2e against the real binaries (drop the EXPERIMENTAL marker).
 
-### M20 — Topology canvas (NEW) 🟡
+### M20 — Topology canvas ✅
 
 **Goal:** one interactive node-and-edge canvas, two modes — **edit** the topology graph and
 **examine** a run over the same layout. Replaces the composer's text/tree "Network" view with a real
 React Flow canvas; the same canvas renders read-only in the fleet run-detail.
 
-**Design reference:** `design/details/topology-canvas.md` (promote draft → accepted in task #16).
+**Design reference:** `design/details/topology-canvas.md`.
 
-- [ ] Promote the note + scaffold React Flow; read-only `TopologyCanvas` (agents→nodes, children→edges). Task #16.
-- [ ] **Edit mode** — add/remove nodes, draw delegation edges, node panel = schema form; edits
-      round-trip through YAML (no second source of truth). Task #17.
-- [ ] **Examine-run mode** — overlay `/observability/runs/{id}/trace` (who fired, order, timing,
-      tokens); inline gate answering; copy read-only into the fleet run-detail. Task #18.
+- [x] Read-only `TopologyCanvas` (agents→nodes, children→edges) — React Flow scaffold. Task #16 (PR #568).
+- [x] **Edit mode** — add/remove nodes, draw delegation edges, node panel = schema form; edits
+      round-trip through YAML (no second source of truth); staged edits + Save. Task #17 (PRs #569, #582–586).
+- [x] **Examine-run mode** — overlay a run's trace on the graph (who fired, order, timing, tokens);
+      inline gate answering. Task #18 (PR #570). Shipped in UI 0.9.0; migrated to shadcn (PR #578).
+- [x] **Pipeline editor canvas** — the same visual model extended to `StageGraph` editing (PRs #614–618).
+- [ ] Port the read-only examine canvas into the fleet run-detail (needs the federated trace). Task #25.
+
+---
+
+## Phase 6 — Delivery pipelines & orchestration (SHIPPED)
+
+Composes bounded swarm runs into a long-running **delivery pipeline**, authored as data — the
+capstone that turns SwarmKit from a swarm runner into a governed software-delivery engine. Runtime
+1.99.0 → 1.103.0. The design non-goal held throughout: the runtime gains only a small, domain-neutral
+drive seam; the saga engine and any business "requirement" live outside it (in the example controller).
+
+### M21 — Delivery pipelines & orchestration ✅
+
+**Goal:** a whole pipeline as one YAML artifact a controller sequences as a durable saga, carrying
+governance (funnels, multi-party approval, contract locks) as data, advanced by external events.
+
+- [x] **Funnel** (`kind: Funnel`) — a reusable per-artifact quality gate: `validate → judge → review →
+      approve`, one human exit, compiler-owned control flow, bounded retry. `gate-funnel.md` (slice 3, #608).
+- [x] **Multi-party approval** — quorum / distinct-approver floor / author exclusion, resolved through a
+      `RoleRegistry` + embedded `ApprovalPolicy`; approval scopes structurally un-grantable to agents.
+      `multi-party-approval.md` (slice 1, #596).
+- [x] **StageGraph** (`kind: StageGraph`) + the reference **saga controller** — `when`/`success`/`locks`/
+      `gate`/`compensation`/`loops`; dedup, reconciliation, contention serialisation, compensation.
+      `pipeline-controller.md` (slice 5, #610).
+- [x] **Integration contracts** (`kind: Contract`) — a stage's `locks:` become a checked vocabulary.
+      `contract-registry.md`.
+- [x] **Env-var substitution** across every artifact (`${VAR}` / `${VAR:-default}` / `$${VAR}`), so a
+      reusable library runs out-of-the-box yet stays configurable. (#605).
+- [x] **Orchestration seam** — a generic, `correlation_id`-native drive contract (`RunStage`,
+      `StageOutcome`, `PipelineSignal`) in the runtime; the `OrchestrationProvider` + in-memory controller
+      + **Temporal** adapter live in the example, `temporalio` never in the core.
+      `orchestration-provider-seam.md` (#632, #633, #634, #613).
+- [x] **Pipeline triggering** — a `Trigger` targets a pipeline event; `swarmkit serve` ingress validates,
+      extracts the opaque `correlation_id`, and emits it; `pipeline:advance`/`pipeline:skip` are reserved
+      human-only scopes (policy-gated + audited). `pipeline-triggering.md` (#635, #636, #637).
+- [x] **Pipeline editor canvas** — visual `StageGraph` editing in the composer. `pipeline-editor-canvas.md`
+      (#614–618).
+- [x] **The SDLC example** — a complete lifecycle as data (intake → design → build → sit → pt →
+      security-review → deploy → support-handover), three human gates, contract locks, compensations, a
+      defect loop, a harness build/review node, and the reference controller. `sdlc-pipeline-example.md`
+      (slices 1–9, #594…#641).
+
+**Exit demo:** `just demo-sdlc` drives one requirement through all eight stages and three multi-party
+gates deterministically via the reference controller, printing the correlated saga timeline.
 
 ---
 
@@ -815,7 +881,25 @@ Every design note under `design/details/` and where it appears in this plan:
 | `executor-trust-accrual-plan.md` | M19 ✅ |
 | `executor-container-sandbox.md` | M19 ✅ |
 | `executor-mcp-gateway.md` | M19 ✅ |
-| `topology-canvas.md` | M20 🟡 |
+| `topology-canvas.md` | M20 ✅ |
+| `eval-harness.md` | M15 ✅ |
+| `fleet-run-graph.md` | M16 ✅ |
+| `fleet-compose.md` | M16 ✅ |
+| `harness-reviewer.md` | M19 ✅ |
+| `postgres-backend.md` | M14 ✅ (configurable store backend) |
+| `production-storage-model.md` | M14 ✅ |
+| `serve-hosted-webui.md` | M12 ✅ |
+| `context-compression.md` | M14 follow-on ✅ (slices 1–3) |
+| `gate-funnel.md` | M21 ✅ |
+| `multi-party-approval.md` | M21 ✅ |
+| `pipeline-controller.md` | M21 ✅ |
+| `contract-registry.md` | M21 ✅ |
+| `artifact-env-substitution.md` | M21 ✅ |
+| `orchestration-provider-seam.md` | M21 ✅ |
+| `orchestration-pause-model.md` | M21 ✅ |
+| `pipeline-triggering.md` | M21 ✅ |
+| `pipeline-editor-canvas.md` | M21 ✅ |
+| `sdlc-pipeline-example.md` | M21 ✅ |
 
 ## Open questions
 
