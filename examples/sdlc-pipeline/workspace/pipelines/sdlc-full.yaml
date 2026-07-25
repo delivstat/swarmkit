@@ -1,0 +1,77 @@
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: sdlc-full
+  name: SDLC full-lifecycle pipeline
+  description: >
+    The complete software-delivery pipeline as data (slice 9, the capstone): one requirement is a
+    saga the reference controller sequences from intake all the way to a shipped, handed-over
+    change — intake -> design -> build -> sit -> pt -> security-review -> deploy ->
+    support-handover -> done. It stitches together every stage built across slices 4-8 and adds
+    the deploy + support-handover finale. It carries the two multi-party human gates
+    (consolidated-design-approval at design, security-review-approval pre-release) plus the final
+    release sign-off (deploy-approval: eng-manager + cio), the integration-contract locks held
+    through design approval, the per-stage compensations, and the cross-stage DEFECT LOOP
+    (defect.raised -> build, defect.fixed -> sit). Stage boundaries that are real enterprise
+    events (CI + the mock QA/perf rigs) arrive externally (build.ready-in-qa / sit.passed /
+    pt.passed); the controller — not the runtime — owns the durable weeks-long state, SwarmKit
+    only runs the bounded stages. See design/details/pipeline-controller.md and
+    sdlc-pipeline-example.md (build order item 9).
+stages:
+  - id: intake
+    topology: oms-intake
+    when: [requirement.created]
+    success: design.kickoff
+  - id: design
+    topology: consolidated-design
+    when: [design.kickoff]
+    # Acquired all-or-none in a fixed global order before the run; held across approval.
+    locks: [oms-inventory, oms-web]
+    # Multi-party design gate: the app leads + infosec-lead sign off the consolidated design.
+    gate: consolidated-design-approval
+    success: design.approved
+    release_locks_on: design.approved
+    compensation: oms-compensate-design
+  - id: build
+    topology: oms-build-harness
+    when: [design.approved]
+    # EXTERNAL event (CI) — the controller waits for the webhook / reconciliation, never fabricates it.
+    success: build.ready-in-qa
+    compensation: oms-compensate-build
+  - id: sit
+    topology: sit
+    when: [build.ready-in-qa]
+    # EXTERNAL event: the mock QA rig reports the SIT result the same way CI does.
+    success: sit.passed
+  - id: pt
+    topology: pt
+    when: [sit.passed]
+    # EXTERNAL event: the mock perf rig reports the PT result.
+    success: pt.passed
+  - id: security-review
+    topology: security-review
+    when: [pt.passed]
+    # The pre-release security gate: security-consultant harness review + infosec-lead sign-off.
+    gate: security-review-approval
+    success: release.approved
+  - id: deploy
+    topology: deploy
+    when: [release.approved]
+    # The final release sign-off: the release-coordinator's package + release notes, gated by the
+    # eng-manager + cio (the human-only release:approve scope — the prod deploy authority).
+    gate: deploy-approval
+    success: deploy.done
+  - id: support-handover
+    topology: support-handover
+    when: [deploy.done]
+    # The terminal stage: no `success` routes anywhere, so its clean completion ends the saga.
+    success: handover.complete
+loops:
+  # The cross-stage defect cycle: a defect found in QA routes back to build; its fix re-triggers sit.
+  - when: defect.raised
+    to: build
+  - when: defect.fixed
+    to: sit
+provenance:
+  authored_by: human
+  version: 1.0.0

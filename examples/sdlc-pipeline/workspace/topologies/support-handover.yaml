@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: support-handover
+  version: 0.1.0
+# Support-handover stage (slice 9) — the lifecycle's last step. The support-engineer produces the
+# operator-ready RUNBOOK + HANDOVER notes from the shipped requirement (what changed, how to
+# operate it, known issues, rollback) and sets up prod monitoring for the change. It reads across
+# all three apps for context and writes only the shared runbook / handover KB. Ungated: the
+# binding release decision was the deploy gate; handover is the post-deploy operability artifact,
+# so completing it finishes the saga. See design/details/sdlc-pipeline-example.md (build order
+# item 9; KB "runbook/support handover").
+#
+# Domain-neutral: the runtime seam (the handover run) is correlated by a correlation_id supplied
+# per run; this topology carries no requirement_id.
+agents:
+  root:
+    id: handover-runner
+    role: root
+    archetype: support-engineer
+    iam:
+      base_scope: [kb:read, kb:write, app:oms:read, app:web:read, app:mobile:read]

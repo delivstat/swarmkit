@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: deploy-approval
+  name: Final Release Sign-off
+  description: >
+    The final release gate (slice 9): the release-coordinator's deployment package + release
+    notes face a deterministic validate, then the binding multi-party human sign-off — the
+    eng-manager AND the cio, both conferring the human-only release:approve scope (the prod
+    deploy authority an agent can never hold). Deliberately light on automated layers: the
+    heavyweight harness review already ran at the pre-release security gate, so this stage adds
+    the accountable release decision, not another investigation — sensible governance, not
+    over-gating. See design/details/gate-funnel.md and sdlc-pipeline-example.md (build order
+    item 9, the automation map's "Final sign-off" + "Deploy" rows).
+validate:
+  schema: schemas/deploy-package.json
+  autocorrect: true
+approve:
+  rules:
+    - scope: release:approve
+      roles: [eng-manager, cio]
+      quorum: all
+  exclude_author: true
+  min_distinct_approvers: 2
+provenance:
+  authored_by: human
+  version: 1.0.0
