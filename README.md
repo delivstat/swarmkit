@@ -232,7 +232,7 @@ curl -X POST http://localhost:8000/run/my-topology \
 **The web portal ships with the runtime.** Install the `[ui]` extra and `swarmkit serve` hosts the portal at its own origin — no Node, no separate process, no CORS, no API-URL env var (the portal talks to the workspace serve was started with):
 
 ```bash
-pip install "swarmkit-runtime[ui]"
+uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"
 swarmkit serve my-swarm/                # → portal AND API on http://localhost:8000
 ```
 
@@ -386,7 +386,7 @@ See it end to end in the **[SDLC pipeline walkthrough](https://delivstat.github.
 63. **`swarmkit validate --tree`** — visual agent tree with skills, archetypes, MCP servers
 64. **`swarmkit run --dry-run`** — show resolved agents without executing
 65. **`swarmkit run --verbose`** — per-agent execution detail
-66. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`pip install "swarmkit-runtime[ui]"` → `swarmkit serve` hosts the portal at its own origin)
+66. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` → `swarmkit serve` hosts the portal at its own origin)
 67. **JSON & TypeScript schemas** — validators in both languages
 68. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
 69. **16 archetypes + 25 skills** — production-ready out of the box
