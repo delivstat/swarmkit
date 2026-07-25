@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: oms-build-harness
+  version: 0.1.0
+# Build stage — the executor showcase (slice 7). The OMS `developer` is a HARNESS executor
+# (`executor: { kind: harness, ref: claude-code }`, on the archetype): in a sandbox scoped to
+# the app's repo it implements the approved design and produces a *candidate diff*. That diff
+# faces the `oms-code-review` funnel — the `code-review` decision skill judges it and, below
+# threshold, routes the critique back to the harness for a bounded revision before the OMS lead
+# signs off (the human approval is the only exit). Swapping the harness (claude-code → opencode)
+# is a one-field change on the archetype's `executor.ref` — executors-are-data.
+#
+# Domain-neutral: the runtime seam (the harness run + its gate) is correlated by a correlation_id
+# supplied per run; this topology carries no `requirement_id`. See executor-abstraction.md §4.2.
+agents:
+  root:
+    id: builder
+    role: root
+    archetype: developer
+    funnel: oms-code-review
+    iam:
+      base_scope: [repo:write, ci:read, app:oms:read]

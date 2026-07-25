@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: oms-code-review
+  name: OMS Code Review
+  description: >
+    The code-review gate on the OMS developer's candidate diff (slice 7). The
+    `code-review` decision skill judges the diff against the approved design +
+    lint/test signal; a below-threshold verdict routes the critique back to the
+    developer harness for a bounded revision, then the OMS lead signs off. The
+    only exit is the human approval. See design/details/sdlc-pipeline-example.md
+    (build order item 7) and design/details/gate-funnel.md.
+judge:
+  skill: code-review
+  rubric: rubrics/code-review.md
+  threshold: 0.8
+  max_retries: 2
+approve:
+  rules:
+    - scope: design:approve
+      roles: [oms-lead]
+      quorum: all
+  exclude_author: true
+  min_distinct_approvers: 1
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -553,7 +553,7 @@ a deploy-ready package — with the full audit trail printed. Terminal transcrip
 
 ## Build order (a program, not one feature)
 
-**Status:** slices 1–6 shipped. 1 multi-party approval (v1.97.0), 2 reusable
+**Status:** slices 1–7 shipped. 1 multi-party approval (v1.97.0), 2 reusable
 archetype/skill library (#604), 3 the gate funnel as a first-class `kind: Funnel`
 artifact (#608), 5 the `controller` + `kind: StageGraph` artifact — pipeline-as-data
 discovered + ref-checked into the workspace, and a reference saga controller
@@ -570,11 +570,21 @@ IAM-scoped to its own app, feeding the integration-architect synthesizer), the
 `consolidated-design-approval` funnel (validate → judge → review → multi-party approve),
 and the completed app-lead set (`mobile-lead` added), demoed by
 `just demo-consolidated-design` (3 app drafts → consolidation → 4-layer funnel with the
-harness review + a HIGH-severity route-back → 4-party approval). Slice 6 also surfaced a
+harness review + a HIGH-severity route-back → 4-party approval). 7 the harness build — the
+`developer` **harness** executor (`kind: harness, ref: claude-code`), sandboxed and scoped to the
+OMS repo, produces a **candidate diff** against a demo repo
+(`examples/sdlc-pipeline/fixtures/demo-repo/`), gated by the `oms-build-harness` topology's
+`oms-code-review` funnel (the `code-review` decision skill → route-back to the harness →
+OMS-lead sign-off), demoed by `just demo-harness-build` (clean-advance + a finding routed back to
+the harness that then passes). The demo drives the *real* bundled `claude-code` declarative adapter
+over a scripted stream-json transcript, faking only the subprocess launch
+(`DeclarativeExecutor._open_stream`) — no keys, no network; the executor showcase is the FLOW.
+Slice 6 also surfaced a
 schema gap it did not fix (example-only): the child-agent `depends_on` field is declared in
 the topology schema but rejected by the base agent's `additionalProperties: false` (a JSON
 Schema `allOf` gotcha) — the stage ordering is carried by children order + sequencing until a
-schema fix lands. Next: slice 7 (harness build + code-review gate). Note: slice 4 also closed a
+schema fix lands. Next: slice 8 (SIT + PT cross-app + security-consultant review + defect loop).
+Note: slice 4 also closed a
 design-vs-runtime gap it surfaced — the executor
 registry now resolves the canonical `kind: harness` + `ref: <adapter-id>` shape (design
 executor-abstraction.md §4.2/§5), selecting the adapter by `ref`; naming an adapter id
