@@ -103,6 +103,12 @@ demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-w
 demo-gate-funnel:
     uv run python packages/runtime/demos/gate_funnel.py
 
+# Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
+# edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
+# weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.
+demo-gates:
+    uv run swarmkit gates examples/sdlc-pipeline/workspace --pipeline sdlc-full
+
 # Demo the FULL SDLC lifecycle (slice 9, the capstone): the reference controller drives one
 # requirement through the ENTIRE pipeline — intake -> design -> build -> sit -> pt ->
 # security-review -> deploy -> support-handover -> done — carrying the two multi-party gates, the
