@@ -119,6 +119,11 @@
           "type": "array",
           "items": { "$ref": "#/$defs/child_agent" },
           "description": "Nested agents. Tree structure, one parent per agent (design §5.2)."
+        },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sibling agent IDs that must complete before this agent runs — DAG execution ordering (design/details/dag-dependency-graph.md). Meaningful for child agents; ignored for the root, which has no siblings. Defined on the base agent (rather than only on child_agent) because a JSON Schema `allOf` branch cannot add a property the base's `additionalProperties: false` would then reject."
         }
       }
     },
@@ -127,12 +132,7 @@
         { "$ref": "#/$defs/agent" },
         {
           "properties": {
-            "role": { "enum": ["leader", "worker"] },
-            "depends_on": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Agent IDs that must complete before this agent runs. Enables DAG-based execution ordering."
-            }
+            "role": { "enum": ["leader", "worker"] }
           }
         }
       ]

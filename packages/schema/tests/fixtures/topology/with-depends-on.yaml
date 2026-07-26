@@ -1,0 +1,26 @@
+# Child agents with `depends_on` — DAG execution ordering across siblings.
+# Regression fixture: `depends_on` on a child agent must validate. It previously did not,
+# because `child_agent` adds it via an `allOf` branch while the base `agent` had
+# `additionalProperties: false`, so the base subschema rejected it as an unknown property.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: with-depends-on
+  version: 0.1.0
+agents:
+  root:
+    id: coordinator
+    role: root
+    archetype: supervisor-root
+    children:
+      - id: fetch
+        role: worker
+        archetype: code-gen-worker
+      - id: transform
+        role: worker
+        archetype: code-gen-worker
+        depends_on: [fetch]
+      - id: report
+        role: leader
+        archetype: supervisor-leader
+        depends_on: [fetch, transform]

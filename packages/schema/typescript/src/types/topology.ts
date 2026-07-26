@@ -30,6 +30,14 @@ export interface Root {
      */
     children?: ChildElement[];
     /**
+     * Sibling agent IDs that must complete before this agent runs — DAG execution ordering
+     * (design/details/dag-dependency-graph.md). Meaningful for child agents; ignored for the
+     * root, which has no siblings. Defined on the base agent (rather than only on child_agent)
+     * because a JSON Schema `allOf` branch cannot add a property the base's
+     * `additionalProperties: false` would then reject.
+     */
+    depends_on?: string[];
+    /**
      * Optional reference (by id) to a Funnel artifact — a reusable per-artifact quality gate on
      * this agent's output: validate -> judge -> (review) -> multi-party human approval
      * (design/details/gate-funnel.md). When set, the agent's output must clear the funnel's
@@ -59,6 +67,14 @@ export interface ChildElement {
      * Nested agents. Tree structure, one parent per agent (design §5.2).
      */
     children?: ChildElement[];
+    /**
+     * Sibling agent IDs that must complete before this agent runs — DAG execution ordering
+     * (design/details/dag-dependency-graph.md). Meaningful for child agents; ignored for the
+     * root, which has no siblings. Defined on the base agent (rather than only on child_agent)
+     * because a JSON Schema `allOf` branch cannot add a property the base's
+     * `additionalProperties: false` would then reject.
+     */
+    depends_on?: string[];
     /**
      * Optional reference (by id) to a Funnel artifact — a reusable per-artifact quality gate on
      * this agent's output: validate -> judge -> (review) -> multi-party human approval
