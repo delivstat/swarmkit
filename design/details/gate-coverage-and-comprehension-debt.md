@@ -21,6 +21,16 @@ The graph-engineering discourse landed on one durable law (Osmani): *a graph's t
 
 **The honest constraint, stated up front:** *you cannot gate comprehension.* No automated check verifies that a human understood a change; a `decision` skill that claims to is a lie that will be optimized against. So this note deliberately splits into what is measurable (gate *presence/strength*, approval *behavior*) and what is only *cultivatable* (the practices that produce understanding). We gate and measure the leading indicators; we make the practices first-class; we never pretend to gate the thing itself.
 
+## Surface parity — CLI ⇄ serve UI (cross-cutting)
+
+Everything in this note obeys SwarmKit's **thin-interface rule**: business logic lives in the `WorkspaceRuntime` service layer, and the CLI and the serve web app are **both thin clients** over it (`cli-architecture`). This note therefore ships **no CLI-only capability** — every command below is a service-layer method surfaced twice.
+
+- **Every read is a serve endpoint *and* a UI view**, not just a CLI table. `swarmkit gates` ⇄ `GET …/gate-coverage` ⇄ the pipeline-canvas overlay; `swarmkit comprehension` ⇄ `GET …/comprehension` ⇄ a comprehension panel in the serve web app. The **fleet panel** is the *cross-instance* projection of the same endpoints; the **single-instance serve UI** is the per-workspace one — both exist, neither is the only one.
+- **Every gate *action* is available in the serve UI**, never terminal-only: resolving a human approval (approve / reject with the last critique attached), answering a relayed permission or input request, and viewing live multi-party quorum state — all through the existing `/review` surface, extended to the funnel and multi-party gates.
+- **Every gate *configuration* is editable in the serve UI**: the funnel layers, the approval policy (roles / quorum / `min_distinct_approvers` / `exclude_author`), the role registry, and the new stage fields (`objective`, `acceptance`, `slice_budget`) are all **artifact data the composer/canvas already edits** — the same schema-form surface, not a second config path.
+
+This is not added scope; it is the constraint the rest of the note is written against. Any endpoint or config named below is the service-layer capability surfaced in both places.
+
 ## Part A — Gate coverage (the narrowest verified edge)
 
 Because topology **is data**, the gates are already declared — we simply never *report* on them. A pure static pass over a `StageGraph` + the `Funnel`s its stages reference (and over a `Topology`'s per-node funnels) classifies every edge by the **strongest gate layer** present, and surfaces the weakest.
@@ -43,13 +53,13 @@ A stage-graph *transition* is `passthrough` when the source stage has no `gate:`
 
 - **CLI:** `swarmkit gates <workspace> [pipeline|topology]` — a table of edges with their gate class, plus a one-line **verdict**: *"narrowest verified edge: `build → sit` is `passthrough`."* Exit non-zero (CI-gatable) if any edge on a `--require deterministic|human` floor is below it. This is analogous to `swarmkit eval` gating CI on quality — here it gates CI on *gate presence*.
 - **Canvas overlay:** color every edge on the pipeline-editor canvas by gate class; `passthrough` edges render red. The topology-as-data payoff — the coverage map is just the topology, re-projected.
-- **Serve endpoint:** `GET /pipelines/{id}/gate-coverage` for the fleet panel, so an operator sees the weakest edge per running pipeline.
+- **Serve endpoint + UI:** `GET /pipelines/{id}/gate-coverage` — the **same data behind the CLI table**, rendered as the canvas overlay in the single-instance serve web app and aggregated in the fleet panel, so an operator sees the weakest edge per running pipeline in either surface (per **Surface parity**).
 
 Entirely static / read-only. No execution, no new runtime state, no schema change.
 
 ## Part B — Comprehension-debt telemetry
 
-Everything here is **derived from the existing audit log** (`human-interaction-model.md`) — no new capture path, opt-in reporting, never a silent block. These are *signals*, surfaced by `swarmkit comprehension <workspace>` and on the fleet panel; a workspace may *optionally* promote any of them to a decision-gate threshold, but the default is report-only.
+Everything here is **derived from the existing audit log** (`human-interaction-model.md`) — no new capture path, opt-in reporting, never a silent block. These are *signals*, surfaced **identically across every surface** (per **Surface parity**): the `swarmkit comprehension <workspace>` CLI, a `GET /comprehension` serve endpoint feeding a comprehension panel in the single-instance serve web app, and the fleet panel for the cross-instance roll-up — the same service-layer computation behind all three. A workspace may *optionally* promote any signal to a decision-gate threshold, but the default is report-only.
 
 | Signal | Derived from | What it suggests |
 |---|---|---|
@@ -120,8 +130,18 @@ targets:
 ```
 
 ```bash
+# CLI — thin client over the WorkspaceRuntime service layer
 swarmkit gates <workspace> <pipeline>          # gate-coverage table + narrowest-edge verdict; --require <floor> gates CI
 swarmkit comprehension <workspace>             # comprehension-debt signals, report-only by default
+```
+
+```text
+# serve — the SAME service-layer methods, surfaced for the web app (single-instance) + fleet panel
+GET  /pipelines/{id}/gate-coverage             # → CLI `swarmkit gates`  → canvas overlay
+GET  /comprehension                            # → CLI `swarmkit comprehension` → comprehension panel
+GET  /review                 + POST /review/{id}/{approve|reject}   # resolve human/funnel/multi-party gates in the UI
+# gate CONFIG is not new API: funnels, approval policy, role registry, and the stage
+# objective/acceptance/slice_budget are artifacts edited through the existing composer/canvas CRUD.
 ```
 
 - **Schema:** three optional stage fields (`objective`, `acceptance`, `slice_budget`) — a `stage-graph` schema change under `schema-change-discipline.md`. Everything else (gate-coverage, telemetry, the audit topology) is read-side or ordinary artifacts — **no schema change**.
@@ -133,6 +153,7 @@ swarmkit comprehension <workspace>             # comprehension-debt signals, rep
 - **Blocking by default.** Part A can gate CI *on demand* (`--require`); Part B is report-only unless a workspace opts a signal into a threshold. No new silent block.
 - **New capture infrastructure.** Telemetry is derived from the existing audit log; if a signal needs data the audit doesn't have, that's a separate `human-interaction-model.md` change, called out explicitly, not smuggled in here.
 - **Replacing human judgment.** The audit panel and the signals *surface*; humans decide. Consistent with §8 and the funnel invariant.
+- **A CLI-only surface.** Every read, every gate action (approve/reject, answer a relay), and every gate configuration in this note is available in the serve web app — and, for reads, the fleet panel. The CLI is a peer client over the same service layer, never the sole one (`cli-architecture`). Any capability that lands CLI-first must land in serve in the same slice.
 
 ## Test plan
 
