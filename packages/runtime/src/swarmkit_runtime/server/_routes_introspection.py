@@ -93,6 +93,32 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
     async def list_pipelines(request: Request) -> list[str]:
         return sorted(_get_runtime(request).workspace.stage_graphs.keys())
 
+    @app.get("/pipelines/{pipeline_id}/gate-coverage")
+    async def pipeline_gate_coverage(request: Request, pipeline_id: str) -> dict[str, Any]:
+        """Gate coverage for one pipeline — same data as `swarmkit gates` (Surface parity)."""
+        from swarmkit_runtime.gate_coverage import compute_gate_coverage  # noqa: PLC0415
+
+        ws = _get_runtime(request).workspace
+        if pipeline_id not in ws.stage_graphs:
+            raise HTTPException(status_code=404, detail=f"no pipeline '{pipeline_id}'")
+        cov = compute_gate_coverage(ws, pipeline_id)
+        return {
+            "pipeline": cov.pipeline_id,
+            "verdict": cov.verdict(),
+            "narrowest": cov.narrowest.stage_id if cov.narrowest else None,
+            "stages": [
+                {
+                    "stage": s.stage_id,
+                    "gate": s.gate_class,
+                    "funnel": s.funnel_id,
+                    "pre_filters": list(s.pre_filters),
+                    "external_entry": s.external_entry,
+                    "terminal": s.terminal,
+                }
+                for s in cov.stages
+            ],
+        }
+
     @app.get("/contracts")
     async def list_contracts(request: Request) -> list[str]:
         return sorted(_get_runtime(request).workspace.contracts.keys())
