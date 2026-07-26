@@ -367,6 +367,10 @@ class Agent(BaseModel):
         None,
         description="Nested agents. Tree structure, one parent per agent (design §5.2).",
     )
+    depends_on: list[str] | None = Field(
+        None,
+        description="Sibling agent IDs that must complete before this agent runs — DAG execution ordering (design/details/dag-dependency-graph.md). Meaningful for child agents; ignored for the root, which has no siblings. Defined on the base agent (rather than only on child_agent) because a JSON Schema `allOf` branch cannot add a property the base's `additionalProperties: false` would then reject.",
+    )
 
 
 class Root(Agent):
@@ -381,10 +385,6 @@ class ChildAgent(Agent):
         populate_by_name=True,
     )
     role: Role2 | None = None
-    depends_on: list[str] | None = Field(
-        None,
-        description="Agent IDs that must complete before this agent runs. Enables DAG-based execution ordering.",
-    )
 
 
 SwarmKitTopology.model_rebuild()
