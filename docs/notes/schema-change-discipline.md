@@ -37,11 +37,12 @@ Every time you change anything under `packages/schema/schemas/`:
 3. **Add or update fixtures** under `packages/schema/tests/fixtures/<artifact>/` — at least one valid fixture exercising the new surface, and where relevant one invalid fixture that the new rule would reject.
 4. **Do not touch `validate` or `getSchema` wrappers unless the public API shape changes.** They re-read the schema on every call or via import-time load — the new shape is picked up automatically.
 5. **Regenerate pydantic models AND TS types.** `just schema-codegen` runs both regenerators. Commit the regenerated output in the same PR as the schema change. CI's `schema codegen drift` job runs both regens and fails on either drift.
-6. **Run the matching demo target:**
+6. **Update the serve UI for the new shape — if the field is user-authored.** The composer/canvas is schema-driven, but regenerated TS types are **not sufficient**: verify the composer form and the canvas node-panel actually **render and edit** the new field. Nested objects, new enums, and conditional (`allOf`/`if-then`) fields routinely need explicit form wiring — a field a user can only set by hand-editing YAML is an incomplete schema change. The CLI and web UI are peer clients over the same service layer, so nothing user-authored may be UI-invisible (`usability-first.md`). Skip only for purely machine-internal fields.
+7. **Run the matching demo target:**
    - `just demo-topology-schema` for topology changes
    - `just demo-schema` for a combined run across every artifact
    - `just demo-codegen` to see a typed object loaded through the generated pydantic models and the generated TS types
-7. **Design note.** If the change is non-trivial, add or update `design/details/<artifact>-schema-v1.md`. If the change is a cosmetic fix (typo, description rewording), a PR without a design note is fine.
+8. **Design note.** If the change is non-trivial, add or update `design/details/<artifact>-schema-v1.md`. If the change is a cosmetic fix (typo, description rewording), a PR without a design note is fine.
 
 ### Shape vs full validation
 
