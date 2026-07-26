@@ -107,6 +107,19 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:  # no
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 
+    @app.get("/api/pipelines/{pipeline_id}/gate-coverage")
+    async def get_pipeline_gate_coverage(request: Request, pipeline_id: str) -> dict[str, Any]:
+        """Gate coverage for one pipeline — same data as `swarmkit gates` (Surface parity)."""
+        from swarmkit_runtime.gate_coverage import (  # noqa: PLC0415
+            compute_gate_coverage,
+            coverage_to_dict,
+        )
+
+        ws = _get_runtime(request).workspace
+        if pipeline_id not in ws.stage_graphs:
+            raise HTTPException(status_code=404, detail=f"no pipeline '{pipeline_id}'")
+        return coverage_to_dict(compute_gate_coverage(ws, pipeline_id))
+
     @app.get("/api/contracts/{contract_id}/yaml")
     async def get_contract_yaml(contract_id: str) -> dict[str, str]:
         try:

@@ -12,8 +12,14 @@
 
 import "@xyflow/react/dist/style.css";
 import { contractLabel } from "@/lib/contract";
+import {
+	COVERAGE_COLOR,
+	coverageByStage,
+	edgeCoverageColor,
+} from "@/lib/gate-coverage";
 import type { StageGraphDoc, StageNodeData } from "@/lib/stage-graph";
 import { contendedContracts, stageGraphToGraph } from "@/lib/stage-graph";
+import type { GateCoverage } from "@/lib/types";
 import {
 	Background,
 	Controls,
@@ -147,6 +153,9 @@ export interface StageGraphCanvasProps {
 	/** Contract id → parties, to label contended (shared) locks by the apps they bind. Optional — the
 	 * contention highlight works from lock ids alone; parties only enrich the tooltip when fetched. */
 	contractParties?: Record<string, string[]>;
+	/** Optional gate-coverage overlay: color each forward edge by its source stage's gate class
+	 * (passthrough → red, human → green), and thicken the narrowest verified edge. */
+	coverage?: GateCoverage;
 	className?: string;
 }
 
@@ -160,17 +169,25 @@ export function StageGraphCanvas({
 	selectedStage,
 	onSelectStage,
 	contractParties,
+	coverage,
 	className,
 }: StageGraphCanvasProps) {
 	const projection = useMemo(() => stageGraphToGraph(doc), [doc]);
 
 	const flow = useMemo(() => {
+		const byStage = coverageByStage(coverage);
 		const nodes = projection.nodes.map((n) => ({
 			...n,
 			data: { ...n.data, selected: selectedStage === n.id, contractParties },
 		})) as StageFlowNode[];
 		const edges: Edge[] = projection.edges.map((e) => {
 			const s = EDGE_STYLE[e.kind];
+			// Coverage overlay colors FORWARD edges by their source stage's gate class.
+			const covColor =
+				e.kind === "forward" ? edgeCoverageColor(byStage, e.source) : undefined;
+			const stroke = covColor ?? s.stroke;
+			const isNarrowest =
+				e.kind === "forward" && (byStage.get(e.source)?.isNarrowest ?? false);
 			const handles =
 				e.kind === "loop"
 					? { sourceHandle: "loop-out", targetHandle: "loop-in" }
@@ -183,13 +200,17 @@ export function StageGraphCanvas({
 				label: e.label,
 				type: e.kind === "loop" ? "smoothstep" : "default",
 				animated: e.kind === "loop",
-				labelStyle: { fill: s.stroke, fontSize: 10 },
-				style: { stroke: s.stroke, strokeDasharray: s.dash },
-				markerEnd: { type: MarkerType.ArrowClosed, color: s.stroke },
+				labelStyle: { fill: stroke, fontSize: 10 },
+				style: {
+					stroke,
+					strokeDasharray: s.dash,
+					strokeWidth: isNarrowest ? 2.5 : undefined,
+				},
+				markerEnd: { type: MarkerType.ArrowClosed, color: stroke },
 			};
 		});
 		return { nodes, edges };
-	}, [projection, selectedStage, contractParties]);
+	}, [projection, selectedStage, contractParties, coverage]);
 
 	const [nodes, setNodes, onNodesChange] = useNodesState<StageFlowNode>(
 		flow.nodes,
@@ -248,6 +269,24 @@ export function StageGraphCanvas({
 						/>
 						loop (defect cycle)
 					</div>
+					{coverage && (
+						<>
+							<div className="flex items-center gap-1.5">
+								<span
+									className="h-px w-4"
+									style={{ background: COVERAGE_COLOR.passthrough }}
+								/>
+								passthrough (no gate)
+							</div>
+							<div className="flex items-center gap-1.5">
+								<span
+									className="h-px w-4"
+									style={{ background: COVERAGE_COLOR.human }}
+								/>
+								human gate
+							</div>
+						</>
+					)}
 					{contendedCount > 0 && (
 						<div className="flex items-center gap-1.5">
 							<Link2 size={10} style={{ color: "var(--warning)" }} />

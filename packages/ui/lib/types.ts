@@ -233,6 +233,29 @@ export interface SkillDetail {
 	implementation_type: string | null;
 }
 
+/** One stage's outgoing edge in a pipeline's gate coverage (GET /api/pipelines/{id}/gate-coverage).
+ * Mirrors the Python payload (snake_case). See design/details/gate-coverage-and-comprehension-debt.md. */
+export interface GateCoverageStage {
+	stage: string;
+	/** "passthrough" (no gate) | "human" (a funnel — always ends in a human approve). */
+	gate: "passthrough" | "human";
+	funnel: string | null;
+	/** subset of ["validate","judge","review"] present on the funnel, weak→strong. */
+	pre_filters: string[];
+	/** entered by an event no stage emits (CI / a rig / SAST). */
+	external_entry: boolean;
+	/** nothing downstream consumes this stage's success — no onward edge to gate. */
+	terminal: boolean;
+}
+
+/** A pipeline's gate coverage — every stage classified, the narrowest verified edge named. */
+export interface GateCoverage {
+	pipeline: string;
+	verdict: string;
+	narrowest: string | null;
+	stages: GateCoverageStage[];
+}
+
 /** A pending harness gate (GET /review) — a §6.2 permission or §6.3 input request awaiting a human. */
 export interface ReviewGate {
 	id: string;
