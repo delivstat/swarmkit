@@ -15,7 +15,11 @@ from typing import Annotated
 import typer
 
 from swarmkit_runtime.errors import ResolutionErrors
-from swarmkit_runtime.gate_coverage import GateCoverage, compute_gate_coverage
+from swarmkit_runtime.gate_coverage import (
+    GateCoverage,
+    compute_gate_coverage,
+    coverage_to_dict,
+)
 from swarmkit_runtime.resolver import resolve_workspace
 
 from ._app import app
@@ -23,25 +27,6 @@ from ._common import _EXIT_USAGE, _stderr
 
 #: Exit code when a ``--require`` floor is violated (CI-gatable, like ``swarmkit eval``).
 _EXIT_COVERAGE_FLOOR = 1
-
-
-def _coverage_to_dict(cov: GateCoverage) -> dict[str, object]:
-    return {
-        "pipeline": cov.pipeline_id,
-        "verdict": cov.verdict(),
-        "narrowest": cov.narrowest.stage_id if cov.narrowest else None,
-        "stages": [
-            {
-                "stage": s.stage_id,
-                "gate": s.gate_class,
-                "funnel": s.funnel_id,
-                "pre_filters": list(s.pre_filters),
-                "external_entry": s.external_entry,
-                "terminal": s.terminal,
-            }
-            for s in cov.stages
-        ],
-    }
 
 
 def _print_table(cov: GateCoverage) -> None:
@@ -120,7 +105,7 @@ def gates(
     coverages = [compute_gate_coverage(workspace, pid) for pid in ids]
 
     if json_output:
-        typer.echo(json.dumps([_coverage_to_dict(c) for c in coverages], indent=2))
+        typer.echo(json.dumps([coverage_to_dict(c) for c in coverages], indent=2))
     else:
         for cov in coverages:
             _print_table(cov)

@@ -144,6 +144,26 @@ def compute_gate_coverage(ws: ResolvedWorkspace, pipeline_id: str) -> GateCovera
     return GateCoverage(pipeline_id, tuple(results))
 
 
+def coverage_to_dict(cov: GateCoverage) -> dict[str, object]:
+    """JSON-serializable coverage — the shared shape behind the CLI ``--json`` and the endpoint."""
+    return {
+        "pipeline": cov.pipeline_id,
+        "verdict": cov.verdict(),
+        "narrowest": cov.narrowest.stage_id if cov.narrowest else None,
+        "stages": [
+            {
+                "stage": s.stage_id,
+                "gate": s.gate_class,
+                "funnel": s.funnel_id,
+                "pre_filters": list(s.pre_filters),
+                "external_entry": s.external_entry,
+                "terminal": s.terminal,
+            }
+            for s in cov.stages
+        ],
+    }
+
+
 __all__ = [
     "PRE_FILTERS",
     "GateClass",
@@ -151,4 +171,5 @@ __all__ = [
     "StageGate",
     "UnknownPipelineError",
     "compute_gate_coverage",
+    "coverage_to_dict",
 ]

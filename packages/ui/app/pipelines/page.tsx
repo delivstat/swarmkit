@@ -54,6 +54,7 @@ import {
 	removeStage,
 	removeWhenEvent,
 } from "@/lib/stage-graph-edit";
+import type { GateCoverage } from "@/lib/types";
 import { useRefOptions } from "@/lib/use-ref-options";
 import { cn } from "@/lib/utils";
 
@@ -232,6 +233,8 @@ export default function PipelinesPage() {
 	const [listUnavailable, setListUnavailable] = useState(false);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [obj, setObj] = useState<Record<string, unknown>>({});
+	// Gate-coverage overlay for the selected (saved) pipeline — read-only insight, best-effort.
+	const [coverage, setCoverage] = useState<GateCoverage | undefined>(undefined);
 	const [savedObj, setSavedObj] = useState<Record<string, unknown> | null>(
 		null,
 	);
@@ -376,6 +379,25 @@ export default function PipelinesPage() {
 			[...new Set(readStages(obj).flatMap((s) => s.locks))].sort().join("\n"),
 		[obj],
 	);
+	// Fetch the saved pipeline's gate coverage when the selection changes (best-effort overlay).
+	useEffect(() => {
+		if (!selectedId) {
+			setCoverage(undefined);
+			return;
+		}
+		let cancelled = false;
+		api
+			.getGateCoverage(selectedId)
+			.then((c) => {
+				if (!cancelled) setCoverage(c);
+			})
+			.catch(() => {
+				if (!cancelled) setCoverage(undefined);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [selectedId]);
 	const [contractParties, setContractParties] = useState<
 		Record<string, string[]>
 	>({});
@@ -595,6 +617,7 @@ export default function PipelinesPage() {
 											selectedStage={selectedStage}
 											onSelectStage={setSelectedStage}
 											contractParties={contractParties}
+											coverage={coverage}
 										/>
 									)}
 								</div>

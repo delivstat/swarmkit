@@ -4,6 +4,7 @@ import type {
 	CanaryStatus,
 	ConversationDetail,
 	ConversationListItem,
+	GateCoverage,
 	HealthResponse,
 	JobListItem,
 	JobResponse,
@@ -221,6 +222,8 @@ export const api = {
 		),
 	stageGraphYaml: (id: string) =>
 		get<{ yaml: string }>(`/api/pipelines/${id}/yaml`),
+	getGateCoverage: (id: string) =>
+		get<GateCoverage>(`/api/pipelines/${id}/gate-coverage`),
 	saveStageGraph: (id: string, yaml: string) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/pipelines/${id}`,

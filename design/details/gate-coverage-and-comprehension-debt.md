@@ -76,7 +76,7 @@ A stage-graph *transition* is `passthrough` when the source stage has no `gate:`
 
 - **CLI:** `swarmkit gates <workspace> [pipeline|topology]` — a table of edges with their gate class, plus a one-line **verdict**: *"narrowest verified edge: `build → sit` is `passthrough`."* Exit non-zero (CI-gatable) if any edge on a `--require deterministic|human` floor is below it. This is analogous to `swarmkit eval` gating CI on quality — here it gates CI on *gate presence*.
 - **Canvas overlay:** color every edge on the pipeline-editor canvas by gate class; `passthrough` edges render red. The topology-as-data payoff — the coverage map is just the topology, re-projected.
-- **Serve endpoint + UI:** `GET /pipelines/{id}/gate-coverage` — the **same data behind the CLI table**, rendered as the canvas overlay in the single-instance serve web app and aggregated in the fleet panel, so an operator sees the weakest edge per running pipeline in either surface (per **Surface parity**).
+- **Serve endpoint + UI:** `GET /api/pipelines/{id}/gate-coverage` — the **same data behind the CLI table**, rendered as the canvas overlay in the single-instance serve web app and aggregated in the fleet panel, so an operator sees the weakest edge per running pipeline in either surface (per **Surface parity**).
 
 Entirely static / read-only. No execution, no new runtime state, no schema change.
 
@@ -160,7 +160,7 @@ swarmkit comprehension <workspace>             # comprehension-debt signals, rep
 
 ```text
 # serve — the SAME service-layer methods, surfaced for the web app (single-instance) + fleet panel
-GET  /pipelines/{id}/gate-coverage             # → CLI `swarmkit gates`  → canvas overlay
+GET  /api/pipelines/{id}/gate-coverage         # → CLI `swarmkit gates`  → canvas overlay
 GET  /comprehension                            # → CLI `swarmkit comprehension` → comprehension panel
 GET  /review                 + POST /review/{id}/{approve|reject}   # resolve human/funnel/multi-party gates in the UI
 # gate CONFIG is not new API: funnels, approval policy, role registry, and the stage
@@ -198,7 +198,7 @@ Sliced like the SDLC example — each slice is one reviewable PR with tests + a 
 
 **Taxonomy correction (found during seam-mapping).** A `Funnel` always ends in a required human `approve` (`funnel.raw.approve` is non-optional), so a stage edge with a `gate:` is always **human**; `validate` / `judge` / `review` are *pre-filter strength* on top of that human gate, not weaker alternatives to it. Automated-only gates exist, but they come from `decision_skills[]` on nodes (Gate composition), not from a stage's funnel. So a stage edge classifies as: `passthrough` (no `gate:`), `human` (a funnel — annotated with the pre-filters present), or `external` (the entry `when` is an outside event: CI / a rig / SAST). The "narrowest verified edge" verdict prioritizes `passthrough`, then thin pre-filtering.
 
-- **Slice 1 — Gate coverage (read-only, no schema change).** A pure `compute_gate_coverage(ResolvedWorkspace, pipeline_id)` over `ws.stage_graphs[id].raw.stages` + `ws.funnels` (mirrors the ref-check in `resolver/_stage_graphs.py`); classifies each edge per the taxonomy above and names the narrowest. `swarmkit gates` CLI (template: `cli/_cmd_authoring.py:validate`) + `GET /pipelines/{id}/gate-coverage` (template: `server/_routes_introspection.py`, via `_get_runtime(request).workspace`). Both call the one pure function.
+- **Slice 1 — Gate coverage (read-only, no schema change).** A pure `compute_gate_coverage(ResolvedWorkspace, pipeline_id)` over `ws.stage_graphs[id].raw.stages` + `ws.funnels` (mirrors the ref-check in `resolver/_stage_graphs.py`); classifies each edge per the taxonomy above and names the narrowest. `swarmkit gates` CLI (template: `cli/_cmd_authoring.py:validate`) + `GET /api/pipelines/{id}/gate-coverage` (template: `server/_routes_introspection.py`, via `_get_runtime(request).workspace`). Both call the one pure function.
 - **Slice 2 — Coverage on the canvas.** Color pipeline-editor edges by class; `passthrough` red. The serve-UI half of Slice 1's parity.
 - **Slice 3 — Comprehension telemetry (read-only).** `swarmkit comprehension` + `GET /comprehension`, signals computed from `_observability.Observability.query_audit`; report-only. fast-approve / oversized-slice / unreviewed-merge first (derivable today); uncited-change / stale-audit follow their Part-C dependencies.
 - **Slice 4 — Comprehension panel in serve UI.** Parity for Slice 3.

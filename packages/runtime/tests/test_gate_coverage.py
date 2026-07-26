@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi.testclient import TestClient
 from swarmkit_runtime.cli import app
 from swarmkit_runtime.gate_coverage import (
     UnknownPipelineError,
@@ -22,6 +23,7 @@ from swarmkit_runtime.resolver._resolved import (
     ResolvedStageGraph,
     ResolvedWorkspace,
 )
+from swarmkit_runtime.server import create_app
 from swarmkit_schema.models.funnel import SwarmKitFunnel
 from swarmkit_schema.models.stage_graph import SwarmKitStageGraph
 from swarmkit_schema.models.workspace import SwarmKitWorkspace
@@ -208,3 +210,15 @@ def test_gates_cli_and_require_floor(sdlc_ws: ResolvedWorkspace) -> None:
         app, ["gates", str(_SDLC_WS), "--pipeline", "sdlc-full", "--require", "human"]
     )
     assert strict.exit_code == 1, strict.output
+
+
+def test_gate_coverage_endpoint() -> None:
+    with TestClient(create_app(_SDLC_WS)) as c:
+        r = c.get("/api/pipelines/sdlc-full/gate-coverage")
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["pipeline"] == "sdlc-full"
+        assert data["narrowest"] is not None
+        assert any(s["gate"] == "human" for s in data["stages"])
+        assert any(s["gate"] == "passthrough" for s in data["stages"])
+        assert c.get("/api/pipelines/nope/gate-coverage").status_code == 404
