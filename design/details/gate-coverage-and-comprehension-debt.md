@@ -21,6 +21,20 @@ The graph-engineering discourse landed on one durable law (Osmani): *a graph's t
 
 **The honest constraint, stated up front:** *you cannot gate comprehension.* No automated check verifies that a human understood a change; a `decision` skill that claims to is a lie that will be optimized against. So this note deliberately splits into what is measurable (gate *presence/strength*, approval *behavior*) and what is only *cultivatable* (the practices that produce understanding). We gate and measure the leading indicators; we make the practices first-class; we never pretend to gate the thing itself.
 
+## Applicability & default posture
+
+**Opt-in and additive.** Nothing here changes an existing workspace — absence = prior behavior (the same rule as the `executor` block: no config ⇒ unchanged). Adoption is per-field and per-gate: declare `objective`/`slice_budget`, bind `plan-objective`, add a `cited-change` funnel, author the audit trigger. A topology that adopts none of it runs byte-identically.
+
+**Split default — visibility on, enforcement off.** The *reports* (gate coverage, comprehension signals) are always available and shown passively in the composer/panel at zero cost; they never block. *Enforcement* — a CI `--require` floor, or a signal promoted to a decision-gate threshold — is always an explicit opt-in. Surface the question without imposing the answer.
+
+**Scoped to the delivery-pipeline shape — by structure, not a flag.** These features attach to `StageGraph` + `Funnel` + human approval, so they only appear where those primitives are used:
+
+- **light up** for long-lived, multi-stage, durable-artifact-producing, human-gated, repeated work (the software-factory shape);
+- **partially apply** to any human-gated multi-agent topology — gate coverage and the fast-approve / unreviewed-merge signals need only an approval gate;
+- **do not apply** to single-shot answer swarms (no edges/gates), read-only analysis / research swarms (nothing durable accrues, so no comprehension debt), or interactive chat.
+
+Comprehension debt is specific to durable-artifact work; SwarmKit is broader (analysis, curation, chat), so this is deliberately a pipeline feature, not a framework-wide one. The scoping is **structural** — a workspace that never uses a StageGraph or a human funnel simply never reaches it, with no flag to set.
+
 ## Surface parity — CLI ⇄ serve UI (cross-cutting)
 
 Everything in this note obeys SwarmKit's **thin-interface rule**: business logic lives in the `WorkspaceRuntime` service layer, and the CLI and the serve web app are **both thin clients** over it (`cli-architecture`). This note therefore ships **no CLI-only capability** — every command below is a service-layer method surfaced twice.
@@ -177,6 +191,21 @@ GET  /review                 + POST /review/{id}/{approve|reject}   # resolve hu
 - `swarmkit gates examples/sdlc-pipeline/workspace sdlc-full` prints the coverage table and the narrowest-edge verdict; the pipeline canvas shows one red `passthrough` edge, then green after a funnel is added.
 - `just demo-audit` runs the `repo-audit-panel` over a small fixture repo and shows expert-persona findings + a `stale-audit` clock.
 - A short recorded transcript of `swarmkit comprehension` flagging a fast-approve on a deliberately oversized diff.
+
+## Implementation plan
+
+Sliced like the SDLC example — each slice is one reviewable PR with tests + a demo, each obeys **Surface parity** (CLI *and* serve) and the schema→UI discipline, and the order is read-only-first / composition-first / schema-last so risk climbs slowly. Per **Applicability**, every slice ships *visibility* first; `--require` floors and decision-thresholds land as opt-in enforcement.
+
+**Taxonomy correction (found during seam-mapping).** A `Funnel` always ends in a required human `approve` (`funnel.raw.approve` is non-optional), so a stage edge with a `gate:` is always **human**; `validate` / `judge` / `review` are *pre-filter strength* on top of that human gate, not weaker alternatives to it. Automated-only gates exist, but they come from `decision_skills[]` on nodes (Gate composition), not from a stage's funnel. So a stage edge classifies as: `passthrough` (no `gate:`), `human` (a funnel — annotated with the pre-filters present), or `external` (the entry `when` is an outside event: CI / a rig / SAST). The "narrowest verified edge" verdict prioritizes `passthrough`, then thin pre-filtering.
+
+- **Slice 1 — Gate coverage (read-only, no schema change).** A pure `compute_gate_coverage(ResolvedWorkspace, pipeline_id)` over `ws.stage_graphs[id].raw.stages` + `ws.funnels` (mirrors the ref-check in `resolver/_stage_graphs.py`); classifies each edge per the taxonomy above and names the narrowest. `swarmkit gates` CLI (template: `cli/_cmd_authoring.py:validate`) + `GET /pipelines/{id}/gate-coverage` (template: `server/_routes_introspection.py`, via `_get_runtime(request).workspace`). Both call the one pure function.
+- **Slice 2 — Coverage on the canvas.** Color pipeline-editor edges by class; `passthrough` red. The serve-UI half of Slice 1's parity.
+- **Slice 3 — Comprehension telemetry (read-only).** `swarmkit comprehension` + `GET /comprehension`, signals computed from `_observability.Observability.query_audit`; report-only. fast-approve / oversized-slice / unreviewed-merge first (derivable today); uncited-change / stale-audit follow their Part-C dependencies.
+- **Slice 4 — Comprehension panel in serve UI.** Parity for Slice 3.
+- **Slice 5 — `cited-change` (composition-only).** A `change-rationale` artifact + a `cited-change` reference decision skill (deterministic citation-coverage `validate` + a `judge`) + a reference funnel on the rationale. No schema change.
+- **Slice 6 — Recurring expert-persona audit.** A `repo-audit-panel` reference topology + a `cron` Trigger; findings → audit + review queue; lights up `stale-audit`.
+- **Slice 7 — `slice_budget` (first schema change).** Optional `slice_budget` on the stage; the runtime measures the produced diff/artifact and routes over-budget output to the funnel `review` layer. Full schema discipline **+ the composer form for the new field** (schema→UI step 6).
+- **Slice 8 — plan-first (schema + gate).** Optional `objective` / `acceptance` on the stage; a `plan-objective` decision-skill binding at stage entry; gate-coverage flags a missing objective. Schema discipline **+ composer form**.
 
 ## Open questions
 
