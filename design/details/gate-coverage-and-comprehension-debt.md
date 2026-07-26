@@ -31,6 +31,15 @@ Everything in this note obeys SwarmKit's **thin-interface rule**: business logic
 
 This is not added scope; it is the constraint the rest of the note is written against. Any endpoint or config named below is the service-layer capability surfaced in both places.
 
+## Gate composition — arrays live in decision skills; a funnel is a hard human gate
+
+Two gate mechanisms, deliberately different cardinality — and this note adds nothing to the funnel's shape:
+
+- **Composition is array-shaped and lives in `decision_skills[]`** (bound at `pre_input` / `post_output` / `checkpoint` / `pre_synthesis`) **and the automated gate layers.** Any number of agent-specific or heavyweight automated checks attach here — this is the unbounded extension point. `plan-objective` (Part C) is one such binding; a domain compliance check, a naming rule, or a security pre-check are others.
+- **A `Funnel`'s output is a *hard human gate* — only.** Exactly one human exit; never diluted into another automated check, never stacked (`funnel:` / stage `gate:` stay a **single ref**, never an array), never grown into arrays of automated layers. The funnel's built-in `validate` / `judge` / `review` stay **fixed, single-slot pre-filters** — a convenience in front of the human approval, not a composition surface. When you need more automated checking, you add a decision skill; you do not reshape the funnel.
+
+Consequence for this note's three new gates: `plan-objective` is a `decision_skills[]` binding, `slice_budget` is a routing property on the stage, and `cited-change` is a funnel on a *separate* artifact (the change-rationale). None of them touch, stack, or grow the code output's one human gate — the funnel means exactly one thing everywhere it appears.
+
 ## Part A — Gate coverage (the narrowest verified edge)
 
 Because topology **is data**, the gates are already declared — we simply never *report* on them. A pure static pass over a `StageGraph` + the `Funnel`s its stages reference (and over a `Topology`'s per-node funnels) classifies every edge by the **strongest gate layer** present, and surfaces the weakest.
@@ -145,6 +154,7 @@ GET  /review                 + POST /review/{id}/{approve|reject}   # resolve hu
 ```
 
 - **Schema:** three optional stage fields (`objective`, `acceptance`, `slice_budget`) — a `stage-graph` schema change under `schema-change-discipline.md`. Everything else (gate-coverage, telemetry, the audit topology) is read-side or ordinary artifacts — **no schema change**.
+- **Serve UI follows the schema — mandatory.** A schema change here is not complete until the **serve composer/canvas renders and edits the new fields** (`objective`/`acceptance` as text, `slice_budget` as its nested object) through the schema-form surface, in the same slice. The `schema-change-discipline` checklist (canonical + bundled copy + fixtures + pydantic/TS codegen) is necessary but **not sufficient** — the TS types regenerate, but the composer form and canvas node-panel must be *verified* to actually surface the field (schema-driven forms don't always render a new shape correctly, e.g. nested objects). No user-authored field ships editable-only-by-hand-YAML — the CLI and web UI are peer clients over the same service layer (`docs/notes/usability-first.md`). This is added to `schema-change-discipline.md` as a standing step, not just recorded here.
 - **Reference skills:** `plan-objective`, `cited-change` (decision category) + a `repo-audit-panel` reference topology. Reference artifacts, not runtime code.
 
 ## Non-goals
@@ -154,6 +164,7 @@ GET  /review                 + POST /review/{id}/{approve|reject}   # resolve hu
 - **New capture infrastructure.** Telemetry is derived from the existing audit log; if a signal needs data the audit doesn't have, that's a separate `human-interaction-model.md` change, called out explicitly, not smuggled in here.
 - **Replacing human judgment.** The audit panel and the signals *surface*; humans decide. Consistent with §8 and the funnel invariant.
 - **A CLI-only surface.** Every read, every gate action (approve/reject, answer a relay), and every gate configuration in this note is available in the serve web app — and, for reads, the fleet panel. The CLI is a peer client over the same service layer, never the sole one (`cli-architecture`). Any capability that lands CLI-first must land in serve in the same slice.
+- **Growing or stacking the funnel.** `funnel:` / `gate:` stay a single ref and the funnel's automated layers stay single-slot — a funnel is a hard human gate, full stop. Multiple or agent-specific automated gates belong in `decision_skills[]`, never in more funnels or array-ified funnel layers (see *Gate composition* above).
 
 ## Test plan
 
