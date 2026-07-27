@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: fortnightly-audit
+  name: Fortnightly repo audit
+  description: >
+    Fires the repo-audit-panel topology on the 1st and 15th of each month — the recurring
+    every-other-week whole-repo expert audit (slice 6 of
+    design/details/gate-coverage-and-comprehension-debt.md). The mechanism that catches accumulated
+    comprehension debt no per-change gate sees, made a first-class scheduled swarm. Findings land in
+    the audit log; the stale-audit comprehension signal tracks whether this cadence is being kept.
+type: cron
+targets:
+  - repo-audit-panel
+config:
+  expression: "0 6 1,15 * *"
+  timezone: UTC

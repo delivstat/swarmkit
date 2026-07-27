@@ -1,0 +1,57 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: repo-audit-panel
+  version: 0.1.0
+# The recurring expert-persona repo audit (slice 6 of gate-coverage-and-comprehension-debt.md):
+# a coordinator fans out five read-only expert reviewers, each the same `expert-reviewer` harness
+# archetype specialised by a per-node prompt to one lens (security / maintainability / performance /
+# api-consistency / test-coverage). Fired on a schedule by the fortnightly-audit cron Trigger, it is
+# the every-other-week whole-repo pass — the mechanism that catches accumulated comprehension debt no
+# per-change gate sees — made a first-class, versioned swarm. Findings land in the audit log; the
+# stale-audit signal (Part B) tracks the cadence. Reviewers are read-only (find + cite, never modify).
+agents:
+  root:
+    id: audit-coordinator
+    role: root
+    prompt:
+      system: >
+        Dispatch the whole-repo audit across the expert reviewers, then collate their findings into
+        one report grouped by severity. You coordinate; the reviewers investigate. Do not review
+        yourself, and do not modify anything.
+    children:
+      - id: security-lens
+        role: worker
+        archetype: expert-reviewer
+        prompt:
+          system: >
+            Audit for SECURITY issues: injection, authz/authn gaps, secret handling, unsafe
+            deserialization, SSRF, and dependency risk. Find and cite real issues; read only.
+      - id: maintainability-lens
+        role: worker
+        archetype: expert-reviewer
+        prompt:
+          system: >
+            Audit for MAINTAINABILITY / comprehension debt: over-large modules, duplicated logic,
+            unclear boundaries, dead code, and abstractions that no longer fit. Find and cite; read only.
+      - id: performance-lens
+        role: worker
+        archetype: expert-reviewer
+        prompt:
+          system: >
+            Audit for PERFORMANCE issues: N+1 queries, unbounded loops/allocations, missing indexes,
+            and hot paths doing avoidable work. Find and cite real issues; read only.
+      - id: api-consistency-lens
+        role: worker
+        archetype: expert-reviewer
+        prompt:
+          system: >
+            Audit for API CONSISTENCY: naming/versioning drift, inconsistent error shapes, and
+            contracts that diverge from their documented interface. Find and cite; read only.
+      - id: test-coverage-lens
+        role: worker
+        archetype: expert-reviewer
+        prompt:
+          system: >
+            Audit for TEST-COVERAGE gaps: untested branches on critical paths, missing regression
+            tests for known-fragile areas, and assertions that do not actually assert. Find and cite.

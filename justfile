@@ -109,6 +109,11 @@ demo-gate-funnel:
 demo-gates:
     uv run swarmkit gates examples/sdlc-pipeline/workspace --pipeline sdlc-full
 
+# Demo the recurring expert-persona repo audit (slice 6): a cron Trigger fires a read-only
+# expert-reviewer panel (5 lenses). Prints the schedule → panel wiring; no model calls, no server.
+demo-repo-audit:
+    uv run python examples/sdlc-pipeline/demo_repo_audit.py
+
 # Demo comprehension-debt telemetry (slice 3): fast-approve signals from the audit log (report-only,
 # never a gate), plus the disclosed deferred signals. Reads the example's .swarmkit audit store.
 demo-comprehension:

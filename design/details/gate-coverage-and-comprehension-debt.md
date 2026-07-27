@@ -142,14 +142,14 @@ stages:
 ```
 
 ```yaml
-# A recurring expert-persona audit — a cron Trigger targeting an audit topology
+# A recurring expert-persona audit — a cron Trigger firing an audit topology
 apiVersion: swarmkit/v1
 kind: Trigger
 metadata: { id: fortnightly-audit }
 type: cron
-config: { schedule: "0 6 */14 * *" }
+config: { expression: "0 6 1,15 * *", timezone: UTC }   # 1st + 15th ≈ every other week
 targets:
-  - topology: repo-audit-panel        # expert-persona reviewers, read-only, "find issues + enforce best practices"
+  - repo-audit-panel        # expert-persona reviewers, read-only, "find issues + enforce best practices"
 ```
 
 ```bash
@@ -189,7 +189,7 @@ GET  /review                 + POST /review/{id}/{approve|reject}   # resolve hu
 ## Demo plan
 
 - `swarmkit gates examples/sdlc-pipeline/workspace sdlc-full` prints the coverage table and the narrowest-edge verdict; the pipeline canvas shows one red `passthrough` edge, then green after a funnel is added.
-- `just demo-audit` runs the `repo-audit-panel` over a small fixture repo and shows expert-persona findings + a `stale-audit` clock.
+- `just demo-repo-audit` prints the cron schedule → `repo-audit-panel` wiring and its five read-only expert lenses (deterministic; a real firing runs the reviewers).
 - A short recorded transcript of `swarmkit comprehension` flagging a fast-approve on a deliberately oversized diff.
 
 ## Implementation plan
