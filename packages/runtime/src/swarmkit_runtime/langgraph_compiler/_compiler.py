@@ -208,9 +208,7 @@ def _build_agent_node(  # noqa: PLR0915
     _memory = memory_store
     # This agent writes governed memory only if it carries the `governed-memory` persistence skill.
     _governed_memory = (
-        governed_memory_store
-        if any(s.id == "governed-memory" for s in agent.skills)
-        else None
+        governed_memory_store if any(s.id == "governed-memory" for s in agent.skills) else None
     )
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0911, PLR0912, PLR0915
