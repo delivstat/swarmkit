@@ -33,11 +33,13 @@ from swarmkit_runtime.governed_memory._reconcile import (
     build_memory_reconciler,
     reconcile,
 )
+from swarmkit_runtime.governed_memory._relevance import Embedder
 from swarmkit_runtime.governed_memory._store import GovernedMemoryStore
 
 __all__ = [
     "ChangeLogEntry",
     "DecayConfig",
+    "Embedder",
     "GovernedMemoryStore",
     "JudgeOp",
     "Memory",
