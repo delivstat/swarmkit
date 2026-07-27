@@ -14,6 +14,12 @@ from typing import Annotated
 
 import typer
 
+from swarmkit_runtime._observability import Observability
+from swarmkit_runtime.comprehension import (
+    DEFAULT_FAST_APPROVE_SECONDS,
+    comprehension_to_dict,
+    compute_comprehension,
+)
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.gate_coverage import (
     GateCoverage,
@@ -119,3 +125,49 @@ def gates(
                     + ", ".join(f"{pid}:{s.stage_id}" for pid, s in violating)
                 )
             raise typer.Exit(_EXIT_COVERAGE_FLOOR)
+
+
+@app.command()
+def comprehension(
+    path: Annotated[
+        Path,
+        typer.Argument(
+            help="Workspace root (its .swarmkit/ audit store is read).", show_default=False
+        ),
+    ] = Path("."),
+    fast_approve_seconds: Annotated[
+        float,
+        typer.Option(
+            "--fast-approve-seconds",
+            help="Flag approvals resolved faster than this (heuristic; report-only).",
+        ),
+    ] = DEFAULT_FAST_APPROVE_SECONDS,
+    limit: Annotated[
+        int,
+        typer.Option("--limit", help="How many recent audit events to scan."),
+    ] = 1000,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a human summary."),
+    ] = False,
+) -> None:
+    """Comprehension-debt signals from the audit log (read-only, never a gate)."""
+    events = Observability(path.resolve()).query_audit(limit=limit)
+    if events is None:
+        _stderr("no audit store yet — run a topology first (nothing to assess).")
+        raise typer.Exit(0)
+
+    report = compute_comprehension(events, fast_approve_threshold_seconds=fast_approve_seconds)
+    if json_output:
+        typer.echo(json.dumps(comprehension_to_dict(report), indent=2))
+        return
+
+    typer.echo(f"\ncomprehension — {report.verdict()}")
+    for f in report.fast_approvals:
+        typer.echo(
+            f"  ! fast-approve: gate '{f.gate_id}' resolved in {f.latency_seconds:.1f}s "
+            f"by {f.distinct_approvers} approver(s) (run {f.run_id})"
+        )
+    typer.echo("  deferred signals (need more data / later slices):")
+    for d in report.deferred:
+        typer.echo(f"    - {d}")

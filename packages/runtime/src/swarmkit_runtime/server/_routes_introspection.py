@@ -93,6 +93,25 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
     async def list_pipelines(request: Request) -> list[str]:
         return sorted(_get_runtime(request).workspace.stage_graphs.keys())
 
+    @app.get("/comprehension")
+    async def comprehension(
+        request: Request, fast_approve_seconds: float | None = None, limit: int = 1000
+    ) -> dict[str, Any]:
+        """Comprehension-debt signals from the audit log — same data as `swarmkit comprehension`."""
+        from swarmkit_runtime.comprehension import (  # noqa: PLC0415
+            DEFAULT_FAST_APPROVE_SECONDS,
+            comprehension_to_dict,
+            compute_comprehension,
+        )
+
+        rt = _get_runtime(request)
+        threshold = fast_approve_seconds or DEFAULT_FAST_APPROVE_SECONDS
+        # Query the audit provider async-natively (the sync Observability facade can't run
+        # inside the live event loop). Newest-first is fine — compute_comprehension re-sorts.
+        events = [e async for e in rt.audit_provider.query(limit=limit)]
+        report = compute_comprehension(events, fast_approve_threshold_seconds=threshold)
+        return comprehension_to_dict(report)
+
     @app.get("/contracts")
     async def list_contracts(request: Request) -> list[str]:
         return sorted(_get_runtime(request).workspace.contracts.keys())
