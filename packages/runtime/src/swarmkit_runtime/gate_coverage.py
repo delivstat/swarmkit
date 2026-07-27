@@ -46,6 +46,8 @@ class StageGate:
     external_entry: bool
     #: no downstream stage consumes this stage's ``success`` — nothing to gate onward
     terminal: bool
+    #: the stage's plan-first `objective` (slice 8), or None if it declares none — a coverage gap
+    objective: str | None = None
 
     @property
     def strength(self) -> int:
@@ -122,6 +124,7 @@ def compute_gate_coverage(ws: ResolvedWorkspace, pipeline_id: str) -> GateCovera
         external_entry = bool(entry) and any(ev not in emitted for ev in entry)
         # Terminal when nothing downstream consumes this stage's success.
         terminal = s.success is None or s.success not in consumed
+        objective = s.objective  # plan-first (slice 8): absent ⇒ a coverage gap
 
         if s.gate:
             funnel = ws.funnels.get(s.gate)
@@ -137,9 +140,13 @@ def compute_gate_coverage(ws: ResolvedWorkspace, pipeline_id: str) -> GateCovera
                     )
                     if present
                 )
-            results.append(StageGate(s.id, "human", s.gate, pre, external_entry, terminal))
+            results.append(
+                StageGate(s.id, "human", s.gate, pre, external_entry, terminal, objective)
+            )
         else:
-            results.append(StageGate(s.id, "passthrough", None, (), external_entry, terminal))
+            results.append(
+                StageGate(s.id, "passthrough", None, (), external_entry, terminal, objective)
+            )
 
     return GateCoverage(pipeline_id, tuple(results))
 
@@ -158,6 +165,7 @@ def coverage_to_dict(cov: GateCoverage) -> dict[str, object]:
                 "pre_filters": list(s.pre_filters),
                 "external_entry": s.external_entry,
                 "terminal": s.terminal,
+                "objective": s.objective,
             }
             for s in cov.stages
         ],

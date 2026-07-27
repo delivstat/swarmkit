@@ -317,3 +317,23 @@ describe("readStages slice_budget (slice 7)", () => {
 		expect(stages[1]?.sliceBudget).toBeNull();
 	});
 });
+
+describe("readStages objective/acceptance (slice 8)", () => {
+	it("parses objective + acceptance, null when absent", () => {
+		const stages = readStages({
+			stages: [
+				{
+					id: "a",
+					topology: "t",
+					objective: "ship X",
+					acceptance: "tests green",
+				},
+				{ id: "b", topology: "t" },
+			],
+		} as StageGraphDoc);
+		expect(stages[0]?.objective).toBe("ship X");
+		expect(stages[0]?.acceptance).toBe("tests green");
+		expect(stages[1]?.objective).toBeNull();
+		expect(stages[1]?.acceptance).toBeNull();
+	});
+});

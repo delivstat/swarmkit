@@ -86,6 +86,16 @@ class Stage(BaseModel):
         description="Topology run to unwind this stage if the requirement is cancelled after the stage passed.",
         pattern="^[a-z][a-z0-9-]*$",
     )
+    objective: str | None = Field(
+        None,
+        description="Plan-first (design/details/gate-coverage-and-comprehension-debt.md, slice 8): what 'done' means for this stage, stated BEFORE the work — the highest-leverage comprehension edge. Gate coverage flags a stage with no objective as a coverage gap; the `plan-objective` decision skill judges its clarity.",
+        min_length=1,
+    )
+    acceptance: str | None = Field(
+        None,
+        description="Plan-first: the check that proves the stage's objective is met (e.g. 'SIT green + contract honored'). Paired with `objective` — a stated objective without an acceptance check is only half a plan.",
+        min_length=1,
+    )
     slice_budget: SliceBudget | None = Field(
         None,
         description="Optional slice-size budget for this stage's produced change (design/details/gate-coverage-and-comprehension-debt.md, slice 7). Keeps vertical slices small enough to review — an over-budget change should route to the funnel's review layer rather than straight to human approval. Checked deterministically by `swarmkit slice-check`.",

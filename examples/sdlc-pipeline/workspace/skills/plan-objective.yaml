@@ -1,0 +1,34 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: plan-objective
+  name: Plan Objective Review
+  description: >
+    Judge whether a stage's plan-first `objective` + `acceptance` are clear and actionable BEFORE
+    the work starts — a stated objective with a real acceptance check, not a vague aspiration. The
+    highest-leverage comprehension edge (design/details/gate-coverage-and-comprehension-debt.md, Part
+    C / slice 8). Presence is checked deterministically by gate coverage (`swarmkit gates` flags a
+    stage with no objective); this skill judges the *clarity* of a present objective.
+category: decision
+outputs:
+  type: object
+  properties:
+    clear:
+      type: boolean
+    issues:
+      type: array
+      items:
+        type: string
+    reasoning:
+      type: string
+  required: [clear, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Given a stage's objective and its acceptance check, decide whether they form a clear, testable
+    plan a reviewer could hold the work to: the objective states a concrete outcome and the
+    acceptance is a check that would actually prove it. Return clear (true only if both hold), any
+    issues, and your reasoning. Do not invent requirements; judge only what is stated.
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -72,6 +72,16 @@
           "x-swarmkit-ref": "topology",
           "description": "Topology run to unwind this stage if the requirement is cancelled after the stage passed."
         },
+        "objective": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plan-first (design/details/gate-coverage-and-comprehension-debt.md, slice 8): what 'done' means for this stage, stated BEFORE the work — the highest-leverage comprehension edge. Gate coverage flags a stage with no objective as a coverage gap; the `plan-objective` decision skill judges its clarity."
+        },
+        "acceptance": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plan-first: the check that proves the stage's objective is met (e.g. 'SIT green + contract honored'). Paired with `objective` — a stated objective without an acceptance check is only half a plan."
+        },
         "slice_budget": {
           "type": "object",
           "additionalProperties": false,

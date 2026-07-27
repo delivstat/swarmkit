@@ -59,6 +59,12 @@ export type AuthoredBy = "human" | "authored_by_swarm" | "derived_from_template"
 
 export interface StageElement {
     /**
+     * Plan-first: the check that proves the stage's objective is met (e.g. 'SIT green +
+     * contract honored'). Paired with `objective` — a stated objective without an acceptance
+     * check is only half a plan.
+     */
+    acceptance?: string;
+    /**
      * Topology run to unwind this stage if the requirement is cancelled after the stage passed.
      */
     compensation?: string;
@@ -73,6 +79,13 @@ export interface StageElement {
      * (design/details/contract-registry.md).
      */
     locks?: string[];
+    /**
+     * Plan-first (design/details/gate-coverage-and-comprehension-debt.md, slice 8): what 'done'
+     * means for this stage, stated BEFORE the work — the highest-leverage comprehension edge.
+     * Gate coverage flags a stage with no objective as a coverage gap; the `plan-objective`
+     * decision skill judges its clarity.
+     */
+    objective?: string;
     /**
      * The signal whose arrival releases this stage's locks (e.g. hold the contract through
      * approval, then release).

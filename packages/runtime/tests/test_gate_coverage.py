@@ -190,6 +190,8 @@ def test_sdlc_full_coverage(sdlc_ws: ResolvedWorkspace) -> None:
     assert by_id["security-review"].gate_class == "human"
     assert by_id["deploy"].gate_class == "human"
     assert by_id["build"].gate_class == "passthrough"
+    assert by_id["build"].objective is not None  # plan-first (slice 8): build declares an objective
+    assert by_id["intake"].objective is None  # intake declares none — a coverage gap
     assert by_id["support-handover"].terminal is True
     # the pipeline is triggered externally (requirement.created)
     assert by_id["intake"].external_entry is True
@@ -222,3 +224,22 @@ def test_gate_coverage_endpoint() -> None:
         assert any(s["gate"] == "human" for s in data["stages"])
         assert any(s["gate"] == "passthrough" for s in data["stages"])
         assert c.get("/api/pipelines/nope/gate-coverage").status_code == 404
+
+
+def test_objective_surfaced_and_gap_flagged() -> None:
+    ws = _make_ws(
+        stages=[
+            {
+                "id": "a",
+                "topology": "t",
+                "when": ["start"],
+                "objective": "ship X",
+                "success": "a.ok",
+            },
+            {"id": "b", "topology": "t", "when": ["a.ok"]},
+        ],
+        funnels={},
+    )
+    by_id = {s.stage_id: s for s in compute_gate_coverage(ws, "p").stages}
+    assert by_id["a"].objective == "ship X"
+    assert by_id["b"].objective is None

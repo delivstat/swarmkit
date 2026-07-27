@@ -246,6 +246,8 @@ export interface GateCoverageStage {
 	external_entry: boolean;
 	/** nothing downstream consumes this stage's success — no onward edge to gate. */
 	terminal: boolean;
+	/** the stage's plan-first objective, or null if it declares none (a coverage gap). */
+	objective: string | null;
 }
 
 /** A pipeline's gate coverage — every stage classified, the narrowest verified edge named. */

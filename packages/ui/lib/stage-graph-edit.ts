@@ -324,6 +324,32 @@ export function setCompensation(
 	return next;
 }
 
+/** Set (or clear when empty) the stage's plan-first `objective`. */
+export function setObjective(
+	doc: StageGraphDocObj,
+	stageId: string,
+	objective: string | null,
+): StageGraphDocObj {
+	const next = clone(doc);
+	const stage = findStage(next, stageId);
+	if (!stage) return doc;
+	setOrClear(stage, "objective", objective);
+	return next;
+}
+
+/** Set (or clear when empty) the stage's plan-first `acceptance` check. */
+export function setAcceptance(
+	doc: StageGraphDocObj,
+	stageId: string,
+	acceptance: string | null,
+): StageGraphDocObj {
+	const next = clone(doc);
+	const stage = findStage(next, stageId);
+	if (!stage) return doc;
+	setOrClear(stage, "acceptance", acceptance);
+	return next;
+}
+
 /** Set (or clear, when both limits are null) the stage's slice_budget. */
 export function setSliceBudget(
 	doc: StageGraphDocObj,
