@@ -38,6 +38,7 @@ from ._routes_crud import _register_crud_routes
 from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
+from ._routes_memory import _register_memory_routes
 from ._routes_pipelines import _register_pipeline_routes
 from ._routes_review import _register_review_routes
 from ._services import ArtifactService
@@ -244,6 +245,7 @@ def create_app(  # noqa: PLR0915
     _register_review_routes(app, workspace_path)
     _register_pipeline_routes(app, workspace_path)
     _register_fleet_routes(app)
+    _register_memory_routes(app)
 
     if _mcp_available:
         _mount_mcp(app)
