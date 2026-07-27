@@ -210,6 +210,7 @@ class WorkspaceRuntime:
         self._governance = governance
         self._mcp_manager = mcp_manager
         self._memory_store = self._create_memory_store()
+        self._governed_memory_store = self._create_governed_memory_store()
         self._audit_provider = audit_provider or audit_provider_for_path(workspace_root)
         self._session_active = False
 
@@ -240,6 +241,33 @@ class WorkspaceRuntime:
         from swarmkit_runtime.memory import MemoryStore  # noqa: PLC0415
 
         return MemoryStore(self._workspace_root)
+
+    def _create_governed_memory_store(self) -> Any:
+        """Build the governed-memory store when the workspace declares the ``governed-memory``
+        persistence skill (design/details/governed-memory.md). Wires the reconcile decision skill
+        (``memory-reconcile``) into the store when present, so a changed value is judged
+        refine/contradict; absent, a changed value deterministically updates in place. Returns None
+        when no agent can write governed memory (nothing to construct)."""
+        if "governed-memory" not in self._workspace.skills:
+            return None
+        from swarmkit_runtime.governed_memory import GovernedMemoryStore  # noqa: PLC0415
+
+        reconciler = None
+        if "memory-reconcile" in self._workspace.skills:
+            from swarmkit_runtime.governed_memory import build_memory_reconciler  # noqa: PLC0415
+
+            reconciler = build_memory_reconciler(
+                governance=self._governance,
+                skill_id="memory-reconcile",
+                agent_id="governed-memory",
+            )
+        return GovernedMemoryStore.for_workspace(self._workspace_root, reconciler=reconciler)
+
+    @property
+    def governed_memory(self) -> Any:
+        """The wired governed-memory store for this workspace (or None). The single service-layer
+        seam the CLI, serve, and compiler share — thin-interface rule."""
+        return self._governed_memory_store
 
     @staticmethod
     def audit_provider_for(path: Path) -> SqlAuditProvider:
@@ -360,6 +388,7 @@ class WorkspaceRuntime:
             planning_config=planning,
             synthesis_config=synthesis,
             memory_store=self._memory_store,
+            governed_memory_store=self._governed_memory_store,
         )
 
     def _resolve_planning_config(self, topology_name: str) -> Any:

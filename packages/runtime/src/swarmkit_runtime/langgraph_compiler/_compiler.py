@@ -85,6 +85,7 @@ def compile_topology(
     planning_config: PlanningConfig | None = None,
     synthesis_config: Any = None,
     memory_store: Any = None,
+    governed_memory_store: Any = None,
     review_queue: Any = None,
     role_registry: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
@@ -121,6 +122,7 @@ def compile_topology(
             planning_config=_planning,
             synthesis_config=synthesis_config,
             memory_store=memory_store,
+            governed_memory_store=governed_memory_store,
         )
         # In-node funnel gate: if the agent references a funnel and the gate deps are wired,
         # wrap the node so a live run produces -> judges -> parks for multi-party approval,
@@ -196,6 +198,7 @@ def _build_agent_node(  # noqa: PLR0915
     planning_config: PlanningConfig | None = None,
     synthesis_config: Any = None,
     memory_store: Any = None,
+    governed_memory_store: Any = None,
 ) -> Any:
     """Build an async node function for one agent."""
     drift_observer = _create_drift_observer(agent)
@@ -203,6 +206,10 @@ def _build_agent_node(  # noqa: PLR0915
     _planning = planning_config or PlanningConfig()
     _synthesis = synthesis_config
     _memory = memory_store
+    # This agent writes governed memory only if it carries the `governed-memory` persistence skill.
+    _governed_memory = (
+        governed_memory_store if any(s.id == "governed-memory" for s in agent.skills) else None
+    )
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0911, PLR0912, PLR0915
         agent_id = agent.id
@@ -506,6 +513,18 @@ def _build_agent_node(  # noqa: PLR0915
                 model_provider=model_provider,
                 model_name=(agent.model or {}).get("name", "default"),
             )
+
+        # ---- governed memory (post_output candidate write) ------------
+        if _governed_memory is not None:
+            from swarmkit_runtime.governed_memory._hook import (  # noqa: PLC0415
+                governed_memory_post_output,
+            )
+
+            summary = await governed_memory_post_output(
+                agent_id=agent_id, agent_output=result_text, store=_governed_memory
+            )
+            if summary["written"]:
+                _progress(f"  [{agent_id}] governed memory: {summary['by_op']}")
 
         return _make_result(agent_id, result_text)
 

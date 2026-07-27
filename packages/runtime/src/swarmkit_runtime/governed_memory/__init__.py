@@ -10,6 +10,10 @@ confidence decay in retrieval ranking.
 from __future__ import annotations
 
 from swarmkit_runtime.governed_memory._decay import DecayConfig, effective_confidence
+from swarmkit_runtime.governed_memory._hook import (
+    governed_memory_post_output,
+    parse_candidates,
+)
 from swarmkit_runtime.governed_memory._models import (
     ChangeLogEntry,
     JudgeOp,
@@ -48,6 +52,8 @@ __all__ = [
     "build_memory_reconciler",
     "content_hash",
     "effective_confidence",
+    "governed_memory_post_output",
     "memory_key",
+    "parse_candidates",
     "reconcile",
 ]
