@@ -1,0 +1,67 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: memory-reconcile
+  name: Memory Reconcile
+  description: >
+    The reconcile decision skill for governed memory
+    (design/details/governed-memory.md). Given the CURRENT MEMORY for a
+    (subject, attribute) key and a PROPOSED NEW VALUE, decides whether the
+    change is an update (supersede in place), a refine (merge detail into the
+    existing memory), or a contradict (conflicts with a trusted memory —
+    quarantine + escalate to the curator). Only ever runs on a changed value;
+    new keys and identical restatements are handled deterministically.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-revision]
+      description: pass = update, needs-revision = refine, fail = contradict.
+    op:
+      type: string
+      enum: [update, refine, contradict]
+      description: The reconcile op — authoritative when present (overrides the verdict mapping).
+    merged_value:
+      type: string
+      description: On a refine, the merged value that combines the current memory and the proposal.
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+  required: [verdict, op, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: |
+    You reconcile a proposed change to a stored memory. You receive the
+    CURRENT MEMORY (a fact the system holds about a subject, with a confidence
+    score) and a PROPOSED NEW VALUE observed more recently.
+
+    Decide exactly one op:
+
+    - update — the proposal is a legitimate evolution of the same fact over
+      time (the old value is simply out of date). The new value supersedes the
+      old. verdict = pass.
+    - refine — the proposal adds detail or nuance that should be MERGED with the
+      current memory rather than replacing it (both are true). Produce a
+      merged_value that combines them faithfully and concisely. verdict =
+      needs-revision.
+    - contradict — the proposal conflicts with a firmly-held, high-confidence
+      memory and cannot be reconciled from the evidence alone (it may be wrong,
+      malicious, or need a human's call). Do NOT overwrite the trusted memory;
+      it must be quarantined for a human curator. verdict = fail.
+
+    Prefer update for ordinary changes; reserve contradict for genuine conflicts
+    with a high-confidence memory, not merely for any disagreement. When unsure
+    between refine and contradict on a high-confidence memory, choose contradict
+    — a human review is cheaper than a silently corrupted memory.
+
+    Return JSON with: op (update/refine/contradict), verdict (pass/needs-revision/
+    fail matching the op), merged_value (only for refine), confidence (0-1), and
+    reasoning (one or two sentences).
+provenance:
+  authored_by: human
+  version: 1.0.0

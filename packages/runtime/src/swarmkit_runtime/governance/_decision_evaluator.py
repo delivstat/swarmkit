@@ -131,6 +131,7 @@ def _parse_result(skill_id: str, raw: str) -> DecisionSkillResult:  # noqa: PLR0
             confidence=float(data.get("confidence", 0.5)),
             reasoning=str(data.get("reasoning", "")),
             flagged_items=flagged,
+            raw=data,
         )
     except (json.JSONDecodeError, ValueError, KeyError):
         # Fail closed: a governance gate that can't parse its own skill's output must not

@@ -118,6 +118,11 @@ demo-funnel-cited-change:
 demo-governed-memory:
     uv run python packages/runtime/demos/governed_memory.py
 
+# Demo the knowledge-curator reference topology + the memory-reconcile decision skill
+# (governed-memory.md): a scripted skill output drives refine/contradict through the real path.
+demo-knowledge-curator:
+    uv run python packages/runtime/demos/knowledge_curator.py
+
 # Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
 # edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
 # weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.
