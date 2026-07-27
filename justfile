@@ -128,6 +128,11 @@ demo-knowledge-curator:
 demo-governed-memory-run:
     uv run python packages/runtime/demos/governed_memory_run.py
 
+# Demo relevance-ranked retrieval for governed memory (governed-memory.md): TF-IDF by default,
+# cosine similarity when an embedder is wired — queries surface the most relevant facts.
+demo-governed-memory-search:
+    uv run python packages/runtime/demos/governed_memory_search.py
+
 # Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
 # edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
 # weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.

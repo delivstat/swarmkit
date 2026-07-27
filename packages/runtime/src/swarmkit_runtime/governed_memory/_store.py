@@ -38,6 +38,11 @@ from swarmkit_runtime.governed_memory._reconcile import (
     ReconcileRequest,
     reconcile,
 )
+from swarmkit_runtime.governed_memory._relevance import (
+    Embedder,
+    embedding_scores,
+    lexical_scores,
+)
 from swarmkit_runtime.governed_memory._tables import change_log, memory, metadata, quarantine
 from swarmkit_runtime.persistence._store import make_engine
 
@@ -55,11 +60,13 @@ class GovernedMemoryStore:
         clock: Callable[[], datetime] | None = None,
         reconciler: Reconciler | None = None,
         decay: DecayConfig | None = None,
+        embedder: Embedder | None = None,
     ) -> None:
         self._engine = engine
         self._clock = clock or (lambda: datetime.now(tz=UTC))
         self._reconciler = reconciler
         self._decay = decay
+        self._embedder = embedder
         metadata.create_all(engine)
 
     @classmethod
@@ -70,11 +77,18 @@ class GovernedMemoryStore:
         clock: Callable[[], datetime] | None = None,
         reconciler: Reconciler | None = None,
         decay: DecayConfig | None = None,
+        embedder: Embedder | None = None,
     ) -> GovernedMemoryStore:
         """Back-compat convenience: point the store at ``{workspace}/.swarmkit/store.sqlite`` —
         the same DB file the core persistence store uses (coexisting tables)."""
         db = Path(workspace_path) / ".swarmkit" / "store.sqlite"
-        return cls(make_engine(f"sqlite:///{db}"), clock=clock, reconciler=reconciler, decay=decay)
+        return cls(
+            make_engine(f"sqlite:///{db}"),
+            clock=clock,
+            reconciler=reconciler,
+            decay=decay,
+            embedder=embedder,
+        )
 
     @property
     def engine(self) -> Engine:
@@ -165,27 +179,44 @@ class GovernedMemoryStore:
         limit: int = 20,
         include_inactive: bool = False,
     ) -> list[Memory]:
-        """Active memories matching ``query`` (case-insensitive substring over subject/attribute/
-        value), ranked by *effective* confidence (decayed by recency when a :class:`DecayConfig` is
-        wired, else raw confidence) then recency. Semantic search is a later slice — this is the
-        deterministic scan; ``query=""`` returns all (ranked)."""
+        """Retrieve active memories, ranked.
+
+        With a ``query``: relevance-ranked (cosine similarity when an embedder is wired, else a
+        local TF-IDF lexical score), with *effective* confidence as the secondary signal; only
+        memories relevant to the query are returned. With ``query=""``: all, by effective confidence
+        (decayed by recency when a :class:`DecayConfig` is wired) then recency."""
         stmt = select(memory)
         if not include_inactive:
             stmt = stmt.where(memory.c.status == "active")
         if types:
             stmt = stmt.where(memory.c.type.in_(types))
         with self._engine.connect() as conn:
-            rows = [dict(r) for r in conn.execute(stmt).mappings()]
-        q = query.strip().lower()
-        if q:
-            rows = [r for r in rows if q in f"{r['subject']} {r['attribute']} {r['value']}".lower()]
-        mems = [self._row_to_memory(r) for r in rows]
+            mems = [self._row_to_memory(dict(r)) for r in conn.execute(stmt).mappings()]
         now = self._clock()
-        mems.sort(key=lambda m: (self._rank_confidence(m, now), m.last_reinforced_at), reverse=True)
-        return mems[:limit]
+
+        q = query.strip()
+        if not q:
+            mems.sort(
+                key=lambda m: (self._rank_confidence(m, now), m.last_reinforced_at), reverse=True
+            )
+            return mems[:limit]
+
+        docs = [self._searchable(m) for m in mems]
+        scores = (
+            embedding_scores(q, docs, self._embedder)
+            if self._embedder is not None
+            else lexical_scores(q, docs)
+        )
+        ranked = [(m, s) for m, s in zip(mems, scores, strict=True) if s > 0]
+        ranked.sort(key=lambda ms: (ms[1], self._rank_confidence(ms[0], now)), reverse=True)
+        return [m for m, _ in ranked[:limit]]
 
     def _rank_confidence(self, m: Memory, now: datetime) -> float:
         return effective_confidence(m, now, self._decay) if self._decay else m.confidence
+
+    @staticmethod
+    def _searchable(m: Memory) -> str:
+        return f"{m.subject} {m.attribute} {m.value}"
 
     def history(self, subject: str, attribute: str) -> list[ChangeLogEntry]:
         """The append-only change timeline for a key, oldest first — the fact's full history."""
