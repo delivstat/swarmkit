@@ -305,6 +305,34 @@ def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str
     return judge
 
 
+def build_deterministic_validator(spec: dict[str, Any]) -> Validator | None:
+    """Bind the funnel's ``validate`` layer to a deterministic check (design/details/
+    funnel-deterministic-validate.md).
+
+    Today: ``validate.slice_budget`` — the artifact is the produced diff; over budget is a
+    validate failure whose ``detail`` (e.g. "over slice budget: 812 lines > 400 — split it")
+    becomes the retry critique, escalating to the human ``approve`` on exhaustion. Returns
+    ``None`` when no deterministic check is configured (so a schema-only validate stays handled
+    by output governance and no validate node is wired — unchanged behaviour).
+    """
+    validate_cfg = spec.get("validate") or {}
+    budget = validate_cfg.get("slice_budget")
+    if not budget:
+        return None
+    from swarmkit_runtime.slice_budget import check_diff_text  # noqa: PLC0415
+
+    max_diff_lines = budget.get("max_diff_lines")
+    max_files = budget.get("max_files")
+
+    async def validator(artifact: str) -> ValidateOutcome:
+        result = check_diff_text(artifact, max_diff_lines=max_diff_lines, max_files=max_files)
+        if result.within_budget:
+            return ValidateOutcome(ok=True, artifact=artifact)
+        return ValidateOutcome(ok=False, artifact=artifact, detail=result.verdict())
+
+    return validator
+
+
 async def run_agent_funnel_gate(
     funnel_spec: dict[str, Any],
     *,
@@ -344,6 +372,9 @@ async def run_agent_funnel_gate(
         author=author,
         **resolve_kwargs,
     )
-    compiled = compile_funnel_gate(funnel_spec, drafter=drafter, approver=approver, judge=judge)
+    validator = build_deterministic_validator(funnel_spec)
+    compiled = compile_funnel_gate(
+        funnel_spec, drafter=drafter, approver=approver, judge=judge, validator=validator
+    )
     result = await compiled.ainvoke({"artifact": initial_artifact, "retries": 0})
     return cast(FunnelGateState, result)

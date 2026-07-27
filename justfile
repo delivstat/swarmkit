@@ -103,6 +103,11 @@ demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-w
 demo-gate-funnel:
     uv run python packages/runtime/demos/gate_funnel.py
 
+# Demo slice_budget wired as a funnel validate layer (funnel-deterministic-validate.md): an
+# over-budget diff drives the funnel's bounded retry, then escalates to the human approve.
+demo-funnel-validate:
+    uv run python packages/runtime/demos/funnel_slice_budget.py
+
 # Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
 # edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
 # weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.

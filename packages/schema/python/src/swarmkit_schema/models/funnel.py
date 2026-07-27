@@ -14,6 +14,27 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
+class SliceBudget(BaseModel):
+    """
+    Deterministic slice-size enforcement on the produced diff (design/details/funnel-deterministic-validate.md): an over-budget change is a validate failure — it drives the funnel's bounded retry ('split it'), then escalates to the human approve layer. A sibling key of the single validate layer, not a separate layer. The gated node must produce a diff (a harness executor); the enforcement counterpart to the stage's declared `slice_budget`.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_diff_lines: int | None = Field(
+        None,
+        description="Maximum added/changed lines across the diff before the slice is over budget.",
+        ge=1,
+    )
+    max_files: int | None = Field(
+        None,
+        description="Maximum number of files the diff may touch before the slice is over budget.",
+        ge=1,
+    )
+
+
 class Validate(BaseModel):
     """
     Layer 1 (deterministic, no LLM): structured-output validation with field-specific auto-correction. A shape auto-correction cannot repair is a retry — the judge never sees malformed input.
@@ -31,6 +52,10 @@ class Validate(BaseModel):
     autocorrect: bool | None = Field(
         None,
         description="Default true. Re-prompt the drafter with field-specific corrections before treating an invalid shape as a retry.",
+    )
+    slice_budget: SliceBudget | None = Field(
+        None,
+        description="Deterministic slice-size enforcement on the produced diff (design/details/funnel-deterministic-validate.md): an over-budget change is a validate failure — it drives the funnel's bounded retry ('split it'), then escalates to the human approve layer. A sibling key of the single validate layer, not a separate layer. The gated node must produce a diff (a harness executor); the enforcement counterpart to the stage's declared `slice_budget`.",
     )
 
 
