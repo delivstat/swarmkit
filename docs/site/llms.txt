@@ -271,7 +271,7 @@ Production-quality topologies, archetypes, and skills under `reference/`:
 
 - [Code Review Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/code-review.yaml): 3 leaders (Engineering, QA, Ops), 10 agents.
 - [Skill Authoring Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/skill-authoring.yaml): 6 specialist agents.
-- [25 reference skills](https://github.com/delivstat/swarmkit/tree/main/reference/skills): GitHub MCP, decision, knowledge, coordination, persistence.
+- [27 reference skills](https://github.com/delivstat/swarmkit/tree/main/reference/skills): GitHub MCP, decision, knowledge, coordination, persistence (incl. `governed-memory` + `memory-reconcile`).
 - [16 archetypes](https://github.com/delivstat/swarmkit/tree/main/reference/archetypes): leaders, code review workers, authoring agents.
 
 ## Structured delegation (v1.2.0+)
@@ -345,6 +345,13 @@ Agents remember across conversations. Two decision skill bindings (`memory-reade
 - [Workspace memory reference](https://github.com/delivstat/swarmkit/blob/main/docs/reference/workspace-memory.md): setup, config, GBrain integration, examples, real test outputs.
 - [Memory demo script](https://github.com/delivstat/swarmkit/blob/main/docs/examples/memory-demo.py): runnable demo covering CRUD, search, context injection, extraction, persistence, deletion.
 - [Workspace memory design](https://github.com/delivstat/swarmkit/blob/main/design/details/workspace-memory.md): two-layer knowledge graph, decision skill hooks, GBrain integration, privacy.
+
+## Governed memory (shipped)
+
+Structured memory that **evolves in place over time** rather than piling up. An agent carrying the `governed-memory` persistence skill proposes facts as `{subject, attribute, value}` candidates; the runtime reconciles each against current memory — **new** / **reinforce** (identical restatement — no duplicate) / **update** (supersede the value in place) / **refine** (merge, via the `memory-reconcile` decision skill) / **contradict** (conflicts with a trusted memory → **quarantined** for a human curator, never silently overwritten). One canonical row per `(subject, attribute)` key plus an append-only change-log, so any fact is readable `as_of` a past time and update-in-place coexists with the append-only audit invariant (§8.3). Confidence decays with recency (stale facts rank down, never deleted); retrieval is relevance-ranked (local TF-IDF, or cosine similarity when an embedder is wired — no vendor lock-in). `swarmkit memory search|get|quarantine|resolve` and the serve `/memory` endpoints share one service seam; the `knowledge-curator` reference topology curates it.
+
+- [Governed memory reference](https://delivstat.github.io/swarmkit/reference/governed-memory/): the persistence skill, reconcile ops, quarantine + curator gate, confidence decay, relevance retrieval, CLI + serve.
+- [Governed memory design](https://github.com/delivstat/swarmkit/blob/main/design/details/governed-memory.md): the update-in-place model, current-state + append-only change-log, the governed write path, IAM.
 
 Memory-writer extracts structured insights (topic, context, key_points, tags) via LLM after each turn. Memory-reader searches for relevant prior conversations and prepends context. The agent sees prior sessions naturally: "As we discussed previously..." Config: `governance.decision_skills[].config.search_scope` (user/shared/both), `max_results`, `min_output_length`.
 

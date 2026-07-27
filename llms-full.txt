@@ -28,6 +28,7 @@
 4. **Operate references**
    - CLI commands — `docs/site/reference/cli.md`
    - Serve mode — `docs/site/reference/serve.md`
+   - Governed memory — `docs/site/reference/governed-memory.md`
 5. **Design notes (the depth)**
    - Gate funnel (per-artifact quality gate composition) — `docs/site/design-notes/gate-funnel.md`
    - Pipeline controller + stage-graph (saga sequencing) — `docs/site/design-notes/pipeline-controller.md`
@@ -323,7 +324,7 @@ Production-quality topologies, archetypes, and skills under `reference/`:
 
 - [Code Review Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/code-review.yaml): 3 leaders (Engineering, QA, Ops), 10 agents.
 - [Skill Authoring Swarm topology](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/skill-authoring.yaml): 6 specialist agents.
-- [25 reference skills](https://github.com/delivstat/swarmkit/tree/main/reference/skills): GitHub MCP, decision, knowledge, coordination, persistence.
+- [27 reference skills](https://github.com/delivstat/swarmkit/tree/main/reference/skills): GitHub MCP, decision, knowledge, coordination, persistence (incl. `governed-memory` + `memory-reconcile`).
 - [16 archetypes](https://github.com/delivstat/swarmkit/tree/main/reference/archetypes): leaders, code review workers, authoring agents.
 
 ## Structured delegation (v1.2.0+)
@@ -397,6 +398,13 @@ Agents remember across conversations. Two decision skill bindings (`memory-reade
 - [Workspace memory reference](https://github.com/delivstat/swarmkit/blob/main/docs/reference/workspace-memory.md): setup, config, GBrain integration, examples, real test outputs.
 - [Memory demo script](https://github.com/delivstat/swarmkit/blob/main/docs/examples/memory-demo.py): runnable demo covering CRUD, search, context injection, extraction, persistence, deletion.
 - [Workspace memory design](https://github.com/delivstat/swarmkit/blob/main/design/details/workspace-memory.md): two-layer knowledge graph, decision skill hooks, GBrain integration, privacy.
+
+## Governed memory (shipped)
+
+Structured memory that **evolves in place over time** rather than piling up. An agent carrying the `governed-memory` persistence skill proposes facts as `{subject, attribute, value}` candidates; the runtime reconciles each against current memory — **new** / **reinforce** (identical restatement — no duplicate) / **update** (supersede the value in place) / **refine** (merge, via the `memory-reconcile` decision skill) / **contradict** (conflicts with a trusted memory → **quarantined** for a human curator, never silently overwritten). One canonical row per `(subject, attribute)` key plus an append-only change-log, so any fact is readable `as_of` a past time and update-in-place coexists with the append-only audit invariant (§8.3). Confidence decays with recency (stale facts rank down, never deleted); retrieval is relevance-ranked (local TF-IDF, or cosine similarity when an embedder is wired — no vendor lock-in). `swarmkit memory search|get|quarantine|resolve` and the serve `/memory` endpoints share one service seam; the `knowledge-curator` reference topology curates it.
+
+- [Governed memory reference](https://delivstat.github.io/swarmkit/reference/governed-memory/): the persistence skill, reconcile ops, quarantine + curator gate, confidence decay, relevance retrieval, CLI + serve.
+- [Governed memory design](https://github.com/delivstat/swarmkit/blob/main/design/details/governed-memory.md): the update-in-place model, current-state + append-only change-log, the governed write path, IAM.
 
 Memory-writer extracts structured insights (topic, context, key_points, tags) via LLM after each turn. Memory-reader searches for relevant prior conversations and prepends context. The agent sees prior sessions naturally: "As we discussed previously..." Config: `governance.decision_skills[].config.search_scope` (user/shared/both), `max_results`, `min_output_length`.
 
@@ -2369,6 +2377,93 @@ docker run -v ./workspace:/workspace \
   -p 8000:8000 \
   ghcr.io/delivstat/swarmkit:latest
 ```
+
+══════════════════════════════════════════════════════════════════════════════
+## Source: docs/site/reference/governed-memory.md
+## Published: https://delivstat.github.io/swarmkit/reference/governed-memory/
+══════════════════════════════════════════════════════════════════════════════
+
+# Governed memory
+
+Structured memory that **evolves in place over time** instead of piling up. A growing application's
+facts change; governed memory updates the relevant fact rather than appending a duplicate, and every
+write is reconciled and audited.
+
+See the design note: [`design/details/governed-memory.md`](https://github.com/delivstat/swarmkit/blob/main/design/details/governed-memory.md).
+
+## The model
+
+- **One canonical row per `(subject, attribute)` key** — the current, trusted value of a fact. The
+  key (e.g. `user:alice` × `preferred_language`) is the reconciliation anchor: a later observation
+  about the same key updates that row rather than creating a new one.
+- **An append-only change-log** — every mutation (`new` / `reinforce` / `update` / `refine` /
+  `contradict`). The memory row is mutable; the *record of change* never is, so update-in-place and
+  the append-only audit invariant (design §8.3) coexist. Any fact is readable `as_of` a past time.
+- **Confidence decay** — a fact's effective confidence fades with time since it was last reinforced
+  (per-type half-life). Stale facts rank **down** in retrieval without being deleted; a fact that
+  keeps being observed stays strong.
+
+## The governed write path
+
+An agent proposes candidates; it never overwrites. Each candidate is reconciled:
+
+| Op | When | Effect |
+|---|---|---|
+| `new` | no memory for the key | insert |
+| `reinforce` | identical value restated | bump recency + confidence, **no new row** |
+| `update` | changed value, a legitimate evolution | supersede the value in place |
+| `refine` | changed value that adds detail | merge into the existing memory |
+| `contradict` | conflicts with a trusted, high-confidence memory | **quarantine** the candidate for a human curator — the trusted value is never overwritten |
+
+`new` / `reinforce` / `update` are decided deterministically (no LLM). The `refine` / `contradict`
+discrimination is the **`memory-reconcile`** decision skill (`category: decision`), which runs only
+on a changed value. Contradictions park on a quarantine queue — the one hard human gate in the
+memory path — where a curator accepts (apply as an update) or rejects (discard) them.
+
+## Retrieval
+
+Search is **relevance-ranked**, not substring: a local TF-IDF score by default (no keys), or cosine
+similarity when an `Embedder` is wired into the store (a plain callable — a local model or an MCP
+embedder plugs in with no vendor lock-in). Effective confidence is the secondary signal; an empty
+query lists all facts by confidence and recency.
+
+## Using it
+
+Add the `governed-memory` persistence skill to a writer agent; the runtime routes its proposed
+candidates through the governed write path at `post_output`. Add the `memory-reconcile` skill to the
+workspace to enable refine/contradict (otherwise a changed value deterministically updates). The
+[`knowledge-curator`](https://github.com/delivstat/swarmkit/blob/main/reference/topologies/knowledge-curator.yaml)
+reference topology wires an ingester (proposes) → reconcile-judge (`memory-reconcile`) → publisher.
+
+### CLI
+
+The `swarmkit memory` commands and the serve `/memory` endpoints resolve the **same** store
+(`WorkspaceRuntime.governed_memory`) and emit the same JSON.
+
+| Command | Description |
+|---|---|
+| `swarmkit memory search "<query>" -w <ws>` | Relevance-ranked search (empty query lists all by confidence) |
+| `swarmkit memory search ... --type <t> --limit N --json` | Filter by memory type; JSON output |
+| `swarmkit memory get <subject> <attribute> -w <ws> --history` | Current value + the append-only change timeline |
+| `swarmkit memory quarantine -w <ws>` | List quarantined contradictions (`--status accepted\|rejected`) |
+| `swarmkit memory resolve <id> --by <curator> --accept\|--reject -w <ws>` | Resolve a quarantined contradiction |
+
+### Serve endpoints
+
+| Method + path | Description |
+|---|---|
+| `GET /memory?query=&type=&limit=` | Relevance-ranked search |
+| `GET /memory/item?subject=&attribute=&history=` | Current value (+ history) for a key |
+| `GET /memory/quarantine?status=` | Quarantined contradictions |
+| `POST /memory/quarantine/{id}/resolve` | `{resolved_by, accept}` — resolve a contradiction |
+
+## Demos
+
+- `just demo-governed-memory` — a fact evolves in place; a contradiction is quarantined and the curator resolves it.
+- `just demo-governed-memory-search` — lexical vs embedding relevance ranking.
+- `just demo-governed-memory-run` — a live compiled run writes governed memory via the persistence skill.
+- `just demo-governed-memory-cli` — the `swarmkit memory` CLI over a seeded workspace.
+- `just demo-knowledge-curator` — the reconcile skill + curator topology.
 
 ══════════════════════════════════════════════════════════════════════════════
 # Part 5 — Design notes (the depth)
