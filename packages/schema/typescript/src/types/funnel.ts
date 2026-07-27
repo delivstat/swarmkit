@@ -187,5 +187,33 @@ export interface Validate {
      * Path (workspace-relative) to a JSON Schema the artifact must satisfy.
      */
     schema?: string;
+    /**
+     * Deterministic slice-size enforcement on the produced diff
+     * (design/details/funnel-deterministic-validate.md): an over-budget change is a validate
+     * failure — it drives the funnel's bounded retry ('split it'), then escalates to the human
+     * approve layer. A sibling key of the single validate layer, not a separate layer. The
+     * gated node must produce a diff (a harness executor); the enforcement counterpart to the
+     * stage's declared `slice_budget`.
+     */
+    slice_budget?: SliceBudget;
+}
+
+/**
+ * Deterministic slice-size enforcement on the produced diff
+ * (design/details/funnel-deterministic-validate.md): an over-budget change is a validate
+ * failure — it drives the funnel's bounded retry ('split it'), then escalates to the human
+ * approve layer. A sibling key of the single validate layer, not a separate layer. The
+ * gated node must produce a diff (a harness executor); the enforcement counterpart to the
+ * stage's declared `slice_budget`.
+ */
+export interface SliceBudget {
+    /**
+     * Maximum added/changed lines across the diff before the slice is over budget.
+     */
+    max_diff_lines?: number;
+    /**
+     * Maximum number of files the diff may touch before the slice is over budget.
+     */
+    max_files?: number;
 }
 
