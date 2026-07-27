@@ -43,10 +43,28 @@ change_log = Table(
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("memory_key", Text, nullable=False),
-    Column("op", Text, nullable=False),  # new | update | reinforce (refine/quarantine: judge slice)
+    Column("op", Text, nullable=False),  # new | update | reinforce | refine | contradict
     Column("before", Text),  # json snapshot of the row before the op, or null on `new`
     Column("after", Text, nullable=False),  # json snapshot of the row after the op
     Column("reason", Text, nullable=False, default=""),
     Column("decided_by", Text, nullable=False, default="deterministic"),
     Column("timestamp", Text, nullable=False),
+)
+
+#: The curator's escalation queue — candidates the reconcile decision skill judged a ``contradict``
+#: of a trusted memory. Parked here (never silently written to the canonical row) until a human /
+#: curator resolves them: accept (apply as an update) or reject (discard). Design §8: the one hard
+#: human gate in the memory write path is reserved for genuine contradictions.
+quarantine = Table(
+    "governed_memory_quarantine",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("memory_key", Text, nullable=False),
+    Column("candidate", Text, nullable=False),  # json of the proposed MemoryCandidate
+    Column("current_value", Text, nullable=False),  # the trusted value it conflicts with
+    Column("reasoning", Text, nullable=False, default=""),
+    Column("status", Text, nullable=False, default="pending"),  # pending | accepted | rejected
+    Column("created_at", Text, nullable=False),
+    Column("resolved_at", Text),
+    Column("resolved_by", Text),
 )
