@@ -201,6 +201,27 @@ documented swap: stop the reference `orchestrator` service, start Temporal — s
 different driver. A short doc note states the tiers. (Local, non-compose: run `swarmkit serve` and
 `swarmkit orchestrator` in two terminals against the same SQLite file.)
 
+### 6. Artifacts + payloads — a workspace-configured store; the orchestrator stays content-free
+
+Stage outputs (a diff, a report, a produced document) and the inputs threaded between stages are
+**content**, and content is a **runtime** concern — not the orchestrator's. The orchestrator holds
+only saga state + **references**; it never carries artifact bytes.
+
+- **Store.** A workspace-configured, pluggable **`ArtifactStore`** (parallel to `ModelProvider` /
+  `GovernanceProvider`): `storage.artifacts: { backend: database | filesystem | s3 }` in
+  `workspace.yaml` (beside `storage.checkpoints`). Default **database** (zero-config, the existing
+  SQLite/Postgres); **filesystem** and **S3-compatible** for scale. Interface: `put(correlation_id,
+  stage, content) -> ref`, `get(ref) -> content`, `list(correlation_id)`.
+- **Who touches content.** The **runtime** (stage execution in serve) writes a stage's output to the
+  store and returns a **reference**; it resolves the next stage's input reference back to content when
+  it runs. The **UI/CLI inspector lazy-reads** content by reference on node selection. The
+  **orchestrator threads only the `(correlation_id, stage)` references** the graph's edges dictate —
+  it never reads or writes the store. So `StageOutcome` carries a reference (+ a short preview for the
+  list), not the bytes.
+- **Why.** This is the boundary the whole design leans on: orchestrator = *state + flow (+
+  references)*; runtime = *execution + content (via the store)*. The orchestrator can sequence,
+  retry, and compensate a saga knowing nothing about what any stage actually produced.
+
 ## Durability tiers
 
 | Tier | Engine | Store | When |
@@ -234,20 +255,24 @@ state, so a restart resumes mid-pipeline. In-memory becomes a test-only store, n
    atomic claim); unit tests (persist/resume, dedup, claim) against the in-memory store as the oracle.
 2. Promote the generic controller core to `orchestration/reference/` (import-linter contract on the
    core *and* serve); the SDLC example composes onto it (its tests stay green).
-3. Serve enqueue/read: `POST /pipelines/signal` → `pipeline_events`; `GET /pipelines/sagas` (list +
-   filter/search) and `/{id}` (+ `/node/{stage}`) — the per-run detail assembled from saga state +
-   audit events + approval records; the review queue writes a `gate-resolved` event on funnel approval.
-4. `swarmkit orchestrator` command: the drive loop (claim events → drive saga → call run-stage →
+3. The `ArtifactStore` seam (workspace `storage.artifacts`; database default + filesystem/s3
+   backends); the runtime writes stage output to it (returns a ref) and resolves inputs from it. Unit
+   tests per backend.
+4. Serve enqueue/read: `POST /pipelines/signal` → `pipeline_events`; `GET /pipelines/sagas` (list +
+   filter/search) and `/{id}` (+ `/node/{stage}` lazy artifact fetch from the store) — the per-run
+   detail assembled from saga state + audit events + approval records; the review queue writes a
+   `gate-resolved` event on funnel approval.
+5. `swarmkit orchestrator` command: the drive loop (claim events → drive saga → call run-stage →
    persist). Integration test: emit → stage runs → parks at gate → approve → resumes → completes,
    **with the orchestrator restarted mid-saga** (durability).
-5. CLI `swarmkit pipeline emit|sagas|status|advance|skip` — including the searchable/filterable
+6. CLI `swarmkit pipeline emit|sagas|status|advance|skip` — including the searchable/filterable
    `sagas` list (by correlation_id + status) and `status <id>`; CLI ⇄ serve parity test.
-6. UI Pipelines **Runs** view: search-by-correlation-id + Active/Completed/All filter over the
+7. UI Pipelines **Runs** view: search-by-correlation-id + Active/Completed/All filter over the
    instance list with status pills; a **read-only replay canvas** (reuse `stage-graph-canvas` with a
    run-state overlay) with a **node/funnel/edge inspector** (payload, generated artifacts, approval
    details, timeline); dispatch form. vitest for the pure bits (run-state → node styling, the
    selection→detail wiring).
-7. docker-compose (`serve` + `orchestrator`) + commented Temporal + a docs note on the tiers; regen
+8. docker-compose (`serve` + `orchestrator`) + commented Temporal + a docs note on the tiers; regen
    llms.
 
 ## Test plan
@@ -287,8 +312,8 @@ store** (new `SqlSagaStore` on the same SQLite file), resolve the gate, watch it
    reference-specific; the Temporal swap must supply its equivalent (query Temporal, or project saga
    state back into the store so the same read view + CLI/UI work unchanged). Decide the expected
    contract for a swapped orchestrator so the read surface stays uniform.
-6. **Where per-node artifacts live + retrieval.** The run inspector shows each node's generated
-   artifact (a diff, a report). Are these read from the **audit log payload** (simple, but heavy for
-   large artifacts and subject to any audit truncation), or from a dedicated artifact store keyed by
-   `(correlation_id, stage)`? Decide the source + a size cap / lazy per-node fetch so the replay stays
-   light, and confirm the audit-invariant read-only posture for the inspector.
+6. **Where per-node artifacts live + retrieval — RESOLVED** (see §6): a workspace-configured
+   pluggable `ArtifactStore` (`database` default / `filesystem` / `s3`), addressed by `(correlation_id,
+   stage)`, written/resolved by the **runtime**, **lazy-read** by the inspector on node selection. The
+   orchestrator stays content-free (threads references only). Remaining detail: the `ArtifactStore`
+   interface + backend configs, and a per-artifact size cap / streaming for very large outputs.
