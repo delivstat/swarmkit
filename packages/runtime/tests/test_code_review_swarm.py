@@ -59,7 +59,7 @@ def test_reference_topology_validates(topology_file: Path) -> None:
 def test_reference_workspace_resolves() -> None:
     workspace = resolve_workspace(REFERENCE_WS)
     assert "code-review" in workspace.topologies
-    assert len(workspace.skills) == 25
+    assert len(workspace.skills) == 26
     assert len(workspace.archetypes) == 16
 
 
@@ -107,3 +107,34 @@ def test_code_review_topology_compiles() -> None:
     governance = MockGovernanceProvider(allow_all=True)
     graph = compile_topology(topology, provider_registry=registry, governance=governance)
     assert graph is not None
+
+
+# ---- knowledge-curator (governed memory) --------------------------------
+
+
+def test_knowledge_curator_structure_and_reconcile_skill() -> None:
+    workspace = resolve_workspace(REFERENCE_WS)
+    topology = workspace.topologies["knowledge-curator"]
+    child_ids = {c.id for c in topology.root.children}
+    assert child_ids == {"ingester", "reconcile-judge", "publisher"}
+    judge = next(c for c in topology.root.children if c.id == "reconcile-judge")
+    # the judge binds the memory-reconcile decision skill (overriding the llm-judge default)
+    assert {s.id for s in judge.skills} == {"memory-reconcile"}
+
+
+def test_knowledge_curator_topology_compiles() -> None:
+    workspace = resolve_workspace(REFERENCE_WS)
+    topology = workspace.topologies["knowledge-curator"]
+    registry = ProviderRegistry()
+    registry.register(MockModelProvider())
+    governance = MockGovernanceProvider(allow_all=True)
+    graph = compile_topology(topology, provider_registry=registry, governance=governance)
+    assert graph is not None
+
+
+def test_memory_reconcile_skill_declares_reconcile_ops() -> None:
+    workspace = resolve_workspace(REFERENCE_WS)
+    skill = workspace.skills["memory-reconcile"]
+    assert skill.raw.category.value == "decision"
+    op = skill.raw.outputs["properties"]["op"]
+    assert set(op["enum"]) == {"update", "refine", "contradict"}

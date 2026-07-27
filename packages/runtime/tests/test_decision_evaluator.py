@@ -56,6 +56,23 @@ class TestParseResult:
         assert result.verdict == "fail"
         assert len(result.flagged_items) == 1
 
+    def test_raw_carries_full_skill_output(self) -> None:
+        # The parsed skill JSON is exposed on `raw` so skills can emit structured extras beyond
+        # verdict/confidence/reasoning (e.g. the memory-reconcile op + merged_value).
+        raw = (
+            '{"verdict": "needs-revision", "op": "refine", '
+            '"merged_value": "Kimi (tools), DeepSeek (writing)", '
+            '"confidence": 0.7, "reasoning": "both hold"}'
+        )
+        result = _parse_result("memory-reconcile", raw)
+        assert result.raw["op"] == "refine"
+        assert result.raw["merged_value"] == "Kimi (tools), DeepSeek (writing)"
+
+    def test_raw_empty_when_output_unparseable(self) -> None:
+        result = _parse_result("test-skill", "not json at all")
+        assert result.verdict == "fail"  # fail-closed
+        assert result.raw == {}
+
     def test_invalid_json_fails_closed(self) -> None:
         # A gate that can't parse its own skill's output must block, not silently approve.
         raw = "This is not JSON at all"
