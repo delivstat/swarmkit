@@ -136,5 +136,7 @@ def test_memory_reconcile_skill_declares_reconcile_ops() -> None:
     workspace = resolve_workspace(REFERENCE_WS)
     skill = workspace.skills["memory-reconcile"]
     assert skill.raw.category.value == "decision"
-    op = skill.raw.outputs["properties"]["op"]
+    outputs = skill.raw.outputs
+    assert outputs is not None
+    op = outputs["properties"]["op"]
     assert set(op["enum"]) == {"update", "refine", "contradict"}
