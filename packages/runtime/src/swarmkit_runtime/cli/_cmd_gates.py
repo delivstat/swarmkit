@@ -9,12 +9,22 @@ function that also backs ``GET /pipelines/{id}/gate-coverage``.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 
 from swarmkit_runtime._observability import Observability
+from swarmkit_runtime.cited_change import (
+    Citation,
+    check_citations,
+    parse_unified_diff,
+)
+from swarmkit_runtime.cited_change import (
+    coverage_to_dict as citation_coverage_to_dict,
+)
 from swarmkit_runtime.comprehension import (
     DEFAULT_FAST_APPROVE_SECONDS,
     comprehension_to_dict,
@@ -171,3 +181,59 @@ def comprehension(
     typer.echo("  deferred signals (need more data / later slices):")
     for d in report.deferred:
         typer.echo(f"    - {d}")
+
+
+@app.command(name="cited-change")
+def cited_change(
+    rationale: Annotated[
+        Path,
+        typer.Option(
+            "--rationale",
+            help="Change-rationale YAML: `summary` + `citations: [{claim, path, lines}]`.",
+            show_default=False,
+        ),
+    ],
+    diff: Annotated[
+        Path | None,
+        typer.Option(
+            "--diff",
+            help="Unified diff file. Omit to read the diff from stdin.",
+            show_default=False,
+        ),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a human summary."),
+    ] = False,
+) -> None:
+    """Check a change-rationale cites the code its diff changed (exit 1 if uncited)."""
+    try:
+        data = yaml.safe_load(rationale.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        _stderr(f"error: could not read change-rationale: {exc}")
+        raise typer.Exit(_EXIT_USAGE) from exc
+
+    citations = [
+        Citation(
+            claim=str(c.get("claim", "")),
+            path=str(c.get("path", "")),
+            lines=tuple(int(x) for x in (c.get("lines") or [])),
+        )
+        for c in data.get("citations", [])
+    ]
+    diff_text = diff.read_text(encoding="utf-8") if diff is not None else sys.stdin.read()
+    cov = check_citations(citations, parse_unified_diff(diff_text))
+
+    if json_output:
+        typer.echo(json.dumps(citation_coverage_to_dict(cov), indent=2))
+    else:
+        typer.echo(f"\ncited-change — {cov.verdict()}")
+        for c in cov.unresolved:
+            typer.echo(
+                f"  ! unresolved: '{c.claim}' cites {c.path}:{list(c.lines)} (not in the diff)"
+            )
+        for p in cov.uncovered_files:
+            typer.echo(f"  ! uncited file: {p}")
+
+    if not cov.ok:
+        raise typer.Exit(1)
