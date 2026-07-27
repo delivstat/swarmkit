@@ -2,7 +2,7 @@
 title: Deterministic validate checks in a funnel (cited-change + slice_budget)
 description: Wire the deterministic cited-change and slice_budget checks into a funnel's validate layer as sibling keys — single-slot preserved, failures drive the funnel's existing bounded retry → human escalation.
 tags: [governance, funnel, stage-graph, gate]
-status: draft
+status: implemented
 ---
 
 # Deterministic validate checks in a funnel (cited-change + slice_budget)
@@ -11,7 +11,10 @@ status: draft
 already-shipped surface; no new artifact kind.
 **Design reference:** the runtime-enforcement follow-on recorded in
 `gate-coverage-and-comprehension-debt.md`; builds on `gate-funnel.md`. §8 governs.
-**Status:** draft (design-only) — review before implementation.
+**Status:** implemented — step 1 `slice_budget` (#662), step 2 harness-diff threading +
+`cited_change` (#663). This note records the design *and* how it landed; where the shipped shape
+differs from the original proposal, the proposal is annotated inline and the delta is captured in
+"Implementation (shipped)" and "Resolved (was: open questions)" below.
 
 ## Goal
 
@@ -59,23 +62,29 @@ It receives **one artifact string** (the current draft). That fits the checks un
   A single `artifact` string can't be both. This requires **widening the validate seam** to pass a
   small context object.
 
-**Proposed seam:**
+**Seam (as shipped, #663):**
 
 ```python
 @dataclass(frozen=True)
 class ValidateContext:
-    artifact: str                 # the current draft (unchanged meaning)
-    diff: str | None = None       # the produced unified diff, when the node emits one (harness)
-    rationale: str | None = None  # a change-rationale artifact, when the node produces one
+    artifact: str            # the current draft (unchanged meaning)
+    diff: str | None = None  # the produced unified diff, when the node emits one (harness)
 
 Validator = Callable[[ValidateContext], Awaitable[ValidateOutcome]]
 ```
 
-Backward-compatible in behaviour: the existing schema validator ignores `diff`/`rationale` and reads
-`ctx.artifact` exactly as before. Only the *call site* changes (`validator(ctx)` instead of
-`validator(artifact)`), and the drafter/harness node populates `diff`/`rationale` into the gate
-state when it has them (a `model` node leaves them `None`, so `cited_change`/`slice_budget` on a
-non-diff-producing node is a load-time validation error, not a silent no-op).
+No separate `rationale` field was added: per Q3 below, **the change-rationale *is* the artifact**
+(`ctx.artifact`), so `cited_change` reads citations from `ctx.artifact` and resolves them against
+`ctx.diff`. Backward-compatible in behaviour: the schema validator ignores `diff` and reads
+`ctx.artifact` exactly as before. Only the *call site* changes (`validator(ctx)`), and the harness
+node populates `diff` into the gate state (a `model` node leaves it `None`).
+
+**Fail-closed, not a load-time error.** The original proposal made `cited_change`/`slice_budget` on
+a non-diff-producing node a load-time validation error. As shipped it is **fail-closed at runtime**
+instead: with no threaded diff, `slice_budget` falls back to treating `ctx.artifact` as the diff,
+and `cited_change` resolves nothing → validate fails → bounded retry → escalates to the human
+`approve`. This keeps the invariant (never drops, only exits through the human) without a new
+load-time coupling between a node's executor kind and its funnel.
 
 ## Failure semantics (reuse, don't invent)
 
@@ -126,16 +135,49 @@ stage with a budget but a gate funnel without one is a coverage gap the `gates` 
 
 ## Demo plan
 
-`just demo-funnel-validate`: a funnel whose validate declares `slice_budget`; feed it an
-over-budget diff and show the bounded retry + escalation transcript (deterministic, no keys).
+- `just demo-funnel-validate` (step 1): a funnel whose validate declares `slice_budget`; feed it an
+  over-budget diff → bounded retry + escalation transcript (deterministic, no keys).
+- `just demo-funnel-cited-change` (step 2): a funnel with `validate.cited_change`; the produced diff
+  is threaded via `diff_source`; a cited change is approved directly, an uncited change retries then
+  escalates to the human `approve`.
 
-## Open questions
+## Implementation (shipped)
 
-1. **Seam change blast radius** — every `compile_funnel_gate` caller + the schema-validate injection
-   must move to `ValidateContext`. Confirm no other consumer passes a bare artifact string.
-2. **How the harness node surfaces `diff` / `rationale`** into the gate state — the concrete
-   plumbing from the executor's produced diff + the node's structured output. This is the crux; it
-   may deserve its own small slice.
-3. **`cited_change` rationale source** — is the rationale the node's `artifact` (so `ctx.rationale
-   == ctx.artifact`) or a separate produced document? Affects whether cited_change needs the seam
-   widening at all, or just a diff alongside the artifact.
+**Step 1 — `slice_budget` (#662).** `build_deterministic_validator(spec)` returns a `Validator`
+only when a deterministic check is declared; `slice_budget` parses the artifact as a diff and an
+over-budget change fails validate. At the time it saw the harness node's *summary string*, so
+enforcement on a real harness diff didn't yet bite — step 2 fixed that.
+
+**Step 2 — harness-diff threading + `cited_change` (#663).** The crux (Q2) resolved concretely:
+
+- The **harness node surfaces its collected diff** on the result dict (`result["diff"]`), instead
+  of folding only its byte-count into the summary text.
+- The **in-node gate binding** (`_compiler.py`, the primary path — each pipeline stage's topology
+  run compiles its gated agent through `gated_node`) builds a `diff_source()` closure over the
+  captured node output and passes it to `run_agent_funnel_gate`. `draft_node` calls `diff_source()`
+  after every (re)draft, so `state["diff"]` is always the current change; `validate_node` hands
+  `ValidateContext{artifact, diff}` to the validator.
+- `build_deterministic_validator` now **composes** `slice_budget` + `cited_change` (both run, both
+  must pass; first failure is the retry feedback). `slice_budget` prefers `ctx.diff`, falling back
+  to `ctx.artifact`; `cited_change` reads citations from `ctx.artifact` and resolves them against
+  `ctx.diff`. `check_rationale` / `parse_rationale` were factored into `cited_change.py`, shared
+  with the `swarmkit cited-change` CLI.
+
+**Boundary (documented follow-on).** The `StageRunner` precursor's `AgentRunner` returns a bare
+string, so `diff_source` stays unset on that path: `slice_budget` keeps its artifact-as-diff
+fallback and `cited_change` fails-closed to the human. Widening the `AgentRunner` seam to surface a
+diff is a follow-on; the in-node gate is the path that matters for a harness executor today.
+
+## Resolved (was: open questions)
+
+1. **Seam change blast radius** — resolved. Every `compile_funnel_gate` caller moved to
+   `ValidateContext` (the two production bindings + the `gate_funnel` / slice-budget / cited-change
+   demos and tests). The schema validator (output governance) is unchanged — it never went through
+   `build_deterministic_validator`, and a schema-only `validate` still wires no deterministic node.
+2. **How the harness node surfaces the diff** — resolved as above (it *was* its own slice, step 2):
+   `result["diff"]` → `diff_source` → `state["diff"]` → `ValidateContext.diff`. The `rationale`
+   field was dropped (see Q3).
+3. **`cited_change` rationale source** — resolved: **the rationale *is* the node's `artifact`**
+   (`ctx.artifact`), with the diff threaded alongside. So `ValidateContext` carries `{artifact,
+   diff}` only — no separate `rationale`. cited_change parses the artifact as a change-rationale
+   (`summary` + `citations`) and resolves it against `ctx.diff`.
