@@ -34,6 +34,11 @@ from swarmkit_runtime.governed_memory._reconcile import (
     reconcile,
 )
 from swarmkit_runtime.governed_memory._relevance import Embedder
+from swarmkit_runtime.governed_memory._serialize import (
+    change_to_dict,
+    memory_to_dict,
+    quarantine_to_dict,
+)
 from swarmkit_runtime.governed_memory._store import GovernedMemoryStore
 
 __all__ = [
@@ -52,10 +57,13 @@ __all__ = [
     "Reconciler",
     "WriteOutcome",
     "build_memory_reconciler",
+    "change_to_dict",
     "content_hash",
     "effective_confidence",
     "governed_memory_post_output",
     "memory_key",
+    "memory_to_dict",
     "parse_candidates",
+    "quarantine_to_dict",
     "reconcile",
 ]

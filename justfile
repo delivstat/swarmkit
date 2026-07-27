@@ -133,6 +133,11 @@ demo-governed-memory-run:
 demo-governed-memory-search:
     uv run python packages/runtime/demos/governed_memory_search.py
 
+# Demo the `swarmkit memory` CLI (governed-memory.md): search, get --history, quarantine, resolve —
+# the same store + JSON as the serve /memory endpoints (one service seam).
+demo-governed-memory-cli:
+    uv run python packages/runtime/demos/governed_memory_cli.py
+
 # Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
 # edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
 # weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.
