@@ -184,6 +184,17 @@ export interface Validate {
      */
     autocorrect?: boolean;
     /**
+     * Deterministic cited-change enforcement (design/details/funnel-deterministic-validate.md):
+     * the artifact is a change-rationale (`summary` + `citations: [{claim, path, lines}]`) and
+     * the gated node's produced diff is threaded to the gate. An uncited change — a citation
+     * the diff did not change, or a touched file no citation mentions — is a validate failure
+     * whose verdict becomes the retry critique ('cite it'), escalating to the human approve
+     * layer on exhaustion. A sibling key of the single validate layer, not a separate layer.
+     * The gated node must produce a diff (a harness executor). The un-gameable half of
+     * cited-change; a `judge` layer scores whether the prose matches the change.
+     */
+    cited_change?: boolean;
+    /**
      * Path (workspace-relative) to a JSON Schema the artifact must satisfy.
      */
     schema?: string;

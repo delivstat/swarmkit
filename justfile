@@ -108,6 +108,11 @@ demo-gate-funnel:
 demo-funnel-validate:
     uv run python packages/runtime/demos/funnel_slice_budget.py
 
+# Demo cited_change wired as a funnel validate layer (funnel-deterministic-validate.md, step 2):
+# the produced diff is threaded to the gate; an uncited change drives the retry, then escalates.
+demo-funnel-cited-change:
+    uv run python packages/runtime/demos/funnel_cited_change.py
+
 # Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
 # edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
 # weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.

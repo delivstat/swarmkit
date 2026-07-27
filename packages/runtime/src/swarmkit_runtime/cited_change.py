@@ -121,6 +121,51 @@ def check_citations(citations: list[Citation], diff: dict[str, set[int]]) -> Cit
     return CitationCoverage(tuple(resolved), tuple(unresolved), uncovered)
 
 
+def parse_rationale(data: dict[str, object]) -> list[Citation]:
+    """Extract the citations from a parsed change-rationale mapping (``summary`` + ``citations``).
+
+    Shared by the ``swarmkit cited-change`` CLI and the funnel ``validate.cited_change`` layer so
+    both read a change-rationale the same way. Malformed entries degrade to empty fields rather
+    than raising — an empty ``path`` simply never resolves, which the coverage verdict reports.
+    """
+    citations: list[Citation] = []
+    raw = data.get("citations")
+    if not isinstance(raw, list):
+        return citations
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        lines = c.get("lines") or []
+        citations.append(
+            Citation(
+                claim=str(c.get("claim", "")),
+                path=str(c.get("path", "")),
+                lines=tuple(int(x) for x in lines if isinstance(x, int | str)),
+            )
+        )
+    return citations
+
+
+def check_rationale(rationale_yaml: str, diff_text: str) -> CitationCoverage:
+    """Check a change-rationale (YAML text) against a unified diff. Pure + deterministic.
+
+    Parses the rationale's ``citations`` and resolves them against ``diff_text``. A rationale that
+    is not a mapping (or carries no citations) yields empty coverage — the verdict says so. Used by
+    the funnel ``validate.cited_change`` layer, where the rationale is the gated node's artifact and
+    the diff is threaded from the harness executor.
+    """
+    import yaml  # noqa: PLC0415
+
+    try:
+        data = yaml.safe_load(rationale_yaml) or {}
+    except yaml.YAMLError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    citations = parse_rationale(data)
+    return check_citations(citations, parse_unified_diff(diff_text))
+
+
 def coverage_to_dict(cov: CitationCoverage) -> dict[str, object]:
     """JSON-serializable coverage — shared by the CLI ``--json`` output."""
     return {
@@ -140,6 +185,8 @@ __all__ = [
     "Citation",
     "CitationCoverage",
     "check_citations",
+    "check_rationale",
     "coverage_to_dict",
+    "parse_rationale",
     "parse_unified_diff",
 ]

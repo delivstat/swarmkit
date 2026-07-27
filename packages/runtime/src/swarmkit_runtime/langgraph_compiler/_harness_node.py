@@ -716,7 +716,12 @@ async def _finish(
     if terminal.status == "success":
         summary = terminal.output if isinstance(terminal.output, str) else "completed"
         note = f" (+{len(diff)} bytes diff)" if diff else ""
-        return _make_result(agent_id, f"[harness:{kind}] {summary}{note}")
+        result = _make_result(agent_id, f"[harness:{kind}] {summary}{note}")
+        # Surface the produced diff (not just its byte count) so a funnel gate's deterministic
+        # validate layers — slice_budget, cited_change — can enforce on the change itself.
+        if diff:
+            result["diff"] = diff
+        return result
 
     reason = terminal.exit_metadata.get("reason") or terminal.exit_metadata.get("denied") or ""
     return _make_result(agent_id, f"[harness:{kind}] {terminal.status}: {reason}".rstrip(": "))

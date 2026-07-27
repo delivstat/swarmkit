@@ -139,6 +139,9 @@ async def test_success_run_collects_diff_and_records_audit(tmp_path: Path) -> No
 
     assert "Created generated.txt" in result["output"]
     assert "diff" in result["output"]  # artifact note
+    # The produced diff is surfaced on the result (not just its byte count) so a funnel gate's
+    # deterministic validate layers can enforce on the change (funnel-deterministic-validate.md).
+    assert "generated.txt" in result["diff"]
     types = [e.event_type for e in gov.events]
     assert "executor.started" in types and "executor.result" in types
     res_event = next(e for e in gov.events if e.event_type == "executor.result")

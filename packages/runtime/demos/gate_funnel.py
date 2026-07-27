@@ -29,6 +29,7 @@ from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler._gate_funnel import (
     ApproveOutcome,
     JudgeOutcome,
+    ValidateContext,
     ValidateOutcome,
     build_multiparty_approver,
     compile_funnel_gate,
@@ -61,8 +62,8 @@ async def _drafter(state: dict[str, Any]) -> str:
     return f"design draft v{n}{suffix}"
 
 
-async def _ok_validator(artifact: str) -> ValidateOutcome:
-    return ValidateOutcome(ok=True, artifact=artifact)
+async def _ok_validator(ctx: ValidateContext) -> ValidateOutcome:
+    return ValidateOutcome(ok=True, artifact=ctx.artifact)
 
 
 def _print_invariant(compiled: Any) -> None:
