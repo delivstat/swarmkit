@@ -136,18 +136,38 @@ either query Temporal's API or read a projection Temporal writes back to the sto
 dispatch / run-stage* path is engine-agnostic; only the saga **read model** is store-specific, and
 the Temporal swap owns providing its equivalent. Worth stating so the swap's scope is honest.
 
-### 4. Dispatch surface (mandatory) — CLI + serve endpoints + UI
+### 4. Dispatch + status surface (mandatory) — CLI + serve endpoints + UI
 
-**Serve endpoints** (extend `_routes_pipelines`): `POST /pipelines/signal` (emit — exists) plus read
-surfaces `GET /pipelines/sagas` (list instances + status) and `GET /pipelines/sagas/{correlation_id}`
-(one saga's stage/gate/timeline). The operator `advance`/`skip` modes already exist on `signal`,
-guarded by the reserved human-identity scope.
+Two halves, both required for the feature to be usable: **dispatch** (start/feed/operate a pipeline)
+and **status** (list, search, and inspect running + completed pipeline *instances*). The status half
+does not exist today — the current Pipelines UI shows stage-graph *definitions* + gate coverage, not
+live saga instances — and is exactly what a support operator needs to answer "what's running, and
+where is correlation X?"
+
+**Serve endpoints** (extend `_routes_pipelines`):
+- `POST /pipelines/signal` (dispatch — exists); operator `advance` / `skip` already exist on it,
+  reserved-scope guarded.
+- `GET /pipelines/sagas?status=<active|completed|all>&graph=<id>&q=<substring>&limit=N` — the
+  **searchable, filterable list of instances**: each row = correlation_id, stage-graph, **current
+  status** (active / parked-on-gate / completed / rejected / failed), current stage, started/updated
+  times. `q` matches the correlation_id (and, useful for support, the requirement/instance tag if the
+  event carried one); `status` filters active vs completed.
+- `GET /pipelines/sagas/{correlation_id}` — one instance in full: status, current stage + which gate
+  it's parked on, per-stage attempts, and the append-only **timeline** of transitions.
 
 **CLI** `swarmkit pipeline`:
 - `emit <graph> --input '{…}' [--correlation <id>]` — start/feed a pipeline (the primary trigger; a
   fresh correlation id starts a new saga). This is the `requirement`-wrapper's dispatch call.
-- `sagas` / `status <correlation_id>` — list instances / inspect one (stage, gate, timeline).
+- `sagas [--status active|completed|all] [--graph <id>] [<query>]` — the searchable list (query
+  matches correlation_id); `status <correlation_id>` — full status + stage + gate + timeline.
 - `advance` / `skip <correlation_id> <stage>` — operator acts (reserved scope), mirrors the ingress.
+
+**Serve UI** — the **Pipelines** panel gains a **Runs** view beside the existing definitions view:
+a search box (by correlation_id) + status filter (Active / Completed / All) over a list of instances,
+each showing its stage-graph, **status pill** (active / parked / completed / rejected / failed) and
+current stage; selecting one opens its timeline + which gate it's parked on, with a link to the
+gates/review panel to approve. Read + dispatch; approval stays on the one gates surface. (Mirrors the
+governed-memory panel's list-search-detail shape.)
 
 **Serve UI** — a **Pipelines** panel: a dispatch form (pick a stage-graph, enter the JSON input,
 emit), a live list of running sagas with their current stage + gate status, and a per-saga timeline.
@@ -201,8 +221,10 @@ state, so a restart resumes mid-pipeline. In-memory becomes a test-only store, n
 4. `swarmkit orchestrator` command: the drive loop (claim events → drive saga → call run-stage →
    persist). Integration test: emit → stage runs → parks at gate → approve → resumes → completes,
    **with the orchestrator restarted mid-saga** (durability).
-5. CLI `swarmkit pipeline emit|sagas|status|advance|skip`; CLI ⇄ serve parity test.
-6. UI Pipelines dispatch panel (form + saga list + timeline); vitest for the pure bits.
+5. CLI `swarmkit pipeline emit|sagas|status|advance|skip` — including the searchable/filterable
+   `sagas` list (by correlation_id + status) and `status <id>`; CLI ⇄ serve parity test.
+6. UI Pipelines **Runs** view: search-by-correlation-id + Active/Completed/All filter over the
+   instance list with status pills, plus a per-run timeline; dispatch form. vitest for the pure bits.
 7. docker-compose (`serve` + `orchestrator`) + commented Temporal + a docs note on the tiers; regen
    llms.
 
