@@ -1,6 +1,6 @@
 ---
 title: Bundled durable pipeline orchestrator + dispatch surface
-description: Make the pipeline feature usable out of the box — ship a durable reference saga orchestrator (SQLite/Postgres via the persistence seam) embedded in serve as an opt-out default, replacing the example's in-memory controller, and add the CLI + serve-UI dispatch surface without which pipelines cannot be driven. Temporal stays the distributed-production swap.
+description: Make the pipeline feature usable out of the box — ship a durable reference saga orchestrator as a separate `swarmkit orchestrator` application (store-mediated, touching neither the runtime core nor serve), durable on the SQLite/Postgres backend, replacing the example's in-memory controller, plus the CLI + serve-UI dispatch surface without which pipelines cannot be driven. Temporal stays the distributed-production swap.
 tags: [runtime, pipeline, orchestration, serve, cli, ui]
 status: draft
 ---
@@ -39,9 +39,10 @@ Two additional decisions from review:
 - **Not replacing Temporal.** The bundled controller is the single-node durable default; Temporal
   remains the distributed/production `OrchestrationProvider`, shipped commented-out in compose.
 - **Not changing the drive contract.** `RunStage` / `PipelineSignal` / `StageOutcome` are unchanged.
-- **Not putting the saga engine in the runtime *core*.** The topology interpreter / compiler /
-  governance never import the controller. It is a **serve-application** component (like the job store
-  and review queue already are), imported only by serve's optional pipeline embed.
+- **Not putting the saga engine in the runtime *core* — nor in serve.** The orchestrator is a
+  **separate application** (a `swarmkit orchestrator` command, peer to Temporal): neither the
+  topology interpreter/compiler/governance *nor serve* imports the controller. Serve and the
+  orchestrator communicate only through the durable store + the HTTP drive seam.
 
 ## The plan
 
@@ -53,11 +54,15 @@ implementation, not a controller change:
 
 - `SqlSagaStore(engine)` over SQLAlchemy Core, reusing `persistence._store.make_engine` (SQLite
   default, Postgres via the same URL seam — no new dependency, same tuning/WAL/psycopg handling).
-- Two tables: `pipeline_saga` (one row per correlation_id: status, current_stages, passed_stages,
+- Three tables: `pipeline_saga` (one row per correlation_id: status, current_stages, passed_stages,
   pending_gate_stage, pending_lock_stage, attempts, timeline — JSON-encoded collections as `Text`,
-  matching the persistence-store convention) and `pipeline_saga_seen` (the dedup keys, append-only).
+  matching the persistence-store convention), `pipeline_saga_seen` (the dedup keys, append-only), and
+  **`pipeline_events`** — the durable event queue that decouples serve from the orchestrator (see §3):
+  `(id, correlation_id, event, status: queued|claimed|done, claimed_by, created_at)`.
 - `save()` is a full-row upsert of the `SagaState`; `create()` inserts; `seen`/`mark_seen` hit the
   dedup table. State is written after every controller transition, so a restart resumes mid-saga.
+- The event queue supports an **atomic claim** (mirroring the persistence store's `claim_queued`
+  rowcount pattern) so the orchestrator can dequeue safely — the basis for the shared/Postgres tier.
 
 The controller is constructed `PipelineController(run_stage=…, store=SqlSagaStore(engine))` — a
 one-line swap from the in-memory default.
@@ -75,15 +80,31 @@ contract `LockManager`, `SurfaceNotice`). Promote only the generic engine:
 - The stage sequence comes from the resolved **StageGraph** artifacts already in the workspace, so a
   new pipeline stays *data*, not controller code.
 
-### 3. Embed in serve (opt-out default)
+### 3. A separate `swarmkit orchestrator` application (store-mediated)
 
-`swarmkit serve` gains a `--pipelines / --no-pipelines` flag (default **on**): when on, serve
-constructs the durable controller over its own DB and wires both seams —
-`app.state.pipeline_run_stage` (the `StageRunner` over a run context, the existing production path)
-and `app.state.pipeline_signal` (the controller's `handle_event`), and registers the controller's
-gate-resolution against the review queue so an approved funnel advances the saga. `--no-pipelines`
-restores today's behaviour (endpoints 503) for deployers who bring their own engine. The runtime
-*library* still never imports the controller — only this serve wiring does.
+Rather than embed the controller in serve, ship it as its **own long-running command**, mirroring
+`swarmkit serve` — so the saga engine is a separate application that neither the runtime core nor
+serve imports. Serve and the orchestrator communicate through the **durable store** (the event queue
++ saga state) plus the existing HTTP drive seam:
+
+- **`swarmkit orchestrator <workspace> --serve-url <url> [--database-url <url>]`** — loads the
+  workspace's resolved StageGraphs, opens the shared saga store, and runs the drive loop: claim
+  queued `pipeline_events` → `controller.handle_event` → for each stage, HTTP `POST /pipelines/
+  run-stage` on serve (governed, audited execution stays in serve) → persist saga state → mark the
+  event done. It is the **only** process that imports `orchestration/reference/`.
+- **Serve becomes a thin enqueue + read surface for pipelines.** `POST /pipelines/signal` authorizes
+  the event and **writes it to `pipeline_events`** (it no longer needs an in-process
+  `pipeline_signal` sink); `POST /pipelines/run-stage` executes a stage when the orchestrator calls
+  it; `GET /pipelines/sagas[/{id}]` reads saga state for the CLI/UI. Serve never drives, never
+  imports the controller.
+- **Gate resolution is a store event too.** When a human approves a stage's funnel (via the review
+  queue), that resolution is written as a `gate-resolved` event on the same queue; the orchestrator
+  claims it and resumes the saga. Uniform push, no in-process coupling, no poll loop.
+
+This makes the reference controller and Temporal true **peers** — you pick your orchestrator by
+running a different process (`swarmkit orchestrator` vs a Temporal worker), both driving the same
+serve seam over the same store. (A single-process convenience — the same controller embedded in serve
+behind a flag — is possible later, but the shipped default is the clean separate app.)
 
 ### 4. Dispatch surface (mandatory) — CLI + serve endpoints + UI
 
@@ -102,19 +123,22 @@ guarded by the reserved human-identity scope.
 emit), a live list of running sagas with their current stage + gate status, and a per-saga timeline.
 Read + dispatch; gate *approval* stays on the existing gates/review panel (one approval surface).
 
-### 5. docker-compose: durable by default, Temporal commented
+### 5. docker-compose: orchestrator as a service, Temporal commented
 
-Because the controller is embedded in serve, the default compose needs **no extra service** — `serve`
-with pipelines on + the Postgres it already runs = durable pipelines out of the box. Ship a
-**commented `temporal` service + the Temporal adapter wiring** as the documented swap for
-distributed/production durability. A short doc note states the tiers.
+The default compose runs **two SwarmKit services sharing the Postgres it already has**: `serve` (the
+API/UI + enqueue/read) and `orchestrator` (`swarmkit orchestrator`, the drive loop). Both point at
+the same `DATABASE_URL`; the orchestrator points `--serve-url` at the serve service. That's durable
+pipelines from `docker compose up`. Ship a **commented `temporal` service (+ worker)** as the
+documented swap: stop the reference `orchestrator` service, start Temporal — same serve, same store,
+different driver. A short doc note states the tiers. (Local, non-compose: run `swarmkit serve` and
+`swarmkit orchestrator` in two terminals against the same SQLite file.)
 
 ## Durability tiers
 
 | Tier | Engine | Store | When |
 |---|---|---|---|
-| Default | embedded reference controller (in serve) | SQLite | single-node, durable across restarts |
-| Shared | embedded reference controller | Postgres | multi-serve, one shared saga store |
+| Default | `swarmkit orchestrator` (separate process) | SQLite | single-node, durable across restarts |
+| Shared | `swarmkit orchestrator` (1+ processes) | Postgres | multi-node, one shared saga store + event queue |
 | Production | Temporal (commented compose service) | Temporal | distributed, timers, signals, compensation at scale |
 
 The user requirement — *durable, not in-memory* — is met at the default tier: SQLite persists saga
@@ -122,26 +146,34 @@ state, so a restart resumes mid-pipeline. In-memory becomes a test-only store, n
 
 ## API shape
 
-- **`orchestration/reference/`**: the generic `PipelineController` core + `SqlSagaStore` +
-  `saga` tables. `SagaStore` Protocol unchanged; `InMemorySagaStore` demoted to tests.
-- **serve**: `--pipelines` default-on embed; `GET /pipelines/sagas[/{id}]`; controller wired to the
-  review queue for gate resolution.
-- **CLI**: `swarmkit pipeline emit|sagas|status|advance|skip`.
+- **`orchestration/reference/`**: the generic `PipelineController` core + `SqlSagaStore` + the
+  `pipeline_saga` / `pipeline_saga_seen` / `pipeline_events` tables. `SagaStore` Protocol unchanged;
+  `InMemorySagaStore` demoted to tests. Import-linter forbids the runtime core *and serve* from
+  importing this package; only the `orchestrator` command may.
+- **`swarmkit orchestrator`** (new CLI command): the drive loop over the store + serve's run-stage
+  seam. The only importer of `orchestration/reference/`.
+- **serve**: `POST /pipelines/signal` enqueues to `pipeline_events` (no in-process sink);
+  `GET /pipelines/sagas[/{id}]` reads saga state; the review queue writes a `gate-resolved` event on
+  approval. No controller import.
+- **CLI**: `swarmkit pipeline emit|sagas|status|advance|skip` (over the serve endpoints).
 - **UI**: `app/pipelines` gains a dispatch form + saga list/timeline (over the new endpoints).
-- **compose**: pipelines-on serve; commented Temporal.
+- **compose**: `serve` + `orchestrator` services sharing Postgres; commented Temporal swap.
 
 ## Slices
 
-1. `SqlSagaStore` + the `pipeline_saga` / `pipeline_saga_seen` tables; unit tests (persist/resume,
-   dedup) against the in-memory store's behaviour as the oracle.
-2. Promote the generic controller core to `orchestration/reference/`; the SDLC example composes onto
-   it (its tests stay green).
-3. Serve embed (`--pipelines` default-on) + the durable controller wired to run-stage + review-queue;
-   `GET /pipelines/sagas[/{id}]`. Integration test: emit → stage runs → parks at gate → approve →
-   advances → completes, surviving a store round-trip.
-4. CLI `swarmkit pipeline emit|sagas|status|advance|skip` over the endpoints; CLI ⇄ serve parity test.
-5. UI Pipelines dispatch panel (form + saga list + timeline); vitest for the pure bits.
-6. docker-compose default + commented Temporal + a docs note on the tiers; regen llms.
+1. `SqlSagaStore` + the `pipeline_saga` / `pipeline_saga_seen` / `pipeline_events` tables (with the
+   atomic claim); unit tests (persist/resume, dedup, claim) against the in-memory store as the oracle.
+2. Promote the generic controller core to `orchestration/reference/` (import-linter contract on the
+   core *and* serve); the SDLC example composes onto it (its tests stay green).
+3. Serve enqueue/read: `POST /pipelines/signal` → `pipeline_events`; `GET /pipelines/sagas[/{id}]`;
+   the review queue writes a `gate-resolved` event on funnel approval.
+4. `swarmkit orchestrator` command: the drive loop (claim events → drive saga → call run-stage →
+   persist). Integration test: emit → stage runs → parks at gate → approve → resumes → completes,
+   **with the orchestrator restarted mid-saga** (durability).
+5. CLI `swarmkit pipeline emit|sagas|status|advance|skip`; CLI ⇄ serve parity test.
+6. UI Pipelines dispatch panel (form + saga list + timeline); vitest for the pure bits.
+7. docker-compose (`serve` + `orchestrator`) + commented Temporal + a docs note on the tiers; regen
+   llms.
 
 ## Test plan
 
@@ -161,13 +193,18 @@ store** (new `SqlSagaStore` on the same SQLite file), resolve the gate, watch it
 
 ## Open questions
 
-1. **Gate resolution wiring.** The embedded controller learns a gate result via the review queue
-   (an approved funnel → `resolve_gate`). Confirm the cleanest hook: a review-queue callback vs the
-   controller polling `gate-status`. Leaning callback (push) to avoid a poll loop in-process.
-2. **Concurrency on the shared (Postgres) tier.** Multiple serves sharing one saga store need a
-   claim/lock on a saga before advancing it (mirror the persistence store's `claim_queued`
-   atomicity). Single-node SQLite is unaffected; specify the Postgres row-lock before enabling the
-   shared tier.
-3. **Package boundary.** `orchestration/reference/` lives in the runtime package but must never be
-   imported by the core — enforce with an import-linter contract (like the governance/AGT rule) so
-   the boundary can't silently erode.
+1. **Orchestrator ↔ serve auth.** The `orchestrator` process calls serve's `/pipelines/run-stage`
+   and needs a credential (a service token). Confirm the mint/inject path (a reserved service
+   identity), and whether the orchestrator reads the event queue directly from the shared DB (chosen)
+   vs. a serve dequeue endpoint (rejected — reintroduces coupling).
+2. **Event-queue claim on the shared (Postgres) tier.** Multiple `orchestrator` processes sharing one
+   queue need an atomic claim on an event (and a saga) before driving it — mirror the persistence
+   store's `claim_queued` rowcount pattern (+ the psycopg `rowcount=-1` gotcha). Single-node SQLite is
+   unaffected; specify the Postgres row-lock before enabling the shared tier.
+3. **Package boundary enforcement.** `orchestration/reference/` lives in the runtime package but must
+   never be imported by the core **or serve** — enforce with an import-linter contract (like the
+   governance/AGT rule) so the boundary can't silently erode; only the `orchestrator` command imports
+   it.
+4. **Local one-command ergonomics.** The shipped default is two processes (`serve` + `orchestrator`).
+   Is a `swarmkit serve --with-orchestrator` convenience (spawns the drive loop in a serve worker
+   thread, still store-mediated) worth it for local dev, or does it muddy the boundary enough to skip?
