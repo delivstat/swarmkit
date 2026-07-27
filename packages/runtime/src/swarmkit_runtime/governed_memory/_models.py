@@ -11,9 +11,13 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-#: Deterministic reconcile ops for this slice. refine / contradict (quarantine) arrive with the
-#: reconcile decision skill (the next slice); the store already carries the columns for them.
-ReconcileOp = Literal["new", "update", "reinforce"]
+#: Every reconcile op. ``new`` / ``reinforce`` / ``update`` are decided deterministically (no LLM);
+#: ``refine`` (merge) and ``contradict`` (quarantine + escalate) come from the reconcile decision
+#: skill, which only ever runs on the ambiguous same-key-changed-value case.
+ReconcileOp = Literal["new", "update", "reinforce", "refine", "contradict"]
+
+#: The reconcile decision skill's verdict for a changed value — the ops that need judgement.
+JudgeOp = Literal["update", "refine", "contradict"]
 
 #: Memory types (design/details/governed-memory.md; mirrors the persistence skill's declared set).
 MemoryType = Literal["semantic", "profile", "procedural", "episodic", "working"]
@@ -81,6 +85,22 @@ class ChangeLogEntry:
     reason: str
     decided_by: str
     timestamp: str
+
+
+@dataclass(frozen=True)
+class QuarantineItem:
+    """A parked contradiction awaiting a human/curator decision: a candidate the reconcile skill
+    judged a ``contradict`` of the trusted ``current_value``."""
+
+    id: int
+    memory_key: str
+    candidate: dict[str, Any]
+    current_value: str
+    reasoning: str
+    status: str  # pending | accepted | rejected
+    created_at: str
+    resolved_at: str | None = None
+    resolved_by: str | None = None
 
 
 @dataclass(frozen=True)

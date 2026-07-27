@@ -23,16 +23,22 @@ from typing import Any
 from sqlalchemy import Engine, insert, select, update
 from sqlalchemy.engine import RowMapping
 
+from swarmkit_runtime.governed_memory._decay import DecayConfig, effective_confidence
 from swarmkit_runtime.governed_memory._models import (
     ChangeLogEntry,
     Memory,
     MemoryCandidate,
+    QuarantineItem,
     WriteOutcome,
     content_hash,
     memory_key,
 )
-from swarmkit_runtime.governed_memory._reconcile import reconcile
-from swarmkit_runtime.governed_memory._tables import change_log, memory, metadata
+from swarmkit_runtime.governed_memory._reconcile import (
+    Reconciler,
+    ReconcileRequest,
+    reconcile,
+)
+from swarmkit_runtime.governed_memory._tables import change_log, memory, metadata, quarantine
 from swarmkit_runtime.persistence._store import make_engine
 
 _CONFIDENCE_CEILING = 1.0
@@ -42,19 +48,33 @@ _REINFORCE_STEP = 0.05
 class GovernedMemoryStore:
     """Governed memory: reconcile-on-write, update-in-place, append-only change-log."""
 
-    def __init__(self, engine: Engine, *, clock: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        *,
+        clock: Callable[[], datetime] | None = None,
+        reconciler: Reconciler | None = None,
+        decay: DecayConfig | None = None,
+    ) -> None:
         self._engine = engine
         self._clock = clock or (lambda: datetime.now(tz=UTC))
+        self._reconciler = reconciler
+        self._decay = decay
         metadata.create_all(engine)
 
     @classmethod
     def for_workspace(
-        cls, workspace_path: str | Path, *, clock: Callable[[], datetime] | None = None
+        cls,
+        workspace_path: str | Path,
+        *,
+        clock: Callable[[], datetime] | None = None,
+        reconciler: Reconciler | None = None,
+        decay: DecayConfig | None = None,
     ) -> GovernedMemoryStore:
         """Back-compat convenience: point the store at ``{workspace}/.swarmkit/store.sqlite`` —
         the same DB file the core persistence store uses (coexisting tables)."""
         db = Path(workspace_path) / ".swarmkit" / "store.sqlite"
-        return cls(make_engine(f"sqlite:///{db}"), clock=clock)
+        return cls(make_engine(f"sqlite:///{db}"), clock=clock, reconciler=reconciler, decay=decay)
 
     @property
     def engine(self) -> Engine:
@@ -62,51 +82,69 @@ class GovernedMemoryStore:
 
     # ── write path ────────────────────────────────────────────────────────────────────────────
     def write(self, candidate: MemoryCandidate) -> WriteOutcome:
-        """Govern a candidate through the deterministic reconcile and apply it.
+        """Govern a candidate through the *deterministic* reconcile and apply it (no LLM).
 
         ``new`` inserts; ``reinforce`` bumps recency/confidence (no value change, no new row);
-        ``update`` supersedes the value in place. Every op appends a change-log entry.
+        ``update`` supersedes the value in place. A changed value always ``update``s here — for
+        refine/contradict discrimination use :meth:`awrite` with a reconciler wired.
         """
-        key = candidate.key
         with self._engine.begin() as conn:
-            current = self._get_locked(conn, key)
+            current = self._get_locked(conn, candidate.key)
             decision = reconcile(candidate, current)
             now = self._clock().isoformat()
-
             if decision.op == "new":
-                row = self._new_row(candidate, now)  # provenance as a dict
-                conn.execute(insert(memory).values(key=row["key"], **_updatable(row)))
-                self._log(conn, key, "new", None, row, now, reason="new key")
-                return WriteOutcome("new", key, self._row_to_memory(row), changed=True)
-
+                return self._apply_new(conn, candidate, now)
             assert current is not None
-            before = self._memory_to_dict(current)
             if decision.op == "reinforce":
-                after = {
-                    **before,
-                    "confidence": min(_CONFIDENCE_CEILING, current.confidence + _REINFORCE_STEP),
-                    "last_reinforced_at": now,
-                    "reinforce_count": current.reinforce_count + 1,
-                }
-                conn.execute(update(memory).where(memory.c.key == key).values(**_updatable(after)))
-                self._log(conn, key, "reinforce", before, after, now, reason="identical value")
-                return WriteOutcome("reinforce", key, self._row_to_memory(after), changed=False)
+                return self._apply_reinforce(conn, current, now)
+            return self._apply_update(conn, current, candidate, now, reason="changed value")
 
-            # update — supersede the value in place; valid_from stays (first appearance of the key).
-            after = {
-                **before,
-                "value": candidate.value,
-                "content_hash": content_hash(candidate.value),
-                "type": candidate.type,
-                "confidence": candidate.confidence,
-                "last_reinforced_at": now,
-                "reinforce_count": 1,
-                "source": candidate.source,
-                "provenance": candidate.provenance,
-            }
-            conn.execute(update(memory).where(memory.c.key == key).values(**_updatable(after)))
-            self._log(conn, key, "update", before, after, now, reason="changed value")
-            return WriteOutcome("update", key, self._row_to_memory(after), changed=True)
+    async def awrite(self, candidate: MemoryCandidate) -> WriteOutcome:
+        """Govern a candidate through the deterministic reconcile *and*, on a changed value, the
+        reconcile decision skill (design/details/governed-memory.md).
+
+        ``new`` / ``reinforce`` resolve deterministically (no LLM). A changed value invokes the
+        wired reconciler, which returns ``update`` (supersede), ``refine`` (apply the merged value),
+        or ``contradict`` (leave the trusted memory untouched, quarantine the candidate + escalate).
+        With no reconciler wired it falls back to a deterministic ``update`` (as :meth:`write`).
+        """
+        # Read the current snapshot (short txn), judge outside any lock, then apply (fresh txn).
+        current = self._read(candidate.key)
+        decision = reconcile(candidate, current)
+        if decision.op != "update" or self._reconciler is None:
+            return self.write(candidate)  # new / reinforce / no-judge update — deterministic
+
+        assert current is not None
+        verdict = await self._reconciler(ReconcileRequest(candidate=candidate, current=current))
+        with self._engine.begin() as conn:
+            live = self._get_locked(conn, candidate.key)  # re-read under the write txn
+            if live is None:  # raced away — treat as a fresh write
+                return self._apply_new(conn, candidate, self._clock().isoformat())
+            now = self._clock().isoformat()
+            if verdict.op == "contradict":
+                return self._apply_contradict(conn, live, candidate, now, verdict.reasoning)
+            if verdict.op == "refine":
+                merged = (
+                    verdict.merged_value if verdict.merged_value is not None else candidate.value
+                )
+                return self._apply_update(
+                    conn,
+                    live,
+                    candidate,
+                    now,
+                    op="refine",
+                    value=merged,
+                    reason=verdict.reasoning or "refined into existing memory",
+                    decided_by="skill",
+                )
+            return self._apply_update(
+                conn,
+                live,
+                candidate,
+                now,
+                reason=verdict.reasoning or "changed value",
+                decided_by="skill",
+            )
 
     # ── reads ─────────────────────────────────────────────────────────────────────────────────
     def get(self, subject: str, attribute: str) -> Memory | None:
@@ -128,7 +166,8 @@ class GovernedMemoryStore:
         include_inactive: bool = False,
     ) -> list[Memory]:
         """Active memories matching ``query`` (case-insensitive substring over subject/attribute/
-        value), ranked by confidence then recency. Semantic search is a later slice — this is the
+        value), ranked by *effective* confidence (decayed by recency when a :class:`DecayConfig` is
+        wired, else raw confidence) then recency. Semantic search is a later slice — this is the
         deterministic scan; ``query=""`` returns all (ranked)."""
         stmt = select(memory)
         if not include_inactive:
@@ -140,8 +179,13 @@ class GovernedMemoryStore:
         q = query.strip().lower()
         if q:
             rows = [r for r in rows if q in f"{r['subject']} {r['attribute']} {r['value']}".lower()]
-        rows.sort(key=lambda r: (r["confidence"], r["last_reinforced_at"]), reverse=True)
-        return [self._row_to_memory(r) for r in rows[:limit]]
+        mems = [self._row_to_memory(r) for r in rows]
+        now = self._clock()
+        mems.sort(key=lambda m: (self._rank_confidence(m, now), m.last_reinforced_at), reverse=True)
+        return mems[:limit]
+
+    def _rank_confidence(self, m: Memory, now: datetime) -> float:
+        return effective_confidence(m, now, self._decay) if self._decay else m.confidence
 
     def history(self, subject: str, attribute: str) -> list[ChangeLogEntry]:
         """The append-only change timeline for a key, oldest first — the fact's full history."""
@@ -173,7 +217,148 @@ class GovernedMemoryStore:
             return None
         return self._row_to_memory(json.loads(row["after"]))
 
+    # ── quarantine (the curator's contradiction queue) ──────────────────────────────────────────
+    def list_quarantine(self, *, status: str = "pending") -> list[QuarantineItem]:
+        """Parked contradictions with the given ``status`` (default ``pending``), oldest first."""
+        with self._engine.connect() as conn:
+            rows = conn.execute(
+                select(quarantine)
+                .where(quarantine.c.status == status)
+                .order_by(quarantine.c.id.asc())
+            ).mappings()
+            return [self._row_to_quarantine(dict(r)) for r in rows]
+
+    def resolve_quarantine(
+        self, quarantine_id: int, *, accept: bool, resolved_by: str
+    ) -> WriteOutcome | None:
+        """The curator's decision on a parked contradiction (design §8: the one hard human gate).
+
+        ``accept`` applies the quarantined candidate as an ``update`` to the canonical memory (the
+        curator affirms the new value supersedes); reject discards it. Either way the item is marked
+        resolved (append-only status transition) — returns the resulting :class:`WriteOutcome` on
+        accept, ``None`` on reject or an already-resolved / unknown id.
+        """
+        with self._engine.begin() as conn:
+            item = (
+                conn.execute(
+                    select(quarantine).where(
+                        quarantine.c.id == quarantine_id, quarantine.c.status == "pending"
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if item is None:
+                return None
+            now = self._clock().isoformat()
+            conn.execute(
+                update(quarantine)
+                .where(quarantine.c.id == quarantine_id)
+                .values(
+                    status="accepted" if accept else "rejected",
+                    resolved_at=now,
+                    resolved_by=resolved_by,
+                )
+            )
+            if not accept:
+                return None
+            candidate = _dict_to_candidate(json.loads(item["candidate"]))
+            current = self._get_locked(conn, candidate.key)
+            if current is None:
+                return self._apply_new(conn, candidate, now)
+            return self._apply_update(
+                conn,
+                current,
+                candidate,
+                now,
+                reason=f"curator accepted quarantined change ({resolved_by})",
+                decided_by="curator",
+            )
+
+    # ── apply helpers (called inside an open write txn) ─────────────────────────────────────────
+    def _apply_new(self, conn: Any, candidate: MemoryCandidate, now: str) -> WriteOutcome:
+        row = self._new_row(candidate, now)  # provenance as a dict
+        conn.execute(insert(memory).values(key=row["key"], **_updatable(row)))
+        self._log(conn, candidate.key, "new", None, row, now, reason="new key")
+        return WriteOutcome("new", candidate.key, self._row_to_memory(row), changed=True)
+
+    def _apply_reinforce(self, conn: Any, current: Memory, now: str) -> WriteOutcome:
+        before = self._memory_to_dict(current)
+        after = {
+            **before,
+            "confidence": min(_CONFIDENCE_CEILING, current.confidence + _REINFORCE_STEP),
+            "last_reinforced_at": now,
+            "reinforce_count": current.reinforce_count + 1,
+        }
+        conn.execute(update(memory).where(memory.c.key == current.key).values(**_updatable(after)))
+        self._log(conn, current.key, "reinforce", before, after, now, reason="identical value")
+        return WriteOutcome("reinforce", current.key, self._row_to_memory(after), changed=False)
+
+    def _apply_update(
+        self,
+        conn: Any,
+        current: Memory,
+        candidate: MemoryCandidate,
+        now: str,
+        *,
+        op: str = "update",
+        value: str | None = None,
+        reason: str,
+        decided_by: str = "deterministic",
+    ) -> WriteOutcome:
+        """Supersede the value in place (``update``) or apply a merged value (``refine``);
+        ``valid_from`` stays (first appearance of the key). Logs ``op`` with ``decided_by``."""
+        new_value = value if value is not None else candidate.value
+        before = self._memory_to_dict(current)
+        after = {
+            **before,
+            "value": new_value,
+            "content_hash": content_hash(new_value),
+            "type": candidate.type,
+            "confidence": candidate.confidence,
+            "last_reinforced_at": now,
+            "reinforce_count": 1,
+            "source": candidate.source,
+            "provenance": candidate.provenance,
+        }
+        conn.execute(update(memory).where(memory.c.key == current.key).values(**_updatable(after)))
+        self._log(conn, current.key, op, before, after, now, reason=reason, decided_by=decided_by)
+        return WriteOutcome(op, current.key, self._row_to_memory(after), changed=True)  # type: ignore[arg-type]
+
+    def _apply_contradict(
+        self, conn: Any, current: Memory, candidate: MemoryCandidate, now: str, reasoning: str
+    ) -> WriteOutcome:
+        """A contradiction: leave the trusted canonical memory untouched, park the candidate on the
+        quarantine queue for the curator, and log the (rejected-for-now) contradiction."""
+        conn.execute(
+            insert(quarantine).values(
+                memory_key=current.key,
+                candidate=json.dumps(_candidate_dict(candidate)),
+                current_value=current.value,
+                reasoning=reasoning,
+                status="pending",
+                created_at=now,
+            )
+        )
+        before = self._memory_to_dict(current)
+        after = {**before, "value": candidate.value, "content_hash": content_hash(candidate.value)}
+        self._log(
+            conn,
+            current.key,
+            "contradict",
+            before,
+            after,
+            now,
+            reason=reasoning or "contradicts trusted memory",
+            decided_by="skill",
+        )
+        return WriteOutcome("contradict", current.key, current, changed=False)
+
     # ── internals ─────────────────────────────────────────────────────────────────────────────
+    def _read(self, key: str) -> Memory | None:
+        with self._engine.connect() as conn:
+            return self._get_locked(conn, key)
+
     def _get_locked(self, conn: Any, key: str) -> Memory | None:
         row = conn.execute(select(memory).where(memory.c.key == key)).mappings().first()
         return self._row_to_memory(dict(row)) if row else None
@@ -205,6 +390,7 @@ class GovernedMemoryStore:
         now: str,
         *,
         reason: str,
+        decided_by: str = "deterministic",
     ) -> None:
         conn.execute(
             insert(change_log).values(
@@ -213,7 +399,7 @@ class GovernedMemoryStore:
                 before=json.dumps(before) if before is not None else None,
                 after=json.dumps(after),
                 reason=reason,
-                decided_by="deterministic",
+                decided_by=decided_by,
                 timestamp=now,
             )
         )
@@ -268,6 +454,20 @@ class GovernedMemoryStore:
             timestamp=row["timestamp"],
         )
 
+    @staticmethod
+    def _row_to_quarantine(row: RowMapping | dict[str, Any]) -> QuarantineItem:
+        return QuarantineItem(
+            id=int(row["id"]),
+            memory_key=row["memory_key"],
+            candidate=json.loads(row["candidate"]),
+            current_value=row["current_value"],
+            reasoning=row["reasoning"],
+            status=row["status"],
+            created_at=row["created_at"],
+            resolved_at=row["resolved_at"],
+            resolved_by=row["resolved_by"],
+        )
+
 
 def _updatable(after: dict[str, Any]) -> dict[str, Any]:
     """The mutable columns of a memory row (everything but the immutable key), with JSON-encoded
@@ -279,3 +479,28 @@ def _updatable(after: dict[str, Any]) -> dict[str, Any]:
         else row["provenance"]
     )
     return row
+
+
+def _candidate_dict(c: MemoryCandidate) -> dict[str, Any]:
+    """A MemoryCandidate as a plain dict (for the quarantine ``candidate`` json column)."""
+    return {
+        "subject": c.subject,
+        "attribute": c.attribute,
+        "value": c.value,
+        "type": c.type,
+        "confidence": c.confidence,
+        "source": c.source,
+        "provenance": c.provenance,
+    }
+
+
+def _dict_to_candidate(d: dict[str, Any]) -> MemoryCandidate:
+    return MemoryCandidate(
+        subject=d["subject"],
+        attribute=d["attribute"],
+        value=d["value"],
+        type=d.get("type", "semantic"),
+        confidence=float(d.get("confidence", 1.0)),
+        source=d.get("source"),
+        provenance=d.get("provenance") or {},
+    )
