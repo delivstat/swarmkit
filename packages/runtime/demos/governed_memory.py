@@ -1,5 +1,5 @@
 """Demo: governed memory — update-in-place + the reconcile decision skill
-(design/details/governed-memory.md, slices 1–2).
+(design/details/governed-memory.md, slices 1 and 2).
 
 Scene 1 (deterministic): a fact evolves IN PLACE over time — new / reinforce / update on one row,
 append-only change-log, point-in-time `as_of`.
