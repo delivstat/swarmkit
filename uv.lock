@@ -3062,7 +3062,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "swarmkit-webui"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/webui" }
 
 [[package]]
