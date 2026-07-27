@@ -152,8 +152,15 @@ where is correlation X?"
   status** (active / parked-on-gate / completed / rejected / failed), current stage, started/updated
   times. `q` matches the correlation_id (and, useful for support, the requirement/instance tag if the
   event carried one); `status` filters active vs completed.
-- `GET /pipelines/sagas/{correlation_id}` — one instance in full: status, current stage + which gate
-  it's parked on, per-stage attempts, and the append-only **timeline** of transitions.
+- `GET /pipelines/sagas/{correlation_id}` — one instance in full, enough to **replay it on a
+  read-only canvas**: the stage-graph shape (nodes + edges), each stage's **run state** (pending /
+  active / completed / parked / rejected / failed), and per-node detail — the **input payload**, the
+  **generated artifact(s)**, timing/attempts, and for a funnel node the **approval details** (the
+  multi-party record: who / verdict / when / critique). This is assembled by joining the saga state,
+  the **audit events** for the correlation_id (stage payloads/artifacts/timing), and the **approval
+  records** — the saga store holds sequencing; the audit + review records hold the per-node evidence.
+  Large artifacts are fetched **per node on selection** (a `GET /pipelines/sagas/{id}/node/{stage}`
+  detail), not all inlined, so the list/replay stays light.
 
 **CLI** `swarmkit pipeline`:
 - `emit <graph> --input '{…}' [--correlation <id>]` — start/feed a pipeline (the primary trigger; a
@@ -163,11 +170,22 @@ where is correlation X?"
 - `advance` / `skip <correlation_id> <stage>` — operator acts (reserved scope), mirrors the ingress.
 
 **Serve UI** — the **Pipelines** panel gains a **Runs** view beside the existing definitions view:
-a search box (by correlation_id) + status filter (Active / Completed / All) over a list of instances,
-each showing its stage-graph, **status pill** (active / parked / completed / rejected / failed) and
-current stage; selecting one opens its timeline + which gate it's parked on, with a link to the
-gates/review panel to approve. Read + dispatch; approval stays on the one gates surface. (Mirrors the
-governed-memory panel's list-search-detail shape.)
+- a search box (by correlation_id) + status filter (Active / Completed / All) over a list of
+  instances, each with its stage-graph, **status pill** (active / parked / completed / rejected /
+  failed), and current stage;
+- selecting a run opens a **read-only replay canvas** — the *existing* stage-graph canvas rendered in
+  a run-state overlay (like the gate-coverage overlay): each node coloured by its state at that run,
+  the parked gate marked, the taken path highlighted;
+- **selecting a node / funnel / edge opens an inspector** showing, as available: the node's **input
+  payload**, its **generated artifact(s)** (a diff, a report, a produced document — viewable/
+  downloadable), timing/attempts, and for a funnel the **approval details** (who approved/rejected,
+  when, the critique, the multi-party record), with a link to the gates/review panel to approve if
+  it's parked;
+- plus the transition **timeline** and a dispatch form.
+
+Read + dispatch only — approvals happen on the one gates surface; the run canvas is for *examining*
+state, payloads, artifacts, and approvals after the fact. It reuses `stage-graph-canvas` in a
+read-only run mode, so it stays consistent with the definitions canvas.
 
 **Serve UI** — a **Pipelines** panel: a dispatch form (pick a stage-graph, enter the JSON input,
 emit), a live list of running sagas with their current stage + gate status, and a per-saga timeline.
@@ -216,15 +234,19 @@ state, so a restart resumes mid-pipeline. In-memory becomes a test-only store, n
    atomic claim); unit tests (persist/resume, dedup, claim) against the in-memory store as the oracle.
 2. Promote the generic controller core to `orchestration/reference/` (import-linter contract on the
    core *and* serve); the SDLC example composes onto it (its tests stay green).
-3. Serve enqueue/read: `POST /pipelines/signal` → `pipeline_events`; `GET /pipelines/sagas[/{id}]`;
-   the review queue writes a `gate-resolved` event on funnel approval.
+3. Serve enqueue/read: `POST /pipelines/signal` → `pipeline_events`; `GET /pipelines/sagas` (list +
+   filter/search) and `/{id}` (+ `/node/{stage}`) — the per-run detail assembled from saga state +
+   audit events + approval records; the review queue writes a `gate-resolved` event on funnel approval.
 4. `swarmkit orchestrator` command: the drive loop (claim events → drive saga → call run-stage →
    persist). Integration test: emit → stage runs → parks at gate → approve → resumes → completes,
    **with the orchestrator restarted mid-saga** (durability).
 5. CLI `swarmkit pipeline emit|sagas|status|advance|skip` — including the searchable/filterable
    `sagas` list (by correlation_id + status) and `status <id>`; CLI ⇄ serve parity test.
 6. UI Pipelines **Runs** view: search-by-correlation-id + Active/Completed/All filter over the
-   instance list with status pills, plus a per-run timeline; dispatch form. vitest for the pure bits.
+   instance list with status pills; a **read-only replay canvas** (reuse `stage-graph-canvas` with a
+   run-state overlay) with a **node/funnel/edge inspector** (payload, generated artifacts, approval
+   details, timeline); dispatch form. vitest for the pure bits (run-state → node styling, the
+   selection→detail wiring).
 7. docker-compose (`serve` + `orchestrator`) + commented Temporal + a docs note on the tiers; regen
    llms.
 
@@ -265,3 +287,8 @@ store** (new `SqlSagaStore` on the same SQLite file), resolve the gate, watch it
    reference-specific; the Temporal swap must supply its equivalent (query Temporal, or project saga
    state back into the store so the same read view + CLI/UI work unchanged). Decide the expected
    contract for a swapped orchestrator so the read surface stays uniform.
+6. **Where per-node artifacts live + retrieval.** The run inspector shows each node's generated
+   artifact (a diff, a report). Are these read from the **audit log payload** (simple, but heavy for
+   large artifacts and subject to any audit truncation), or from a dedicated artifact store keyed by
+   `(correlation_id, stage)`? Decide the source + a size cap / lazy per-node fetch so the replay stays
+   light, and confirm the audit-invariant read-only posture for the inspector.
