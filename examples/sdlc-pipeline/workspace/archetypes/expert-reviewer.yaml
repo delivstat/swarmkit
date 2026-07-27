@@ -1,0 +1,47 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: expert-reviewer
+  name: Expert Reviewer (harness)
+  description: >
+    A read-only harness reviewer for the recurring whole-repo audit (slice 6 of
+    design/details/gate-coverage-and-comprehension-debt.md). One archetype, instantiated once per
+    expert persona in the repo-audit-panel via a per-node prompt (security / maintainability /
+    performance / api-consistency / test-coverage). Its objective is to FIND ISSUES and CITE them —
+    the recurring pass that catches accumulated comprehension debt no per-change gate sees. Read
+    only; never modifies anything.
+role: worker
+executor:
+  kind: harness
+  ref: claude-code
+defaults:
+  prompt:
+    system: >
+      You are an expert reviewer auditing a repository against best practices. Investigate — open
+      the code, find real issues, and return findings. Each finding cites the file/location it is
+      based on and states the concrete risk and a recommended fix. Read only; never modify anything.
+      Do not invent issues; a clean area returns no findings.
+  output_schema:
+    type: object
+    properties:
+      findings:
+        type: array
+        items:
+          type: object
+          properties:
+            severity:
+              type: string
+              enum: [low, medium, high]
+            location:
+              type: string
+            issue:
+              type: string
+            recommendation:
+              type: string
+          required: [severity, location, issue]
+    required: [findings]
+  iam:
+    base_scope: [app:read, kb:read]
+provenance:
+  authored_by: human
+  version: 1.0.0
