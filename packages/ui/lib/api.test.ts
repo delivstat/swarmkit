@@ -72,6 +72,17 @@ describe("observability endpoints", () => {
 		expect(urlOf(fetchMock)).toContain("/api/pipelines/p1/gate-coverage");
 	});
 
+	it("getComprehension hits /comprehension, with the threshold query when given", async () => {
+		const bare = stubFetch(200);
+		await api.getComprehension();
+		expect(urlOf(bare)).toContain("/comprehension");
+		expect(urlOf(bare)).not.toContain("fast_approve_seconds");
+		vi.restoreAllMocks();
+		const withArg = stubFetch(200);
+		await api.getComprehension(45);
+		expect(urlOf(withArg)).toContain("/comprehension?fast_approve_seconds=45");
+	});
+
 	it("audit builds the query string from params", async () => {
 		const fetchMock = stubFetch(200);
 		await api.audit({ run_id: "r1", agent_id: "a1", limit: 50 });

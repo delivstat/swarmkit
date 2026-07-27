@@ -4,6 +4,7 @@ import {
 	Activity,
 	Box,
 	Funnel,
+	Gauge,
 	GitBranch,
 	Handshake,
 	Inbox,
@@ -35,6 +36,7 @@ const NAV = [
 	{ href: "/funnels", label: "Funnels", icon: Funnel },
 	{ href: "/pipelines", label: "Pipelines", icon: Workflow },
 	{ href: "/contracts", label: "Contracts", icon: Handshake },
+	{ href: "/comprehension", label: "Comprehension", icon: Gauge },
 	{ href: "/canary", label: "Canary", icon: ListChecks },
 	{ href: "/triggers", label: "Triggers", icon: Timer },
 ] as const;

@@ -2,6 +2,7 @@ import type {
 	ArchetypeDetail,
 	AuditEvent,
 	CanaryStatus,
+	Comprehension,
 	ConversationDetail,
 	ConversationListItem,
 	GateCoverage,
@@ -224,6 +225,12 @@ export const api = {
 		get<{ yaml: string }>(`/api/pipelines/${id}/yaml`),
 	getGateCoverage: (id: string) =>
 		get<GateCoverage>(`/api/pipelines/${id}/gate-coverage`),
+	getComprehension: (fastApproveSeconds?: number) =>
+		get<Comprehension>(
+			fastApproveSeconds != null
+				? `/comprehension?fast_approve_seconds=${fastApproveSeconds}`
+				: "/comprehension",
+		),
 	saveStageGraph: (id: string, yaml: string) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(
 			`/api/pipelines/${id}`,
