@@ -114,6 +114,11 @@ demo-gates:
 demo-comprehension:
     uv run swarmkit comprehension examples/sdlc-pipeline/workspace
 
+# Demo cited-change (slice 5): the deterministic citation check — does a change-rationale cite the
+# code its diff actually changed? Exits 1 on an uncited change (CI-gatable). No keys/server.
+demo-cited-change:
+    uv run swarmkit cited-change --rationale examples/sdlc-pipeline/fixtures/change-rationale.yaml --diff examples/sdlc-pipeline/fixtures/change.diff
+
 # Demo the FULL SDLC lifecycle (slice 9, the capstone): the reference controller drives one
 # requirement through the ENTIRE pipeline — intake -> design -> build -> sit -> pt ->
 # security-review -> deploy -> support-handover -> done — carrying the two multi-party gates, the

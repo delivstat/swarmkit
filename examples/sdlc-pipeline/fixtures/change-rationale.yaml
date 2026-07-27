@@ -1,0 +1,11 @@
+# A change-rationale (not a SwarmKit artifact kind — a document the cited-change gate reads).
+# Every claim cites the code the diff changed. `swarmkit cited-change` verifies the citations
+# resolve to changed lines and that every touched file is cited (deterministic, exit 1 if not).
+summary: Add stock-reservation to the OMS reserve endpoint.
+citations:
+  - claim: reserve() checks available stock before committing
+    path: src/oms/reserve.py
+    lines: [2, 3]
+  - claim: a ReserveError is raised when stock is insufficient
+    path: src/oms/reserve.py
+    lines: [4]

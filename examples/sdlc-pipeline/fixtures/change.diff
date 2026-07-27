@@ -1,0 +1,10 @@
+--- a/src/oms/reserve.py
++++ b/src/oms/reserve.py
+@@ -1,4 +1,7 @@
+ def reserve(order, inventory):
+-    inventory.commit(order)
++    available = inventory.available(order.sku)
++    if available < order.qty:
++        raise ReserveError(order.sku, available)
++    inventory.commit(order)
+     return order

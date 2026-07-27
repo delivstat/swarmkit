@@ -1,0 +1,35 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: cited-change
+  name: Cited Change Review
+  description: >
+    Judge whether a change-rationale honestly describes its diff — every claimed effect backed by
+    a citation to code the diff actually changed, and nothing material in the diff left undescribed.
+    This is the judge half of the cited-change gate; the deterministic citation-coverage check
+    (`swarmkit cited-change`) is the validate half. See
+    design/details/gate-coverage-and-comprehension-debt.md (Part C, slice 5).
+category: decision
+outputs:
+  type: object
+  properties:
+    faithful:
+      type: boolean
+    unbacked_claims:
+      type: array
+      items:
+        type: string
+    reasoning:
+      type: string
+  required: [faithful, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    You are reviewing a change-rationale against the unified diff it claims to describe. Decide
+    whether every claimed effect is backed by a real change in the diff, and whether anything
+    material in the diff is left undescribed. Return faithful (true only if the description matches
+    the change), unbacked_claims (claims with no supporting change), and your reasoning. The
+    mechanical citation-coverage check has already run; focus on whether the prose is honest.
+provenance:
+  authored_by: human
+  version: 1.0.0
