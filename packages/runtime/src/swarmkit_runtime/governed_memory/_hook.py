@@ -15,6 +15,7 @@ never an error — a memory writer must not crash the run.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any
 
 from swarmkit_runtime.governed_memory._models import MemoryCandidate
@@ -70,7 +71,9 @@ async def governed_memory_post_output(
     candidates = parse_candidates(agent_output)
     by_op: dict[str, int] = {}
     for candidate in candidates:
-        outcome = await store.awrite(candidate)
+        # Record who inserted the fact: the agent that proposed it, unless it named its own source.
+        stamped = candidate if candidate.source else replace(candidate, source=agent_id)
+        outcome = await store.awrite(stamped)
         by_op[outcome.op] = by_op.get(outcome.op, 0) + 1
     return {"agent_id": agent_id, "written": len(candidates), "by_op": by_op}
 

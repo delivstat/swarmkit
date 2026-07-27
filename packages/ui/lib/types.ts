@@ -277,6 +277,45 @@ export interface Comprehension {
 	deferred: string[];
 }
 
+/** A governed-memory current-state row (GET /memory, /memory/item). Mirrors memory_to_dict. */
+export interface MemoryItem {
+	key: string;
+	subject: string;
+	attribute: string;
+	value: string;
+	type: string;
+	confidence: number;
+	valid_from: string;
+	last_reinforced_at: string;
+	reinforce_count: number;
+	source: string | null;
+	status: string;
+}
+
+/** One append-only change on a memory's timeline (GET /memory/item?history=true). */
+export interface MemoryChange {
+	id: number;
+	op: string; // new | reinforce | update | refine | contradict
+	before: Record<string, unknown> | null;
+	after: Record<string, unknown>;
+	reason: string;
+	decided_by: string; // deterministic | skill | curator
+	timestamp: string;
+}
+
+/** A parked contradiction awaiting a curator decision (GET /memory/quarantine). */
+export interface MemoryQuarantineItem {
+	id: number;
+	memory_key: string;
+	candidate: Record<string, unknown>;
+	current_value: string;
+	reasoning: string;
+	status: string; // pending | accepted | rejected
+	created_at: string;
+	resolved_at: string | null;
+	resolved_by: string | null;
+}
+
 /** A pending harness gate (GET /review) — a §6.2 permission or §6.3 input request awaiting a human. */
 export interface ReviewGate {
 	id: string;
