@@ -42,6 +42,7 @@ import {
 	setGate,
 	setLoopWhen,
 	setReleaseLocksOn,
+	setSliceBudget,
 	setStageTopology,
 } from "@/lib/stage-graph-edit";
 
@@ -221,6 +222,61 @@ export function StageInspector({
 					placeholder="no compensation"
 					onChange={(v) => onChange(setCompensation(doc0, stageId, v))}
 				/>
+			</Section>
+
+			<Section title="Slice budget (keep changes reviewable)">
+				<div className="flex gap-2">
+					<div className="flex flex-col gap-1">
+						<Label
+							htmlFor="max-diff-lines"
+							className="text-xs text-muted-foreground"
+						>
+							max diff lines
+						</Label>
+						<Input
+							id="max-diff-lines"
+							type="number"
+							min={1}
+							className="w-28"
+							placeholder="∞"
+							value={stage.sliceBudget?.maxDiffLines ?? ""}
+							onChange={(e) =>
+								onChange(
+									setSliceBudget(doc0, stageId, {
+										maxDiffLines:
+											e.target.value === "" ? null : Number(e.target.value),
+										maxFiles: stage.sliceBudget?.maxFiles ?? null,
+									}),
+								)
+							}
+						/>
+					</div>
+					<div className="flex flex-col gap-1">
+						<Label
+							htmlFor="max-files"
+							className="text-xs text-muted-foreground"
+						>
+							max files
+						</Label>
+						<Input
+							id="max-files"
+							type="number"
+							min={1}
+							className="w-28"
+							placeholder="∞"
+							value={stage.sliceBudget?.maxFiles ?? ""}
+							onChange={(e) =>
+								onChange(
+									setSliceBudget(doc0, stageId, {
+										maxDiffLines: stage.sliceBudget?.maxDiffLines ?? null,
+										maxFiles:
+											e.target.value === "" ? null : Number(e.target.value),
+									}),
+								)
+							}
+						/>
+					</div>
+				</div>
 			</Section>
 
 			<Section title="Locks (integration contracts)">

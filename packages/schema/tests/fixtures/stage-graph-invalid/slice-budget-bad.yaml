@@ -1,0 +1,16 @@
+# slice_budget.max_diff_lines must be >= 1 (a budget of 0 is meaningless) — schema rejects it.
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: bad-slice-budget
+  name: Bad slice budget
+  description: A stage whose slice_budget.max_diff_lines violates the minimum of 1.
+stages:
+  - id: build
+    topology: oms-build
+    when: [start]
+    slice_budget:
+      max_diff_lines: 0
+provenance:
+  authored_by: human
+  version: 1.0.0

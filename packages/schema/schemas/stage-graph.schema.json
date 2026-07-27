@@ -71,6 +71,23 @@
           "$ref": "#/$defs/identifier",
           "x-swarmkit-ref": "topology",
           "description": "Topology run to unwind this stage if the requirement is cancelled after the stage passed."
+        },
+        "slice_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Optional slice-size budget for this stage's produced change (design/details/gate-coverage-and-comprehension-debt.md, slice 7). Keeps vertical slices small enough to review — an over-budget change should route to the funnel's review layer rather than straight to human approval. Checked deterministically by `swarmkit slice-check`.",
+          "properties": {
+            "max_diff_lines": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum added/changed lines across the diff before the slice is over budget."
+            },
+            "max_files": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of files the diff may touch before the slice is over budget."
+            }
+          }
         }
       }
     },

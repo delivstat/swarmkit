@@ -18,6 +18,7 @@ import {
 	setGate,
 	setLoopWhen,
 	setReleaseLocksOn,
+	setSliceBudget,
 	setStageTopology,
 } from "./stage-graph-edit";
 
@@ -299,5 +300,24 @@ describe("fidelity + round-trip", () => {
 		);
 		const roundTripped = load(dump(built)) as Record<string, unknown>;
 		expect(roundTripped).toEqual(built);
+	});
+});
+
+describe("setSliceBudget (slice 7)", () => {
+	it("sets and clears the stage slice_budget (round-trips through readStages)", () => {
+		const doc = { stages: [{ id: "build", topology: "t" }] };
+		const set = setSliceBudget(doc, "build", {
+			maxDiffLines: 400,
+			maxFiles: null,
+		});
+		expect(readStages(set)[0]?.sliceBudget).toEqual({
+			maxDiffLines: 400,
+			maxFiles: null,
+		});
+		const cleared = setSliceBudget(set, "build", {
+			maxDiffLines: null,
+			maxFiles: null,
+		});
+		expect(readStages(cleared)[0]?.sliceBudget).toBeNull();
 	});
 });

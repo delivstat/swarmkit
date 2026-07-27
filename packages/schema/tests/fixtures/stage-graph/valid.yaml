@@ -22,6 +22,9 @@ stages:
     topology: oms-build
     when: [design.approved]
     success: build.ready-in-qa
+    slice_budget:
+      max_diff_lines: 400
+      max_files: 20
   - id: sit
     topology: oms-sit
     when: [build.ready-in-qa]
