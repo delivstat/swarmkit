@@ -123,6 +123,11 @@ demo-governed-memory:
 demo-knowledge-curator:
     uv run python packages/runtime/demos/knowledge_curator.py
 
+# Demo the governed-memory persistence skill on a live compiled run (governed-memory.md): an agent
+# carrying the skill emits candidates; the compiler hook writes them through the governed path.
+demo-governed-memory-run:
+    uv run python packages/runtime/demos/governed_memory_run.py
+
 # Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
 # edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
 # weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.
