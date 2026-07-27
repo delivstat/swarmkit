@@ -26,6 +26,27 @@ class Event(RootModel[str]):
     )
 
 
+class SliceBudget(BaseModel):
+    """
+    Optional slice-size budget for this stage's produced change (design/details/gate-coverage-and-comprehension-debt.md, slice 7). Keeps vertical slices small enough to review — an over-budget change should route to the funnel's review layer rather than straight to human approval. Checked deterministically by `swarmkit slice-check`.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_diff_lines: int | None = Field(
+        None,
+        description="Maximum added/changed lines across the diff before the slice is over budget.",
+        ge=1,
+    )
+    max_files: int | None = Field(
+        None,
+        description="Maximum number of files the diff may touch before the slice is over budget.",
+        ge=1,
+    )
+
+
 class Stage(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -64,6 +85,10 @@ class Stage(BaseModel):
         None,
         description="Topology run to unwind this stage if the requirement is cancelled after the stage passed.",
         pattern="^[a-z][a-z0-9-]*$",
+    )
+    slice_budget: SliceBudget | None = Field(
+        None,
+        description="Optional slice-size budget for this stage's produced change (design/details/gate-coverage-and-comprehension-debt.md, slice 7). Keeps vertical slices small enough to review — an over-budget change should route to the funnel's review layer rather than straight to human approval. Checked deterministically by `swarmkit slice-check`.",
     )
 
 

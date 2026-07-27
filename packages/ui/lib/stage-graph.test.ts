@@ -300,3 +300,20 @@ describe("contendedContracts", () => {
 		for (const n of nodes) expect(n.data.contendedLocks).toEqual([]);
 	});
 });
+
+describe("readStages slice_budget (slice 7)", () => {
+	it("parses slice_budget and treats an absent/empty budget as null", () => {
+		const stages = readStages({
+			stages: [
+				{
+					id: "a",
+					topology: "t",
+					slice_budget: { max_diff_lines: 400, max_files: 20 },
+				},
+				{ id: "b", topology: "t" },
+			],
+		} as StageGraphDoc);
+		expect(stages[0]?.sliceBudget).toEqual({ maxDiffLines: 400, maxFiles: 20 });
+		expect(stages[1]?.sliceBudget).toBeNull();
+	});
+});

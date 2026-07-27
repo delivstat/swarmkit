@@ -79,6 +79,14 @@ export interface StageElement {
      */
     release_locks_on?: string;
     /**
+     * Optional slice-size budget for this stage's produced change
+     * (design/details/gate-coverage-and-comprehension-debt.md, slice 7). Keeps vertical slices
+     * small enough to review — an over-budget change should route to the funnel's review layer
+     * rather than straight to human approval. Checked deterministically by `swarmkit
+     * slice-check`.
+     */
+    slice_budget?: SliceBudget;
+    /**
      * The signal emitted on clean stage completion (drives the next stage's `on`).
      */
     success?: string;
@@ -92,5 +100,23 @@ export interface StageElement {
      * to a boolean.
      */
     when?: string[];
+}
+
+/**
+ * Optional slice-size budget for this stage's produced change
+ * (design/details/gate-coverage-and-comprehension-debt.md, slice 7). Keeps vertical slices
+ * small enough to review — an over-budget change should route to the funnel's review layer
+ * rather than straight to human approval. Checked deterministically by `swarmkit
+ * slice-check`.
+ */
+export interface SliceBudget {
+    /**
+     * Maximum added/changed lines across the diff before the slice is over budget.
+     */
+    max_diff_lines?: number;
+    /**
+     * Maximum number of files the diff may touch before the slice is over budget.
+     */
+    max_files?: number;
 }
 

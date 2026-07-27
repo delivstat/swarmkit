@@ -38,6 +38,11 @@ stages:
     # EXTERNAL event (CI) — the controller waits for the webhook / reconciliation, never fabricates it.
     success: build.ready-in-qa
     compensation: oms-compensate-build
+    # Keep the build's change reviewable (slice 7): over-budget diffs should route to the funnel's
+    # review layer rather than straight to sign-off. Checked deterministically by `swarmkit slice-check`.
+    slice_budget:
+      max_diff_lines: 400
+      max_files: 20
   - id: sit
     topology: sit
     when: [build.ready-in-qa]

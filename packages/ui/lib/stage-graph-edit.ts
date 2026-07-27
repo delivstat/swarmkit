@@ -324,6 +324,23 @@ export function setCompensation(
 	return next;
 }
 
+/** Set (or clear, when both limits are null) the stage's slice_budget. */
+export function setSliceBudget(
+	doc: StageGraphDocObj,
+	stageId: string,
+	budget: { maxDiffLines: number | null; maxFiles: number | null } | null,
+): StageGraphDocObj {
+	const next = clone(doc);
+	const stage = findStage(next, stageId);
+	if (!stage) return doc;
+	const obj: Record<string, number> = {};
+	if (budget?.maxDiffLines != null) obj.max_diff_lines = budget.maxDiffLines;
+	if (budget?.maxFiles != null) obj.max_files = budget.maxFiles;
+	if (Object.keys(obj).length === 0) delete stage.slice_budget;
+	else stage.slice_budget = obj;
+	return next;
+}
+
 /** Set (or clear, on null) the signal whose arrival releases this stage's locks. */
 export function setReleaseLocksOn(
 	doc: StageGraphDocObj,

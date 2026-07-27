@@ -119,6 +119,11 @@ demo-comprehension:
 demo-cited-change:
     uv run swarmkit cited-change --rationale examples/sdlc-pipeline/fixtures/change-rationale.yaml --diff examples/sdlc-pipeline/fixtures/change.diff
 
+# Demo slice-check (slice 7): measure a diff against a slice budget — keep changes reviewable.
+# Exits 1 when over budget (CI-gatable). No keys/server.
+demo-slice-check:
+    uv run swarmkit slice-check --diff examples/sdlc-pipeline/fixtures/change.diff --max-diff-lines 400 --max-files 20
+
 # Demo the FULL SDLC lifecycle (slice 9, the capstone): the reference controller drives one
 # requirement through the ENTIRE pipeline — intake -> design -> build -> sit -> pt ->
 # security-review -> deploy -> support-handover -> done — carrying the two multi-party gates, the

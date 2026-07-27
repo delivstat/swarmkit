@@ -37,6 +37,7 @@ from swarmkit_runtime.gate_coverage import (
     coverage_to_dict,
 )
 from swarmkit_runtime.resolver import resolve_workspace
+from swarmkit_runtime.slice_budget import check_diff_text, result_to_dict
 
 from ._app import app
 from ._common import _EXIT_USAGE, _stderr
@@ -236,4 +237,44 @@ def cited_change(
             typer.echo(f"  ! uncited file: {p}")
 
     if not cov.ok:
+        raise typer.Exit(1)
+
+
+@app.command(name="slice-check")
+def slice_check(
+    diff: Annotated[
+        Path | None,
+        typer.Option(
+            "--diff",
+            help="Unified diff file. Omit to read the diff from stdin.",
+            show_default=False,
+        ),
+    ] = None,
+    max_diff_lines: Annotated[
+        int | None,
+        typer.Option(
+            "--max-diff-lines",
+            help="Fail if the diff changes more lines than this.",
+            show_default=False,
+        ),
+    ] = None,
+    max_files: Annotated[
+        int | None,
+        typer.Option(
+            "--max-files", help="Fail if the diff touches more files than this.", show_default=False
+        ),
+    ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit JSON instead of a human summary."),
+    ] = False,
+) -> None:
+    """Check a diff against a slice budget — keep slices reviewable (exit 1 if over budget)."""
+    diff_text = diff.read_text(encoding="utf-8") if diff is not None else sys.stdin.read()
+    result = check_diff_text(diff_text, max_diff_lines=max_diff_lines, max_files=max_files)
+    if json_output:
+        typer.echo(json.dumps(result_to_dict(result), indent=2))
+    else:
+        typer.echo(f"\nslice-check — {result.verdict()}")
+    if not result.within_budget:
         raise typer.Exit(1)
