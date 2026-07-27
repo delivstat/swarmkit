@@ -1,0 +1,17 @@
+# validate.cited_change must be a boolean — a string is rejected.
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: bad-cited-change
+  name: Bad cited change
+  description: A funnel whose validate.cited_change is a string rather than the required boolean.
+validate:
+  cited_change: "yes"
+approve:
+  rules:
+    - scope: x:approve
+      roles: [lead]
+      quorum: all
+provenance:
+  authored_by: human
+  version: 1.0.0

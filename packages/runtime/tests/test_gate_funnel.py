@@ -15,6 +15,7 @@ from swarmkit_runtime.langgraph_compiler._gate_funnel import (
     ApproveOutcome,
     JudgeOutcome,
     ReviewOutcome,
+    ValidateContext,
     ValidateOutcome,
     compile_funnel_gate,
 )
@@ -30,8 +31,8 @@ def _edges(compiled: Any) -> set[tuple[str, str]]:
     return {(e.source, e.target) for e in compiled.get_graph().edges}
 
 
-async def _ok_validator(artifact: str) -> ValidateOutcome:
-    return ValidateOutcome(ok=True, artifact=artifact)
+async def _ok_validator(ctx: ValidateContext) -> ValidateOutcome:
+    return ValidateOutcome(ok=True, artifact=ctx.artifact)
 
 
 async def _pass_judge(artifact: str) -> JudgeOutcome:

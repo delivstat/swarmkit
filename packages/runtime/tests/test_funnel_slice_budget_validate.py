@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from swarmkit_runtime.langgraph_compiler._gate_funnel import (
     ApproveOutcome,
+    ValidateContext,
     build_deterministic_validator,
     compile_funnel_gate,
 )
@@ -43,10 +44,14 @@ async def test_validator_built_only_for_slice_budget_and_enforces() -> None:
         _spec(validate={"slice_budget": {"max_diff_lines": 2}})
     )
     assert validator is not None
-    assert (await validator(_UNDER)).ok is True
-    over = await validator(_OVER)
+    # No threaded diff ⇒ the artifact itself is treated as the diff (fallback).
+    assert (await validator(ValidateContext(artifact=_UNDER))).ok is True
+    over = await validator(ValidateContext(artifact=_OVER))
     assert over.ok is False
     assert "over slice budget" in over.detail  # the retry critique
+    # A threaded diff takes precedence over the artifact.
+    assert (await validator(ValidateContext(artifact="rationale", diff=_UNDER))).ok is True
+    assert (await validator(ValidateContext(artifact="rationale", diff=_OVER))).ok is False
 
 
 async def test_within_budget_reaches_approval() -> None:

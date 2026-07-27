@@ -548,6 +548,11 @@ def _wrap_with_funnel_gate(
             captured["out"] = out
             return str((out.get("agent_results") or {}).get(agent.id, ""))
 
+        def diff_source() -> str | None:
+            # The gated node's produced diff (a harness executor surfaces it; a model node won't).
+            diff = captured.get("out", {}).get("diff")
+            return diff if isinstance(diff, str) else None
+
         gate_state = await run_agent_funnel_gate(
             dict(funnel.spec),
             produce=produce,
@@ -556,6 +561,7 @@ def _wrap_with_funnel_gate(
             role_registry=role_registry,
             topology_id=topology_id,
             agent_id=agent.id,
+            diff_source=diff_source,
         )
         out: dict[str, Any] = captured.get("out", {})
         if gate_state.get("outcome") != "approved":

@@ -11,6 +11,7 @@ validate:
   slice_budget:
     max_diff_lines: 400
     max_files: 20
+  cited_change: true
 judge:
   skill: artifact-judge
   rubric: rubrics/consolidated-design.md

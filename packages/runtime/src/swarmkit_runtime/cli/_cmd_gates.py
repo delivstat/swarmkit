@@ -18,8 +18,8 @@ import yaml
 
 from swarmkit_runtime._observability import Observability
 from swarmkit_runtime.cited_change import (
-    Citation,
     check_citations,
+    parse_rationale,
     parse_unified_diff,
 )
 from swarmkit_runtime.cited_change import (
@@ -216,14 +216,7 @@ def cited_change(
         _stderr(f"error: could not read change-rationale: {exc}")
         raise typer.Exit(_EXIT_USAGE) from exc
 
-    citations = [
-        Citation(
-            claim=str(c.get("claim", "")),
-            path=str(c.get("path", "")),
-            lines=tuple(int(x) for x in (c.get("lines") or [])),
-        )
-        for c in data.get("citations", [])
-    ]
+    citations = parse_rationale(data)
     diff_text = diff.read_text(encoding="utf-8") if diff is not None else sys.stdin.read()
     cov = check_citations(citations, parse_unified_diff(diff_text))
 

@@ -42,6 +42,10 @@ class FunnelGateState(TypedDict, total=False):
     """
 
     artifact: str
+    # The gated node's produced diff (a harness executor), threaded so deterministic validate
+    # layers can enforce on the *change* rather than the artifact string. None ⇒ no diff surfaced
+    # (a model node, or a harness with no worktree change); refreshed on every draft/revision.
+    diff: str | None
     retries: int
     critique: str | None
     escalated: bool
@@ -52,6 +56,18 @@ class FunnelGateState(TypedDict, total=False):
     judge: dict[str, Any]
     review: dict[str, Any]
     approve_detail: str
+
+
+@dataclass(frozen=True)
+class ValidateContext:
+    """What the deterministic validate layer sees: the current ``artifact`` and, when the gated
+    node produced one, the ``diff`` threaded from the executor. ``slice_budget`` enforces on the
+    diff; ``cited_change`` reads the artifact as a change-rationale and resolves it against the
+    diff. New fields are additive — a validator that only needs the artifact ignores ``diff``.
+    """
+
+    artifact: str
+    diff: str | None = None
 
 
 @dataclass(frozen=True)
@@ -85,10 +101,13 @@ class ApproveOutcome:
 # funnel state bag as ``Any`` — it is a dynamic mapping (approve additionally sees a
 # merged ``provenance`` key), so pinning it to the TypedDict would only fight callers.
 Drafter = Callable[[Any], Awaitable[str]]
-Validator = Callable[[str], Awaitable[ValidateOutcome]]
+Validator = Callable[[ValidateContext], Awaitable[ValidateOutcome]]
 Judge = Callable[[str], Awaitable[JudgeOutcome]]
 Reviewer = Callable[[str], Awaitable[ReviewOutcome]]
 Approver = Callable[[Any], Awaitable[ApproveOutcome]]
+# Reads the diff produced by the most recent draft (the executor's worktree change), or None.
+# Injected alongside the drafter so ``draft_node`` can refresh ``diff`` on every (re)draft.
+DiffSource = Callable[[], str | None]
 
 
 def _max_retries(spec: dict[str, Any]) -> int:
@@ -100,6 +119,15 @@ def _max_retries(spec: dict[str, Any]) -> int:
         return _DEFAULT_MAX_RETRIES
 
 
+def _draft_patch(artifact: str, diff_source: DiffSource | None) -> dict[str, Any]:
+    """The draft node's state patch: the artifact plus, when a ``diff_source`` is wired, the diff
+    this (re)draft produced — refreshed each pass so validate always sees the current change."""
+    patch: dict[str, Any] = {"artifact": artifact}
+    if diff_source is not None:
+        patch["diff"] = diff_source()
+    return patch
+
+
 def compile_funnel_gate(
     spec: dict[str, Any],
     *,
@@ -108,6 +136,7 @@ def compile_funnel_gate(
     validator: Validator | None = None,
     judge: Judge | None = None,
     reviewer: Reviewer | None = None,
+    diff_source: DiffSource | None = None,
     checkpointer: Any | None = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a funnel ``spec`` (the schema-validated mapping) into a gate subgraph.
@@ -131,15 +160,16 @@ def compile_funnel_gate(
     graph: StateGraph[Any] = StateGraph(FunnelGateState)
 
     async def draft_node(state: FunnelGateState) -> dict[str, Any]:
-        artifact = await drafter(state)
-        return {"artifact": artifact}
+        return _draft_patch(await drafter(state), diff_source)
 
     graph.add_node("draft", draft_node)
 
     if validator is not None and "validate" in spec:
 
         async def validate_node(state: FunnelGateState) -> dict[str, Any]:
-            out = await validator(state.get("artifact", ""))
+            out = await validator(
+                ValidateContext(artifact=state.get("artifact", ""), diff=state.get("diff"))
+            )
             if out.ok:
                 return {"artifact": out.artifact, "validate_ok": True}
             return {"validate_ok": False, "critique": out.detail}
@@ -306,29 +336,44 @@ def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str
 
 
 def build_deterministic_validator(spec: dict[str, Any]) -> Validator | None:
-    """Bind the funnel's ``validate`` layer to a deterministic check (design/details/
+    """Bind the funnel's ``validate`` layer to deterministic checks (design/details/
     funnel-deterministic-validate.md).
 
-    Today: ``validate.slice_budget`` — the artifact is the produced diff; over budget is a
-    validate failure whose ``detail`` (e.g. "over slice budget: 812 lines > 400 — split it")
-    becomes the retry critique, escalating to the human ``approve`` on exhaustion. Returns
-    ``None`` when no deterministic check is configured (so a schema-only validate stays handled
+    Composes the configured sibling checks — both run, both must pass (an artifact is only as valid
+    as its weakest deterministic guard); the first failure's verdict becomes the retry critique,
+    which drives the funnel's bounded retry and escalates to the human ``approve`` on exhaustion:
+
+    * ``validate.slice_budget`` — enforces slice size on the produced diff (``ctx.diff``, falling
+      back to the artifact when no separate diff was threaded, e.g. a diff-only drafter or a test).
+    * ``validate.cited_change`` — reads ``ctx.artifact`` as a change-rationale and resolves its
+      citations against ``ctx.diff``; an uncited change fails.
+
+    Returns ``None`` when no deterministic check is configured (a schema-only validate stays handled
     by output governance and no validate node is wired — unchanged behaviour).
     """
     validate_cfg = spec.get("validate") or {}
     budget = validate_cfg.get("slice_budget")
-    if not budget:
+    cited = bool(validate_cfg.get("cited_change"))
+    if not budget and not cited:
         return None
+
+    from swarmkit_runtime.cited_change import check_rationale  # noqa: PLC0415
     from swarmkit_runtime.slice_budget import check_diff_text  # noqa: PLC0415
 
-    max_diff_lines = budget.get("max_diff_lines")
-    max_files = budget.get("max_files")
+    max_diff_lines = budget.get("max_diff_lines") if budget else None
+    max_files = budget.get("max_files") if budget else None
 
-    async def validator(artifact: str) -> ValidateOutcome:
-        result = check_diff_text(artifact, max_diff_lines=max_diff_lines, max_files=max_files)
-        if result.within_budget:
-            return ValidateOutcome(ok=True, artifact=artifact)
-        return ValidateOutcome(ok=False, artifact=artifact, detail=result.verdict())
+    async def validator(ctx: ValidateContext) -> ValidateOutcome:
+        diff = ctx.diff if ctx.diff is not None else ctx.artifact
+        if budget:
+            result = check_diff_text(diff, max_diff_lines=max_diff_lines, max_files=max_files)
+            if not result.within_budget:
+                return ValidateOutcome(ok=False, artifact=ctx.artifact, detail=result.verdict())
+        if cited:
+            cov = check_rationale(ctx.artifact, ctx.diff or "")
+            if not cov.ok:
+                return ValidateOutcome(ok=False, artifact=ctx.artifact, detail=cov.verdict())
+        return ValidateOutcome(ok=True, artifact=ctx.artifact)
 
     return validator
 
@@ -345,6 +390,7 @@ async def run_agent_funnel_gate(
     gate_id: str | None = None,
     author: str | None = None,
     initial_artifact: str = "",
+    diff_source: DiffSource | None = None,
     **resolve_kwargs: Any,
 ) -> FunnelGateState:
     """Run a funnel gate around an agent's production and return the terminal state.
@@ -374,7 +420,12 @@ async def run_agent_funnel_gate(
     )
     validator = build_deterministic_validator(funnel_spec)
     compiled = compile_funnel_gate(
-        funnel_spec, drafter=drafter, approver=approver, judge=judge, validator=validator
+        funnel_spec,
+        drafter=drafter,
+        approver=approver,
+        judge=judge,
+        validator=validator,
+        diff_source=diff_source,
     )
     result = await compiled.ainvoke({"artifact": initial_artifact, "retries": 0})
     return cast(FunnelGateState, result)

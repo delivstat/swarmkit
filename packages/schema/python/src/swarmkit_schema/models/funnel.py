@@ -57,6 +57,10 @@ class Validate(BaseModel):
         None,
         description="Deterministic slice-size enforcement on the produced diff (design/details/funnel-deterministic-validate.md): an over-budget change is a validate failure — it drives the funnel's bounded retry ('split it'), then escalates to the human approve layer. A sibling key of the single validate layer, not a separate layer. The gated node must produce a diff (a harness executor); the enforcement counterpart to the stage's declared `slice_budget`.",
     )
+    cited_change: bool | None = Field(
+        None,
+        description="Deterministic cited-change enforcement (design/details/funnel-deterministic-validate.md): the artifact is a change-rationale (`summary` + `citations: [{claim, path, lines}]`) and the gated node's produced diff is threaded to the gate. An uncited change — a citation the diff did not change, or a touched file no citation mentions — is a validate failure whose verdict becomes the retry critique ('cite it'), escalating to the human approve layer on exhaustion. A sibling key of the single validate layer, not a separate layer. The gated node must produce a diff (a harness executor). The un-gameable half of cited-change; a `judge` layer scores whether the prose matches the change.",
+    )
 
 
 class RouteBackAt(Enum):
