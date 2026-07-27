@@ -2,14 +2,14 @@
 title: Gate coverage & comprehension-debt signals
 description: Make the narrowest verified edge visible, and treat human comprehension as a designed discipline (plan-first objectives, slice budgets, cited change descriptions, recurring expert audits) rather than a gate you can fake.
 tags: [governance, funnel, stage-graph, observability, review]
-status: draft
+status: implemented
 ---
 
 # Gate coverage & comprehension-debt signals
 
 **Scope:** `governance`, `topology`, `observability` — read-side analysis + telemetry over the existing gate/funnel/audit surface, plus one reference audit topology. Mostly additive; no change to the execution model.
 **Design reference:** builds on `gate-funnel.md`, `pipeline-controller.md`, `human-interaction-model.md`, `multi-party-approval.md`, `decision-skills.md`. §8 (Separation of Powers) is the governing frame.
-**Status:** draft (design-only).
+**Status:** implemented — slices 1–8 shipped (gate coverage · canvas overlay · comprehension telemetry · comprehension panel · cited-change · recurring expert audit · slice_budget · plan-first). Each read/action/config holds CLI ⇄ serve-UI parity; both schema changes (`slice_budget`, `objective`/`acceptance`) followed the schema→UI discipline. The runtime-*enforcement* follow-ons are recorded per slice: wiring the deterministic checks (cited-change, slice_budget) as first-class funnel `validate` layers, auto-routing an over-budget change to `review`, and refusing to advance a stage with no clear objective — the reference decision skills stand in for these until then.
 
 ## Goal
 
