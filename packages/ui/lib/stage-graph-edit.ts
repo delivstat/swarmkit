@@ -336,7 +336,7 @@ export function setSliceBudget(
 	const obj: Record<string, number> = {};
 	if (budget?.maxDiffLines != null) obj.max_diff_lines = budget.maxDiffLines;
 	if (budget?.maxFiles != null) obj.max_files = budget.maxFiles;
-	if (Object.keys(obj).length === 0) delete stage.slice_budget;
+	if (Object.keys(obj).length === 0) clearKey(stage, "slice_budget");
 	else stage.slice_budget = obj;
 	return next;
 }
