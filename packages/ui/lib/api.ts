@@ -10,6 +10,9 @@ import type {
 	JobListItem,
 	JobResponse,
 	JobUsage,
+	MemoryChange,
+	MemoryItem,
+	MemoryQuarantineItem,
 	ReviewGate,
 	SendMessageResponse,
 	SkillDetail,
@@ -244,4 +247,31 @@ export const api = {
 			{ yaml },
 		),
 	reloadWorkspace: () => post<{ valid: boolean }>("/api/reload"),
+
+	// Governed memory (design/details/governed-memory.md) — the same store `swarmkit memory` uses.
+	searchMemory: (query = "", type?: string, limit = 100) => {
+		const p = new URLSearchParams({ query, limit: String(limit) });
+		if (type) p.set("type", type);
+		return get<{ memories: MemoryItem[] }>(`/memory?${p.toString()}`);
+	},
+	getMemoryItem: (subject: string, attribute: string, history = true) => {
+		const p = new URLSearchParams({
+			subject,
+			attribute,
+			history: String(history),
+		});
+		return get<{ current: MemoryItem | null; history: MemoryChange[] }>(
+			`/memory/item?${p.toString()}`,
+		);
+	},
+	listQuarantine: (status = "pending") =>
+		get<{ quarantine: MemoryQuarantineItem[] }>(
+			`/memory/quarantine?status=${status}`,
+		),
+	resolveQuarantine: (id: number, resolvedBy: string, accept: boolean) =>
+		post<{
+			resolved: boolean;
+			accepted: boolean;
+			outcome: { op: string; value: string } | null;
+		}>(`/memory/quarantine/${id}/resolve`, { resolved_by: resolvedBy, accept }),
 };

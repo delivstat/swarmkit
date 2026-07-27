@@ -3,6 +3,7 @@
 import {
 	Activity,
 	Box,
+	BrainCircuit,
 	Funnel,
 	Gauge,
 	GitBranch,
@@ -37,6 +38,7 @@ const NAV = [
 	{ href: "/pipelines", label: "Pipelines", icon: Workflow },
 	{ href: "/contracts", label: "Contracts", icon: Handshake },
 	{ href: "/comprehension", label: "Comprehension", icon: Gauge },
+	{ href: "/memory", label: "Memory", icon: BrainCircuit },
 	{ href: "/canary", label: "Canary", icon: ListChecks },
 	{ href: "/triggers", label: "Triggers", icon: Timer },
 ] as const;

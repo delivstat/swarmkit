@@ -89,6 +89,25 @@ async def test_hook_writes_candidates_governed() -> None:
     assert again["by_op"] == {"reinforce": 2}
 
 
+async def test_hook_stamps_writing_agent_as_source() -> None:
+    store = _store()
+    # the agent that proposed a fact is recorded as its source (who inserted the entry)
+    await governed_memory_post_output(
+        agent_id="ingester", agent_output=_CANDIDATES_JSON, store=store
+    )
+    got = store.get("user:alice", "preferred_language")
+    assert got is not None and got.source == "ingester"
+    # an agent-provided source is preserved (not overwritten)
+    await governed_memory_post_output(
+        agent_id="ingester",
+        agent_output='{"memories": [{"subject": "s", "attribute": "a", '
+        '"value": "v", "source": "upstream-feed"}]}',
+        store=store,
+    )
+    kept = store.get("s", "a")
+    assert kept is not None and kept.source == "upstream-feed"
+
+
 # ── the compiler end-to-end ──────────────────────────────────────────────────────────────────────
 async def test_agent_with_skill_writes_memory_on_run() -> None:
     gm_skill = resolve_workspace(REFERENCE_WS).skills["governed-memory"]
