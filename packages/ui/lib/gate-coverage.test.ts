@@ -19,6 +19,7 @@ const COV: GateCoverage = {
 			pre_filters: [],
 			external_entry: true,
 			terminal: false,
+			objective: null,
 		},
 		{
 			stage: "design",
@@ -27,6 +28,7 @@ const COV: GateCoverage = {
 			pre_filters: ["validate", "judge", "review"],
 			external_entry: false,
 			terminal: false,
+			objective: null,
 		},
 		{
 			stage: "build",
@@ -35,6 +37,7 @@ const COV: GateCoverage = {
 			pre_filters: [],
 			external_entry: false,
 			terminal: false,
+			objective: null,
 		},
 	],
 };

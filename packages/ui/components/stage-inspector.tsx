@@ -38,9 +38,11 @@ import {
 	removeStage,
 	removeWhenEvent,
 	renameStage,
+	setAcceptance,
 	setCompensation,
 	setGate,
 	setLoopWhen,
+	setObjective,
 	setReleaseLocksOn,
 	setSliceBudget,
 	setStageTopology,
@@ -221,6 +223,28 @@ export function StageInspector({
 					options={topologies}
 					placeholder="no compensation"
 					onChange={(v) => onChange(setCompensation(doc0, stageId, v))}
+				/>
+			</Section>
+
+			<Section title="Objective (what 'done' means)">
+				<Input
+					className="h-8 text-xs"
+					placeholder="stated before the work — the plan-first edge"
+					value={stage.objective ?? ""}
+					onChange={(e) =>
+						onChange(setObjective(doc0, stageId, e.target.value || null))
+					}
+				/>
+			</Section>
+
+			<Section title="Acceptance (the check that proves it)">
+				<Input
+					className="h-8 text-xs"
+					placeholder="e.g. SIT green + contract honored"
+					value={stage.acceptance ?? ""}
+					onChange={(e) =>
+						onChange(setAcceptance(doc0, stageId, e.target.value || null))
+					}
 				/>
 			</Section>
 

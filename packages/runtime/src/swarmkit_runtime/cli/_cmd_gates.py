@@ -57,6 +57,8 @@ def _print_table(cov: GateCoverage) -> None:
             notes.append("external entry")
         if s.terminal:
             notes.append("terminal")
+        if s.objective is None and not s.terminal:
+            notes.append("no objective")
         marker = "!" if (s.gate_class == "passthrough" and not s.terminal) else " "
         typer.echo(f"{marker} {s.stage_id:<22} {s.gate_class:<12} {pf:<24} {', '.join(notes)}")
     typer.echo(f"\n  → {cov.verdict()}")

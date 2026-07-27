@@ -21,6 +21,8 @@ stages:
   - id: build
     topology: oms-build
     when: [design.approved]
+    objective: Implement the reserved-stock API per the oms-inventory contract.
+    acceptance: SIT green and the oms-inventory contract honored.
     success: build.ready-in-qa
     slice_budget:
       max_diff_lines: 400

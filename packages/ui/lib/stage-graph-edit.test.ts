@@ -14,9 +14,11 @@ import {
 	removeStage,
 	removeWhenEvent,
 	renameStage,
+	setAcceptance,
 	setCompensation,
 	setGate,
 	setLoopWhen,
+	setObjective,
 	setReleaseLocksOn,
 	setSliceBudget,
 	setStageTopology,
@@ -319,5 +321,20 @@ describe("setSliceBudget (slice 7)", () => {
 			maxFiles: null,
 		});
 		expect(readStages(cleared)[0]?.sliceBudget).toBeNull();
+	});
+});
+
+describe("setObjective / setAcceptance (slice 8)", () => {
+	it("sets and clears the stage objective + acceptance", () => {
+		const doc = { stages: [{ id: "build", topology: "t" }] };
+		const withObj = setObjective(
+			setAcceptance(doc, "build", "tests green"),
+			"build",
+			"ship X",
+		);
+		expect(readStages(withObj)[0]?.objective).toBe("ship X");
+		expect(readStages(withObj)[0]?.acceptance).toBe("tests green");
+		const cleared = setObjective(withObj, "build", null);
+		expect(readStages(cleared)[0]?.objective).toBeNull();
 	});
 });

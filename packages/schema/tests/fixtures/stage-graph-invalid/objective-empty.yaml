@@ -1,0 +1,15 @@
+# stage.objective must be a non-empty string (minLength 1) — an empty objective is rejected.
+apiVersion: swarmkit/v1
+kind: StageGraph
+metadata:
+  id: bad-objective
+  name: Bad objective
+  description: A stage whose objective is an empty string, violating minLength 1.
+stages:
+  - id: build
+    topology: oms-build
+    when: [start]
+    objective: ""
+provenance:
+  authored_by: human
+  version: 1.0.0

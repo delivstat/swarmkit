@@ -35,6 +35,9 @@ stages:
   - id: build
     topology: oms-build-harness
     when: [design.approved]
+    # Plan-first (slice 8): the stage's objective + acceptance, stated before the build runs.
+    objective: Implement the reserved-stock API per the oms-inventory contract.
+    acceptance: SIT green and the oms-inventory contract honored.
     # EXTERNAL event (CI) — the controller waits for the webhook / reconciliation, never fabricates it.
     success: build.ready-in-qa
     compensation: oms-compensate-build
