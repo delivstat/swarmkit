@@ -93,6 +93,7 @@ nav:
     - Serve mode: reference/serve.md
     - Dual model support: reference/dual-model.md
     - Workspace memory: reference/workspace-memory.md
+    - Governed memory: reference/governed-memory.md
     - Environment configuration: reference/env-config.md
     - Telemetry configuration: reference/telemetry.md
     - Intent drift detection: reference/intent-drift.md
