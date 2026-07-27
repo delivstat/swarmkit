@@ -92,19 +92,49 @@ serve imports. Serve and the orchestrator communicate through the **durable stor
   queued `pipeline_events` → `controller.handle_event` → for each stage, HTTP `POST /pipelines/
   run-stage` on serve (governed, audited execution stays in serve) → persist saga state → mark the
   event done. It is the **only** process that imports `orchestration/reference/`.
-- **Serve becomes a thin enqueue + read surface for pipelines.** `POST /pipelines/signal` authorizes
-  the event and **writes it to `pipeline_events`** (it no longer needs an in-process
-  `pipeline_signal` sink); `POST /pipelines/run-stage` executes a stage when the orchestrator calls
-  it; `GET /pipelines/sagas[/{id}]` reads saga state for the CLI/UI. Serve never drives, never
-  imports the controller.
-- **Gate resolution is a store event too.** When a human approves a stage's funnel (via the review
-  queue), that resolution is written as a `gate-resolved` event on the same queue; the orchestrator
-  claims it and resumes the saga. Uniform push, no in-process coupling, no poll loop.
+- **Serve stays a thin authorize + read surface, and never decides the engine.** `POST
+  /pipelines/signal` authorizes the event and hands it to the **injected `pipeline_signal` sink**
+  (the existing domain-neutral seam) — it does *not* itself know or choose "store vs Temporal";
+  `POST /pipelines/run-stage` executes a stage when an orchestrator calls it; `GET
+  /pipelines/sagas[/{id}]` reads saga state for the CLI/UI. Serve never drives, never imports the
+  controller.
+- **Gate resolution is a signal too.** When a human approves a stage's funnel (via the review
+  queue), that resolution is delivered as a `gate-resolved` event through the same sink; the
+  orchestrator picks it up and resumes the saga. Uniform push, no in-process coupling, no poll loop.
 
-This makes the reference controller and Temporal true **peers** — you pick your orchestrator by
-running a different process (`swarmkit orchestrator` vs a Temporal worker), both driving the same
-serve seam over the same store. (A single-process convenience — the same controller embedded in serve
-behind a flag — is possible later, but the shipped default is the clean separate app.)
+### The `pipeline_signal` sink is the store-vs-Temporal switch (chosen at serve/workspace level)
+
+The switch between the reference orchestrator and Temporal is **which sink serve is wired with** —
+not any per-request logic in serve, and not a per-pipeline setting. The seam is unchanged
+(`PipelineSignal(correlation_id, event)`); only the injected implementation differs:
+
+| Orchestrator | `pipeline_signal` sink does… | Durable event log lives in |
+|---|---|---|
+| Reference (`swarmkit orchestrator`) | `INSERT` into `pipeline_events` (the store) | the SQLite/Postgres store |
+| Temporal | call the Temporal client (start/signal a workflow) | Temporal's own history |
+
+So with Temporal, **the `pipeline_events` table isn't used** — Temporal owns durability; serve's
+sink just signals it. Serve imports neither the controller nor Temporal — it only calls the
+callable it was handed at startup.
+
+That wiring is a **deployment / serve-startup choice**, which in practice is **workspace level** (one
+`swarmkit serve` = one workspace). The bundled default auto-wires the store sink (and you run
+`swarmkit orchestrator`); swapping to Temporal means wiring the Temporal sink and running a Temporal
+worker instead — `/pipelines/signal`, `/pipelines/run-stage`, the CLI, and the UI are all unchanged.
+It is **not per-pipeline**: a deployment runs one orchestrator for all its pipelines. (Routing the
+sink by pipeline id — some graphs to the store, some to Temporal — is possible but not worth the
+complexity.)
+
+This makes the reference controller and Temporal true **peers**: you pick your orchestrator by
+wiring a sink + running the matching process. (A single-process convenience — the same controller
+embedded in serve behind a flag, still store-mediated — is possible later, but the shipped default is
+the clean separate app.)
+
+**One read-side caveat.** `GET /pipelines/sagas[/{id}]` (and the CLI/UI it feeds) reads saga state
+from the reference **store**. Under Temporal, saga state lives in Temporal, so that read view must
+either query Temporal's API or read a projection Temporal writes back to the store. The *signal /
+dispatch / run-stage* path is engine-agnostic; only the saga **read model** is store-specific, and
+the Temporal swap owns providing its equivalent. Worth stating so the swap's scope is honest.
 
 ### 4. Dispatch surface (mandatory) — CLI + serve endpoints + UI
 
@@ -152,9 +182,10 @@ state, so a restart resumes mid-pipeline. In-memory becomes a test-only store, n
   importing this package; only the `orchestrator` command may.
 - **`swarmkit orchestrator`** (new CLI command): the drive loop over the store + serve's run-stage
   seam. The only importer of `orchestration/reference/`.
-- **serve**: `POST /pipelines/signal` enqueues to `pipeline_events` (no in-process sink);
-  `GET /pipelines/sagas[/{id}]` reads saga state; the review queue writes a `gate-resolved` event on
-  approval. No controller import.
+- **serve**: `POST /pipelines/signal` hands the event to the injected `pipeline_signal` sink (the
+  store-writer by default; the Temporal client when swapped); `GET /pipelines/sagas[/{id}]` reads
+  saga state; the review queue emits a `gate-resolved` signal on approval. No controller/Temporal
+  import — serve calls the injected sink.
 - **CLI**: `swarmkit pipeline emit|sagas|status|advance|skip` (over the serve endpoints).
 - **UI**: `app/pipelines` gains a dispatch form + saga list/timeline (over the new endpoints).
 - **compose**: `serve` + `orchestrator` services sharing Postgres; commented Temporal swap.
@@ -208,3 +239,7 @@ store** (new `SqlSagaStore` on the same SQLite file), resolve the gate, watch it
 4. **Local one-command ergonomics.** The shipped default is two processes (`serve` + `orchestrator`).
    Is a `swarmkit serve --with-orchestrator` convenience (spawns the drive loop in a serve worker
    thread, still store-mediated) worth it for local dev, or does it muddy the boundary enough to skip?
+5. **Saga read model under Temporal.** The store-backed `GET /pipelines/sagas` read view is
+   reference-specific; the Temporal swap must supply its equivalent (query Temporal, or project saga
+   state back into the store so the same read view + CLI/UI work unchanged). Decide the expected
+   contract for a swapped orchestrator so the read surface stays uniform.
