@@ -256,6 +256,25 @@ export interface GateCoverage {
 	stages: GateCoverageStage[];
 }
 
+/** One suspiciously-fast approval in the comprehension telemetry (GET /comprehension). */
+export interface ComprehensionFastApprove {
+	gate_id: string;
+	run_id: string | null;
+	latency_seconds: number;
+	distinct_approvers: number;
+	timestamp: string;
+}
+
+/** Comprehension-debt signals from the audit log (read-only, never a gate). Mirrors the Python
+ * payload. `threshold_seconds` is the active fast-approve threshold — the UI shows it pre-set. */
+export interface Comprehension {
+	verdict: string;
+	threshold_seconds: number;
+	approvals_seen: number;
+	fast_approvals: ComprehensionFastApprove[];
+	deferred: string[];
+}
+
 /** A pending harness gate (GET /review) — a §6.2 permission or §6.3 input request awaiting a human. */
 export interface ReviewGate {
 	id: string;
