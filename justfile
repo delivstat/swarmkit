@@ -113,6 +113,11 @@ demo-funnel-validate:
 demo-funnel-cited-change:
     uv run python packages/runtime/demos/funnel_cited_change.py
 
+# Demo governed memory (governed-memory.md, slice 1): a fact evolves in place over time — new /
+# reinforce / update on one canonical row + an append-only change-log with a point-in-time read.
+demo-governed-memory:
+    uv run python packages/runtime/demos/governed_memory.py
+
 # Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
 # edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
 # weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.
