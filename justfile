@@ -109,6 +109,11 @@ demo-gate-funnel:
 demo-gates:
     uv run swarmkit gates examples/sdlc-pipeline/workspace --pipeline sdlc-full
 
+# Demo comprehension-debt telemetry (slice 3): fast-approve signals from the audit log (report-only,
+# never a gate), plus the disclosed deferred signals. Reads the example's .swarmkit audit store.
+demo-comprehension:
+    uv run swarmkit comprehension examples/sdlc-pipeline/workspace
+
 # Demo the FULL SDLC lifecycle (slice 9, the capstone): the reference controller drives one
 # requirement through the ENTIRE pipeline — intake -> design -> build -> sit -> pt ->
 # security-review -> deploy -> support-handover -> done — carrying the two multi-party gates, the
