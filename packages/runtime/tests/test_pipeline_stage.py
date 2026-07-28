@@ -6,17 +6,20 @@ error. Inter-stage input is assembled store-side from the correlation's prior ar
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import cast
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
+from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.artifacts._backends import DatabaseArtifactStore
+from swarmkit_runtime.orchestration import RunStage
 from swarmkit_runtime.server._pipeline_stage import build_pipeline_run_stage
 
 
 @dataclass
 class _FakeRuntime:
-    """Records inputs; echoes a per-topology output."""
+    """Records inputs; echoes a per-topology output (stands in for a WorkspaceRuntime)."""
 
     seen: list[tuple[str, str]] = field(default_factory=list)
     fail_on: str = ""
@@ -37,10 +40,15 @@ def _store() -> DatabaseArtifactStore:
     return DatabaseArtifactStore(engine)
 
 
+def _seam(rt: _FakeRuntime, store: DatabaseArtifactStore) -> RunStage:
+    # The seam takes a concrete WorkspaceRuntime; the fake supplies only the `.run` it needs.
+    return build_pipeline_run_stage(cast("WorkspaceRuntime", rt), store)
+
+
 @pytest.mark.asyncio
 async def test_ungated_stage_completes_and_persists_artifact() -> None:
     store, rt = _store(), _FakeRuntime()
-    run_stage = build_pipeline_run_stage(rt, store)
+    run_stage = _seam(rt, store)
 
     outcome = await run_stage("run-1", {"id": "intake", "topology": "oms-intake"})
 
@@ -52,7 +60,7 @@ async def test_ungated_stage_completes_and_persists_artifact() -> None:
 @pytest.mark.asyncio
 async def test_gated_stage_parks() -> None:
     store, rt = _store(), _FakeRuntime()
-    run_stage = build_pipeline_run_stage(rt, store)
+    run_stage = _seam(rt, store)
 
     outcome = await run_stage("run-1", {"id": "design", "topology": "oms-design", "gate": "g"})
 
@@ -63,7 +71,7 @@ async def test_gated_stage_parks() -> None:
 @pytest.mark.asyncio
 async def test_input_is_threaded_from_prior_artifacts() -> None:
     store, rt = _store(), _FakeRuntime()
-    run_stage = build_pipeline_run_stage(rt, store)
+    run_stage = _seam(rt, store)
 
     await run_stage("run-1", {"id": "intake", "topology": "oms-intake"})
     await run_stage("run-1", {"id": "design", "topology": "oms-design"})
@@ -75,20 +83,20 @@ async def test_input_is_threaded_from_prior_artifacts() -> None:
 @pytest.mark.asyncio
 async def test_run_error_is_a_failed_outcome() -> None:
     store = _store()
-    run_stage = build_pipeline_run_stage(_FakeRuntime(fail_on="oms-build"), store)
+    run_stage = _seam(_FakeRuntime(fail_on="oms-build"), store)
     outcome = await run_stage("run-1", {"id": "build", "topology": "oms-build"})
     assert outcome.status == "failed" and "RuntimeError" in outcome.detail
 
 
 @pytest.mark.asyncio
 async def test_unknown_topology_is_failed() -> None:
-    run_stage = build_pipeline_run_stage(_FakeRuntime(), _store())
+    run_stage = _seam(_FakeRuntime(), _store())
     outcome = await run_stage("run-1", {"id": "x", "topology": "__missing__"})
     assert outcome.status == "failed" and "unknown topology" in outcome.detail
 
 
 @pytest.mark.asyncio
 async def test_stage_without_topology_is_failed() -> None:
-    run_stage = build_pipeline_run_stage(_FakeRuntime(), _store())
+    run_stage = _seam(_FakeRuntime(), _store())
     outcome = await run_stage("run-1", {"id": "x"})
     assert outcome.status == "failed"

@@ -7,13 +7,14 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 from swarmkit_runtime.artifacts import DatabaseArtifactStore
 from swarmkit_runtime.orchestration import SqlSagaStore
 from swarmkit_runtime.server._routes_sagas import _register_saga_routes
 
 
-def _shared_engine() -> object:
+def _shared_engine() -> Engine:
     # one shared in-memory connection so the TestClient's threadpool handler sees the same DB
     return create_engine(
         "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}

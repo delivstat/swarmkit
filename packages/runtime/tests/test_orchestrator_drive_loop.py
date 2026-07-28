@@ -1,6 +1,6 @@
-"""The `swarmkit orchestrator` drive loop (design/details/bundled-pipeline-orchestrator.md, slice 5):
-claim events from the durable queue, drive the saga via the ReferenceController, ack after applying —
-durable and idempotent."""
+"""The `swarmkit orchestrator` drive loop (design/details/bundled-pipeline-orchestrator.md,
+slice 5): claim events from the durable queue, drive the saga via the ReferenceController, ack
+after applying - durable and idempotent."""
 
 from __future__ import annotations
 
