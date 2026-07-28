@@ -1,27 +1,13 @@
-"""The bundled reference pipeline orchestrator (design/details/bundled-pipeline-orchestrator.md).
+"""The bundled reference pipeline orchestrator — the saga *engine*
+(design/details/bundled-pipeline-orchestrator.md).
 
-A durable, domain-neutral saga controller — the default engine behind the `swarmkit orchestrator`
-command. Imported ONLY by that command; never by the runtime core or serve (import-linter enforced).
+The domain-neutral drive logic behind the `swarmkit orchestrator` command. This package (the
+controller) is imported ONLY by that command — never by the runtime core or serve (import-linter
+enforced). The saga *store* it drives is shared infra in ``swarmkit_runtime.orchestration``.
 """
 
 from __future__ import annotations
 
 from swarmkit_runtime.orchestration.reference._controller import ReferenceController
-from swarmkit_runtime.orchestration.reference._saga import (
-    InMemorySagaStore,
-    SagaState,
-    SagaStatus,
-    SagaStore,
-    TimelineEntry,
-)
-from swarmkit_runtime.orchestration.reference._store import SqlSagaStore
 
-__all__ = [
-    "InMemorySagaStore",
-    "ReferenceController",
-    "SagaState",
-    "SagaStatus",
-    "SagaStore",
-    "SqlSagaStore",
-    "TimelineEntry",
-]
+__all__ = ["ReferenceController"]

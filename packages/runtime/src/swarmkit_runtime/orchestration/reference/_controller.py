@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from swarmkit_runtime.orchestration import RunStage, StageOutcome
-from swarmkit_runtime.orchestration.reference._saga import SagaState, SagaStore
+from swarmkit_runtime.orchestration._saga import SagaState, SagaStore
 
 
 def _stage_id(stage: Mapping[str, Any], index: int) -> str:

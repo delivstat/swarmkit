@@ -12,12 +12,8 @@ import json
 
 import pytest
 from sqlalchemy import create_engine
-from swarmkit_runtime.orchestration import StageOutcome
-from swarmkit_runtime.orchestration.reference import (
-    InMemorySagaStore,
-    ReferenceController,
-    SqlSagaStore,
-)
+from swarmkit_runtime.orchestration import InMemorySagaStore, SqlSagaStore, StageOutcome
+from swarmkit_runtime.orchestration.reference import ReferenceController
 
 pytestmark = pytest.mark.asyncio
 

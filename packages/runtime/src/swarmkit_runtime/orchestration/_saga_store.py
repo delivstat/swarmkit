@@ -26,7 +26,7 @@ from sqlalchemy import (
     update,
 )
 
-from swarmkit_runtime.orchestration.reference._saga import SagaState, SagaStatus, TimelineEntry, now
+from swarmkit_runtime.orchestration._saga import SagaState, SagaStatus, TimelineEntry, now
 from swarmkit_runtime.persistence._store import make_engine
 
 metadata = MetaData()
