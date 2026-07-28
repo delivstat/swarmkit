@@ -291,6 +291,8 @@ Run a coding harness (Claude Code, opencode, and any subprocess that emits line-
 
 Compose bounded swarm runs into a long-running **delivery pipeline**, authored as data. A **StageGraph** (`kind: StageGraph`) wires stages by the events that enter and leave them; a **controller** sequences it as a durable **saga** — deduping events, recovering dropped ones by reconciliation, serialising contended work, and unwinding cancellations with per-stage compensation. Sequencing is a **pluggable seam**: a zero-infra reference controller, or a data-driven **Temporal** adapter (one workflow interprets any StageGraph — the graph stays data; `temporalio` never enters the core runtime).
 
+It runs **out of the box**: a bundled durable orchestrator (a separate `swarmkit orchestrator` process, store-mediated so it touches neither the core nor `serve`) drives events end to end, executing each stage as a bounded governed run whose output lands in a pluggable artifact store. Dispatch and inspect from either front door — `swarmkit pipeline emit|sagas|status|advance|skip` or the web UI **Runs** view (a searchable replay canvas + per-node timeline/artifact inspector) — and `docker compose -f deploy/pipeline/docker-compose.yml up` brings up `serve` + orchestrator together (with a commented Temporal swap).
+
 Governance rides along as data, not prompts:
 
 - **Funnels** (`kind: Funnel`) — reusable multi-layer gates (validate → judge → review → approve) with exactly one exit: a human approval the compiler enforces.
@@ -389,7 +391,7 @@ See it end to end in the **[SDLC pipeline walkthrough](https://delivstat.github.
 66. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` → `swarmkit serve` hosts the portal at its own origin)
 67. **JSON & TypeScript schemas** — validators in both languages
 68. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
-69. **16 archetypes + 25 skills** — production-ready out of the box
+69. **16 archetypes + 27 skills** — production-ready out of the box
 
 ### Harness executors
 70. **Harness as a node** — run Claude Code / opencode / any subprocess emitting JSONL as an agent
@@ -403,7 +405,7 @@ See it end to end in the **[SDLC pipeline walkthrough](https://delivstat.github.
 ### Pipelines & orchestration
 77. **StageGraph pipelines** — a whole delivery pipeline as one data file (`kind: StageGraph`): stages wired by `when`/`success`, `locks`, `gate`, `compensation`, `loops`
 78. **Saga controller** — durable per-requirement sequencing: event dedup, reconciliation of dropped events, contended-lock parking, reverse-order compensation on cancel
-79. **Pluggable orchestration seam** — a reference in-memory controller (zero-infra) or a data-driven Temporal adapter; `temporalio` stays out of the core runtime
+79. **Bundled durable orchestrator + pluggable seam** — runs out of the box: a separate `swarmkit orchestrator` process drives events off a durable saga store (SQLite/Postgres) and executes each stage via `serve`'s run-stage seam into a pluggable artifact store — store-mediated, so it never touches the core or `serve`; swap in the data-driven Temporal adapter (`temporalio` stays out of the core). Dispatch + inspect from `swarmkit pipeline emit|sagas|status|advance|skip` or the web UI **Runs** view (replay canvas + node timeline/artifact inspector); `deploy/pipeline` compose runs `serve` + orchestrator together
 80. **Funnels** — reusable multi-layer quality gates (`kind: Funnel`: validate → judge → review → approve) with a single, compiler-enforced human exit
 81. **Multi-party approval** — quorum / `min_distinct_approvers` / `exclude_author`, roles resolved via `kind: RoleRegistry`; approval scopes un-grantable to agents
 82. **Integration contracts** — `kind: Contract` makes stage `locks` a checked, pickable vocabulary; the contention overlay is exact
@@ -431,7 +433,7 @@ swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit
 swarmkit author skill my-workspace/ --thorough
 ```
 
-**16 archetypes** and **20 skills** included under [`reference/`](./reference/).
+**16 archetypes** and **27 skills** included under [`reference/`](./reference/).
 
 ## Real-world example
 
@@ -448,7 +450,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and build
 git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
 just install          # uv sync + pnpm install
-just test             # 566 tests across Python + TypeScript
+just test             # 2,600+ tests across Python + TypeScript
 just lint             # ruff + biome
 just typecheck        # mypy + tsc
 ```
@@ -462,7 +464,7 @@ swarmkit/
 │   ├── runtime/         # Python: CLI, LangGraph compiler, governance, MCP
 │   ├── schema/          # JSON Schemas + Python & TypeScript validators
 │   └── ui/              # Next.js (v1.1 — extends CLI, doesn't replace it)
-├── reference/           # 2 topologies, 16 archetypes, 20 skills
+├── reference/           # 3 topologies, 16 archetypes, 27 skills
 ├── examples/            # hello-swarm, sterling-oms, rynko-content
 ├── docs/                # User-facing docs + discipline notes
 └── llms.txt             # LLM-queryable index (llmstxt.org)
@@ -479,7 +481,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.103.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 (delivery pipelines) shipped — StageGraph + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, and the end-to-end SDLC example. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.119.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 (delivery pipelines) shipped — StageGraph + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the end-to-end SDLC example, and the bundled durable orchestrator (`swarmkit orchestrator` + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 
