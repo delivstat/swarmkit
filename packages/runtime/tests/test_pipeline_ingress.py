@@ -191,7 +191,9 @@ def test_signal_skip_with_scope_is_delivered_and_audited(client: TestClient) -> 
 def test_signal_sink_unset_is_503(client: TestClient) -> None:
     gov = MockGovernanceProvider()
     _install_governance(client, gov)
-    # no app.state.pipeline_signal set
+    # The bundled durable-queue sink is wired by default (slice 4); unset it to exercise the
+    # defensive 503 branch a deployment that stripped the signal sink would hit.
+    client.app.state.pipeline_signal = None  # type: ignore[attr-defined]
     resp = client.post(
         "/pipelines/signal",
         json={"correlation_id": "CORR-4", "event": "build.ready-in-qa", "mode": "emit"},
