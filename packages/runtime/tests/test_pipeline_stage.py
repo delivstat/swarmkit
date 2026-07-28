@@ -1,7 +1,8 @@
 """The bundled run-stage execution seam (design/details/bundled-pipeline-orchestrator.md, slice 5b):
 run a stage's topology, persist its output to the ArtifactStore, and return a reference-only
 StageOutcome — ``parked`` when the stage is gated, ``completed`` when it is not, ``failed`` on
-error. Inter-stage input is assembled store-side from the correlation's prior artifacts."""
+error. The first stage is seeded with the pipeline input payload (persisted on the saga); downstream
+stages thread the correlation's prior artifacts."""
 
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.artifacts._backends import DatabaseArtifactStore
-from swarmkit_runtime.orchestration import RunStage
+from swarmkit_runtime.orchestration import InMemorySagaStore, RunStage, SagaStore
 from swarmkit_runtime.server._pipeline_stage import build_pipeline_run_stage
 
 
@@ -40,9 +41,14 @@ def _store() -> DatabaseArtifactStore:
     return DatabaseArtifactStore(engine)
 
 
-def _seam(rt: _FakeRuntime, store: DatabaseArtifactStore) -> RunStage:
-    # The seam takes a concrete WorkspaceRuntime; the fake supplies only the `.run` it needs.
-    return build_pipeline_run_stage(cast("WorkspaceRuntime", rt), store)
+def _seam(
+    rt: _FakeRuntime, store: DatabaseArtifactStore, saga_store: SagaStore | None = None
+) -> RunStage:
+    # The seam takes a concrete WorkspaceRuntime; the fake supplies only the `.run` it needs. An
+    # empty saga store (no saga for the correlation) falls back to prior-artifact input.
+    return build_pipeline_run_stage(
+        cast("WorkspaceRuntime", rt), store, saga_store or InMemorySagaStore()
+    )
 
 
 @pytest.mark.asyncio
@@ -100,3 +106,33 @@ async def test_stage_without_topology_is_failed() -> None:
     run_stage = _seam(_FakeRuntime(), _store())
     outcome = await run_stage("run-1", {"id": "x"})
     assert outcome.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_first_stage_is_seeded_with_the_pipeline_input_payload() -> None:
+    # The bug fix: a `start` event's input payload reaches the first stage's run (not dropped).
+    sagas = InMemorySagaStore()
+    sagas.create("run-1", graph_id="g", input="BRD-42: add split shipment")
+    rt = _FakeRuntime()
+    run_stage = _seam(rt, _store(), sagas)
+
+    await run_stage("run-1", {"id": "intake", "topology": "oms-intake"})
+
+    assert rt.seen[-1] == ("oms-intake", "BRD-42: add split shipment")
+
+
+@pytest.mark.asyncio
+async def test_downstream_stage_uses_upstream_artifact_not_the_input() -> None:
+    sagas = InMemorySagaStore()
+    saga = sagas.create("run-1", graph_id="g", input="original payload")
+    store, rt = _store(), _FakeRuntime()
+    run_stage = _seam(rt, store, sagas)
+
+    # intake runs on the payload, produces an artifact, and is marked passed
+    await run_stage("run-1", {"id": "intake", "topology": "oms-intake"})
+    saga.passed_stages.append("intake")
+    sagas.save(saga)
+
+    # design (a downstream stage) now threads intake's artifact, not the original payload
+    await run_stage("run-1", {"id": "design", "topology": "oms-design"})
+    assert rt.seen[-1] == ("oms-design", "<oms-intake output>")

@@ -43,6 +43,7 @@ pipeline_saga = Table(
     Column("artifacts", Text, nullable=False, default="{}"),
     Column("attempts", Text, nullable=False, default="{}"),
     Column("tag", Text, nullable=False, default=""),
+    Column("input", Text, nullable=False, default=""),
     Column("created_at", Text, nullable=False),
     Column("updated_at", Text, nullable=False),
     Column("timeline", Text, nullable=False, default="[]"),
@@ -93,10 +94,17 @@ class SqlSagaStore:
             )
         return _row_to_saga(dict(row)) if row else None
 
-    def create(self, correlation_id: str, *, graph_id: str, tag: str = "") -> SagaState:
+    def create(
+        self, correlation_id: str, *, graph_id: str, tag: str = "", input: str = ""
+    ) -> SagaState:
         ts = now().isoformat()
         saga = SagaState(
-            correlation_id=correlation_id, graph_id=graph_id, tag=tag, created_at=ts, updated_at=ts
+            correlation_id=correlation_id,
+            graph_id=graph_id,
+            tag=tag,
+            input=input,
+            created_at=ts,
+            updated_at=ts,
         )
         with self._engine.begin() as conn:
             conn.execute(insert(pipeline_saga).values(**_saga_to_row(saga)))
@@ -211,6 +219,7 @@ def _saga_to_row(s: SagaState) -> dict[str, Any]:
         "artifacts": json.dumps(s.artifacts),
         "attempts": json.dumps(s.attempts),
         "tag": s.tag,
+        "input": s.input,
         "created_at": s.created_at,
         "updated_at": s.updated_at,
         "timeline": json.dumps([_tl_to_dict(t) for t in s.timeline]),
@@ -228,6 +237,7 @@ def _row_to_saga(r: dict[str, Any]) -> SagaState:
         artifacts=json.loads(r["artifacts"]),
         attempts=json.loads(r["attempts"]),
         tag=r["tag"],
+        input=r.get("input", ""),
         created_at=r["created_at"],
         updated_at=r["updated_at"],
         timeline=[_dict_to_tl(d) for d in json.loads(r["timeline"])],

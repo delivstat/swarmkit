@@ -58,7 +58,12 @@ class ReferenceController:
         if self._store.get(correlation_id) is not None:
             return  # idempotent: a repeated start is a no-op
         graph_id = str(data.get("graph", ""))
-        saga = self._store.create(correlation_id, graph_id=graph_id, tag=str(data.get("tag", "")))
+        saga = self._store.create(
+            correlation_id,
+            graph_id=graph_id,
+            tag=str(data.get("tag", "")),
+            input=str(data.get("input", "")),
+        )
         saga.add("new", detail=graph_id)
         self._store.save(saga)
         await self._drive(saga)

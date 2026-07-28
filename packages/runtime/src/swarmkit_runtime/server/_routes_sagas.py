@@ -32,6 +32,7 @@ def _summary(s: SagaState) -> dict[str, Any]:
 def _detail(s: SagaState) -> dict[str, Any]:
     return {
         **_summary(s),
+        "input": s.input,  # the pipeline payload that seeded the run (first stage's input)
         "artifacts": s.artifacts,  # stage -> reference (content fetched lazily per node)
         "attempts": s.attempts,
         "timeline": [

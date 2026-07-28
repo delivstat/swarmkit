@@ -6,8 +6,9 @@ run it as one bounded, governed SwarmKit run (correlated by ``correlation_id``),
 the workspace :class:`ArtifactStore`, and return a domain-neutral :class:`StageOutcome`.
 
 Content stays a runtime concern: the orchestrator only ever sees the returned artifact **reference**
-(``<correlation_id>/<stage>/output``). Inter-stage threading is store-mediated — a stage's input is
-assembled from the correlation's prior artifacts, so the orchestrator threads references, not bytes.
+(``<correlation_id>/<stage>/output``). Input is store-mediated — the **first** stage is seeded with
+the pipeline's input payload (persisted on the saga from the ``start`` event); **downstream** stages
+thread the correlation's prior artifacts. Either way the orchestrator threads references, not bytes.
 
 A stage carrying a funnel gate (``gate`` / ``funnel`` on the spec) returns ``parked`` once its
 artifact exists: the run pauses on its human gate, resolved out of band by an operator act
@@ -19,7 +20,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from swarmkit_runtime.orchestration import RunStage, StageOutcome
+from swarmkit_runtime.orchestration import RunStage, SagaStore, StageOutcome
 
 if TYPE_CHECKING:
     from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
@@ -47,9 +48,24 @@ def _prior_input(store: ArtifactStore, correlation_id: str) -> str:
     return "\n\n".join(parts)
 
 
+def _stage_input(saga_store: SagaStore, artifact_store: ArtifactStore, correlation_id: str) -> str:
+    """What one stage's topology run receives as its input.
+
+    The **first** stage is seeded with the pipeline's own input payload (the `input` carried on the
+    `start` event, persisted on the saga) — so a pipeline can actually be driven by an incoming
+    payload, not just an opaque correlation id. **Downstream** stages thread the upstream artifacts.
+    The correlation id is always available too (it is the run's `thread_id`).
+    """
+    saga = saga_store.get(correlation_id)
+    if saga is not None and not saga.passed_stages:
+        return saga.input
+    return _prior_input(artifact_store, correlation_id)
+
+
 def build_pipeline_run_stage(
     runtime: WorkspaceRuntime,
     artifact_store: ArtifactStore,
+    saga_store: SagaStore,
     *,
     max_steps: int = 50,
 ) -> RunStage:
@@ -67,9 +83,9 @@ def build_pipeline_run_stage(
 
         sid = _stage_id(stage)
         try:
-            prior = _prior_input(artifact_store, correlation_id)
+            stage_input = _stage_input(saga_store, artifact_store, correlation_id)
             result = await runtime.run(
-                topology, prior, max_steps=max_steps, thread_id=correlation_id
+                topology, stage_input, max_steps=max_steps, thread_id=correlation_id
             )
         except KeyError:
             return StageOutcome(status="failed", detail=f"unknown topology {topology!r}")

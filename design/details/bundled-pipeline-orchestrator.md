@@ -347,6 +347,33 @@ Open questions still open as noted: **1** (orchestrator↔serve service-token au
 compose runs serve `--insecure`, so no token yet), **2** (Postgres multi-orchestrator row-lock — the
 SQLite single-node claim ships; the shared tier needs the `claim_queued` pattern), **4** (a
 `serve --with-orchestrator` convenience — skipped for now; two processes is the shipped default), and
-**5** (the Temporal swap's saga read model). Inter-stage input threading is store-mediated but
-currently concatenates all prior artifacts and seeds the first stage empty — a follow-up should let a
-stage declare which upstream artifact(s) it consumes.
+**5** (the Temporal swap's saga read model).
+
+## Fix: pipeline input payload (was dropped)
+
+**Bug (runtime ≤ 1.119.0):** a pipeline had no way to receive an input payload. `emit` enqueued
+`{"kind":"start","graph":…,"tag":…,"input":…}`, but the controller's `_start` read only `graph` +
+`tag` and **dropped `input`** — `SagaState` had no field for it. The run-stage seam then built every
+stage's input purely from prior artifacts, so the **first stage always ran on an empty string** and
+the payload never reached the pipeline. A pipeline is expected to be driven by an incoming payload
+(a requirement, a webhook body, a document handle); losing it is a correctness bug, not a nicety.
+
+**Fix (runtime 1.120.0):**
+
+- `SagaState` gains an `input: str` field, persisted (new `pipeline_saga.input` column; threaded
+  through `create()` on the `SagaStore` protocol + both stores). It survives restarts like the rest
+  of the saga.
+- `_start` stores `data.get("input", "")` onto the saga.
+- The run-stage seam's input selection (`_stage_input`) becomes: the **first** stage (no
+  `passed_stages`) is seeded with `saga.input`; **downstream** stages thread the prior artifacts as
+  before. The `correlation_id` remains available regardless (it is the run's `thread_id`), so a stage
+  can still be a pure "fetch by correlation id" step.
+- `GET /pipelines/sagas/{id}` now returns `input` so the CLI/UI can show what seeded a run.
+
+The orchestrator stays content-free — it threads only the opaque `input` string + artifact
+references, never bytes it interprets.
+
+**Still deferred (richer model):** the downstream selection is still "all prior artifacts". A stage
+declaring which upstream artifact(s) it consumes (and whether it re-reads the pipeline payload) — with
+ordered, deterministic selection — is the follow-up. This fix restores the payload; it does not yet
+add per-stage `consumes`.

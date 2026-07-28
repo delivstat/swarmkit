@@ -49,6 +49,9 @@ class SagaState:
     artifacts: dict[str, str] = field(default_factory=dict)
     attempts: dict[str, int] = field(default_factory=dict)
     tag: str = ""  # opaque caller tag (e.g. a requirement id / instance) for the searchable list
+    #: the pipeline input payload carried on the `start` event — seeds the first stage's run
+    #: (later stages thread upstream artifacts). Opaque; the correlation_id remains the run handle.
+    input: str = ""
     created_at: str = ""
     updated_at: str = ""
     timeline: list[TimelineEntry] = field(default_factory=list)
@@ -71,7 +74,9 @@ class SagaStore(Protocol):
     orchestrator. ``InMemorySagaStore`` for tests; ``SqlSagaStore`` for the durable default."""
 
     def get(self, correlation_id: str) -> SagaState | None: ...
-    def create(self, correlation_id: str, *, graph_id: str, tag: str = "") -> SagaState: ...
+    def create(
+        self, correlation_id: str, *, graph_id: str, tag: str = "", input: str = ""
+    ) -> SagaState: ...
     def save(self, saga: SagaState) -> None: ...
     def list(
         self, *, status: str = "all", graph: str | None = None, query: str = "", limit: int = 100
@@ -97,11 +102,14 @@ class InMemorySagaStore:
     def get(self, correlation_id: str) -> SagaState | None:
         return self._sagas.get(correlation_id)
 
-    def create(self, correlation_id: str, *, graph_id: str, tag: str = "") -> SagaState:
+    def create(
+        self, correlation_id: str, *, graph_id: str, tag: str = "", input: str = ""
+    ) -> SagaState:
         saga = SagaState(
             correlation_id=correlation_id,
             graph_id=graph_id,
             tag=tag,
+            input=input,
             created_at=now().isoformat(),
             updated_at=now().isoformat(),
         )
