@@ -38,6 +38,7 @@ def _seed(store: SqlSagaStore, artifacts: DatabaseArtifactStore) -> None:
     a.status = "parked"
     a.pending_gate_stage = "review"
     a.artifacts["build"] = artifacts.put("run-a", "build", "the produced diff")
+    artifacts.put("run-a", "build", "the approved design brief", name="input")  # the node's input
     a.add("parked", stage_id="review")
     store.save(a)
     b = store.create("run-b", graph_id="report-dev", tag="site-17")
@@ -73,8 +74,12 @@ def test_detail_and_lazy_node_artifact() -> None:
 
     node = client.get("/pipelines/sagas/run-a/node/build").json()
     assert node["ref"] == "run-a/build/output" and node["content"] == "the produced diff"
-    # a stage with no artifact returns null content, not an error
-    assert client.get("/pipelines/sagas/run-a/node/review").json()["content"] is None
+    # the node also reports the input it received
+    assert node["input_ref"] == "run-a/build/input"
+    assert node["input"] == "the approved design brief"
+    # a stage with no artifact/input returns null, not an error
+    review = client.get("/pipelines/sagas/run-a/node/review").json()
+    assert review["content"] is None and review["input"] is None
     assert client.get("/pipelines/sagas/nope").status_code == 404
 
 

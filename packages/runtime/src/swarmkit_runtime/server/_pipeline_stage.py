@@ -43,7 +43,9 @@ def _prior_input(store: ArtifactStore, correlation_id: str) -> str:
     Store-mediated inter-stage threading: the run-stage seam reads upstream content itself, so the
     orchestrator threads only references. Empty for the first stage of a run.
     """
-    refs = store.list(correlation_id)
+    # Only upstream OUTPUTS thread downstream — not the per-stage `input` artifacts we also persist
+    # for the inspector (which would otherwise feed a stage its own/earlier inputs).
+    refs = [r for r in store.list(correlation_id) if r.endswith("/output")]
     parts = [c for ref in refs if (c := store.get(ref))]
     return "\n\n".join(parts)
 
@@ -84,6 +86,10 @@ def build_pipeline_run_stage(
         sid = _stage_id(stage)
         try:
             stage_input = _stage_input(saga_store, artifact_store, correlation_id)
+            # Persist the resolved input alongside the output (name="input"), so the run inspector
+            # can show exactly what this node received — recorded before the run so it survives a
+            # failed stage too.
+            artifact_store.put(correlation_id, sid, stage_input, name="input")
             result = await runtime.run(
                 topology, stage_input, max_steps=max_steps, thread_id=correlation_id
             )
