@@ -43,6 +43,28 @@ docker compose -f deploy/pipeline/docker-compose.yml exec serve \
 Or open **http://localhost:8000/ → Runs**: search runs by correlation id, replay a run over its
 StageGraph on a read-only canvas, and inspect each node's timeline + produced artifact.
 
+## Harness-executor stages need the harness in the image
+
+A stage runs its topology inside the runtime container. If any agent on that topology is a **harness
+executor** (`executor: { kind: harness, ref: claude-code }` and the like — the reference SDLC
+pipeline's `build` stage is one), the harness binary must be present in the image, or the stage's
+run fails and the saga terminates `failed` (the run-stage seam catches the launch error and surfaces
+it — it does not crash serve). The bundled `swarmkit-runtime` image is slim and ships **no** harness
+binaries, so out of the box only `model`-executor stages run to completion.
+
+To run harness stages, use an image that bundles the harness (and provide its credentials), e.g.
+extend the base image:
+
+```dockerfile
+FROM swarmkit-runtime:pipeline
+# install the harness the stage's archetype references (claude-code / opencode / …)
+RUN npm install -g @anthropic-ai/claude-code
+ENV ANTHROPIC_API_KEY=...
+```
+
+and point the compose `x-runtime` build/image at it. Harnesses are bring-your-own-binary by design
+(`design/details/executor-abstraction.md`); the orchestrator itself is harness-agnostic.
+
 ## Swap in Temporal
 
 For weeks-long sagas or heavy fan-out, use Temporal as the durable engine instead of the bundled
