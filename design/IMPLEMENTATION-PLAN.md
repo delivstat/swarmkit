@@ -11,7 +11,7 @@ status: active
 
 **Status:** originally drafted 2026-04-21. Reorganised 2026-05-08 to incorporate product architecture (`product-architecture.md`), OpenTelemetry observability (`opentelemetry-observability.md`), intent drift detection (`intent-drift-detection.md`), market analysis (`market-analysis-and-risk-mitigations.md`), and ecosystem features.
 
-**Current (runtime v1.103.0):** Phases 1–4 shipped. Phase 5 (fleet & self-improvement) is largely shipped — eval harness (M15), fleet aggregation + control-plane/panel UI (M16), the executor/harness-isolation stack (M19), and the topology canvas (M20) all landed; the self-improvement distribution loop (M17) and workflow-archetype interop (M18) are the remaining tails. **Phase 6 — the delivery-pipeline & orchestration layer (M21)** shipped: `StageGraph` + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the pipeline-editor canvas, and the end-to-end SDLC example. Remaining before a public launch: M11 (launch prep) and the M9 reference-topology tail.
+**Current (runtime v1.103.0):** Phases 1–4 shipped. Phase 5 (fleet & self-improvement) is largely shipped — eval harness (M15), fleet aggregation + control-plane/panel UI (M16), the executor/harness-isolation stack (M19), and the topology canvas (M20) all landed; the self-improvement distribution loop (M17) and workflow-archetype interop (M18) are the remaining tails. **Phase 6 — the delivery-pipeline & orchestration layer (M21)** shipped: `StageGraph` + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the pipeline-editor canvas, the end-to-end SDLC example, and the **bundled durable orchestrator** (`swarmkit orchestrator` + run-stage execution + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before a public launch: M11 (launch prep) and the M9 reference-topology tail.
 
 **Scope:** this plan covers the **open-source SwarmKit framework** only. The commercial Rynko platform (UI, cloud telemetry, team features) has its own plan — see `design/details/product-architecture.md` for the boundary.
 
@@ -779,9 +779,20 @@ governance (funnels, multi-party approval, contract locks) as data, advanced by 
       security-review → deploy → support-handover), three human gates, contract locks, compensations, a
       defect loop, a harness build/review node, and the reference controller. `sdlc-pipeline-example.md`
       (slices 1–9, #594…#641).
+- [x] **Bundled durable orchestrator + dispatch/inspect surface** — the pipeline feature usable out of
+      the box. A durable `SqlSagaStore` + the reference controller promoted into the runtime and driven
+      by a *separate* `swarmkit orchestrator` process (store-mediated — touches neither the core nor
+      serve; only it imports the controller), the **run-stage execution seam** (a stage's topology runs
+      as a bounded governed run, output to a pluggable `ArtifactStore`, reference-only `StageOutcome`),
+      serve saga read/enqueue endpoints, the `swarmkit pipeline emit|sagas|status|advance|skip` CLI, the
+      UI **Runs** view (searchable replay canvas + node inspector), and `deploy/pipeline` compose (serve +
+      orchestrator, commented Temporal). `bundled-pipeline-orchestrator.md` (#675, #676, #677; runtime
+      1.119.0 / webui 0.3.0, published to PyPI).
 
 **Exit demo:** `just demo-sdlc` drives one requirement through all eight stages and three multi-party
-gates deterministically via the reference controller, printing the correlated saga timeline.
+gates deterministically via the reference controller, printing the correlated saga timeline. The
+bundled path is smoke-tested end to end via `deploy/pipeline/docker-compose.yml` — `swarmkit pipeline
+emit` → orchestrator drives → stage parks at its gate → `advance` resumes → completes.
 
 ---
 
@@ -900,6 +911,7 @@ Every design note under `design/details/` and where it appears in this plan:
 | `pipeline-triggering.md` | M21 ✅ |
 | `pipeline-editor-canvas.md` | M21 ✅ |
 | `sdlc-pipeline-example.md` | M21 ✅ |
+| `bundled-pipeline-orchestrator.md` | M21 ✅ |
 
 ## Open questions
 
