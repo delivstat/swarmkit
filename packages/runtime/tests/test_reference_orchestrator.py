@@ -120,6 +120,18 @@ async def test_controller_drives_completes_after_gate(
     assert [t.kind for t in done.timeline][-1] == "completed"
 
 
+async def test_start_event_input_is_persisted_on_the_saga() -> None:
+    # The bug fix: `{"kind":"start", …, "input": …}` carries a payload that must survive onto the
+    # saga (and through a restart) so the first stage can be seeded with it.
+    store = _sql()
+    ctl = _controller(store)
+    await ctl.handle_event(
+        "c1", json.dumps({"kind": "start", "graph": "g", "input": "BRD-42: split shipment"})
+    )
+    reopened = SqlSagaStore(store.engine).get("c1")
+    assert reopened is not None and reopened.input == "BRD-42: split shipment"
+
+
 async def test_controller_gate_rejection_terminates() -> None:
     store = _sql()
     ctl = _controller(store)

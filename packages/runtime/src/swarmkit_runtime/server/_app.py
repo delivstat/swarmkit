@@ -111,7 +111,9 @@ def create_app(  # noqa: PLR0915
         # its artifact. Content stays runtime-side; the orchestrator threads only the reference.
         from ._pipeline_stage import build_pipeline_run_stage  # noqa: PLC0415
 
-        app.state.pipeline_run_stage = build_pipeline_run_stage(runtime, app.state.artifact_store)
+        app.state.pipeline_run_stage = build_pipeline_run_stage(
+            runtime, app.state.artifact_store, saga_store
+        )
 
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)
