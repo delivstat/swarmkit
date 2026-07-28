@@ -26,6 +26,7 @@ from . import (  # noqa: F401
     _cmd_misc,
     _cmd_observability,
     _cmd_orchestrator,
+    _cmd_pipeline,
     _cmd_run,
     _cmd_serve,
     _cmd_trust,

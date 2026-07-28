@@ -62,7 +62,7 @@ async def run_drive_loop(
     poll_seconds: float = 1.0,
     sleep: Any = asyncio.sleep,
 ) -> int:
-    """Claim + handle events until the queue drains (``once``) or forever. Returns the count handled.
+    """Claim + handle events until the queue drains (``once``) or forever. Returns the count done.
 
     Idempotent + durable: a claimed event is acked only after the controller applies it, and saga
     state is persisted per transition, so a crash re-drives from the store.
