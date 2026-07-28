@@ -14,6 +14,9 @@ import type {
 	MemoryItem,
 	MemoryQuarantineItem,
 	ReviewGate,
+	SagaDetail,
+	SagaNodeArtifact,
+	SagaSummary,
 	SendMessageResponse,
 	SkillDetail,
 	SkillItem,
@@ -91,6 +94,26 @@ export const api = {
 	// best-effort posture as funnels: the runtime may not serve these CRUD routes yet (a failed list
 	// leaves the surface empty, a failed save surfaces a "not wired" notice), so callers gate on them.
 	pipelines: () => get<string[]>("/pipelines"),
+	// Pipeline RUNS — the read half of the bundled orchestrator surface
+	// (design/details/bundled-pipeline-orchestrator.md §4). Serve reads saga state from the shared
+	// store; the Runs view lists + searches runs (by correlation id), opens one, and lazy-loads a
+	// node's produced artifact on selection. Best-effort: a workspace with no orchestrator store
+	// 404s, and the view gates to empty.
+	sagas: (params: { q?: string; status?: string; graph?: string } = {}) => {
+		const qs = new URLSearchParams();
+		if (params.q) qs.set("q", params.q);
+		if (params.status && params.status !== "all")
+			qs.set("status", params.status);
+		if (params.graph) qs.set("graph", params.graph);
+		const suffix = qs.toString() ? `?${qs.toString()}` : "";
+		return get<{ sagas: SagaSummary[] }>(`/pipelines/sagas${suffix}`);
+	},
+	saga: (correlationId: string) =>
+		get<SagaDetail>(`/pipelines/sagas/${encodeURIComponent(correlationId)}`),
+	sagaNode: (correlationId: string, stage: string) =>
+		get<SagaNodeArtifact>(
+			`/pipelines/sagas/${encodeURIComponent(correlationId)}/node/${encodeURIComponent(stage)}`,
+		),
 	// Contract artifacts (design/details/contract-registry.md) — integration contracts a stage's
 	// `locks` reference (a checked, pickable vocabulary instead of free strings). Same best-effort
 	// posture as funnels/pipelines: the CRUD routes may not be wired yet, so callers gate on them.

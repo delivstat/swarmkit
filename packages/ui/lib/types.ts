@@ -316,6 +316,52 @@ export interface MemoryQuarantineItem {
 	resolved_by: string | null;
 }
 
+/** A pipeline run's lifecycle status (GET /pipelines/sagas). Domain-neutral saga state. */
+export type SagaStatus =
+	| "active"
+	| "parked"
+	| "completed"
+	| "rejected"
+	| "failed";
+
+/** One pipeline run, list-shape (GET /pipelines/sagas). Searchable by correlation id. */
+export interface SagaSummary {
+	correlation_id: string;
+	graph: string;
+	status: SagaStatus;
+	current_stage: string | null;
+	passed_stages: string[];
+	pending_gate_stage: string | null;
+	tag: string;
+	created_at: string;
+	updated_at: string;
+}
+
+/** One append-only timeline entry of a run (started / completed / parked / resumed / rejected …). */
+export interface SagaTimelineEntry {
+	seq: number;
+	at: string;
+	stage: string | null;
+	kind: string;
+	detail: string;
+}
+
+/** A single pipeline run in full (GET /pipelines/sagas/{id}) — summary + artifacts + timeline. */
+export interface SagaDetail extends SagaSummary {
+	/** stage id → artifact reference (content is fetched lazily per node). */
+	artifacts: Record<string, string>;
+	/** stage id → number of attempts (a retry bumps the count). */
+	attempts: Record<string, number>;
+	timeline: SagaTimelineEntry[];
+}
+
+/** A node's produced artifact, lazy-loaded on selection (GET /pipelines/sagas/{id}/node/{stage}). */
+export interface SagaNodeArtifact {
+	stage: string;
+	ref: string | null;
+	content: string | null;
+}
+
 /** A pending harness gate (GET /review) — a §6.2 permission or §6.3 input request awaiting a human. */
 export interface ReviewGate {
 	id: string;
