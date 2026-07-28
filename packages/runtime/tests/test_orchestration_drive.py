@@ -97,6 +97,9 @@ def client(ws: Path) -> Iterator[TestClient]:
 
 
 def test_run_stage_seam_unconfigured_is_503(client: TestClient) -> None:
+    # The bundled seam is wired by default (slice 5b); unset it to exercise the defensive 503 branch
+    # a deployment that stripped the run-stage seam would hit.
+    client.app.state.pipeline_run_stage = None  # type: ignore[attr-defined]
     resp = client.post(
         "/pipelines/run-stage", json={"correlation_id": "corr-1", "stage": {"id": "intake"}}
     )

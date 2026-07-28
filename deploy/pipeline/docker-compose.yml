@@ -1,0 +1,84 @@
+# SwarmKit pipelines — serve + the bundled reference orchestrator, in one command.
+#
+# The pipeline feature is unusable with `serve` alone: `serve` authorizes + audits + enqueues
+# pipeline events to the durable saga store, but something has to *drive* them. This compose runs
+# the bundled default — the store-mediated `swarmkit orchestrator` process — alongside `serve`, both
+# over one shared workspace (so they share {workspace}/.swarmkit/store.sqlite: serve enqueues, the
+# orchestrator claims + drives, serve runs each stage over POST /pipelines/run-stage).
+# See design/details/bundled-pipeline-orchestrator.md.
+#
+#   docker compose -f deploy/pipeline/docker-compose.yml up -d --build
+#
+# Then dispatch + inspect from the CLI or the serve UI's Runs view:
+#   docker compose -f deploy/pipeline/docker-compose.yml exec serve \
+#     swarmkit pipeline emit <stage-graph-id> -w /workspace --tag demo
+#   open http://localhost:8000/  →  Runs
+#
+# Swap in Temporal instead of the bundled orchestrator: comment out the `orchestrator` service,
+# uncomment `temporal` below, and point the workspace's pipeline signal sink at it — the sink is the
+# store-vs-Temporal switch (design/details/orchestration-provider-seam.md). Everything else is
+# unchanged: `serve` never imports the controller, so the durable engine is a deployment choice.
+name: swarmkit-pipeline
+
+x-runtime: &runtime
+  build:
+    context: ../..
+    dockerfile: Dockerfile
+  image: swarmkit-runtime:pipeline
+  restart: unless-stopped
+  environment:
+    OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  volumes:
+    # One shared workspace → one shared durable store. Point this at your own workspace.
+    - ../../examples/sdlc-pipeline/workspace:/workspace
+
+services:
+  # serve: the HTTP API + workspace UI (Runs view). Enqueues pipeline events to the durable store
+  # and executes stages on demand. Binds 0.0.0.0 (container network) → --insecure (trial posture;
+  # front with auth in production).
+  serve:
+    <<: *runtime
+    command: ["serve", "/workspace", "--host", "0.0.0.0", "--port", "8000", "--insecure"]
+    ports:
+      - "8000:8000" # API + Runs UI
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # orchestrator: the bundled reference driver. Claims events from the shared store and drives each
+  # saga, calling serve's run-stage seam. The ONLY importer of the controller — durable, so a
+  # restart resumes mid-saga. This is what makes pipelines run out of the box.
+  orchestrator:
+    <<: *runtime
+    command: ["orchestrator", "/workspace", "--serve-url", "http://serve:8000"]
+    depends_on:
+      serve:
+        condition: service_healthy
+
+  # --- Temporal alternative (durability tier 3) --------------------------------------------------
+  # For weeks-long sagas / heavy fan-out, run Temporal as the durable engine instead of the bundled
+  # orchestrator. Uncomment, comment out `orchestrator` above, and repoint the workspace's pipeline
+  # signal sink at the Temporal adapter (examples/sdlc-pipeline/orchestrator/temporal). serve is
+  # unchanged — it only enqueues/authorizes; the engine behind the sink is the deployment's choice.
+  #
+  # temporal:
+  #   image: temporalio/auto-setup:1.24
+  #   ports:
+  #     - "7233:7233"
+  #   environment:
+  #     - DB=sqlite
+  # temporal-ui:
+  #   image: temporalio/ui:2.26
+  #   ports:
+  #     - "8088:8080"
+  #   environment:
+  #     - TEMPORAL_ADDRESS=temporal:7233
+  #   depends_on:
+  #     - temporal

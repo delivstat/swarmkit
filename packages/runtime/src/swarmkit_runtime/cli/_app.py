@@ -19,6 +19,7 @@ fleet_app = typer.Typer(help="Fleet enrollment — mint join codes, list members
 adapters_app = typer.Typer(help="Declarative harness adapters — inspect + approve launch blocks.")
 trust_app = typer.Typer(help="Trust accrual — apply repeated-approval capabilities to allowlists.")
 memory_app = typer.Typer(help="Governed memory — search, inspect history, resolve contradictions.")
+pipeline_app = typer.Typer(help="Pipelines — dispatch events and inspect run status.")
 
 app.add_typer(review_app, name="review")
 app.add_typer(author_app, name="author")
@@ -27,3 +28,4 @@ app.add_typer(fleet_app, name="fleet")
 app.add_typer(adapters_app, name="adapters")
 app.add_typer(trust_app, name="trust")
 app.add_typer(memory_app, name="memory")
+app.add_typer(pipeline_app, name="pipeline")

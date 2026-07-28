@@ -60,9 +60,27 @@ RunStage = Callable[[str, dict[str, Any]], Awaitable[StageOutcome]]
 PipelineSignal = Callable[[str, str], Awaitable[None]]
 
 
+# The saga store — shared infrastructure: serve reads saga state + enqueues events; the orchestrator
+# drives. Domain-neutral data + persistence (not the saga *engine* — that is ``reference`` and stays
+# orchestrator-only). Re-exported here so serve imports the store without importing the controller.
+from swarmkit_runtime.orchestration._saga import (  # noqa: E402
+    InMemorySagaStore,
+    SagaState,
+    SagaStatus,
+    SagaStore,
+    TimelineEntry,
+)
+from swarmkit_runtime.orchestration._saga_store import SqlSagaStore  # noqa: E402
+
 __all__ = [
+    "InMemorySagaStore",
     "PipelineSignal",
     "RunStage",
+    "SagaState",
+    "SagaStatus",
+    "SagaStore",
+    "SqlSagaStore",
     "StageOutcome",
     "StageStatus",
+    "TimelineEntry",
 ]

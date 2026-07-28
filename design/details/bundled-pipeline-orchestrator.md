@@ -2,7 +2,7 @@
 title: Bundled durable pipeline orchestrator + dispatch surface
 description: Make the pipeline feature usable out of the box — ship a durable reference saga orchestrator as a separate `swarmkit orchestrator` application (store-mediated, touching neither the runtime core nor serve), durable on the SQLite/Postgres backend, replacing the example's in-memory controller, plus the CLI + serve-UI dispatch surface without which pipelines cannot be driven. Temporal stays the distributed-production swap.
 tags: [runtime, pipeline, orchestration, serve, cli, ui]
-status: draft
+status: implemented
 ---
 
 # Bundled durable pipeline orchestrator + dispatch surface
@@ -12,7 +12,7 @@ dispatch endpoints), `cli` (`swarmkit pipeline`), `ui` (a Pipelines dispatch pan
 compose default). Additive; the domain-neutral drive contract is unchanged.
 **Design reference:** builds on `orchestration-provider-seam.md` (the `RunStage` / `PipelineSignal`
 drive contract) and `pipeline-controller.md` (the reference controller). §14 (runtime/serve) governs.
-**Status:** draft (design-only) — review before implementation.
+**Status:** implemented — all slices landed (see "Implementation status" below).
 
 ## The problem: the pipeline feature is inert out of the box
 
@@ -317,3 +317,36 @@ store** (new `SqlSagaStore` on the same SQLite file), resolve the gate, watch it
    stage)`, written/resolved by the **runtime**, **lazy-read** by the inspector on node selection. The
    orchestrator stays content-free (threads references only). Remaining detail: the `ArtifactStore`
    interface + backend configs, and a per-artifact size cap / streaming for very large outputs.
+
+## Implementation status
+
+All eight slices landed (plus one addition, slice 5b, split out during the build):
+
+- **1** `SqlSagaStore` + `pipeline_saga` / `pipeline_saga_seen` / `pipeline_events` tables, atomic
+  claim; parity tests against `InMemorySagaStore` — `orchestration/_saga.py`, `_saga_store.py`.
+- **2** Generic `ReferenceController` promoted to `orchestration/reference/`; shared saga
+  types/store re-exported from `orchestration/` so serve imports the store without the controller.
+- **3** `ArtifactStore` seam (`artifacts/`): `database` default / `filesystem` / `s3`, addressed by
+  `(correlation_id, stage)`.
+- **4** Serve read/enqueue: `GET /pipelines/sagas` (+ `/{id}`, `/node/{stage}` lazy artifact),
+  durable-queue signal sink — `server/_routes_sagas.py`, `_app.py`.
+- **5** `swarmkit orchestrator` command + drive loop — `cli/_cmd_orchestrator.py`.
+- **5b** *(added)* the run-stage **execution** seam: `app.state.pipeline_run_stage` runs a stage's
+  topology as a bounded governed run, persists its output to the `ArtifactStore`, and returns a
+  reference-only `StageOutcome` (parked when gated, completed otherwise) — `server/_pipeline_stage.py`.
+  This closed the last gap: before it, the drive seam 503'd and only a scripted stub could run.
+- **6** `swarmkit pipeline emit|sagas|status|advance|skip` over the shared store — `cli/_cmd_pipeline.py`.
+- **7** UI **Runs** view (`app/runs/`): search-by-correlation-id + status filter, a read-only replay
+  canvas (`run-replay-canvas.tsx`, reusing `stageGraphToGraph` with a run-state overlay) and a node
+  inspector (`run-node-inspector.tsx`, timeline + lazy artifact). Run-state folding is a pure,
+  unit-tested helper (`lib/run-status.ts`).
+- **8** `deploy/pipeline/docker-compose.yml` — `serve` + `orchestrator` over a shared workspace, with
+  a commented Temporal alternative and a README; llms regenerated.
+
+Open questions still open as noted: **1** (orchestrator↔serve service-token auth — the bundled
+compose runs serve `--insecure`, so no token yet), **2** (Postgres multi-orchestrator row-lock — the
+SQLite single-node claim ships; the shared tier needs the `claim_queued` pattern), **4** (a
+`serve --with-orchestrator` convenience — skipped for now; two processes is the shipped default), and
+**5** (the Temporal swap's saga read model). Inter-stage input threading is store-mediated but
+currently concatenates all prior artifacts and seeds the first stage empty — a follow-up should let a
+stage declare which upstream artifact(s) it consumes.
