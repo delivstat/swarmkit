@@ -150,3 +150,65 @@ async def test_controller_survives_restart_mid_saga() -> None:
     await _controller(fresh).handle_event("c1", _gate(True))
     resumed = fresh.get("c1")
     assert resumed is not None and resumed.status == "completed"
+
+
+# ── named pipeline events (webhook triggers) ────────────────────────────────────────────────────
+# A graph whose first stage declares an external entry event, plus a second ungated stage — so a
+# named-event start drives to completion.
+_ENTRY_GRAPH: dict[str, Any] = {
+    "stages": [{"id": "intake", "when": ["requirement.created"]}, {"id": "design"}]
+}
+
+
+async def _always_complete(_cid: str, stage: dict[str, Any]) -> StageOutcome:
+    return StageOutcome(status="completed", artifact=f"ref://{stage.get('id')}")
+
+
+def _entry_controller(store: SagaStore, **graphs: dict[str, Any]) -> ReferenceController:
+    return ReferenceController(
+        run_stage=_always_complete, store=store, graphs=graphs or {"oms": _ENTRY_GRAPH}
+    )
+
+
+async def test_bare_named_event_starts_the_matching_graph() -> None:
+    # The webhook-trigger bug: a bare `emit` name (not a {"kind":"start"} payload) must start the
+    # graph whose entry `when:` names it.
+    store = InMemorySagaStore()
+    await _entry_controller(store).handle_event("c-hook", "requirement.created")
+    saga = store.get("c-hook")
+    assert saga is not None
+    assert saga.graph_id == "oms" and saga.tag == "requirement.created"
+    assert saga.status == "completed" and saga.passed_stages == ["intake", "design"]
+
+
+async def test_structured_named_event_threads_input() -> None:
+    store = InMemorySagaStore()
+    await _entry_controller(store).handle_event(
+        "c-hook2",
+        json.dumps({"kind": "event", "name": "requirement.created", "input": "BRD-9"}),
+    )
+    saga = store.get("c-hook2")
+    assert saga is not None and saga.input == "BRD-9" and saga.graph_id == "oms"
+
+
+async def test_unknown_named_event_starts_nothing() -> None:
+    store = InMemorySagaStore()
+    await _entry_controller(store).handle_event("c-x", "not.an.entry.event")
+    assert store.get("c-x") is None
+
+
+async def test_ambiguous_named_event_starts_nothing() -> None:
+    # Two graphs claim the same entry event → no run (ambiguous), rather than guessing.
+    store = InMemorySagaStore()
+    ctl = _entry_controller(store, a=_ENTRY_GRAPH, b=_ENTRY_GRAPH)
+    await ctl.handle_event("c-amb", "requirement.created")
+    assert store.get("c-amb") is None
+
+
+async def test_named_event_for_existing_saga_is_noop() -> None:
+    store = InMemorySagaStore()
+    ctl = _entry_controller(store)
+    await ctl.handle_event("c-dup", "requirement.created")
+    graph_before = store.get("c-dup").graph_id  # type: ignore[union-attr]
+    await ctl.handle_event("c-dup", "requirement.created")  # a repeat must not error or re-start
+    assert store.get("c-dup").graph_id == graph_before  # type: ignore[union-attr]

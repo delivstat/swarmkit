@@ -3,9 +3,17 @@
 Domain-neutral: it sequences a resolved StageGraph's stages as a saga over the runtime's
 ``RunStage`` drive seam, persisting `SagaState` after each transition. It threads only artifact
 **references** (keyed by ``(correlation_id, stage)``) — never content; the runtime writes/resolves
-content via the ArtifactStore. Two inbound event kinds: ``start`` (begin a saga on a graph) and
-``gate`` (a funnel's human decision — resume or terminate). Everything durable lives in the store,
-so a restart resumes mid-saga.
+content via the ArtifactStore. It reacts to three inbound event forms:
+
+- ``{"kind":"start","graph":…}`` — begin a saga on an explicitly named graph (``swarmkit pipeline
+  emit`` / a direct ``/pipelines/signal``).
+- ``{"kind":"gate",…}`` — a funnel's human decision (resume or terminate a parked saga).
+- a **named pipeline event** — a bare event name (e.g. ``requirement.created`` from a webhook
+  trigger's ``emit``) or ``{"kind":"event","name":…}``. A fresh correlation whose event matches a
+  graph's entry ``when:`` starts that graph. This is what lets webhook/CI/Jira triggers drive the
+  bundled orchestrator without hand-writing a ``start`` payload.
+
+Everything durable lives in the store, so a restart resumes mid-saga.
 
 Imported only by the ``swarmkit orchestrator`` command — never the runtime core or serve.
 """
@@ -13,15 +21,26 @@ Imported only by the ``swarmkit orchestrator`` command — never the runtime cor
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Mapping
 from typing import Any
 
 from swarmkit_runtime.orchestration import RunStage, StageOutcome
 from swarmkit_runtime.orchestration._saga import SagaState, SagaStore
 
+logger = logging.getLogger("swarmkit.orchestration")
+
 
 def _stage_id(stage: Mapping[str, Any], index: int) -> str:
     return str(stage.get("id") or stage.get("agent") or stage.get("topology") or f"stage-{index}")
+
+
+def _entry_events(graph: Mapping[str, Any]) -> set[str]:
+    """The events that start a graph: the ``when:`` of its first stage (its external entry)."""
+    stages = list(graph.get("stages") or [])
+    if not stages:
+        return set()
+    return {str(e) for e in (stages[0].get("when") or [])}
 
 
 class ReferenceController:
@@ -42,17 +61,59 @@ class ReferenceController:
 
     # ── inbound events (from the claimed queue) ─────────────────────────────────────────────────
     async def handle_event(self, correlation_id: str, event: str) -> None:
-        """React to one dequeued event. ``start`` begins a saga; ``gate`` resolves the parked gate.
-        Unknown/duplicate events are no-ops (the queue's claim already dedups delivery)."""
+        """React to one dequeued event: ``start`` / ``gate`` / a named pipeline event (see module
+        docstring). Duplicate ``start`` is idempotent; an unroutable event is logged, not silently
+        dropped (the queue's claim already dedups delivery)."""
         try:
             data = json.loads(event)
         except (json.JSONDecodeError, TypeError):
-            return
-        kind = data.get("kind")
-        if kind == "start":
+            data = None
+
+        if isinstance(data, dict) and data.get("kind") == "start":
             await self._start(correlation_id, data)
-        elif kind == "gate":
+            return
+        if isinstance(data, dict) and data.get("kind") == "gate":
             await self._resolve_gate(correlation_id, data)
+            return
+
+        # Otherwise: a named pipeline event. It is either a structured `{"kind":"event","name":…}`
+        # or a bare event-name string (a webhook trigger's `emit`). Route it against the graphs.
+        name = str(data.get("name", "")) if isinstance(data, dict) else str(event)
+        payload = data if isinstance(data, dict) else {}
+        await self._on_named_event(correlation_id, name, payload)
+
+    async def _on_named_event(
+        self, correlation_id: str, name: str, data: Mapping[str, Any]
+    ) -> None:
+        """Route a named pipeline event. A fresh correlation whose event names a graph's entry
+        ``when:`` starts that graph; anything else is a logged no-op (never a silent drop)."""
+        if not name:
+            return
+        if self._store.get(correlation_id) is not None:
+            # An external named event for an already-tracked saga. The bundled controller advances
+            # sequentially / via gates, so it does not re-route mid-run — log and drop.
+            logger.info(
+                "pipeline event %r for existing saga %r ignored (bundled controller advances "
+                "sequentially; use a gate event to resume)",
+                name,
+                correlation_id,
+            )
+            return
+        matches = [gid for gid, g in self._graphs.items() if name in _entry_events(g)]
+        if len(matches) != 1:
+            logger.warning(
+                "pipeline event %r (correlation %r) matched %d entry graphs %r — no run started "
+                "(expected exactly one; check the StageGraph first stage's `when:`)",
+                name,
+                correlation_id,
+                len(matches),
+                matches,
+            )
+            return
+        await self._start(
+            correlation_id,
+            {"graph": matches[0], "tag": name, "input": str(data.get("input", ""))},
+        )
 
     async def _start(self, correlation_id: str, data: dict[str, Any]) -> None:
         if self._store.get(correlation_id) is not None:
