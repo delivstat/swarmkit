@@ -5,6 +5,7 @@ after applying - durable and idempotent."""
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 from swarmkit_runtime.cli._cmd_orchestrator import run_drive_loop
@@ -13,11 +14,11 @@ from swarmkit_runtime.orchestration.reference import ReferenceController
 
 pytestmark = pytest.mark.asyncio
 
-_GRAPH = {"stages": [{"id": "build"}, {"id": "review"}, {"id": "deploy"}]}
+_GRAPH: dict[str, Any] = {"stages": [{"id": "build"}, {"id": "review"}, {"id": "deploy"}]}
 
 
 def _controller(store: InMemorySagaStore) -> ReferenceController:
-    async def run_stage(_cid: str, stage: dict) -> StageOutcome:
+    async def run_stage(_cid: str, stage: dict[str, Any]) -> StageOutcome:
         if stage.get("id") == "review":
             return StageOutcome(status="parked", artifact="ref://review")
         return StageOutcome(status="completed", artifact=f"ref://{stage.get('id')}")
@@ -39,7 +40,8 @@ async def test_drive_loop_processes_queue_until_drained() -> None:
     store.enqueue("c1", json.dumps({"kind": "gate", "approved": True}))
     handled2 = await run_drive_loop(ctl, store, once=True)
     assert handled2 == 1
-    assert store.get("c1").status == "completed"  # type: ignore[union-attr]
+    done = store.get("c1")
+    assert done is not None and done.status == "completed"
 
 
 async def test_drive_loop_acks_only_after_applying() -> None:

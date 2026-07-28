@@ -9,15 +9,22 @@ resuming, and terminating on rejection — identically under the in-memory and S
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 from sqlalchemy import create_engine
-from swarmkit_runtime.orchestration import InMemorySagaStore, SqlSagaStore, StageOutcome
+from swarmkit_runtime.orchestration import (
+    InMemorySagaStore,
+    SagaStore,
+    SqlSagaStore,
+    StageOutcome,
+)
 from swarmkit_runtime.orchestration.reference import ReferenceController
 
 pytestmark = pytest.mark.asyncio
 
-_GRAPH = {"stages": [{"id": "build"}, {"id": "review"}, {"id": "deploy"}]}
+_GRAPH: dict[str, Any] = {"stages": [{"id": "build"}, {"id": "review"}, {"id": "deploy"}]}
 
 
 def _sql() -> SqlSagaStore:
@@ -80,8 +87,8 @@ async def test_list_filters_by_status_and_query() -> None:
 
 
 # ── the controller drive loop (both stores) ─────────────────────────────────────────────────────
-def _controller(store: object) -> ReferenceController:
-    async def run_stage(_cid: str, stage: dict) -> StageOutcome:
+def _controller(store: SagaStore) -> ReferenceController:
+    async def run_stage(_cid: str, stage: dict[str, Any]) -> StageOutcome:
         # 'review' parks on its gate; everything else completes with an artifact ref.
         if stage.get("id") == "review":
             return StageOutcome(
@@ -89,21 +96,25 @@ def _controller(store: object) -> ReferenceController:
             )
         return StageOutcome(status="completed", artifact=f"ref://{stage.get('id')}")
 
-    return ReferenceController(run_stage=run_stage, store=store, graphs={"g": _GRAPH})  # type: ignore[arg-type]
+    return ReferenceController(run_stage=run_stage, store=store, graphs={"g": _GRAPH})
 
 
 @pytest.mark.parametrize("store_factory", [InMemorySagaStore, _sql])
-async def test_controller_drives_completes_after_gate(store_factory: object) -> None:
-    store = store_factory()  # type: ignore[operator]
+async def test_controller_drives_completes_after_gate(
+    store_factory: Callable[[], SagaStore],
+) -> None:
+    store = store_factory()
     ctl = _controller(store)
 
     await ctl.handle_event("c1", _start("g", "req-42"))
-    parked = store.get("c1")  # type: ignore[attr-defined]
+    parked = store.get("c1")
+    assert parked is not None
     assert parked.status == "parked" and parked.pending_gate_stage == "review"
     assert parked.passed_stages == ["build"] and parked.artifacts["review"] == "ref://review"
 
     await ctl.handle_event("c1", _gate(True))
-    done = store.get("c1")  # type: ignore[attr-defined]
+    done = store.get("c1")
+    assert done is not None
     assert done.status == "completed"
     assert done.passed_stages == ["build", "review", "deploy"]
     assert [t.kind for t in done.timeline][-1] == "completed"
@@ -125,4 +136,5 @@ async def test_controller_survives_restart_mid_saga() -> None:
     # a brand-new controller + store on the same engine resumes from the persisted parked state
     fresh = SqlSagaStore(store.engine)
     await _controller(fresh).handle_event("c1", _gate(True))
-    assert fresh.get("c1").status == "completed"  # type: ignore[union-attr]
+    resumed = fresh.get("c1")
+    assert resumed is not None and resumed.status == "completed"
