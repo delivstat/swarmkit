@@ -377,3 +377,29 @@ references, never bytes it interprets.
 declaring which upstream artifact(s) it consumes (and whether it re-reads the pipeline payload) — with
 ordered, deterministic selection — is the follow-up. This fix restores the payload; it does not yet
 add per-stage `consumes`.
+
+## Fix: webhook/named-event triggers didn't start a run
+
+**Bug (runtime ≤ 1.120.0):** a webhook `Trigger` whose target is a `pipeline_target` never started a
+bundled pipeline. The webhook receiver enqueues `(correlation_id, emit)` where `emit` is the target's
+**bare event name** (e.g. `requirement.created`, matched against a stage's `when:`). But the bundled
+`ReferenceController` only understood `{"kind":"start"}` / `{"kind":"gate"}` JSON — so it did
+`json.loads("requirement.created")`, hit a `JSONDecodeError`, and **silently no-op'd**. The webhook
+returned `delivered: true`, the orchestrator claimed the event, and no run was ever created. (The
+richer named-event routing lives in the *example* controller, which is single-graph and standalone;
+the bundled controller is multi-graph and was kind-only.)
+
+**Fix (runtime 1.121.0):** the bundled controller now routes **named events**. `handle_event` accepts
+a bare event-name string (or `{"kind":"event","name":…,"input":…}`) in addition to `start`/`gate`. A
+named event for a **fresh** correlation is matched against every graph's **entry `when:`** (the first
+stage's `when`); if exactly one graph claims it, that graph is started (tag = the event name, input =
+any structured `input`). Ambiguous (>1 graph) or unknown (0) events, and named events for an
+**existing** saga, are **logged** (`swarmkit.orchestration`) rather than silently dropped — the silent
+swallow is what made this invisible. The wire format is unchanged (still `(correlation_id, event)`),
+so a Temporal deployment consuming the same named events is unaffected.
+
+**Note on payload:** the `(correlation_id, event)` ingress contract carries no body, so a
+webhook-started run's *input* is empty; the `correlation_id` is the handle (available as the run's
+`thread_id`) a first stage uses to fetch its data. Threading the webhook body as the pipeline `input`
+without breaking the Temporal consumer is a follow-up (a versioned event envelope, or a payload store
+keyed by correlation_id).
