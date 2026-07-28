@@ -41,6 +41,7 @@ from ._routes_jobs import _register_job_routes
 from ._routes_memory import _register_memory_routes
 from ._routes_pipelines import _register_pipeline_routes
 from ._routes_review import _register_review_routes
+from ._routes_sagas import _register_saga_routes
 from ._services import ArtifactService
 from ._webui import mount_webui
 
@@ -83,6 +84,27 @@ def create_app(  # noqa: PLR0915
         app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
         # Fleet enrollment store, on the same backend as the main store (design 19 Q4).
         app.state.membership_store = create_membership_store(workspace_path, runtime.workspace.raw)
+
+        # Pipeline orchestrator wiring (design/details/bundled-pipeline-orchestrator.md): the shared
+        # saga store (serve reads + enqueues; the `swarmkit orchestrator` command drives — serve
+        # never imports the controller), the workspace artifact store, and a durable-queue sink so
+        # POST /pipelines/signal enqueues to the store (the bundled reference default).
+        from swarmkit_runtime.artifacts import build_artifact_store  # noqa: PLC0415
+        from swarmkit_runtime.orchestration import SqlSagaStore  # noqa: PLC0415
+
+        saga_store = SqlSagaStore(app.state.store.engine)
+        app.state.saga_store = saga_store
+        _storage = getattr(runtime.workspace.raw, "storage", None)
+        app.state.artifact_store = build_artifact_store(
+            getattr(_storage, "artifacts", None),
+            workspace_root=workspace_path,
+            database_url=str(app.state.store.engine.url),
+        )
+
+        async def _pipeline_sink(correlation_id: str, event: str) -> None:
+            saga_store.enqueue(correlation_id, event)
+
+        app.state.pipeline_signal = _pipeline_sink
 
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)
@@ -244,6 +266,7 @@ def create_app(  # noqa: PLR0915
     _register_crud_routes(app, ArtifactService(workspace_path))
     _register_review_routes(app, workspace_path)
     _register_pipeline_routes(app, workspace_path)
+    _register_saga_routes(app)
     _register_fleet_routes(app)
     _register_memory_routes(app)
 
