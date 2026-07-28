@@ -106,6 +106,13 @@ def create_app(  # noqa: PLR0915
 
         app.state.pipeline_signal = _pipeline_sink
 
+        # The run-stage EXECUTION seam: the bundled orchestrator calls POST /pipelines/run-stage,
+        # which delegates here to run the stage's topology as a bounded governed run and persist
+        # its artifact. Content stays runtime-side; the orchestrator threads only the reference.
+        from ._pipeline_stage import build_pipeline_run_stage  # noqa: PLC0415
+
+        app.state.pipeline_run_stage = build_pipeline_run_stage(runtime, app.state.artifact_store)
+
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)
         app.state.server_config = cfg
