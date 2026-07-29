@@ -398,11 +398,17 @@ any structured `input`). Ambiguous (>1 graph) or unknown (0) events, and named e
 swallow is what made this invisible. The wire format is unchanged (still `(correlation_id, event)`),
 so a Temporal deployment consuming the same named events is unaffected.
 
-**Note on payload:** the `(correlation_id, event)` ingress contract carries no body, so a
-webhook-started run's *input* is empty; the `correlation_id` is the handle (available as the run's
-`thread_id`) a first stage uses to fetch its data. Threading the webhook body as the pipeline `input`
-without breaking the Temporal consumer is a follow-up (a versioned event envelope, or a payload store
-keyed by correlation_id).
+**Payload — fixed (runtime 1.123.0):** a webhook now **forwards its body as the pipeline input**.
+`_handle_pipeline_webhook` already had the HMAC-verified body in hand but discarded it, enqueuing only
+the bare `emit` name — so a webhook-started run's first stage ran on empty. The receiver now emits the
+structured envelope `{"kind":"event","name":<emit>,"input":<raw body>}` (the same envelope the
+controller's named-event routing already understands): the declared `emit` name still drives matching
+against a graph's entry `when:`, and the body rides along as the input the first stage is seeded with.
+The trigger, HMAC signature, and declared-`emit` semantics are all intact; the wire format is a
+superset of the bare name (a bare name still routes), and the ingress still delivers one opaque
+`(correlation_id, event)` to the sink. Remaining refinement: a `pipeline_target` could declare an
+`input:` JSONPath to forward a *slice* of the body rather than the whole thing (mirroring
+`correlation_id:`).
 
 ## Node input in the run view
 
