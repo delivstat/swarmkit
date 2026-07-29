@@ -355,11 +355,15 @@ export interface SagaDetail extends SagaSummary {
 	timeline: SagaTimelineEntry[];
 }
 
-/** A node's produced artifact, lazy-loaded on selection (GET /pipelines/sagas/{id}/node/{stage}). */
+/** A node's input + produced artifact, lazy-loaded on selection
+ * (GET /pipelines/sagas/{id}/node/{stage}). */
 export interface SagaNodeArtifact {
 	stage: string;
 	ref: string | null;
 	content: string | null;
+	/** Reference + content of the input this node received (null if none was recorded). */
+	input_ref: string | null;
+	input: string | null;
 }
 
 /** A pending harness gate (GET /review) — a §6.2 permission or §6.3 input request awaiting a human. */

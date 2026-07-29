@@ -6,7 +6,7 @@
 // trail), and the artifact it produced — fetched LAZILY (only on selection) from the ArtifactStore
 // via the node endpoint, since a run's artifacts can be large and most are never opened.
 
-import { FileText, Loader2 } from "lucide-react";
+import { ArrowDownToLine, FileText, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -30,13 +30,9 @@ export function RunNodeInspector({ saga, stageId }: RunNodeInspectorProps) {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// Lazy: fetch this node's artifact only when a produced-artifact reference exists, and refetch
-	// when the selected stage (or run) changes.
+	// Lazy: fetch this node's input + artifact whenever a stage is selected (a stage may have an
+	// input but no output yet — e.g. a failed stage — so we don't gate on the output ref).
 	useEffect(() => {
-		if (!ref) {
-			setArtifact(null);
-			return;
-		}
 		let live = true;
 		setLoading(true);
 		setError(null);
@@ -48,7 +44,7 @@ export function RunNodeInspector({ saga, stageId }: RunNodeInspectorProps) {
 		return () => {
 			live = false;
 		};
-	}, [ref, saga.correlation_id, stageId]);
+	}, [saga.correlation_id, stageId]);
 
 	return (
 		<div className="flex flex-col gap-4 p-4 text-sm">
@@ -93,6 +89,31 @@ export function RunNodeInspector({ saga, stageId }: RunNodeInspectorProps) {
 							</li>
 						))}
 					</ol>
+				)}
+			</section>
+
+			<section>
+				<h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+					<ArrowDownToLine className="h-3.5 w-3.5" />
+					Input
+				</h4>
+				{loading ? (
+					<span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+						<Loader2 className="h-3.5 w-3.5 animate-spin" /> loading…
+					</span>
+				) : error ? (
+					<span className="text-xs text-red-500">{error}</span>
+				) : artifact?.input ? (
+					<pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-xs">
+						{artifact.input}
+					</pre>
+				) : (
+					<p className="text-xs text-muted-foreground">
+						This stage ran on empty input
+						{stageId === (saga.passed_stages[0] ?? saga.current_stage)
+							? " (the pipeline was started without a payload)."
+							: "."}
+					</p>
 				)}
 			</section>
 

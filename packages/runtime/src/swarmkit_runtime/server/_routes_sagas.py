@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 
+from swarmkit_runtime.artifacts import artifact_ref
 from swarmkit_runtime.orchestration import SagaState
 
 
@@ -75,4 +76,14 @@ def _register_saga_routes(app: FastAPI) -> None:
         ref = saga.artifacts.get(stage)
         artifacts = getattr(request.app.state, "artifact_store", None)
         content = artifacts.get(ref) if (ref and artifacts is not None) else None
-        return {"stage": stage, "ref": ref, "content": content}
+        # The input this node received is persisted next to its output (name="input"); read it
+        # lazily too so the inspector can show input -> artifact for the stage.
+        input_ref = artifact_ref(correlation_id, stage, name="input")
+        input_content = artifacts.get(input_ref) if artifacts is not None else None
+        return {
+            "stage": stage,
+            "ref": ref,
+            "content": content,
+            "input_ref": input_ref if input_content is not None else None,
+            "input": input_content,
+        }

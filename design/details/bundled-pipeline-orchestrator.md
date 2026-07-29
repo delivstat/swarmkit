@@ -403,3 +403,14 @@ webhook-started run's *input* is empty; the `correlation_id` is the handle (avai
 `thread_id`) a first stage uses to fetch its data. Threading the webhook body as the pipeline `input`
 without breaking the Temporal consumer is a follow-up (a versioned event envelope, or a payload store
 keyed by correlation_id).
+
+## Node input in the run view
+
+The run inspector now shows **each node's input**, not just its produced artifact. The run-stage seam
+persists a stage's resolved input next to its output (`{correlation_id}/{stage}/input`, written before
+the run so it survives a failed stage); `GET /pipelines/sagas/{id}/node/{stage}` returns `input` +
+`input_ref` alongside the output; and the UI node inspector gains an **Input** section above the
+Artifact section (lazy-loaded on node selection — no gating on an output ref, so a failed stage's
+input is still visible). `_prior_input` filters to `…/output` refs so the per-stage input artifacts
+never feed downstream. First stage → the pipeline payload; downstream → upstream output(s); empty is
+shown as empty (e.g. a webhook-started run's first stage). Runtime 1.122.0 / webui 0.4.0.

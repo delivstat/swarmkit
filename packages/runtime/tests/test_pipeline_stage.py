@@ -122,6 +122,21 @@ async def test_first_stage_is_seeded_with_the_pipeline_input_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stage_input_is_persisted_for_the_inspector() -> None:
+    # The node's resolved input is written next to its output (name="input") so the run view can
+    # show what the stage received.
+    sagas = InMemorySagaStore()
+    sagas.create("run-1", graph_id="g", input="BRD-42")
+    store = _store()
+    run_stage = _seam(_FakeRuntime(), store, sagas)
+
+    await run_stage("run-1", {"id": "intake", "topology": "oms-intake"})
+
+    assert store.get("run-1/intake/input") == "BRD-42"
+    assert store.get("run-1/intake/output") == "<oms-intake output>"
+
+
+@pytest.mark.asyncio
 async def test_downstream_stage_uses_upstream_artifact_not_the_input() -> None:
     sagas = InMemorySagaStore()
     saga = sagas.create("run-1", graph_id="g", input="original payload")
