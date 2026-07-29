@@ -7,6 +7,7 @@ and delegate to :class:`JobService`, mapping its :class:`ServiceError` to a stat
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -248,9 +249,15 @@ async def _handle_pipeline_webhook(
     source = f"webhook:{trigger_id}"
     source_event_id = body_json.get("source_event_id")
 
+    # Forward the (HMAC-verified) webhook body as the pipeline input, keeping the declared `emit`
+    # name for routing. The bundled controller reads this `{"kind":"event","name","input"}` envelope
+    # (a bare name still works — this just also carries the payload the run is triggered with).
+    body_str = raw_body.decode("utf-8", errors="replace")
+
     signals: list[PipelineSignalDelivery] = []
     for pt in pipeline_targets:
-        event = str(pt.get("emit"))
+        emit_name = str(pt.get("emit"))
+        event = json.dumps({"kind": "event", "name": emit_name, "input": body_str})
         path = pt.get("correlation_id") or DEFAULT_CORRELATION_PATH
         correlation_id = extract_correlation_id(body_json, str(path))
         if correlation_id is None:
@@ -278,7 +285,7 @@ async def _handle_pipeline_webhook(
             PipelineSignalDelivery(
                 pipeline=str(pt.get("pipeline")),
                 correlation_id=correlation_id,
-                event=event,
+                event=emit_name,  # the response reports the human-meaningful event name
             )
         )
 

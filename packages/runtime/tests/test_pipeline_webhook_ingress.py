@@ -26,6 +26,8 @@ import pytest
 from fastapi.testclient import TestClient
 from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
+from swarmkit_runtime.orchestration import InMemorySagaStore, StageOutcome
+from swarmkit_runtime.orchestration.reference import ReferenceController
 from swarmkit_runtime.triggers import extract_correlation_id, find_pipeline_webhook_trigger
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -155,16 +157,54 @@ def test_signed_pipeline_webhook_emits_declared_event(client: TestClient) -> Non
     assert data["signals"] == [
         {"pipeline": "oms-pipeline", "correlation_id": "OMS-101", "event": "build.ready-in-qa"}
     ]
-    # the extracted correlation_id + the trigger's declared emit reached the sink
-    assert delivered == [("OMS-101", "build.ready-in-qa")]
+    # the sink receives a structured event: the declared emit name for routing PLUS the forwarded
+    # (HMAC-verified) webhook body as the pipeline input — not a bare name with the body discarded.
+    assert len(delivered) == 1
+    cid, ev = delivered[0]
+    assert cid == "OMS-101"
+    envelope = json.loads(ev)
+    assert envelope["kind"] == "event" and envelope["name"] == "build.ready-in-qa"
+    assert json.loads(envelope["input"]) == payload  # the whole body is forwarded
     # every ingress attempt is audited, stamped with the webhook source + passed-through dedup id
     events = _ingress_events(gov)
     assert len(events) == 1
     assert events[0].payload["mode"] == "emit"
     assert events[0].payload["allowed"] is True
     assert events[0].payload["source"] == "webhook:ci-build-ready"
-    assert events[0].payload["event"] == "build.ready-in-qa"
+    assert json.loads(str(events[0].payload["event"]))["name"] == "build.ready-in-qa"
     assert events[0].payload["source_event_id"] == "ci-42"
+
+
+def test_webhook_body_reaches_saga_input_end_to_end(client: TestClient) -> None:
+    # The whole point: a webhook fires -> the bundled controller starts the run seeded with the
+    # webhook body as input (not empty). Wires the real receiver -> a store-backed sink -> the
+    # ReferenceController, and asserts saga.input carries the body.
+    _install_governance(client, MockGovernanceProvider())
+    store = InMemorySagaStore()
+    graphs = {"oms-pipeline": {"stages": [{"id": "intake", "when": ["build.ready-in-qa"]}]}}
+
+    async def _complete(_cid: str, stage: dict[str, Any]) -> StageOutcome:
+        return StageOutcome(status="completed", artifact=f"ref://{stage.get('id')}")
+
+    controller = ReferenceController(run_stage=_complete, store=store, graphs=graphs)
+
+    async def sink(correlation_id: str, event: str) -> None:
+        await controller.handle_event(correlation_id, event)
+
+    client.app.state.pipeline_signal = sink  # type: ignore[attr-defined]
+
+    payload = {"body": {"correlation_id": "OMS-9"}, "ref": "abc123", "author": "ci"}
+    body = json.dumps(payload).encode()
+    resp = client.post(
+        "/hooks/ci-build-ready",
+        content=body,
+        headers={"X-Hub-Signature-256": _sign(body), "Content-Type": "application/json"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    saga = store.get("OMS-9")
+    assert saga is not None and saga.graph_id == "oms-pipeline"
+    assert json.loads(saga.input) == payload  # the webhook body seeded the run
 
 
 # ---- (c) a webhook may emit ONLY its declared event --------------------------
