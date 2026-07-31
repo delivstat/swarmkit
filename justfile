@@ -103,6 +103,11 @@ demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-w
 demo-gate-funnel:
     uv run python packages/runtime/demos/gate_funnel.py
 
+# Demo who may resolve a role-task (pipeline-gate-approval-ui.md, slice 1): the resolver is the
+# authenticated caller checked against the role registry — a body-supplied identity buys nothing.
+demo-review-resolve:
+    uv run python packages/runtime/demos/review_resolve_identity.py
+
 # Demo slice_budget wired as a funnel validate layer (funnel-deterministic-validate.md): an
 # over-budget diff drives the funnel's bounded retry, then escalates to the human approve.
 demo-funnel-validate:

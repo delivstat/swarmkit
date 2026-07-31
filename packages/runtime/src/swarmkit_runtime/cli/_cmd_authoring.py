@@ -24,6 +24,7 @@ from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.gaps import SkillGapLog
 from swarmkit_runtime.resolver import resolve_workspace
 from swarmkit_runtime.review import FileReviewQueue
+from swarmkit_runtime.review._multiparty import membership_error
 
 from ._app import app, author_app, review_app
 from ._common import (
@@ -140,6 +141,13 @@ def review_show(
                 if item.output.get("free_text_allowed", True):
                     typer.echo("  (free text also accepted)")
                 typer.echo('Resolve with: swarmkit review answer <id> "<your answer>"')
+            elif item.skill_id == "multi-party-approval":
+                typer.echo(f"Gate:       {item.output.get('gate_id', '')}")
+                typer.echo(f"Role:       {item.output.get('role', '')}")
+                typer.echo(f"Scope:      {item.output.get('scope', '')}")
+                if item.answer:
+                    typer.echo(f"Resolved by: {item.answer}")
+                typer.echo("Resolve with: swarmkit review resolve <id> --as <identity> --approve")
             else:
                 typer.echo(f"Output:   {json.dumps(item.output, indent=2)}")
                 typer.echo(f"Verdict:  {json.dumps(item.verdict, indent=2)}")
@@ -182,6 +190,63 @@ def review_reject(
             return
     _stderr(f"Review item '{item_id}' not found.")
     raise typer.Exit(1)
+
+
+@review_app.command("resolve")
+def review_resolve(
+    item_id: str,
+    identity: Annotated[
+        str,
+        typer.Option(
+            "--as",
+            help="Resolver identity — must be a member of the role in the workspace registry.",
+        ),
+    ],
+    approve: Annotated[
+        bool, typer.Option("--approve/--reject", help="Approve or reject this role-task.")
+    ] = True,
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+) -> None:
+    """Resolve a multi-party approval role-task as *identity*.
+
+    Unlike `approve`/`reject`, the resolver identity is recorded and checked — the approval engine
+    counts a resolution only from a registry member of that role. Local resolution is filesystem
+    trust: the CLI has no serve credential, so `--as` is asserted, not authenticated. Anyone who can
+    run this can already edit the queue on disk. Over HTTP the identity comes from the session
+    instead (design/details/pipeline-gate-approval-ui.md).
+    """
+    root = workspace_path.resolve()
+    queue = FileReviewQueue(root)
+    matches = [i for i in queue.list_all() if i.id.startswith(item_id)]
+    if not matches:
+        _stderr(f"Review item '{item_id}' not found.")
+        raise typer.Exit(1)
+    item = matches[0]
+    if item.skill_id != "multi-party-approval":
+        _stderr(
+            f"Review item '{item.id}' is not a multi-party approval role-task "
+            f"(skill_id={item.skill_id!r}). Use `swarmkit review approve|reject|answer`."
+        )
+        raise typer.Exit(_EXIT_USAGE)
+
+    role = str(item.output.get("role", ""))
+    scope = str(item.output.get("scope", ""))
+    try:
+        workspace = resolve_workspace(root)
+    except ResolutionErrors as exc:
+        _stderr(f"Workspace did not resolve ({len(exc.errors)} error(s)); cannot check roles.")
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+    error = membership_error(workspace.role_registry, role=role, scope=scope, identity=identity)
+    if error is not None:
+        _stderr(f"{identity} may not resolve {item.id}: {error}")
+        raise typer.Exit(_EXIT_USAGE)
+
+    queue.record_resolution(item.id, "approved" if approve else "rejected", identity)
+    verb = "Approved" if approve else "Rejected"
+    mark = "✓" if approve else "✗"
+    typer.echo(f"{mark} {verb} {item.id} as {identity} (role={role}, scope={scope})")
 
 
 @review_app.command("answer")

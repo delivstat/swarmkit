@@ -101,6 +101,7 @@ Redacted fields appear as `[REDACTED]` in all outputs. Summary mode truncates lo
 | `swarmkit review show <id> <workspace>` | Show review details |
 | `swarmkit review approve <id> <workspace>` | Approve a review |
 | `swarmkit review reject <id> <workspace>` | Reject a review |
+| `swarmkit review resolve <id> --as <identity> [--approve\|--reject] <workspace>` | Resolve a multi-party approval role-task, recording the resolver (checked against the [role registry](role-registry.md)) |
 | `swarmkit gaps <workspace>` | List recorded skill gaps |
 
 ## Knowledge

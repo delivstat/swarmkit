@@ -35,6 +35,11 @@ RESERVED_SCOPES = frozenset(
         # skip a stage on its own authority.
         "pipeline:advance",
         "pipeline:skip",
+        # Resolving a multi-party approval role-task is a human-identity act
+        # (design/details/pipeline-gate-approval-ui.md): the resolver's identity is what the
+        # approval engine checks role membership against, so an agent/webhook token must never be
+        # able to cast one — quorum would be satisfiable by whatever holds the token.
+        "approvals:resolve",
     }
 )
 

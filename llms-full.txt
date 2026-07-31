@@ -2027,9 +2027,43 @@ approve:                       # e.g. a Funnel's approve layer
 
 A gate fans out into **one task per required role** (`Approval from role:<name>`), assigned to that role's members; a role-task completes when any one member approves. A person holding two required roles gets **two** tasks and completes each separately — one attributable sign-off per capacity. The gate compiles to a checkpointed `interrupt()`, so a partially-approved gate ("2 of 4, waiting on infosec + cio") is durable across weeks and restarts. None of this is promptable or agent-reachable.
 
+## Who may resolve a role-task
+
+The resolver's identity is **load-bearing** — it is what quorum, `min_distinct_approvers` and
+`exclude_author` are counted against — so it is never self-asserted:
+
+| Surface | Resolver identity | Command |
+| --- | --- | --- |
+| `swarmkit serve` HTTP | the authenticated caller (`client_id`) | `POST /review/{id}/resolve` with `{"outcome": "approve"}` |
+| CLI | asserted via `--as` (local filesystem trust) | `swarmkit review resolve <id> --as alice --approve` |
+
+Over HTTP the caller must also hold `approvals:resolve`, a **reserved human-identity scope**: a
+transport (API-key / JWT) token structurally cannot carry it, so an agent or webhook can never cast
+a resolution regardless of its serve tier. A request body may not supply an identity; one that tries
+is ignored.
+
+Membership is checked **before** the resolution is recorded, and a non-member is refused with the
+reason (`alice is not a member of role release-manager`) rather than silently ignored. Every
+attempt — allowed or denied — is written to the append-only audit as `approval.role_task_resolved`.
+
+Two deployer-facing consequences:
+
+- **Serve `client_id` and role `members` are one namespace.** An operator in role
+  `security-reviewer` must authenticate as the identity listed in that role's `members`.
+- **A typo in `members` surfaces at resolve time**, as a 403, not at workspace validation — the
+  runtime cannot enumerate an auth provider's credentials.
+
+Under the default `NoneAuthProvider` every caller is `anonymous`, so multi-party approval is not
+enforceable unless the workspace genuinely lists `anonymous` as a role member (which keeps local
+development workable, and is not a deployment posture).
+
+`swarmkit review approve|reject` are for harness gates and do **not** record an identity — they
+cannot satisfy a multi-party rule. Use `resolve`.
+
 ## See also
 
 - [Multi-party approval design note](https://github.com/delivstat/swarmkit/blob/main/design/details/multi-party-approval.md) — the authoritative resolution, quorum, overlap, and audit model.
+- [Pipeline gate approval note](https://github.com/delivstat/swarmkit/blob/main/design/details/pipeline-gate-approval-ui.md) — the identity model above, and where a parked run is approved.
 - [Role registry](role-registry.md) — where the roles and their scopes are defined.
 - [Funnel](funnel.md) — the artifact whose required `approve` layer *is* an approval policy.
 
@@ -2145,6 +2179,7 @@ Redacted fields appear as `[REDACTED]` in all outputs. Summary mode truncates lo
 | `swarmkit review show <id> <workspace>` | Show review details |
 | `swarmkit review approve <id> <workspace>` | Approve a review |
 | `swarmkit review reject <id> <workspace>` | Reject a review |
+| `swarmkit review resolve <id> --as <identity> [--approve\|--reject] <workspace>` | Resolve a multi-party approval role-task, recording the resolver (checked against the [role registry](role-registry.md)) |
 | `swarmkit gaps <workspace>` | List recorded skill gaps |
 
 ## Knowledge
