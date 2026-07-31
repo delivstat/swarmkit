@@ -54,6 +54,28 @@ def role_task_item_id(gate_id: str, rule_index: int, role: str) -> str:
     return f"mpa-{gate_id}-{rule_index}-{role}"
 
 
+def membership_error(registry: RoleRegistry, *, role: str, scope: str, identity: str) -> str | None:
+    """Return why *identity* may not resolve this role-task, or None if it may.
+
+    The registry-only subset of :func:`governance._approval.resolution_error`, for callers that
+    hold a role-task item but not the gate's :class:`ApprovalPolicy` — the (scope, role) pairing is
+    already guaranteed for an item ``open_gate`` created from that policy, so only the role's
+    existence, its conferral of the scope, and membership remain to check.
+
+    Used to fail a resolution *closed at the surface* with a specific reason. Without it an
+    ineligible resolution is merely dropped by ``evaluate``, leaving the resolver looking at a gate
+    that silently never advances. ``exclude_author`` still lives in the engine — it needs the
+    policy — so this is a necessary, not a sufficient, check.
+    """
+    if registry.get(role) is None:
+        return f"unknown role: {role}"
+    if not registry.confers(role, scope):
+        return f"role {role} does not confer scope {scope}"
+    if not registry.is_member(role, identity):
+        return f"{identity} is not a member of role {role}"
+    return None
+
+
 def open_gate(
     queue: ReviewQueue,
     *,

@@ -4,17 +4,26 @@ The CLI (`swarmkit review …`), the serve web UI, and the fleet UI all resolve 
 permission and §6.3 input gates through this one API over the same on-disk ``ReviewQueue`` — so a
 harness approval behaves identically whichever front-end an operator uses. Read + human-decision
 only; the queue is append-only from the agent's perspective (invariant #4).
+
+``POST /review/{id}/resolve`` handles the fourth item kind — a multi-party approval role-task — and
+differs from approve/reject in that *who* resolved it is load-bearing: the approval engine checks
+the resolver against the workspace role registry. That identity is the authenticated caller, never
+a request-body field (design/details/pipeline-gate-approval-ui.md).
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
+from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.review import FileReviewQueue, ReviewItem
+from swarmkit_runtime.review._multiparty import membership_error
+from swarmkit_runtime.server._helpers import _get_runtime
 
 
 class AnswerRequest(BaseModel):
@@ -22,9 +31,14 @@ class AnswerRequest(BaseModel):
 
 
 class ResolveRequest(BaseModel):
-    """Resolve a multi-party approval role-task, recording the resolver identity."""
+    """Resolve a multi-party approval role-task.
 
-    identity: str
+    Deliberately carries no ``identity``: the resolver is the authenticated caller
+    (``request.state.identity.client_id``). A body-supplied identity would make every check in the
+    approval engine self-asserted — one operator could satisfy an N-of-N policy by resolving each
+    role-task under a different name (design/details/pipeline-gate-approval-ui.md).
+    """
+
     outcome: Literal["approve", "reject"]
 
 
@@ -109,13 +123,72 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
         return _item_to_dict(_find(queue, item.id))
 
     @app.post("/review/{item_id}/resolve")
-    async def resolve_multiparty_task(item_id: str, body: ResolveRequest) -> dict[str, Any]:
-        """Resolve a multi-party approval role-task, recording the resolver identity so the
-        approval engine can verify membership (needed for rejects as well as approves)."""
+    async def resolve_multiparty_task(
+        item_id: str, body: ResolveRequest, request: Request
+    ) -> dict[str, Any]:
+        """Resolve a multi-party approval role-task as the authenticated caller.
+
+        Authorize → check membership → record → audit, mirroring ``_ingress_pipeline_event``:
+        ``approvals:resolve`` is a reserved human-identity scope (§8.7), so an agent or webhook
+        token can never cast a resolution whatever its serve tier. Every attempt is audited,
+        allowed or denied.
+        """
+        runtime = _get_runtime(request)
+        identity = getattr(request.state, "identity", None)
+        actor = getattr(identity, "client_id", None) or "anonymous"
+
         queue = _queue()
         item = _find(queue, item_id)
+        role = str(item.output.get("role", ""))
+        scope = str(item.output.get("scope", ""))
+        gate_id = str(item.output.get("gate_id", ""))
+
+        decision = await runtime.governance.evaluate_action(
+            agent_id=actor,
+            action="approvals:resolve",
+            scopes_required=frozenset({"approvals:resolve"}),
+            context={"gate_id": gate_id, "item_id": item.id, "role": role, "scope": scope},
+        )
+        denial = decision.reason if not decision.allowed else None
+        if denial is None and item.skill_id != "multi-party-approval":
+            denial = f"review item {item.id!r} is not a multi-party approval role-task"
+        if denial is None:
+            # Fail closed at the surface with the specific reason. An ineligible resolution is
+            # otherwise merely ignored by ``evaluate``, leaving the resolver watching a gate that
+            # never advances. Under NoneAuthProvider this is what rejects "anonymous" — unless the
+            # workspace genuinely lists it as a role member, which keeps local dev workable.
+            denial = membership_error(
+                runtime.workspace.role_registry, role=role, scope=scope, identity=actor
+            )
+
+        await runtime.governance.record_event(
+            AuditEvent(
+                event_type="approval.role_task_resolved",
+                agent_id=actor,
+                timestamp=datetime.now(tz=UTC),
+                payload={
+                    "gate_id": gate_id,
+                    "item_id": item.id,
+                    "role": role,
+                    "scope": scope,
+                    "outcome": body.outcome,
+                    "identity": actor,
+                    "allowed": denial is None,
+                    "reason": denial or decision.reason,
+                },
+                policy_decision="allow" if denial is None else "deny",
+                policy_reason=denial or decision.reason,
+            )
+        )
+
+        if denial is not None:
+            raise HTTPException(
+                status_code=403,
+                detail=f"{actor} may not resolve {item.id!r}: {denial}",
+            )
+
         status: Literal["approved", "rejected"] = (
             "approved" if body.outcome == "approve" else "rejected"
         )
-        queue.record_resolution(item.id, status, body.identity)
+        queue.record_resolution(item.id, status, actor)
         return _item_to_dict(_find(queue, item.id))
