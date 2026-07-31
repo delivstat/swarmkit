@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Card, CardTitle } from "@/components/card";
+import { CopyablePre } from "@/components/copyable";
 import { StatusBadge } from "@/components/status-badge";
 import { TopologyCanvas } from "@/components/topology-canvas";
 import { Badge } from "@/components/ui/badge";
@@ -251,18 +252,22 @@ function JobDetail() {
 					{job.output && (
 						<Card>
 							<CardTitle>Output</CardTitle>
-							<pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-sm">
-								{job.output}
-							</pre>
+							<CopyablePre
+								value={job.output}
+								label="the job output"
+								className="max-h-96 text-sm"
+							/>
 						</Card>
 					)}
 
 					{job.error && (
 						<Card>
 							<CardTitle>Error</CardTitle>
-							<pre className="whitespace-pre-wrap rounded-md bg-muted p-3 text-sm text-destructive">
-								{job.error}
-							</pre>
+							<CopyablePre
+								value={job.error}
+								label="the job error"
+								className="text-sm text-destructive"
+							/>
 						</Card>
 					)}
 

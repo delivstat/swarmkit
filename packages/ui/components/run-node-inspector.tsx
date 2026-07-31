@@ -18,6 +18,7 @@
 import { ArrowDownToLine, FileText, Gavel, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { CopyButton, CopyablePre } from "@/components/copyable";
 import { RoleTaskPanel } from "@/components/role-task-panel";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
@@ -114,9 +115,11 @@ export function RunNodeInspector({ saga, stageId }: RunNodeInspectorProps) {
 				) : error ? (
 					<span className="text-xs text-red-500">{error}</span>
 				) : artifact?.input ? (
-					<pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-xs">
-						{artifact.input}
-					</pre>
+					<CopyablePre
+						value={artifact.input}
+						label="the stage input"
+						className="max-h-56"
+					/>
 				) : (
 					<p className="text-xs text-muted-foreground">
 						This stage ran on empty input
@@ -138,9 +141,12 @@ export function RunNodeInspector({ saga, stageId }: RunNodeInspectorProps) {
 					</p>
 				) : (
 					<div className="flex flex-col gap-2">
-						<code className="break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
-							{ref}
-						</code>
+						<div className="flex items-center gap-2">
+							<code className="min-w-0 flex-1 break-all rounded bg-muted px-1.5 py-0.5 text-[11px]">
+								{ref}
+							</code>
+							<CopyButton value={ref} label="the artifact reference" />
+						</div>
 						{loading ? (
 							<span className="flex items-center gap-1.5 text-xs text-muted-foreground">
 								<Loader2 className="h-3.5 w-3.5 animate-spin" /> loading…
@@ -148,9 +154,11 @@ export function RunNodeInspector({ saga, stageId }: RunNodeInspectorProps) {
 						) : error ? (
 							<span className="text-xs text-red-500">{error}</span>
 						) : artifact?.content != null ? (
-							<pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 text-xs">
-								{artifact.content}
-							</pre>
+							<CopyablePre
+								value={artifact.content}
+								label="the artifact"
+								className="max-h-72"
+							/>
 						) : (
 							<span className="text-xs text-muted-foreground">
 								(artifact reference recorded; content not resolvable)
