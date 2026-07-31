@@ -124,7 +124,10 @@ def _budget_from_config(config: dict[str, Any]) -> BudgetEnvelope:
 def _task_spec(agent: ResolvedAgent, state: SwarmState, workspace_root: Path | None) -> TaskSpec:
     """Assemble the checkpointed task (§6.0): the statement, workspace CLAUDE.md as a context file,
     the agent's declared skills as tool grants, and the base ref."""
-    statement = state.get("input", "") or agent.role
+    # NO fallback to agent.role. Running an agent with its own role name as the prompt is never
+    # intended, costs real money, and produces a plausible-looking artifact that hides the fact that
+    # the node received nothing. An empty statement is surfaced as such.
+    statement = state.get("input", "") or ""
     context_files: dict[str, str] = {}
     if workspace_root is not None:
         claude_md = workspace_root / "CLAUDE.md"
@@ -327,6 +330,15 @@ async def run_harness_node(
 
     budget = _budget_from_config(dict(agent.executor.config))
     task = _task_spec(agent, state, root)
+    if not task.statement.strip():
+        # Refuse to launch a harness with no task. This used to fall back to the agent's ROLE NAME
+        # as the prompt, so a node that received nothing still spawned the CLI, answered a one-word
+        # question, returned success and wrote a plausible artifact — a run that got no input was
+        # indistinguishable from one that did its job, for real money. A harness with an empty
+        # statement is always a wiring mistake; say so instead of guessing.
+        reason = "empty input: nothing to work on (no upstream artifact and no pipeline payload)"
+        await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": reason})
+        return _make_result(agent_id, f"[harness:{kind}] {reason}")
     relay = _relay_ctx(agent, root, driver, review_queue, model_provider)
     return await _execute(
         agent, state, governance, runner, task, budget, root, kind, relay, mcp_manager
@@ -697,6 +709,8 @@ async def _finish(
     diff: str,
 ) -> dict[str, Any]:
     if terminal is None:
+        # The executor emits a synthetic terminal carrying the exit code + stderr tail, so reaching
+        # here means the stream ended without even that. Keep the bare message as the last resort.
         await _record(governance, "executor.result", agent_id, {"kind": kind, "status": "failure"})
         return _make_result(agent_id, f"[harness:{kind}] failure: no result event")
 
@@ -724,4 +738,19 @@ async def _finish(
         return result
 
     reason = terminal.exit_metadata.get("reason") or terminal.exit_metadata.get("denied") or ""
+    # A harness that died before emitting its own result carries the process exit + stderr tail.
+    # Without them the record was the 46-character "failure: no result event" and the actual cause
+    # — a bad flag, a missing credential, a crash — sat unread in a pipe nobody drained.
+    rc = terminal.exit_metadata.get("returncode")
+    tail = str(terminal.exit_metadata.get("stderr_tail") or "")
+    if not reason and rc is not None:
+        reason = f"exit {rc}"
+        if tail:
+            reason = f"{reason}: {_tail_snippet(tail)}"
     return _make_result(agent_id, f"[harness:{kind}] {terminal.status}: {reason}".rstrip(": "))
+
+
+def _tail_snippet(tail: str, *, lines: int = 5, limit: int = 600) -> str:
+    """The last few stderr lines, bounded — enough to name the cause without pasting a log."""
+    snippet = " | ".join(tail.strip().splitlines()[-lines:])
+    return snippet if len(snippet) <= limit else snippet[-limit:]

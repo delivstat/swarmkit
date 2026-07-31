@@ -44,13 +44,24 @@ def _check_webhook_signature(
             continue
         secret = os.environ.get(secret_ref, "")
         if not secret:
-            logger.warning(
-                "Webhook trigger secret_ref=%r not found in environment; "
-                "skipping signature validation for topology=%r",
+            # FAIL CLOSED. Skipping validation because the secret is missing accepts unsigned
+            # requests, and at runtime that is indistinguishable from a correctly configured
+            # trigger — the declared protection is simply absent. Neither `swarmkit serve` nor
+            # `swarmkit orchestrator` loads a .env file, so an unexported variable is the default
+            # state, which made this the common case rather than the edge case.
+            logger.error(
+                "Webhook trigger secret_ref=%r is not present in the environment; "
+                "refusing the request for topology=%r (export it, or remove the auth block)",
                 secret_ref,
                 topology_name,
             )
-            continue
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"webhook trigger declares credentials_ref={secret_ref!r} but it is not set "
+                    "in the environment; refusing to accept unsigned requests"
+                ),
+            )
         header_name = auth.get("header", "X-Hub-Signature-256")
         sig = request.headers.get(header_name, "")
         if not validate_webhook_signature(raw_body, sig, secret):
@@ -85,13 +96,19 @@ def _check_pipeline_webhook_signature(
         return
     secret = os.environ.get(secret_ref, "")
     if not secret:
-        logger.warning(
-            "Pipeline webhook trigger secret_ref=%r not found in environment; "
-            "skipping signature validation for trigger=%r",
+        logger.error(
+            "Pipeline webhook trigger secret_ref=%r is not present in the environment; "
+            "refusing the request for trigger=%r (export it, or remove the auth block)",
             secret_ref,
             trigger_config.get("id"),
         )
-        return
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"webhook trigger declares credentials_ref={secret_ref!r} but it is not set in "
+                "the environment; refusing to accept unsigned requests"
+            ),
+        )
     header_name = auth.get("header", "X-Hub-Signature-256")
     sig = request.headers.get(header_name, "")
     if not validate_webhook_signature(raw_body, sig, secret):

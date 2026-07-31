@@ -120,7 +120,14 @@ def test_run_stage_drives_injected_seam(client: TestClient) -> None:
         json={"correlation_id": "REQ-7", "stage": {"id": "design", "gate": True}},
     )
     assert resp.status_code == 200
-    assert resp.json() == {"status": "parked", "artifact": "<design>", "detail": "on funnel gate"}
+    assert resp.json() == {
+        "status": "parked",
+        "artifact": "<design>",
+        "detail": "on funnel gate",
+        # None because this stub reports no size. A real stage reports the artifact's bytes, which
+        # is what separates a stage parked with a record from one parked with an error string.
+        "artifact_bytes": None,
+    }
     assert calls == [("REQ-7", {"id": "design", "gate": True})]
 
 

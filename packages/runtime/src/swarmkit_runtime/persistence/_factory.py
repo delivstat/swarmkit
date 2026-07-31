@@ -8,12 +8,17 @@ Resolution order:
 For postgres, the connection URL is resolved from:
 1. ``SWARMKIT_STORE_URL`` or ``DATABASE_URL`` env var
 2. ``workspace.yaml`` ``storage.runtime.url`` field
+
+``workspace.raw`` is a parsed-YAML ``Mapping``, so config is read through :func:`_field`, which
+handles both a Mapping and a typed model. A backend that cannot be honoured raises
+:class:`StoreConfigError` — it does not fall back.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -22,33 +27,77 @@ from swarmkit_runtime.persistence._store import SqliteStore, Store, make_engine
 logger = logging.getLogger("swarmkit.persistence")
 
 
-def _resolve_backend(workspace_path: Path, workspace_raw: Any = None) -> tuple[str, str]:
-    """Resolve ``(backend, url)`` from env + workspace config, applying the fallback rule.
+class StoreConfigError(RuntimeError):
+    """The storage config names a backend that cannot be honoured.
+
+    Raised rather than degraded: a silent fallback writes the run to a different database than the
+    one configured, and splits serve from the orchestrator with neither process warning.
+    """
+
+
+def _field(obj: Any, key: str) -> Any:
+    """Read *key* off a parsed-YAML ``Mapping`` **or** a typed model.
+
+    Both shapes reach here. ``ResolvedWorkspace.raw`` is a typed ``SwarmKitWorkspace``; the fleet
+    factory hands over a plain dict parsed straight from workspace.yaml. Plain ``getattr`` returns
+    the default for a Mapping, which made ``storage.runtime`` dead config for a dict caller.
+    """
+    if obj is None:
+        return None
+    if isinstance(obj, Mapping):
+        return obj.get(key)
+    return getattr(obj, key, None)
+
+
+def _text(value: Any) -> str:
+    """Normalise a config scalar to a plain lowercase string.
+
+    The schema models ``backend`` as an **enum**, and ``Backend2.postgres`` is not a ``str``:
+    ``Backend2.postgres == "postgres"`` is False and ``str()`` yields ``"Backend2.postgres"``. So
+    on the serve path — which passes the typed model — the backend comparison was always False and
+    every workspace silently ran on sqlite however it was configured. Unwrap ``.value`` first.
+    """
+    if value is None:
+        return ""
+    inner = getattr(value, "value", value)
+    return str(inner).strip().lower()
+
+
+def _resolve_backend(workspace_path: Path, workspace_raw: Any = None) -> tuple[str, str, str]:
+    """Resolve ``(backend, url, source)`` from env + workspace config.
 
     Pure (no DB connection) so backend selection is unit-testable. Precedence: env var, then
-    ``storage.runtime``, then the sqlite default. ``backend=postgres`` with no URL degrades to
-    sqlite (with a warning) — a misconfiguration shouldn't take the runtime down.
+    ``storage.runtime``, then the sqlite default. ``source`` names where the answer came from, so a
+    surprising backend is visible in the log rather than inferred.
+
+    A backend naming a real database with no resolvable URL **raises**. It used to warn and degrade
+    to sqlite; for a storage backend that is the wrong direction — a run that silently writes to a
+    different database than the one configured is worse than a startup failure, and it also splits
+    serve from the orchestrator without either process noticing.
     """
     backend = os.environ.get("SWARMKIT_STORE_BACKEND", "").lower()
     url = os.environ.get("SWARMKIT_STORE_URL") or os.environ.get("DATABASE_URL", "")
+    source = "env" if backend else ""
 
     if not backend and workspace_raw is not None:
-        storage = getattr(workspace_raw, "storage", None)
-        if storage is not None:
-            runtime_cfg = getattr(storage, "runtime", None)
-            if runtime_cfg is not None:
-                backend = getattr(runtime_cfg, "backend", "") or ""
-                if not url:
-                    url = getattr(runtime_cfg, "url", "") or ""
+        runtime_cfg = _field(_field(workspace_raw, "storage"), "runtime")
+        if runtime_cfg is not None:
+            backend = _text(_field(runtime_cfg, "backend"))
+            if backend:
+                source = "workspace.yaml"
+            if not url:
+                raw_url = _field(runtime_cfg, "url")
+                url = str(getattr(raw_url, "value", raw_url) or "")
 
-    backend = backend or "sqlite"
+    if not backend:
+        backend, source = "sqlite", source or "default"
     if backend == "postgres" and not url:
-        logger.warning(
-            "storage.runtime.backend=postgres but no URL configured. "
-            "Set DATABASE_URL or SWARMKIT_STORE_URL or storage.runtime.url. Falling back to sqlite."
+        raise StoreConfigError(
+            f"storage backend 'postgres' (from {source}) has no URL. Set storage.runtime.url, "
+            "SWARMKIT_STORE_URL or DATABASE_URL. Refusing to fall back to sqlite: a run would "
+            "write to a different database than the one configured."
         )
-        backend = "sqlite"
-    return backend, url
+    return backend, url, source
 
 
 def create_store(
@@ -62,12 +111,12 @@ def create_store(
     configured — the same SQLAlchemy-Core ``Store``, just a different dialect
     (design/details/postgres-backend.md).
     """
-    backend, url = _resolve_backend(workspace_path, workspace_raw)
+    backend, url, source = _resolve_backend(workspace_path, workspace_raw)
     if backend == "postgres":
-        logger.info("Store backend: postgres (%s...)", url[:30])
+        logger.info("Store backend: postgres (source: %s, %s...)", source, url[:30])
         return Store(make_engine(url))
-    logger.info("Store backend: sqlite (path: %s)", workspace_path)
+    logger.info("Store backend: sqlite (source: %s, path: %s)", source, workspace_path)
     return SqliteStore(workspace_path)
 
 
-__all__ = ["create_store"]
+__all__ = ["StoreConfigError", "create_store"]
