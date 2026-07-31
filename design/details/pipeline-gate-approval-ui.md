@@ -32,15 +32,41 @@ request body.
 - **Not a control-plane change.** The fleet panel stays an independent client; nothing here adds a
   runtime dependency to it.
 
+## Two parking mechanisms, and only one of them has an approval policy
+
+"The run is parked" means two different things depending on which path produced it, and the
+distinction governs everything below.
+
+**Path A — the stage-graph gate (what `swarmkit serve` + the bundled orchestrator actually run).**
+`build_pipeline_run_stage` (`server/_pipeline_stage.py:81`) runs the stage's topology, stores the
+artifact, and returns `StageOutcome(status="parked")` whenever `stage.gate` or `stage.funnel` is
+set. The saga persists `status="parked"` and `pending_gate_stage`. This is durable and correct —
+nothing is held in memory, a restart loses nothing. But it **never calls `open_gate`**: no
+`ApprovalPolicy` is evaluated, no role-tasks are created, no quorum is enforced. The only way to
+release it is an operator emitting the `gate` event (`swarmkit pipeline advance`, reserved scope
+`pipeline:advance`). Consequently `GET /pipelines/gate-status/{cid}/{gate}` folds an empty item
+list and reports `pending` forever (`_aggregate_gate_status` returns `pending` for `not items`) —
+correct as written, but it means the route reports on a mechanism this path does not use.
+
+**Path B — the agent funnel's `approve` layer.** `StageRunner._run_gated_stage`
+(`langgraph_compiler/_stage_runner.py:122`) calls `run_agent_funnel_gate` with
+`gate_id=f"{correlation_id}:{agent.id}"`, which reaches `build_multiparty_approver` and
+`resolve_multiparty`. *This* is where `open_gate` (`review/_multiparty.py:57`) fans the
+`ApprovalPolicy` into one `ReviewItem` per role-task and polls until `evaluate()` returns APPROVED
+or REJECTED. Real multi-party semantics — and a blocking `await` inside the running topology, with
+`max_wait_seconds` degrading to a denial. `StageRunner` is currently wired only in
+`examples/sdlc-pipeline` and tests; the bundled serve path does not construct it.
+
+So the product today offers durable parking without an approval policy (A), or a real approval
+policy that cannot survive a restart (B), and no path that is both. The surface work below is
+necessary but not sufficient: it makes B's items resolvable. Making the *bundled* pipeline enforce
+multi-party approval means giving A a policy, which the decision in "Parking is the default"
+resolves.
+
 ## The problem: parked runs are unblockable
 
-When a stage's funnel reaches its `approve` layer, `open_gate`
-(`review/_multiparty.py:57`) fans the gate's `ApprovalPolicy` out into one `ReviewItem` per
-role-task — `skill_id="multi-party-approval"`, `output.gate_id = f"{correlation_id}:{agent_id}"` —
-and `resolve_multiparty` polls the queue until `evaluate()` returns APPROVED or REJECTED. The saga
-moves to `status="parked"` with `pending_gate_stage` set. All of that works.
-
-Nothing can resolve those items:
+Taking path B on its own terms — the only path that opens gate items at all — nothing can resolve
+those items:
 
 1. **They are invisible to the frontend.** `_item_to_dict` (`server/_routes_review.py:31`) maps
    `skill_id` to one of three kinds — `permission`, `input`, `other` — and multi-party items fall
@@ -100,6 +126,54 @@ approver staring at a gate that never advances).
 enforceable, and the resolve route should 403 with that reason rather than pretend. Single-role
 `quorum: any` policies over a role whose members include the anonymous identity still work, which
 keeps local development usable without weakening the deployed case.
+
+## Parking is the default; the timeout is for headless runs
+
+**Decision:** a gate parks until a human acts on it. The timeout-degrades-to-denial behaviour is
+retained only for runs with nobody attached.
+
+The current default is backwards. `resolve_multiparty` degrades to a denial on timeout so that a run
+never hangs — defensible when no approval surface exists, because an indefinitely blocked run is
+invisible and a denial at least terminates. Once there is a surface, that default *rejects work
+because nobody looked at an inbox*, which is a worse and much quieter failure: the run is marked
+rejected, the artifact is discarded, and the audit says the gate was denied when in fact it was
+never seen.
+
+**Attendedness is declared, not detected.** There is no reliable signal for "a human is watching" —
+an open browser tab is not a commitment, and sniffing whether serve is running would make gate
+semantics depend on deployment topology. So it goes in the artifact, where the rest of the funnel
+policy already lives:
+
+```yaml
+approve:
+  rules: [...]
+  on_timeout: park        # park (default) | deny
+  timeout: 24h            # only meaningful with on_timeout: deny
+```
+
+`park` is the default. A headless caller that must terminate — CI, cron, an eval harness — sets
+`on_timeout: deny` with a deadline, or passes `--gate-timeout` at the CLI, which overrides the
+artifact. Unattended runs stay bounded; attended runs stop discarding work.
+
+**The implementation consequence is the real cost, and it is not a config flag.** Path B parks by
+holding a coroutine in `resolve_multiparty`'s poll loop. `max_wait_seconds=None` does not implement
+"park until acted on" — it implements "leak a coroutine until the process restarts, then lose the
+gate entirely." Durable parking means path B must do what path A already does: **return** a parked
+outcome and let the saga persist it, resuming when the gate resolves. Concretely:
+
+- `run_agent_funnel_gate` gains a non-blocking mode: `open_gate`, then return an outcome of
+  `parked` with the `gate_id`, rather than polling.
+- `StageRunner._run_gated_stage` propagates that instead of awaiting a decision.
+- `build_pipeline_run_stage` opens the stage's `ApprovalPolicy` before returning `parked` — which
+  is also what gives **path A a policy** and makes `GET /pipelines/gate-status` report on something
+  real.
+- Resolution becomes the *trigger*: the last role-task resolving emits the `gate` event the
+  controller already resumes on, so `swarmkit pipeline advance` reverts to what it should always
+  have been — a break-glass override, not the normal path.
+
+This converges A and B on one mechanism. It is a larger change than the surface work, and it is the
+reason the CLI `resolve` verb ships first: `resolve` against path B's blocking implementation is
+useful on day one and does not have to wait for the convergence.
 
 ## Where approval happens
 
@@ -213,11 +287,11 @@ Plus a screenshot of the `/runs` inspector on the parked stage with the role-tas
   whether these converge, or whether `RoleRegistry` should carry a provider-qualified identity
   (`api_key:alice` vs `jwt:alice@corp`), is unresolved. The narrow fix is forward-compatible with
   either — it just means an early deployer's `members` list may need rewriting later.
-- **Timeout semantics.** `resolve_multiparty` degrades to a denial on timeout so a run never hangs.
-  With a real approval surface, silently rejecting a run because nobody was looking at the inbox is
-  arguably worse than parking indefinitely. Should a gate with a live surface park until acted on,
-  with the timeout reserved for headless runs? Needs a decision before this ships, because the
-  surface changes what the right default is.
+- ~~**Timeout semantics.**~~ **Resolved:** park until acted on; the timeout is retained only for
+  headless runs, declared as `approve.on_timeout` rather than detected. See "Parking is the default"
+  above. The follow-on question it opens: converging paths A and B on non-blocking parking is a
+  runtime change of its own and probably wants a separate design note — this one should state the
+  target and stop there.
 - **Notification.** Nothing tells a human a gate is waiting. `notifications/` exists; wiring
   `approval.gate_opened` to it is out of scope here but is the obvious follow-on — an inbox nobody
   is told to check has the same failure mode as no inbox.
