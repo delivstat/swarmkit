@@ -58,7 +58,7 @@ def create_membership_store(workspace_path: Path, workspace_raw: Any = None) -> 
 
     if workspace_raw is None:
         workspace_raw = _storage_config_from_yaml(workspace_path)
-    backend, url = _resolve_backend(workspace_path, workspace_raw)
+    backend, url, _source = _resolve_backend(workspace_path, workspace_raw)
     if backend == "postgres":
         return MembershipStore(make_engine(url))
     return MembershipStore(workspace_path)

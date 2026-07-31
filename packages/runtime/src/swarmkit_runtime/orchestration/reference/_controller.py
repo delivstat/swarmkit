@@ -92,11 +92,19 @@ class ReferenceController:
         if self._store.get(correlation_id) is not None:
             # An external named event for an already-tracked saga. The bundled controller advances
             # sequentially / via gates, so it does not re-route mid-run — log and drop.
-            logger.info(
-                "pipeline event %r for existing saga %r ignored (bundled controller advances "
-                "sequentially; use a gate event to resume)",
+            # Say WHY, and at warning: an event accepted and dropped with no trace reads exactly
+            # like an event that ran, and a stale artifact then looks like a fresh result.
+            existing = self._store.get(correlation_id)
+            logger.warning(
+                "pipeline event %r for existing saga %r DROPPED (status=%s%s). The bundled "
+                "controller advances sequentially; resolve or clear the gate to resume — "
+                "re-emitting does nothing.",
                 name,
                 correlation_id,
+                getattr(existing, "status", "unknown"),
+                f", parked on {existing.pending_gate_stage!r}"
+                if existing is not None and existing.pending_gate_stage
+                else "",
             )
             return
         matches = [gid for gid, g in self._graphs.items() if name in _entry_events(g)]
@@ -116,8 +124,17 @@ class ReferenceController:
         )
 
     async def _start(self, correlation_id: str, data: dict[str, Any]) -> None:
-        if self._store.get(correlation_id) is not None:
-            return  # idempotent: a repeated start is a no-op
+        existing = self._store.get(correlation_id)
+        if existing is not None:
+            # Idempotent, but not silent — a repeated start that quietly no-ops is the same false
+            # reading as above.
+            logger.warning(
+                "start for correlation %r DROPPED: a saga already exists (status=%s). "
+                "Use a fresh correlation id to run again.",
+                correlation_id,
+                existing.status,
+            )
+            return
         graph_id = str(data.get("graph", ""))
         saga = self._store.create(
             correlation_id,
@@ -132,6 +149,11 @@ class ReferenceController:
     async def _resolve_gate(self, correlation_id: str, data: dict[str, Any]) -> None:
         saga = self._store.get(correlation_id)
         if saga is None or saga.status != "parked":
+            logger.warning(
+                "gate event for correlation %r DROPPED: %s",
+                correlation_id,
+                "no such saga" if saga is None else f"saga is {saga.status}, not parked",
+            )
             return
         stage = saga.pending_gate_stage
         approved = bool(data.get("approved", False))
@@ -182,7 +204,13 @@ class ReferenceController:
                 saga.pending_gate_stage = sid
                 if outcome.artifact:
                     saga.artifacts[sid] = outcome.artifact
-                saga.add("parked", stage_id=sid, detail=outcome.detail)
+                # Record the artifact size: a FAILED stage parks exactly like a successful one, and
+                # the two render identically. A real record is kilobytes; a harness failure is a
+                # 46-character error string. The size is the cheapest signal that tells them apart.
+                detail = outcome.detail or ""
+                if outcome.artifact_bytes is not None:
+                    detail = f"{detail} (artifact {outcome.artifact_bytes} bytes)".strip()
+                saga.add("parked", stage_id=sid, detail=detail)
                 self._store.save(saga)
                 return  # wait for a `gate` event
             # rejected | denied | failed — terminal for this saga (surfaced to the human).

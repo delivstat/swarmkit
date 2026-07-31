@@ -162,7 +162,7 @@ def audit_provider_for_path(path: Path) -> SqlAuditProvider:
     from swarmkit_runtime.persistence._factory import _resolve_backend  # noqa: PLC0415
 
     root = path.resolve()
-    backend, url = _resolve_backend(root)
+    backend, url, _source = _resolve_backend(root)
     if backend == "postgres":
         return PostgresAuditProvider(url)
     return SQLiteAuditProvider(db_path=root / ".swarmkit" / "audit.sqlite")

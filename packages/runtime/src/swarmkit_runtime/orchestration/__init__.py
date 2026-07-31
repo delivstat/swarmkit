@@ -43,6 +43,11 @@ class StageOutcome:
     status: StageStatus
     artifact: str = ""
     detail: str = ""
+    #: Size of the produced artifact. A FAILED stage parks exactly like a successful one and the two
+    #: render identically; a real record is kilobytes while a harness failure is a ~46-character
+    #: error string, so the size is the cheapest signal that tells them apart. Optional and additive
+    #: — a controller that ignores it behaves as before.
+    artifact_bytes: int | None = None
 
 
 # The drive seam: run a stage's topology as a bounded, governed SwarmKit run. The first argument is

@@ -18,6 +18,7 @@ import typer
 
 from swarmkit_runtime.orchestration import SqlSagaStore, StageOutcome
 from swarmkit_runtime.orchestration.reference import ReferenceController
+from swarmkit_runtime.persistence._factory import _resolve_backend
 from swarmkit_runtime.resolver import resolve_workspace
 
 from ._app import app
@@ -48,6 +49,7 @@ def _http_run_stage(serve_url: str, token: str | None) -> Any:
             status=body.get("status", "failed"),
             artifact=body.get("artifact", ""),
             detail=body.get("detail", ""),
+            artifact_bytes=body.get("artifact_bytes"),
         )
 
     return run_stage
@@ -82,6 +84,26 @@ async def run_drive_loop(
 
 
 @app.command()
+def _resolve_saga_store_url(workspace: Path, override: str | None) -> tuple[str, str]:
+    """The saga-store URL + where it came from, matching serve's precedence.
+
+    ``--database-url`` is the explicit override and the ONLY supported way to point the two
+    processes at different stores. Otherwise: env, then ``storage.runtime``, then the workspace
+    sqlite default.
+    """
+    if override:
+        return override, "--database-url"
+    raw: Any = None
+    try:
+        raw = resolve_workspace(workspace.resolve()).raw
+    except Exception:  # a workspace that will not resolve still gets the sqlite default
+        raw = None
+    backend, url, source = _resolve_backend(workspace, raw)
+    if backend == "postgres":
+        return url, source
+    return f"sqlite:///{workspace / '.swarmkit' / 'store.sqlite'}", source
+
+
 def orchestrator(
     workspace: Annotated[
         Path, typer.Argument(help="Workspace root (directory with workspace.yaml).")
@@ -99,13 +121,19 @@ def orchestrator(
     poll_seconds: Annotated[float, typer.Option("--poll", help="Idle poll interval (s).")] = 1.0,
 ) -> None:
     """Run the bundled reference orchestrator: drive queued pipeline events to completion."""
-    db = database_url or f"sqlite:///{workspace / '.swarmkit' / 'store.sqlite'}"
+    # Resolve the store the SAME way serve does. The orchestrator used to default to the workspace
+    # store.sqlite regardless of `storage.runtime`, which was harmless only while serve ignored that
+    # config too — both landed on SQLite and agreed by accident. With serve honouring it, an
+    # independent default is a split brain: serve queues events into one database while the
+    # orchestrator polls another, no stage ever runs, and neither process warns.
+    db, source = _resolve_saga_store_url(workspace, database_url)
     store = SqlSagaStore.from_url(db)
     graphs = _load_graphs(workspace)
     controller = ReferenceController(
         run_stage=_http_run_stage(serve_url, token), store=store, graphs=graphs
     )
     typer.echo(f"orchestrator: {len(graphs)} stage-graph(s); driving events from {db}")
+    typer.echo(f"  store source: {source}")
     typer.echo(f"  run-stage → {serve_url}   (Ctrl-C to stop)")
     try:
         asyncio.run(run_drive_loop(controller, store, poll_seconds=poll_seconds))

@@ -61,6 +61,9 @@ class StageOutcomeResponse(BaseModel):
     status: str
     artifact: str = ""
     detail: str = ""
+    #: Size of the produced artifact — the cheapest signal separating a stage that parked with a
+    #: real record from one that parked with a 46-character failure string.
+    artifact_bytes: int | None = None
 
 
 class RoleTaskSummary(BaseModel):
@@ -288,7 +291,10 @@ def _register_pipeline_routes(app: FastAPI, workspace_path: Path) -> None:
             )
         outcome: StageOutcome = await seam(body.correlation_id, body.stage)
         return StageOutcomeResponse(
-            status=outcome.status, artifact=outcome.artifact, detail=outcome.detail
+            status=outcome.status,
+            artifact=outcome.artifact,
+            detail=outcome.detail,
+            artifact_bytes=outcome.artifact_bytes,
         )
 
     @app.post("/pipelines/signal")

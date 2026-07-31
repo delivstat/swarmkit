@@ -13,10 +13,13 @@ override a bundled kind). The harness node's ``_build_executor`` looks a kind up
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import uuid
+from collections import deque
 from collections.abc import AsyncIterator, Mapping
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -25,7 +28,7 @@ import yaml
 
 from swarmkit_runtime.executors._adapter_spec import AdapterSpec, parse_adapter_spec
 from swarmkit_runtime.executors._event_map import AdapterInterpreter, build_command
-from swarmkit_runtime.executors._events import ExecEvent, ExecRaw, ExecStarted
+from swarmkit_runtime.executors._events import ExecEvent, ExecRaw, ExecResult, ExecStarted
 from swarmkit_runtime.executors._protocol import Executor
 from swarmkit_runtime.executors._run import (
     BudgetEnvelope,
@@ -37,6 +40,13 @@ from swarmkit_runtime.executors._run import (
 
 # The bundled reference-adapter library (populated from PR4: claude-code, codex, opencode, …).
 _BUNDLED_ADAPTERS_DIR = Path(__file__).resolve().parent / "adapters"
+
+logger = logging.getLogger("swarmkit.executors")
+
+# How much harness stderr to retain for a failure report. Bounded: a chatty harness must not be
+# able to grow the process, and the tail is what diagnoses an early exit.
+_STDERR_TAIL_LINES = 200
+_STDERR_DRAIN_TIMEOUT = 2.0
 
 
 def _ctx(
@@ -76,6 +86,8 @@ class DeclarativeExecutor(Executor):
         self._config = dict(config or {})
         self._credential = model_provider_credential
         self._active: dict[str, Any] = {}
+        # run_id -> {"returncode": int | None, "stderr_tail": str}, populated when the process ends.
+        self._exits: dict[str, dict[str, Any]] = {}
         self._sessions: dict[str, str] = {}
 
     @property
@@ -161,7 +173,16 @@ class DeclarativeExecutor(Executor):
         self, argv: list[str], env: Mapping[str, str], cwd: Path, run_id: str
     ) -> AsyncIterator[str]:
         """Launch the subprocess and yield raw stdout lines; register it for :meth:`cancel`.
-        Overridable seam — tests substitute a scripted line source without a real binary."""
+        Overridable seam — tests substitute a scripted line source without a real binary.
+
+        stderr is drained CONCURRENTLY into a bounded tail. Piping it and never reading it lost
+        every harness diagnostic — a CLI that died before emitting its terminal ``result`` event
+        was recorded as the bare string "no result event", with the actual reason sitting unread in
+        the pipe. It also deadlocked: a harness writing past the ~64KB pipe buffer blocks on write
+        forever, so ``proc.wait()`` never returns.
+
+        The tail + exit code land in :attr:`_exits` for :meth:`run` to attach to the terminal event.
+        """
         proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=str(cwd),
@@ -170,6 +191,20 @@ class DeclarativeExecutor(Executor):
             stderr=asyncio.subprocess.PIPE,
         )
         self._active[run_id] = proc
+        tail: deque[str] = deque(maxlen=_STDERR_TAIL_LINES)
+
+        async def drain() -> None:
+            stderr = proc.stderr
+            if stderr is None:
+                return
+            async for raw in stderr:
+                line = raw.decode(errors="replace").rstrip("\n")
+                if line:
+                    tail.append(line)
+                    # debug, not info: a harness can print credentials.
+                    logger.debug("[harness:%s stderr] %s", self._spec.kind, line)
+
+        drainer = asyncio.create_task(drain())
         try:
             stdout = proc.stdout
             assert stdout is not None
@@ -177,6 +212,13 @@ class DeclarativeExecutor(Executor):
                 yield line.decode(errors="replace")
             await proc.wait()
         finally:
+            with suppress(asyncio.CancelledError, Exception):
+                await asyncio.wait_for(drainer, timeout=_STDERR_DRAIN_TIMEOUT)
+            drainer.cancel()
+            self._exits[run_id] = {
+                "returncode": proc.returncode,
+                "stderr_tail": "\n".join(tail),
+            }
             self._active.pop(run_id, None)
 
     async def run(
@@ -215,6 +257,7 @@ class DeclarativeExecutor(Executor):
         env = self._launch_env(ctx)
 
         yield ExecStarted(run_id=run_id, kind=self._spec.kind, ref=self._config.get("model"))
+        saw_terminal = False
         async for raw in self._open_stream(argv, env, sandbox.root, run_id):
             line = raw.strip()
             if not line:
@@ -226,9 +269,17 @@ class DeclarativeExecutor(Executor):
             except json.JSONDecodeError:
                 continue
             for event in interp.feed(obj):
+                saw_terminal = saw_terminal or isinstance(event, ExecResult)
                 yield event
             if interp.session_id is not None:
                 self._sessions[run_id] = interp.session_id
+
+        # The harness exited without its terminal `result` event. Emit one carrying the process exit
+        # code + the retained stderr tail, so the failure is diagnosable instead of being recorded
+        # as the bare string "no result event" with the reason discarded.
+        exit_info = self._exits.pop(run_id, None)
+        if not saw_terminal:
+            yield ExecResult(status="failure", exit_metadata=dict(exit_info or {}))
 
     async def cancel(self, run_id: str) -> None:
         proc = self._active.get(run_id)

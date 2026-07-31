@@ -18,6 +18,7 @@ resumes on. An ungated stage returns ``completed``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from swarmkit_runtime.orchestration import RunStage, SagaStore, StageOutcome
@@ -50,14 +51,25 @@ def _prior_input(store: ArtifactStore, correlation_id: str) -> str:
     return "\n\n".join(parts)
 
 
-def _stage_input(saga_store: SagaStore, artifact_store: ArtifactStore, correlation_id: str) -> str:
-    """What one stage's topology run receives as its input.
+def _stage_input(
+    saga_store: SagaStore,
+    artifact_store: ArtifactStore,
+    correlation_id: str,
+    stage: Mapping[str, Any] | None = None,
+) -> str:
+    """What one stage's topology run receives as its input, in precedence order.
 
-    The **first** stage is seeded with the pipeline's own input payload (the `input` carried on the
-    `start` event, persisted on the saga) — so a pipeline can actually be driven by an incoming
-    payload, not just an opaque correlation id. **Downstream** stages thread the upstream artifacts.
+    1. ``stage["input"]`` when the caller supplied one. ``RunStageRequest.stage`` is a free-form
+       object, so a caller naturally passes ``input``; it used to be accepted and silently dropped.
+    2. The saga's ``input`` — the payload carried on the `start` event — for the **first** stage,
+       so a pipeline can be driven by an incoming payload and not just an opaque correlation id.
+    3. The upstream artifacts, for every **downstream** stage.
+
     The correlation id is always available too (it is the run's `thread_id`).
     """
+    supplied = str((stage or {}).get("input") or "")
+    if supplied:
+        return supplied
     saga = saga_store.get(correlation_id)
     if saga is not None and not saga.passed_stages:
         return saga.input
@@ -85,7 +97,7 @@ def build_pipeline_run_stage(
 
         sid = _stage_id(stage)
         try:
-            stage_input = _stage_input(saga_store, artifact_store, correlation_id)
+            stage_input = _stage_input(saga_store, artifact_store, correlation_id, stage)
             # Persist the resolved input alongside the output (name="input"), so the run inspector
             # can show exactly what this node received — recorded before the run so it survives a
             # failed stage too.
@@ -98,9 +110,14 @@ def build_pipeline_run_stage(
         except Exception as exc:  # surface any run error as a terminal outcome
             return StageOutcome(status="failed", detail=f"{type(exc).__name__}: {exc}")
 
-        ref = artifact_store.put(correlation_id, sid, result.output or "")
+        output = result.output or ""
+        ref = artifact_store.put(correlation_id, sid, output)
         gated = bool(stage.get("gate") or stage.get("funnel"))
-        return StageOutcome(status="parked" if gated else "completed", artifact=ref)
+        return StageOutcome(
+            status="parked" if gated else "completed",
+            artifact=ref,
+            artifact_bytes=len(output.encode()),
+        )
 
     return run_stage
 
