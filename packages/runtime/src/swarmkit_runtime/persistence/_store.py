@@ -41,6 +41,19 @@ def normalize_url(url: str) -> str:
     return url
 
 
+def engine_url(engine: Engine) -> str:
+    """The engine's URL **with its password intact**, for handing to another store.
+
+    ``str(engine.url)`` renders the password as ``***`` — correct for a log line, silently wrong
+    when the result is passed onward as a connection string: the receiving store then authenticates
+    with the literal text ``***`` and the server rejects it. Only bites a URL with a non-empty
+    password, which is why SQLite and passwordless Postgres never hit it.
+
+    Use this whenever a URL is *forwarded*; keep ``str(url)`` for anything that is displayed.
+    """
+    return engine.url.render_as_string(hide_password=False)
+
+
 def make_engine(url: str) -> Engine:
     """Create a SQLAlchemy engine, enabling WAL + busy_timeout + FKs for the SQLite dialect.
 
@@ -415,6 +428,7 @@ __all__ = [
     "SqliteStore",
     "Store",
     "UsageRow",
+    "engine_url",
     "make_engine",
     "normalize_url",
 ]
