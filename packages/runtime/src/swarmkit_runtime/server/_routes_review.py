@@ -42,19 +42,25 @@ class ResolveRequest(BaseModel):
     outcome: Literal["approve", "reject"]
 
 
+_KINDS = {
+    "harness-approval": "permission",
+    "harness-input": "input",
+    "multi-party-approval": "role_task",
+}
+
+
 def _item_to_dict(item: ReviewItem) -> dict[str, Any]:
-    """Serialize a review item for a front-end, surfacing the harness-gate fields (capability for a
-    §6.2 permission, question/options for a §6.3 input) so a UI can render + resolve it."""
-    kind = (
-        "permission"
-        if item.skill_id == "harness-approval"
-        else "input"
-        if item.skill_id == "harness-input"
-        else "other"
-    )
+    """Serialize a review item for a front-end, surfacing the fields each kind needs to render +
+    resolve: ``capability`` for a §6.2 permission, ``question``/``options`` for a §6.3 input, and
+    ``gate_id``/``role``/``scope``/``rule_index`` for a multi-party role-task.
+
+    A role-task without its gate/role/scope cannot be grouped by gate or told apart from its
+    siblings, so a UI could not say *which capacity* the approver is acting in — which is the whole
+    content of the decision (design/details/pipeline-gate-approval-ui.md).
+    """
     return {
         "id": item.id,
-        "kind": kind,
+        "kind": _KINDS.get(item.skill_id, "other"),
         "agent_id": item.agent_id,
         "topology_id": item.topology_id,
         "skill_id": item.skill_id,
@@ -65,8 +71,83 @@ def _item_to_dict(item: ReviewItem) -> dict[str, Any]:
         "question": item.output.get("question", ""),
         "options": item.output.get("options", []),
         "free_text_allowed": item.output.get("free_text_allowed", True),
+        # Multi-party role-task fields. `resolved_by` mirrors `answer` under a name that says what
+        # it holds for this kind — the identity that cast the resolution, empty while pending.
+        "gate_id": item.output.get("gate_id", ""),
+        "role": item.output.get("role", ""),
+        "scope": item.output.get("scope", ""),
+        "rule_index": item.output.get("rule_index"),
+        "resolved_by": item.answer if item.skill_id == "multi-party-approval" else "",
         "timestamp": item.timestamp.isoformat(),
     }
+
+
+async def _resolve_role_task(
+    *,
+    runtime: Any,
+    queue: FileReviewQueue,
+    item: ReviewItem,
+    outcome: Literal["approve", "reject"],
+    actor: str,
+    reread: Any,
+) -> dict[str, Any]:
+    """Authorize → check membership → audit → record, mirroring ``_ingress_pipeline_event``.
+
+    ``approvals:resolve`` is a reserved human-identity scope (§8.7), so an agent or webhook token
+    can never cast a resolution whatever its serve tier. Every attempt is audited, allowed or
+    denied, before the 403 is raised — "who tried to approve what" stays answerable.
+    """
+    role = str(item.output.get("role", ""))
+    scope = str(item.output.get("scope", ""))
+    gate_id = str(item.output.get("gate_id", ""))
+
+    decision = await runtime.governance.evaluate_action(
+        agent_id=actor,
+        action="approvals:resolve",
+        scopes_required=frozenset({"approvals:resolve"}),
+        context={"gate_id": gate_id, "item_id": item.id, "role": role, "scope": scope},
+    )
+    denial = decision.reason if not decision.allowed else None
+    if denial is None and item.skill_id != "multi-party-approval":
+        denial = f"review item {item.id!r} is not a multi-party approval role-task"
+    if denial is None:
+        # Fail closed at the surface with the specific reason. An ineligible resolution is
+        # otherwise merely ignored by ``evaluate``, leaving the resolver watching a gate that never
+        # advances. Under NoneAuthProvider this is what rejects "anonymous" — unless the workspace
+        # genuinely lists it as a role member, which keeps local dev workable.
+        denial = membership_error(
+            runtime.workspace.role_registry, role=role, scope=scope, identity=actor
+        )
+
+    await runtime.governance.record_event(
+        AuditEvent(
+            event_type="approval.role_task_resolved",
+            agent_id=actor,
+            timestamp=datetime.now(tz=UTC),
+            payload={
+                "gate_id": gate_id,
+                "item_id": item.id,
+                "role": role,
+                "scope": scope,
+                "outcome": outcome,
+                "identity": actor,
+                "allowed": denial is None,
+                "reason": denial or decision.reason,
+            },
+            policy_decision="allow" if denial is None else "deny",
+            policy_reason=denial or decision.reason,
+        )
+    )
+
+    if denial is not None:
+        raise HTTPException(
+            status_code=403, detail=f"{actor} may not resolve {item.id!r}: {denial}"
+        )
+
+    status: Literal["approved", "rejected"] = "approved" if outcome == "approve" else "rejected"
+    queue.record_resolution(item.id, status, actor)
+    result: dict[str, Any] = reread(item.id)
+    return result
 
 
 def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
@@ -84,13 +165,26 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
             raise HTTPException(status_code=404, detail=f"review item {item_id!r} not found")
         return item
 
+    def _filtered(items: list[ReviewItem], kind: str, gate_id: str) -> list[dict[str, Any]]:
+        out = [_item_to_dict(i) for i in items]
+        if kind:
+            out = [i for i in out if i["kind"] == kind]
+        if gate_id:
+            out = [i for i in out if i["gate_id"] == gate_id]
+        return out
+
     @app.get("/review")
-    async def list_pending() -> list[dict[str, Any]]:
-        return [_item_to_dict(i) for i in _queue().list_pending()]
+    async def list_pending(kind: str = "", gate_id: str = "") -> list[dict[str, Any]]:
+        """Pending items, optionally narrowed to one ``kind`` and/or one gate.
+
+        The gate filter is what lets an inbox group a parked run's role-tasks without fetching the
+        whole queue and grouping client-side.
+        """
+        return _filtered(_queue().list_pending(), kind, gate_id)
 
     @app.get("/review/all")
-    async def list_all() -> list[dict[str, Any]]:
-        return [_item_to_dict(i) for i in _queue().list_all()]
+    async def list_all(kind: str = "", gate_id: str = "") -> list[dict[str, Any]]:
+        return _filtered(_queue().list_all(), kind, gate_id)
 
     @app.get("/review/{item_id}")
     async def get_item(item_id: str) -> dict[str, Any]:
@@ -126,69 +220,14 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
     async def resolve_multiparty_task(
         item_id: str, body: ResolveRequest, request: Request
     ) -> dict[str, Any]:
-        """Resolve a multi-party approval role-task as the authenticated caller.
-
-        Authorize → check membership → record → audit, mirroring ``_ingress_pipeline_event``:
-        ``approvals:resolve`` is a reserved human-identity scope (§8.7), so an agent or webhook
-        token can never cast a resolution whatever its serve tier. Every attempt is audited,
-        allowed or denied.
-        """
-        runtime = _get_runtime(request)
-        identity = getattr(request.state, "identity", None)
-        actor = getattr(identity, "client_id", None) or "anonymous"
-
+        """Resolve a multi-party approval role-task as the authenticated caller."""
         queue = _queue()
-        item = _find(queue, item_id)
-        role = str(item.output.get("role", ""))
-        scope = str(item.output.get("scope", ""))
-        gate_id = str(item.output.get("gate_id", ""))
-
-        decision = await runtime.governance.evaluate_action(
-            agent_id=actor,
-            action="approvals:resolve",
-            scopes_required=frozenset({"approvals:resolve"}),
-            context={"gate_id": gate_id, "item_id": item.id, "role": role, "scope": scope},
+        return await _resolve_role_task(
+            runtime=_get_runtime(request),
+            queue=queue,
+            item=_find(queue, item_id),
+            outcome=body.outcome,
+            actor=getattr(getattr(request.state, "identity", None), "client_id", None)
+            or "anonymous",
+            reread=lambda item_id: _item_to_dict(_find(queue, item_id)),
         )
-        denial = decision.reason if not decision.allowed else None
-        if denial is None and item.skill_id != "multi-party-approval":
-            denial = f"review item {item.id!r} is not a multi-party approval role-task"
-        if denial is None:
-            # Fail closed at the surface with the specific reason. An ineligible resolution is
-            # otherwise merely ignored by ``evaluate``, leaving the resolver watching a gate that
-            # never advances. Under NoneAuthProvider this is what rejects "anonymous" — unless the
-            # workspace genuinely lists it as a role member, which keeps local dev workable.
-            denial = membership_error(
-                runtime.workspace.role_registry, role=role, scope=scope, identity=actor
-            )
-
-        await runtime.governance.record_event(
-            AuditEvent(
-                event_type="approval.role_task_resolved",
-                agent_id=actor,
-                timestamp=datetime.now(tz=UTC),
-                payload={
-                    "gate_id": gate_id,
-                    "item_id": item.id,
-                    "role": role,
-                    "scope": scope,
-                    "outcome": body.outcome,
-                    "identity": actor,
-                    "allowed": denial is None,
-                    "reason": denial or decision.reason,
-                },
-                policy_decision="allow" if denial is None else "deny",
-                policy_reason=denial or decision.reason,
-            )
-        )
-
-        if denial is not None:
-            raise HTTPException(
-                status_code=403,
-                detail=f"{actor} may not resolve {item.id!r}: {denial}",
-            )
-
-        status: Literal["approved", "rejected"] = (
-            "approved" if body.outcome == "approve" else "rejected"
-        )
-        queue.record_resolution(item.id, status, actor)
-        return _item_to_dict(_find(queue, item.id))

@@ -143,7 +143,14 @@ def _seed_gate_item(queue: FileReviewQueue, *, gate_id: str, role: str, status: 
 def test_gate_status_pending_when_unopened(client: TestClient) -> None:
     resp = client.get("/pipelines/gate-status/REQ-7/designer")
     assert resp.status_code == 200
-    assert resp.json() == {"correlation_id": "REQ-7", "gate": "designer", "status": "pending"}
+    assert resp.json() == {
+        "correlation_id": "REQ-7",
+        "gate": "designer",
+        "status": "pending",
+        # No items -> nothing to evaluate a policy against, so the fold answers (see the endpoint).
+        "items": [],
+        "quorum_evaluated": False,
+    }
 
 
 def test_gate_status_approved_when_all_approved(client: TestClient, ws: Path) -> None:
