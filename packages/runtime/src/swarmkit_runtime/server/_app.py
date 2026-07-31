@@ -192,6 +192,25 @@ def create_app(  # noqa: PLR0915
         client renders the right login gate before it holds a token."""
         return _auth.public_info()
 
+    @app.get("/whoami")
+    async def whoami(request: Request) -> dict[str, object]:
+        """The *authenticated* caller's identity — as opposed to ``/auth-info``, which is public and
+        describes only the server's auth mode.
+
+        A front-end resolving a multi-party approval needs this: the resolver is the session
+        identity (design/details/pipeline-gate-approval-ui.md), so without it a UI cannot tell an
+        operator which capacity they are about to act in, and every role-task looks equally
+        actionable until the server 403s one.
+        """
+        identity = getattr(request.state, "identity", None)
+        return {
+            "client_id": getattr(identity, "client_id", "") or "anonymous",
+            "client_name": getattr(identity, "client_name", "") or "Anonymous",
+            "provider": getattr(identity, "provider", "") or _auth.mode,
+            "scopes": sorted(getattr(identity, "scopes", frozenset())),
+            "mode": _auth.mode,
+        }
+
     @app.middleware("http")
     async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
         start = time.monotonic()

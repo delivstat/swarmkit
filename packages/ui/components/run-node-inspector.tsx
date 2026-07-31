@@ -5,10 +5,20 @@
 // its attempt count, its per-node timeline (started / parked / resumed / rejected — the approval
 // trail), and the artifact it produced — fetched LAZILY (only on selection) from the ArtifactStore
 // via the node endpoint, since a run's artifacts can be large and most are never opened.
+//
+// A stage PARKED on a multi-party gate also gets the approval panel
+// (design/details/pipeline-gate-approval-ui.md) — this is where an approver acts, because it is the
+// only surface that shows them what they are approving.
+//
+// Section ORDER is load-bearing: timeline -> input -> artifact -> approval. The decision comes
+// LAST, after the evidence. Putting the buttons above the artifact reproduces the context-free
+// inbox this panel exists to replace — you would be clicking Approve before scrolling to the thing
+// you are approving.
 
-import { ArrowDownToLine, FileText, Loader2 } from "lucide-react";
+import { ArrowDownToLine, FileText, Gavel, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { RoleTaskPanel } from "@/components/role-task-panel";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 import { RUN_STAGE_META, stageStatus, stageTimeline } from "@/lib/run-status";
@@ -149,6 +159,22 @@ export function RunNodeInspector({ saga, stageId }: RunNodeInspectorProps) {
 					</div>
 				)}
 			</section>
+
+			{status === "parked" ? (
+				<section className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+					<h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+						<Gavel className="h-3.5 w-3.5" />
+						Approval
+					</h4>
+					<p className="mb-3 text-xs text-muted-foreground">
+						You are approving the artifact above.
+					</p>
+					<RoleTaskPanel
+						correlationId={saga.correlation_id}
+						stageId={stageId}
+					/>
+				</section>
+			) : null}
 		</div>
 	);
 }
