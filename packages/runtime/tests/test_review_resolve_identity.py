@@ -287,3 +287,15 @@ def test_cli_resolve_refuses_a_harness_gate(workspace: Path) -> None:
         app, ["review", "resolve", "approval-1", "--as", "alice", str(workspace)]
     )
     assert result.exit_code != 0
+
+
+# ---- /whoami -------------------------------------------------------------
+
+
+def test_whoami_reports_the_authenticated_caller(client: TestClient) -> None:
+    """A front-end resolving a role-task needs to say which capacity it is acting in; /auth-info is
+    public and describes the server, not the caller."""
+    body = client.get("/whoami").json()
+    assert body["client_id"] == "anonymous"  # NoneAuthProvider default
+    assert body["mode"] == "none"
+    assert isinstance(body["scopes"], list)

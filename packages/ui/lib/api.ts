@@ -6,6 +6,7 @@ import type {
 	ConversationDetail,
 	ConversationListItem,
 	GateCoverage,
+	GateStatusDetail,
 	HealthResponse,
 	JobListItem,
 	JobResponse,
@@ -25,6 +26,7 @@ import type {
 	TriggerConfig,
 	UsageSummary,
 	ValidateResponse,
+	Whoami,
 } from "./types";
 
 import { getAccessToken, handleUnauthorized } from "./token-store";
@@ -155,11 +157,26 @@ export const api = {
 	canaryRollback: (topology: string) =>
 		post<{ rolled_back: boolean }>(`/canary/${topology}/rollback`),
 
-	reviewPending: () => get<ReviewGate[]>("/review"),
+	reviewPending: (params: { kind?: string; gate_id?: string } = {}) => {
+		const q = new URLSearchParams();
+		if (params.kind) q.set("kind", params.kind);
+		if (params.gate_id) q.set("gate_id", params.gate_id);
+		const suffix = q.toString() ? `?${q}` : "";
+		return get<ReviewGate[]>(`/review${suffix}`);
+	},
 	reviewApprove: (id: string) => post<ReviewGate>(`/review/${id}/approve`),
 	reviewReject: (id: string) => post<ReviewGate>(`/review/${id}/reject`),
 	reviewAnswer: (id: string, answer: string) =>
 		post<ReviewGate>(`/review/${id}/answer`, { answer }),
+	/** Resolve a multi-party role-task. Deliberately takes no identity: the resolver is the
+	 * authenticated session, and the server rejects a body-supplied one. */
+	reviewResolve: (id: string, outcome: "approve" | "reject") =>
+		post<ReviewGate>(`/review/${id}/resolve`, { outcome }),
+	gateStatus: (correlationId: string, gate: string) =>
+		get<GateStatusDetail>(
+			`/pipelines/gate-status/${encodeURIComponent(correlationId)}/${encodeURIComponent(gate)}`,
+		),
+	whoami: () => get<Whoami>("/whoami"),
 
 	conversations: () => get<ConversationListItem[]>("/conversations"),
 	conversation: (id: string) => get<ConversationDetail>(`/conversations/${id}`),

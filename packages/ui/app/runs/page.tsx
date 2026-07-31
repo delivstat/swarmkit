@@ -51,6 +51,16 @@ export default function RunsPage() {
 	const [runs, setRuns] = useState<SagaSummary[]>([]);
 	const [listError, setListError] = useState<string | null>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
+	// Deep link: /runs?run=<correlation_id>&stage=<stage>. The Gates inbox links a parked run's
+	// role-task straight to the stage it belongs to, so an approver lands on the artifact rather
+	// than hunting for the run. Read once on mount — after that the selection is the user's.
+	const [initialStage, setInitialStage] = useState<string | null>(null);
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		const run = params.get("run");
+		if (run) setSelectedId(run);
+		setInitialStage(params.get("stage"));
+	}, []);
 
 	// The search list polls: a live run advances on its own as the orchestrator drives it.
 	const loadRuns = useCallback(() => {
@@ -144,7 +154,7 @@ export default function RunsPage() {
 			{/* ── Right: run detail (replay canvas + node inspector) ──────────────── */}
 			<main className="flex min-w-0 flex-1 flex-col">
 				{selectedId ? (
-					<RunDetail correlationId={selectedId} />
+					<RunDetail correlationId={selectedId} initialStage={initialStage} />
 				) : (
 					<div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
 						Select a run to replay its pipeline.
@@ -155,11 +165,19 @@ export default function RunsPage() {
 	);
 }
 
-function RunDetail({ correlationId }: { correlationId: string }) {
+function RunDetail({
+	correlationId,
+	initialStage,
+}: {
+	correlationId: string;
+	initialStage?: string | null;
+}) {
 	const [saga, setSaga] = useState<SagaDetail | null>(null);
 	const [doc, setDoc] = useState<StageGraphDoc>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [selectedStage, setSelectedStage] = useState<string | null>(null);
+	const [selectedStage, setSelectedStage] = useState<string | null>(
+		initialStage ?? null,
+	);
 
 	// Poll the run so the canvas replays live progress; refetch when the selection changes.
 	useEffect(() => {

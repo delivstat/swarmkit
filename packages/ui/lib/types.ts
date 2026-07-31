@@ -369,7 +369,7 @@ export interface SagaNodeArtifact {
 /** A pending harness gate (GET /review) — a §6.2 permission or §6.3 input request awaiting a human. */
 export interface ReviewGate {
 	id: string;
-	kind: "permission" | "input" | "other";
+	kind: "permission" | "input" | "role_task" | "other";
 	agent_id: string;
 	topology_id: string;
 	skill_id: string;
@@ -380,5 +380,45 @@ export interface ReviewGate {
 	question: string;
 	options: string[];
 	free_text_allowed: boolean;
+	/** Multi-party role-task fields — empty for the harness kinds. `gate_id` is
+	 * `<correlation_id>:<agent_id>`, so a run's gate can be located from an inbox row. */
+	gate_id: string;
+	role: string;
+	scope: string;
+	rule_index: number | null;
+	resolved_by: string;
 	timestamp: string;
+}
+
+/** One role-task of a gate, as reported by GET /pipelines/gate-status. */
+export interface RoleTaskItem {
+	id: string;
+	role: string;
+	scope: string;
+	rule_index: number | null;
+	status: "pending" | "approved" | "rejected";
+	resolved_by: string;
+}
+
+/** A gate's aggregate resolution plus its per-role detail.
+ *
+ * `quorum_evaluated` says HOW `status` was derived: `true` means the approval engine evaluated the
+ * gate's policy (so it matches the decision the runtime gates on); `false` means the policy was not
+ * reachable and the server folded the items, which treats every task approving as the bar. The two
+ * differ for any quorum other than `all`. */
+export interface GateStatusDetail {
+	correlation_id: string;
+	gate: string;
+	status: "approved" | "rejected" | "pending";
+	items: RoleTaskItem[];
+	quorum_evaluated: boolean;
+}
+
+/** The authenticated caller (GET /whoami). Under `mode: "none"` every caller is `anonymous`. */
+export interface Whoami {
+	client_id: string;
+	client_name: string;
+	provider: string;
+	scopes: string[];
+	mode: string;
 }

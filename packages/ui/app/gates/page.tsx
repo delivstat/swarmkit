@@ -10,9 +10,26 @@ import { api } from "@/lib/api";
 import type { ReviewGate } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
-/** Pending harness gates — §6.2 permission approvals and §6.3 input requests — resolved by a human.
- * Same review queue + HTTP API the CLI (`swarmkit review`) and fleet UI use, so a gate resolves
- * identically whichever surface an operator picks. */
+/** A gate id is `<correlation_id>:<agent_id>`; split on the LAST colon so a correlation id that
+ * itself contains one still resolves. */
+export function runOf(gateId: string): string {
+	const i = gateId.lastIndexOf(":");
+	return i === -1 ? gateId : gateId.slice(0, i);
+}
+
+export function stageOf(gateId: string): string {
+	const i = gateId.lastIndexOf(":");
+	return i === -1 ? "" : gateId.slice(i + 1);
+}
+
+/** Pending human decisions — §6.2 permission approvals, §6.3 input requests, and multi-party
+ * approval role-tasks. Same review queue + HTTP API the CLI (`swarmkit review`) and fleet UI use,
+ * so a gate resolves identically whichever surface an operator picks.
+ *
+ * Role-tasks are LISTED here but resolved in the run view: this page has no artifact to show, and
+ * approving without seeing what you are approving is the failure mode the whole gate exists to
+ * prevent (design/details/pipeline-gate-approval-ui.md). The inbox tells you a decision is waiting;
+ * the run view is where you make it. */
 export default function GatesPage() {
 	const fetchGates = useCallback(() => api.reviewPending(), []);
 	const { data, error, loading, refetch } = usePoll<ReviewGate[]>(
@@ -35,9 +52,9 @@ export default function GatesPage() {
 		<div>
 			<h2 className="mb-4 text-xl font-bold">Gates</h2>
 			<p className="mb-4 text-sm text-muted-foreground">
-				Harness runs paused for a human decision — permission approvals and
-				input questions. Resolving here is the same action as{" "}
-				<code>swarmkit review</code>.
+				Runs paused for a human decision — permission approvals, input
+				questions, and multi-party approval role-tasks. Resolving here is the
+				same action as <code>swarmkit review</code>.
 			</p>
 
 			{loading && <p className="text-sm text-muted-foreground">Loading…</p>}
@@ -107,6 +124,26 @@ function GateCard({
 						>
 							Reject
 						</Button>
+					</div>
+				</>
+			)}
+
+			{gate.kind === "role_task" && (
+				<>
+					<p className="mt-2 text-sm">
+						Approval from role <span className="font-medium">{gate.role}</span>{" "}
+						for <code className="font-mono text-xs">{gate.scope}</code>
+					</p>
+					<div className="mt-3 flex items-center gap-3">
+						<a
+							className="text-sm underline underline-offset-4"
+							href={`/runs?run=${encodeURIComponent(runOf(gate.gate_id))}&stage=${encodeURIComponent(stageOf(gate.gate_id))}`}
+						>
+							Open the run to approve →
+						</a>
+						<span className="text-xs text-muted-foreground">
+							decided in the run view, where the artifact is
+						</span>
 					</div>
 				</>
 			)}
