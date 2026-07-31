@@ -83,7 +83,6 @@ async def run_drive_loop(
         handled += 1
 
 
-@app.command()
 def _resolve_saga_store_url(workspace: Path, override: str | None) -> tuple[str, str]:
     """The saga-store URL + where it came from, matching serve's precedence.
 
@@ -104,6 +103,7 @@ def _resolve_saga_store_url(workspace: Path, override: str | None) -> tuple[str,
     return f"sqlite:///{workspace / '.swarmkit' / 'store.sqlite'}", source
 
 
+@app.command()
 def orchestrator(
     workspace: Annotated[
         Path, typer.Argument(help="Workspace root (directory with workspace.yaml).")
