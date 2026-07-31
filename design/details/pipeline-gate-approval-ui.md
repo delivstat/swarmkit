@@ -2,7 +2,7 @@
 title: Resolving a parked pipeline's approval gate (identity + surfaces)
 description: A pipeline saga parks on a funnel's multi-party approval gate, but nothing in the product can resolve it — the review items serialize as `kind: "other"`, no client calls `POST /review/{id}/resolve`, and the CLI has no `resolve` verb. This note fixes the identity model first (the resolver is the authenticated caller, not a request-body string), then adds the run-scoped approval surface in `/runs`, the inbox entry in `/gates`, and CLI parity.
 tags: [runtime, serve, ui, cli, governance, pipeline, approval]
-status: draft
+status: in-review
 ---
 
 # Resolving a parked pipeline's approval gate
@@ -11,7 +11,7 @@ status: draft
 **Design reference:** §8.5 (GovernanceProvider), §8.7 (reserved-for-human scopes), §14 (runtime/serve).
 Builds on `multi-party-approval.md` (the approval engine), `gate-funnel.md` (where a gate opens), and
 `bundled-pipeline-orchestrator.md` (the saga that parks).
-**Status:** draft
+**Status:** in-review — both open questions resolved (parking default, identity namespace)
 
 ## Goal
 
@@ -114,13 +114,31 @@ the same shape:
 - **The attempt is audited either way,** allowed or denied, as `approval.role_task_resolved` with
   `gate_id`, `item_id`, `role`, `scope`, `outcome`, `identity` — mirroring `pipeline.ingress`.
 
-This makes the serve `client_id` namespace and the `RoleRegistry` member namespace the same
-namespace. That is a real constraint on deployers and must be documented: an operator who is a
-member of role `security-reviewer` must authenticate as the identity listed in that role's
-`members`. Where they diverge, resolution fails closed with `"{identity} is not a member of role
-{role}"` — the existing `resolution_error` message, surfaced to the caller as a 403 rather than
-silently ignored (today invalid resolutions are dropped by `evaluate`, which would leave the
-approver staring at a gate that never advances).
+**Decision: serve `client_id` *is* the role-membership identity, unqualified.** No provider prefix
+(`api_key:alice`), no mapping table, no convergence with the control-plane identity model in this
+note. `RoleRegistry.members` holds bare identity strings and is compared to `client_id` directly.
+
+That is a real constraint on deployers and must be documented: an operator who is a member of role
+`security-reviewer` must authenticate to serve as the identity listed in that role's `members`.
+Where they diverge, resolution fails closed with `"{identity} is not a member of role {role}"` — the
+existing `resolution_error` message, surfaced to the caller as a 403 rather than silently ignored
+(today invalid resolutions are dropped by `evaluate`, which would leave the approver staring at a
+gate that never advances).
+
+The narrow choice is deliberate and has a known limit. Two auth providers can mint the same
+`client_id` — an API key named `alice` and a JWT subject `alice` are indistinguishable once inside
+`is_member`. That is acceptable while a workspace runs one provider, which is every deployment we
+have. It stops being acceptable the moment a workspace federates two, and the fix at that point is a
+qualified identity plus a `members` rewrite — a migration, not a redesign, because nothing above
+`resolution_error` inspects identity structure. `AuthIdentity` already carries `provider`, so the
+qualification is available without a schema change when it is needed.
+
+**Documented constraint, not an invariant.** The role registry schema is unchanged; this note adds
+no validation that `members` correspond to real serve credentials, because the runtime has no
+visibility into the auth provider's key list. A typo in `members` therefore surfaces at resolve time
+as a 403, not at workspace resolution. Making it a startup check would require an
+`AuthProvider.list_identities()` that not every provider can implement — out of scope, and noted as
+a follow-on.
 
 `NoneAuthProvider` yields an anonymous identity. In that configuration multi-party approval is not
 enforceable, and the resolve route should 403 with that reason rather than pretend. Single-role
@@ -282,11 +300,12 @@ Plus a screenshot of the `/runs` inspector on the parked stage with the role-tas
 
 ## Open questions
 
-- **Identity namespace unification.** Making serve `client_id` the role-membership identity is the
-  narrow fix. The control plane has its own identity model (`control-plane/05-identity-governance-iam.md`);
-  whether these converge, or whether `RoleRegistry` should carry a provider-qualified identity
-  (`api_key:alice` vs `jwt:alice@corp`), is unresolved. The narrow fix is forward-compatible with
-  either — it just means an early deployer's `members` list may need rewriting later.
+- ~~**Identity namespace unification.**~~ **Resolved:** serve `client_id` is the role-membership
+  identity, unqualified. No provider prefix, no mapping table, no control-plane convergence here —
+  see "The identity problem" above. Deferred with it: provider-qualified identities (needed only
+  when a workspace federates two auth providers, and a `members` migration when that day comes), and
+  any startup validation that `members` name real credentials (would need
+  `AuthProvider.list_identities()`, which not every provider can implement).
 - ~~**Timeout semantics.**~~ **Resolved:** park until acted on; the timeout is retained only for
   headless runs, declared as `approve.on_timeout` rather than detected. See "Parking is the default"
   above. The follow-on question it opens: converging paths A and B on non-blocking parking is a
