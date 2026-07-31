@@ -2060,6 +2060,22 @@ development workable, and is not a deployment posture).
 `swarmkit review approve|reject` are for harness gates and do **not** record an identity — they
 cannot satisfy a multi-party rule. Use `resolve`.
 
+## Reading a gate's state
+
+Role-tasks serialize as `kind: "role_task"` carrying `gate_id`, `role`, `scope`, `rule_index` and
+`resolved_by`, so a front-end can group a gate's tasks and show which capacity each approver is
+acting in. Narrow the queue with `GET /review?kind=role_task&gate_id=<id>`, or
+`swarmkit review list --kind role_task --gate <id>`.
+
+`GET /pipelines/gate-status/{correlation_id}/{gate}` returns the aggregate plus per-role `items`.
+Its `status` is evaluated through the **approval engine** whenever the gate's policy is reachable
+from the workspace (`quorum_evaluated: true`) — so the report matches the decision the runtime
+gates on. When the policy cannot be located (an externally-driven gate, or a renamed agent) it
+falls back to folding the items, which treats *every* task approving as the bar, and reports
+`quorum_evaluated: false` so a caller knows which answer it got. The two differ for any quorum
+other than `all`: under `quorum: any` the engine approves on the first resolution while the fold
+still says pending.
+
 ## See also
 
 - [Multi-party approval design note](https://github.com/delivstat/swarmkit/blob/main/design/details/multi-party-approval.md) — the authoritative resolution, quorum, overlap, and audit model.
@@ -2175,7 +2191,7 @@ Redacted fields appear as `[REDACTED]` in all outputs. Summary mode truncates lo
 
 | Command | Description |
 |---|---|
-| `swarmkit review list <workspace>` | List pending HITL review items |
+| `swarmkit review list <workspace> [--kind permission\|input\|role_task] [--gate <id>]` | List pending HITL review items |
 | `swarmkit review show <id> <workspace>` | Show review details |
 | `swarmkit review approve <id> <workspace>` | Approve a review |
 | `swarmkit review reject <id> <workspace>` | Reject a review |

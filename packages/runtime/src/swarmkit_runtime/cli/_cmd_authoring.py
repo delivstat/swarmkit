@@ -97,20 +97,43 @@ def validate(
 # ---- review + gaps -------------------------------------------------------
 
 
+_KINDS = {
+    "harness-approval": "permission",
+    "harness-input": "input",
+    "multi-party-approval": "role_task",
+}
+
+
 @review_app.command("list")
 def review_list(
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace root.", show_default=False)
     ] = Path("."),
+    kind: Annotated[
+        str,
+        typer.Option("--kind", help="Filter by kind: permission | input | role_task | other."),
+    ] = "",
+    gate: Annotated[str, typer.Option("--gate", help="Filter role-tasks to one gate id.")] = "",
 ) -> None:
     """List pending review items."""
     queue = FileReviewQueue(workspace_path.resolve())
     pending = queue.list_pending()
+    if kind:
+        pending = [i for i in pending if _KINDS.get(i.skill_id, "other") == kind]
+    if gate:
+        pending = [i for i in pending if i.output.get("gate_id") == gate]
     if not pending:
         typer.echo("No pending reviews.")
         return
     for item in pending:
-        typer.echo(f"  {item.id[:8]}  {item.agent_id:<16} {item.skill_id:<24} {item.reason}")
+        # A role-task's role is the decision being asked for; the skill id is the same for all of
+        # them, so showing it alone would make sibling tasks indistinguishable.
+        detail = (
+            f"role={item.output.get('role', '')} scope={item.output.get('scope', '')}"
+            if item.skill_id == "multi-party-approval"
+            else item.reason
+        )
+        typer.echo(f"  {item.id[:8]}  {item.agent_id:<16} {item.skill_id:<24} {detail}")
 
 
 @review_app.command("show")
