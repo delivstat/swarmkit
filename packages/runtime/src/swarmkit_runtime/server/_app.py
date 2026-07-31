@@ -23,6 +23,7 @@ from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.fleet import create_membership_store
 from swarmkit_runtime.persistence import create_store
+from swarmkit_runtime.persistence._store import engine_url
 from swarmkit_runtime.telemetry import configure_telemetry, load_telemetry_config
 
 from ._config import (
@@ -98,7 +99,9 @@ def create_app(  # noqa: PLR0915
         app.state.artifact_store = build_artifact_store(
             getattr(_storage, "artifacts", None),
             workspace_root=workspace_path,
-            database_url=str(app.state.store.engine.url),
+            # engine_url, not str(url): SQLAlchemy masks the password as *** in str(), and this
+            # value is a connection string the artifact store authenticates with, not a log line.
+            database_url=engine_url(app.state.store.engine),
         )
 
         async def _pipeline_sink(correlation_id: str, event: str) -> None:
