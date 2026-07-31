@@ -108,6 +108,11 @@ demo-gate-funnel:
 demo-review-resolve:
     uv run python packages/runtime/demos/review_resolve_identity.py
 
+# Demo role-task serialization + gate detail (pipeline-gate-approval-ui.md, slice 2): the fourth
+# review kind, the kind/gate filters, and gate-status reporting the quorum the engine decided.
+demo-role-task:
+    uv run python packages/runtime/demos/role_task_serialization.py
+
 # Demo slice_budget wired as a funnel validate layer (funnel-deterministic-validate.md): an
 # over-budget diff drives the funnel's bounded retry, then escalates to the human approve.
 demo-funnel-validate:

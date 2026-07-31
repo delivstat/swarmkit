@@ -97,7 +97,7 @@ Redacted fields appear as `[REDACTED]` in all outputs. Summary mode truncates lo
 
 | Command | Description |
 |---|---|
-| `swarmkit review list <workspace>` | List pending HITL review items |
+| `swarmkit review list <workspace> [--kind permission\|input\|role_task] [--gate <id>]` | List pending HITL review items |
 | `swarmkit review show <id> <workspace>` | Show review details |
 | `swarmkit review approve <id> <workspace>` | Approve a review |
 | `swarmkit review reject <id> <workspace>` | Reject a review |

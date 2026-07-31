@@ -31,9 +31,12 @@ from typing import Any, Literal
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
+from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.governance import AuditEvent, GovernanceProvider
+from swarmkit_runtime.governance._approval import ApprovalPolicy, GateStatus, evaluate
 from swarmkit_runtime.orchestration import PipelineSignal, RunStage, StageOutcome
 from swarmkit_runtime.review import FileReviewQueue, ReviewItem
+from swarmkit_runtime.review._multiparty import collect_resolutions
 
 from ._helpers import _get_runtime
 
@@ -60,12 +63,30 @@ class StageOutcomeResponse(BaseModel):
     detail: str = ""
 
 
+class RoleTaskSummary(BaseModel):
+    """One role-task of a gate — what a UI needs to render the decision and who made it."""
+
+    id: str
+    role: str
+    scope: str
+    rule_index: int | None = None
+    status: str
+    resolved_by: str = ""
+
+
 class GateStatusResponse(BaseModel):
-    """The resolution of a funnel gate, learned by an external orchestrator."""
+    """The resolution of a funnel gate, learned by an external orchestrator.
+
+    ``items`` carries the per-role detail an approval UI needs; the aggregate ``status`` alone
+    cannot say which roles are outstanding. ``quorum_evaluated`` reports *how* ``status`` was
+    derived — see the endpoint docstring, because the two answers can differ.
+    """
 
     correlation_id: str
     gate: str
     status: Literal["approved", "rejected", "pending"]
+    items: list[RoleTaskSummary] = []
+    quorum_evaluated: bool = False
 
 
 class PipelineSignalRequest(BaseModel):
@@ -199,6 +220,41 @@ def _gate_items(queue: FileReviewQueue, correlation_id: str, gate: str) -> list[
     return [i for i in queue.list_all() if i.output.get("gate_id") in wanted]
 
 
+def _find_agent_funnel(workspace: Any, agent_id: str) -> Any | None:
+    """The resolved funnel of the agent whose gate this is, or None.
+
+    A gate is opened as ``f"{correlation_id}:{agent_id}"`` by the StageRunner, so the agent id is
+    the gate name. Walks every topology's agent tree because an agent is addressed by id, not path.
+    """
+
+    def walk(agent: Any) -> Any | None:
+        if agent.id == agent_id:
+            return agent.funnel
+        for child in agent.children:
+            found = walk(child)
+            if found is not None:
+                return found
+        return None
+
+    for topology in workspace.topologies.values():
+        funnel = walk(topology.root)
+        if funnel is not None:
+            return funnel
+    return None
+
+
+def _gate_policy(workspace: Any, gate: str) -> ApprovalPolicy | None:
+    """The ``ApprovalPolicy`` governing *gate*, or None when it cannot be located."""
+    funnel = _find_agent_funnel(workspace, gate)
+    approve = (funnel.spec.get("approve") if funnel is not None else None) or None
+    if approve is None:
+        return None
+    try:
+        return ApprovalPolicy.from_dict(approve)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _aggregate_gate_status(items: list[ReviewItem]) -> Literal["approved", "rejected", "pending"]:
     """Fold a gate's role-task items into a single resolution.
 
@@ -266,11 +322,59 @@ def _register_pipeline_routes(app: FastAPI, workspace_path: Path) -> None:
         )
 
     @app.get("/pipelines/gate-status/{correlation_id}/{gate}")
-    async def gate_status(correlation_id: str, gate: str) -> GateStatusResponse:
+    async def gate_status(correlation_id: str, gate: str, request: Request) -> GateStatusResponse:
+        """Report a gate's resolution + its per-role detail.
+
+        ``status`` is evaluated through the **approval engine** when the gate's ``ApprovalPolicy``
+        can be located (``quorum_evaluated: true``) — the same `evaluate()` the runtime gates on, so
+        the report agrees with the decision. Folding the items directly cannot do this: it takes
+        every task approving as the bar, which is right only for ``quorum: all``. Under
+        ``quorum: any`` the engine approves on the first resolution while the fold still says
+        pending, and an orchestrator polling this would wait for a gate that had already opened.
+
+        The fold remains the fallback (``quorum_evaluated: false``) for a gate whose policy is not
+        reachable from this workspace — an externally-driven gate, or one whose agent has since been
+        renamed.
+        """
         queue = FileReviewQueue(workspace_path)
         items = _gate_items(queue, correlation_id, gate)
+
+        status = _aggregate_gate_status(items)
+        quorum_evaluated = False
+        # Not _get_runtime: gate-status must keep answering before the workspace has loaded (it
+        # falls back to the fold), rather than 503 an orchestrator that is only polling.
+        runtime: WorkspaceRuntime | None = getattr(request.app.state, "runtime", None)
+        workspace = runtime.workspace if runtime is not None else None
+        policy = _gate_policy(workspace, gate) if workspace is not None else None
+        if policy is not None and workspace is not None and items:
+            gate_id = f"{correlation_id}:{gate}"
+            ev = evaluate(
+                policy,
+                workspace.role_registry,
+                collect_resolutions(queue, gate_id=gate_id, policy=policy),
+            )
+            if ev.status is GateStatus.APPROVED:
+                status = "approved"
+            elif ev.status is GateStatus.REJECTED:
+                status = "rejected"
+            else:
+                status = "pending"
+            quorum_evaluated = True
+
         return GateStatusResponse(
             correlation_id=correlation_id,
             gate=gate,
-            status=_aggregate_gate_status(items),
+            status=status,
+            items=[
+                RoleTaskSummary(
+                    id=i.id,
+                    role=str(i.output.get("role", "")),
+                    scope=str(i.output.get("scope", "")),
+                    rule_index=i.output.get("rule_index"),
+                    status=i.status,
+                    resolved_by=i.answer,
+                )
+                for i in items
+            ],
+            quorum_evaluated=quorum_evaluated,
         )
