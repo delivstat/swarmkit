@@ -60,14 +60,14 @@ class FakeQueue:
         return [i for i in self.items.values() if i.status == "pending"]
 
     # ReviewQueue protocol members (unused by these tests; present to satisfy the type).
-    def resolve(self, item_id: str, status: str) -> bool:
+    def resolve(self, item_id: str, status: str, comment: str = "") -> bool:
         item = self.items.get(item_id)
         if item is None:
             return False
         self.items[item_id] = dataclasses.replace(item, status=status)  # type: ignore[arg-type]
         return True
 
-    def answer_input(self, item_id: str, answer: str) -> bool:
+    def answer_input(self, item_id: str, answer: str, comment: str = "") -> bool:
         item = self.items.get(item_id)
         if item is None:
             return False

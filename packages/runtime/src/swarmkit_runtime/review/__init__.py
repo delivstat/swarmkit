@@ -25,10 +25,21 @@ class ReviewItem:
     verdict: dict[str, Any]
     reason: str
     timestamp: datetime
-    status: Literal["pending", "approved", "rejected"] = "pending"
+    status: Literal["pending", "approved", "rejected", "changes-requested"] = "pending"
     # For §6.3 input requests: the operator's textual answer (which option / free text). Empty for a
-    # plain approve/reject gate.
+    # plain approve/reject gate. NOT the resolver identity — that is `resolved_by`; this field used
+    # to carry both, and its meaning depended on the item kind.
     answer: str = ""
+    #: The authenticated resolver. Multi-party quorum is counted against this.
+    resolved_by: str = ""
+    #: What the human said when deciding. Relayed to the agent, recorded on the audit.
+    comment: str = ""
+    #: The artifact this decision is ABOUT, and which round of the gate it belongs to. A gate
+    #: re-opens on a rework loop against a NEW artifact, and a decision made against an earlier one
+    #: is retained + rendered but does not count toward quorum
+    #: (design/details/human-decision-comments.md).
+    artifact_ref: str = ""
+    round: int = 0
 
 
 class ReviewQueue(Protocol):
@@ -37,8 +48,10 @@ class ReviewQueue(Protocol):
     def submit(self, item: ReviewItem) -> None: ...
     def list_pending(self) -> list[ReviewItem]: ...
     def get(self, item_id: str) -> ReviewItem | None: ...
-    def resolve(self, item_id: str, status: Literal["approved", "rejected"]) -> bool: ...
-    def answer_input(self, item_id: str, answer: str) -> bool: ...
+    def resolve(
+        self, item_id: str, status: Literal["approved", "rejected"], comment: str = ""
+    ) -> bool: ...
+    def answer_input(self, item_id: str, answer: str, comment: str = "") -> bool: ...
 
 
 class FileReviewQueue:
@@ -75,45 +88,50 @@ class FileReviewQueue:
             return None
         return _from_dict(json.loads(path.read_text(encoding="utf-8")))
 
-    def resolve(self, item_id: str, status: Literal["approved", "rejected"]) -> bool:
+    def _write(self, item_id: str, patch: dict[str, Any]) -> bool:
         path = self._dir / f"{item_id}.json"
         if not path.exists():
             return False
         data = json.loads(path.read_text(encoding="utf-8"))
-        data["status"] = status
+        data.update(patch)
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         _record_approval_wait(data)
         return True
 
-    def answer_input(self, item_id: str, answer: str) -> bool:
+    def resolve(
+        self, item_id: str, status: Literal["approved", "rejected"], comment: str = ""
+    ) -> bool:
+        return self._write(item_id, {"status": status, "comment": comment})
+
+    def answer_input(self, item_id: str, answer: str, comment: str = "") -> bool:
         """Resolve a §6.3 input request with the operator's textual answer (approves + records)."""
-        path = self._dir / f"{item_id}.json"
-        if not path.exists():
-            return False
-        data = json.loads(path.read_text(encoding="utf-8"))
-        data["status"] = "approved"
-        data["answer"] = answer
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        _record_approval_wait(data)
-        return True
+        return self._write(item_id, {"status": "approved", "answer": answer, "comment": comment})
 
     def record_resolution(
-        self, item_id: str, status: Literal["approved", "rejected"], answer: str
+        self,
+        item_id: str,
+        status: Literal["approved", "rejected", "changes-requested"],
+        resolved_by: str,
+        *,
+        comment: str = "",
     ) -> bool:
-        """Resolve an item recording both the outcome and the resolver identity in ``answer``.
+        """Resolve a role-task, recording the outcome, the resolver identity and their comment.
 
-        Used by multi-party approval role-tasks, where a reject must also carry the resolver
-        identity so the engine can verify the rejecter was an eligible member of the role.
+        The identity is load-bearing: multi-party quorum is counted against it, and a reject must
+        carry it too so the engine can verify the rejecter was an eligible member of the role. It
+        is written to `resolved_by`; `answer` is also set for one release so a reader that has not
+        been upgraded (an older UI, a fleet panel) keeps working.
         """
-        path = self._dir / f"{item_id}.json"
-        if not path.exists():
-            return False
-        data = json.loads(path.read_text(encoding="utf-8"))
-        data["status"] = status
-        data["answer"] = answer
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        _record_approval_wait(data)
-        return True
+        return self._write(
+            item_id,
+            {
+                "status": status,
+                "resolved_by": resolved_by,
+                # Transitional: drop once every reader uses `resolved_by`.
+                "answer": resolved_by,
+                "comment": comment,
+            },
+        )
 
 
 def create_review_item(
@@ -163,6 +181,15 @@ def _from_dict(data: dict[str, Any]) -> ReviewItem:
         timestamp=datetime.fromisoformat(data["timestamp"]),
         status=data.get("status", "pending"),
         answer=data.get("answer", ""),
+        # Backward compatible: before human-decision-comments.md, a multi-party role-task crammed
+        # the resolver identity into `answer`. An item written by that shape has no `resolved_by`,
+        # so fall back to `answer` — a gate already in flight keeps counting toward quorum across
+        # the upgrade instead of losing its approvals.
+        resolved_by=data.get("resolved_by")
+        or (data.get("answer", "") if data.get("skill_id") == "multi-party-approval" else ""),
+        comment=data.get("comment", ""),
+        artifact_ref=data.get("artifact_ref", ""),
+        round=int(data.get("round", 0)),
     )
 
 

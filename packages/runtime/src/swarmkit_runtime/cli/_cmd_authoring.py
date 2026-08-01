@@ -168,8 +168,12 @@ def review_show(
                 typer.echo(f"Gate:       {item.output.get('gate_id', '')}")
                 typer.echo(f"Role:       {item.output.get('role', '')}")
                 typer.echo(f"Scope:      {item.output.get('scope', '')}")
-                if item.answer:
-                    typer.echo(f"Resolved by: {item.answer}")
+                if item.resolved_by or item.answer:
+                    typer.echo(f"Resolved by: {item.resolved_by or item.answer}")
+                if item.artifact_ref:
+                    typer.echo(f"About:      {item.artifact_ref} (round {item.round})")
+                if item.comment:
+                    typer.echo(f"Comment:    {item.comment}")
                 typer.echo("Resolve with: swarmkit review resolve <id> --as <identity> --approve")
             else:
                 typer.echo(f"Output:   {json.dumps(item.output, indent=2)}")
@@ -185,13 +189,20 @@ def review_approve(
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace root.", show_default=False)
     ] = Path("."),
+    comment: Annotated[
+        str,
+        typer.Option(
+            "--comment", "-m", help="Why. Relayed to the agent and recorded on the audit."
+        ),
+    ] = "",
 ) -> None:
     """Approve a pending review item."""
     queue = FileReviewQueue(workspace_path.resolve())
     for item in queue.list_all():
         if item.id.startswith(item_id):
-            queue.resolve(item.id, "approved")
-            typer.echo(f"✓ Approved {item.id[:8]}")
+            queue.resolve(item.id, "approved", comment)
+            note = f' — "{comment}"' if comment else ""
+            typer.echo(f"✓ Approved {item.id[:8]}{note}")
             return
     _stderr(f"Review item '{item_id}' not found.")
     raise typer.Exit(1)
@@ -203,6 +214,12 @@ def review_reject(
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace root.", show_default=False)
     ] = Path("."),
+    comment: Annotated[
+        str,
+        typer.Option(
+            "--comment", "-m", help="Why. Relayed to the agent and recorded on the audit."
+        ),
+    ] = "",
 ) -> None:
     """Reject a pending review item."""
     queue = FileReviewQueue(workspace_path.resolve())
@@ -228,6 +245,20 @@ def review_resolve(
     approve: Annotated[
         bool, typer.Option("--approve/--reject", help="Approve or reject this role-task.")
     ] = True,
+    changes_requested: Annotated[
+        bool,
+        typer.Option(
+            "--changes-requested",
+            help="Send it back for revision. Unlike --reject this does NOT end the run: the stage "
+            "re-runs with your comment.",
+        ),
+    ] = False,
+    comment: Annotated[
+        str,
+        typer.Option(
+            "--comment", "-m", help="Why. Relayed to the agent and recorded on the audit."
+        ),
+    ] = "",
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace root.", show_default=False)
     ] = Path("."),
@@ -266,10 +297,18 @@ def review_resolve(
         _stderr(f"{identity} may not resolve {item.id}: {error}")
         raise typer.Exit(_EXIT_USAGE)
 
-    queue.record_resolution(item.id, "approved" if approve else "rejected", identity)
-    verb = "Approved" if approve else "Rejected"
-    mark = "✓" if approve else "✗"
+    if changes_requested:
+        status, verb, mark = "changes-requested", "Requested changes on", "↻"
+    elif approve:
+        status, verb, mark = "approved", "Approved", "✓"
+    else:
+        status, verb, mark = "rejected", "Rejected", "✗"
+    if changes_requested and not comment:
+        _stderr("note: --changes-requested without --comment leaves the agent nothing to act on.")
+    queue.record_resolution(item.id, status, identity, comment=comment)  # type: ignore[arg-type]
     typer.echo(f"{mark} {verb} {item.id} as {identity} (role={role}, scope={scope})")
+    if comment:
+        typer.echo(f'  comment: "{comment}"')
 
 
 @review_app.command("answer")

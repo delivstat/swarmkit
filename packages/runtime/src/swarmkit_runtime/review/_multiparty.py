@@ -37,6 +37,11 @@ from swarmkit_runtime.review import ReviewItem, ReviewQueue
 
 _DEFAULT_MAX_WAIT_SECONDS = 7 * 24 * 3600.0  # a gate may legitimately wait a long time
 
+#: Bound on rework loops for one gate. A non-deterministic artifact (or a store that mints a fresh
+#: ref for identical content) would otherwise re-ask the roles forever and the gate would never
+#: close; past this the caller escalates instead of looping.
+_MAX_GATE_ROUNDS = 20
+
 
 @dataclass(frozen=True)
 class MultiPartyDecision:
@@ -49,9 +54,37 @@ class MultiPartyDecision:
         return self.status is GateStatus.APPROVED
 
 
-def role_task_item_id(gate_id: str, rule_index: int, role: str) -> str:
-    """Deterministic id for the review item of one role-task in a gate."""
-    return f"mpa-{gate_id}-{rule_index}-{role}"
+def role_task_item_id(gate_id: str, rule_index: int, role: str, round_no: int = 0) -> str:
+    """Deterministic id for the review item of one role-task in one round of a gate.
+
+    Round 0 keeps the historical id, so items written before rounds existed still resolve.
+    """
+    base = f"mpa-{gate_id}-{rule_index}-{role}"
+    return base if round_no == 0 else f"{base}-r{round_no}"
+
+
+def _current_round(
+    queue: ReviewQueue, gate_id: str, policy: ApprovalPolicy, artifact_ref: str
+) -> int:
+    """The round this gate is on for *artifact_ref*.
+
+    Reuses the round already opened against the same artifact (so a restart or duplicate signal is
+    free), otherwise the next one. An empty ref — an externally-driven gate, or a caller that does
+    not track artifacts — always maps to round 0, preserving today's behaviour exactly.
+    """
+    if not artifact_ref:
+        return 0
+    highest = -1
+    for round_no in range(_MAX_GATE_ROUNDS):
+        item = queue.get(
+            role_task_item_id(gate_id, tasks(policy)[0].rule_index, tasks(policy)[0].role, round_no)
+        )
+        if item is None:
+            break
+        highest = round_no
+        if item.artifact_ref == artifact_ref:
+            return round_no
+    return highest + 1
 
 
 def membership_error(registry: RoleRegistry, *, role: str, scope: str, identity: str) -> str | None:
@@ -84,14 +117,22 @@ def open_gate(
     agent_id: str,
     policy: ApprovalPolicy,
     funnel_id: str = "",
-) -> None:
-    """Fan the gate out into one review item per role-task.
+    artifact_ref: str = "",
+) -> int:
+    """Fan the gate out into one review item per role-task. Returns the gate's current round.
 
-    Idempotent: an already-submitted item (e.g. one already resolved, on a resume or a re-open) is
-    left untouched, so re-opening a gate never clobbers collected approvals.
+    Idempotent on the SAME artifact: re-opening after a restart or a duplicate signal leaves items
+    untouched, so collected approvals are never clobbered.
+
+    On a DIFFERENT artifact — a rework loop re-ran the stage and produced a new one — the round
+    advances and fresh role-tasks are opened for it. Prior decisions are retained on their items,
+    still returned by the read APIs and still rendered, but they were made about a different
+    artifact and no longer count toward quorum
+    (design/details/human-decision-comments.md, "Decided: retain and re-ask").
     """
+    round_no = _current_round(queue, gate_id, policy, artifact_ref)
     for task in tasks(policy):
-        item_id = role_task_item_id(gate_id, task.rule_index, task.role)
+        item_id = role_task_item_id(gate_id, task.rule_index, task.role, round_no)
         if queue.get(item_id) is not None:
             continue
         queue.submit(
@@ -109,30 +150,50 @@ def open_gate(
                     # the policy to re-evaluate the gate, without walking saga -> graph -> stage.
                     "funnel_id": funnel_id,
                 },
+                artifact_ref=artifact_ref,
+                round=round_no,
                 verdict={},
                 reason=f"role {task.role!r} must approve {task.scope!r}",
                 timestamp=datetime.now(tz=UTC),
             )
         )
+    return round_no
+
+
+_STATUS_TO_OUTCOME: dict[str, Literal["approve", "changes-requested", "reject"]] = {
+    "approved": "approve",
+    "rejected": "reject",
+    "changes-requested": "changes-requested",
+}
 
 
 def collect_resolutions(
-    queue: ReviewQueue, *, gate_id: str, policy: ApprovalPolicy
+    queue: ReviewQueue, *, gate_id: str, policy: ApprovalPolicy, artifact_ref: str = ""
 ) -> list[Resolution]:
     """Read the resolved role-task items for a gate into engine resolutions.
 
-    The resolver identity is the item's ``answer``; status maps approved -> approve,
-    rejected -> reject. Pending items contribute nothing.
+    Only decisions made about **this** artifact are yielded. A decision from an earlier round was
+    made about a different artifact — the reviewer has not seen the revision that answered them —
+    so it stays on its item, stays visible to the read APIs and stays rendered as stale, but does
+    not count toward quorum (design/details/human-decision-comments.md).
+
+    An empty *artifact_ref* means "do not filter", which is how an externally-driven gate and every
+    item written before rounds existed keep behaving exactly as before.
     """
     out: list[Resolution] = []
+    round_no = _current_round(queue, gate_id, policy, artifact_ref) if artifact_ref else 0
     for task in tasks(policy):
-        item = queue.get(role_task_item_id(gate_id, task.rule_index, task.role))
+        item = queue.get(role_task_item_id(gate_id, task.rule_index, task.role, round_no))
         if item is None or item.status == "pending":
             continue
-        outcome: Literal["approve", "reject"] = "approve" if item.status == "approved" else "reject"
+        if artifact_ref and item.artifact_ref and item.artifact_ref != artifact_ref:
+            continue
+        outcome = _STATUS_TO_OUTCOME.get(item.status)
+        if outcome is None:
+            continue
         out.append(
             Resolution(
-                identity=item.answer,
+                identity=item.resolved_by or item.answer,
                 role=task.role,
                 scope=task.scope,
                 outcome=outcome,
