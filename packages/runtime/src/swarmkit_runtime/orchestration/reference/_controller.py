@@ -75,6 +75,9 @@ class ReferenceController:
         if isinstance(data, dict) and data.get("kind") == "gate":
             await self._resolve_gate(correlation_id, data)
             return
+        if isinstance(data, dict) and data.get("kind") == "rework":
+            await self._rework(correlation_id, data)
+            return
 
         # Otherwise: a named pipeline event. It is either a structured `{"kind":"event","name":…}`
         # or a bare event-name string (a webhook trigger's `emit`). Route it against the graphs.
@@ -143,6 +146,29 @@ class ReferenceController:
             input=str(data.get("input", "")),
         )
         saga.add("new", detail=graph_id)
+        self._store.save(saga)
+        await self._drive(saga)
+
+    async def _rework(self, correlation_id: str, data: dict[str, Any]) -> None:
+        """A reviewer asked for changes: re-run the parked stage instead of ending the run.
+
+        The distinction from a reject is the whole point — reject is terminal, changes-requested is
+        another attempt. The stage's input picks up the reviewer's comments, so the re-run is not a
+        repeat of the same work (design/details/human-decision-comments.md).
+        """
+        saga = self._store.get(correlation_id)
+        if saga is None or saga.status != "parked":
+            logger.warning(
+                "rework event for correlation %r DROPPED: %s",
+                correlation_id,
+                "no such saga" if saga is None else f"saga is {saga.status}, not parked",
+            )
+            return
+        stage = saga.pending_gate_stage
+        saga.pending_gate_stage = None
+        saga.status = "active"
+        saga.attempts[str(stage)] = saga.attempts.get(str(stage), 0) + 1
+        saga.add("resumed", stage_id=stage, detail="changes requested — re-running the stage")
         self._store.save(saga)
         await self._drive(saga)
 

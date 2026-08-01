@@ -387,8 +387,19 @@ export interface ReviewGate {
 	scope: string;
 	rule_index: number | null;
 	resolved_by: string;
+	/** What the reviewer said when deciding. Relayed to the agent; may be empty. */
+	comment: string;
+	/** The artifact this decision is about, and which round of the gate it belongs to. A gate
+	 * re-opens on a rework loop against a NEW artifact; a decision from an earlier round is kept
+	 * and shown but no longer counts toward quorum. */
+	artifact_ref: string;
+	round: number;
 	timestamp: string;
 }
+
+/** What a human can decide at a gate. `reject` ENDS the run; `changes-requested` asks for another
+ * attempt, re-running the stage with the comment in its input. */
+export type DecisionOutcome = "approve" | "changes-requested" | "reject";
 
 /** One role-task of a gate, as reported by GET /pipelines/gate-status. */
 export interface RoleTaskItem {
@@ -396,8 +407,11 @@ export interface RoleTaskItem {
 	role: string;
 	scope: string;
 	rule_index: number | null;
-	status: "pending" | "approved" | "rejected";
+	status: "pending" | "approved" | "rejected" | "changes-requested";
 	resolved_by: string;
+	comment?: string;
+	artifact_ref?: string;
+	round?: number;
 }
 
 /** A gate's aggregate resolution plus its per-role detail.

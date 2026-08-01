@@ -18,6 +18,7 @@ resumes on. An ungated stage returns ``completed``.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Mapping
 from pathlib import Path
@@ -80,8 +81,60 @@ def _stage_input(
     return _prior_input(artifact_store, correlation_id)
 
 
+def _decisions_block(workspace_root: Path | None, correlation_id: str, stage_id: str) -> str:
+    """What humans decided about this stage so far, rendered for the agent.
+
+    Empty until someone has decided something. On a rework loop this is how the agent learns WHY it
+    is running again — without it, a re-run is indistinguishable from the first attempt and the
+    agent would produce the same artifact.
+    """
+    from swarmkit_runtime.review import FileReviewQueue  # noqa: PLC0415
+    from swarmkit_runtime.review._decisions import (  # noqa: PLC0415
+        decisions_for_gate,
+        render_decisions,
+    )
+
+    if workspace_root is None:
+        return ""
+    gate_id = f"{correlation_id}:{stage_id}"
+    items = [
+        i for i in FileReviewQueue(workspace_root).list_all() if i.output.get("gate_id") == gate_id
+    ]
+    # The newest round's artifact is "current": anything from an earlier round is stale, which is
+    # precisely the rework case this block exists to explain.
+    current = max((i.artifact_ref for i in items if i.artifact_ref), default="", key=lambda r: r)
+    newest_round = max((i.round for i in items), default=0)
+    current = next(
+        (i.artifact_ref for i in items if i.round == newest_round and i.artifact_ref), current
+    )
+    return render_decisions(
+        decisions_for_gate(items),
+        gate_id=gate_id,
+        current_artifact=current,
+        current_round=newest_round,
+    )
+
+
+def _revision_ref(ref: str, content: str) -> str:
+    """A ref that identifies this REVISION of the artifact, not just its slot.
+
+    The artifact store overwrites in place — `run-42/design/output` is the same string for v1 and
+    v3 — so it cannot distinguish revisions, and gate rounds key on exactly that. Appending a
+    content digest gives the property rounds need: it changes when the work changes, and a re-run
+    that produces identical output keeps the same ref, so the roles are NOT re-asked to approve
+    something they already approved.
+    """
+    digest = hashlib.sha256(content.encode()).hexdigest()[:12]
+    return f"{ref}#{digest}"
+
+
 async def _open_stage_gate(
-    runtime: WorkspaceRuntime, correlation_id: str, stage_id: str, funnel_id: str
+    runtime: WorkspaceRuntime,
+    correlation_id: str,
+    stage_id: str,
+    funnel_id: str,
+    *,
+    artifact_ref: str = "",
 ) -> None:
     """Fan the stage's funnel ``approve`` policy into role-tasks on the review queue.
 
@@ -127,6 +180,9 @@ async def _open_stage_gate(
         agent_id=stage_id,
         policy=policy,
         funnel_id=funnel_id,
+        # Stamps every role-task with the artifact it is about, so a rework loop opens a new round
+        # and decisions about an earlier draft stop counting toward quorum.
+        artifact_ref=artifact_ref,
     )
 
 
@@ -152,6 +208,13 @@ def build_pipeline_run_stage(
         sid = _stage_id(stage)
         try:
             stage_input = _stage_input(saga_store, artifact_store, correlation_id, stage)
+            # Human decisions about THIS stage (a rework loop) and about the upstream one (an
+            # approval with conditions) both belong in what the agent reads.
+            decisions = _decisions_block(
+                getattr(runtime, "workspace_root", None), correlation_id, sid
+            )
+            if decisions:
+                stage_input = f"{stage_input}\n\n{decisions}" if stage_input else decisions
             # Persist the resolved input alongside the output (name="input"), so the run inspector
             # can show exactly what this node received — recorded before the run so it survives a
             # failed stage too.
@@ -177,7 +240,9 @@ def build_pipeline_run_stage(
         # Previously this parked with no policy evaluated, no role-tasks and no quorum — the run
         # could only be released by `swarmkit pipeline advance`, a single reserved-scope operator
         # act with none of the multi-party guarantees the funnel declares.
-        await _open_stage_gate(runtime, correlation_id, sid, funnel_id)
+        await _open_stage_gate(
+            runtime, correlation_id, sid, funnel_id, artifact_ref=_revision_ref(ref, output)
+        )
         return StageOutcome(status="parked", artifact=ref, artifact_bytes=len(output.encode()))
 
     return run_stage

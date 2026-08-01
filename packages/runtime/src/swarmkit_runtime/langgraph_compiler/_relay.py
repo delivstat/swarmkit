@@ -38,6 +38,9 @@ class RelayDecision:
     granted: bool
     responder: str  # "policy" | "operator" | "timeout"
     reason: str = ""
+    #: What the operator said when deciding. Relayed to the harness on resume, so a conditional
+    #: approval ("yes, but staging only") reaches the agent instead of being flattened to `true`.
+    comment: str = ""
 
     @property
     def timed_out(self) -> bool:
@@ -103,12 +106,14 @@ async def resolve_relay(
     start = clock()
     while clock() - start < budget:
         current = review_queue.get(item.id)
-        if current is not None and current.status == "approved":
-            dec = await _finish(governance, agent_id, RelayDecision(True, "operator"), capability)
-            await _accrue(governance, agent_id, trust, archetype, capability, dec)
-            return dec
-        if current is not None and current.status == "rejected":
-            dec = await _finish(governance, agent_id, RelayDecision(False, "operator"), capability)
+        if current is not None and current.status in ("approved", "rejected"):
+            granted = current.status == "approved"
+            dec = await _finish(
+                governance,
+                agent_id,
+                RelayDecision(granted, "operator", comment=current.comment),
+                capability,
+            )
             await _accrue(governance, agent_id, trust, archetype, capability, dec)
             return dec
         await sleep(poll_interval)
@@ -216,8 +221,17 @@ async def resolve_input(
         governance,
         "executor.input_response",
         agent_id,
-        {"question": request.question, "answer": answer or "", "responder": responder},
+        {
+            "question": request.question,
+            "answer": answer or "",
+            "responder": responder,
+            "comment": (current.comment if current is not None else ""),
+        },
     )
+    if current is not None and current.comment:
+        # The operator's note rides along with the answer, so "redis" plus "and cap the pool at 20"
+        # reaches the agent as one instruction rather than the note being dropped.
+        answer = f"{answer}\n\n{current.comment}" if answer else current.comment
     return answer
 
 

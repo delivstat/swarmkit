@@ -30,6 +30,13 @@ from swarmkit_runtime.server._helpers import _get_runtime
 
 class AnswerRequest(BaseModel):
     answer: str
+    comment: str = ""
+
+
+class CommentRequest(BaseModel):
+    """A bare approve/reject on a harness gate, optionally with the reviewer's reasoning."""
+
+    comment: str = ""
 
 
 class ResolveRequest(BaseModel):
@@ -41,8 +48,17 @@ class ResolveRequest(BaseModel):
     role-task under a different name (design/details/pipeline-gate-approval-ui.md).
     """
 
-    outcome: Literal["approve", "reject"]
+    outcome: Literal["approve", "changes-requested", "reject"]
+    #: What the reviewer said. Relayed to the agent and recorded on the audit; may be empty.
+    #: `changes-requested` without one is allowed but unhelpful — the surfaces nudge for it.
+    comment: str = ""
 
+
+_OUTCOME_TO_STATUS: dict[str, Literal["approved", "rejected", "changes-requested"]] = {
+    "approve": "approved",
+    "reject": "rejected",
+    "changes-requested": "changes-requested",
+}
 
 _KINDS = {
     "harness-approval": "permission",
@@ -79,7 +95,10 @@ def _item_to_dict(item: ReviewItem) -> dict[str, Any]:
         "role": item.output.get("role", ""),
         "scope": item.output.get("scope", ""),
         "rule_index": item.output.get("rule_index"),
-        "resolved_by": item.answer if item.skill_id == "multi-party-approval" else "",
+        "resolved_by": item.resolved_by,
+        "comment": item.comment,
+        "artifact_ref": item.artifact_ref,
+        "round": item.round,
         "timestamp": item.timestamp.isoformat(),
     }
 
@@ -90,7 +109,8 @@ async def _resolve_role_task(
     signal: Any,
     queue: FileReviewQueue,
     item: ReviewItem,
-    outcome: Literal["approve", "reject"],
+    outcome: Literal["approve", "changes-requested", "reject"],
+    comment: str,
     actor: str,
     reread: Any,
 ) -> dict[str, Any]:
@@ -133,7 +153,10 @@ async def _resolve_role_task(
                 "role": role,
                 "scope": scope,
                 "outcome": outcome,
+                "comment": comment,
                 "identity": actor,
+                "artifact_ref": item.artifact_ref,
+                "round": item.round,
                 "allowed": denial is None,
                 "reason": denial or decision.reason,
             },
@@ -147,8 +170,8 @@ async def _resolve_role_task(
             status_code=403, detail=f"{actor} may not resolve {item.id!r}: {denial}"
         )
 
-    status: Literal["approved", "rejected"] = "approved" if outcome == "approve" else "rejected"
-    queue.record_resolution(item.id, status, actor)
+    status: Literal["approved", "rejected", "changes-requested"] = _OUTCOME_TO_STATUS[outcome]
+    queue.record_resolution(item.id, status, actor, comment=comment)
 
     # The gate resolving is what RESUMES the run: re-evaluate, and when quorum is reached deliver
     # the `gate` event the controller already waits on. This is what makes
@@ -192,7 +215,27 @@ async def _resume_if_gate_resolved(
         runtime.workspace.role_registry,
         collect_resolutions(queue, gate_id=gate_id, policy=policy),
     )
-    if ev.status not in (GateStatus.APPROVED, GateStatus.REJECTED):
+    if ev.status is GateStatus.CHANGES_REQUESTED:
+        # Rework: the stage runs AGAIN with the comments in its input, rather than the run ending.
+        # `rework` (not `gate`) so the controller can tell "try again" from "we are done".
+        correlation_id, _, stage = gate_id.rpartition(":")
+        await runtime.governance.record_event(
+            AuditEvent(
+                event_type="approval.changes_requested",
+                agent_id=actor,
+                timestamp=datetime.now(tz=UTC),
+                payload={
+                    "gate_id": gate_id,
+                    "stage": stage,
+                    "artifact_ref": item.artifact_ref,
+                    "round": item.round,
+                    "comment": item.comment,
+                },
+            )
+        )
+        await signal(correlation_id, json.dumps({"kind": "rework", "stage": stage}))
+        return
+    if ev.status is not GateStatus.APPROVED and ev.status is not GateStatus.REJECTED:
         return
 
     # gate_id is `<correlation_id>:<stage>`; split on the LAST colon so a correlation id that
@@ -259,17 +302,17 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
         return _item_to_dict(_find(_queue(), item_id))
 
     @app.post("/review/{item_id}/approve")
-    async def approve(item_id: str) -> dict[str, Any]:
+    async def approve(item_id: str, body: CommentRequest | None = None) -> dict[str, Any]:
         queue = _queue()
         item = _find(queue, item_id)
-        queue.resolve(item.id, "approved")
+        queue.resolve(item.id, "approved", (body.comment if body else ""))
         return _item_to_dict(_find(queue, item.id))
 
     @app.post("/review/{item_id}/reject")
-    async def reject(item_id: str) -> dict[str, Any]:
+    async def reject(item_id: str, body: CommentRequest | None = None) -> dict[str, Any]:
         queue = _queue()
         item = _find(queue, item_id)
-        queue.resolve(item.id, "rejected")
+        queue.resolve(item.id, "rejected", (body.comment if body else ""))
         return _item_to_dict(_find(queue, item.id))
 
     @app.post("/review/{item_id}/answer")
@@ -281,7 +324,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
         options = item.output.get("options") or []
         if body.answer.isdigit() and 0 <= int(body.answer) < len(options):
             resolved = str(options[int(body.answer)])
-        queue.answer_input(item.id, resolved)
+        queue.answer_input(item.id, resolved, body.comment)
         return _item_to_dict(_find(queue, item.id))
 
     @app.post("/review/{item_id}/resolve")
@@ -296,6 +339,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
             queue=queue,
             item=_find(queue, item_id),
             outcome=body.outcome,
+            comment=body.comment,
             actor=getattr(getattr(request.state, "identity", None), "client_id", None)
             or "anonymous",
             reread=lambda item_id: _item_to_dict(_find(queue, item_id)),

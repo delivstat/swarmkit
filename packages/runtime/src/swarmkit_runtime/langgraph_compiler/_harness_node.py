@@ -600,14 +600,16 @@ async def _execute(  # noqa: PLR0912, PLR0915
 
                 # (a) permission denials → relaunch with the expanded grant (§6.2)
                 if round_denials:
-                    newly = await _resolve_denials(
+                    newly, notes = await _resolve_denials(
                         round_denials, agent_id, governance, relay, set(granted)
                     )
                     token = runner.resume_token(holder["run_id"] or "")
                     if not newly or token is None:
                         break  # nothing new approved / can't resume — denied terminal stands
                     granted.extend(newly)
-                    resume_token, pending_answer = token.value, None
+                    # A comment becomes the resume statement, so the harness reads the condition
+                    # attached to its permission rather than just finding the tool unblocked.
+                    resume_token, pending_answer = token.value, (notes or None)
                     rounds += 1
                     continue
 
@@ -656,11 +658,22 @@ async def _resolve_denials(
     governance: GovernanceProvider,
     relay: _RelayCtx,
     already_granted: set[str],
-) -> list[str]:
-    """Resolve each denied capability via the relay orchestrator (policy → inbox → wait). Returns
-    the newly-approved capabilities to expand the grant on the next relaunch."""
+) -> tuple[list[str], str]:
+    """Resolve each denied capability via the relay orchestrator (policy → inbox → wait).
+
+    Returns the newly-approved capabilities to expand the grant on the next relaunch, plus the
+    operator's comments rendered for the agent — a conditional approval ("yes, but staging only")
+    is a normal sign-off and is worthless if flattened to a boolean
+    (design/details/human-decision-comments.md).
+    """
+    from swarmkit_runtime.review._decisions import (  # noqa: PLC0415
+        HumanDecision,
+        render_decisions,
+    )
+
     assert relay.review_queue is not None  # park_resume guarantees it
     newly: list[str] = []
+    decisions: list[HumanDecision] = []
     for req in denials:
         if not req.capability or req.capability in already_granted or req.capability in newly:
             continue
@@ -676,7 +689,16 @@ async def _resolve_denials(
         )
         if decision.granted:
             newly.append(req.capability)
-    return newly
+        if decision.comment:
+            decisions.append(
+                HumanDecision(
+                    outcome="approve" if decision.granted else "reject",
+                    identity=decision.responder,
+                    comment=decision.comment,
+                    scope=req.capability,
+                )
+            )
+    return newly, render_decisions(decisions)
 
 
 async def _detect_input(
