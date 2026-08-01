@@ -11,6 +11,7 @@ multi-line aggregation.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -240,20 +241,26 @@ class AdapterInterpreter:
 # ---- launch-command substitution --------------------------------------------------------------
 
 
+#: A launch-template placeholder. The character class matters: it stops a stray ``{`` in a template
+#: from swallowing everything up to an unrelated ``}``.
+_PLACEHOLDER = re.compile(r"\{([A-Za-z0-9_.]+)\}")
+
+
 def _sub(template: str, ctx: SubstitutionContext) -> str:
     """Replace ``{var}`` occurrences with ``ctx[var]`` (empty when absent). Value-only — the result
-    is a single argv element, never re-parsed by a shell."""
-    out = template
-    for var, value in ctx.items():
-        out = out.replace("{" + var + "}", value)
-    # Any unresolved vars (no value supplied) collapse to empty.
-    while "{" in out and "}" in out:
-        start = out.index("{")
-        end = out.index("}", start)
-        if end < start:
-            break
-        out = out[:start] + out[end + 1 :]
-    return out
+    is a single argv element, never re-parsed by a shell.
+
+    ONE pass, over the TEMPLATE. The previous implementation substituted and then re-scanned the
+    *result* for leftover braces, so braces arriving as part of a **value** were mistaken for
+    unresolved placeholders and everything between them was deleted. With the claude-code launch
+    template (``claude -p {task.statement}``) the value is the whole prompt, so:
+
+    - a JSON statement emptied entirely — first ``{`` at index 0, first ``}`` at the end, one pass
+      removed the lot, and ``claude -p`` got an empty argument;
+    - any prompt containing code, a stack trace or a log line lost every braced span **silently**,
+      and the agent answered a question nobody asked.
+    """
+    return _PLACEHOLDER.sub(lambda m: ctx.get(m.group(1), ""), template)
 
 
 def build_command(
