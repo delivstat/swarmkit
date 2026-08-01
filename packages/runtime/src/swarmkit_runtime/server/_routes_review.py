@@ -13,6 +13,7 @@ a request-body field (design/details/pipeline-gate-approval-ui.md).
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -21,8 +22,9 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from swarmkit_runtime.governance import AuditEvent
+from swarmkit_runtime.governance._approval import ApprovalPolicy, GateStatus, evaluate
 from swarmkit_runtime.review import FileReviewQueue, ReviewItem
-from swarmkit_runtime.review._multiparty import membership_error
+from swarmkit_runtime.review._multiparty import collect_resolutions, membership_error
 from swarmkit_runtime.server._helpers import _get_runtime
 
 
@@ -85,6 +87,7 @@ def _item_to_dict(item: ReviewItem) -> dict[str, Any]:
 async def _resolve_role_task(
     *,
     runtime: Any,
+    signal: Any,
     queue: FileReviewQueue,
     item: ReviewItem,
     outcome: Literal["approve", "reject"],
@@ -146,8 +149,73 @@ async def _resolve_role_task(
 
     status: Literal["approved", "rejected"] = "approved" if outcome == "approve" else "rejected"
     queue.record_resolution(item.id, status, actor)
+
+    # The gate resolving is what RESUMES the run: re-evaluate, and when quorum is reached deliver
+    # the `gate` event the controller already waits on. This is what makes
+    # `swarmkit pipeline advance` revert to break-glass rather than the only way out
+    # (design/details/pipeline-gate-convergence.md).
+    await _resume_if_gate_resolved(runtime, signal, queue, item, actor)
+
     result: dict[str, Any] = reread(item.id)
     return result
+
+
+async def _resume_if_gate_resolved(
+    runtime: Any,
+    signal: Any,
+    queue: FileReviewQueue,
+    item: ReviewItem,
+    actor: str,
+) -> None:
+    """Evaluate the gate this role-task belongs to; on APPROVED/REJECTED, signal the run.
+
+    No-op when the gate is still pending, when its funnel is not resolvable (an externally-driven
+    gate), or when no pipeline signal sink is configured — resolution still records either way, so a
+    gate never becomes unresolvable because the sink is absent.
+    """
+    gate_id = str(item.output.get("gate_id", ""))
+    funnel_id = str(item.output.get("funnel_id", ""))
+    if not gate_id or not funnel_id or signal is None:
+        return
+
+    funnel = runtime.workspace.funnels.get(funnel_id)
+    approve = (funnel.spec.get("approve") if funnel is not None else None) or None
+    if approve is None:
+        return
+    try:
+        policy = ApprovalPolicy.from_dict(approve)
+    except (KeyError, TypeError, ValueError):
+        return
+
+    ev = evaluate(
+        policy,
+        runtime.workspace.role_registry,
+        collect_resolutions(queue, gate_id=gate_id, policy=policy),
+    )
+    if ev.status not in (GateStatus.APPROVED, GateStatus.REJECTED):
+        return
+
+    # gate_id is `<correlation_id>:<stage>`; split on the LAST colon so a correlation id that
+    # itself contains one still resolves.
+    correlation_id, _, stage = gate_id.rpartition(":")
+    approved = ev.status is GateStatus.APPROVED
+    await runtime.governance.record_event(
+        AuditEvent(
+            event_type="approval.gate_resolved",
+            agent_id=actor,
+            timestamp=datetime.now(tz=UTC),
+            payload={
+                "gate_id": gate_id,
+                "status": ev.status.value,
+                "approvers": sorted(ev.distinct_approvers),
+                "resumed": True,
+            },
+        )
+    )
+    await signal(
+        correlation_id,
+        json.dumps({"kind": "gate", "approved": approved, "stage": stage}),
+    )
 
 
 def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
@@ -224,6 +292,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
         queue = _queue()
         return await _resolve_role_task(
             runtime=_get_runtime(request),
+            signal=getattr(request.app.state, "pipeline_signal", None),
             queue=queue,
             item=_find(queue, item_id),
             outcome=body.outcome,

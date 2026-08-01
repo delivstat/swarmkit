@@ -18,10 +18,14 @@ resumes on. An ungated stage returns ``completed``.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from swarmkit_runtime.orchestration import RunStage, SagaStore, StageOutcome
+
+logger = logging.getLogger("swarmkit.pipeline")
 
 if TYPE_CHECKING:
     from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
@@ -76,6 +80,56 @@ def _stage_input(
     return _prior_input(artifact_store, correlation_id)
 
 
+async def _open_stage_gate(
+    runtime: WorkspaceRuntime, correlation_id: str, stage_id: str, funnel_id: str
+) -> None:
+    """Fan the stage's funnel ``approve`` policy into role-tasks on the review queue.
+
+    No-ops when the funnel declares no ``approve`` layer — a gate can legitimately be a checkpoint
+    rather than a vote, and those keep releasing through ``swarmkit pipeline advance``.
+
+    ``open_gate`` is idempotent, so a retried stage re-opens onto its existing items rather than
+    clobbering approvals already cast. See the note's open question: those approvals were cast
+    against the PREVIOUS artifact, which is arguably wrong — but silently discarding a human
+    decision is worse, so today's behaviour is kept and documented.
+    """
+    from swarmkit_runtime.governance._approval import ApprovalPolicy  # noqa: PLC0415
+    from swarmkit_runtime.review import FileReviewQueue  # noqa: PLC0415
+    from swarmkit_runtime.review._multiparty import open_gate  # noqa: PLC0415
+
+    # The run-stage seam is injectable (tests and demos supply a scripted runtime), so a resolved
+    # workspace is not guaranteed. Without one there is no funnel to read: park as before rather
+    # than failing a stage that would otherwise have succeeded.
+    workspace = getattr(runtime, "workspace", None)
+    if workspace is None:
+        return
+    funnel = workspace.funnels.get(funnel_id)
+    approve = (funnel.spec.get("approve") if funnel is not None else None) or None
+    if approve is None:
+        logger.info(
+            "stage %r parks on funnel %r, which declares no approve layer: no role-tasks opened "
+            "(release with `swarmkit pipeline advance`)",
+            stage_id,
+            funnel_id,
+        )
+        return
+
+    try:
+        policy = ApprovalPolicy.from_dict(approve)
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.error("funnel %r has an unusable approve policy: %s", funnel_id, exc)
+        return
+
+    open_gate(
+        FileReviewQueue(getattr(runtime, "workspace_root", Path("."))),
+        gate_id=f"{correlation_id}:{stage_id}",
+        topology_id=correlation_id,
+        agent_id=stage_id,
+        policy=policy,
+        funnel_id=funnel_id,
+    )
+
+
 def build_pipeline_run_stage(
     runtime: WorkspaceRuntime,
     artifact_store: ArtifactStore,
@@ -112,12 +166,19 @@ def build_pipeline_run_stage(
 
         output = result.output or ""
         ref = artifact_store.put(correlation_id, sid, output)
-        gated = bool(stage.get("gate") or stage.get("funnel"))
-        return StageOutcome(
-            status="parked" if gated else "completed",
-            artifact=ref,
-            artifact_bytes=len(output.encode()),
-        )
+        funnel_id = str(stage.get("gate") or stage.get("funnel") or "")
+        if not funnel_id:
+            return StageOutcome(
+                status="completed", artifact=ref, artifact_bytes=len(output.encode())
+            )
+
+        # A gated stage OPENS its approval policy before parking, so the gate a human resolves is
+        # the gate the run is actually waiting on (design/details/pipeline-gate-convergence.md).
+        # Previously this parked with no policy evaluated, no role-tasks and no quorum — the run
+        # could only be released by `swarmkit pipeline advance`, a single reserved-scope operator
+        # act with none of the multi-party guarantees the funnel declares.
+        await _open_stage_gate(runtime, correlation_id, sid, funnel_id)
+        return StageOutcome(status="parked", artifact=ref, artifact_bytes=len(output.encode()))
 
     return run_stage
 

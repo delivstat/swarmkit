@@ -83,6 +83,7 @@ def open_gate(
     topology_id: str,
     agent_id: str,
     policy: ApprovalPolicy,
+    funnel_id: str = "",
 ) -> None:
     """Fan the gate out into one review item per role-task.
 
@@ -104,6 +105,9 @@ def open_gate(
                     "scope": task.scope,
                     "role": task.role,
                     "rule_index": task.rule_index,
+                    # The funnel this gate came from. Carried on the item so a resolver can rebuild
+                    # the policy to re-evaluate the gate, without walking saga -> graph -> stage.
+                    "funnel_id": funnel_id,
                 },
                 verdict={},
                 reason=f"role {task.role!r} must approve {task.scope!r}",

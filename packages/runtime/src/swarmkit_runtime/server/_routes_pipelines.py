@@ -246,9 +246,22 @@ def _find_agent_funnel(workspace: Any, agent_id: str) -> Any | None:
     return None
 
 
-def _gate_policy(workspace: Any, gate: str) -> ApprovalPolicy | None:
-    """The ``ApprovalPolicy`` governing *gate*, or None when it cannot be located."""
-    funnel = _find_agent_funnel(workspace, gate)
+def _gate_policy(
+    workspace: Any, gate: str, items: list[ReviewItem] | None = None
+) -> ApprovalPolicy | None:
+    """The ``ApprovalPolicy`` governing *gate*, or None when it cannot be located.
+
+    Two shapes, because gates arrive from two places. A PIPELINE stage gate records its
+    ``funnel_id`` on each role-task when it opens (pipeline-gate-convergence.md), so the funnel is
+    read straight off the item — no walk needed, and it works for a gate whose name is a stage id
+    rather than an agent id. An in-topology AGENT funnel has no such record, so fall back to
+    walking the agent tree by the gate name.
+    """
+    funnel_id = next(
+        (str(i.output.get("funnel_id", "")) for i in (items or []) if i.output.get("funnel_id")),
+        "",
+    )
+    funnel = workspace.funnels.get(funnel_id) if funnel_id else _find_agent_funnel(workspace, gate)
     approve = (funnel.spec.get("approve") if funnel is not None else None) or None
     if approve is None:
         return None
@@ -351,7 +364,7 @@ def _register_pipeline_routes(app: FastAPI, workspace_path: Path) -> None:
         # falls back to the fold), rather than 503 an orchestrator that is only polling.
         runtime: WorkspaceRuntime | None = getattr(request.app.state, "runtime", None)
         workspace = runtime.workspace if runtime is not None else None
-        policy = _gate_policy(workspace, gate) if workspace is not None else None
+        policy = _gate_policy(workspace, gate, items) if workspace is not None else None
         if policy is not None and workspace is not None and items:
             gate_id = f"{correlation_id}:{gate}"
             ev = evaluate(
