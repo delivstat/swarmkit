@@ -188,10 +188,12 @@ path a real deployment uses.
   not have to know whether it is being run inside a pipeline. But `run_agent_funnel_gate` is reached
   through several layers; threading a flag down may be uglier than giving the funnel gate a
   `park_handler` seam that defaults to the blocking poll. Decide before implementing.
-- **Re-opening a gate on a stage retry.** `open_gate` is idempotent and deliberately leaves
-  already-submitted items alone, so a retried stage inherits approvals cast against the *previous*
-  artifact. That is arguably wrong — the artifact changed — but invalidating them silently discards
-  human decisions. Neither behaviour is obviously right; today's is at least documented.
+- ~~**Re-opening a gate on a stage retry.**~~ **Resolved in `human-decision-comments.md`:** decisions
+  are stamped with the artifact ref they were made against, and only current-artifact decisions
+  count toward quorum. Prior approvals are retained on the record and rendered as stale, so nothing
+  a human decided is discarded — they simply stop *counting* for an artifact nobody approved.
+  `test_reopening_a_retried_stage_keeps_approvals_already_cast` pins today's behaviour and changes
+  meaning when that lands: approvals survive on the record, and stop satisfying the gate.
 - **`swarmkit run` of a pipeline-shaped topology.** With B non-blocking in the pipeline case and
   blocking otherwise, there are two behaviours for one artifact. Acceptable if the boundary is
   "driven by a saga or not", but it needs to be stated in the funnel reference.

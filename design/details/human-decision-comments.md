@@ -2,7 +2,7 @@
 title: Human decisions carry comments, and agents read them
 description: Approve and reject are binary today, so the reasoning a human supplies is discarded — there is no field to put it in. This adds a comment to every human decision, a third outcome (changes-requested) that routes an artifact back with that comment, and a structured, attributed envelope so the agent that asked reads the decision in context rather than receiving a bare boolean.
 tags: [runtime, governance, approval, executors, ui, cli]
-status: draft
+status: in-review
 ---
 
 # Human decisions carry comments, and agents read them
@@ -12,7 +12,7 @@ serve routes), `cli` (`swarmkit review`), `ui` (`/gates`, `/runs`)
 **Design reference:** §8.5 (GovernanceProvider), §8.7 (reserved-for-human scopes), §6.2/§6.3
 (harness permission + input gates), §14. Builds on `multi-party-approval.md`, `gate-funnel.md`,
 `pipeline-gate-approval-ui.md`, `pipeline-gate-convergence.md`.
-**Status:** draft
+**Status:** in-review — stale-comment + quorum questions resolved
 
 ## Goal
 
@@ -26,8 +26,10 @@ the reasoning rather than on a bare boolean.
   with an agent is `swarmkit chat`, and mixing the two would make a gate unbounded in time.
 - **Not comments on arbitrary objects.** Only on a human decision at a gate. Annotating a run, a
   topology or an artifact is a different feature with a different lifetime.
-- **Not changing quorum.** A comment never affects whether a rule is satisfied. `changes-requested`
-  does, but through the engine's existing evaluation, unchanged.
+- **Not changing the quorum RULES.** `ApprovalPolicy`, roles, `quorum:` and `min_distinct_approvers`
+  are untouched, and a comment never affects whether a rule is satisfied. What *does* change is
+  which decisions are eligible to be counted: only those made against the current artifact (see
+  "Rounds"). Same rules, narrower input.
 - **Not free-text steering of `swarmkit run`.** The §6.3 input answer already does that; this note
   does not widen it.
 - **Not a UI for editing an artifact by hand.** A reviewer comments; the agent revises.
@@ -111,25 +113,37 @@ against v2 — rather than a flat list in which a stale objection looks current.
 `swarmkit review show` and the `/runs` panel group by round, newest first, and mark anything from an
 earlier round as **stale**.
 
-### The consequence, which is a governance decision and not mine to make
+### Decided: retain and re-ask — only the current artifact counts
 
-Stamping makes staleness *detectable*. It does not by itself decide what to **do** with a stale
-approval, and today's behaviour — `open_gate` is idempotent, so prior approvals carry forward — now
-has a visible edge: a gate can be satisfied by approvals of an artifact nobody approved.
+Prior decisions stay on the record and stay rendered with their round. **Only decisions made against
+the current artifact ref count toward quorum.** A rework loop therefore re-asks the roles, which is
+what a reviewer expects once their objection has been addressed: an approval of v1 is not an
+approval of v3, and someone who wrote "add backoff" has not seen whether backoff was added.
 
-Two options:
+This supersedes the carry-forward behaviour pinned in `pipeline-gate-convergence.md`, which was the
+right call only while staleness was undetectable. That note's test asserts approvals survive a
+retry; it becomes: they survive **on the record**, and stop counting.
 
-1. **Retain and count** (today). Simple; preserves every human decision; but "approved" can mean
-   "approved something else".
-2. **Retain and re-ask** (recommended). Prior decisions stay on the record and stay rendered, marked
-   with their round, but only decisions made against the **current** artifact count toward quorum. A
-   rework loop therefore asks the roles to look again — which is what a human reviewer would expect
-   after their objection was addressed.
+Mechanically it is a filter, not a rule change:
 
-I recommend (2): it is the same reasoning that motivated this note. An approval of v1 is not an
-approval of v3, and a reviewer who wrote "add backoff" has not seen whether backoff was added. It is
-a behaviour change to quorum, so it wants an explicit decision rather than arriving as a side effect
-of stamping.
+```python
+# collect_resolutions gains the current ref and drops decisions made against anything else.
+def collect_resolutions(
+    queue, *, gate_id: str, policy: ApprovalPolicy, artifact_ref: str = ""
+) -> list[Resolution]:
+    ...  # a decision whose artifact_ref differs from `artifact_ref` is retained on the item,
+         # returned by the read APIs, rendered as STALE — and not yielded here.
+```
+
+`evaluate()`, `ApprovalPolicy`, roles and `min_distinct_approvers` are untouched. An empty
+`artifact_ref` (an externally-driven gate, or an item written before this change) counts as before,
+so nothing in flight breaks on upgrade.
+
+**The failure mode to guard against is a gate that can never close.** If the ref changes on every
+re-open — a non-deterministic artifact, or a store that mints a new ref for identical content — the
+roles are re-asked forever. Two mitigations, both cheap: the round only advances on a *different*
+ref (so an idempotent re-open is free), and a gate whose round exceeds a bound surfaces as an
+escalation rather than silently looping. The funnel already has this shape for its judge retries.
 
 ## Delivering it to the agent
 
@@ -239,6 +253,13 @@ any other payload — a reviewer may paste a credential into a comment box.
   a `changes-requested` gate re-drives the **same** stage with the comment present.
 - **Governance.** Comment appears on the audit event; redaction policy applies; a comment never
   changes quorum (same approvals, with and without comments, evaluate identically).
+- **Only the current artifact counts.** A gate approved in round 0, then re-opened on a new artifact
+  ref, is NOT satisfied: the prior approvals are still returned by the read APIs and still rendered,
+  and `evaluate()` sees none of them. Approving again in round 1 closes it. An item with an empty
+  `artifact_ref` (pre-upgrade, or externally driven) still counts, so an in-flight gate does not
+  stall on upgrade.
+- **No infinite re-ask.** Re-opening on the SAME ref does not advance the round and does not
+  re-ask; a round exceeding the bound escalates rather than looping.
 - **Rounds on the audit.** Two loops on one gate produce two `approval.gate_opened` events with
   distinct rounds + artifact refs, and each `approval.role_task_resolved` carries the round it was
   made in — so the audit reconstructs loop 0 and loop 1 separately rather than as a flat list.
