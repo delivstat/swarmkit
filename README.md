@@ -296,7 +296,8 @@ It runs **out of the box**: a bundled durable orchestrator (a separate `swarmkit
 Governance rides along as data, not prompts:
 
 - **Funnels** (`kind: Funnel`) — reusable multi-layer gates (validate → judge → review → approve) with exactly one exit: a human approval the compiler enforces.
-- **Multi-party approval** — quorum, distinct-approver floors, and author exclusion, with approvers resolved through a **role registry** (`kind: RoleRegistry` + `ApprovalPolicy`); approval scopes are structurally un-grantable to agents.
+- **Multi-party approval** — quorum, distinct-approver floors, and author exclusion, with approvers resolved through a **role registry** (`kind: RoleRegistry` + `ApprovalPolicy`); approval scopes are structurally un-grantable to agents. The resolver is the *authenticated caller*, never a request field, so a single operator cannot satisfy an N-of-N policy alone.
+- **Decisions carry reasons** — approve, **request changes**, or reject, each with a comment that reaches the agent: a parked harness resumes with it, a re-run reads it as *why* it is running again. Reject ends the run; request-changes re-runs the stage. Only decisions about the **current** artifact count toward quorum — earlier rounds stay on the record, marked stale, because an approval of v1 is not an approval of v3.
 - **Integration contracts** (`kind: Contract`) — turn a stage's `locks:` into a checked vocabulary, so two requirements touching the same interface can't proceed concurrently.
 - **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` resolved across every artifact, so a reusable library runs out-of-the-box yet stays configurable.
 
@@ -481,7 +482,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.127.1. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 (delivery pipelines) shipped — StageGraph + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the end-to-end SDLC example, and the bundled durable orchestrator (`swarmkit orchestrator` + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.129.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 (delivery pipelines) shipped — StageGraph + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the end-to-end SDLC example, and the bundled durable orchestrator (`swarmkit orchestrator` + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 
