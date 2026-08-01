@@ -73,6 +73,11 @@ class HumanDecision:
     role: str = ""           # the capacity acted in, for a multi-party role-task
     scope: str = ""
     at: datetime = ...
+    #: The artifact this decision was made ABOUT, and which round of the gate it belongs to. A gate
+    #: can open more than once — a rework loop re-runs the stage and produces a new artifact — and
+    #: without these a comment about v1 is indistinguishable from one about v3.
+    artifact_ref: str = ""   # e.g. "run-42/design/output@3"
+    round: int = 0           # 0-based; increments each time the gate re-opens on a new artifact
 ```
 
 `ReviewItem` gains two fields and stops overloading one:
@@ -86,6 +91,45 @@ comment: str = ""       # NEW: the human's reasoning
 The file-backed queue reads old items with `resolved_by` absent by falling back to `answer`, so
 in-flight gates survive the upgrade. `collect_resolutions` reads `resolved_by` with the same
 fallback.
+
+## Rounds: a gate can open more than once
+
+A rework loop re-runs the stage, which produces a **new artifact**, and re-opens the gate. So a gate
+is not one decision point but a sequence of them, and every record has to say which one it belongs
+to.
+
+**Every decision is stamped with the artifact ref it was written against, plus its round.** The
+round increments when the gate re-opens on an artifact ref different from the one its items were
+opened against; re-opening on the *same* ref (a restart, a duplicate signal) is idempotent and does
+not advance it.
+
+The audit reflects the same structure: `approval.gate_opened` carries `round` and `artifact_ref`, and
+every `approval.role_task_resolved` carries the round and ref it was made against. Reading the audit
+for a gate therefore reconstructs each loop separately — round 0's comments against v1, round 1's
+against v2 — rather than a flat list in which a stale objection looks current.
+
+`swarmkit review show` and the `/runs` panel group by round, newest first, and mark anything from an
+earlier round as **stale**.
+
+### The consequence, which is a governance decision and not mine to make
+
+Stamping makes staleness *detectable*. It does not by itself decide what to **do** with a stale
+approval, and today's behaviour — `open_gate` is idempotent, so prior approvals carry forward — now
+has a visible edge: a gate can be satisfied by approvals of an artifact nobody approved.
+
+Two options:
+
+1. **Retain and count** (today). Simple; preserves every human decision; but "approved" can mean
+   "approved something else".
+2. **Retain and re-ask** (recommended). Prior decisions stay on the record and stay rendered, marked
+   with their round, but only decisions made against the **current** artifact count toward quorum. A
+   rework loop therefore asks the roles to look again — which is what a human reviewer would expect
+   after their objection was addressed.
+
+I recommend (2): it is the same reasoning that motivated this note. An approval of v1 is not an
+approval of v3, and a reviewer who wrote "add backoff" has not seen whether backoff was added. It is
+a behaviour change to quorum, so it wants an explicit decision rather than arriving as a side effect
+of stamping.
 
 ## Delivering it to the agent
 
@@ -128,10 +172,12 @@ An agent must be able to tell an approval condition from a rejection reason, and
 the artifact. So the decision is rendered in a fixed, labelled block — never concatenated raw:
 
 ```
-<human-decisions gate="run-42:design">
+<human-decisions gate="run-42:design" round="1" artifact="run-42/design/output@2">
   [changes-requested] security-reviewer (alice), scope=security:approve
+      round 0, on run-42/design/output@1   (STALE — addressed in this revision)
     The retry loop has no backoff. Add exponential backoff before this ships.
   [approve] release-manager (bob), scope=security:approve
+      round 1, on run-42/design/output@2
     Fine by me once alice's point is addressed.
 </human-decisions>
 ```
@@ -140,6 +186,9 @@ Three properties, each load-bearing:
 
 - **Attributed.** Who said it and in what capacity. A note from the security reviewer is not
   interchangeable with one from the release manager.
+- **Versioned.** Each decision names the artifact it was about and its round, and an earlier round is
+  marked stale. Carrying "add backoff" unlabelled into the revision that added backoff would have the
+  agent undo its own fix.
 - **Typed.** The outcome is on every line, so "fine by me once…" cannot be misread as unconditional.
 - **Delimited.** Human text is untrusted input to a model. It is fenced in a named block and
   described in the surrounding prompt as *a human's decision about your work*, not as instructions
@@ -179,7 +228,9 @@ any other payload — a reviewer may paste a credential into a comment box.
 
 ## Test plan
 
-- **Unit.** `ReviewItem` round-trips `comment`/`resolved_by`; an item written by the *old* shape
+- **Unit.** `ReviewItem` round-trips `comment`/`resolved_by`/`artifact_ref`/`round`; re-opening a
+  gate on a NEW artifact ref advances the round while re-opening on the same ref does not; an item
+  written by the *old* shape
   (identity in `answer`, no `resolved_by`) still resolves quorum. `changes-requested` reaches
   `evaluate()` and yields rework. The renderer: attribution, outcome labels, multi-party ordering,
   and a comment containing the delimiter is escaped rather than closing the block.
@@ -188,6 +239,10 @@ any other payload — a reviewer may paste a credential into a comment box.
   a `changes-requested` gate re-drives the **same** stage with the comment present.
 - **Governance.** Comment appears on the audit event; redaction policy applies; a comment never
   changes quorum (same approvals, with and without comments, evaluate identically).
+- **Rounds on the audit.** Two loops on one gate produce two `approval.gate_opened` events with
+  distinct rounds + artifact refs, and each `approval.role_task_resolved` carries the round it was
+  made in — so the audit reconstructs loop 0 and loop 1 separately rather than as a flat list.
+  Rendering marks the earlier round stale.
 - **Prompt-injection shape.** A comment containing `</human-decisions>` or "ignore previous
   instructions" is relayed inside the block, and the surrounding framing is asserted present.
 - **Full pipeline.** Live `swarmkit serve` + `swarmkit orchestrator`: request changes with a
@@ -215,10 +270,10 @@ Plus a screenshot of the `/runs` panel with the comment box and the three button
   layers. A human asking for changes is not the same as a judge failing, and counting them together
   would let a reviewer exhaust the budget. Probably a separate counter, but it needs a decision
   before implementation.
-- **Stale comments on a retry.** `pipeline-gate-convergence.md` already flags that approvals cast
-  against a previous artifact carry forward. Comments make this sharper: a note about v1 of an
-  artifact is actively misleading when attached to v3. Options are to clear comments on re-open, or
-  to stamp each with the artifact ref it was written against and render that. The second is more
-  honest and more work.
+- ~~**Stale comments on a retry.**~~ **Resolved:** every decision is stamped with the artifact ref
+  it was written against and its round, and the audit carries the same so each approval loop is
+  separable. See "Rounds" above. What it opens in turn: whether a stale approval should still
+  *count* toward quorum. Recommendation in that section is to retain but re-ask; it needs an
+  explicit call because it changes quorum behaviour.
 - **Rendering budget.** A long comment on a many-role gate could crowd the agent's context. Bound
   it (per-comment and per-block) — the same posture as the harness stderr tail.
