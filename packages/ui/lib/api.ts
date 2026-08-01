@@ -5,6 +5,7 @@ import type {
 	Comprehension,
 	ConversationDetail,
 	ConversationListItem,
+	DecisionOutcome,
 	GateCoverage,
 	GateStatusDetail,
 	HealthResponse,
@@ -164,14 +165,16 @@ export const api = {
 		const suffix = q.toString() ? `?${q}` : "";
 		return get<ReviewGate[]>(`/review${suffix}`);
 	},
-	reviewApprove: (id: string) => post<ReviewGate>(`/review/${id}/approve`),
-	reviewReject: (id: string) => post<ReviewGate>(`/review/${id}/reject`),
-	reviewAnswer: (id: string, answer: string) =>
-		post<ReviewGate>(`/review/${id}/answer`, { answer }),
+	reviewApprove: (id: string, comment = "") =>
+		post<ReviewGate>(`/review/${id}/approve`, { comment }),
+	reviewReject: (id: string, comment = "") =>
+		post<ReviewGate>(`/review/${id}/reject`, { comment }),
+	reviewAnswer: (id: string, answer: string, comment = "") =>
+		post<ReviewGate>(`/review/${id}/answer`, { answer, comment }),
 	/** Resolve a multi-party role-task. Deliberately takes no identity: the resolver is the
 	 * authenticated session, and the server rejects a body-supplied one. */
-	reviewResolve: (id: string, outcome: "approve" | "reject") =>
-		post<ReviewGate>(`/review/${id}/resolve`, { outcome }),
+	reviewResolve: (id: string, outcome: DecisionOutcome, comment = "") =>
+		post<ReviewGate>(`/review/${id}/resolve`, { outcome, comment }),
 	gateStatus: (correlationId: string, gate: string) =>
 		get<GateStatusDetail>(
 			`/pipelines/gate-status/${encodeURIComponent(correlationId)}/${encodeURIComponent(gate)}`,

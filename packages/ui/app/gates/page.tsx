@@ -87,6 +87,7 @@ function GateCard({
 	act: (fn: () => Promise<unknown>, id: string) => Promise<void>;
 }) {
 	const [text, setText] = useState("");
+	const [comment, setComment] = useState("");
 	return (
 		<Card>
 			<div className="flex items-center gap-2">
@@ -105,12 +106,20 @@ function GateCard({
 						Requests permission for{" "}
 						<code className="font-mono">{gate.capability}</code>
 					</p>
-					<div className="mt-3 flex gap-2">
+					<Input
+						value={comment}
+						onChange={(e) => setComment(e.target.value)}
+						placeholder="Why? Relayed to the agent when it resumes."
+						className="mt-3"
+					/>
+					<div className="mt-2 flex gap-2">
 						<Button
 							type="button"
 							size="sm"
 							disabled={busy}
-							onClick={() => act(() => api.reviewApprove(gate.id), gate.id)}
+							onClick={() =>
+								act(() => api.reviewApprove(gate.id, comment.trim()), gate.id)
+							}
 						>
 							Approve
 						</Button>
@@ -120,11 +129,19 @@ function GateCard({
 							size="sm"
 							disabled={busy}
 							className="border-destructive text-destructive hover:bg-destructive/10"
-							onClick={() => act(() => api.reviewReject(gate.id), gate.id)}
+							onClick={() =>
+								act(() => api.reviewReject(gate.id, comment.trim()), gate.id)
+							}
 						>
 							Reject
 						</Button>
 					</div>
+					{/* A permission decision is relayed as the harness's resume statement, so a
+					    condition ("staging only") actually reaches the agent rather than being
+					    flattened to a boolean. */}
+					<p className="mt-1 text-[11px] text-muted-foreground">
+						A comment is relayed to the agent when it resumes.
+					</p>
 				</>
 			)}
 
@@ -134,6 +151,11 @@ function GateCard({
 						Approval from role <span className="font-medium">{gate.role}</span>{" "}
 						for <code className="font-mono text-xs">{gate.scope}</code>
 					</p>
+					{gate.comment ? (
+						<p className="mt-2 rounded-md border-l-2 border-muted-foreground/40 bg-muted/40 px-2 py-1 text-xs italic">
+							“{gate.comment}”
+						</p>
+					) : null}
 					<div className="mt-3 flex items-center gap-3">
 						<a
 							className="text-sm underline underline-offset-4"
@@ -160,7 +182,10 @@ function GateCard({
 								size="sm"
 								disabled={busy}
 								onClick={() =>
-									act(() => api.reviewAnswer(gate.id, opt), gate.id)
+									act(
+										() => api.reviewAnswer(gate.id, opt, comment.trim()),
+										gate.id,
+									)
 								}
 							>
 								{opt}
@@ -180,7 +205,10 @@ function GateCard({
 								size="sm"
 								disabled={busy || !text}
 								onClick={() =>
-									act(() => api.reviewAnswer(gate.id, text), gate.id)
+									act(
+										() => api.reviewAnswer(gate.id, text, comment.trim()),
+										gate.id,
+									)
 								}
 							>
 								Answer

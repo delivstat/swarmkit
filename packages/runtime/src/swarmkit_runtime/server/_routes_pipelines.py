@@ -75,6 +75,11 @@ class RoleTaskSummary(BaseModel):
     rule_index: int | None = None
     status: str
     resolved_by: str = ""
+    #: What the reviewer said, and which revision they said it about. Without these a UI can show
+    #: THAT a gate was sent back but not why, which is the whole point of capturing a comment.
+    comment: str = ""
+    artifact_ref: str = ""
+    round: int = 0
 
 
 class GateStatusResponse(BaseModel):
@@ -391,7 +396,10 @@ def _register_pipeline_routes(app: FastAPI, workspace_path: Path) -> None:
                     scope=str(i.output.get("scope", "")),
                     rule_index=i.output.get("rule_index"),
                     status=i.status,
-                    resolved_by=i.answer,
+                    resolved_by=i.resolved_by or i.answer,
+                    comment=i.comment,
+                    artifact_ref=i.artifact_ref,
+                    round=i.round,
                 )
                 for i in items
             ],

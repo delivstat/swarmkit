@@ -27,7 +27,9 @@ describe("reviewResolve", () => {
 		expect(urlOf(fetchMock)).toBe(
 			"/review/mpa-run-42:design-0-security-reviewer/resolve",
 		);
-		expect(bodyOf(fetchMock)).toEqual({ outcome: "approve" });
+		// `comment` is additive and always sent (empty when not given); `identity` is the property
+		// that must never appear — the resolver is the authenticated session.
+		expect(bodyOf(fetchMock)).toEqual({ outcome: "approve", comment: "" });
 		expect(bodyOf(fetchMock)).not.toHaveProperty("identity");
 	});
 
@@ -35,7 +37,7 @@ describe("reviewResolve", () => {
 		const fetchMock = stubFetch();
 		await api.reviewResolve("mpa-x-0-r", "reject");
 		expect(urlOf(fetchMock)).toBe("/review/mpa-x-0-r/resolve");
-		expect(bodyOf(fetchMock)).toEqual({ outcome: "reject" });
+		expect(bodyOf(fetchMock)).toEqual({ outcome: "reject", comment: "" });
 	});
 
 	it("surfaces the server's refusal text so the reason reaches the approver", async () => {
@@ -90,5 +92,57 @@ describe("gate id split", () => {
 	it("degrades safely on a malformed gate id", () => {
 		expect(runOf("nocolon")).toBe("nocolon");
 		expect(stageOf("nocolon")).toBe("");
+	});
+});
+
+// ---- comments + the third outcome (human-decision-comments.md) --------------------------------
+
+describe("decisions carry comments", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it("sends the comment alongside the outcome", async () => {
+		const fetchMock = stubFetch();
+		await api.reviewResolve("mpa-x-0-r", "approve", "staging only for now");
+		expect(bodyOf(fetchMock)).toEqual({
+			outcome: "approve",
+			comment: "staging only for now",
+		});
+	});
+
+	it("supports changes-requested, which is neither approve nor reject", async () => {
+		const fetchMock = stubFetch();
+		await api.reviewResolve("mpa-x-0-r", "changes-requested", "add backoff");
+		expect(bodyOf(fetchMock)).toEqual({
+			outcome: "changes-requested",
+			comment: "add backoff",
+		});
+	});
+
+	it("still carries no identity — the resolver is the session", async () => {
+		const fetchMock = stubFetch();
+		await api.reviewResolve("mpa-x-0-r", "reject", "credentials in the diff");
+		expect(bodyOf(fetchMock)).not.toHaveProperty("identity");
+	});
+
+	it("defaults the comment to empty rather than omitting it", async () => {
+		const fetchMock = stubFetch();
+		await api.reviewResolve("mpa-x-0-r", "approve");
+		expect(bodyOf(fetchMock)).toEqual({ outcome: "approve", comment: "" });
+	});
+
+	it("passes a comment on a harness permission gate", async () => {
+		const fetchMock = stubFetch();
+		await api.reviewApprove("approval-1", "staging only");
+		expect(urlOf(fetchMock)).toBe("/review/approval-1/approve");
+		expect(bodyOf(fetchMock)).toEqual({ comment: "staging only" });
+	});
+
+	it("passes a comment alongside an input answer", async () => {
+		const fetchMock = stubFetch();
+		await api.reviewAnswer("input-1", "redis", "cap the pool at 20");
+		expect(bodyOf(fetchMock)).toEqual({
+			answer: "redis",
+			comment: "cap the pool at 20",
+		});
 	});
 });
