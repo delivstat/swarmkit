@@ -33,9 +33,12 @@ logger = logging.getLogger("swarmkit.mcp-serve")
 def run_mcp_server(workspace_paths: list[Path]) -> None:
     """Start the MCP server on stdio, exposing workspace topologies as tools."""
     try:
-        from mcp.server import Server  # noqa: PLC0415
         from mcp.server.stdio import stdio_server  # noqa: PLC0415
         from mcp.types import TextContent, Tool  # noqa: PLC0415
+
+        from swarmkit_runtime.mcp._sdk_compat import (  # noqa: PLC0415
+            build_low_level_server,
+        )
     except ImportError:
         print(
             "MCP package required: uv tool install swarmkit-runtime[serve]",
@@ -48,7 +51,6 @@ def run_mcp_server(workspace_paths: list[Path]) -> None:
         print("No valid workspaces found.", file=sys.stderr)
         sys.exit(1)
 
-    server = Server("swarmkit")
     multi = len(runtimes) > 1
 
     def _tool_name(ws_id: str, topo_name: str) -> str:
@@ -57,8 +59,7 @@ def run_mcp_server(workspace_paths: list[Path]) -> None:
     def _search_tool_name(ws_id: str) -> str:
         return f"search_{ws_id}_knowledge" if multi else "search_knowledge"
 
-    _register_handlers(
-        server,
+    _list, _call = _build_handlers(
         runtimes,
         workspaces_info,
         _tool_name,
@@ -66,6 +67,7 @@ def run_mcp_server(workspace_paths: list[Path]) -> None:
         TextContent,
         Tool,
     )
+    server = build_low_level_server("swarmkit", list_tools=_list, call_tool=_call)
 
     async def _main() -> None:
         async with stdio_server() as (read, write):
@@ -115,16 +117,16 @@ def _load_workspaces(
     return runtimes, workspaces_info
 
 
-def _register_handlers(
-    server: Any,
+def _build_handlers(
     runtimes: dict[str, Any],
     workspaces_info: dict[str, dict[str, Any]],
     tool_name_fn: Any,
     search_name_fn: Any,
     TextContent: type,
     Tool: type,
-) -> None:
-    @server.list_tools()  # type: ignore[untyped-decorator]
+) -> tuple[Any, Any]:
+    """The tools/list + tools/call handlers, in the SDK-neutral form the compat builder adapts."""
+
     async def list_tools() -> list[Any]:
         tools: list[Any] = []
         for ws_id, rt in runtimes.items():
@@ -171,7 +173,6 @@ def _register_handlers(
         )
         return tools
 
-    @server.call_tool()  # type: ignore[untyped-decorator]
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[Any]:
         if name == "list_workspaces":
             return [
@@ -187,6 +188,8 @@ def _register_handlers(
             if name == search_name_fn(ws_id):
                 return await _search(rt, arguments, TextContent)
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
+
+    return list_tools, call_tool
 
 
 async def _run_topology(
