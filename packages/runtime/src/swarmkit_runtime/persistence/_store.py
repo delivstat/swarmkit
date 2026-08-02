@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine, create_engine, delete, event, func, insert, select, update
-from sqlalchemy.engine import RowMapping
+from sqlalchemy.engine import RowMapping, make_url
 
 from swarmkit_runtime.persistence._tables import (
     conversations,
@@ -52,6 +52,25 @@ def engine_url(engine: Engine) -> str:
     Use this whenever a URL is *forwarded*; keep ``str(url)`` for anything that is displayed.
     """
     return engine.url.render_as_string(hide_password=False)
+
+
+def redacted_url(url: str) -> str:
+    """A store URL safe to DISPLAY — the password replaced with ``***``.
+
+    The mirror of :func:`engine_url`, and the pair states the rule once:
+
+    * **forwarding** a URL to another store -> :func:`engine_url`, password intact;
+    * **showing** a URL to a human or a log -> this, password removed.
+
+    Getting either backwards has bitten: forwarding a masked URL broke artifact-store auth
+    (1.127.1), and displaying an unmasked one put the password in the orchestrator's startup line,
+    terminal scrollback and any captured log. Truncating instead — what serve did — is not a fix
+    either: ``url[:30]`` of ``postgresql://user:hunter2secret@host/db`` leaks a password prefix.
+    """
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except Exception:  # not a parseable URL (a bare path, a typo) — never echo it back verbatim
+        return "<unparseable store url>"
 
 
 def make_engine(url: str) -> Engine:
@@ -431,4 +450,5 @@ __all__ = [
     "engine_url",
     "make_engine",
     "normalize_url",
+    "redacted_url",
 ]
