@@ -2965,7 +2965,7 @@ requires-dist = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.130.0"
+version = "1.131.0"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
