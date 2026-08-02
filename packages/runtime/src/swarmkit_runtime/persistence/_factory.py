@@ -22,7 +22,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from swarmkit_runtime.persistence._store import SqliteStore, Store, make_engine
+from swarmkit_runtime.persistence._store import (
+    SqliteStore,
+    Store,
+    make_engine,
+    redacted_url,
+)
 
 logger = logging.getLogger("swarmkit.persistence")
 
@@ -113,7 +118,9 @@ def create_store(
     """
     backend, url, source = _resolve_backend(workspace_path, workspace_raw)
     if backend == "postgres":
-        logger.info("Store backend: postgres (source: %s, %s...)", source, url[:30])
+        # Truncation is not redaction: url[:30] of postgresql://user:hunter2secret@host/db leaks
+        # a password prefix. Mask the userinfo instead.
+        logger.info("Store backend: postgres (source: %s, %s)", source, redacted_url(url))
         return Store(make_engine(url))
     logger.info("Store backend: sqlite (source: %s, path: %s)", source, workspace_path)
     return SqliteStore(workspace_path)

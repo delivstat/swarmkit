@@ -19,6 +19,7 @@ import typer
 from swarmkit_runtime.orchestration import SqlSagaStore, StageOutcome
 from swarmkit_runtime.orchestration.reference import ReferenceController
 from swarmkit_runtime.persistence._factory import _resolve_backend
+from swarmkit_runtime.persistence._store import redacted_url
 from swarmkit_runtime.resolver import resolve_workspace
 
 from ._app import app
@@ -132,7 +133,11 @@ def orchestrator(
     controller = ReferenceController(
         run_stage=_http_run_stage(serve_url, token), store=store, graphs=graphs
     )
-    typer.echo(f"orchestrator: {len(graphs)} stage-graph(s); driving events from {db}")
+    # redacted_url, not the raw one: this line lands in terminal scrollback, any redirected log
+    # and CI capture. The store URL routinely carries a database password.
+    typer.echo(
+        f"orchestrator: {len(graphs)} stage-graph(s); driving events from {redacted_url(db)}"
+    )
     typer.echo(f"  store source: {source}")
     typer.echo(f"  run-stage → {serve_url}   (Ctrl-C to stop)")
     try:
