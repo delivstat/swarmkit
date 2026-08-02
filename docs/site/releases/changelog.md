@@ -8,6 +8,9 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.131.3** (2026-08-03) — the MCP SDK 2.0 port, finished
+- **v1.131.2** (2026-08-02) — MCP SDK 2.0 support
+- **v1.131.1** (2026-08-02) — a missing checkpointer extra degrades, it does not kill serve
 - **v1.131.0** (2026-08-02) — decision skill config is honoured, and a verdict's case is not its meaning
 - **v1.130.0** (2026-08-02) — one storage service decides where every store lives
 - **v1.129.2** (2026-08-02) — three reported bugs, two of them security, plus honest version reporting
