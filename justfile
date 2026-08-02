@@ -260,6 +260,10 @@ demo-signed-deploy:
 llms-full:
     uv run python scripts/build_llms_full.py
 
+# Regenerate the changelog from the annotated git tags. Run after tagging a release.
+changelog:
+    uv run python scripts/build_changelog.py
+
 schema-codegen: schema-codegen-py schema-codegen-ts
 
 schema-codegen-py:

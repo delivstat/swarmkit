@@ -140,5 +140,10 @@ When cutting a release:
 3. **Build** both packages: `uv build --all-packages` — verify both succeed.
 4. **Tag**: `git tag -a v1.x.y -m "SwarmKit v1.x.y — summary"`.
 5. **Push**: `git push origin v1.x.y` — triggers PyPI publish + Docker build via GitHub Actions.
+6. **Regenerate the changelog**: `just changelog` reads the annotated tags and rewrites
+   `docs/site/releases/changelog.md`. It only sees tags that exist, so this runs *after* the push,
+   in a follow-up docs PR. The document claimed to be tag-generated for months while being
+   hand-maintained, and drifted 33 versions behind — the tag subject is the summary, so write it
+   like one.
 
 PyPI does not allow re-uploading the same version. If the tag is pushed before the version bump, the publish fails and requires deleting the tag, bumping, and re-tagging. Always bump first.

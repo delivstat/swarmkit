@@ -4,8 +4,31 @@ Every released version of the SwarmKit runtime, newest first, generated from the
 
 The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-written detail for those ranges.
 
+<!-- BEGIN GENERATED: tags -->
+
+## August 2026
+
+- **v1.131.0** (2026-08-02) — decision skill config is honoured, and a verdict's case is not its meaning
+- **v1.130.0** (2026-08-02) — one storage service decides where every store lives
+- **v1.129.2** (2026-08-02) — three reported bugs, two of them security, plus honest version reporting
+- **v1.129.0** (2026-08-01) — human decisions carry comments, and agents read them
+- **v1.128.0** (2026-08-01) — a bundled parked stage carries a real approval policy
+- **v1.127.3** (2026-08-01) — launch substitution no longer deletes brace-bearing prompts
+- **v1.127.2** (2026-08-01) — restore `swarmkit orchestrator`
+- **v1.127.1** (2026-08-01) — forward the store URL with its password intact
+- **v1.127.0** (2026-08-01) — approve a parked gate from the run view; fix the reported silent failures
+
 ## July 2026
 
+- **v1.123.0** (2026-07-29) — fix: webhook forwards its body as the pipeline input
+- **v1.122.0** (2026-07-29) — show each pipeline node's input in the run view
+- **v1.121.0** (2026-07-29) — fix: bundled orchestrator starts on named webhook events
+- **v1.120.0** (2026-07-28) — fix: thread the pipeline input payload
+- **v1.119.0** (2026-07-28) — bundled durable pipeline orchestrator + run-stage execution + dispatch/inspect surface
+- **v1.118.0** (2026-07-27) — governed-memory UI + provenance (portal republished with swarmkit-webui 0.2.0)
+- **v1.117.0** (2026-07-27) — governed memory
+- **v1.111.0** (2026-07-27) — funnel deterministic validate (slice_budget + cited_change, harness diff threading) + gate coverage & comprehension-debt signals
+- **v1.103.0** (2026-07-25) — orchestration & pipeline-triggering runtime
 - **v1.98.0** (2026-07-20) — artifact env-substitution: ${VAR}/${VAR:-default}/$${VAR} resolved across all artifact YAML, with or without a workspace env file
 - **v1.97.0** (2026-07-19) — multi-party approval (governance): role registry + approval-policy schemas, evaluation engine, and runtime gate resolution
 - **v1.96.0** (2026-07-13) — serve hosts the web portal (swarmkit-runtime[ui] + swarmkit-webui)
@@ -27,21 +50,21 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 - **v1.77.0** (2026-07-12) — executor P3: declarative harness adapters (harnesses are data)
 - **v1.69.0** (2026-07-11) — executor abstraction P2 complete (harness executors, end to end)
 - **v1.60.1** (2026-07-11) — Publish swarmkit-schema 1.11.0 (x-swarmkit-ref reference hints).
-- **v1.60.0** (2026-07-11) — GET /api/schema/{artifact_type} — canonical schema for the designer
-- **v1.59.0** (2026-07-11) — maintenance release
-- **v1.58.0** (2026-07-10) — observability reads — GET /observability/runs/{id}/trace + /audit
-- **v1.57.0** (2026-07-10) — GET /auth-info — serve advertises its auth mode
-- **v1.56.0** (2026-07-10) — emit governance-decision + approval-wait metrics + dashboard panels
-- **v1.55.0** (2026-07-10) — wire OTLP metrics export so Grafana populates
-- **v1.54.0** (2026-07-10) — scenario severity + VLM escalation (local vs cloud) for Scenario Studio
+- **v1.60.0** (2026-07-11) — runtime 1.60.0
+- **v1.59.0** (2026-07-11) — runtime 1.59.0
+- **v1.58.0** (2026-07-10) — runtime 1.58.0
+- **v1.57.0** (2026-07-10) — runtime 1.57.0
+- **v1.56.0** (2026-07-10) — runtime 1.56.0
+- **v1.55.0** (2026-07-10) — runtime 1.55.0
+- **v1.54.0** (2026-07-10) — runtime 1.54.0, schema 1.10.0
 
 ## June 2026
 
-- **v1.8.0** (2026-06-22) — context compression (lossless columnar + reversible headtail + plugin backends), per-surface policy, context_retrieve, observability, per…
+- **v1.8.0** (2026-06-22) — context compression (lossless columnar + reversible headtail + plugin backends), per-surface policy, context_retrieve, observability, per-run contextvars isolation; eval harness slices 1-2. swarmkit-schema 1.5.0.
 - **v1.3.6** (2026-06-13) — generic per-model options passthrough (schema 1.3.3, runtime 1.3.6)
 - **v1.3.5** (2026-06-13) — schema-constrained output decoding from output_schema
 - **v1.3.4** (2026-06-13) — surface structured MCP tool output when no text block
-- **v1.3.3** (2026-06-10) — Gemma/Google model tool-calling fixes
+- **v1.3.3** (2026-06-11) — Gemma/Google model tool-calling fixes
 - **v1.3.2** (2026-06-06) — GBrainMemory compiler wiring
 - **v1.3.1** (2026-06-03) — tool call tracing + UI trace panel
 - **v1.3.0** (2026-06-01) — M11 launch prep + expertise packages
@@ -119,7 +142,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 - **v1.1.6** (2026-05-14) — dynamic recursion limit
 - **v1.1.5** (2026-05-14) — sequential delegation + MCP timeout/retry
 - **v1.1.4** (2026-05-14) — sequential delegation fix
-- **v1.1.3** (2026-05-13) — forced synthesis fix
+- **v1.1.3** (2026-05-14) — forced synthesis fix
 - **v1.1.2** (2026-05-13) — forced synthesis at tool limit
 - **v1.1.1** (2026-05-13) — cache fix + MarkItDown CWD
 - **v1.1.0** (2026-05-13) — M8 MCP integration layer
@@ -140,12 +163,12 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 - **v1.0.22** (2026-05-03) — smart path sanitisation, relative grep paths
 - **v1.0.21** (2026-05-02) — fix embedded env var expansion in MCP servers, master ingestion script
 - **v1.0.20** (2026-05-02) — agentic retry loop for tool use
-- **v1.0.19** (2026-05-02) — maintenance release
+- **v1.0.19** (2026-05-02) — v1.0.19
 - **v1.0.18** (2026-05-02) — prompt_toolkit chat UX, CDT config server
 - **v1.0.17** (2026-05-02) — MCP server cwd support with schema
 - **v1.0.16** (2026-05-02) — MCP server cwd support
 - **v1.0.15** (2026-05-02) — fix filesystem MCP server cwd
-- **v1.0.14** (2026-05-02) — debug release
+- **v1.0.14** (2026-05-02) — v1.0.14 debug
 - **v1.0.13** (2026-05-02) — maintenance release
 - **v1.0.12** (2026-05-02) — multi-tool execution, path sanitisation
 - **v1.0.11** (2026-05-02) — multi-tool execution, /model command, DeepSeek workers
@@ -164,3 +187,4 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 - **v1.0.1** (2026-04-26) — observability
 - **v1.0.0** (2026-04-26) — launch prep — skills catalogue, docs site, Docker, PyPI, CHANGELOG
 
+<!-- END GENERATED: tags -->
