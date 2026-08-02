@@ -32,7 +32,13 @@ else:
     except ImportError:  # SDK 1.x
         from mcp.server.fastmcp import FastMCP as MCPServerClass
 
-__all__ = ["MCPServerClass", "mcp_server_class", "tool_input_schema", "tool_output_schema"]
+__all__ = [
+    "MCPServerClass",
+    "build_low_level_server",
+    "mcp_server_class",
+    "tool_input_schema",
+    "tool_output_schema",
+]
 
 _MISSING = object()
 
@@ -62,3 +68,47 @@ def mcp_server_class() -> Any:
     1.x. Prefer importing :data:`MCPServerClass` directly; this exists for callers that must
     resolve it lazily (``server/_mcp.py`` only imports MCP at all when the package is present)."""
     return MCPServerClass
+
+
+def build_low_level_server(
+    name: str,
+    *,
+    list_tools: Any,
+    call_tool: Any,
+) -> Any:
+    """A low-level ``Server`` with tools/list + tools/call registered, on either SDK.
+
+    The third rename, and the one that reached a user as ``'Server' object has no attribute
+    'list_tools'``: 1.x registered handlers with ``@server.list_tools()`` decorators, 2.0 removed
+    them and takes ``on_list_tools=`` / ``on_call_tool=`` on the constructor, with a different
+    handler signature (a request context and typed params) and a different return type (a result
+    model rather than a bare list).
+
+    Callers write ONE neutral form and this adapts it:
+
+    * ``list_tools() -> list[Tool]``
+    * ``call_tool(name, arguments) -> list[ContentBlock]``
+    """
+    import inspect  # noqa: PLC0415
+
+    from mcp.server import Server  # noqa: PLC0415
+
+    if "on_list_tools" in inspect.signature(Server.__init__).parameters:  # SDK 2.0
+        from mcp.types import CallToolResult, ListToolsResult  # noqa: PLC0415
+
+        async def _on_list(_ctx: Any, _params: Any) -> Any:
+            return ListToolsResult(tools=await list_tools())
+
+        async def _on_call(_ctx: Any, params: Any) -> Any:
+            content = await call_tool(params.name, params.arguments or {})
+            return CallToolResult(content=content)
+
+        # mypy resolves `Server` against the INSTALLED 1.x stubs, where these kwargs do not
+        # exist; the branch only runs when the signature says they do.
+        server_cls: Any = Server
+        return server_cls(name, on_list_tools=_on_list, on_call_tool=_on_call)
+
+    server: Any = Server(name)  # SDK 1.x
+    server.list_tools()(list_tools)
+    server.call_tool()(call_tool)
+    return server

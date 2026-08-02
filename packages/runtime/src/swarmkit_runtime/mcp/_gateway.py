@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from swarmkit_runtime.mcp._sdk_compat import tool_input_schema
+from swarmkit_runtime.mcp._sdk_compat import build_low_level_server, tool_input_schema
 
 from ._governed import MCPCallDenied, governed_mcp_call
 
@@ -115,7 +115,6 @@ async def mcp_gateway(
     the harness connects to — for a container sandbox, bind ``0.0.0.0`` but advertise
     ``host.docker.internal`` so the container reaches the host."""
     import uvicorn  # noqa: PLC0415
-    from mcp.server import Server  # noqa: PLC0415
     from mcp.server.sse import SseServerTransport  # noqa: PLC0415
     from mcp.types import TextContent, Tool  # noqa: PLC0415
     from starlette.applications import Starlette  # noqa: PLC0415
@@ -125,9 +124,7 @@ async def mcp_gateway(
 
     bearer = token or secrets.token_urlsafe(24)
     by_name = {t.name: t for t in tools}
-    server: Any = Server(_GATEWAY_SERVER_NAME)
 
-    @server.list_tools()  # type: ignore[untyped-decorator]
     async def _list() -> list[Any]:
         return [
             Tool(
@@ -140,7 +137,6 @@ async def mcp_gateway(
             for t in tools
         ]
 
-    @server.call_tool()  # type: ignore[untyped-decorator]
     async def _call(name: str, arguments: dict[str, Any]) -> list[Any]:
         tool = by_name.get(name)
         if tool is None:
@@ -157,6 +153,10 @@ async def mcp_gateway(
         except MCPCallDenied as exc:
             return [TextContent(type="text", text=f"DENIED by governance: {exc}")]
         return _to_content(resp, TextContent)
+
+    # 1.x registers these with decorators, 2.0 with constructor kwargs and a different handler
+    # shape. The compat builder is the only place that knows which.
+    server: Any = build_low_level_server(_GATEWAY_SERVER_NAME, list_tools=_list, call_tool=_call)
 
     sse = SseServerTransport("/messages/")
 

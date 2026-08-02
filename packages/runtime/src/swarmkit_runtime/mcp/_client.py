@@ -14,13 +14,15 @@ See ``design/details/mcp-client.md``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
-import io
 import json as _json
 import logging
 import os
 import re
 import shutil
+import sys
+import threading
 import time
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
@@ -92,12 +94,14 @@ class ToolResponse:
     metadata: ToolMetadata
 
 
-class _StderrTail(io.TextIOBase):
-    """A stderr sink that passes everything through and remembers the last few lines.
+class _StderrTail:
+    """The child's stderr: streamed to ours, with the last few lines kept for the error message.
 
-    ``stdio_client`` writes the child's stderr here. Keeping a tail turns "Connection closed" into
-    the traceback that caused it, quoted next to the warning — the same fix as the harness stderr
-    being captured and discarded (1.127.0).
+    Backed by a real OS pipe, because ``errlog`` is handed straight to process creation on both
+    SDKs and a subprocess needs a **file descriptor**. The first version of this was a
+    ``TextIOBase`` with only ``write``/``flush``, which raised ``AttributeError: fileno`` for every
+    server on SDK 2.0 — a diagnostic feature that stopped the thing it was meant to explain from
+    starting at all. Nothing caught it because no test spawned a real stdio server; one does now.
     """
 
     _MAX_LINES = 8
@@ -105,24 +109,39 @@ class _StderrTail(io.TextIOBase):
     def __init__(self, server_id: str) -> None:
         self.server_id = server_id
         self.lines: list[str] = []
-        self._partial = ""
+        read_fd, write_fd = os.pipe()
+        self._write = os.fdopen(write_fd, "w", buffering=1, errors="replace")
+        self._read = os.fdopen(read_fd, "r", buffering=1, errors="replace")
+        self._pump = threading.Thread(
+            target=self._drain, name=f"mcp-stderr-{server_id}", daemon=True
+        )
+        self._pump.start()
+
+    def _drain(self) -> None:
+        """Pass every line through to our stderr, keeping a tail. Ends when the pipe closes."""
+        try:
+            for line in self._read:
+                sys.stderr.write(line)
+                if line.strip():
+                    self.lines.append(line.rstrip())
+                    del self.lines[: -self._MAX_LINES]
+        except (ValueError, OSError):  # pragma: no cover - pipe closed under us
+            pass
+
+    # The subprocess only needs these three.
+    def fileno(self) -> int:
+        return self._write.fileno()
 
     def write(self, text: str) -> int:
-        import sys  # noqa: PLC0415
-
-        sys.stderr.write(text)
-        self._partial += text
-        *complete, self._partial = self._partial.split("\n")
-        for line in complete:
-            if line.strip():
-                self.lines.append(line.rstrip())
-        del self.lines[: -self._MAX_LINES]
-        return len(text)
+        return self._write.write(text)
 
     def flush(self) -> None:
-        import sys  # noqa: PLC0415
+        self._write.flush()
 
-        sys.stderr.flush()
+    def close(self) -> None:
+        for handle in (self._write, self._read):
+            with contextlib.suppress(ValueError, OSError):
+                handle.close()
 
 
 class MCPClientManager:
@@ -249,8 +268,8 @@ class MCPClientManager:
         # the actual traceback scrolls past somewhere else.
         errlog = _StderrTail(config.server_id)
         self._stderr_tails[config.server_id] = errlog
-        # cast: the SDK annotates errlog as TextIO but only ever calls write/flush on it, which
-        # TextIOBase provides. Widening the sink to a full TextIO would buy nothing.
+        # cast: the SDK annotates errlog as TextIO; the process only needs fileno/write/flush,
+        # which the pipe-backed sink provides.
         transport = await self._stack.enter_async_context(
             stdio_client(params, errlog=cast("TextIO", errlog))
         )
