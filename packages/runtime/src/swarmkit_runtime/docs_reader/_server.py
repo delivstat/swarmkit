@@ -44,13 +44,45 @@ _IMAGE_MIME_TYPES: dict[str, str] = {
 }
 
 
+class PathOutsideWorkspaceError(ValueError):
+    """A requested path resolved outside the workspace root."""
+
+
 def _resolve_path(path: str) -> Path:
-    """Resolve a path relative to workspace root or as absolute."""
-    p = Path(path)
-    if p.is_absolute():
-        return p
-    root = _workspace_root or Path.cwd()
-    return root / p
+    """Resolve *path* against the workspace root, and CONFINE it there.
+
+    ``--workspace`` is a boundary, not just a base for relative paths. It previously only
+    resolved: an absolute path was returned untouched and ``..`` was never collapsed, so any tool
+    bound to this server could read anything the runtime user could — `.env`, credential files,
+    anything gitignored. Re-rooting the server at a subdirectory was not a mitigation, which is the
+    part that made it dangerous: the obvious workaround did not work.
+
+    Symlinks are resolved BEFORE the check (``Path.resolve()``), so a link inside the workspace
+    pointing out of it is refused too.
+
+    Set ``SWARMKIT_DOCS_READER_ALLOW_OUTSIDE=1`` to opt out, for a deployment that genuinely wants
+    unconfined reads. Named so it cannot be enabled by accident or mistaken for a tuning knob.
+    """
+    root = (_workspace_root or Path.cwd()).resolve()
+    requested = Path(path)
+    target = (requested if requested.is_absolute() else root / requested).resolve()
+
+    if _allow_outside():
+        return target
+    if target != root and not target.is_relative_to(root):
+        raise PathOutsideWorkspaceError(
+            f"path {path!r} resolves to {target}, which is outside the workspace root {root}. "
+            "The docs-reader only reads inside its --workspace."
+        )
+    return target
+
+
+def _allow_outside() -> bool:
+    return os.environ.get("SWARMKIT_DOCS_READER_ALLOW_OUTSIDE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 def _truncation_notice(actual: int, limit: int, unit: str, hint: str) -> str:
