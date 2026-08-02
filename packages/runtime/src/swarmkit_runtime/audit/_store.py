@@ -140,6 +140,7 @@ class SQLiteAuditProvider(SqlAuditProvider):
     provider_id = "sqlite"
 
     def __init__(self, db_path: str | Path, retention_days: int = 365) -> None:
+        # noqa: storage — explicit-path constructor; resolution happens in the storage service.
         super().__init__(make_engine(f"sqlite:///{Path(db_path)}"), retention_days)
 
 
@@ -153,19 +154,17 @@ class PostgresAuditProvider(SqlAuditProvider):
 
 
 def audit_provider_for_path(path: Path) -> SqlAuditProvider:
-    """Resolve the audit backend for a workspace from env config (mirrors the store factory).
+    """The audit provider for a workspace, resolved by the storage service.
 
-    Postgres when ``SWARMKIT_STORE_BACKEND=postgres`` + a URL is set (audit shares the runtime's
-    ``DATABASE_URL``, so it follows the same backend as the persistence store); else the local
-    ``.swarmkit/audit.sqlite`` file.
+    This used to call ``_resolve_backend(root)`` *without* the workspace config, so it consulted
+    only the environment — a workspace declaring ``storage.audit.backend: postgres`` wrote its
+    trail to ``.swarmkit/audit.sqlite`` regardless, and `swarmkit logs` read the same wrong file,
+    so the two agreed and nothing looked broken (bug 01).
     """
-    from swarmkit_runtime.persistence._factory import _resolve_backend  # noqa: PLC0415
+    from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
 
-    root = path.resolve()
-    backend, url, _source = _resolve_backend(root)
-    if backend == "postgres":
-        return PostgresAuditProvider(url)
-    return SQLiteAuditProvider(db_path=root / ".swarmkit" / "audit.sqlite")
+    provider: SqlAuditProvider = storage_for_workspace(path).audit_provider()
+    return provider
 
 
 def _dumps(value: Any) -> str | None:

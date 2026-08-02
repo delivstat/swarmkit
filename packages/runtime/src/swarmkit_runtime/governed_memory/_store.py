@@ -44,7 +44,6 @@ from swarmkit_runtime.governed_memory._relevance import (
     lexical_scores,
 )
 from swarmkit_runtime.governed_memory._tables import change_log, memory, metadata, quarantine
-from swarmkit_runtime.persistence._store import make_engine
 
 _CONFIDENCE_CEILING = 1.0
 _REINFORCE_STEP = 0.05
@@ -79,11 +78,16 @@ class GovernedMemoryStore:
         decay: DecayConfig | None = None,
         embedder: Embedder | None = None,
     ) -> GovernedMemoryStore:
-        """Back-compat convenience: point the store at ``{workspace}/.swarmkit/store.sqlite`` —
-        the same DB file the core persistence store uses (coexisting tables)."""
-        db = Path(workspace_path) / ".swarmkit" / "store.sqlite"
+        """The governed-memory store on the workspace's CONFIGURED backend.
+
+        Was hardcoded to ``{workspace}/.swarmkit/store.sqlite``, which is why a Postgres workspace
+        accumulated its memory in a local file nothing else could read — the one part of bug 01
+        that loses knowledge rather than just hiding it.
+        """
+        from swarmkit_runtime.persistence import StoreKind, storage_for_workspace  # noqa: PLC0415
+
         return cls(
-            make_engine(f"sqlite:///{db}"),
+            storage_for_workspace(workspace_path).engine(StoreKind.MEMORY),
             clock=clock,
             reconciler=reconciler,
             decay=decay,

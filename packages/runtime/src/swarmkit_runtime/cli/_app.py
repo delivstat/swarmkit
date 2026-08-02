@@ -20,11 +20,13 @@ adapters_app = typer.Typer(help="Declarative harness adapters — inspect + appr
 trust_app = typer.Typer(help="Trust accrual — apply repeated-approval capabilities to allowlists.")
 memory_app = typer.Typer(help="Governed memory — search, inspect history, resolve contradictions.")
 pipeline_app = typer.Typer(help="Pipelines — dispatch events and inspect run status.")
+storage_app = typer.Typer(help="Storage — show where data lives, migrate sqlite to postgres.")
 
 app.add_typer(review_app, name="review")
 app.add_typer(author_app, name="author")
 app.add_typer(auth_app, name="auth")
 app.add_typer(fleet_app, name="fleet")
+app.add_typer(storage_app, name="storage")
 app.add_typer(adapters_app, name="adapters")
 app.add_typer(trust_app, name="trust")
 app.add_typer(memory_app, name="memory")

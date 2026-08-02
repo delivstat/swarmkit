@@ -22,22 +22,16 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from swarmkit_runtime.persistence._service import StorageConfigError
 from swarmkit_runtime.persistence._store import (
-    SqliteStore,
     Store,
-    make_engine,
-    redacted_url,
 )
 
 logger = logging.getLogger("swarmkit.persistence")
 
-
-class StoreConfigError(RuntimeError):
-    """The storage config names a backend that cannot be honoured.
-
-    Raised rather than degraded: a silent fallback writes the run to a different database than the
-    one configured, and splits serve from the orchestrator with neither process warning.
-    """
+#: Back-compat alias. There is ONE error for "this storage config cannot be honoured"; two names
+#: for it would drift into two meanings.
+StoreConfigError = StorageConfigError
 
 
 def _field(obj: Any, key: str) -> Any:
@@ -116,14 +110,10 @@ def create_store(
     configured — the same SQLAlchemy-Core ``Store``, just a different dialect
     (design/details/postgres-backend.md).
     """
-    backend, url, source = _resolve_backend(workspace_path, workspace_raw)
-    if backend == "postgres":
-        # Truncation is not redaction: url[:30] of postgresql://user:hunter2secret@host/db leaks
-        # a password prefix. Mask the userinfo instead.
-        logger.info("Store backend: postgres (source: %s, %s)", source, redacted_url(url))
-        return Store(make_engine(url))
-    logger.info("Store backend: sqlite (source: %s, path: %s)", source, workspace_path)
-    return SqliteStore(workspace_path)
+    from swarmkit_runtime.persistence._service import storage_for_workspace  # noqa: PLC0415
+
+    store: Store = storage_for_workspace(workspace_path, workspace_raw).store()
+    return store
 
 
 __all__ = ["StoreConfigError", "create_store"]

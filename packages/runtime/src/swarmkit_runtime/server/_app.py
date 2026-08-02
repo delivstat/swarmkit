@@ -11,6 +11,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,9 +22,7 @@ from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
-from swarmkit_runtime.fleet import create_membership_store
-from swarmkit_runtime.persistence import create_store
-from swarmkit_runtime.persistence._store import engine_url
+from swarmkit_runtime.persistence import storage_for_workspace
 from swarmkit_runtime.telemetry import configure_telemetry, load_telemetry_config
 
 from ._config import (
@@ -47,6 +46,26 @@ from ._services import ArtifactService
 from ._webui import mount_webui
 
 logger = logging.getLogger("swarmkit.server")
+
+
+def _wire_storage(app: FastAPI, workspace_path: Path, runtime: WorkspaceRuntime) -> Any:
+    """Resolve every store ONCE, through the one service, and report what it chose.
+
+    Serve used to build four stores from three different resolvers; the pipeline CLI and the
+    orchestrator built more. They agreed only while all of them ignored configuration and landed
+    on the same SQLite file (design/details/storage-service.md). Returns the saga store, which the
+    caller needs for the signal sink and the run-stage seam.
+    """
+    storage = storage_for_workspace(workspace_path, runtime.workspace.raw)
+    storage.log_report()
+    app.state.storage = storage
+    app.state.store = storage.store()
+    # Fleet enrollment store, on the same backend as the main store (design 19 Q4).
+    app.state.membership_store = storage.membership_store()
+    app.state.artifact_store = storage.artifact_store()
+    saga_store = storage.saga_store()
+    app.state.saga_store = saga_store
+    return saga_store
 
 
 def create_app(  # noqa: PLR0915
@@ -81,28 +100,8 @@ def create_app(  # noqa: PLR0915
             raise RuntimeError(str(exc)) from exc
 
         app.state.runtime = runtime
-        app.state.store = create_store(workspace_path, runtime.workspace.raw)
         app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
-        # Fleet enrollment store, on the same backend as the main store (design 19 Q4).
-        app.state.membership_store = create_membership_store(workspace_path, runtime.workspace.raw)
-
-        # Pipeline orchestrator wiring (design/details/bundled-pipeline-orchestrator.md): the shared
-        # saga store (serve reads + enqueues; the `swarmkit orchestrator` command drives — serve
-        # never imports the controller), the workspace artifact store, and a durable-queue sink so
-        # POST /pipelines/signal enqueues to the store (the bundled reference default).
-        from swarmkit_runtime.artifacts import build_artifact_store  # noqa: PLC0415
-        from swarmkit_runtime.orchestration import SqlSagaStore  # noqa: PLC0415
-
-        saga_store = SqlSagaStore(app.state.store.engine)
-        app.state.saga_store = saga_store
-        _storage = getattr(runtime.workspace.raw, "storage", None)
-        app.state.artifact_store = build_artifact_store(
-            getattr(_storage, "artifacts", None),
-            workspace_root=workspace_path,
-            # engine_url, not str(url): SQLAlchemy masks the password as *** in str(), and this
-            # value is a connection string the artifact store authenticates with, not a log line.
-            database_url=engine_url(app.state.store.engine),
-        )
+        saga_store = _wire_storage(app, workspace_path, runtime)
 
         async def _pipeline_sink(correlation_id: str, event: str) -> None:
             saga_store.enqueue(correlation_id, event)

@@ -26,8 +26,15 @@ _PathArg = Annotated[
 
 
 def _store(workspace: Path) -> SqlSagaStore:
-    db = f"sqlite:///{workspace / '.swarmkit' / 'store.sqlite'}"
-    return SqlSagaStore.from_url(db)
+    """The saga store the CONFIGURED backend names — not a hardcoded file.
+
+    This used to be `sqlite:///{workspace}/.swarmkit/store.sqlite` unconditionally, so a workspace
+    on Postgres had its CLI-dispatched pipeline events land in a local file serve never reads.
+    """
+    from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+
+    store: SqlSagaStore = storage_for_workspace(workspace).saga_store()
+    return store
 
 
 @pipeline_app.command()

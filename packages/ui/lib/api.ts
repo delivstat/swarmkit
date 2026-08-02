@@ -22,6 +22,8 @@ import type {
 	SendMessageResponse,
 	SkillDetail,
 	SkillItem,
+	StorageReport,
+	SystemReport,
 	TopologyDetail,
 	TraceSpan,
 	TriggerConfig,
@@ -86,6 +88,8 @@ const put = <T>(path: string, body?: unknown) => send<T>("PUT", path, body);
 
 export const api = {
 	health: () => get<HealthResponse>("/health"),
+	storage: () => get<StorageReport>("/storage"),
+	system: () => get<SystemReport>("/system"),
 	topologies: () => get<string[]>("/topologies"),
 	skills: () => get<SkillItem[]>("/skills"),
 	archetypes: () => get<string[]>("/archetypes"),

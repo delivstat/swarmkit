@@ -56,7 +56,20 @@ class Observability:
 
     @property
     def audit_db(self) -> Path:
+        """The local audit FILE. Only meaningful when the audit store is SQLite — use
+        :meth:`audit_is_local` before treating its absence as "no audit store"."""
         return self.swarmkit_dir / "audit.sqlite"
+
+    def audit_is_local(self) -> bool:
+        """Whether this workspace's audit store is a local file at all.
+
+        `swarmkit logs` used to answer from JSONL whenever `audit.sqlite` was missing. On a
+        Postgres workspace it is always missing, so the richer audit store was never read and the
+        command reported the thinner source without saying it had chosen one.
+        """
+        from swarmkit_runtime.persistence import StoreKind, storage_for_workspace  # noqa: PLC0415
+
+        return storage_for_workspace(self._root).target(StoreKind.AUDIT).backend == "sqlite"
 
     @property
     def logs_dir(self) -> Path:
@@ -93,7 +106,7 @@ class Observability:
         back to JSONL logs. Otherwise returns the (possibly empty) matching events. Opening,
         counting, querying, and closing the provider is handled here.
         """
-        if not self.audit_db.is_file():
+        if self.audit_is_local() and not self.audit_db.is_file():
             return None
         from swarmkit_runtime._workspace_runtime import WorkspaceRuntime  # noqa: PLC0415
 

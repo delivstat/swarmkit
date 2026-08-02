@@ -8,6 +8,52 @@ export interface HealthResponse {
 	webui_version?: string;
 }
 
+/** One row of GET /storage — where a single store's data actually lives. */
+export interface StorageTarget {
+	store: string;
+	backend: string;
+	/** Redacted for postgres (the URL carries a password); "workspace-local" for sqlite. */
+	location: string;
+	/** Which setting won: env, storage.<kind>, storage.runtime, or default. */
+	source: string;
+}
+
+export interface StorageReport {
+	stores: StorageTarget[];
+	/** Configured remote, but a populated local SQLite still exists — rows the UI cannot see. */
+	warnings: string[];
+}
+
+/** One known environment variable, from GET /system. Curated — never a raw os.environ dump, so a
+ * credential cannot reach this page by accident. Secret values report only set/unset. */
+export interface EnvVarStatus {
+	name: string;
+	group: string;
+	description: string;
+	set: boolean;
+	/** Masked for URLs, the literal "set" for secrets, null when unset. */
+	value: string | null;
+	sensitive: boolean;
+}
+
+/** One resolved entry from the workspace's own workspace.env.yaml. Read from the file on every
+ * request, so a parameter a new feature introduces appears here with no code change. */
+export interface WorkspaceProperty {
+	name: string;
+	/** Resolved (${ENV_VAR} already substituted). "set" when the NAME suggests a credential. */
+	value: string;
+	sensitive: boolean;
+}
+
+export interface SystemReport {
+	workspace: string;
+	runtime_version?: string;
+	webui_version?: string;
+	storage: StorageReport;
+	environment: EnvVarStatus[];
+	properties: WorkspaceProperty[];
+}
+
 export interface JobResponse {
 	job_id: string;
 	status: "pending" | "running" | "completed" | "failed";

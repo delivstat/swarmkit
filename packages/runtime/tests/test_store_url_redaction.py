@@ -61,7 +61,8 @@ def test_no_caller_displays_a_raw_store_url() -> None:
     assert "redacted_url(db)" in orchestrator
     assert not re.search(r"driving events from \{db\}", orchestrator)
 
-    factory = (root / "persistence/_factory.py").read_text()
-    assert "redacted_url(url)" in factory
+    # Resolution moved into the service, so that is where a URL now reaches a log line.
+    service = (root / "persistence/_service.py").read_text()
+    assert "redacted_url(t.url)" in service
     # The comment explaining the old bug names `url[:30]` deliberately; match a logging ARGUMENT.
-    assert not re.search(r",\s*url\[:\d+\]", factory)
+    assert not re.search(r",\s*url\[:\d+\]", service)

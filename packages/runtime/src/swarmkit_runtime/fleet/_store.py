@@ -108,6 +108,7 @@ class MembershipStore:
         elif isinstance(backing, Path):
             db = backing / ".swarmkit" / "fleet.sqlite"
             db.parent.mkdir(parents=True, exist_ok=True)
+            # noqa: storage — materialises a path the CALLER chose; the service picks the path.
             self._engine = make_engine(f"sqlite:///{db}")
         else:
             self._engine = make_engine(backing)

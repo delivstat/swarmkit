@@ -143,6 +143,18 @@ Set `SWARMKIT_VERBOSE=1` or use `--verbose` to see per-agent detail:
   [synthesis call with 2 tool results]
 ```
 
+## Storage + system info
+
+| Command | Description |
+|---|---|
+| `swarmkit storage status [ws]` | Which backend each store resolves to, and which setting decided it |
+| `swarmkit storage migrate [ws]` | Copy local SQLite rows into the configured Postgres (`--dry-run`, `--yes`) |
+| `swarmkit system [ws]` | Versions, storage, workspace properties and environment (`--all` includes unset vars) |
+
+Secrets are masked in all three: a path listed under `secrets:` in `workspace.env.yaml` prints as
+`set`, and connection URLs print without the password. See [Storage](storage.md) for the full
+SQLite → Postgres runbook.
+
 ## HTTP server endpoints
 
 Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`.
@@ -155,6 +167,8 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`.
 | `/archetypes` | GET | List archetypes |
 | `/run/{topology}` | POST | Execute a topology (`{"input": "...", "max_steps": 10}`) |
 | `/validate` | GET | Resolved workspace state |
+| `/storage` | GET | Where each store resolves to, with split-brain warnings |
+| `/system` | GET | Versions + storage + workspace properties + environment (secrets masked) |
 | `/conversations` | POST | Create a conversation (`{"topology": "..."}`) |
 | `/conversations` | GET | List saved conversations |
 | `/conversations/{id}/messages` | POST | Send a message (`{"message": "..."}`) |
@@ -170,6 +184,9 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`.
 | `SWARMKIT_VERBOSE` | Enable verbose output (set to `1`) |
 | `SWARMKIT_MAX_TOOL_TURNS` | Max tool loop iterations per agent turn (default: 8) |
 | `SWARMKIT_AGENT_RETRIES` | Max retries when model returns text instead of tools (default: 2) |
+| `SWARMKIT_STORE_URL` | Connection URL for every store. **Set alone it also selects Postgres** — a URL names its own backend. See [Storage](storage.md) |
+| `DATABASE_URL` | Same, used only when `SWARMKIT_STORE_URL` is unset |
+| `SWARMKIT_STORE_BACKEND` | Force `sqlite` or `postgres`. Rarely needed — the URL is sufficient |
 
 ### Telemetry (see [Telemetry configuration](telemetry.md))
 

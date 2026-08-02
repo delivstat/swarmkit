@@ -138,6 +138,62 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
         """What this instance can do — the control plane reads this at enroll/refresh."""
         return _build_capabilities(_get_runtime(request))
 
+    @app.get("/storage")
+    async def storage(request: Request) -> dict[str, Any]:
+        """Where this instance's data actually lives — one entry per store.
+
+        The operator-facing half of the storage service (design/details/storage-service.md). When
+        a workspace's `storage:` block was being ignored, serve looked EMPTY rather than
+        misconfigured: the runs were in a SQLite file on one machine and nothing in the UI said so.
+        This is the page that answers it. URLs are redacted — they carry a database password.
+        """
+        service = getattr(request.app.state, "storage", None)
+        if service is None:  # pragma: no cover - lifespan always sets it
+            return {"stores": [], "warnings": ["storage service unavailable"]}
+        from swarmkit_runtime.persistence import StoreKind  # noqa: PLC0415
+        from swarmkit_runtime.persistence._store import redacted_url  # noqa: PLC0415
+
+        stores = []
+        for kind in StoreKind:
+            target = service.target(kind)
+            stores.append(
+                {
+                    "store": kind.value,
+                    "backend": target.backend,
+                    "location": (
+                        redacted_url(target.url)
+                        if target.backend == "postgres"
+                        else "workspace-local"
+                    ),
+                    "source": target.source,
+                }
+            )
+        return {"stores": stores, "warnings": service.split_warnings()}
+
+    @app.get("/system")
+    async def system(request: Request) -> dict[str, Any]:
+        """Everything the System page needs: versions, storage resolution, environment.
+
+        Grouped into one call because they answer one question — "what is this instance actually
+        running, and with what config" — and an operator asking it is usually staring at a screen
+        that is unexpectedly empty.
+        """
+        from swarmkit_runtime._env_registry import (  # noqa: PLC0415
+            environment_report,
+            workspace_properties,
+        )
+
+        rt = _get_runtime(request)
+        return {
+            "workspace": str(rt.workspace.raw.metadata.id),
+            **component_versions(),
+            "storage": await storage(request),
+            "environment": environment_report(),
+            # Read from workspace.env.yaml on every call, so a parameter a new feature adds is
+            # visible here without anyone remembering to register it.
+            "properties": workspace_properties(request.app.state.workspace_path),
+        }
+
     @app.get("/fleet/state")
     async def fleet_state(request: Request) -> dict[str, Any]:
         """Full observed state — every artifact's *content* (not just names like /capabilities).

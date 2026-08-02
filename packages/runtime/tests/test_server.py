@@ -250,3 +250,48 @@ def test_server_config_defaults() -> None:
     assert cfg.max_concurrent == 5
     assert cfg.timeout_seconds == 300
     assert cfg.mcp_enabled is True
+
+
+# ---- storage report ----------------------------------------------------------
+
+
+def test_storage_endpoint_reports_every_store(hello_client: TestClient) -> None:
+    """The operator-facing half of the storage service. Without it, a workspace whose `storage:`
+    block was ignored looked exactly like a workspace with no history — every page empty, no
+    error, and nothing saying the rows were in a SQLite file on one machine."""
+    body = hello_client.get("/storage").json()
+    stores = {row["store"]: row for row in body["stores"]}
+    assert {"runtime", "audit", "checkpoints", "artifacts", "memory", "saga", "fleet"} <= set(
+        stores
+    )
+    assert stores["runtime"]["backend"] == "sqlite"
+    assert stores["runtime"]["source"]  # always says which setting won
+    assert body["warnings"] == []
+
+
+def test_storage_endpoint_never_returns_a_password(hello_client: TestClient) -> None:
+    """This is a `read`-scope endpoint, and a Postgres URL carries a database password."""
+    body = hello_client.get("/storage").json()
+    for row in body["stores"]:
+        assert "@" not in row["location"] or "***" in row["location"]
+
+
+def test_system_endpoint_aggregates_versions_storage_and_config(
+    hello_client: TestClient,
+) -> None:
+    """One call, because they answer one question — and an operator asking it is usually looking
+    at a screen that is unexpectedly empty."""
+    body = hello_client.get("/system").json()
+    assert body["workspace"]
+    assert "runtime_version" in body
+    assert body["storage"]["stores"]
+    assert any(row["name"] == "SWARMKIT_STORE_URL" for row in body["environment"])
+    assert isinstance(body["properties"], list)
+
+
+def test_system_endpoint_never_returns_a_credential(
+    hello_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This is a read-scope endpoint served by a process holding every key it uses."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-leaked")
+    assert "sk-ant-leaked" not in hello_client.get("/system").text

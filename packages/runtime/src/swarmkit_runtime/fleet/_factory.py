@@ -21,9 +21,6 @@ from typing import Any
 
 import yaml
 
-from swarmkit_runtime.persistence._factory import _resolve_backend
-from swarmkit_runtime.persistence._store import make_engine
-
 
 def _storage_config_from_yaml(workspace_path: Path) -> Any | None:
     """Read only ``storage.runtime.{backend,url}`` from workspace.yaml as a shim that
@@ -54,14 +51,9 @@ def create_membership_store(workspace_path: Path, workspace_raw: Any = None) -> 
     ``workspace_raw`` is the resolved workspace model when the caller has it (serve); when omitted
     (the CLI) the storage block is read straight from workspace.yaml so the backend still matches.
     """
-    from swarmkit_runtime.fleet._store import MembershipStore  # noqa: PLC0415
+    from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
 
-    if workspace_raw is None:
-        workspace_raw = _storage_config_from_yaml(workspace_path)
-    backend, url, _source = _resolve_backend(workspace_path, workspace_raw)
-    if backend == "postgres":
-        return MembershipStore(make_engine(url))
-    return MembershipStore(workspace_path)
+    return storage_for_workspace(workspace_path, workspace_raw).membership_store()
 
 
 __all__ = ["create_membership_store"]
