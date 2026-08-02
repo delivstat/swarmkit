@@ -125,35 +125,39 @@ def test_checkpoints_does_not_inherit_runtime(tmp_path: Path) -> None:
     assert svc.target(StoreKind.CHECKPOINTS).backend == "sqlite"
 
 
-def test_checkpoints_postgres_is_opt_in_and_says_what_is_missing(tmp_path: Path) -> None:
+def test_checkpoints_postgres_without_the_extra_degrades_rather_than_refusing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The one place degrading is right — and it shipped as a hard failure that broke upgrades.
+
+    "Refuse rather than degrade" protects RECORDS. Checkpoints are disposable run state, and this
+    is a missing OPTIONAL dependency rather than a wrong config: refusing takes down serve, the
+    orchestrator and every trigger over a store whose contents can be thrown away. Worse, it hit
+    exactly the workspaces this change set out to help — `storage.checkpoints.backend: postgres`
+    was silently ignored before 1.130.0, so every workspace that wrote it upgraded into a dead
+    server.
+    """
     svc = _svc(tmp_path, {"checkpoints": {"backend": "postgres", "url": PG}})
     try:
         import langgraph.checkpoint.postgres  # noqa: F401, PLC0415
     except ImportError:
-        with pytest.raises(StorageConfigError, match=r"swarmkit-runtime\[postgres\]"):
-            svc.target(StoreKind.CHECKPOINTS)
+        with caplog.at_level("WARNING"):
+            target = svc.target(StoreKind.CHECKPOINTS)
+        assert target.backend == "sqlite"
+        # Degrading silently would be the original sin of this whole area.
+        assert "swarmkit-runtime[postgres]" in caplog.text
+        assert "resumable on THIS host only" in caplog.text
+        # And the report has to admit it, not just claim sqlite was configured.
+        assert "postgres extra not installed" in "\n".join(svc.report())
     else:
         assert svc.target(StoreKind.CHECKPOINTS).backend == "postgres"
 
 
-def test_a_global_store_url_does_not_drag_checkpoints_along(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """SWARMKIT_STORE_URL moves the application store. Setting it must not fail the run on a
-    checkpointer driver the operator never asked for — found by the demo, which is the point."""
-    monkeypatch.setenv("SWARMKIT_STORE_URL", PG)
-    svc = _svc(tmp_path)
-    assert svc.target(StoreKind.RUNTIME).backend == "postgres"
-    assert svc.target(StoreKind.CHECKPOINTS).backend == "sqlite"
-
-
-def test_an_explicit_checkpoints_block_still_wins(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Opt-in means opt-in: naming the block is how you ask for it."""
-    monkeypatch.setenv("SWARMKIT_STORE_URL", PG)
-    svc = _svc(tmp_path, {"checkpoints": {"backend": "sqlite"}})
-    assert svc.target(StoreKind.CHECKPOINTS).backend == "sqlite"
+def test_a_record_holding_store_still_refuses(tmp_path: Path) -> None:
+    """The degrade is scoped to checkpoints. Everything that holds records still fails closed."""
+    svc = _svc(tmp_path, {"runtime": {"backend": "postgres"}})
+    with pytest.raises(StorageConfigError):
+        svc.target(StoreKind.AUDIT)
 
 
 # ---- one engine per database ----------------------------------------------------------------

@@ -3,7 +3,7 @@
 Where a workspace's data lives, how that is decided, and how to move it from local SQLite to
 Postgres without losing what you already have.
 
-Verified against runtime 1.130.0.
+Verified against runtime 1.131.1.
 
 ## The one rule
 
@@ -32,8 +32,12 @@ separate size — but they follow the same *backend*.
 
 **`checkpoints` is the exception, deliberately.** It is a LangGraph component with its own driver
 (`pip install "swarmkit-runtime[postgres]"`), so promoting it to Postgres merely because the
-application store is Postgres would fail a workspace that never asked for it — at startup, on
-configuration nobody wrote. Only an explicit `storage.checkpoints` block moves it.
+application store is Postgres would fail a workspace that never asked for it. Only an explicit
+`storage.checkpoints` block moves it.
+
+If you ask for `postgres` here and the extra is not installed, it **degrades to the local SQLite
+checkpointer with a warning** rather than refusing to start (1.131.1+). That is the one place
+degrading is right: see [It fails rather than degrades](#it-fails-rather-than-degrades).
 
 ## Configuring it
 
@@ -126,6 +130,35 @@ configured.
 
 Falling back would write the run somewhere other than where you configured, and split `serve` from
 the `orchestrator` with neither process warning. A failed start is the cheaper failure.
+
+### Except for checkpoints
+
+`storage.checkpoints.backend: postgres` without `swarmkit-runtime[postgres]` installed degrades to
+the local SQLite checkpointer and warns:
+
+```
+storage.checkpoints.backend is 'postgres' (from storage.checkpoints) but the Postgres
+checkpointer is not installed — using the local SQLite checkpointer instead. Runs stay
+resumable on THIS host only. Install it with:  pip install 'swarmkit-runtime[postgres]'
+```
+
+`swarmkit storage status` shows it as `sqlite … (storage.checkpoints → sqlite (postgres extra not
+installed))`, so the report never claims you configured what you got.
+
+Two reasons this one is different. The rule above protects **records** — an audit trail or a
+governed-memory write landing in the wrong database loses data silently. Checkpoints are
+disposable run state; the cost here is resumability from another host, which surfaces at resume,
+on the run it affects. And this is a **missing optional dependency**, not a wrong config: taking
+down serve, the orchestrator and every trigger over one is disproportionate to a store whose
+contents can be thrown away.
+
+!!! warning "Upgrading from before 1.130.0"
+
+    `storage.checkpoints.backend: postgres` was **silently ignored** until 1.130.0, so a workspace
+    could carry it for months without the extra installed. In 1.130.0 and 1.131.0 that combination
+    refused to start — `swarmkit serve` exited with `StorageConfigError` on a config that had
+    always been there. 1.131.1 degrades instead. If you are on 1.130.0 or 1.131.0, either install
+    the extra or set `storage.checkpoints.backend: sqlite`.
 
 ## Moving from local SQLite to Postgres
 
