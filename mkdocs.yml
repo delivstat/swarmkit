@@ -30,6 +30,7 @@ nav:
     - Hello Swarm: getting-started/hello-swarm.md
   - Guides:
     - "Building swarms (the complete playbook)": guides/building-swarms.md
+    - "Getting an image to a model": guides/getting-an-image-to-a-model.md
   - Examples:
     - "SDLC pipeline (video walkthrough)": sdlc-example/index.html
   - Tutorials:

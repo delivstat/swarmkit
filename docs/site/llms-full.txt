@@ -448,6 +448,14 @@ Memory-writer extracts structured insights (topic, context, key_points, tags) vi
 - [Intent drift detection](https://github.com/delivstat/swarmkit/blob/main/design/details/intent-drift-detection.md): optional per-agent intent monitoring via embedding similarity. Log/warn/nudge strategies.
 - [Market analysis and risk mitigations](https://github.com/delivstat/swarmkit/blob/main/design/details/market-analysis-and-risk-mitigations.md): competitive landscape (Prefect, LangSmith, CrewAI, AgentField), canary deployments, governance circuit breakers.
 
+## Images (there is exactly one channel)
+
+A run's input is a plain **string** — `swarmkit run --input` takes a `str`, and no schema (topology, archetype, trigger) has an image, attachment or media field. A path in the prompt is text; base64 in the prompt is tokens. **The only route to a model is an MCP tool returning `ImageContent`**, which `langgraph_compiler/_skill_executor.py` converts to a `ContentBlock(type="image", …)` and the provider maps to its native image part (`image_url` data-URL for OpenAI and anything subclassing it, incl. OpenRouter; `source.base64` for Anthropic). `docs-reader`'s `view_image` is the bundled tool that does this. Harness executors read image files from disk directly instead.
+
+The failure mode is silent: a path that does not resolve makes the tool report "not found", and the model then describes the image from surrounding prose anyway — fluently and wrongly. Pass **absolute** paths, rewrite relative refs inside any document the agent reads, and instruct the agent to report a failed path rather than describe the image. Since 1.129.2 the paths must also sit under the docs-reader `--workspace` root, which now confines rather than merely resolves.
+
+- [Getting an image to a model](https://delivstat.github.io/swarmkit/guides/getting-an-image-to-a-model/): the channel, the trap, and a measured before/after.
+
 ## Guides
 
 - [Building swarms — the complete playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/): the ordered, step-by-step build recipe (one agent → governed multi-app pipeline), with a runnable artifact at every step and the SDLC worked example.
