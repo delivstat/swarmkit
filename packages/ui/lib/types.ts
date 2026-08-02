@@ -1,6 +1,11 @@
 export interface HealthResponse {
 	status: string;
 	workspace: string;
+	/** The runtime hosting this portal. Empty when serve runs uninstalled from a source tree. */
+	runtime_version?: string;
+	/** The portal's own version — a SEPARATE package from the runtime, so one number cannot
+	 * answer "what version am I running". Empty when serve runs headless. */
+	webui_version?: string;
 }
 
 export interface JobResponse {

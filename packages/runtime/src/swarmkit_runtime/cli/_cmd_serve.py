@@ -174,6 +174,17 @@ def serve(
             err=True,
         )
         raise typer.Exit(code=2) from exc
+
+    # Say what is actually running. `swarmkit serve` is the runtime hosting a SEPARATELY versioned
+    # portal, so one version number cannot answer "what am I running" — and until now the runtime's
+    # was not printed at all.
+    from swarmkit_runtime.server._versions import runtime_version, webui_version  # noqa: PLC0415
+
+    portal = webui_version()
+    typer.echo(
+        f"swarmkit-runtime {runtime_version() or '(uninstalled)'}"
+        + (f" · web portal {portal}" if portal else " · headless (no web portal installed)")
+    )
     uvicorn.run(app_instance, host=host, port=port)
 
 
