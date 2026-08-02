@@ -22,6 +22,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+
+import { api } from "@/lib/api";
+import type { HealthResponse } from "@/lib/types";
 
 import { cn } from "@/lib/utils";
 
@@ -73,10 +77,42 @@ export function Sidebar() {
 				);
 			})}
 
-			<div className="mt-auto flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground">
-				<Box size={14} className="opacity-50" />
-				<span>v1.2.58</span>
-			</div>
+			<VersionFooter />
 		</nav>
+	);
+}
+
+/** Both component versions, read from the server.
+ *
+ * This footer used to be a hardcoded `v1.2.58` — a literal for neither package, left behind when
+ * the runtime was at 1.2.x. It also showed ONE number, which cannot be right: `swarmkit serve` is
+ * the runtime hosting a separately versioned portal, and a mismatch between them is exactly what a
+ * reader needs to see (an old portal paired with a new runtime is a real and silent failure mode).
+ */
+function VersionFooter() {
+	const [health, setHealth] = useState<HealthResponse | null>(null);
+
+	useEffect(() => {
+		api
+			.health()
+			.then(setHealth)
+			.catch(() => setHealth(null));
+	}, []);
+
+	const runtime = health?.runtime_version;
+	const webui = health?.webui_version;
+
+	return (
+		<div className="mt-auto flex flex-col gap-0.5 px-3 py-2 text-[11px] text-muted-foreground">
+			<span className="flex items-center gap-1.5">
+				<Box size={14} className="opacity-50" />
+				{runtime ? `runtime ${runtime}` : "runtime —"}
+			</span>
+			{webui ? (
+				<span className="pl-[22px]">portal {webui}</span>
+			) : (
+				<span className="pl-[22px] opacity-70">portal — (headless)</span>
+			)}
+		</div>
 	);
 }

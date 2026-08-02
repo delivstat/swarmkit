@@ -18,6 +18,7 @@ from ._helpers import (
     _instance_state_manifest,
 )
 from ._services import ArtifactService
+from ._versions import component_versions
 
 
 class ArtifactRef(BaseModel):
@@ -67,6 +68,10 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
         return {
             "status": "ok",
             "workspace": str(rt.workspace.raw.metadata.id),
+            # Both components, because `swarmkit serve` is the runtime hosting a SEPARATELY
+            # versioned portal: "which version am I running" has two answers and showing one
+            # invites the wrong conclusion. Empty when the portal is not installed (headless).
+            **component_versions(),
         }
 
     @app.get("/topologies")
