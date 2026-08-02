@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from conftest import copy_workspace
 from fastapi.testclient import TestClient
 from swarmkit_runtime.review import FileReviewQueue, ReviewItem
 
@@ -48,7 +48,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
     ws = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     _seed(ws)
     app = create_app(ws)
     with TestClient(app) as c:

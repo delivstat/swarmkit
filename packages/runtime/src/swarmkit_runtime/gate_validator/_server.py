@@ -32,9 +32,10 @@ from typing import Any
 
 import jsonschema
 import yaml
-from mcp.server.fastmcp import FastMCP
 
-server = FastMCP("gate-validator")
+from swarmkit_runtime.mcp._sdk_compat import MCPServerClass
+
+server = MCPServerClass("gate-validator")
 
 _gates_dir: Path | None = None
 _gate_cache: dict[str, dict[str, Any]] = {}

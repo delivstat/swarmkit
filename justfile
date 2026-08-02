@@ -46,6 +46,10 @@ test: test-py test-js
 test-py:
     uv run pytest
 
+# Serial run, for when a parallel failure might be order-dependent.
+test-py-serial:
+    uv run pytest -p no:xdist
+
 test-js:
     pnpm run test
 

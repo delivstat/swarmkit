@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+from conftest import copy_workspace
 from fastapi.testclient import TestClient
 from swarmkit_runtime.cli import app
 from typer.testing import CliRunner
@@ -23,7 +24,7 @@ def _workspace(tmp_path: Path) -> Path:
     """A real, writable copy of a workspace so the CLI and a serve share one .swarmkit/fleet.sqlite.
     Any runtime state (a stray .swarmkit from local runs) is stripped so each test starts clean."""
     ws = tmp_path / "workspace"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     shutil.rmtree(ws / ".swarmkit", ignore_errors=True)
     return ws
 

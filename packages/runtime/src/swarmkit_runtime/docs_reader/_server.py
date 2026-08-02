@@ -26,9 +26,11 @@ from html import unescape
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from swarmkit_runtime.mcp._sdk_compat import MCPServerClass
 
-server = FastMCP("swarmkit-docs-reader")
+# MCPServer on SDK 2.0, FastMCP on 1.x — the module moved. Importing the old path directly meant
+# this server died during import on 2.0 and was reported only as "Connection closed".
+server = MCPServerClass("swarmkit-docs-reader")
 
 _workspace_root: Path | None = None
 

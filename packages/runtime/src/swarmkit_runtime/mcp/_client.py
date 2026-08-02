@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json as _json
 import logging
 import os
@@ -25,13 +26,18 @@ from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
+
+if TYPE_CHECKING:
+    from typing import TextIO
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolResult
 from swarmkit_schema.models.workspace import McpServer
+
+from swarmkit_runtime.mcp._sdk_compat import tool_input_schema
 
 PermissionTier = Literal["open", "cautious", "strict", "readonly"]
 
@@ -86,6 +92,39 @@ class ToolResponse:
     metadata: ToolMetadata
 
 
+class _StderrTail(io.TextIOBase):
+    """A stderr sink that passes everything through and remembers the last few lines.
+
+    ``stdio_client`` writes the child's stderr here. Keeping a tail turns "Connection closed" into
+    the traceback that caused it, quoted next to the warning — the same fix as the harness stderr
+    being captured and discarded (1.127.0).
+    """
+
+    _MAX_LINES = 8
+
+    def __init__(self, server_id: str) -> None:
+        self.server_id = server_id
+        self.lines: list[str] = []
+        self._partial = ""
+
+    def write(self, text: str) -> int:
+        import sys  # noqa: PLC0415
+
+        sys.stderr.write(text)
+        self._partial += text
+        *complete, self._partial = self._partial.split("\n")
+        for line in complete:
+            if line.strip():
+                self.lines.append(line.rstrip())
+        del self.lines[: -self._MAX_LINES]
+        return len(text)
+
+    def flush(self) -> None:
+        import sys  # noqa: PLC0415
+
+        sys.stderr.flush()
+
+
 class MCPClientManager:
     """Manages MCP server connections. One session per server, lazily started."""
 
@@ -99,6 +138,7 @@ class MCPClientManager:
         self._workspace_root = workspace_root
         self._sessions: dict[str, ClientSession] = {}
         self._tool_schemas: dict[str, dict[str, dict[str, Any]]] = {}
+        self._stderr_tails: dict[str, _StderrTail] = {}
         self._stack = AsyncExitStack()
         self._tool_cache: dict[str, str] = {}
         self._cache_hits = 0
@@ -148,9 +188,14 @@ class MCPClientManager:
             except Exception as exc:
                 import sys  # noqa: PLC0415
 
+                detail = ""
+                tail = self._stderr_tails.get(server_id)
+                if tail is not None and tail.lines:
+                    detail = "\n  " + "\n  ".join(tail.lines)
                 print(
                     f"WARNING: MCP server '{server_id}' failed to start: {exc}. "
-                    f"Skipping — skills using this server will be unavailable.",
+                    f"Skipping — skills using this server will be unavailable."
+                    f"{detail}",
                     file=sys.stderr,
                 )
                 self._configs.pop(server_id, None)
@@ -198,7 +243,17 @@ class MCPClientManager:
         else:
             cwd = _resolve_cwd(resolved_cmd, self._workspace_root, config.sandboxed)
         params = StdioServerParameters(command=cmd, args=args, env=env, cwd=cwd)
-        transport = await self._stack.enter_async_context(stdio_client(params))
+        # Tee the child's stderr: it still reaches the terminal, and the last lines are kept so a
+        # start failure can quote them. A server that dies during import reports only "Connection
+        # closed" — the symptom of a subprocess that hung up, indistinguishable from a hang — while
+        # the actual traceback scrolls past somewhere else.
+        errlog = _StderrTail(config.server_id)
+        self._stderr_tails[config.server_id] = errlog
+        # cast: the SDK annotates errlog as TextIO but only ever calls write/flush on it, which
+        # TextIOBase provides. Widening the sink to a full TextIO would buy nothing.
+        transport = await self._stack.enter_async_context(
+            stdio_client(params, errlog=cast("TextIO", errlog))
+        )
         session = await self._stack.enter_async_context(ClientSession(*transport))
         await session.initialize()
         return session
@@ -325,9 +380,7 @@ class MCPClientManager:
             return
         session = await self.get_session(server_id)
         result = await session.list_tools()
-        self._tool_schemas[server_id] = {
-            t.name: dict(t.inputSchema) if t.inputSchema else {} for t in result.tools
-        }
+        self._tool_schemas[server_id] = {t.name: tool_input_schema(t) for t in result.tools}
 
     def get_tool_input_schema(self, server_id: str, tool_name: str) -> dict[str, Any]:
         """Return the cached ``inputSchema`` for a tool, or an empty schema.

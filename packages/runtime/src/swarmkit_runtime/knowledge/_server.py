@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from mcp.server.fastmcp import FastMCP
 
 from swarmkit_runtime.cli._knowledge import find_repo_root
+from swarmkit_runtime.mcp._sdk_compat import MCPServerClass
 
-server = FastMCP("swarmkit-knowledge")
+server = MCPServerClass("swarmkit-knowledge")
 
 _NOTES_EXCLUDE = {"README.md", "_template.md"}
 
