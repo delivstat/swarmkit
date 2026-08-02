@@ -197,3 +197,81 @@ async def test_a_nonsense_max_retries_falls_back_to_the_default() -> None:
         retry_fn=_retry,
     )
     assert attempts == 4  # _DEFAULT_MAX_RETRIES
+
+
+# ---- a check that cannot read its own result must not report success quietly -------------------
+
+
+def test_an_absent_verdict_warns_that_the_check_is_not_running(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`{"valid": false}` is the usual shape of a validator wired up without mapping its
+    vocabulary. It has no verdict, so it defaults to pass — a validation layer reporting success
+    on every rejection. Still passes (failing closed is its own outage) but no longer in silence.
+    """
+    from swarmkit_runtime.governance._decision_evaluator import _parse_result  # noqa: PLC0415
+
+    with caplog.at_level("WARNING"):
+        result = _parse_result("schema-conformance", '{"valid": false}')
+    assert result.verdict == "pass"
+    assert "no 'verdict' field" in caplog.text
+    assert "schema-conformance" in caplog.text
+
+
+def test_an_unreadable_verdict_warns_and_names_the_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`rejected` might plausibly mean fail — but guessing at a synonym invents a verdict the skill
+    did not give. It defaults to pass, loudly, so the mapping gets fixed at the source."""
+    from swarmkit_runtime.governance._decision_evaluator import _parse_result  # noqa: PLC0415
+
+    with caplog.at_level("WARNING"):
+        result = _parse_result("schema-conformance", '{"verdict": "rejected"}')
+    assert result.verdict == "pass"
+    assert "'rejected'" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ('{"verdict": "FAIL"}', "fail"),
+        ('{"verdict": "Fail"}', "fail"),
+        ('{"verdict": " fail "}', "fail"),
+        ('{"verdict": "needs_revision"}', "needs-revision"),
+        ('{"verdict": "NEEDS-REVISION"}', "needs-revision"),
+    ],
+)
+def test_verdict_form_is_normalised(
+    raw: str, expected: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Casing and separators are not part of the meaning, and models vary both constantly. Reading
+    `FAIL` as unrecognised meant defaulting it to PASS — fail-open on the check whose whole job is
+    to fail closed, on a skill that plainly said fail."""
+    from swarmkit_runtime.governance._decision_evaluator import _parse_result  # noqa: PLC0415
+
+    with caplog.at_level("WARNING"):
+        assert _parse_result("x", raw).verdict == expected
+    assert caplog.text == ""  # a form difference is not a misconfiguration
+
+
+def test_a_valid_verdict_warns_about_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    """The warning has to stay rare enough to be worth reading."""
+    from swarmkit_runtime.governance._decision_evaluator import _parse_result  # noqa: PLC0415
+
+    with caplog.at_level("WARNING"):
+        result = _parse_result("x", '{"verdict": "fail", "reasoning": "unsupported claim"}')
+    assert result.verdict == "fail"
+    assert caplog.text == ""
+
+
+def test_a_fenced_mcp_response_with_provenance_still_parses(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """MCP servers append `[source: ...]` and models fence their JSON. Neither is a mismatch, so
+    neither may trip the warning."""
+    from swarmkit_runtime.governance._decision_evaluator import _parse_result  # noqa: PLC0415
+
+    raw = '```json\n{"verdict": "fail", "reasoning": "no"}\n```\n[source: rynko-flow]'
+    with caplog.at_level("WARNING"):
+        assert _parse_result("x", raw).verdict == "fail"
+    assert caplog.text == ""

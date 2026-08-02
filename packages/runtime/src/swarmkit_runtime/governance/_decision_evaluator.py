@@ -11,11 +11,14 @@ See ``design/details/governance-decision-skills.md``.
 from __future__ import annotations
 
 import json
-from typing import Any
+import logging
+from typing import Any, Literal
 
 from swarmkit_runtime.governance import DecisionSkillResult
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.skills import ResolvedSkill
+
+logger = logging.getLogger("swarmkit.governance")
 
 
 async def evaluate_skill(
@@ -86,6 +89,39 @@ def _build_input(
     return "\n".join(parts)
 
 
+Verdict = Literal["pass", "fail", "needs-revision"]
+
+#: The single source of the enum. Typed as the Literal it is, so a fourth verdict cannot be added
+#: here without every consumer being typechecked against it.
+_VERDICTS: tuple[Verdict, ...] = ("pass", "fail", "needs-revision")
+
+
+def _normalise_verdict(raw: Any, skill_id: str) -> Verdict:
+    """Read a verdict tolerantly of FORM, strictly of MEANING.
+
+    `FAIL`, ` Fail `, `needs_revision` are the same tokens differently typed — models and tools
+    vary casing and separators constantly, and an unrecognised verdict defaults to **pass**. So
+    rejecting those meant a skill that clearly said "fail" was recorded as a pass: fail-open on the
+    check whose entire job is to fail closed.
+
+    What is NOT normalised is vocabulary. `rejected`, `invalid` and `false` might plausibly mean
+    fail, but guessing at a synonym is inventing a verdict the skill did not give. Those still
+    default to pass, loudly, so the mapping gets fixed at the source.
+    """
+    text = str(raw).strip().lower().replace("_", "-")
+    for verdict in _VERDICTS:
+        if text == verdict:
+            return verdict
+    logger.warning(
+        "decision skill '%s' returned verdict %r, which is not one of pass/fail/needs-revision "
+        "— treating it as 'pass'. The check is not running. Map the tool's vocabulary to the "
+        "verdict enum.",
+        skill_id,
+        raw,
+    )
+    return "pass"
+
+
 def _parse_result(skill_id: str, raw: str) -> DecisionSkillResult:  # noqa: PLR0912
     """Parse JSON result from a decision skill into DecisionSkillResult."""
     try:
@@ -110,9 +146,15 @@ def _parse_result(skill_id: str, raw: str) -> DecisionSkillResult:  # noqa: PLR0
                 cleaned = cleaned[: end + 1]
 
         data = json.loads(cleaned)
-        verdict = data.get("verdict", "pass")
-        if verdict not in ("pass", "fail", "needs-revision"):
-            verdict = "pass"
+        # A validation layer that cannot read its own result must not report success quietly.
+        if "verdict" not in data:
+            logger.warning(
+                "decision skill '%s' returned no 'verdict' field — treating it as 'pass'. "
+                "The check is not running. A decision skill must emit verdict: "
+                "pass | fail | needs-revision.",
+                skill_id,
+            )
+        verdict = _normalise_verdict(data.get("verdict", "pass"), skill_id)
 
         flagged: list[str] = []
         for key in ("flagged_items", "uncited_claims", "contradictions"):
