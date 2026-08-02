@@ -14,7 +14,6 @@ example, not the runtime, and are not exercised here.
 from __future__ import annotations
 
 import dataclasses
-import shutil
 import typing
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -22,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import copy_workspace
 from fastapi.testclient import TestClient
 from swarmkit_runtime.orchestration import RunStage, StageOutcome, StageStatus
 from swarmkit_runtime.review import FileReviewQueue, ReviewItem
@@ -83,7 +83,7 @@ async def test_run_stage_type_is_correlation_first() -> None:
 def ws(tmp_path: Path) -> Path:
     """An isolated copy of the example workspace (so review writes don't touch the repo)."""
     dest = tmp_path / "workspace"
-    shutil.copytree(EXAMPLE_WS, dest)
+    copy_workspace(EXAMPLE_WS, dest)
     return dest
 
 

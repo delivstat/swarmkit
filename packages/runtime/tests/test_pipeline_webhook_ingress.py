@@ -17,12 +17,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import copy_workspace
 from fastapi.testclient import TestClient
 from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
@@ -102,7 +102,7 @@ def test_find_pipeline_webhook_trigger_matches_by_id_and_type() -> None:
 @pytest.fixture()
 def ws(tmp_path: Path) -> Path:
     dest = tmp_path / "workspace"
-    shutil.copytree(EXAMPLE_WS, dest)
+    copy_workspace(EXAMPLE_WS, dest)
     (dest / "triggers").mkdir(exist_ok=True)
     (dest / "triggers" / "ci-build-ready.yaml").write_text(_TRIGGER_YAML)
     return dest

@@ -7,12 +7,12 @@ the workspace role registry. Covers the HTTP surface and the `swarmkit review re
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from conftest import copy_workspace
 from fastapi.testclient import TestClient
 from swarmkit_runtime.auth._scopes import RESERVED_SCOPES, reserved_violations
 from swarmkit_runtime.governance._approval import Role, RoleRegistry
@@ -59,7 +59,7 @@ def _role_task(item_id: str, role: str) -> ReviewItem:
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
     ws = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     (ws / "roles").mkdir(exist_ok=True)
     (ws / "roles" / "test-roles.yaml").write_text(ROLES_YAML)
     queue = FileReviewQueue(ws)

@@ -15,11 +15,11 @@ The receiver (webhook Trigger-target) and the chat interpreter are 37c and are n
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from conftest import copy_workspace
 from fastapi.testclient import TestClient
 from swarmkit_runtime.auth import reserved_violations
 from swarmkit_runtime.auth._api_key import APIKeyAuthProvider
@@ -65,7 +65,7 @@ def test_api_key_carrying_pipeline_skip_is_rejected() -> None:
 @pytest.fixture()
 def ws(tmp_path: Path) -> Path:
     dest = tmp_path / "workspace"
-    shutil.copytree(EXAMPLE_WS, dest)
+    copy_workspace(EXAMPLE_WS, dest)
     return dest
 
 

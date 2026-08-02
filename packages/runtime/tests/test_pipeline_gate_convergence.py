@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+from conftest import copy_workspace
 from swarmkit_runtime.artifacts import build_artifact_store
 from swarmkit_runtime.governance._approval import ApprovalPolicy, GateStatus, evaluate
 from swarmkit_runtime.resolver import resolve_workspace
@@ -71,7 +72,7 @@ GATE = f"{CID}:{STAGE}"
 
 def _workspace(tmp_path: Path) -> Path:
     ws = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     shutil.rmtree(ws / ".swarmkit", ignore_errors=True)
     (ws / ".swarmkit").mkdir()
     (ws / "roles").mkdir(exist_ok=True)

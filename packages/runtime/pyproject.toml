@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.131.1"
+version = "1.131.2"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -113,3 +113,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/swarmkit_runtime"]
+
+[dependency-groups]
+dev = [
+    "pytest-xdist>=3.8.0",
+]

@@ -6,11 +6,11 @@ ArtifactService cases drive real file writes against a throwaway copy of the exa
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import copy_workspace
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.server import _services
 from swarmkit_runtime.server._config import ServerCfg
@@ -143,7 +143,7 @@ async def test_start_rejects_when_at_capacity() -> None:
 @pytest.fixture()
 def artifacts(tmp_path: Path) -> ArtifactService:
     ws = tmp_path / "workspace"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     return ArtifactService(ws)
 
 

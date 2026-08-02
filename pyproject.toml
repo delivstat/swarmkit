@@ -123,7 +123,11 @@ testpaths = [
     # (`requirement_id`); their tests live with the example so the runtime tree stays domain-neutral.
     "examples/sdlc-pipeline/tests",
 ]
-addopts = "-ra --strict-markers --strict-config -m 'not integration'"
+# -n auto: the suite is ~1800 mostly-independent tests, each 0.1-5s of workspace resolution and
+# topology compilation. Serial it is 5 minutes, which is long enough that the fix-verify loop
+# starts getting skipped; across 8 cores it is 1.5. Override with `-p no:xdist` if a failure looks
+# order-dependent and you want a serial reproduction.
+addopts = "-ra --strict-markers --strict-config -m 'not integration' -n auto"
 markers = [
     "integration: tests that call live external APIs (deselected by default)",
 ]

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pytest
+from conftest import copy_workspace
 from fastapi import HTTPException
 from swarmkit_runtime.executors._adapter_spec import parse_adapter_spec
 from swarmkit_runtime.executors._declarative import DeclarativeExecutor
@@ -232,7 +233,7 @@ def test_orchestrator_resolves_the_same_store_as_serve(tmp_path: Path) -> None:
     from swarmkit_runtime.cli._cmd_orchestrator import _resolve_saga_store_url  # noqa: PLC0415
 
     ws = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     (ws / "workspace.yaml").write_text(
         (ws / "workspace.yaml").read_text()
         + "\nstorage:\n  runtime:\n    backend: postgres\n    url: postgresql://db/app\n"
@@ -267,7 +268,7 @@ async def test_run_stage_populates_artifact_bytes(tmp_path: Path) -> None:
     from swarmkit_runtime.server._pipeline_stage import build_pipeline_run_stage  # noqa: PLC0415
 
     ws = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     shutil.rmtree(ws / ".swarmkit", ignore_errors=True)
     (ws / ".swarmkit").mkdir()
 

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
+from conftest import copy_workspace
 from swarmkit_runtime.cli import app
 from typer.testing import CliRunner
 
@@ -21,7 +21,7 @@ def _force_mock_provider(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_eval_runs_loads_and_writes_report(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     result = runner.invoke(app, ["eval", str(ws), "greeting-evals"])
     # exit 0 (all pass) or 1 (some fail) — both are valid "ran" outcomes; not a usage error
     assert result.exit_code in (0, 1), result.stdout
@@ -32,6 +32,6 @@ def test_eval_runs_loads_and_writes_report(tmp_path: Path) -> None:
 
 def test_eval_unknown_set_is_usage_error(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     result = runner.invoke(app, ["eval", str(ws), "does-not-exist"])
     assert result.exit_code == 2  # usage error

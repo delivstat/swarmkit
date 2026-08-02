@@ -9,12 +9,12 @@ items, so it agrees with the decision the runtime actually gates on.
 
 from __future__ import annotations
 
-import shutil
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from conftest import copy_workspace
 from fastapi.testclient import TestClient
 from swarmkit_runtime.review import FileReviewQueue, ReviewItem
 
@@ -42,7 +42,7 @@ def _role_task(role: str, *, status: str = "pending", answer: str = "") -> Revie
 @pytest.fixture
 def ws(tmp_path: Path) -> Path:
     dest = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, dest)
+    copy_workspace(EXAMPLE_WS, dest)
     queue = FileReviewQueue(dest)
     queue.submit(_role_task("security-reviewer"))
     queue.submit(_role_task("release-manager"))
@@ -148,7 +148,7 @@ def test_gate_status_evaluates_quorum_when_the_policy_is_reachable(tmp_path: Pat
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
     ws = tmp_path / "ws"
-    shutil.copytree(EXAMPLE_WS, ws)
+    copy_workspace(EXAMPLE_WS, ws)
     (ws / "roles").mkdir(exist_ok=True)
     (ws / "roles" / "r.yaml").write_text(
         "apiVersion: swarmkit/v1\n"
