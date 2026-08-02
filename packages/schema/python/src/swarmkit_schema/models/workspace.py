@@ -206,37 +206,93 @@ class McpServer(BaseModel):
 
 
 class Backend(Enum):
+    """
+    Checkpointer backend. Defaults to sqlite at .swarmkit/state/checkpoints.db.
+    """
+
     sqlite = "sqlite"
     postgres = "postgres"
 
 
 class Checkpoints(BaseModel):
+    """
+    LangGraph run-state checkpointer. The one block that does NOT inherit storage.runtime: postgres here needs `pip install 'swarmkit-runtime[postgres]'`, so it is opt-in rather than implied.
+    """
+
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
     )
-    backend: Backend | None = None
+    backend: Backend | None = Field(
+        "sqlite",
+        description="Checkpointer backend. Defaults to sqlite at .swarmkit/state/checkpoints.db.",
+    )
     path: str | None = None
-    url: str | None = None
+    url: str | None = Field(
+        None,
+        description="Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default} interpolation. Optional: inherits storage.runtime.url when omitted.",
+    )
 
 
 class Backend1(Enum):
-    agt = "agt"
+    """
+    Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here until 1.130.0, but no writer ever implemented it — selecting it silently wrote sqlite.)
+    """
+
     sqlite = "sqlite"
     postgres = "postgres"
 
 
 class Audit(BaseModel):
+    """
+    Append-only audit trail. Inherits storage.runtime unless it overrides it.
+    """
+
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
     )
-    backend: Backend1 | None = None
+    backend: Backend1 | None = Field(
+        None,
+        description="Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here until 1.130.0, but no writer ever implemented it — selecting it silently wrote sqlite.)",
+    )
     retention_days: int | None = Field(None, ge=1)
-    url: str | None = None
+    url: str | None = Field(
+        None,
+        description="Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default} interpolation. Optional: inherits storage.runtime.url when omitted.",
+    )
 
 
 class Backend2(Enum):
+    database = "database"
+    filesystem = "filesystem"
+    s3 = "s3"
+
+
+class Artifacts(BaseModel):
+    """
+    Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine. Read by the runtime since the bundled orchestrator shipped, but undeclarable until 1.130.0 — `additionalProperties: false` rejected the very key the code looked for.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    backend: Backend2 | None = "database"
+    path: str | None = Field(
+        None,
+        description="filesystem backend: root directory. Defaults to .swarmkit/artifacts.",
+    )
+    bucket: str | None = Field(
+        None, description="s3 backend: bucket name (requires the boto3 optional dep)."
+    )
+    prefix: str | None = Field("artifacts", description="s3 backend: key prefix.")
+    database_url: str | None = Field(
+        None, description="database backend: override the inherited connection URL."
+    )
+
+
+class Backend3(Enum):
     """
     Storage backend. sqlite (default, zero config) or postgres (production, shared).
     """
@@ -247,20 +303,20 @@ class Backend2(Enum):
 
 class Runtime(BaseModel):
     """
-    Backend for jobs, conversations, and usage tracking. Defaults to sqlite at .swarmkit/store.sqlite.
+    Backend for jobs, conversations, usage, pipeline sagas, artifacts, fleet enrollment and governed memory. Every other storage block inherits this one unless it overrides it. Defaults to sqlite at .swarmkit/store.sqlite.
     """
 
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
     )
-    backend: Backend2 | None = Field(
+    backend: Backend3 | None = Field(
         "sqlite",
         description="Storage backend. sqlite (default, zero config) or postgres (production, shared).",
     )
     url: str | None = Field(
         None,
-        description="Connection URL for postgres backend. Supports ${ENV_VAR} interpolation. Ignored for sqlite.",
+        description="Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default} interpolation. May also be supplied as SWARMKIT_STORE_URL or DATABASE_URL, which take precedence over this file.",
     )
 
 
@@ -282,11 +338,21 @@ class Storage(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
-    checkpoints: Checkpoints | None = None
-    audit: Audit | None = None
+    checkpoints: Checkpoints | None = Field(
+        None,
+        description="LangGraph run-state checkpointer. The one block that does NOT inherit storage.runtime: postgres here needs `pip install 'swarmkit-runtime[postgres]'`, so it is opt-in rather than implied.",
+    )
+    audit: Audit | None = Field(
+        None,
+        description="Append-only audit trail. Inherits storage.runtime unless it overrides it.",
+    )
+    artifacts: Artifacts | None = Field(
+        None,
+        description="Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine. Read by the runtime since the bundled orchestrator shipped, but undeclarable until 1.130.0 — `additionalProperties: false` rejected the very key the code looked for.",
+    )
     runtime: Runtime | None = Field(
         None,
-        description="Backend for jobs, conversations, and usage tracking. Defaults to sqlite at .swarmkit/store.sqlite.",
+        description="Backend for jobs, conversations, usage, pipeline sagas, artifacts, fleet enrollment and governed memory. Every other storage block inherits this one unless it overrides it. Defaults to sqlite at .swarmkit/store.sqlite.",
     )
     knowledge_bases: KnowledgeBases | None = None
 

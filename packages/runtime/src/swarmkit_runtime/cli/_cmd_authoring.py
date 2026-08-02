@@ -368,10 +368,45 @@ def init(
     """Create a new SwarmKit workspace through conversation."""
     _print_banner()
     _suppress_noisy_logs()
+    _scaffold_env_file(path.resolve())
     provider, model = resolve_authoring_provider()
     run_authoring_session(
         mode="init", model_provider=provider, model_name=model, workspace_path=path.resolve()
     )
+
+
+#: Written by `swarmkit init` when absent. Deterministic scaffolding, not authored by the model:
+#: a workspace that has no place to put a connection string ends up with one hardcoded in
+#: workspace.yaml, and a secret with no `secrets:` entry ends up on the System page.
+_ENV_FILE_TEMPLATE = """# Workspace parameters — the values that differ between machines.
+#
+# Referenced from any artifact as ${dotted.path}, and ${ENV_VAR} here is resolved from the
+# environment, so a secret can live in the environment while its NAME lives in version control.
+#
+# Per-environment overrides: workspace.env.<name>.yaml, selected with SWARMKIT_ENV=<name>.
+#
+# `secrets:` lists the paths whose values must never be displayed. `swarmkit system` and the
+# web UI's System page show every other property resolved; these show only "set". Declare them —
+# the fallback is a guess at the name, and it does not catch things like `db.dsn`.
+
+secrets: []
+#   - db.dsn
+#   - openai.api_key
+
+# db:
+#   dsn: ${SWARMKIT_STORE_URL}
+#   pool: 5
+"""
+
+
+def _scaffold_env_file(workspace_path: Path) -> None:
+    """Create a starter workspace.env.yaml if the workspace has none. Never overwrites."""
+    target = workspace_path / "workspace.env.yaml"
+    if target.exists():
+        return
+    workspace_path.mkdir(parents=True, exist_ok=True)
+    target.write_text(_ENV_FILE_TEMPLATE, encoding="utf-8")
+    typer.echo(f"created {target} — put machine-specific values there, not in workspace.yaml")
 
 
 def _run_authoring(

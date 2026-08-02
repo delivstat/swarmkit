@@ -121,10 +121,54 @@ Keeping `${ENV_VAR}` in the env file concentrates secret interpolation in one pl
 
 Existing workspaces without `workspace.env.yaml` work unchanged. Property references (`${...}`) are only resolved if the `${}` syntax is present. If you don't create an env file, nothing changes.
 
+## Marking a property secret
+
+`workspace.env.yaml` is where connection strings and API keys live, and its resolved values are
+displayed by `swarmkit system` and the web UI's **System** page. The reserved top-level `secrets:`
+key lists the paths whose values must never be shown:
+
+```yaml
+secrets:
+  - db.dsn
+  - openai.api_key
+
+db:
+  dsn: ${SWARMKIT_STORE_URL}
+  pool: 5
+openai:
+  api_key: ${OPENAI_API_KEY}
+```
+
+A listed path renders as `set` in every surface; everything else renders resolved. `secrets:` is a
+declaration *about* the properties, not a property — it never appears in the map and is not
+interpolatable.
+
+**Declare them.** As a fallback, a property whose name contains `key`, `token`, `secret`,
+`password` or `credential` is masked without being listed, so a workspace written before this
+existed does not start leaking on upgrade. But a heuristic is a guess: it does not catch `db.dsn`
+or `webhook.callback`, and being wrong in that direction prints a credential into terminal
+scrollback, a log file, and a web page. Declaring adds to the masked set and can never remove from
+it, so `secrets: []` does not un-mask an `api_key`.
+
+## Always create one
+
+`swarmkit init` scaffolds `workspace.env.yaml` for you, with an empty `secrets:` list ready to fill
+in. Create one even for a workspace that has no secrets yet:
+
+- A workspace with nowhere to put a connection string ends up with one **inside `workspace.yaml`**,
+  which is the file you commit.
+- The same workspace then cannot move between dev and prod without editing structural config.
+- A secret that arrives later, with no `secrets:` entry, is masked only if a name heuristic happens
+  to catch it.
+
+The file is cheap and empty is fine. Add `workspace.env*.yaml` to `.gitignore`, and commit a
+`workspace.env.example.yaml` with placeholders so a teammate knows what to set.
+
 ## Best practices
 
 - **Add `workspace.env*.yaml` to `.gitignore`** — never commit credentials
 - **Route secrets through the env file** — put `${ENV_VAR}` for credentials in `workspace.env.yaml` so secret interpolation stays auditable in one place, even though env references work in any artifact
+- **List every credential path under `secrets:`** — that is what keeps it out of `swarmkit system`, the System page, and your CI logs
 - **Create a `workspace.env.example.yaml`** with placeholder values for team onboarding
 - **Use named env files for each environment** — `workspace.env.dev.yaml`, `workspace.env.staging.yaml`, `workspace.env.prod.yaml`
 

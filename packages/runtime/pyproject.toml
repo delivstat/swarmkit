@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.129.2"
+version = "1.130.0"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -82,6 +82,12 @@ serve = [
 # hosts at its own origin (serve-hosted-webui.md). Absent ⇒ serve runs headless (API only).
 ui = [
     "swarmkit-webui>=0.1.0",
+]
+# `storage.checkpoints.backend: postgres`. The LangGraph checkpointer is a separate package from
+# the driver the rest of the stores use, which is why this is an extra and why checkpoints is the
+# one storage block that does not inherit `storage.runtime` (storage-service.md).
+postgres = [
+    "langgraph-checkpoint-postgres>=2.0",
 ]
 dev = [
     "pytest>=8.0",

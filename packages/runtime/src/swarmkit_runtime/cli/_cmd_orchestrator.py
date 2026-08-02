@@ -18,7 +18,6 @@ import typer
 
 from swarmkit_runtime.orchestration import SqlSagaStore, StageOutcome
 from swarmkit_runtime.orchestration.reference import ReferenceController
-from swarmkit_runtime.persistence._factory import _resolve_backend
 from swarmkit_runtime.persistence._store import redacted_url
 from swarmkit_runtime.resolver import resolve_workspace
 
@@ -93,15 +92,10 @@ def _resolve_saga_store_url(workspace: Path, override: str | None) -> tuple[str,
     """
     if override:
         return override, "--database-url"
-    raw: Any = None
-    try:
-        raw = resolve_workspace(workspace.resolve()).raw
-    except Exception:  # a workspace that will not resolve still gets the sqlite default
-        raw = None
-    backend, url, source = _resolve_backend(workspace, raw)
-    if backend == "postgres":
-        return url, source
-    return f"sqlite:///{workspace / '.swarmkit' / 'store.sqlite'}", source
+    from swarmkit_runtime.persistence import StoreKind, storage_for_workspace  # noqa: PLC0415
+
+    target = storage_for_workspace(workspace).target(StoreKind.SAGA)
+    return target.url, target.source
 
 
 @app.command()

@@ -4,6 +4,7 @@ import {
 	Activity,
 	Box,
 	BrainCircuit,
+	Database,
 	Funnel,
 	Gauge,
 	GitBranch,
@@ -47,6 +48,7 @@ const NAV = [
 	{ href: "/memory", label: "Memory", icon: BrainCircuit },
 	{ href: "/canary", label: "Canary", icon: ListChecks },
 	{ href: "/triggers", label: "Triggers", icon: Timer },
+	{ href: "/system", label: "System", icon: Database },
 ] as const;
 
 export function Sidebar() {

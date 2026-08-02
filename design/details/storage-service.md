@@ -198,17 +198,57 @@ when absent — repeating the same URL three times is what made the config look 
 
 Plus the startup report block, which is the artefact an operator actually reads.
 
-## Open questions
+## Resolved (implementation, 1.130.0)
 
-- **Migrating existing data.** Everyone who has run SwarmKit has rows in the old locations. A
-  `swarmkit storage migrate` (copy, verify, leave the source in place) is the honest answer, but it
-  is its own note — the warning above is the minimum for this change to be safe without it.
-- **`agt` as an audit backend.** The schema allows it; nothing implements it. Either wire it or
-  drop it from the enum. Leaving a third unimplemented value in place repeats the mistake this note
+All four open questions were answered while building this. Two of them differently from the way
+they were framed.
+
+- **Migrating existing data — built.** `swarmkit storage migrate` copies the local SQLite rows into
+  the configured Postgres: additive, idempotent (`ON CONFLICT DO NOTHING`, so a re-run after a
+  partial failure resumes rather than duplicates), and it never deletes the source. The runbook is
+  `docs/site/reference/storage.md`. The split-brain warning stays regardless — it is what tells you
+  a migration is needed.
+
+- **`agt` as an audit backend — dropped from the enum.** Nothing implemented it; selecting it wrote
+  SQLite. Leaving a third unimplemented value in place would repeat the exact mistake this note
   exists to fix.
-- **Postgres checkpointing.** Do we add `langgraph-checkpoint-postgres` as an optional extra, or
-  remove `postgres` from the `checkpoints` enum? Adding it is more useful; removing it is more
-  honest about today. It should not stay as-is.
-- **Fleet separation.** Keeping enrollment credentials in a separate database is deliberate. Should
-  it be *configurable* separate (a `storage.fleet` block) or *always* separate? I lean always —
-  a security boundary that can be collapsed by config tends to get collapsed.
+
+- **Postgres checkpointing — added as the `[postgres]` extra**, and `checkpoints` became the one
+  store that does **not** inherit `storage.runtime`. This changed during implementation: with
+  inheritance, `storage.runtime.backend: postgres` promoted the checkpointer too and the workspace
+  failed at startup on a driver nobody asked for. Setting `SWARMKIT_STORE_URL` did the same thing
+  through the environment branch — caught by the demo, not by a test, which is the argument for
+  demos. A LangGraph component with its own install requirement has to be opt-in, so only an
+  explicit `storage.checkpoints` block moves it.
+
+- **Fleet separation — reverted to following `storage.runtime`.** The note leaned toward *always*
+  separate, and the implementation started there. That was wrong: design 19 Q4 already decided the
+  membership store follows the main backend, and the shipped `create_membership_store` implements
+  it. Regressing a shipped, design-referenced behaviour for tidiness is a worse trade than the
+  consistency was worth. It keeps its own SQLite *file*, not its own *backend*.
+
+## Two things this note did not anticipate
+
+- **`${VAR}` was never expanded in storage URLs.** The workspace schema documented
+  `${ENV_VAR} interpolation` on `storage.runtime.url` and nothing in the runtime implemented it, so
+  `url: ${SWARMKIT_STORE_URL}` — the form every deployment doc uses — reached SQLAlchemy as those
+  literal characters. Expansion now happens in the service, which is the only place that reads
+  these URLs.
+
+- **`storage.artifacts` was unusable.** The runtime has read it since the bundled orchestrator
+  shipped, but the schema's `additionalProperties: false` rejected the very key the code looked
+  for, so declaring it failed validation. Now declared.
+
+## The operator surface
+
+The report is the point, not a side effect: a misconfigured workspace looked *identical* to an
+empty one, and no amount of correct resolution fixes that on its own. It is printed at serve
+startup, available as `swarmkit storage status` and `swarmkit system`, served at `GET /storage` and
+`GET /system`, and rendered on the web UI's **System** page — reachable from the screen that is
+empty. `GET /system` also lists the workspace's own `workspace.env.yaml` properties, read from the
+file on every request so a parameter a new feature adds appears without registration, and the
+runtime environment variables from a curated registry (never `os.environ`, which holds every API
+key the process uses). Values are masked by declaration — the reserved `secrets:` key — with a
+name heuristic as the fallback for workspaces written before it existed.
+
+## Superseded open questions

@@ -141,12 +141,22 @@ def test_typed_model_with_an_enum_backend_is_read(tmp_path: Path) -> None:
     "Backend2.postgres". So the comparison never matched and every workspace ran on sqlite however
     it was configured — no error, no warning, and the target database stayed empty.
     """
-    from swarmkit_schema.models.workspace import Backend2  # noqa: PLC0415
+    # Reached through Runtime rather than the generated `BackendN` alias: those names are
+    # POSITIONAL in the codegen output, so adding a sibling block renumbers them and a test
+    # pinned to `Backend2` starts asserting about a different enum entirely.
+    from typing import Any, get_args  # noqa: PLC0415
 
-    assert not isinstance(Backend2.postgres, str)  # the trap, pinned
+    from swarmkit_schema.models.workspace import Runtime  # noqa: PLC0415
+
+    # Read off the FIELD rather than importing `BackendN`: those names are positional in the
+    # codegen output, so adding a sibling storage block renumbers them and a test pinned to
+    # `Backend2` silently starts asserting about a different enum.
+    annotation = Runtime.model_fields["backend"].annotation
+    backend_enum: Any = next(a for a in get_args(annotation) if a is not type(None))
+    assert not isinstance(backend_enum.postgres, str)  # the trap, pinned
 
     class _Runtime:
-        backend = Backend2.postgres
+        backend = backend_enum.postgres
         url = "postgresql://db/app"
 
     class _Storage:

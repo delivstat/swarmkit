@@ -237,25 +237,52 @@
         "checkpoints": {
           "type": "object",
           "additionalProperties": false,
+          "description": "LangGraph run-state checkpointer. The one block that does NOT inherit storage.runtime: postgres here needs `pip install 'swarmkit-runtime[postgres]'`, so it is opt-in rather than implied.",
           "properties": {
-            "backend": { "enum": ["sqlite", "postgres"] },
+            "backend": {
+              "enum": ["sqlite", "postgres"],
+              "default": "sqlite",
+              "description": "Checkpointer backend. Defaults to sqlite at .swarmkit/state/checkpoints.db."
+            },
             "path": { "type": "string" },
-            "url": { "type": "string" }
+            "url": {
+              "type": "string",
+              "description": "Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default} interpolation. Optional: inherits storage.runtime.url when omitted."
+            }
           }
         },
         "audit": {
           "type": "object",
           "additionalProperties": false,
+          "description": "Append-only audit trail. Inherits storage.runtime unless it overrides it.",
           "properties": {
-            "backend": { "enum": ["agt", "sqlite", "postgres"] },
+            "backend": {
+              "enum": ["sqlite", "postgres"],
+              "description": "Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here until 1.130.0, but no writer ever implemented it — selecting it silently wrote sqlite.)"
+            },
             "retention_days": { "type": "integer", "minimum": 1 },
-            "url": { "type": "string" }
+            "url": {
+              "type": "string",
+              "description": "Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default} interpolation. Optional: inherits storage.runtime.url when omitted."
+            }
+          }
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine. Read by the runtime since the bundled orchestrator shipped, but undeclarable until 1.130.0 — `additionalProperties: false` rejected the very key the code looked for.",
+          "properties": {
+            "backend": { "enum": ["database", "filesystem", "s3"], "default": "database" },
+            "path": { "type": "string", "description": "filesystem backend: root directory. Defaults to .swarmkit/artifacts." },
+            "bucket": { "type": "string", "description": "s3 backend: bucket name (requires the boto3 optional dep)." },
+            "prefix": { "type": "string", "default": "artifacts", "description": "s3 backend: key prefix." },
+            "database_url": { "type": "string", "description": "database backend: override the inherited connection URL." }
           }
         },
         "runtime": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Backend for jobs, conversations, and usage tracking. Defaults to sqlite at .swarmkit/store.sqlite.",
+          "description": "Backend for jobs, conversations, usage, pipeline sagas, artifacts, fleet enrollment and governed memory. Every other storage block inherits this one unless it overrides it. Defaults to sqlite at .swarmkit/store.sqlite.",
           "properties": {
             "backend": {
               "enum": ["sqlite", "postgres"],
@@ -264,7 +291,7 @@
             },
             "url": {
               "type": "string",
-              "description": "Connection URL for postgres backend. Supports ${ENV_VAR} interpolation. Ignored for sqlite."
+              "description": "Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default} interpolation. May also be supplied as SWARMKIT_STORE_URL or DATABASE_URL, which take precedence over this file."
             }
           }
         },

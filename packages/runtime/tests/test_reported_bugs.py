@@ -239,7 +239,9 @@ def test_orchestrator_resolves_the_same_store_as_serve(tmp_path: Path) -> None:
     )
     url, source = _resolve_saga_store_url(ws, None)
     assert url == "postgresql://db/app"
-    assert source == "workspace.yaml"
+    # The source names the SETTING now, not the file: an operator reading the startup report needs
+    # to know which key won, and "workspace.yaml" does not say that.
+    assert source == "storage.runtime"
 
 
 def test_orchestrator_database_url_is_an_explicit_override(tmp_path: Path) -> None:

@@ -483,42 +483,111 @@ export interface MCP {
 }
 
 export interface Storage {
-    audit?:           Audit;
+    /**
+     * Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine.
+     * Read by the runtime since the bundled orchestrator shipped, but undeclarable until
+     * 1.130.0 — `additionalProperties: false` rejected the very key the code looked for.
+     */
+    artifacts?: Artifacts;
+    /**
+     * Append-only audit trail. Inherits storage.runtime unless it overrides it.
+     */
+    audit?: Audit;
+    /**
+     * LangGraph run-state checkpointer. The one block that does NOT inherit storage.runtime:
+     * postgres here needs `pip install 'swarmkit-runtime[postgres]'`, so it is opt-in rather
+     * than implied.
+     */
     checkpoints?:     Checkpoints;
     knowledge_bases?: KnowledgeBases;
     /**
-     * Backend for jobs, conversations, and usage tracking. Defaults to sqlite at
-     * .swarmkit/store.sqlite.
+     * Backend for jobs, conversations, usage, pipeline sagas, artifacts, fleet enrollment and
+     * governed memory. Every other storage block inherits this one unless it overrides it.
+     * Defaults to sqlite at .swarmkit/store.sqlite.
      */
     runtime?: Runtime;
 }
 
-export interface Audit {
-    backend?:        AuditBackend;
-    retention_days?: number;
-    url?:            string;
+/**
+ * Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine.
+ * Read by the runtime since the bundled orchestrator shipped, but undeclarable until
+ * 1.130.0 — `additionalProperties: false` rejected the very key the code looked for.
+ */
+export interface Artifacts {
+    backend?: ArtifactsBackend;
+    /**
+     * s3 backend: bucket name (requires the boto3 optional dep).
+     */
+    bucket?: string;
+    /**
+     * database backend: override the inherited connection URL.
+     */
+    database_url?: string;
+    /**
+     * filesystem backend: root directory. Defaults to .swarmkit/artifacts.
+     */
+    path?: string;
+    /**
+     * s3 backend: key prefix.
+     */
+    prefix?: string;
 }
 
-export type AuditBackend = "agt" | "sqlite" | "postgres";
+export type ArtifactsBackend = "database" | "filesystem" | "s3";
 
-export interface Checkpoints {
-    backend?: DefaultBackendEnum;
-    path?:    string;
-    url?:     string;
+/**
+ * Append-only audit trail. Inherits storage.runtime unless it overrides it.
+ */
+export interface Audit {
+    /**
+     * Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here
+     * until 1.130.0, but no writer ever implemented it — selecting it silently wrote sqlite.)
+     */
+    backend?:        DefaultBackendEnum;
+    retention_days?: number;
+    /**
+     * Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default}
+     * interpolation. Optional: inherits storage.runtime.url when omitted.
+     */
+    url?: string;
 }
 
 /**
+ * Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here
+ * until 1.130.0, but no writer ever implemented it — selecting it silently wrote sqlite.)
+ *
+ * Checkpointer backend. Defaults to sqlite at .swarmkit/state/checkpoints.db.
+ *
  * Storage backend. sqlite (default, zero config) or postgres (production, shared).
  */
 export type DefaultBackendEnum = "sqlite" | "postgres";
+
+/**
+ * LangGraph run-state checkpointer. The one block that does NOT inherit storage.runtime:
+ * postgres here needs `pip install 'swarmkit-runtime[postgres]'`, so it is opt-in rather
+ * than implied.
+ */
+export interface Checkpoints {
+    /**
+     * Checkpointer backend. Defaults to sqlite at .swarmkit/state/checkpoints.db.
+     */
+    backend?: DefaultBackendEnum;
+    path?:    string;
+    /**
+     * Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default}
+     * interpolation. Optional: inherits storage.runtime.url when omitted.
+     */
+    url?: string;
+}
 
 export interface KnowledgeBases {
     default_backend?: DefaultBackendEnum;
 }
 
 /**
- * Backend for jobs, conversations, and usage tracking. Defaults to sqlite at
- * .swarmkit/store.sqlite.
+ * Backend for jobs, conversations, usage, pipeline sagas, artifacts, fleet enrollment and
+ * governed memory. Every other storage block inherits this one unless it overrides it.
+ * Defaults to sqlite at .swarmkit/store.sqlite.
  */
 export interface Runtime {
     /**
@@ -526,8 +595,9 @@ export interface Runtime {
      */
     backend?: DefaultBackendEnum;
     /**
-     * Connection URL for postgres backend. Supports ${ENV_VAR} interpolation. Ignored for
-     * sqlite.
+     * Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default}
+     * interpolation. May also be supplied as SWARMKIT_STORE_URL or DATABASE_URL, which take
+     * precedence over this file.
      */
     url?: string;
 }

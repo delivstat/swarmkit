@@ -43,12 +43,18 @@ mcp_servers:
     endpoint: https://mcp.rynko.dev
     sandboxed: false
 storage:
+  runtime:
+    backend: postgres
+    url: ${SWARMKIT_STORE_URL}
   checkpoints:
     backend: sqlite
     path: ./.swarmkit/state
   audit:
-    backend: agt
+    # No url: a per-store block inherits storage.runtime.url, so it is written once.
     retention_days: 365
+  artifacts:
+    backend: filesystem
+    path: ./.swarmkit/artifacts
   knowledge_bases:
     default_backend: sqlite
 context_compression:

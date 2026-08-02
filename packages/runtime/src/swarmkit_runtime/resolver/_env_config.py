@@ -19,6 +19,38 @@ from typing import Any
 
 import yaml
 
+#: Reserved top-level key: a list of dotted property paths whose VALUES must never be displayed.
+#: Declared rather than guessed — a name heuristic gets `db.dsn` and `webhook.callback` wrong, and
+#: being wrong in that direction prints a credential to a terminal, a log, and a web page.
+SECRETS_KEY = "secrets"
+
+
+def load_secret_paths(workspace_root: Path) -> set[str]:
+    """The property paths this workspace declares secret (the reserved ``secrets:`` list)."""
+    raw = _read_env_file(workspace_root)
+    declared = raw.get(SECRETS_KEY) if isinstance(raw, dict) else None
+    if not isinstance(declared, list):
+        return set()
+    return {str(item).strip() for item in declared if str(item).strip()}
+
+
+def _read_env_file(workspace_root: Path) -> dict[str, Any]:
+    """The raw parsed env file (unflattened, unresolved), or ``{}``."""
+    env_name = os.environ.get("SWARMKIT_ENV", "")
+    candidates = []
+    if env_name:
+        candidates.append(workspace_root / f"workspace.env.{env_name}.yaml")
+    candidates.append(workspace_root / "workspace.env.yaml")
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (yaml.YAMLError, OSError):
+            return {}
+        return raw if isinstance(raw, dict) else {}
+    return {}
+
 
 def load_env_config(workspace_root: Path) -> dict[str, str]:
     """Load and resolve the workspace env config.
@@ -54,6 +86,9 @@ def load_env_config(workspace_root: Path) -> dict[str, str]:
     if not isinstance(raw, dict):
         return {}
 
+    # `secrets:` is a declaration ABOUT the properties, not a property. Leaving it in would create
+    # phantom entries (`secrets.0`) and make the list itself interpolatable.
+    raw = {k: v for k, v in raw.items() if k != SECRETS_KEY}
     flat = _flatten(raw)
 
     resolved: dict[str, str] = {}

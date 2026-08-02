@@ -211,8 +211,16 @@ class WorkspaceRuntime:
         self._mcp_manager = mcp_manager
         self._memory_store = self._create_memory_store()
         self._governed_memory_store = self._create_governed_memory_store()
-        self._audit_provider = audit_provider or audit_provider_for_path(workspace_root)
+        # The service, not a path: `audit_provider_for_path` never saw the workspace config, so a
+        # `storage.audit.backend: postgres` workspace wrote its trail to a local file (bug 01).
+        self._audit_provider = audit_provider or self._storage().audit_provider()
         self._session_active = False
+
+    def _storage(self) -> Any:
+        """The workspace's storage service — the single place that decides where data lives."""
+        from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+
+        return storage_for_workspace(self._workspace_root, self._workspace.raw)
 
     def _create_memory_store(self) -> Any:
         """Create a memory store for the workspace if memory bindings are configured.
@@ -349,16 +357,7 @@ class WorkspaceRuntime:
     def _get_checkpointer(self) -> Any:
         """Get or create the checkpointer for run state persistence."""
         if not hasattr(self, "_checkpointer"):
-            try:
-                from langgraph.checkpoint.sqlite import SqliteSaver  # noqa: PLC0415
-
-                db_path = self._workspace_root / ".swarmkit" / "state" / "checkpoints.db"
-                db_path.parent.mkdir(parents=True, exist_ok=True)
-                self._checkpointer = SqliteSaver.from_conn_string(str(db_path))
-            except ImportError:
-                from langgraph.checkpoint.memory import MemorySaver  # noqa: PLC0415
-
-                self._checkpointer = MemorySaver()
+            self._checkpointer = self._storage().checkpointer()
         return self._checkpointer
 
     def compile(self, topology_name: str) -> CompiledStateGraph[Any]:
@@ -611,7 +610,7 @@ class WorkspaceRuntime:
 
         events = _extract_events(self._governance)
 
-        await self._persist_events_to_audit(events, topology_name)
+        await self._persist_events_to_audit(events, topology_name, trace.run_id)
 
         usage = UsageSummary(
             input_tokens=trace.total_input_tokens,
@@ -695,7 +694,9 @@ class WorkspaceRuntime:
                 await self._mcp_manager.close_all()
 
         events = _extract_events(self._governance)
-        await self._persist_events_to_audit(events, topology_name)
+        # A resumed run is identified by its thread — that is the id `swarmkit resume` was given
+        # and the one a caller has to correlate with.
+        await self._persist_events_to_audit(events, topology_name, thread_id)
 
         return RunResult(
             output=result.get("output", "") if result else "",
@@ -765,8 +766,15 @@ class WorkspaceRuntime:
         )
         return _parse_result("inline-rubric", text)
 
-    async def _persist_events_to_audit(self, events: list[RunEvent], topology_name: str) -> None:
-        """Write extracted events to the AuditProvider with redaction applied."""
+    async def _persist_events_to_audit(
+        self, events: list[RunEvent], topology_name: str, run_id: str | None = None
+    ) -> None:
+        """Write extracted events to the AuditProvider with redaction applied.
+
+        *run_id* is not optional in spirit: ``AuditProvider.query(run_id=…)`` filters on this
+        column, so leaving it NULL — as every write did until now — made every run-scoped audit
+        query return an empty result and report it as "no events" rather than as an error.
+        """
         from datetime import UTC, datetime  # noqa: PLC0415
 
         from swarmkit_runtime.audit import apply_audit_policy, resolve_audit_config  # noqa: PLC0415
@@ -799,6 +807,7 @@ class WorkspaceRuntime:
                 payload=redacted,
                 duration_ms=duration,
                 agent_role=role,  # type: ignore[arg-type]
+                run_id=run_id,
             )
             await self._audit_provider.record(audit_event)
 
