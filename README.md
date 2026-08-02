@@ -331,7 +331,7 @@ See it end to end in the **[SDLC pipeline walkthrough](https://delivstat.github.
 
 ### Governance & Safety
 21. **IAM scopes** — per-agent permission model (`repo:read`, `skills:activate`)
-22. **Decision skill gates** — pre_input / post_output validation on every turn
+22. **Decision skill gates** — validation at `pre_input` / `post_output` / `checkpoint` / `pre_synthesis`; a gate can be a deterministic MCP tool (validator, linter, test run), not only an LLM judge ([guide](https://delivstat.github.io/swarmkit/guides/validating-topology-output/))
 23. **Policy evaluation tiers** — deterministic, single LLM judge, panel
 24. **Circuit breakers** — max steps, max cost, max tokens per run
 25. **Trust levels** — tiered access control for agents
@@ -373,50 +373,53 @@ See it end to end in the **[SDLC pipeline walkthrough](https://delivstat.github.
 53. **Webhook triggers** — HMAC-SHA256 signature validation
 54. **MCP endpoint** — expose topologies as MCP tools for AI assistants
 55. **Concurrent job limiting** — semaphore-based with configurable max
+56. **One storage service** — every store (runtime, audit, artifacts, saga, memory, fleet, checkpoints) resolves from one config; `swarmkit storage status` shows where data lives and which setting decided it
+57. **SQLite → Postgres migration** — `swarmkit storage migrate` copies existing rows, idempotent, never deletes the source ([runbook](https://delivstat.github.io/swarmkit/reference/storage/))
+58. **System page** — versions, storage, `workspace.env.yaml` properties and environment in the web UI, with secrets masked by declaration
 
 ### Packaging & Distribution
-56. **Expertise packages** — bundle workspaces for distribution
-57. **`swarmkit mcp-serve`** — expose workspaces to Claude Desktop, Cursor, Claude Code
-58. **`swarmkit install/publish`** — install from directory, tarball, or URL
+59. **Expertise packages** — bundle workspaces for distribution
+60. **`swarmkit mcp-serve`** — expose workspaces to Claude Desktop, Cursor, Claude Code
+61. **`swarmkit install/publish`** — install from directory, tarball, or URL
 
 ### Model Providers
-59. **7 providers** — Anthropic, OpenAI, Google, OpenRouter, Groq, Together, Ollama
-60. **Auto-detection** — providers activated from environment variables
-61. **Per-agent provider** — mix providers within a single topology
-62. **Prompt caching** — automatic prefix caching (99% savings on DeepSeek)
+62. **7 providers** — Anthropic, OpenAI, Google, OpenRouter, Groq, Together, Ollama
+63. **Auto-detection** — providers activated from environment variables
+64. **Per-agent provider** — mix providers within a single topology
+65. **Prompt caching** — automatic prefix caching (99% savings on DeepSeek)
 
 ### Developer Experience
-63. **`swarmkit validate --tree`** — visual agent tree with skills, archetypes, MCP servers
-64. **`swarmkit run --dry-run`** — show resolved agents without executing
-65. **`swarmkit run --verbose`** — per-agent execution detail
-66. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` → `swarmkit serve` hosts the portal at its own origin)
-67. **JSON & TypeScript schemas** — validators in both languages
-68. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
-69. **16 archetypes + 27 skills** — production-ready out of the box
+66. **`swarmkit validate --tree`** — visual agent tree with skills, archetypes, MCP servers
+67. **`swarmkit run --dry-run`** — show resolved agents without executing
+68. **`swarmkit run --verbose`** — per-agent execution detail
+69. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` → `swarmkit serve` hosts the portal at its own origin)
+70. **JSON & TypeScript schemas** — validators in both languages
+71. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
+72. **16 archetypes + 27 skills** — production-ready out of the box
 
 ### Harness executors
-70. **Harness as a node** — run Claude Code / opencode / any subprocess emitting JSONL as an agent
-71. **Declarative adapters** — `adapter.yaml`, no per-harness Python; bundled library for the big harnesses
-72. **Worktree isolation** — ephemeral git worktree per run by default; produces a diff, never integrates
-73. **Relay approvals** — mid-run out-of-grant permissions pause to a human inbox and resume (`swarmkit review`)
-74. **Trust accrual** — repeated approvals propose an allowlist changeset (`swarmkit trust list|apply|clear`)
-75. **Opt-in container sandbox** — resource limits + enforced egress (`deny`/`allowlist`); off by default, disable switch always wins
-76. **No-local-install `build`** — provision the harness into a cached image; bring only your API key
+73. **Harness as a node** — run Claude Code / opencode / any subprocess emitting JSONL as an agent
+74. **Declarative adapters** — `adapter.yaml`, no per-harness Python; bundled library for the big harnesses
+75. **Worktree isolation** — ephemeral git worktree per run by default; produces a diff, never integrates
+76. **Relay approvals** — mid-run out-of-grant permissions pause to a human inbox and resume (`swarmkit review`)
+77. **Trust accrual** — repeated approvals propose an allowlist changeset (`swarmkit trust list|apply|clear`)
+78. **Opt-in container sandbox** — resource limits + enforced egress (`deny`/`allowlist`); off by default, disable switch always wins
+79. **No-local-install `build`** — provision the harness into a cached image; bring only your API key
 
 ### Pipelines & orchestration
-77. **StageGraph pipelines** — a whole delivery pipeline as one data file (`kind: StageGraph`): stages wired by `when`/`success`, `locks`, `gate`, `compensation`, `loops`
-78. **Saga controller** — durable per-requirement sequencing: event dedup, reconciliation of dropped events, contended-lock parking, reverse-order compensation on cancel
-79. **Bundled durable orchestrator + pluggable seam** — runs out of the box: a separate `swarmkit orchestrator` process drives events off a durable saga store (SQLite/Postgres) and executes each stage via `serve`'s run-stage seam into a pluggable artifact store — store-mediated, so it never touches the core or `serve`; swap in the data-driven Temporal adapter (`temporalio` stays out of the core). Dispatch + inspect from `swarmkit pipeline emit|sagas|status|advance|skip` or the web UI **Runs** view (replay canvas + node timeline/artifact inspector); `deploy/pipeline` compose runs `serve` + orchestrator together
-80. **Funnels** — reusable multi-layer quality gates (`kind: Funnel`: validate → judge → review → approve) with a single, compiler-enforced human exit
-81. **Multi-party approval** — quorum / `min_distinct_approvers` / `exclude_author`, roles resolved via `kind: RoleRegistry`; approval scopes un-grantable to agents
-82. **Integration contracts** — `kind: Contract` makes stage `locks` a checked, pickable vocabulary; the contention overlay is exact
-83. **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` across every artifact YAML, with or without an env file
+80. **StageGraph pipelines** — a whole delivery pipeline as one data file (`kind: StageGraph`): stages wired by `when`/`success`, `locks`, `gate`, `compensation`, `loops`
+81. **Saga controller** — durable per-requirement sequencing: event dedup, reconciliation of dropped events, contended-lock parking, reverse-order compensation on cancel
+82. **Bundled durable orchestrator + pluggable seam** — runs out of the box: a separate `swarmkit orchestrator` process drives events off a durable saga store (SQLite/Postgres) and executes each stage via `serve`'s run-stage seam into a pluggable artifact store — store-mediated, so it never touches the core or `serve`; swap in the data-driven Temporal adapter (`temporalio` stays out of the core). Dispatch + inspect from `swarmkit pipeline emit|sagas|status|advance|skip` or the web UI **Runs** view (replay canvas + node timeline/artifact inspector); `deploy/pipeline` compose runs `serve` + orchestrator together
+83. **Funnels** — reusable multi-layer quality gates (`kind: Funnel`: validate → judge → review → approve) with a single, compiler-enforced human exit
+84. **Multi-party approval** — quorum / `min_distinct_approvers` / `exclude_author`, roles resolved via `kind: RoleRegistry`; approval scopes un-grantable to agents
+85. **Integration contracts** — `kind: Contract` makes stage `locks` a checked, pickable vocabulary; the contention overlay is exact
+86. **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` across every artifact YAML, with or without an env file
 
 ### Fleet & evaluation
-84. **Fleet control plane** — a standalone `swarmkit-control-plane` + panel UI aggregating many `swarmkit serve` instances (SQLite/Postgres); an independent app + client over the serve contract, never a runtime dependency
-85. **Federated run graph** — one run rendered over its agents across instances, from a federated per-run trace endpoint
-86. **Fleet-wide harness cockpit** — resolve harness relay/input gates across the whole fleet from one panel
-87. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
+87. **Fleet control plane** — a standalone `swarmkit-control-plane` + panel UI aggregating many `swarmkit serve` instances (SQLite/Postgres); an independent app + client over the serve contract, never a runtime dependency
+88. **Federated run graph** — one run rendered over its agents across instances, from a federated per-run trace endpoint
+89. **Fleet-wide harness cockpit** — resolve harness relay/input gates across the whole fleet from one panel
+90. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
 
 ## Reference topologies
 
@@ -482,7 +485,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.129.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 (delivery pipelines) shipped — StageGraph + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the end-to-end SDLC example, and the bundled durable orchestrator (`swarmkit orchestrator` + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.131.3. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 (delivery pipelines) shipped — StageGraph + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the end-to-end SDLC example, and the bundled durable orchestrator (`swarmkit orchestrator` + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 
