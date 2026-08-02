@@ -18,6 +18,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from swarmkit_runtime.mcp._sdk_compat import tool_input_schema
+
 from ._governed import MCPCallDenied, governed_mcp_call
 
 if TYPE_CHECKING:
@@ -131,7 +133,9 @@ async def mcp_gateway(
             Tool(
                 name=t.name,
                 description=t.description,
-                inputSchema=t.input_schema or {"type": "object"},
+                # inputSchema= is the WIRE name and correct on both SDKs; the read is what
+                # differs, so it goes through the compat accessor.
+                inputSchema=tool_input_schema(t) or {"type": "object"},
             )
             for t in tools
         ]

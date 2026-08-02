@@ -89,9 +89,9 @@ def _mount_mcp(app: FastAPI) -> None:
 
     Called only when the ``mcp`` package is importable.
     """
-    from mcp.server.fastmcp import FastMCP  # noqa: PLC0415
+    from swarmkit_runtime.mcp._sdk_compat import MCPServerClass  # noqa: PLC0415
 
-    mcp_server = FastMCP("swarmkit")
+    mcp_server = MCPServerClass("swarmkit")
     _tools_registered = False
 
     @app.middleware("http")
