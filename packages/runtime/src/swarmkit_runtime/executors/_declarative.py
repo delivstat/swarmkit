@@ -43,10 +43,21 @@ _BUNDLED_ADAPTERS_DIR = Path(__file__).resolve().parent / "adapters"
 
 logger = logging.getLogger("swarmkit.executors")
 
+
+class HarnessLineTooLongError(RuntimeError):
+    """The harness emitted a single stdout line past the reader's limit."""
+
+
 # How much harness stderr to retain for a failure report. Bounded: a chatty harness must not be
 # able to grow the process, and the tail is what diagnoses an early exit.
 _STDERR_TAIL_LINES = 200
 _STDERR_DRAIN_TIMEOUT = 2.0
+
+#: Per-line ceiling for the harness's stdout. Large enough that a real transcript line never hits
+#: it (asyncio's 64 KiB default is hit by a single sizeable tool result), small enough to stay a
+#: backstop against an unbounded stream. Overflow is reported WITH the size — the original failure
+#: named nothing, so nobody could tell which tool produced it.
+_STDOUT_LINE_LIMIT = 16 * 1024 * 1024
 
 
 def _ctx(
@@ -189,6 +200,13 @@ class DeclarativeExecutor(Executor):
             env=dict(env),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # Without this asyncio uses _DEFAULT_LIMIT (64 KiB) for the pipe's StreamReader, and a
+            # harness emitting line-delimited JSON dies on the first turn carrying a large tool
+            # result: "Separator is found, but chunk is longer than limit". A transcript line has
+            # no natural 64 KiB bound — an MCP tool returning a 500 KB document is ordinary, not
+            # exotic — and the failure aborted the run after earlier tool calls had succeeded,
+            # naming neither the tool nor the size.
+            limit=_STDOUT_LINE_LIMIT,
         )
         self._active[run_id] = proc
         tail: deque[str] = deque(maxlen=_STDERR_TAIL_LINES)
@@ -208,8 +226,17 @@ class DeclarativeExecutor(Executor):
         try:
             stdout = proc.stdout
             assert stdout is not None
-            async for line in stdout:
-                yield line.decode(errors="replace")
+            try:
+                async for line in stdout:
+                    yield line.decode(errors="replace")
+            except ValueError as exc:
+                # asyncio raises a bare "Separator is found, but chunk is longer than limit" with
+                # no size and no context. Say what actually happened, at the layer that knows.
+                raise HarnessLineTooLongError(
+                    f"[harness:{self._spec.kind}] emitted a stdout line exceeding "
+                    f"{_STDOUT_LINE_LIMIT} bytes ({exc}). This is usually one very large tool "
+                    "result; raise the limit or have the tool paginate."
+                ) from exc
             await proc.wait()
         finally:
             with suppress(asyncio.CancelledError, Exception):
