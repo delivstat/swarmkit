@@ -275,10 +275,31 @@ class StorageService:
                 "than the one configured."
             )
         if kind is StoreKind.CHECKPOINTS and not _postgres_checkpointer_available():
-            raise StorageConfigError(
-                "storage.checkpoints.backend is 'postgres' but the Postgres checkpointer is not "
-                "installed. Install the extra:  pip install 'swarmkit-runtime[postgres]'  "
-                "(or set storage.checkpoints.backend: sqlite)."
+            # Degrade, loudly — the one place that is right, and only here.
+            #
+            # "Refuse rather than degrade" protects RECORDS: a run writing its audit trail or its
+            # governed memory to a different database than the configured one loses data silently,
+            # and no error is cheaper than that. Checkpoints are not records. They are disposable
+            # run state, and putting them in the local file costs resumability from another host —
+            # a bounded failure that surfaces at resume, on the run it affects.
+            #
+            # This is also a missing OPTIONAL DEPENDENCY, not a wrong config. Refusing to boot
+            # over one takes down serve, the orchestrator and every trigger — for a store whose
+            # contents can be thrown away. And it punished exactly the workspaces this change set
+            # out to help: `storage.checkpoints.backend: postgres` was silently ignored before
+            # 1.130.0, so every workspace that wrote it upgraded straight into a dead server.
+            logger.warning(
+                "storage.checkpoints.backend is 'postgres' (from %s) but the Postgres "
+                "checkpointer is not installed — using the local SQLite checkpointer instead. "
+                "Runs stay resumable on THIS host only. Install it with:  "
+                "pip install 'swarmkit-runtime[postgres]'  (or set "
+                "storage.checkpoints.backend: sqlite to silence this).",
+                source,
+            )
+            return StoreTarget(
+                "sqlite",
+                self._sqlite_url(kind),
+                f"{source} → sqlite (postgres extra not installed)",
             )
         return StoreTarget("postgres", url, source)
 
