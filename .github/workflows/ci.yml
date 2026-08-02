@@ -40,6 +40,18 @@ jobs:
       - name: Format check (ruff)
         run: uv run ruff format --check .
 
+      # mypy re-analysed ~440 files from scratch on every run (29s of a ~135s job) because
+      # nothing carried .mypy_cache between runs. Keyed on the lockfile + Python version, since
+      # a dependency or interpreter change is what actually invalidates the analysis.
+      - name: Cache mypy
+        uses: actions/cache@v4
+        with:
+          path: .mypy_cache
+          key: mypy-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}-
+            mypy-${{ matrix.python-version }}-
+
       - name: Typecheck (mypy)
         run: uv run mypy packages/runtime packages/schema/python packages/control-plane
 
