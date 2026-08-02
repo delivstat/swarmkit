@@ -31,6 +31,7 @@ nav:
   - Guides:
     - "Building swarms (the complete playbook)": guides/building-swarms.md
     - "Getting an image to a model": guides/getting-an-image-to-a-model.md
+    - "Validating a topology's output": guides/validating-topology-output.md
   - Examples:
     - "SDLC pipeline (video walkthrough)": sdlc-example/index.html
   - Tutorials:

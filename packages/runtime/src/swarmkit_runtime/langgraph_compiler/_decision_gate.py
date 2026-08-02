@@ -26,6 +26,42 @@ _DEFAULT_MAX_RETRIES = 4
 RetryFn = Callable[[str], Awaitable[str]]
 
 
+def _binding_context(
+    binding: DecisionSkillBinding, context: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Merge a binding's `config:` block into the evaluation context.
+
+    The schema calls `config` "skill-specific configuration" and nothing read it, so a binding
+    could carry a whole tuning block that did nothing — declarable, documented, inert. It reaches
+    the skill under a `config` key; the trigger's own context keys win on collision, because those
+    describe the thing being evaluated and a binding must not be able to overwrite them.
+    """
+    if not binding.config:
+        return context
+    return {"config": dict(binding.config), **(context or {})}
+
+
+def _effective_max_retries(bindings: list[DecisionSkillBinding], default: int) -> int:
+    """`max_retries` from the bindings' config, else *default*.
+
+    The retry loop is shared by every applicable binding, so per-binding values have to collapse
+    to one number: take the largest declared. A binding asking for more attempts should not be
+    capped by a stricter sibling — the loop exits as soon as ALL of them pass anyway.
+    """
+    declared = []
+    for binding in bindings:
+        raw = binding.config.get("max_retries")
+        if raw is None:
+            continue
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if value >= 0:
+            declared.append(value)
+    return max(declared) if declared else default
+
+
 async def evaluate_pre_input(
     *,
     agent_id: str,
@@ -51,6 +87,7 @@ async def evaluate_pre_input(
             trigger="pre_input",
             agent_id=agent_id,
             content=user_input,
+            context=_binding_context(binding, None),
         )
         results.append(result)
 
@@ -102,6 +139,9 @@ async def evaluate_post_output(
 
     current_output = output
     last_results: list[DecisionSkillResult] = []
+    # An explicit `max_retries` in the binding overrides the caller's default; neither call site
+    # passed one, so the value in workspace.yaml was ignored entirely.
+    max_retries = _effective_max_retries(applicable, max_retries)
 
     for attempt in range(max_retries + 1):
         last_results = []
@@ -111,7 +151,7 @@ async def evaluate_post_output(
                 trigger="post_output",
                 agent_id=agent_id,
                 content=current_output,
-                context=context,
+                context=_binding_context(binding, context),
             )
             last_results.append(result)
 
@@ -188,7 +228,7 @@ async def evaluate_checkpoint(
             trigger="checkpoint",
             agent_id=agent_id,
             content=combined,
-            context={"task_ids": list(task_results.keys())},
+            context=_binding_context(binding, {"task_ids": list(task_results.keys())}),
         )
         results.append(result)
         if result.verdict == "fail":
@@ -236,7 +276,7 @@ async def evaluate_pre_synthesis(
             trigger="pre_synthesis",
             agent_id=agent_id,
             content=combined,
-            context=context,
+            context=_binding_context(binding, context),
         )
         results.append(result)
         if result.verdict == "fail":
