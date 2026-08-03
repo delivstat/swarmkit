@@ -55,6 +55,7 @@ from swarmkit_runtime.executors import (
 )
 from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.model_providers._pricing import estimate_cost
+from swarmkit_runtime.progress import ProgressEvent, emit_progress, summarize
 from swarmkit_runtime.review import FileReviewQueue
 from swarmkit_runtime.trace import AgentStep, ToolCall
 from swarmkit_runtime.trust import TrustStore
@@ -140,6 +141,17 @@ def _task_spec(agent: ResolvedAgent, state: SwarmState, workspace_root: Path | N
         mcp_tools=mcp_tools,
         base_ref="HEAD",
     )
+
+
+def _usage_summary(event: Any) -> str:
+    """Token/cost tick for the progress stream — counts only, never content."""
+    parts = []
+    if getattr(event, "input_tokens", 0) or getattr(event, "output_tokens", 0):
+        parts.append(f"{event.input_tokens:,} in / {event.output_tokens:,} out")
+    cost = getattr(event, "cost_usd", 0.0) or 0.0
+    if cost:
+        parts.append(f"${cost:.4f}")
+    return " · ".join(parts) or "usage"
 
 
 async def _record(
@@ -561,16 +573,42 @@ async def _execute(  # noqa: PLR0912, PLR0915
                 async for event in enforce_budget(stream, budget, cancel=_cancel):
                     if isinstance(event, ExecStarted):
                         holder["run_id"] = event.run_id
+                        emit_progress(ProgressEvent(agent_id, "started", f"{kind} started"))
                     elif isinstance(event, ExecUsage):
                         meter.add_usage(event)
+                        emit_progress(ProgressEvent(agent_id, "usage", _usage_summary(event)))
                     elif isinstance(event, ExecMessage):
                         round_messages.append(event.text)
+                        # summary is the first line only; the full text is `detail`, which serve
+                        # never publishes — a harness message can quote a file, and a file can
+                        # quote a credential.
+                        emit_progress(
+                            ProgressEvent(
+                                agent_id, "message", summarize(event.text), detail=event.text
+                            )
+                        )
                     elif isinstance(event, ExecToolCall):
                         round_did_work = True
                         meter.tool_calls.append(
                             ToolCall(tool_name=event.tool, result_length=len(event.input_summary))
                         )
+                        emit_progress(
+                            ProgressEvent(
+                                agent_id,
+                                "tool",
+                                f"{event.tool}({summarize(str(event.input_summary), 60)})",
+                                detail=str(event.input_summary),
+                            )
+                        )
                     elif isinstance(event, ExecApprovalRequested):
+                        emit_progress(
+                            ProgressEvent(
+                                agent_id,
+                                "interaction",
+                                f"awaiting approval: {event.capability}",
+                                detail=event.rationale or "",
+                            )
+                        )
                         if park_resume:
                             round_denials.append(event)  # resolve after the stream, then relaunch
                             continue

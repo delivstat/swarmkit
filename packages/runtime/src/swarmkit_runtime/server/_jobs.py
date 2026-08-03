@@ -15,6 +15,7 @@ from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.model_providers._pricing import estimate_cost
 from swarmkit_runtime.persistence import Store, UsageRow
+from swarmkit_runtime.progress import set_progress_sink
 
 from ._config import _DEFAULT_TIMEOUT_SECONDS
 
@@ -67,6 +68,10 @@ class JobStore:
         """Keep a reference to a background task to prevent GC."""
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
+
+
+def _clear_progress_sink() -> None:
+    set_progress_sink(None)
 
 
 def _record_run_usage(store: Store, job_id: str, result: RunResult) -> None:
@@ -125,6 +130,11 @@ async def execute_job(
     job.status = "running"
     version_label = f" v{job.version}" if job.version else ""
     job.events.append(f"Job started for topology '{job.topology}'{version_label}")
+    # Live progress into the SAME list the SSE endpoint already relays — a harness run used to be
+    # silent for its whole duration because nothing appended between "started" and "completed".
+    # `summary` only: this list goes over HTTP to anyone with serve:read, and a harness message can
+    # quote a file (design/details/harness-progress-stream.md).
+    set_progress_sink(lambda e: job.events.append(f"[{e.agent_id}] {e.summary}"))
     if store:
         store.update_job(job.id, status="running", events=job.events)
     try:
@@ -157,6 +167,9 @@ async def execute_job(
             job.status = "failed"
             job.events.append(f"Job failed: {exc}")
         finally:
+            # Drop the sink with the job: a finished job must not keep its closure alive on the
+            # ContextVar, and a later run in this context must not append to a completed job.
+            _clear_progress_sink()
             if semaphore is not None:
                 semaphore.release()
     finally:
