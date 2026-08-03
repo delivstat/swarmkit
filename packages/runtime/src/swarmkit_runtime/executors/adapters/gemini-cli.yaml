@@ -40,6 +40,17 @@ spec:
       emit:
         - event: tool_call
           with: { tool: "$.name", input_summary: "$.args" }
+    # The OUTCOME of a tool call comes back as its own event. Unmapped, the trace showed that
+    # Gemini called a tool and never whether the tool succeeded — a failed read looked like a
+    # good one. `tool_status_map` is separate from `status_map` (which classifies the RUN's
+    # terminal status) because the two vocabularies are not the same alphabet.
+    - when: { type: tool_call_response }
+      emit:
+        - event: tool_call
+          with:
+            tool: "$.name"
+            status: { from: "$.status", map: tool_status_map }
+            input_summary: "$.response"
     - when: { type: usage }
       emit:
         - event: usage
@@ -56,6 +67,11 @@ spec:
     success: success
     error: failure
     _default: failure
+  tool_status_map:
+    success: ok
+    error: error
+    _default: ""
+
   success_when: { exit_code: 0 }
   on_unanswerable: abort
   telemetry_grade: normalized

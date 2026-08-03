@@ -32,6 +32,7 @@ from swarmkit_runtime.executors._events import (
     ExecStarted,
     ExecToolCall,
     ExecUsage,
+    normalize_tool_status,
 )
 
 # ---- extraction -------------------------------------------------------------------------------
@@ -98,16 +99,20 @@ def _coerce(field: str, value: Any) -> Any:
 
 
 def _resolve_with(
-    with_: Mapping[str, Any], obj: Any, status_map: Mapping[str, str]
+    with_: Mapping[str, Any], obj: Any, maps: Mapping[str, Mapping[str, str]]
 ) -> dict[str, Any]:
     """Resolve an emit's ``with`` block to concrete kwargs. A ``{from, map}`` value is extracted
     then translated through the named map (``_default`` covers the rest). ``None``s are dropped so
-    the ExecEvent dataclass defaults apply."""
+    the ExecEvent dataclass defaults apply.
+
+    Any top-level ``*_map`` block may be named — not just ``status_map``. Harnesses report outcomes
+    in incompatible vocabularies (an exit code, a tool-state enum), and adding a translation table
+    to a YAML adapter must not require touching this interpreter."""
     out: dict[str, Any] = {}
     for field, spec in with_.items():
         if isinstance(spec, Mapping) and "from" in spec and "map" in spec:
             raw = _get(obj, _path(str(spec["from"])))
-            table = status_map if spec["map"] == "status_map" else {}
+            table = maps.get(str(spec["map"]), {})
             resolved = table.get(str(raw), table.get("_default"))
         else:
             resolved = _coerce(field, _resolve(spec, obj))
@@ -126,7 +131,9 @@ def _build_event(name: str, kwargs: Mapping[str, Any]) -> ExecEvent | None:  # n
         return ExecToolCall(
             tool=str(k.get("tool", "")),
             input_summary=str(k.get("input_summary", "")),
-            status=str(k.get("status", "")),
+            # Adapters emit their vendor's own word; the vocabulary is collapsed here so no
+            # downstream consumer has to know how four different harnesses spell "it failed".
+            status=normalize_tool_status(str(k.get("status", ""))),
         )
     if name == "usage":
         return ExecUsage(**{f: k[f] for f in k if f in _USAGE_FIELDS})
@@ -231,7 +238,7 @@ class AdapterInterpreter:
         for spec in emits:
             if spec.when and not _matches(spec.when, obj):
                 continue
-            kwargs = _resolve_with(spec.with_, obj, self._spec.status_map)
+            kwargs = _resolve_with(spec.with_, obj, self._spec.maps)
             event = _build_event(spec.event, kwargs)
             if event is not None:
                 out.append(event)

@@ -102,6 +102,11 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Demo harness tool outcomes (harness-tool-outcomes.md): one FAILING tool call per bundled harness,
+# in each harness's native protocol — traced as a checkmark before the fix, as an error after.
+demo-harness-tool-outcomes:
+    uv run python packages/runtime/demos/harness_tool_outcomes.py
+
 # Demo the gate funnel (slice 3): the validate->judge->approve subgraph + structural invariant,
 # real multi-party approval, bounded retry, and retry-exhaustion escalation.
 demo-gate-funnel:

@@ -1,0 +1,51 @@
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: named-maps
+  name: Named translation tables
+  description: >-
+    Fixture for a harness that reports outcomes in more than one alphabet. `status_map` classifies
+    the RUN's terminal status; `tool_status_map` and `exit_code_map` classify individual tool calls.
+    Every harness spells failure differently — codex an exit code, gemini an enum — and a second
+    table must be addable in YAML alone, because adapters are data, not code.
+spec:
+  launch:
+    command: [invented-harness, --json, "{task.statement}"]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: tool_result }
+      emit:
+        - event: tool_call
+          with:
+            tool: "$.name"
+            status: { from: "$.state", map: tool_status_map }
+    - when: { type: command_end }
+      emit:
+        - event: tool_call
+          with:
+            tool: exec
+            status: { from: "$.exit_code", map: exit_code_map }
+    - when: { type: done }
+      emit:
+        - event: result
+          with:
+            status: { from: "$.outcome", map: status_map }
+  status_map:
+    finished: success
+    _default: failure
+  # Normalized downstream to ok / error / "" — an unrecognized word becomes *unreported*, never a
+  # confident success. Silence must not read as "it worked".
+  tool_status_map:
+    completed: ok
+    blew_up: error
+    _default: ""
+  exit_code_map:
+    "0": ok
+    _default: error
+  success_when: { exit_code: 0 }
+  telemetry_grade: normalized
+  artifacts: { profile: files }
+provenance:
+  authored_by: human
+  version: 0.1.0

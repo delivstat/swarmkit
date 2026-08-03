@@ -51,6 +51,16 @@ spec:
         - when: { type: tool_use }
           event: tool_call
           with: { tool: "$.name", input_summary: "$.input" }
+    # A tool's OUTCOME arrives separately, on the following `user` message as a tool_result block
+    # carrying `is_error`. Without this the trace recorded that a tool was called and never whether
+    # it worked — so a `view_image` on a path that does not resolve looked identical to one that
+    # returned a screenshot, and an agent describing a screen it never saw left no trace of it.
+    - when: { type: user }
+      for_each: "$.message.content"
+      emit:
+        - when: { type: tool_result, is_error: true }
+          event: tool_call
+          with: { tool: "$.name", status: error, input_summary: "$.content" }
     - when: { type: assistant }
       emit:
         - event: usage

@@ -39,6 +39,17 @@ spec:
       emit:
         - event: tool_call
           with: { tool: exec, input_summary: "$.msg.command" }
+    # The OUTCOME arrives on a separate `exec_command_end`. Without it the trace recorded only that
+    # a command was attempted, never whether it worked — a failed command looked like a clean one.
+    # Codex reports a numeric exit code, so it is translated through `exit_code_map` (0 ⇒ ok,
+    # anything else ⇒ error) rather than passed through raw.
+    - when: { msg.type: exec_command_end }
+      emit:
+        - event: tool_call
+          with:
+            tool: exec
+            status: { from: "$.msg.exit_code", map: exit_code_map }
+            input_summary: "$.msg.stdout"
     - when: { msg.type: token_count }
       emit:
         - event: usage
@@ -53,6 +64,12 @@ spec:
       emit:
         - event: result
           with: { status: failure, output: "$.msg.message" }
+  # Codex speaks exit codes, not outcome words. 0 is the only success; everything else is a
+  # failure, including codes we have never seen — `_default` makes that explicit rather than
+  # letting an unknown code fall through as an unreported (and so implicitly fine) call.
+  exit_code_map:
+    "0": ok
+    _default: error
   resume:
     arg: [--session, "{resume.token}"]
   success_when: { exit_code: 0 }
