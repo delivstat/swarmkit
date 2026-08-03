@@ -23,7 +23,8 @@ consolidates with everything else instead of being stranded per-host.
   path for dashboards. This is about SwarmKit's own queryable record.
 - **Not changing the trace shape.** `RunTrace` / `TraceSpan` stay as they are.
 - **Not moving prompts.** The local prompt ring buffer (`prompts.sqlite`) is deliberately
-  machine-local and stays that way.
+  machine-local and stays that way — and it remains the unredacted surface for raw local
+  inspection once traces are redacted.
 - **Not a migration of existing trace files** in the first slice — read-through covers them.
 
 ## Why this is worth doing
@@ -112,6 +113,47 @@ storage:
     retention_days: 90
 ```
 
+## Redaction — decided: yes, and through the audit's policy
+
+Confirmed by inspecting what a trace actually holds, because the scope is narrower than "the
+payload" and that matters:
+
+| field | content | needs redaction |
+| --- | --- | --- |
+| `ToolCall.arguments` | **the full argument dict** | **yes** |
+| `ToolCall.result_length`, `AgentStep.result_length` | lengths only | no |
+| everything else | ids, models, timings, tokens, cost | no |
+
+Tool **results** are not in the trace — only their length — and prompts never were. So exactly one
+field carries content, and it is the one where a credential or a customer record shows up.
+
+Four decisions follow:
+
+1. **Redact at WRITE time, never at read.** The whole reason this matters is that a shared Postgres
+   widens who can read a trace; redacting on the way out would mean the secret was already stored.
+2. **Reuse the audit's policy — do not add `storage.traces.redact`.** `audit/_redact.py` already
+   resolves per-skill `redact:` pointers plus the workspace `audit.level`, and a span is produced by
+   a skill. Two policies would drift, and the drift is one-directional and silent: a pointer added
+   to the audit config, not mirrored into a trace config, reads as "redacted" while the trace keeps
+   leaking. One policy, applied once, before either sink.
+3. **The local file gets the same treatment as the store.** Tempting to keep the file raw for
+   debugging, but the file is what gets tarred up and attached to a bug report — the moment it
+   leaves the host it is no longer the trusted local artifact it was written as. Uniform is also
+   simply easier to reason about than "redacted here, raw there".
+4. **`swarmkit debug` stays the unredacted local surface.** The prompt ring buffer
+   (`prompts.sqlite`) is already documented as never leaving the machine, and it is the right home
+   for raw inspection. Redacting traces does not remove the capability; it moves it to the surface
+   built for it.
+
+**The OTel path needs no change.** `telemetry/_tracer.py` sets metadata only — status, error type,
+provider, token counts — and zero content-bearing attributes. It does not carry `arguments`, so it
+was never leaking and this does not widen it.
+
+The cost of getting this wrong is asymmetric: an over-redacted trace is an annoying debugging
+session, an under-redacted one is a credential in a shared database with an unknown reader set. So
+the default follows the workspace `audit.level` and errs toward the audit's existing posture rather
+than inventing a more permissive one for traces.
+
 ## Test plan
 
 - **Unit.** Round-trip a `RunTrace` through the store; totals land in their columns and match the
@@ -125,6 +167,11 @@ storage:
 - **The CLI gap.** After a `swarmkit run`, `usage_by_run` reports that run's cost. This is the
   outcome that motivates the change, so it gets a test rather than an inference.
 - **Retention.** Pruning removes rows past the window and leaves the files alone.
+- **Redaction.** A workspace `redact: ["$.api_key"]` blanks that key in `ToolCall.arguments` in BOTH
+  the stored row and the file; a trace written under `audit.level: minimal` carries no raw
+  arguments at all; and the redacted value never appears in the persisted JSON — asserted by
+  searching the written payload for the secret, not by trusting the policy call. The OTel export is
+  asserted to remain metadata-only, so a future attribute carrying content fails this test.
 
 ## Demo plan
 
@@ -134,10 +181,13 @@ storage:
 
 ## Open questions
 
-- **Does the trace payload need redaction?** Audit events pass through `audit/_redact.py`. A span
-  carries tool inputs and outputs, which is exactly where a credential shows up. Moving traces into
-  a shared Postgres widens who can read them, so the redaction question arrives with the move rather
-  than after it.
+- **One row or one row per span?** A JSON payload is simple and matches how traces are consumed
+  (whole). Per-span rows would make "which agent burned the tokens" a SQL question instead of a
+  parse. The totals columns are a deliberate middle; if span-level querying is wanted later, that is
+  a second table, not a reshape of this one.
+- **Fleet federation.** Once traces are in Postgres the fleet panel could federate them like jobs.
+  Worth confirming that is wanted before sizing it — it changes the panel from summaries to
+  potentially large payloads.
 - **One row or one row per span?** A JSON payload is simple and matches how traces are consumed
   (whole). Per-span rows would make "which agent burned the tokens" a SQL question instead of a
   parse. The totals columns are a deliberate middle; if span-level querying is wanted later, that is
