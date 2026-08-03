@@ -115,6 +115,15 @@ def _decisions_block(workspace_root: Path | None, correlation_id: str, stage_id:
     )
 
 
+def stage_run_id(correlation_id: str, stage_id: str) -> str:
+    """The run id for one stage of a pipeline run.
+
+    Distinct per stage so traces, checkpoints and audit rows do not collide, prefixed with the
+    correlation id so everything a run produced is still findable together.
+    """
+    return f"{correlation_id}:{stage_id}"
+
+
 def _revision_ref(ref: str, content: str) -> str:
     """A ref that identifies this REVISION of the artifact, not just its slot.
 
@@ -219,8 +228,18 @@ def build_pipeline_run_stage(
             # can show exactly what this node received — recorded before the run so it survives a
             # failed stage too.
             artifact_store.put(correlation_id, sid, stage_input, name="input")
+            # PER-STAGE thread, not the bare correlation id. The thread id becomes both the
+            # LangGraph checkpoint thread AND the trace's run_id, and a trace saves to
+            # `{run_id}.json` — so every stage of a run was overwriting the previous stage's trace,
+            # leaving one file (the last stage's) and destroying per-stage cost and tool history as
+            # the run progressed. Sharing a checkpoint thread was wrong independently: stages run
+            # DIFFERENT topologies, so stage N inherited graph state from a different graph.
+            # The prefix keeps every stage correlated to its run.
             result = await runtime.run(
-                topology, stage_input, max_steps=max_steps, thread_id=correlation_id
+                topology,
+                stage_input,
+                max_steps=max_steps,
+                thread_id=stage_run_id(correlation_id, sid),
             )
         except KeyError:
             return StageOutcome(status="failed", detail=f"unknown topology {topology!r}")
