@@ -24,6 +24,7 @@ import logging
 import os
 import re
 from collections.abc import Mapping
+from contextlib import AsyncExitStack, ExitStack
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -202,6 +203,13 @@ class StorageService:
         self._raw = workspace_raw
         self._targets: dict[StoreKind, StoreTarget] = {}
         self._engines: dict[str, Engine] = {}
+        #: Keeps the checkpointer's connection open for the life of the service. `from_conn_string`
+        #: is a context manager that CLOSES the connection on exit, so a saver taken out of it and
+        #: returned is unusable; entering it here is what makes the checkpointer durable.
+        self._stack = ExitStack()
+        self._astack = AsyncExitStack()
+        #: What `checkpointer()` actually built, for `report()` to tell the truth about.
+        self._checkpoint_effective: str = ""
 
     @classmethod
     def for_workspace(cls, root: Path | str, workspace_raw: Any = None) -> StorageService:
@@ -360,21 +368,66 @@ class StorageService:
 
         return MembershipStore(self.engine(StoreKind.FLEET))
 
-    def checkpointer(self) -> Any:
+    async def checkpointer(self) -> Any:
+        """The LangGraph checkpointer for run state. ASYNC, because the runtime is.
+
+        Three things were wrong here, all silent:
+
+        1. ``from_conn_string`` is a ``@contextmanager`` on every saver — it *yields* the saver and
+           closes the connection on exit. Returning its result handed callers a
+           ``_GeneratorContextManager`` with no ``get_tuple``/``put``.
+        2. On the postgres branch, ``.setup()`` was called on that context manager, raising
+           ``AttributeError`` before anything else could run.
+        3. With the sqlite saver absent the runtime fell back to an in-memory saver while
+           ``storage status`` still reported "sqlite workspace-local".
+
+        And the sync savers cannot serve this runtime at all: every graph is driven with
+        ``ainvoke``, and ``SqliteSaver`` raises "does not support async methods". So the ASYNC
+        savers are the only correct choice, entered on a stack held by this service so the
+        connection outlives the call that made it.
+        """
         target = self.target(StoreKind.CHECKPOINTS)
         if target.backend == "postgres":
-            from langgraph.checkpoint.postgres import PostgresSaver  # noqa: PLC0415
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # noqa: PLC0415
 
-            saver = PostgresSaver.from_conn_string(target.url)
-            saver.setup()
-            return saver
+            pg: Any = await self._astack.enter_async_context(
+                AsyncPostgresSaver.from_conn_string(target.url)
+            )
+            await pg.setup()  # on the SAVER, not on the context manager
+            self._checkpoint_effective = "postgres"
+            return pg
         try:
-            from langgraph.checkpoint.sqlite import SqliteSaver  # noqa: PLC0415
+            from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # noqa: PLC0415
         except ImportError:
             from langgraph.checkpoint.memory import MemorySaver  # noqa: PLC0415
 
+            # LOUD. Falling back silently made `storage status` report "checkpoints sqlite
+            # workspace-local" while run state lived in memory and vanished on restart — a resumable
+            # run that could not be resumed, with a status line saying otherwise.
+            logger.warning(
+                "checkpoints: langgraph-checkpoint-sqlite is not installed, so run state is IN "
+                "MEMORY and is lost when this process exits. `swarmkit checkpoints` will find "
+                "nothing to resume. Install it (it ships with swarmkit-runtime by default) or set "
+                "storage.checkpoints.backend explicitly."
+            )
+            self._checkpoint_effective = "memory"
             return MemorySaver()
-        return SqliteSaver.from_conn_string(target.url.removeprefix("sqlite:///"))
+        saver: Any = await self._astack.enter_async_context(
+            AsyncSqliteSaver.from_conn_string(target.url.removeprefix("sqlite:///"))
+        )
+        await saver.setup()
+        self._checkpoint_effective = "sqlite"
+        return saver
+
+    async def aclose(self) -> None:
+        """Release the checkpointer connection. Idempotent."""
+        await self._astack.aclose()
+        self._astack = AsyncExitStack()
+
+    def close(self) -> None:
+        """Release non-checkpointer resources. Idempotent."""
+        self._stack.close()
+        self._stack = ExitStack()
 
     # ---- what it chose -------------------------------------------------------------------------
 
@@ -385,7 +438,14 @@ class StorageService:
         for kind in StoreKind:
             t = self.target(kind)
             where = redacted_url(t.url) if t.backend == "postgres" else "workspace-local"
-            lines.append(f"  {kind.value:<12} {t.backend:<9} {where}  ({t.source})")
+            backend, source = t.backend, t.source
+            # Report what was actually BUILT when that differs from what was configured — the
+            # status line claiming sqlite while run state sat in memory is the failure this exists
+            # to prevent.
+            if kind is StoreKind.CHECKPOINTS and self._checkpoint_effective == "memory":
+                backend, where = "memory", "in-process (NOT durable)"
+                source = f"{t.source} → memory (langgraph-checkpoint-sqlite not installed)"
+            lines.append(f"  {kind.value:<12} {backend:<9} {where}  ({source})")
         return lines
 
     def log_report(self) -> None:
