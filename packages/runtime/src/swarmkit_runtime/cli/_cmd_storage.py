@@ -152,7 +152,7 @@ def _migration_plan(
 
 
 def _run_migration(service: Any, counted: list[tuple[Path, str, str, int]]) -> tuple[int, int]:
-    """Copy each planned table. Returns (copied, already-present)."""
+    """Copy each planned table, then re-sync the sequences. Returns (copied, already-present)."""
     from swarmkit_runtime.persistence._store import make_engine  # noqa: PLC0415
 
     # Create the destination schema first: the tables are defined by the modules that own them, and
@@ -160,8 +160,11 @@ def _run_migration(service: Any, counted: list[tuple[Path, str, str, int]]) -> t
     _ensure_schema(service)
 
     copied = skipped = 0
+    engines: list[Any] = []
     for source, table, _url, _rows in counted:
         dest_engine = service.engine(_KIND_FOR_FILE[source.name])
+        if not any(e is dest_engine for e in engines):
+            engines.append(dest_engine)
         src_engine = make_engine(f"sqlite:///{source}")
         try:
             dest_table = _reflect(dest_engine, table)
@@ -174,7 +177,88 @@ def _run_migration(service: Any, counted: list[tuple[Path, str, str, int]]) -> t
         copied += n_copied
         skipped += n_skipped
         typer.echo(f"  {table:<28} copied {n_copied:>7}   already present {n_skipped:>7}")
+
+    # Rows were inserted WITH their original ids, which leaves every owning sequence exactly where
+    # it started. The next insert then reuses an id that is already there and dies on the primary
+    # key — `pipeline_events` first, so no pipeline can be started at all. Reads all work, so the
+    # store looks migrated right up until the first write. A migration that leaves the destination
+    # unwritable has not succeeded, whatever its row counts say.
+    for engine in engines:
+        _resync_sequences(engine)
     return copied, skipped
+
+
+def _owned_sequences(engine: Any) -> list[tuple[str, str, str]]:
+    """Every sequence owned by a column, as (sequence, table, column).
+
+    Read from ``pg_depend`` rather than a hard-coded list so a table added later is covered without
+    anyone remembering to update this file — the failure mode being avoided is silent and only
+    shows up on someone's next write.
+
+    Scoped to ``current_schema()``. A Postgres instance is routinely shared, and SwarmKit's tables
+    are only ever one schema of it; re-syncing sequences that belong to somebody else's application
+    is not this command's business.
+    """
+    from sqlalchemy import text  # noqa: PLC0415
+
+    with engine.connect() as conn:
+        return [
+            (row[0], row[1], row[2])
+            for row in conn.execute(
+                text("""
+                SELECT n.nspname || '.' || s.relname, t.relname, a.attname
+                FROM pg_class s
+                JOIN pg_namespace n ON n.oid = s.relnamespace
+                JOIN pg_depend d ON d.objid = s.oid AND d.classid = 'pg_class'::regclass
+                JOIN pg_class t ON t.oid = d.refobjid
+                JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+                WHERE s.relkind = 'S' AND d.deptype IN ('a', 'i')
+                  AND n.nspname = current_schema()
+                """)
+            )
+        ]
+
+
+def _resync_sequences(engine: Any) -> list[tuple[str, int]]:
+    """Advance every owned sequence past its column's current maximum.
+
+    Returns the (table, max) pairs that were actually moved. Raises when a sequence is still behind
+    afterwards: reporting success over a store that cannot accept an insert is the whole bug.
+    """
+    from sqlalchemy import text  # noqa: PLC0415
+
+    if engine.dialect.name != "postgresql":
+        return []
+
+    moved: list[tuple[str, int]] = []
+    stale: list[str] = []
+    for sequence, table, column in _owned_sequences(engine):
+        with engine.begin() as conn:
+            current = conn.execute(text(f'SELECT max("{column}") FROM "{table}"')).scalar()
+            if current is None:
+                # An empty table must keep its sequence at "next value is 1". setval(seq, 1, true)
+                # would silently burn id 1 — a smaller bug than the one being fixed, but the same
+                # kind, so it is not worth trading one for the other.
+                conn.execute(text("SELECT setval(:seq, 1, false)"), {"seq": sequence})
+                continue
+            before = conn.execute(text("SELECT last_value FROM " + sequence)).scalar()
+            conn.execute(
+                text("SELECT setval(:seq, :val, true)"), {"seq": sequence, "val": int(current)}
+            )
+            after = conn.execute(text("SELECT last_value FROM " + sequence)).scalar()
+            if int(after or 0) < int(current):
+                stale.append(f"{table}.{column}")
+            elif int(before or 0) < int(current):
+                moved.append((table, int(current)))
+                typer.echo(f"  {table + '.' + column:<28} sequence advanced to {current:>7}")
+
+    if stale:
+        raise typer.BadParameter(
+            "sequences are still behind their table after re-sync: "
+            + ", ".join(stale)
+            + " — the store would reject the next insert, so the migration is not complete."
+        )
+    return moved
 
 
 def _sqlite_count(path: Path, table: str) -> int:
@@ -215,7 +299,7 @@ def _reflect(engine: Any, table: str) -> Any:
 
 def _copy_table(src_engine: Any, dest_engine: Any, dest_table: Any, table: str) -> tuple[int, int]:
     """Insert every source row that is not already present. Returns (copied, skipped)."""
-    from sqlalchemy import text  # noqa: PLC0415
+    from sqlalchemy import func, select, text  # noqa: PLC0415
     from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: PLC0415
 
     columns = [c.name for c in dest_table.columns]
@@ -230,9 +314,14 @@ def _copy_table(src_engine: Any, dest_engine: Any, dest_table: Any, table: str) 
     # second attempt dies on the first already-copied row and the operator is left guessing how far
     # the first one got.
     stmt = pg_insert(dest_table).on_conflict_do_nothing()
+    # Count either side of the insert instead of trusting `rowcount`: psycopg reports -1 for an
+    # executemany, so a migration that copied every row reported "0 copied, N already present" —
+    # indistinguishable from a re-run that did nothing.
     with dest_engine.begin() as dest:
-        result = dest.execute(stmt, payload)
-    copied = int(result.rowcount) if result.rowcount and result.rowcount > 0 else 0
+        before = dest.execute(select(func.count()).select_from(dest_table)).scalar() or 0
+        dest.execute(stmt, payload)
+        after = dest.execute(select(func.count()).select_from(dest_table)).scalar() or 0
+    copied = max(0, int(after) - int(before))
     return copied, len(payload) - copied
 
 

@@ -7,6 +7,8 @@ you declared, that `swarmkit validate` accepted, that never ran — and a run th
 Read this before assuming a topology behaves the same on `executor.kind: harness` as it did on
 `model`. Add to it when you find another one.
 
+Bugs outside the harness path go in the general ledger, [reported-bugs.md](reported-bugs.md).
+
 ## The invariant these all violate
 
 `design/details/executor-abstraction.md`: a harness node is a **node**. Everything the declarative
