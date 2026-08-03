@@ -589,14 +589,34 @@ async def _execute(  # noqa: PLR0912, PLR0915
                         )
                     elif isinstance(event, ExecToolCall):
                         round_did_work = True
+                        # `result_length` is the length of the RESULT. It used to be given
+                        # len(input_summary) — the length of the ARGUMENTS — so a tool that
+                        # returned nothing still showed a healthy-looking number, purely because
+                        # its input was long. A `view_image` on a path that does not resolve
+                        # recorded exactly like one that returned an image, which is how a design
+                        # agent could describe screens it never saw with nothing in the trace to
+                        # say so. Carry the outcome instead of inventing one.
+                        # `event.status` is already normalized to ok/error/"" across harnesses
+                        # (see `normalize_tool_status`), so this stays vendor-agnostic.
                         meter.tool_calls.append(
-                            ToolCall(tool_name=event.tool, result_length=len(event.input_summary))
+                            ToolCall(
+                                tool_name=event.tool,
+                                arguments={"input": event.input_summary}
+                                if event.input_summary
+                                else {},
+                                error="tool reported failure" if event.status == "error" else None,
+                            )
                         )
+                        # Most harnesses report a tool's invocation and its OUTCOME as two separate
+                        # events, so the live stream would otherwise print the same tool twice with
+                        # nothing to tell the two lines apart. Mark the outcome when there is one —
+                        # a watching operator needs to see the failure, not a repeated name.
+                        outcome = {"ok": " ✓", "error": " ✗"}.get(event.status, "")
                         emit_progress(
                             ProgressEvent(
                                 agent_id,
                                 "tool",
-                                f"{event.tool}({summarize(str(event.input_summary), 60)})",
+                                f"{event.tool}({summarize(str(event.input_summary), 60)}){outcome}",
                                 detail=str(event.input_summary),
                             )
                         )

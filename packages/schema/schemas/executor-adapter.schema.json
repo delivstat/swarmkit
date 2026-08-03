@@ -44,6 +44,14 @@
     "spec": {
       "type": "object",
       "additionalProperties": false,
+      "patternProperties": {
+        "^(?!event_map$)[a-z][a-z0-9_]*_map$": {
+          "type": "object",
+          "$comment": "`event_map` is excluded: it ends in _map but is the rule list, not a lookup table.",
+          "description": "A named translation table. A `{from, map}` value in an emit names one of these; `_default` covers unlisted values. `status_map` classifies the run's terminal status; a harness that reports some other enum — a tool outcome, an exit code — declares its own table here rather than requiring a runtime change, because adapters are data.",
+          "additionalProperties": { "type": "string" }
+        }
+      },
       "required": ["launch", "stream", "event_map"],
       "allOf": [
         {

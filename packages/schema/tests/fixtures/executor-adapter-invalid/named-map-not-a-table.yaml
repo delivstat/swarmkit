@@ -1,0 +1,28 @@
+# A `*_map` name must hold a flat lookup table of strings. Here `tool_status_map` is a list, which
+# an emit's `{from, map}` could never translate through — caught at validation rather than silently
+# resolving to nothing at runtime, which is exactly the class of failure this surface exists to end.
+apiVersion: swarmkit/v1
+kind: ExecutorAdapter
+metadata:
+  id: named-map-not-a-table
+  name: Named map is not a table
+  description: >-
+    Invalid fixture — a named translation table declared as a list instead of an object.
+spec:
+  launch:
+    command: [invented-harness]
+  stream:
+    format: jsonl
+  event_map:
+    - when: { type: tool_result }
+      emit:
+        - event: tool_call
+          with:
+            tool: "$.name"
+            status: { from: "$.state", map: tool_status_map }
+  tool_status_map:
+    - completed
+    - blew_up
+provenance:
+  authored_by: human
+  version: 0.1.0

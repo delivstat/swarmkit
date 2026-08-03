@@ -42,13 +42,64 @@ class ExecMessage:
     text: str
 
 
+# A tool call's outcome, normalized across harnesses. Every vendor spells this differently —
+# opencode says "completed"/"error", claude-code reports it out-of-band as `is_error` on a later
+# tool_result, codex as an exit code on exec_command_end, gemini as its own status enum. Downstream
+# consumers (trace, cockpit, cost meter) must not each learn four vocabularies, so adapters may emit
+# whatever their vendor says and `normalize_tool_status` collapses it here.
+#
+# "" means *unknown*, and is deliberately distinct from "ok": a harness that never reports outcomes
+# must not have its silence read as success. That conflation is what let a `view_image` that
+# returned nothing render in the trace as a healthy call.
+ExecToolStatus = Literal["", "ok", "error"]
+
+_TOOL_STATUS_OK = frozenset({"ok", "success", "succeeded", "completed", "complete", "done"})
+_TOOL_STATUS_ERROR = frozenset(
+    {
+        "error",
+        "errored",
+        "failure",
+        "failed",
+        "denied",
+        "rejected",
+        "timeout",
+        "timed_out",
+        "cancelled",
+        "canceled",
+        "aborted",
+    }
+)
+# Deliberately mapped to unknown rather than ok — a call still in flight has no outcome yet.
+_TOOL_STATUS_PENDING = frozenset({"pending", "running", "in_progress", "started", "begin"})
+
+
+def normalize_tool_status(raw: str) -> ExecToolStatus:
+    """Collapse a vendor's tool-outcome word into ``ok`` / ``error`` / ``""`` (unknown).
+
+    Unrecognized values normalize to unknown, not to either pole: a harness whose vocabulary we have
+    not learned yet should show up as *unreported*, never as a confident success or a false alarm.
+    """
+    token = raw.strip().lower().replace("-", "_")
+    if token in _TOOL_STATUS_OK:
+        return "ok"
+    if token in _TOOL_STATUS_ERROR:
+        return "error"
+    if token in _TOOL_STATUS_PENDING or not token:
+        return ""
+    return ""
+
+
 @dataclass(frozen=True)
 class ExecToolCall:
-    """A tool invocation inside the harness (its own tools, not SwarmKit skills)."""
+    """A tool invocation inside the harness (its own tools, not SwarmKit skills).
+
+    ``status`` is the normalized outcome (``ExecToolStatus``), not the vendor's raw word — see
+    ``normalize_tool_status``. It is ``""`` when the harness reported no outcome.
+    """
 
     tool: str
     input_summary: str = ""
-    status: str = ""
+    status: ExecToolStatus = ""
 
 
 @dataclass(frozen=True)

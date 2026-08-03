@@ -151,6 +151,10 @@ class AdapterSpec:
     launch: LaunchSpec
     event_map: tuple[Rule, ...]
     status_map: Mapping[str, str] = field(default_factory=dict)
+    # Every top-level ``*_map`` block, by name (``status_map`` included). A ``{from, map}`` value in
+    # an emit names one of these. Adapters are data: a harness whose vocabulary needs a second
+    # translation table — an exit code, a tool-outcome enum — adds a block here, not a code change.
+    maps: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     resume_arg: tuple[str, ...] = ()
     resume_prompt: str | None = None
     # park-resume grant plumbing (RFC §6.2): how an approved capability is passed on relaunch, and
@@ -233,6 +237,11 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
         launch=launch,
         event_map=tuple(_rule(r) for r in spec["event_map"]),
         status_map=dict(spec.get("status_map") or {}),
+        maps={
+            key: {str(k): str(v) for k, v in (value or {}).items()}
+            for key, value in spec.items()
+            if key.endswith("_map") and isinstance(value, dict)
+        },
         resume_arg=tuple(resume.get("arg") or ()),
         resume_prompt=resume.get("prompt"),
         grant_arg=tuple(grant.get("arg") or ()),

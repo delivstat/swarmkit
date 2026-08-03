@@ -45,6 +45,7 @@ from swarmkit_runtime.executors._events import (
     ExecResultStatus,
     ExecStarted,
     ExecToolCall,
+    ExecToolStatus,
     ExecUsage,
 )
 from swarmkit_runtime.executors._image import build_harness_image
@@ -80,6 +81,7 @@ __all__ = [
     "ExecResultStatus",
     "ExecStarted",
     "ExecToolCall",
+    "ExecToolStatus",
     "ExecUsage",
     "Executor",
     "ExecutorError",
