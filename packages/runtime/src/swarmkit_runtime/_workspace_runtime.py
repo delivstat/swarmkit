@@ -354,11 +354,36 @@ class WorkspaceRuntime:
             mcp_manager=mcp_manager,
         )
 
-    def _get_checkpointer(self) -> Any:
-        """Get or create the checkpointer for run state persistence."""
+    async def _compiled(self, topology_name: str) -> Any:
+        """Compile *topology_name* with a live checkpointer. The run paths use this, not
+        ``compile()`` directly, because the saver has to exist before the graph is built."""
+        await self._ensure_checkpointer()
+        return self.compile(topology_name)
+
+    async def _ensure_checkpointer(self) -> Any:
+        """Build the checkpointer once, before anything compiles a graph.
+
+        Async because the runtime drives every graph with ``ainvoke``, so only the ASYNC savers
+        work — the sync ones raise "does not support async methods". Awaited at the top of the run
+        paths rather than inside ``compile()``, which stays sync for callers that only inspect a
+        graph.
+        """
         if not hasattr(self, "_checkpointer"):
-            self._checkpointer = self._storage().checkpointer()
+            self._checkpointer = await self._storage().checkpointer()
         return self._checkpointer
+
+    def _get_checkpointer(self) -> Any:
+        """The checkpointer built by :meth:`_ensure_checkpointer`, or None.
+
+        None (not a memory saver) when nothing has been built: a graph compiled purely to be
+        inspected gets no checkpointer, which is what it had before this was wired up. Anything
+        that RUNS goes through ``_ensure_checkpointer`` first.
+        """
+        return getattr(self, "_checkpointer", None)
+
+    async def aclose(self) -> None:
+        """Release the checkpointer's connection. Idempotent."""
+        await self._storage().aclose()
 
     def compile(self, topology_name: str) -> CompiledStateGraph[Any]:
         """Compile a named topology into a LangGraph graph.
@@ -537,7 +562,7 @@ class WorkspaceRuntime:
         from swarmkit_runtime.langgraph_compiler._run_context import run_context  # noqa: PLC0415
         from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
 
-        graph = self.compile(topology_name)
+        graph = await self._compiled(topology_name)
         topology = self._workspace.topologies[topology_name]
         run_thread = thread_id or str(uuid4())
 
@@ -672,6 +697,7 @@ class WorkspaceRuntime:
         Rehydrates graph state from the SQLite checkpoint and continues
         execution from where it was interrupted (e.g., after HITL defer).
         """
+        await self._ensure_checkpointer()
         graph = self.compile(topology_name)
         topology = self._workspace.topologies[topology_name]
 
