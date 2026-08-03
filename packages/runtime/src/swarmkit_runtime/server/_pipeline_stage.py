@@ -81,7 +81,44 @@ def _stage_input(
     return _prior_input(artifact_store, correlation_id)
 
 
-def _decisions_block(workspace_root: Path | None, correlation_id: str, stage_id: str) -> str:
+def _saga_decisions(saga: Any, stage_id: str) -> list[Any]:
+    """Decisions recorded on the saga timeline rather than the review store.
+
+    Two routes carry a reviewer's comment. The review store is the good one:
+    `/review/{item}/resolve` mints a resolved item and `decisions_for_gate` reads it. But
+    `approvals:resolve` is reserved for
+    human identity, so under `auth: none` that endpoint 403s and callers fall back to enqueuing a
+    `rework` controller event — where the comment rides in the event payload and lands on the
+    timeline.
+
+    Both routes converge here, on one rendering mechanism, so comment delivery no longer depends on
+    which auth provider serve happens to be running. The identity is labelled
+    ``operator-override`` because that is what it is: a decision recorded without an authenticated
+    reviewer behind it, and the agent should be able to weigh it accordingly.
+    """
+    from swarmkit_runtime.review._decisions import HumanDecision  # noqa: PLC0415
+
+    out: list[Any] = []
+    for entry in getattr(saga, "timeline", None) or []:
+        meta = getattr(entry, "meta", None) or {}
+        comment = str(meta.get("comment", "") or "")
+        if not comment or entry.stage_id != stage_id:
+            continue
+        out.append(
+            HumanDecision(
+                outcome="changes-requested",
+                identity=str(meta.get("identity", "") or "operator-override"),
+                comment=comment,
+                artifact_ref=str(meta.get("artifact_ref", "") or ""),
+                round=int(meta.get("round", 0) or 0),
+            )
+        )
+    return out
+
+
+def _decisions_block(
+    workspace_root: Path | None, correlation_id: str, stage_id: str, saga: Any = None
+) -> str:
     """What humans decided about this stage so far, rendered for the agent.
 
     Empty until someone has decided something. On a rework loop this is how the agent learns WHY it
@@ -100,15 +137,21 @@ def _decisions_block(workspace_root: Path | None, correlation_id: str, stage_id:
     items = [
         i for i in FileReviewQueue(workspace_root).list_all() if i.output.get("gate_id") == gate_id
     ]
+    decisions = decisions_for_gate(items) + _saga_decisions(saga, stage_id)
+    if not decisions:
+        return ""
     # The newest round's artifact is "current": anything from an earlier round is stale, which is
     # precisely the rework case this block exists to explain.
     current = max((i.artifact_ref for i in items if i.artifact_ref), default="", key=lambda r: r)
-    newest_round = max((i.round for i in items), default=0)
+    newest_round = max((d.round for d in decisions), default=0)
     current = next(
         (i.artifact_ref for i in items if i.round == newest_round and i.artifact_ref), current
     )
+    current = next(
+        (d.artifact_ref for d in decisions if d.round == newest_round and d.artifact_ref), current
+    )
     return render_decisions(
-        decisions_for_gate(items),
+        decisions,
         gate_id=gate_id,
         current_artifact=current,
         current_round=newest_round,
@@ -220,7 +263,10 @@ def build_pipeline_run_stage(
             # Human decisions about THIS stage (a rework loop) and about the upstream one (an
             # approval with conditions) both belong in what the agent reads.
             decisions = _decisions_block(
-                getattr(runtime, "workspace_root", None), correlation_id, sid
+                getattr(runtime, "workspace_root", None),
+                correlation_id,
+                sid,
+                saga_store.get(correlation_id),
             )
             if decisions:
                 stage_input = f"{stage_input}\n\n{decisions}" if stage_input else decisions

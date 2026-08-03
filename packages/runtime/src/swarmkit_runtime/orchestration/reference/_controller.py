@@ -168,7 +168,41 @@ class ReferenceController:
         saga.pending_gate_stage = None
         saga.status = "active"
         saga.attempts[str(stage)] = saga.attempts.get(str(stage), 0) + 1
-        saga.add("resumed", stage_id=stage, detail="changes requested — re-running the stage")
+
+        # The comment is the whole reason this is a rework and not a re-run. It used to be dropped:
+        # `data["detail"]` was never read and the fixed string below overwrote the timeline detail,
+        # so the reviewer's reason reached neither the agent nor a later human reader. The stage
+        # then reproduced substantially the same output and the reviewer had no way to tell why.
+        #
+        # This path is the break-glass one: when serve runs `auth: none`, `/review/{item}/resolve`
+        # 403s (`approvals:resolve` is reserved for human identity) and callers fall back to
+        # enqueuing this event, so the comment travels only here. Losing it made comment delivery
+        # depend on the auth provider, with nothing different for the reviewer to see.
+        comment = str(data.get("detail", "") or "").strip()
+        note = "changes requested — re-running the stage"
+        saga.add(
+            "resumed",
+            stage_id=stage,
+            detail=f"{note}: {comment}" if comment else note,
+            # Stamped with the round and the artifact it was written against, so the re-run can tell
+            # a note about the revision it just wrote from one about the draft two rounds ago.
+            meta={
+                "comment": comment,
+                "round": saga.attempts.get(str(stage), 0),
+                "artifact_ref": saga.artifacts.get(str(stage), ""),
+                "identity": str(data.get("identity", "") or "operator-override"),
+            }
+            if comment
+            else {},
+        )
+        if not comment:
+            # Not silent: a rework with no reason is a legitimate action, but it is also what a
+            # dropped comment looks like, and those two must not be indistinguishable in the log.
+            logger.info(
+                "rework for correlation %r carries no comment — the re-run will have no reviewer "
+                "feedback to act on",
+                correlation_id,
+            )
         self._store.save(saga)
         await self._drive(saga)
 
