@@ -8,13 +8,102 @@ do not delete entries when they are fixed — the value is in the pattern.
 
 ## Open
 
-| Bug | Component | Note |
-| --- | --- | --- |
-| Decision skills never run on a harness executor, including `required: true` | `_compiler.py` | [harness-parity-gaps](harness-parity-gaps.md) #2 |
-| `output_schema` ignored on the harness path | `_harness_node.py` | [harness-parity-gaps](harness-parity-gaps.md) #3 |
-| `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
-| Images reach a model only via MCP `ImageContent`; relative paths resolve nowhere | sandbox + gateway | [harness-parity-gaps](harness-parity-gaps.md) #5 |
-| `/jobs` shows only in-flight jobs; `/jobs/history` exists server-side, unused by the UI | web UI | — |
+Ordered by how much damage the bug does while looking fine.
+
+| # | Bug | Component | Detail |
+| --- | --- | --- | --- |
+| 9 | A failed stage's error string is handed to the next stage as its input | stage chaining | [below](#9-a-failed-stages-error-becomes-the-next-stages-input) |
+| 10 | MCP gateway drops `ImageContent`, so a harness agent can never see an image | `mcp/_gateway.py` | [below](#10-the-mcp-gateway-drops-imagecontent) |
+| 2 | Decision skills never run on a harness executor, including `required: true` | `_compiler.py` | [harness-parity-gaps](harness-parity-gaps.md) #2 |
+| 3 | `output_schema` ignored on the harness path | `_harness_node.py` | [harness-parity-gaps](harness-parity-gaps.md) #3 |
+| 7 | Portal advertises an OIDC login that cannot be configured in the published build | swarmkit-webui | [below](#7--8-the-portals-oidc-client-cannot-be-configured) |
+| 8 | `client_id`/`scope` should come from `/auth-info`; no token path in `jwt` mode | auth + webui | [below](#7--8-the-portals-oidc-client-cannot-be-configured) |
+| 11 | `auth: none` cannot carry a named operator, so gates are unapprovable locally | `auth/_none.py` | [below](#11-auth-none-cannot-name-its-operator-feature-request) |
+| 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
+| 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
+| — | `/jobs` shows only in-flight jobs; `/jobs/history` exists server-side, unused by the UI | web UI | — |
+
+### 9. A failed stage's error becomes the next stage's input
+
+When a stage's agent fails, the failure message is stored as that stage's **output** and handed to
+the next stage as its **input**. On WMS-1: triage output was 46 bytes reading
+`[harness:claude-code] failure: no result event`, and design's input was *the same 46 bytes*. Design
+replied "I'm ready to help — what would you like to work on?", the gate parked on that, and a human
+was asked to approve work that was never attempted. The saga reported `parked` throughout.
+
+Three things compound: the pipeline advances **past** a failure; the original error is destroyed
+when design's output replaces it; and money is spent running an agent on an input that cannot
+succeed.
+
+The runtime already knows these strings are not work — `_is_error_passthrough()` in `_drift.py`
+(verified: used at `_compiler.py:481` to skip drift scoring) recognises them and then they are
+chained onward anyway.
+
+**Fix direction:** a stage result carrying an explicit `ok: bool` / `error: str | None` rather than
+a string prefix match, so a failed stage fails the saga (or parks **on the failure**), the error
+survives as the failure reason, and the gate UI can say "triage failed" instead of rendering an
+error as a document. Related: gap #2 means the `post_output` conformance check that would have
+rejected a 46-byte output never ran either — the two together are why this reached a human unnoticed.
+
+### 10. The MCP gateway drops `ImageContent`
+
+`_to_content()` is text-only by construction: it reads `.text` off each block, and `ImageContent`
+carries `.data` + `.mimeType` instead — so every image block is skipped. When a response is *only*
+images, the fallback stringifies the response and the agent receives
+`Image: screen1.png (.png, 14960 bytes base64)`. Verified: only `TextContent` is imported
+(`_gateway.py:119`), so there is currently no type available to re-emit an image with.
+
+A **model** node handles images correctly; the loss is specific to the gateway, which is the
+harness's only route to MCP. So the same skill on the same workspace works on a model node and
+silently degrades on a harness — and it degrades to something that reads as a successful call.
+
+This is the other half of the image failure that 1.135.0 made *visible*. That release ensured a
+failed tool call is traced as a failure; this one is worse, because the call genuinely **succeeds**
+— the bytes are read and then discarded in the last step before the harness sees them.
+
+**Fix direction:** re-emit image blocks (MCP's `CallToolResult` permits mixed content and Claude
+Code renders them). If images are deliberately not forwarded, say so explicitly — a `DENIED`-style
+message — rather than a repr that reads like success.
+
+### 7 & 8. The portal's OIDC client cannot be configured
+
+`client_id` is read from `NEXT_PUBLIC_OIDC_CLIENT_ID`, which Next.js inlines at build time and which
+is not inlined in the published artifact — it evaluates to `""` on every load against the browser
+`process` polyfill. There is no runtime escape hatch in the static export, so the published wheel
+cannot be pointed at any identity provider, and the failure is silent in both UI and server log.
+
+**Fix direction (report 8, option 1):** serve `client_id` and `scope` from `/auth-info`, which
+already carries `issuer` and `audience` and exists precisely so a client can render the right login
+gate before it holds a token. That makes it workspace configuration, so one published wheel works
+for every deployment. Plus: fail loudly when it is still empty; keep a token-entry affordance in
+`jwt` mode (the bearer path already works, and today any breakage in the redirect flow locks the
+portal completely); and move to a single `/auth/callback` redirect URI restoring the path from
+`state`, since `origin + pathname` forces every IdP to be configured with a wildcard.
+
+Worth documenting either way: serve takes identity from `sub` and matches it against `members:` in
+`swarm/roles.yaml`. Most IdPs put a UUID in `sub`, which authenticates fine and then fails every
+role check with a 403 indistinguishable from being unauthenticated.
+
+### 11. `auth: none` cannot name its operator (feature request)
+
+`NoneAuthProvider` hands out `client_id="anonymous"` with `scopes={"*"}` and an `authorize()` that
+returns `True` unconditionally (verified). The approval engine does not consult scopes — it matches
+`client_id` against `members:` in `swarm/roles.yaml`. So `anonymous` is refused not for lacking
+authority but for being nobody: a mode that permits every action makes the one action depending on
+identity impossible.
+
+Consequence: a single operator on a laptop must stand up an IdP to click Approve on their own
+machine, which is why the approval path in that workspace went unexercised — and why the
+break-glass event route (the one that dropped comments until 1.137.0) gets used at all. **This is
+the root cause behind the rework bug, not merely adjacent to it.**
+
+**Fix direction:** optional `identity` / `identity_name` on `provider: none`, defaulting to today's
+`anonymous` so nothing existing moves. Granting a name grants no capability that mode does not
+already give. Guardrails worth shipping with it: keep the existing loopback-only refusal explicitly
+covering the named case; record `provider="none"` in the audit so "verified by an IdP" stays
+distinguishable from "someone on loopback claimed to be srijith"; and warn at startup when the
+configured identity matches no role member — the same warning catches the `sub`-is-a-UUID mistake
+under `jwt`.
 
 ## Fixed
 
@@ -103,8 +192,10 @@ Nearly every entry above is the same bug wearing different clothes:
 > **Information exists, nothing surfaces it, and absence renders as success.**
 
 The sequence was knowable. The tool's failure was in the stream. The checkpointer knew it had
-degraded. The trace knew it was overwriting a file. In each case something computed the truth and
-then dropped it, and the layer above printed a confident status line over the gap.
+degraded. The trace knew it was overwriting a file. The gateway had the image bytes in hand. The
+compiler already recognised a failed stage's output as not-agent-reasoning, and chained it onward
+anyway. In each case something computed the truth and then dropped it, and the layer above printed a
+confident status line over the gap.
 
 Two working rules follow:
 
@@ -113,6 +204,10 @@ Two working rules follow:
    over a store it has left unwritable.
 2. **"Unknown" is not "fine".** Where a status can be unreported, model it as a third value rather
    than folding it into the healthy one. That is why `ExecToolStatus` is `""` / `ok` / `error`.
+3. **If the code already knows, use what it knows.** Bug 9's error strings are recognised by
+   `_is_error_passthrough` and then chained as input regardless; bug 10 reads the image bytes and
+   drops them one step before delivery. When a predicate exists for "this is not real output",
+   every consumer of that output should be asking it, not just the one that happened to need it.
 
 And a testing rule, learned repeatedly: **these bugs are invisible to mocked tests.** The sequence
 bug needed a real Postgres; the governance bug needed a real run. Unit tests are for coverage; a
