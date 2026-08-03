@@ -607,11 +607,16 @@ async def _execute(  # noqa: PLR0912, PLR0915
                                 error="tool reported failure" if event.status == "error" else None,
                             )
                         )
+                        # Most harnesses report a tool's invocation and its OUTCOME as two separate
+                        # events, so the live stream would otherwise print the same tool twice with
+                        # nothing to tell the two lines apart. Mark the outcome when there is one —
+                        # a watching operator needs to see the failure, not a repeated name.
+                        outcome = {"ok": " ✓", "error": " ✗"}.get(event.status, "")
                         emit_progress(
                             ProgressEvent(
                                 agent_id,
                                 "tool",
-                                f"{event.tool}({summarize(str(event.input_summary), 60)})",
+                                f"{event.tool}({summarize(str(event.input_summary), 60)}){outcome}",
                                 detail=str(event.input_summary),
                             )
                         )
