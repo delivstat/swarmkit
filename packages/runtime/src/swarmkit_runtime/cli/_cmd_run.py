@@ -20,6 +20,7 @@ from swarmkit_runtime._workspace_runtime import (
     WorkspaceRuntime,
 )
 from swarmkit_runtime.errors import ResolutionErrors
+from swarmkit_runtime.progress import ProgressEvent, set_progress_sink
 
 from ._app import app
 from ._common import (
@@ -106,6 +107,11 @@ def run(  # noqa: PLR0912
 
     if verbose:
         os.environ["SWARMKIT_VERBOSE"] = "1"
+        # Live progress while the run is in flight. A harness node used to print nothing for the
+        # whole run — minutes of silence indistinguishable from a hang. The CLI prints `detail`
+        # (the harness's own text) because a local terminal already holds the workspace and its
+        # credentials; serve publishes summaries only (harness-progress-stream.md).
+        set_progress_sink(_print_progress)
 
     if resume:
         result = _execute_resume(runtime, topology_name, workspace_path)
@@ -358,6 +364,14 @@ def eval_(
 
 
 # ---- dry run -------------------------------------------------------------
+
+
+def _print_progress(event: ProgressEvent) -> None:
+    """One line per event as it happens, with the harness's own text indented under it."""
+    typer.echo(f"  · [{event.agent_id}] {event.summary}")
+    if event.kind == "message" and event.detail.strip() != event.summary.strip():
+        for line in event.detail.strip().splitlines():
+            typer.echo(f"      {line}")
 
 
 def _print_dry_run(runtime: WorkspaceRuntime, topology_name: str) -> None:
