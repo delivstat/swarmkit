@@ -245,7 +245,12 @@ def _row_to_saga(r: dict[str, Any]) -> SagaState:
 
 
 def _tl_to_dict(t: TimelineEntry) -> dict[str, Any]:
-    return {"seq": t.seq, "at": t.at, "stage_id": t.stage_id, "kind": t.kind, "detail": t.detail}
+    row = {"seq": t.seq, "at": t.at, "stage_id": t.stage_id, "kind": t.kind, "detail": t.detail}
+    if t.meta:
+        # Only written when non-empty, so existing rows stay byte-identical and a reader on an
+        # older build simply does not see the key.
+        row["meta"] = t.meta
+    return row
 
 
 def _dict_to_tl(d: dict[str, Any]) -> TimelineEntry:
@@ -255,6 +260,7 @@ def _dict_to_tl(d: dict[str, Any]) -> TimelineEntry:
         stage_id=d.get("stage_id"),
         kind=d["kind"],
         detail=d.get("detail", ""),
+        meta=d.get("meta") or {},
     )
 
 

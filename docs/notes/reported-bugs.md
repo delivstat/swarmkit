@@ -18,6 +18,31 @@ do not delete entries when they are fixed — the value is in the pattern.
 
 ## Fixed
 
+### `rework` discarded the reviewer's comment (1.137.0)
+
+A reviewer requested changes with a comment; the stage re-ran knowing nothing about it, reproduced
+substantially the same output, and the reviewer had no way to tell why their feedback had no effect.
+`_rework()` received the event `data` — carrying the comment as `detail` — and never read it. The
+`add("resumed", ...)` call then overwrote the timeline detail with a fixed string, so the comment
+was not preserved for a later human reader either. The docstring claimed the opposite of the code.
+
+Why it hid: comments **do** reach the agent by a second route — `/review/{item}/resolve` mints a
+resolved item that `decisions_for_gate` renders — so the feature is real and works whenever the
+reviewer is an authenticated identity. Under `auth: none` that endpoint 403s (`approvals:resolve` is
+reserved for human identity), callers fall back to enqueuing the controller event, and the comment
+travels only in `data["detail"]`. Configuration-dependent silent data loss: the same UI action
+delivered or discarded the comment depending on the auth provider, with nothing different for the
+reviewer to see.
+
+Both routes now converge on `render_decisions`, the break-glass one labelled
+`operator-override` so nothing is misrepresented as an authenticated review. The comment is stamped
+with the round and artifact it was written against, and carried in the timeline's existing JSON
+column — there is no migration facility, so a new column would break existing deployments on their
+next insert. Tests: `test_rework_comment.py`.
+
+Observed on WMS-1: a domain correction about cartons and `getTaskList` never reached the design
+agent.
+
 ### `swarmkit storage migrate` left Postgres unwritable (1.136.0)
 
 Rows were copied **with their original primary keys** and the owning sequences never advanced, so a

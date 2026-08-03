@@ -33,6 +33,11 @@ class TimelineEntry:
     stage_id: str | None
     kind: str  # started | completed | parked | resumed | rejected | failed | new
     detail: str = ""
+    #: Structured companion to ``detail``, for the machine rather than the reader. A reviewer's
+    #: comment lands here stamped with the round and artifact it was written about, so the re-run
+    #: can hand it to the agent. Free-form because the timeline is persisted as a JSON blob — a new
+    #: key needs no schema migration, which matters given there is no migration facility.
+    meta: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -56,7 +61,14 @@ class SagaState:
     updated_at: str = ""
     timeline: list[TimelineEntry] = field(default_factory=list)
 
-    def add(self, kind: str, *, stage_id: str | None = None, detail: str = "") -> None:
+    def add(
+        self,
+        kind: str,
+        *,
+        stage_id: str | None = None,
+        detail: str = "",
+        meta: dict[str, Any] | None = None,
+    ) -> None:
         self.timeline.append(
             TimelineEntry(
                 seq=len(self.timeline),
@@ -64,6 +76,7 @@ class SagaState:
                 stage_id=stage_id,
                 kind=kind,
                 detail=detail,
+                meta=dict(meta or {}),
             )
         )
         self.updated_at = now().isoformat()
