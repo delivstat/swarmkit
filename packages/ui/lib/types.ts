@@ -71,6 +71,22 @@ export interface JobListItem {
 	completed_at: string | null;
 }
 
+/** A job as recorded in the durable store — survives a restart, and carries usage.
+ *
+ * `/jobs` is the in-memory JobStore: only this process, gone on restart. `/jobs/history` is this.
+ * Both contain a job from the moment it is created, so the two lists overlap while it runs. */
+export interface PersistedJob {
+	job_id: string;
+	topology: string;
+	version: string | null;
+	status: "pending" | "running" | "completed" | "failed";
+	created_at: string;
+	completed_at: string | null;
+	usage_input_tokens: number | null;
+	usage_output_tokens: number | null;
+	usage_cost_usd: number | null;
+}
+
 export interface SkillItem {
 	id: string;
 	category: string;

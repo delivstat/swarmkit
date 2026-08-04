@@ -102,6 +102,11 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Demo the jobs history page (jobs-history-ui.md): what /jobs and /jobs/history each return, and
+# why a running job must not be printed by both.
+demo-jobs-history:
+    uv run python packages/runtime/demos/jobs_history.py
+
 # Demo output_schema on a harness executor (harness-output-schema.md): markdown against a declared
 # schema, corrected through the harness; and a schema-less worker left alone.
 demo-harness-output-schema:
