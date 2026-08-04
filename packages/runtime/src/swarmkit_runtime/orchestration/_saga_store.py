@@ -27,7 +27,7 @@ from sqlalchemy import (
 )
 
 from swarmkit_runtime.orchestration._saga import SagaState, SagaStatus, TimelineEntry, now
-from swarmkit_runtime.persistence._store import make_engine
+from swarmkit_runtime.persistence._store import create_all_idempotent, make_engine
 
 metadata = MetaData()
 
@@ -72,7 +72,7 @@ class SqlSagaStore:
 
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
-        metadata.create_all(engine)
+        create_all_idempotent(metadata, engine)
 
     @classmethod
     def from_url(cls, url: str) -> SqlSagaStore:

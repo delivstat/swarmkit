@@ -23,7 +23,7 @@ from sqlalchemy.dialects import postgresql as sa_pg
 from sqlalchemy.dialects import sqlite as sa_sqlite
 from sqlalchemy.sql import Insert
 
-from swarmkit_control_plane._engine import make_engine, sqlite_url
+from swarmkit_control_plane._engine import create_all_idempotent, make_engine, sqlite_url
 from swarmkit_control_plane._tables import metadata
 
 
@@ -61,7 +61,7 @@ class Store:
         else:
             self._engine = make_engine(sqlite_url(Path(backing)))
         self._lock = threading.Lock()
-        metadata.create_all(self._engine)
+        create_all_idempotent(metadata, self._engine)
         with self._engine.begin() as conn:
             self._migrate(conn)
 

@@ -25,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from swarmkit_runtime.audit._provider import AuditProvider
 from swarmkit_runtime.audit._tables import audit_events, audit_metadata
 from swarmkit_runtime.governance import AuditEvent
-from swarmkit_runtime.persistence._store import make_engine
+from swarmkit_runtime.persistence._store import create_all_idempotent, make_engine
 
 
 class SqlAuditProvider(AuditProvider):
@@ -36,7 +36,7 @@ class SqlAuditProvider(AuditProvider):
     def __init__(self, engine: Engine, retention_days: int = 365) -> None:
         self._engine = engine
         self._retention_days = retention_days
-        audit_metadata.create_all(engine)
+        create_all_idempotent(audit_metadata, engine)
 
     async def record(self, event: AuditEvent) -> None:
         values = {
