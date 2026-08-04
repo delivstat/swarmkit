@@ -77,6 +77,8 @@ class _Agent:
     skills: list[Any] = field(default_factory=list)
     model: dict[str, Any] = field(default_factory=dict)
     children: list[Any] = field(default_factory=list)
+    output_schema: dict[str, Any] | None = None
+    output_schema_disabled: bool = False
 
 
 def _binding(**kw: Any) -> DecisionSkillBinding:

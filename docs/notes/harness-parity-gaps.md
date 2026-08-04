@@ -25,7 +25,7 @@ output being wrong, if you notice at all.
 | --- | --- | --- | --- |
 | 1 | Tool-call outcomes discarded — a failed tool traced identically to a successful one | **fixed** (1.135.0) | `_harness_node.py`, all four adapters |
 | 2 | Decision skills never run, including `required: true` | **fixed** (1.142.0) | `_compiler.py` `node_fn()` |
-| 3 | `output_schema` ignored | **open** | `_harness_node.py` (zero references) |
+| 3 | `output_schema` ignored | **fixed** (1.143.0) | `_harness_node.py` (zero references) |
 | 4 | `TaskSpec.context_files` is dead — set, never delivered | **open** | executor plumbing |
 | 5 | Images reach a model only via MCP `ImageContent`; relative paths resolve nowhere in the sandbox | **open** | harness sandbox + MCP gateway |
 
@@ -80,15 +80,21 @@ paying for retries to fix a sandbox that could not start is not what a conforman
 `checkpoint` and `pre_synthesis` remain model-path-only — they fire inside task-plan execution,
 which a harness node never does. See `design/details/harness-decision-skills.md`.
 
-### 3. `output_schema` ignored (open)
+### 3. `output_schema` ignored (fixed, 1.143.0)
 
 `_harness_node.py` contains zero references to `output_schema`. A harness agent therefore has
 neither a schema constraint nor a post-hoc check — gaps 2 and 3 are the two independent mechanisms
 that would each have caught a non-conforming output, and on a harness both are absent. This is why
 the `wms-design` agent could return markdown where a JSON object was required and the run passed.
 
-Recommended direction: the funnel `validate:` layer, so one implementation covers every executor
-kind rather than reimplementing schema enforcement per path.
+**Fixed** at the node, not in the funnel layer as first recommended — a funnel does not cover
+`swarmkit run <topology>`, and `output_schema` is declared on the agent, so a contract declared at
+the node belongs enforced at the node whichever executor runs it. The correction goes back through
+the harness with field-specific errors; exhaustion annotates and emits an auditable
+`output.schema_violation`. Only an EXPLICIT schema is enforced: the model path's worker platform
+default would otherwise impose a findings-schema on every harness worker, including
+`examples/sdlc-pipeline`'s `developer`, which produces a diff. See
+`design/details/harness-output-schema.md`.
 
 ### 4. `TaskSpec.context_files` is dead (open)
 

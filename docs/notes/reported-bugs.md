@@ -14,7 +14,6 @@ Ordered by how much damage the bug does while looking fine.
 | --- | --- | --- | --- |
 | 9 | A failed stage's error string is handed to the next stage as its input | stage chaining | [below](#9-a-failed-stages-error-becomes-the-next-stages-input) |
 | 10 | MCP gateway drops `ImageContent`, so a harness agent can never see an image | `mcp/_gateway.py` | [below](#10-the-mcp-gateway-drops-imagecontent) |
-| 3 | `output_schema` ignored on the harness path | `_harness_node.py` | [harness-parity-gaps](harness-parity-gaps.md) #3 |
 | — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
@@ -107,6 +106,19 @@ configured identity matches no role member — the same warning catches the `sub
 under `jwt`.
 
 ## Fixed
+
+### `output_schema` was ignored on the harness path (1.143.0)
+
+`_harness_node.py` contained zero references to `output_schema`, so together with gap #2 a harness
+agent had neither a schema constraint nor a post-hoc check — the two independent mechanisms that
+would each have caught the `wms-design` markdown.
+
+Now validated before the decision-skill gate, with the correction driven back through the harness
+using field-specific errors; exhaustion annotates and emits `output.schema_violation` rather than
+passing silently. Only an explicitly declared schema is enforced — the model path's worker platform
+default would have imposed a findings-schema on every harness worker, including a `developer`
+archetype that produces a diff, failing every run at full harness cost. See
+`design/details/harness-output-schema.md`.
 
 ### Decision skills never ran on a harness executor (1.142.0)
 

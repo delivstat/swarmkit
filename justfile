@@ -102,6 +102,11 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Demo output_schema on a harness executor (harness-output-schema.md): markdown against a declared
+# schema, corrected through the harness; and a schema-less worker left alone.
+demo-harness-output-schema:
+    uv run python packages/runtime/demos/harness_output_schema.py
+
 # Demo decision skills on a harness executor (harness-decision-skills.md): a `required: true`
 # spec check that never ran on a harness, now failing markdown and re-invoking the harness.
 demo-harness-decision-skills:
