@@ -157,6 +157,7 @@ def _make_plan_state(
         },
         "current_agent": "coordinator",
         "output": "",
+        "node_errors": {},
     }
 
 

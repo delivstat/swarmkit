@@ -82,6 +82,7 @@ async def _run_dag(
                 "task_plan": {},
                 "current_agent": child.id,
                 "output": "",
+                "node_errors": {},
             }
             child_provider = _resolve_agent_provider(
                 child,

@@ -90,6 +90,20 @@ class RunResult:
     events: list[RunEvent] = field(default_factory=list)
     usage: UsageSummary | None = None
     trace_data: dict[str, Any] | None = None
+    #: Node id -> failure reason, for nodes that failed without raising. A harness run that dies is
+    #: a normal terminal event, not an exception, so its failure used to be visible ONLY as the
+    #: output text — leaving every caller to guess from prose whether the work happened.
+    node_errors: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def failed(self) -> bool:
+        """True when any node reported a failure. Prefer this to inspecting ``output``."""
+        return bool(self.node_errors)
+
+    @property
+    def failure_reason(self) -> str:
+        """The failure reasons, joined — empty when the run succeeded."""
+        return "; ".join(f"{node}: {why}" for node, why in sorted(self.node_errors.items()))
 
 
 def _run_trace_to_span(trace: Any, workspace_id: str) -> Any:
@@ -683,6 +697,11 @@ class WorkspaceRuntime:
             events=events,
             usage=usage,
             trace_data=trace_summary,
+            node_errors={
+                k: str(v)
+                for k, v in (result.get("node_errors") or {}).items()
+                if isinstance(v, str)
+            },
         )
 
     async def resume(
@@ -732,6 +751,11 @@ class WorkspaceRuntime:
                 if isinstance(v, str)
             },
             events=events,
+            node_errors={
+                k: str(v)
+                for k, v in ((result or {}).get("node_errors") or {}).items()
+                if isinstance(v, str)
+            },
         )
 
     async def judge(

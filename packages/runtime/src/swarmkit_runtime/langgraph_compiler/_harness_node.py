@@ -60,7 +60,7 @@ from swarmkit_runtime.review import FileReviewQueue
 from swarmkit_runtime.trace import AgentStep, ToolCall
 from swarmkit_runtime.trust import TrustStore
 
-from ._helpers import _make_result
+from ._helpers import _make_failure, _make_result
 from ._input_classifier import classify_input_request, should_classify
 from ._relay import resolve_input, resolve_relay
 from ._run_context import current_parent_agent
@@ -333,12 +333,12 @@ async def run_harness_node(
         runner = executor if executor is not None else _build_executor(agent.executor, root)
     except ExecutorError as exc:
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": str(exc)})
-        return _make_result(agent_id, f"[harness:{kind}] unavailable: {exc}")
+        return _make_failure(agent_id, f"[harness:{kind}] unavailable: {exc}")
 
     if root is None:
         reason = "no workspace root available to provision a harness sandbox"
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": reason})
-        return _make_result(agent_id, f"[harness:{kind}] {reason}")
+        return _make_failure(agent_id, f"[harness:{kind}] {reason}")
 
     budget = _budget_from_config(dict(agent.executor.config))
     task = _task_spec(agent, state, root)
@@ -350,7 +350,7 @@ async def run_harness_node(
         # statement is always a wiring mistake; say so instead of guessing.
         reason = "empty input: nothing to work on (no upstream artifact and no pipeline payload)"
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": reason})
-        return _make_result(agent_id, f"[harness:{kind}] {reason}")
+        return _make_failure(agent_id, f"[harness:{kind}] {reason}")
     relay = _relay_ctx(agent, root, driver, review_queue, model_provider)
     return await _execute(
         agent, state, governance, runner, task, budget, root, kind, relay, mcp_manager
@@ -535,7 +535,9 @@ async def _execute(  # noqa: PLR0912, PLR0915
                 await _record(
                     governance, "executor.failed", agent_id, {"kind": kind, "reason": report.reason}
                 )
-                return _make_result(agent_id, f"[harness:{kind}] preflight failed: {report.reason}")
+                return _make_failure(
+                    agent_id, f"[harness:{kind}] preflight failed: {report.reason}"
+                )
 
             # Stand up the governed MCP gateway (if the adapter opts in + the agent has MCP grants)
             # and point the harness at it via task.mcp_config; torn down with the run.
@@ -707,7 +709,7 @@ async def _execute(  # noqa: PLR0912, PLR0915
             return await _finish(governance, agent_id, kind, terminal, cost_usd, diff)
     except SandboxError as exc:
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": str(exc)})
-        return _make_result(agent_id, f"[harness:{kind}] sandbox error: {exc}")
+        return _make_failure(agent_id, f"[harness:{kind}] sandbox error: {exc}")
 
 
 async def _resolve_denials(
@@ -792,7 +794,7 @@ async def _finish(
         # The executor emits a synthetic terminal carrying the exit code + stderr tail, so reaching
         # here means the stream ended without even that. Keep the bare message as the last resort.
         await _record(governance, "executor.result", agent_id, {"kind": kind, "status": "failure"})
-        return _make_result(agent_id, f"[harness:{kind}] failure: no result event")
+        return _make_failure(agent_id, f"[harness:{kind}] failure: no result event")
 
     await _record(
         governance,
@@ -827,7 +829,7 @@ async def _finish(
         reason = f"exit {rc}"
         if tail:
             reason = f"{reason}: {_tail_snippet(tail)}"
-    return _make_result(agent_id, f"[harness:{kind}] {terminal.status}: {reason}".rstrip(": "))
+    return _make_failure(agent_id, f"[harness:{kind}] {terminal.status}: {reason}".rstrip(": "))
 
 
 def _tail_snippet(tail: str, *, lines: int = 5, limit: int = 600) -> str:

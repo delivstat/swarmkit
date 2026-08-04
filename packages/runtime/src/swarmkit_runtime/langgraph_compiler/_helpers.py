@@ -113,6 +113,18 @@ def _make_result(agent_id: str, result_text: str) -> dict[str, Any]:
     }
 
 
+def _make_failure(agent_id: str, result_text: str) -> dict[str, Any]:
+    """A node that failed. Same shape as :func:`_make_result` plus a structured failure marker.
+
+    The text still carries the human-readable reason — it is what a reader sees — but the marker is
+    what a caller checks. Sequencers must never have to pattern-match prose to learn whether the
+    work happened.
+    """
+    result = _make_result(agent_id, result_text)
+    result["node_errors"] = {agent_id: result_text}
+    return result
+
+
 def _safe_parse_json(tool_name: str, response: Any, agent: Any) -> dict[str, object]:
     """Extract tool call inputs from the response for audit logging."""
     for block in getattr(response, "content", ()):
