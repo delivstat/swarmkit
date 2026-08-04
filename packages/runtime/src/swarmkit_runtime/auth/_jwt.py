@@ -43,10 +43,18 @@ class JWTAuthProvider(AuthProvider):
         audience: str = "swarmkit",
         jwks_url: str | None = None,
         scopes_claim: str = "scope",
+        client_id: str = "",
+        scope: str = "",
     ) -> None:
         self._issuer = issuer
         self._audience = audience
         self._scopes_claim = scopes_claim
+        # The browser's OIDC registration. The server does not use these to validate anything — it
+        # only advertises them, because the client that needs them cannot otherwise obtain them: the
+        # portal ships as a pre-built static export, so a build-time env var is fixed at publish and
+        # the same wheel serves every deployment. See design/details/oidc-client-config.md.
+        self._client_id = client_id
+        self._scope = scope
 
         # Default JWKS URL follows OIDC discovery convention.
         resolved_jwks_url = jwks_url or f"{issuer.rstrip('/')}/.well-known/jwks.json"
@@ -112,9 +120,21 @@ class JWTAuthProvider(AuthProvider):
         return "jwt"
 
     def public_info(self) -> dict[str, Any]:
-        # issuer + audience are what a browser needs (with its own client_id) to run the OIDC PKCE
-        # flow; jwks_url + scopes_claim are server-side validation details a client never sees.
-        return {"mode": "jwt", "oidc": {"issuer": self._issuer, "audience": self._audience}}
+        # Everything a browser needs to start the OIDC PKCE flow. `jwks_url` and `scopes_claim` stay
+        # server-side: they are validation details a client never sees.
+        #
+        # `client_id` used to be excluded on the reasoning that the serve validates tokens and does
+        # not own the browser's registration. True in principle, unshippable in practice: the portal
+        # is a static export whose NEXT_PUBLIC_* vars are inlined at BUILD time, so the published
+        # wheel resolved it to "" on every load and could not be pointed at any identity provider.
+        # Advertising it here makes it workspace configuration, like issuer and audience already
+        # are, so one published wheel works for every deployment.
+        oidc: dict[str, Any] = {"issuer": self._issuer, "audience": self._audience}
+        if self._client_id:
+            oidc["client_id"] = self._client_id
+        if self._scope:
+            oidc["scope"] = self._scope
+        return {"mode": "jwt", "oidc": oidc}
 
     # ------------------------------------------------------------------
     # Internal helpers

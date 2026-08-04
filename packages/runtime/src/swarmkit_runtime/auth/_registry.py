@@ -57,6 +57,8 @@ def _default_registry() -> AuthProviderRegistry:
             audience=kw.get("audience", "swarmkit"),
             jwks_url=kw.get("jwks_url"),
             scopes_claim=kw.get("scopes_claim", "scope"),
+            client_id=kw.get("client_id", "") or "",
+            scope=kw.get("scope", "") or "",
         ),
     )
 

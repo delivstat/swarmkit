@@ -9,9 +9,23 @@ const BASE = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "";
 
 export type AuthMode = "none" | "api_key" | "jwt";
 
+export interface OidcDiscovery {
+	issuer: string;
+	audience: string;
+	/** The browser's OIDC client registration, served by the workspace.
+	 *
+	 * This has to come from the server. NEXT_PUBLIC_* values are inlined by Next.js at BUILD time,
+	 * and the portal ships as a pre-built static export — so in the published wheel the env var
+	 * resolves to "" on every load and no operator can point it at their identity provider. Serving
+	 * it makes it workspace configuration, like issuer and audience already are. */
+	client_id?: string;
+	/** Scopes to request. Server-advertised for the same reason. */
+	scope?: string;
+}
+
 export interface AuthInfo {
 	mode: AuthMode;
-	oidc?: { issuer: string; audience: string };
+	oidc?: OidcDiscovery;
 }
 
 /** Fetch the serve's auth mode. Falls back to `none` if the endpoint is unreachable/old (so the UI

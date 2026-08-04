@@ -103,6 +103,9 @@ def _build_auth_provider(workspace_path: Path) -> AuthProvider:
             audience=config.get("audience", "swarmkit"),
             jwks_url=config.get("jwks_url"),
             scopes_claim=config.get("scopes_claim", "scope"),
+            # Advertised to the browser via /auth-info; not used for validation.
+            client_id=str(config.get("client_id", "") or ""),
+            scope=str(config.get("scope", "") or ""),
         )
 
     # Default: open access. The identity is optional and defaults to `anonymous`, so an existing

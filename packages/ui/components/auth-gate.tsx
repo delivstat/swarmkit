@@ -11,7 +11,7 @@ import {
 	loadStoredApiKey,
 	storeApiKey,
 } from "@/lib/auth-info";
-import { oidcSettings } from "@/lib/oidc-config";
+import { missingClientId, oidcSettings } from "@/lib/oidc-config";
 import { setAccessToken, setUnauthorizedHandler } from "@/lib/token-store";
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -60,10 +60,55 @@ function OidcGate({ children }: { children: React.ReactNode }) {
 				<Button type="button" onClick={() => void auth.signinRedirect()}>
 					Sign in with your identity provider
 				</Button>
+				<TokenFallback />
 			</Centered>
 		);
 	}
 	return <>{children}</>;
+}
+
+/** A collapsed "use a token instead" affordance for `jwt` mode.
+ *
+ * The transport is identical — every API call already sends the stored value as `Authorization:
+ * Bearer` — so a token minted by a CLI, issued by CI, or obtained while setting up the IdP works
+ * today and had no way in. It also means a broken redirect flow no longer locks the portal
+ * completely, which is exactly what the unconfigurable-client-id bug did. */
+function TokenFallback() {
+	const [open, setOpen] = useState(false);
+	const [draft, setDraft] = useState("");
+
+	if (!open) {
+		return (
+			<button
+				type="button"
+				className="text-sm text-muted-foreground underline underline-offset-4"
+				onClick={() => setOpen(true)}
+			>
+				Use a token instead
+			</button>
+		);
+	}
+	return (
+		<form
+			className="flex w-full max-w-sm flex-col gap-2"
+			onSubmit={(e) => {
+				e.preventDefault();
+				const value = draft.trim();
+				if (!value) return;
+				storeApiKey(value);
+				setAccessToken(value);
+				window.location.reload();
+			}}
+		>
+			<Input
+				type="password"
+				value={draft}
+				onChange={(e) => setDraft(e.target.value)}
+				placeholder="Bearer token"
+			/>
+			<Button type="submit">Continue</Button>
+		</form>
+	);
 }
 
 /** api_key mode: a lightweight key gate. The key is stored in localStorage and attached as the
@@ -134,8 +179,25 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 			</Centered>
 		);
 	}
+	const settings = oidcSettings(info.oidc);
+	if (missingClientId(settings)) {
+		// Do not attempt the redirect. `client_id=` sends the user to the IdP for an opaque
+		// rejection page that says nothing about which side is misconfigured — the portal knows
+		// exactly what is missing and should say so here. A token still gets you in meanwhile.
+		return (
+			<Centered>
+				<Title subtitle="Sign-in is not configured." />
+				<p className="max-w-md text-sm text-muted-foreground">
+					The server did not advertise an OIDC <code>client_id</code>. Set{" "}
+					<code>server.auth.config.client_id</code> in workspace.yaml to the
+					client id registered with your identity provider, then restart serve.
+				</p>
+				<TokenFallback />
+			</Centered>
+		);
+	}
 	return (
-		<AuthProvider {...oidcSettings(info.oidc)}>
+		<AuthProvider {...settings}>
 			<OidcGate>{children}</OidcGate>
 		</AuthProvider>
 	);

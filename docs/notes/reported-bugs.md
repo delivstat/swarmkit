@@ -16,8 +16,8 @@ Ordered by how much damage the bug does while looking fine.
 | 10 | MCP gateway drops `ImageContent`, so a harness agent can never see an image | `mcp/_gateway.py` | [below](#10-the-mcp-gateway-drops-imagecontent) |
 | 2 | Decision skills never run on a harness executor, including `required: true` | `_compiler.py` | [harness-parity-gaps](harness-parity-gaps.md) #2 |
 | 3 | `output_schema` ignored on the harness path | `_harness_node.py` | [harness-parity-gaps](harness-parity-gaps.md) #3 |
-| 7 | Portal advertises an OIDC login that cannot be configured in the published build | swarmkit-webui | [below](#7--8-the-portals-oidc-client-cannot-be-configured) |
-| 8 | `client_id`/`scope` should come from `/auth-info`; no token path in `jwt` mode | auth + webui | [below](#7--8-the-portals-oidc-client-cannot-be-configured) |
+| — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
+| — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
 | — | `/jobs` shows only in-flight jobs; `/jobs/history` exists server-side, unused by the UI | web UI | — |
@@ -108,6 +108,28 @@ configured identity matches no role member — the same warning catches the `sub
 under `jwt`.
 
 ## Fixed
+
+### The portal's OIDC client could not be configured (1.141.0 / webui 0.7.0)
+
+`client_id` came from `NEXT_PUBLIC_OIDC_CLIENT_ID`, which Next.js inlines at **build** time. In the
+published artifact it was never inlined — the bundle carried the literal source text
+`NEXT_PUBLIC_OIDC_CLIENT_ID)?t:""`, a live property read against the browser `process` polyfill whose
+`env` is `{}` — so it evaluated to `""` on every load and `signinRedirect()` went out with
+`client_id=`. There was no runtime escape hatch in a static export: no `env.js`, no `window.__ENV`.
+
+So the published wheel could not be pointed at any identity provider, and an operator who configured
+`provider: jwt` correctly still could not sign in, with nothing in the UI or the server log saying
+why. The original reasoning — the serve validates tokens, it does not own the browser's client id —
+is right about ownership and wrong about distribution: a per-deployment value cannot live in a
+constant fixed at publish time.
+
+`client_id` and `scope` are now advertised on `/auth-info` alongside `issuer` and `audience`
+(absent, not empty, when unconfigured, so a self-built UI's fallback still applies). The portal
+prefers the served value, refuses to start a redirect it knows will fail and names the missing
+setting, and `jwt` mode gained the token-entry path `api_key` mode always had — so a broken redirect
+flow no longer locks the portal completely. See `design/details/oidc-client-config.md`.
+
+Verified in the **built bundle**, since the build is where this bug lived.
 
 ### `auth: none` can name its operator (1.140.0)
 
