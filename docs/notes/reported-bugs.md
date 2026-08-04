@@ -18,7 +18,6 @@ Ordered by how much damage the bug does while looking fine.
 | 3 | `output_schema` ignored on the harness path | `_harness_node.py` | [harness-parity-gaps](harness-parity-gaps.md) #3 |
 | 7 | Portal advertises an OIDC login that cannot be configured in the published build | swarmkit-webui | [below](#7--8-the-portals-oidc-client-cannot-be-configured) |
 | 8 | `client_id`/`scope` should come from `/auth-info`; no token path in `jwt` mode | auth + webui | [below](#7--8-the-portals-oidc-client-cannot-be-configured) |
-| 11 | `auth: none` cannot carry a named operator, so gates are unapprovable locally | `auth/_none.py` | [below](#11-auth-none-cannot-name-its-operator-feature-request) |
 | 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
 | — | `/jobs` shows only in-flight jobs; `/jobs/history` exists server-side, unused by the UI | web UI | — |
@@ -35,9 +34,12 @@ Three things compound: the pipeline advances **past** a failure; the original er
 when design's output replaces it; and money is spent running an agent on an input that cannot
 succeed.
 
-The runtime already knows these strings are not work — `_is_error_passthrough()` in `_drift.py`
-(verified: used at `_compiler.py:481` to skip drift scoring) recognises them and then they are
-chained onward anyway.
+**Correction to the report.** It suggested reusing `_is_error_passthrough()`, on the grounds that
+the runtime already recognises these strings. It does not recognise *this* one: the predicate matches
+`Error:` / `Tool error:` / `ToolError:` and returns False for
+`[harness:claude-code] failure: no result event`. Reusing it would have shipped looking like a fix
+and let the bug straight through. A harness failure is not an exception either, so there was nothing
+structural to check — hence `node_errors`, where the node states failure in a field.
 
 **Fix direction:** a stage result carrying an explicit `ok: bool` / `error: str | None` rather than
 a string prefix match, so a failed stage fails the saga (or parks **on the failure**), the error
@@ -106,6 +108,24 @@ configured identity matches no role member — the same warning catches the `sub
 under `jwt`.
 
 ## Fixed
+
+### `auth: none` can name its operator (1.140.0)
+
+`NoneAuthProvider` handed out `client_id="anonymous"` with `scopes={"*"}` and an `authorize()` that
+returned True unconditionally. The approval engine does not consult scopes — it matches `client_id`
+against `members:` in `swarm/roles.yaml` — so `anonymous` was refused not for lacking authority but
+for being nobody: a mode that permits every action could not perform the one action that depends on
+identity, and a single operator had to stand up an IdP to click Approve on their own laptop.
+
+This was the root cause behind the dropped-comment bug (1.137.0): because the authenticated resolve
+path was unusable locally, callers fell back to the break-glass event route, which was the one
+discarding comments.
+
+Optional `server.auth.config.identity` / `identity_name`, defaulting to `anonymous`. Naming grants
+no capability the mode does not already give (asserted by test). The loopback refusal still applies,
+the identity still carries `provider="none"` so the audit can tell asserted from authenticated, and
+startup warns when the name matches no role member — a role-check 403 is otherwise
+indistinguishable from being unauthenticated. See `design/details/none-auth-named-operator.md`.
 
 ### `rework` discarded the reviewer's comment (1.137.0)
 
@@ -204,10 +224,11 @@ Two working rules follow:
    over a store it has left unwritable.
 2. **"Unknown" is not "fine".** Where a status can be unreported, model it as a third value rather
    than folding it into the healthy one. That is why `ExecToolStatus` is `""` / `ok` / `error`.
-3. **If the code already knows, use what it knows.** Bug 9's error strings are recognised by
-   `_is_error_passthrough` and then chained as input regardless; bug 10 reads the image bytes and
-   drops them one step before delivery. When a predicate exists for "this is not real output",
-   every consumer of that output should be asking it, not just the one that happened to need it.
+3. **Do not infer status from prose.** Bug 9 reported failure only as output *text*, so every
+   caller had to guess; the obvious string check did not even match the string in question. Bug 10
+   read the image bytes and dropped them one step before delivery. Where a caller needs to know
+   whether the work happened, the producer should say so in a field — `node_errors`,
+   `ExecToolStatus` — not in something a human happens to be able to read.
 
 And a testing rule, learned repeatedly: **these bugs are invisible to mocked tests.** The sequence
 bug needed a real Postgres; the governance bug needed a real run. Unit tests are for coverage; a

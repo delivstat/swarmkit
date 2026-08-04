@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: local-operator
+  name: Local operator workspace
+  description: >-
+    A single-operator workspace on a laptop. `provider: none` already grants wildcard scopes and
+    authorises everything; naming the identity adds no capability, but the approval engine matches
+    this name against `members:` in swarm/roles.yaml — so it is what makes a gate approvable here
+    without standing up an identity provider. The decision is asserted, not authenticated, and the
+    audit records provider=none to keep that distinction visible.
+governance:
+  provider: mock
+server:
+  auth:
+    provider: none
+    config:
+      identity: srijith
+      identity_name: Srijith Kartha

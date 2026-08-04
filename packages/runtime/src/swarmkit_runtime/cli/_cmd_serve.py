@@ -105,8 +105,15 @@ def _build_auth_provider(workspace_path: Path) -> AuthProvider:
             scopes_claim=config.get("scopes_claim", "scope"),
         )
 
-    # Default: open access
-    return NoneAuthProvider()
+    # Default: open access. The identity is optional and defaults to `anonymous`, so an existing
+    # workspace is unchanged — but naming it is what lets a local operator resolve their own gates
+    # without standing up an identity provider (the approval engine matches this against `members:`
+    # in swarm/roles.yaml, not against scopes, which this mode already grants in full).
+    config = auth_config.get("config", {}) or {}
+    return NoneAuthProvider(
+        identity=str(config.get("identity", "") or "anonymous"),
+        identity_name=str(config.get("identity_name", "") or ""),
+    )
 
 
 # ---- stubs for later milestones ------------------------------------------

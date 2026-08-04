@@ -327,13 +327,25 @@ export interface Auth {
 
 /**
  * Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim
- * for jwt.
+ * for jwt; identity/identity_name for none.
  */
 export interface Config {
     /**
      * Expected token audience (provider: jwt). Default: swarmkit.
      */
     audience?: string;
+    /**
+     * Who the caller is asserted to be (provider: none). Default: anonymous. This mode already
+     * grants wildcard scopes and authorizes everything, so naming the operator confers no new
+     * capability — but the approval engine matches this value against members: in
+     * swarm/roles.yaml, so it is what makes a local gate approvable without standing up an
+     * identity provider. Asserted, not authenticated: the audit records provider=none.
+     */
+    identity?: string;
+    /**
+     * Display name for that identity (provider: none). Defaults to the identity itself.
+     */
+    identity_name?: string;
     /**
      * OIDC issuer URL (provider: jwt).
      */

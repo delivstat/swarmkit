@@ -102,6 +102,11 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Demo a named local operator (none-auth-named-operator.md): the same gate, refused for `anonymous`
+# and resolvable for a named operator — identical authority, only the name differs.
+demo-named-operator:
+    uv run python packages/runtime/demos/named_local_operator.py
+
 # Demo harness tool outcomes (harness-tool-outcomes.md): one FAILING tool call per bundled harness,
 # in each harness's native protocol — traced as a checkmark before the fix, as an error after.
 demo-harness-tool-outcomes:

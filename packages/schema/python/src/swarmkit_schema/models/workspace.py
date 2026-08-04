@@ -673,7 +673,7 @@ class ContextCompression(BaseModel):
 
 class ServerAuthConfig(BaseModel):
     """
-    Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim for jwt.
+    Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim for jwt; identity/identity_name for none.
     """
 
     model_config = ConfigDict(
@@ -693,6 +693,14 @@ class ServerAuthConfig(BaseModel):
     )
     scopes_claim: str | None = Field(
         None, description="JWT claim holding scopes (provider: jwt). Default: scope."
+    )
+    identity: str | None = Field(
+        None,
+        description="Who the caller is asserted to be (provider: none). Default: anonymous. This mode already grants wildcard scopes and authorizes everything, so naming the operator confers no new capability — but the approval engine matches this value against members: in swarm/roles.yaml, so it is what makes a local gate approvable without standing up an identity provider. Asserted, not authenticated: the audit records provider=none.",
+    )
+    identity_name: str | None = Field(
+        None,
+        description="Display name for that identity (provider: none). Defaults to the identity itself.",
     )
 
 
