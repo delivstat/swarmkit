@@ -24,7 +24,7 @@ output being wrong, if you notice at all.
 | # | Gap | Status | Where |
 | --- | --- | --- | --- |
 | 1 | Tool-call outcomes discarded — a failed tool traced identically to a successful one | **fixed** (1.135.0) | `_harness_node.py`, all four adapters |
-| 2 | Decision skills never run, including `required: true` | **open** | `_compiler.py` `node_fn()` |
+| 2 | Decision skills never run, including `required: true` | **fixed** (1.142.0) | `_compiler.py` `node_fn()` |
 | 3 | `output_schema` ignored | **open** | `_harness_node.py` (zero references) |
 | 4 | `TaskSpec.context_files` is dead — set, never delivered | **open** | executor plumbing |
 | 5 | Images reach a model only via MCP `ImageContent`; relative paths resolve nowhere in the sandbox | **open** | harness sandbox + MCP gateway |
@@ -44,7 +44,7 @@ nothing still showed a healthy number because the path was long.
 Fixed by normalizing once at the seam every adapter passes through — `""` / `ok` / `error`, where
 `""` means *unreported* and is deliberately not `ok`. See `design/details/harness-tool-outcomes.md`.
 
-### 2. Decision skills never run on a harness executor (open)
+### 2. Decision skills never run on a harness executor (fixed, 1.142.0)
 
 `node_fn()` hands off to `run_harness_node()` with an early `return`, and every decision-skill gate
 sits after it. `_ds_bindings` is computed for the agent and then discarded:
@@ -69,18 +69,16 @@ Why it is costly: `required: true` reads as "this gate must pass" and means noth
 normal successful node with no "skipped" marker; and it is executor-dependent, so a topology
 validated on a model node changes behaviour when switched to `harness` with no other edit.
 
-**Fix direction:** restructure `node_fn` so the harness result falls through into the shared
-post-output path rather than returning early. The wrinkle is `_make_retry_fn`, which takes a
-`model_provider` a harness agent may not have — a harness retry should re-invoke the *harness* with
-the decision skill's `reasoning` appended, the same revision loop driven by the agent's own
-executor.
+**Fixed** by restructuring `node_fn`: `pre_input` moved above the executor dispatch (it gates the
+input, and refusing after paying for a harness run would be a strange way to decline), and the
+harness result now flows into the shared `post_output` path. The retry re-invokes the **harness**
+with the gate's reasoning appended, because `_make_retry_fn` re-prompts a model — which needs a
+`model_provider` a harness agent may not have, and would revise the *text* of work done in a sandbox
+rather than redo the work. A failed harness is returned ungated: judging an error string and then
+paying for retries to fix a sandbox that could not start is not what a conformance gate is for.
 
-**Minimum acceptable alternative:** refuse the combination at validate time. A governance control
-that does not exist at runtime must not validate clean.
-
-**Workaround in use:** move the check to the funnel `validate` layer, which wraps the node and does
-apply to harness output. That covers pipeline execution but **not** `swarmkit run <topology>`, where
-no funnel is applied — so the topology-level gate is still needed.
+`checkpoint` and `pre_synthesis` remain model-path-only — they fire inside task-plan execution,
+which a harness node never does. See `design/details/harness-decision-skills.md`.
 
 ### 3. `output_schema` ignored (open)
 

@@ -102,6 +102,11 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Demo decision skills on a harness executor (harness-decision-skills.md): a `required: true`
+# spec check that never ran on a harness, now failing markdown and re-invoking the harness.
+demo-harness-decision-skills:
+    uv run python packages/runtime/demos/harness_decision_skills.py
+
 # Demo a named local operator (none-auth-named-operator.md): the same gate, refused for `anonymous`
 # and resolvable for a named operator — identical authority, only the name differs.
 demo-named-operator:

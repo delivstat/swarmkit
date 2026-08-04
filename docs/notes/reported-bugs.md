@@ -14,7 +14,6 @@ Ordered by how much damage the bug does while looking fine.
 | --- | --- | --- | --- |
 | 9 | A failed stage's error string is handed to the next stage as its input | stage chaining | [below](#9-a-failed-stages-error-becomes-the-next-stages-input) |
 | 10 | MCP gateway drops `ImageContent`, so a harness agent can never see an image | `mcp/_gateway.py` | [below](#10-the-mcp-gateway-drops-imagecontent) |
-| 2 | Decision skills never run on a harness executor, including `required: true` | `_compiler.py` | [harness-parity-gaps](harness-parity-gaps.md) #2 |
 | 3 | `output_schema` ignored on the harness path | `_harness_node.py` | [harness-parity-gaps](harness-parity-gaps.md) #3 |
 | — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
@@ -108,6 +107,24 @@ configured identity matches no role member — the same warning catches the `sub
 under `jwt`.
 
 ## Fixed
+
+### Decision skills never ran on a harness executor (1.142.0)
+
+A `required: true` `post_output` skill bound in a topology was never invoked on an agent whose
+`executor.kind` is `harness`: `node_fn` returned to the harness runner before reaching any gate, so
+`_ds_bindings` was computed and discarded. On `wms-design` the agent returned markdown where a JSON
+object was required, `spec-conformance` never ran, and the markdown became the run's final output.
+
+Silent and inverted from the safe direction: `required: true` meant nothing, `swarmkit validate`
+reported no error (the binding is structurally valid), the trace showed a normal successful node,
+and the behaviour changed with `executor.kind` alone. Compounded by gap #3 — `output_schema` is also
+ignored on the harness path — so neither of the two independent mechanisms that would have caught a
+non-conforming output was in play.
+
+`pre_input` and `post_output` now run for every executor kind, with the retry driven by the agent's
+own executor. `checkpoint` / `pre_synthesis` stay model-path-only: they fire inside task-plan
+execution, which a harness node never does, so claiming them would be claiming a fix that does
+nothing. See `design/details/harness-decision-skills.md`.
 
 ### The portal's OIDC client could not be configured (1.141.0 / webui 0.7.0)
 

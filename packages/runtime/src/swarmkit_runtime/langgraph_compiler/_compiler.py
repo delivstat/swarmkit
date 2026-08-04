@@ -232,24 +232,6 @@ def _build_agent_node(  # noqa: PLR0915
         if denial is not None:
             return denial
 
-        # ---- executor dispatch (executor-abstraction §5) ---------------
-        # `model` runs the tool-loop below, unchanged. Any other kind is a harness executor and
-        # hands off to its runner (a guarded stub until P2 PR6). Governance/trust gates above apply
-        # to every executor kind; only the execution mechanism differs.
-        if agent.executor.kind != "model":
-            from swarmkit_runtime.langgraph_compiler._harness_node import (  # noqa: PLC0415
-                run_harness_node,
-            )
-
-            return await run_harness_node(
-                agent,
-                state,
-                governance,
-                workspace_root=workspace_root,
-                model_provider=model_provider,
-                mcp_manager=mcp_manager,
-            )
-
         # ---- pre_input decision skills (relevance gate) ----------------
         if _ds_bindings:
             user_input = state.get("input", "")
@@ -283,6 +265,28 @@ def _build_agent_node(  # noqa: PLR0915
             if memory_context:
                 _progress(f"  [{agent_id}] memory context injected")
                 state = {**state, "input": f"{memory_context}\n\n{state.get('input', '')}"}
+
+        # ---- executor dispatch (executor-abstraction §5) ---------------
+        # `model` runs the tool-loop below, unchanged. Any other kind is a harness executor and
+        # hands off to its runner. This sits BELOW the pre_input gates deliberately: a relevance
+        # gate is about the input, which is executor-agnostic, and refusing after paying for a
+        # harness run would be a strange way to decline. Memory context injection is above for the
+        # same reason — the harness has to see what was injected.
+        #
+        # The gates used to sit below this dispatch, so a harness node reached NONE of them: a
+        # `required: true` decision skill was computed, discarded, and the unvalidated output
+        # returned as success. An executor chooses the mechanism, not the contract.
+        if agent.executor.kind != "model":
+            return await _run_harness_with_gates(
+                agent,
+                state,
+                governance,
+                agent_id=agent_id,
+                bindings=_ds_bindings,
+                workspace_root=workspace_root,
+                model_provider=model_provider,
+                mcp_manager=mcp_manager,
+            )
 
         # ---- already-delegated fast path (resume scenarios) ------------
         _agent_result = state.get("agent_results", {}).get(agent_id, "")
@@ -530,6 +534,100 @@ def _build_agent_node(  # noqa: PLR0915
 
     node_fn.__name__ = f"agent_{agent.id}"
     return node_fn
+
+
+async def _run_harness_with_gates(
+    agent: ResolvedAgent,
+    state: SwarmState,
+    governance: GovernanceProvider,
+    *,
+    agent_id: str,
+    bindings: list[DecisionSkillBinding],
+    workspace_root: Any = None,
+    model_provider: Any = None,
+    mcp_manager: Any = None,
+) -> dict[str, Any]:
+    """Run a harness node and apply its ``post_output`` decision skills.
+
+    A harness node is a NODE: everything the declarative layer says about a node is supposed to hold
+    whichever executor runs it. `required: true` used to mean nothing here, silently.
+
+    The retry re-invokes the **harness**, not a model. `_make_retry_fn` re-prompts a model with the
+    previous output — "the agent doesn't re-run tools, it revises using data it already has" — which
+    is wrong twice over for a harness: it needs a `model_provider` a harness agent may not have, and
+    a harness's output is the product of work in a sandbox, so revising its *text* with some other
+    model produces a description of a fix rather than the fix. Each retry is therefore a full
+    harness run, bounded by the binding's own ``max_retries``. A cheap retry that cannot fix
+    anything would be worse than none.
+    """
+    from swarmkit_runtime.langgraph_compiler._harness_node import (  # noqa: PLC0415
+        run_harness_node,
+    )
+
+    async def _invoke(node_state: SwarmState) -> dict[str, Any]:
+        return await run_harness_node(
+            agent,
+            node_state,
+            governance,
+            workspace_root=workspace_root,
+            model_provider=model_provider,
+            mcp_manager=mcp_manager,
+        )
+
+    result = await _invoke(state)
+    if not bindings:
+        return result
+
+    # A harness that FAILED is not a non-conforming output. Gating it would ask a decision skill to
+    # judge an error string, and a `required` skill would then retry — paying for a full harness run
+    # to fix a sandbox that could not start. Return the failure as the failure it is.
+    if result.get("node_errors"):
+        return result
+
+    from swarmkit_runtime.langgraph_compiler._decision_gate import (  # noqa: PLC0415
+        evaluate_post_output,
+    )
+
+    original_input = str(state.get("input", "") or "")
+
+    async def _retry(feedback: str) -> str:
+        """Re-run the harness with the gate's reasoning appended to the task statement."""
+        revised_input = (
+            f"{original_input}\n\n"
+            f"A governance review of your previous attempt requires changes before this can be "
+            f"accepted. Address this feedback and produce the COMPLETE corrected result:\n"
+            f"{feedback}"
+        )
+        retry_state: SwarmState = {**state, "input": revised_input}
+        retried = await _invoke(retry_state)
+        # A harness that fails on the retry leaves the previous text in place: the gate then judges
+        # what it already judged and stops, rather than treating an infrastructure failure as the
+        # agent's revised answer.
+        if retried.get("node_errors"):
+            return str(result.get("output", "") or "")
+        return str(retried.get("output", "") or "")
+
+    checked, _ = await evaluate_post_output(
+        agent_id=agent_id,
+        output=str(result.get("output", "") or ""),
+        bindings=bindings,
+        governance=governance,
+        retry_fn=_retry,
+    )
+    if checked == result.get("output"):
+        return result
+
+    # The revision has to REPLACE what flows downstream — output, the per-agent result and the
+    # message. Leaving the original in any of them would hand the next node the text the gate just
+    # rejected.
+    from langchain_core.messages import AIMessage  # noqa: PLC0415
+
+    return {
+        **result,
+        "output": checked,
+        "agent_results": {agent_id: checked},
+        "messages": [AIMessage(content=checked, name=agent_id)],
+    }
 
 
 def _wrap_with_funnel_gate(
