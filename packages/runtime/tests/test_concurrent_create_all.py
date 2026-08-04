@@ -60,6 +60,16 @@ def test_concurrent_processes_all_start(tmp_path: Path, workers: int) -> None:
     Real processes, not threads — the GIL would mask exactly the interleaving that fails.
     """
     db = str(tmp_path / "s.sqlite")
+    # Initialise the FILE (and its WAL mode) in the parent, leaving the tables absent. Six children
+    # switching a fresh database into WAL at the same instant is its own lock contention — real,
+    # but a different problem from the one under test, and on a loaded runner it surfaced as
+    # `database is locked` rather than the duplicate-table race. The race itself is untouched:
+    # every child still finds the tables missing and still issues CREATE.
+    _init = make_engine(f"sqlite:///{db}")
+    with _init.connect():
+        pass
+    _init.dispose()
+
     ctx = mp.get_context("spawn")
     q: Any = ctx.Queue()
     barrier: Any = ctx.Barrier(workers)
