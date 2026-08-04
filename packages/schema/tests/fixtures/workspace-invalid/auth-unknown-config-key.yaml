@@ -1,0 +1,15 @@
+# `server.auth.config` is additionalProperties: false on purpose. A misspelled key must be rejected
+# at validation rather than ignored — an auth setting that is silently dropped leaves the operator
+# looking at a 403 with no indication that the value they configured was never read.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: typo-workspace
+  name: Workspace with a misspelled auth key
+governance:
+  provider: mock
+server:
+  auth:
+    provider: none
+    config:
+      identiy: srijith

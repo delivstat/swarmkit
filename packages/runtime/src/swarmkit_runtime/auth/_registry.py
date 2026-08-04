@@ -39,7 +39,13 @@ def _default_registry() -> AuthProviderRegistry:
     from swarmkit_runtime.auth._none import NoneAuthProvider  # noqa: PLC0415
 
     registry = AuthProviderRegistry()
-    registry.register("none", lambda **_kw: NoneAuthProvider())
+    registry.register(
+        "none",
+        lambda **kw: NoneAuthProvider(
+            identity=kw.get("identity") or "anonymous",
+            identity_name=kw.get("identity_name") or "",
+        ),
+    )
     registry.register(
         "api_key",
         lambda **kw: APIKeyAuthProvider(keys=kw.get("keys", []), credentials=kw.get("credentials")),

@@ -68,6 +68,40 @@ def _wire_storage(app: FastAPI, workspace_path: Path, runtime: WorkspaceRuntime)
     return saga_store
 
 
+def _warn_if_identity_is_not_a_role_member(auth: AuthProvider, runtime: Any) -> None:
+    """Warn when the asserted identity matches no member in the role registry.
+
+    A gate is resolved by matching the caller's ``client_id`` against ``members:`` in
+    ``swarm/roles.yaml``. When it matches nothing, every approval fails with a 403 that looks
+    exactly like being unauthenticated — so the operator debugs their token or their login when the
+    real problem is a name.
+
+    Only providers with a *static* asserted identity can be checked here, which today means
+    ``none``. The same trap exists under ``jwt`` — most identity providers put a UUID in ``sub`` by
+    default, which authenticates fine and then fails every role check — but that identity arrives
+    per request, so catching it needs a check at resolve time rather than at startup.
+
+    A warning, never a refusal: a workspace with no gates is a legitimate configuration, and so is
+    one whose approvers are named elsewhere.
+    """
+    identity = getattr(auth, "identity", None)
+    client_id = getattr(identity, "client_id", "") if identity is not None else ""
+    if not client_id:
+        return
+    registry = getattr(getattr(runtime, "workspace", None), "role_registry", None)
+    roles = dict(getattr(registry, "roles", None) or {})
+    if not roles:
+        return  # no roles declared: nothing to be inconsistent with
+    if any(client_id in role.members for role in roles.values()):
+        return
+    logger.warning(
+        "auth identity %r is not a member of any role in swarm/roles.yaml — approval gates will "
+        "reject it with a 403 that reads like an authentication failure. Add it under `members:` "
+        "for the role that should approve, or set server.auth.config.identity to a listed member.",
+        client_id,
+    )
+
+
 def create_app(  # noqa: PLR0915
     workspace_path: Path,
     *,
@@ -101,6 +135,7 @@ def create_app(  # noqa: PLR0915
 
         app.state.runtime = runtime
         app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
+        _warn_if_identity_is_not_a_role_member(_auth, runtime)
         saga_store = _wire_storage(app, workspace_path, runtime)
 
         async def _pipeline_sink(correlation_id: str, event: str) -> None:
