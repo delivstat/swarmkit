@@ -44,6 +44,7 @@ from swarmkit_runtime.governed_memory._relevance import (
     lexical_scores,
 )
 from swarmkit_runtime.governed_memory._tables import change_log, memory, metadata, quarantine
+from swarmkit_runtime.persistence._store import create_all_idempotent
 
 _CONFIDENCE_CEILING = 1.0
 _REINFORCE_STEP = 0.05
@@ -66,7 +67,7 @@ class GovernedMemoryStore:
         self._reconciler = reconciler
         self._decay = decay
         self._embedder = embedder
-        metadata.create_all(engine)
+        create_all_idempotent(metadata, engine)
 
     @classmethod
     def for_workspace(

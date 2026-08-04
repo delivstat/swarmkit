@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import Column, Engine, MetaData, Table, Text, insert, select
 
 from swarmkit_runtime.artifacts._store import artifact_ref
-from swarmkit_runtime.persistence._store import make_engine
+from swarmkit_runtime.persistence._store import create_all_idempotent, make_engine
 
 metadata = MetaData()
 
@@ -35,7 +35,7 @@ class DatabaseArtifactStore:
 
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
-        metadata.create_all(engine)
+        create_all_idempotent(metadata, engine)
 
     @classmethod
     def from_url(cls, url: str) -> DatabaseArtifactStore:

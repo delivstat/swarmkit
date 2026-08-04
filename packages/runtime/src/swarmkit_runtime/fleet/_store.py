@@ -39,7 +39,7 @@ from swarmkit_runtime.fleet._credentials import (
     mint_secret,
     secret_hash,
 )
-from swarmkit_runtime.persistence._store import make_engine
+from swarmkit_runtime.persistence._store import create_all_idempotent, make_engine
 
 _metadata = MetaData()
 
@@ -113,7 +113,7 @@ class MembershipStore:
         else:
             self._engine = make_engine(backing)
         self._lock = threading.Lock()
-        _metadata.create_all(self._engine)
+        create_all_idempotent(_metadata, self._engine)
 
     @property
     def engine(self) -> Engine:

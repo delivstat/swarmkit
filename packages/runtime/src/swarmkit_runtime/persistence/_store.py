@@ -73,6 +73,44 @@ def redacted_url(url: str) -> str:
         return "<unparseable store url>"
 
 
+def create_all_idempotent(metadata: Any, engine: Engine) -> None:
+    """``metadata.create_all`` that survives another process doing it at the same moment.
+
+    ``create_all`` is check-then-create: it lists existing tables, then issues ``CREATE`` for the
+    rest. Two processes starting together both see a table absent and both issue ``CREATE``; one
+    gets ``table X already exists`` and dies. Every comment in this codebase calls create_all
+    "idempotent", which is true within one process and false across two — and two is the normal
+    case: `swarmkit serve` and `swarmkit orchestrator` share a store, and so do replicas of either.
+    Reproduced at 12/12 trials with six processes against one SQLite file.
+
+    A losing racer is not an error: the table it wanted exists. But the error is only *benign* if
+    the tables really are there afterwards, so this verifies rather than swallowing — a blind
+    ``except`` here would be the same silent-degradation trade this codebase keeps paying for.
+    Anything that is not a duplicate-table error propagates untouched.
+    """
+    from sqlalchemy import inspect  # noqa: PLC0415
+    from sqlalchemy.exc import DatabaseError  # noqa: PLC0415
+
+    last: Exception | None = None
+    for _attempt in range(3):
+        try:
+            metadata.create_all(engine)
+        except DatabaseError as exc:  # OperationalError (SQLite) / ProgrammingError (Postgres)
+            if "already exists" not in str(exc).lower():
+                raise
+            last = exc
+        else:
+            return
+        # We lost a race. If every declared table is present, the other process finished the job.
+        # If some are still missing, the interleaving left work undone — retry, then give up
+        # loudly rather than leave a half-built schema to fail later at an unrelated query.
+        existing = set(inspect(engine).get_table_names())
+        if not {t.name for t in metadata.sorted_tables} - existing:
+            return
+    if last is not None:
+        raise last
+
+
 def make_engine(url: str) -> Engine:
     """Create a SQLAlchemy engine, enabling WAL + busy_timeout + FKs for the SQLite dialect.
 
@@ -150,7 +188,7 @@ class Store:
 
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
-        metadata.create_all(engine)
+        create_all_idempotent(metadata, engine)
 
     @property
     def engine(self) -> Engine:

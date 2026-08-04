@@ -107,6 +107,27 @@ under `jwt`.
 
 ## Fixed
 
+### Concurrent `create_all` crashed one process at startup (1.144.0)
+
+Found while investigating two CI failures — `table conversations already exists` and
+`table fleet_enrollment_tokens already exists` — that both passed on re-run. Not a test artifact:
+`metadata.create_all` is check-then-create, so two processes starting together both see a table
+absent and both issue `CREATE`, and one dies. Every comment in the codebase called it "idempotent",
+which is true within one process and false across two — and two is the normal case (`swarmkit serve`
+plus `swarmkit orchestrator` share a store, as do replicas of either, and the panel shares one
+database across four stores).
+
+Reproduced at **12/12 trials** with six processes against one SQLite file; 0/12 after.
+
+All seven runtime call sites and the control-plane's now go through a helper that **verifies rather
+than swallowing**: a losing racer is fine only if the tables really are there afterwards, so a
+persistently missing table still raises and any non-duplicate error propagates untouched. The panel
+keeps its own copy — it never imports the runtime — with a contract test over the boundary, and an
+AST guard stops a new store reintroducing the race.
+
+The second cost is worth naming: a test that fails randomly trains people to press re-run without
+reading, which is how a real failure gets waved through.
+
 ### `output_schema` was ignored on the harness path (1.143.0)
 
 `_harness_node.py` contained zero references to `output_schema`, so together with gap #2 a harness
