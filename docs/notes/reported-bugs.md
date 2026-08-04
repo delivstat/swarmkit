@@ -12,14 +12,48 @@ Ordered by how much damage the bug does while looking fine.
 
 | # | Bug | Component | Detail |
 | --- | --- | --- | --- |
-| 9 | A failed stage's error string is handed to the next stage as its input | stage chaining | [below](#9-a-failed-stages-error-becomes-the-next-stages-input) |
-| 10 | MCP gateway drops `ImageContent`, so a harness agent can never see an image | `mcp/_gateway.py` | [below](#10-the-mcp-gateway-drops-imagecontent) |
+| 12 | One transient error kills the orchestrator and strands the event as `claimed` forever | `_cmd_orchestrator.py` + `_saga_store.py` | [below](#12-a-transient-error-strands-an-event-as-claimed-forever) |
 | — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
 
-### 9. A failed stage's error becomes the next stage's input
+### 12. A transient error strands an event as `claimed` forever
+
+`run_drive_loop()` has no error handling around `handle_event`, so any exception propagates out of
+the loop, out of `asyncio.run()`, and the process exits — after the event was claimed and before it
+was acked. It is then unrecoverable: `claim()` only ever selects `queued` rows, and there is no
+`claimed_at`, no visibility timeout and no reclaim path. A restarted orchestrator polls forever past
+an event it can never pick up, while the saga sits `active` with `updated_at` frozen at the crash.
+Nothing reports an error — `pipeline status` shows a normal in-progress run.
+
+The docstring says the opposite of what the code does: *"a crash re-drives from the store"*. A crash
+is precisely the case that cannot re-drive.
+
+Hit in practice by WSL's `autoProxy` pointing `HTTP_PROXY` at a dead port, so the orchestrator's
+loopback `POST /pipelines/run-stage` raised `ConnectError`. The saga looked like a slow stage for
+over an hour; recovery took direct SQL against `pipeline_events`, because re-emitting is refused
+for an existing active saga and there is no gate to clear.
+
+**Fix direction (two independent changes; the first alone removes the permanent-stall class):**
+
+1. **Survive a failed event** — wrap the handler and decide the event's fate explicitly: release it
+   back to `queued`, or mark it terminally `failed`. A retry needs a bound (an `attempts` column on
+   the event, dead-lettering after N) or a deterministically-failing event spins forever, and
+   dead-lettered events must surface in `pipeline sagas` / `pipeline status` — the silence is what
+   made this take hours to find.
+2. **Make a claim expire** — add `claimed_at` and let `claim()` also take rows whose claim is older
+   than a visibility timeout. That covers what an `except` block never can: SIGKILL, an evicted
+   container, a lost machine.
+
+Also noted: the default worker name is `orchestrator-1` for **every** process, so two orchestrators
+on one store are indistinguishable in `claimed_by` and race for the same events. And the
+orchestrator's loopback call to serve should not honour an ambient proxy at all — `trust_env=False`
+on that client would have made this specific failure impossible.
+
+## Fixed
+
+### A failed stage's error became the next stage's input (1.139.0)
 
 When a stage's agent fails, the failure message is stored as that stage's **output** and handed to
 the next stage as its **input**. On WMS-1: triage output was 46 bytes reading
@@ -44,7 +78,11 @@ survives as the failure reason, and the gate UI can say "triage failed" instead 
 error as a document. Related: gap #2 means the `post_output` conformance check that would have
 rejected a 46-byte output never ran either — the two together are why this reached a human unnoticed.
 
-### 10. The MCP gateway drops `ImageContent`
+**Fixed** by marking failure structurally (`node_errors`) rather than by string prefix — the
+suggested `_is_error_passthrough` reuse would not have matched the harness failure string at all.
+A failed stage now fails the saga and does not open a gate.
+
+### The MCP gateway dropped `ImageContent` (1.138.0)
 
 `_to_content()` is text-only by construction: it reads `.text` off each block, and `ImageContent`
 carries `.data` + `.mimeType` instead — so every image block is skipped. When a response is *only*
@@ -64,47 +102,8 @@ failed tool call is traced as a failure; this one is worse, because the call gen
 Code renders them). If images are deliberately not forwarded, say so explicitly — a `DENIED`-style
 message — rather than a repr that reads like success.
 
-### 7 & 8. The portal's OIDC client cannot be configured
-
-`client_id` is read from `NEXT_PUBLIC_OIDC_CLIENT_ID`, which Next.js inlines at build time and which
-is not inlined in the published artifact — it evaluates to `""` on every load against the browser
-`process` polyfill. There is no runtime escape hatch in the static export, so the published wheel
-cannot be pointed at any identity provider, and the failure is silent in both UI and server log.
-
-**Fix direction (report 8, option 1):** serve `client_id` and `scope` from `/auth-info`, which
-already carries `issuer` and `audience` and exists precisely so a client can render the right login
-gate before it holds a token. That makes it workspace configuration, so one published wheel works
-for every deployment. Plus: fail loudly when it is still empty; keep a token-entry affordance in
-`jwt` mode (the bearer path already works, and today any breakage in the redirect flow locks the
-portal completely); and move to a single `/auth/callback` redirect URI restoring the path from
-`state`, since `origin + pathname` forces every IdP to be configured with a wildcard.
-
-Worth documenting either way: serve takes identity from `sub` and matches it against `members:` in
-`swarm/roles.yaml`. Most IdPs put a UUID in `sub`, which authenticates fine and then fails every
-role check with a 403 indistinguishable from being unauthenticated.
-
-### 11. `auth: none` cannot name its operator (feature request)
-
-`NoneAuthProvider` hands out `client_id="anonymous"` with `scopes={"*"}` and an `authorize()` that
-returns `True` unconditionally (verified). The approval engine does not consult scopes — it matches
-`client_id` against `members:` in `swarm/roles.yaml`. So `anonymous` is refused not for lacking
-authority but for being nobody: a mode that permits every action makes the one action depending on
-identity impossible.
-
-Consequence: a single operator on a laptop must stand up an IdP to click Approve on their own
-machine, which is why the approval path in that workspace went unexercised — and why the
-break-glass event route (the one that dropped comments until 1.137.0) gets used at all. **This is
-the root cause behind the rework bug, not merely adjacent to it.**
-
-**Fix direction:** optional `identity` / `identity_name` on `provider: none`, defaulting to today's
-`anonymous` so nothing existing moves. Granting a name grants no capability that mode does not
-already give. Guardrails worth shipping with it: keep the existing loopback-only refusal explicitly
-covering the named case; record `provider="none"` in the audit so "verified by an IdP" stays
-distinguishable from "someone on loopback claimed to be srijith"; and warn at startup when the
-configured identity matches no role member — the same warning catches the `sub`-is-a-UUID mistake
-under `jwt`.
-
-## Fixed
+**Fixed** by re-emitting image blocks alongside text using the same `type == "image"` discriminator
+the model path uses, so the harness and model paths agree about the same block.
 
 ### `/jobs` showed only in-flight work (UI 0.30.0)
 
