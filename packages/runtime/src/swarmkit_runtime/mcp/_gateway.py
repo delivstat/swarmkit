@@ -116,7 +116,7 @@ async def mcp_gateway(
     ``host.docker.internal`` so the container reaches the host."""
     import uvicorn  # noqa: PLC0415
     from mcp.server.sse import SseServerTransport  # noqa: PLC0415
-    from mcp.types import TextContent, Tool  # noqa: PLC0415
+    from mcp.types import ImageContent, TextContent, Tool  # noqa: PLC0415
     from starlette.applications import Starlette  # noqa: PLC0415
     from starlette.requests import Request  # noqa: PLC0415
     from starlette.responses import JSONResponse, Response  # noqa: PLC0415
@@ -152,7 +152,7 @@ async def mcp_gateway(
             )
         except MCPCallDenied as exc:
             return [TextContent(type="text", text=f"DENIED by governance: {exc}")]
-        return _to_content(resp, TextContent)
+        return _to_content(resp, TextContent, ImageContent)
 
     # 1.x registers these with decorators, 2.0 with constructor kwargs and a different handler
     # shape. The compat builder is the only place that knows which.
@@ -198,8 +198,23 @@ async def mcp_gateway(
             await asyncio.wait_for(serve_task, timeout=5)
 
 
-def _to_content(resp: Any, text_content: type) -> list[Any]:
-    """Flatten a ToolResponse into MCP content blocks (text primary)."""
+def _to_content(resp: Any, text_content: type, image_content: type | None = None) -> list[Any]:
+    """Flatten a ToolResponse into MCP content blocks — text AND images.
+
+    This used to read ``.text`` off every block and keep only what had one. ``ImageContent`` carries
+    ``.data`` (base64) + ``.mimeType`` and no ``.text``, so every image was skipped; a response that
+    was *only* images left ``out`` empty and fell through to ``str(data)``, delivering the repr
+    ``Image: screen1.png (.png, 14960 bytes base64)``.
+
+    The tool call succeeded, the bytes were read, and the picture was discarded in the last step
+    before the harness saw it — while the trace showed a green tool call. An agent asked to describe
+    a screenshot could then only stall or fabricate.
+
+    A **model** node has always rendered these correctly (`_skill_executor` builds a real image
+    block). The gateway is the harness's only route to MCP, so the same skill on the same workspace
+    worked on a model node and silently degraded on a harness. Matching the model path here is what
+    makes an executor an implementation detail rather than a capability difference.
+    """
     data = getattr(resp, "data", resp)
     content = getattr(data, "content", None)
     if content:
@@ -208,6 +223,14 @@ def _to_content(resp: Any, text_content: type) -> list[Any]:
             text = getattr(block, "text", None)
             if text:
                 out.append(text_content(type="text", text=text))
+                continue
+            # Same discriminator the model path uses, rather than sniffing for attributes: a text
+            # block with an empty string should not be mistaken for an image.
+            if image_content is not None and getattr(block, "type", None) == "image":
+                b64 = getattr(block, "data", None)
+                mime = getattr(block, "mimeType", None)
+                if b64 and mime:
+                    out.append(image_content(type="image", data=b64, mimeType=mime))
         if out:
             return out
     return [text_content(type="text", text=str(data))]
