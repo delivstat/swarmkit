@@ -8,6 +8,11 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.144.0** (2026-08-04) — a harness node is finally a node, and two processes can start together
+- **v1.141.0** (2026-08-04) — the portal can reach an identity provider, gates are approvable locally, and a failed stage stops the run
+- **v1.137.0** (2026-08-03) — harness runs are observable, migrations leave a writable store, and rework carries the reviewer's comment
+- **v1.133.0** (2026-08-03) — pipeline stage traces stop overwriting each other
+- **v1.132.0** (2026-08-03) — checkpoints are actually durable
 - **v1.131.3** (2026-08-03) — the MCP SDK 2.0 port, finished
 - **v1.131.2** (2026-08-02) — MCP SDK 2.0 support
 - **v1.131.1** (2026-08-02) — a missing checkpointer extra degrades, it does not kill serve
