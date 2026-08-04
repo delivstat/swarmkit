@@ -294,6 +294,30 @@ def build_pipeline_run_stage(
 
         output = result.output or ""
         ref = artifact_store.put(correlation_id, sid, output)
+
+        # A node that failed WITHOUT raising (a harness run that dies is a normal terminal event,
+        # not an exception) used to reach here as an ordinary result. Its error string became the
+        # stage's output artifact and then the NEXT stage's input: on WMS-1 the design agent was
+        # prompted with `[harness:claude-code] failure: no result event` and replied, reasonably,
+        # "I'm ready to help — what would you like to work on?" The gate parked on THAT and asked a
+        # human to approve work never attempted, while the saga read `parked` throughout.
+        #
+        # Three things went wrong at once: the pipeline advanced past a failure, the original error
+        # was destroyed when the downstream output replaced it, and an agent was billed for a run
+        # that could not succeed. So: stop here, keep the error as the failure reason rather than
+        # as somebody's prompt, and do not open a gate on it.
+        # Read defensively: `runtime.run` is a seam, and a caller may hand back any result-shaped
+        # object. An older or third-party result simply has no failures to report — it must not
+        # crash here, and it must not be treated as failed either.
+        node_errors = getattr(result, "node_errors", None) or {}
+        if node_errors:
+            return StageOutcome(
+                status="failed",
+                artifact=ref,
+                detail="; ".join(f"{node}: {why}" for node, why in sorted(node_errors.items())),
+                artifact_bytes=len(output.encode()),
+            )
+
         funnel_id = str(stage.get("gate") or stage.get("funnel") or "")
         if not funnel_id:
             return StageOutcome(

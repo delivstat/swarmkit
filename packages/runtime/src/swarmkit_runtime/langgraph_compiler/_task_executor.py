@@ -275,6 +275,7 @@ async def _execute_child_task(
         "task_plan": {},
         "current_agent": child.id,
         "output": "",
+        "node_errors": {},
     }
 
     result_state = await child_fn(child_state)

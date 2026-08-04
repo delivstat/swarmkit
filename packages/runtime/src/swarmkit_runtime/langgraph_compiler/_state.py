@@ -78,3 +78,10 @@ class SwarmState(TypedDict):
     task_plan: Annotated[dict[str, Any], _merge_dicts]
     current_agent: Annotated[str, _last_write_wins]
     output: Annotated[str, _last_write_wins]
+    #: Node id -> why that node failed. A harness node cannot raise (a failed run is a normal
+    #: terminal event, not an exception), so it used to report failure only as its output TEXT —
+    #: and a caller cannot tell a failure string from a work product. Downstream of that, a failed
+    #: stage's error was chained into the next stage as its input. Structured because the string
+    #: was never reliably recognisable: `_is_error_passthrough` matches "Error:"/"Tool error:" and
+    #: never matched "[harness:claude-code] failure: no result event" at all.
+    node_errors: Annotated[dict[str, str], _merge_dicts]
