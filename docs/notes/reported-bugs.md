@@ -18,7 +18,6 @@ Ordered by how much damage the bug does while looking fine.
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
-| — | `/jobs` shows only in-flight jobs; `/jobs/history` exists server-side, unused by the UI | web UI | — |
 
 ### 9. A failed stage's error becomes the next stage's input
 
@@ -106,6 +105,19 @@ configured identity matches no role member — the same warning catches the `sub
 under `jwt`.
 
 ## Fixed
+
+### `/jobs` showed only in-flight work (UI 0.30.0)
+
+The page read only `/jobs` — the in-memory `JobStore`, which holds this serve process's jobs and is
+empty after a restart. `/jobs/history` existed server-side the whole time and nothing called it, so
+a restart erased the visible record of every run, and the durable token usage and cost the store had
+been recording were never displayed anywhere.
+
+Now two sections: **Running now** (live, polled every 3s) above **History** (durable, every 15s,
+with tokens and cost). The catch is that a job is written to BOTH stores at creation, so the lists
+overlap while it runs — history excludes anything shown live rather than printing it twice. Cost
+shows `-` when unrecorded rather than `$0.00`, since an unmeasured run and a free one are different
+things. See `design/details/jobs-history-ui.md`.
 
 ### Concurrent `create_all` crashed one process at startup (1.144.0)
 

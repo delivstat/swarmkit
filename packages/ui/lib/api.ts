@@ -15,6 +15,7 @@ import type {
 	MemoryChange,
 	MemoryItem,
 	MemoryQuarantineItem,
+	PersistedJob,
 	ReviewGate,
 	SagaDetail,
 	SagaNodeArtifact,
@@ -130,6 +131,8 @@ export const api = {
 	canary: () => get<CanaryStatus>("/canary"),
 
 	jobs: () => get<JobListItem[]>("/jobs"),
+	/** Durable job rows. `/jobs` is the in-memory store — this is what survives a restart. */
+	jobsHistory: () => get<PersistedJob[]>("/jobs/history"),
 	job: (id: string) => get<JobResponse>(`/jobs/${id}`),
 	jobUsage: (id: string) => get<JobUsage>(`/usage/${id}`),
 	jobStreamUrl: (id: string) => `${BASE}/jobs/${id}/stream`,
