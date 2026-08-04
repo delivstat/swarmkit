@@ -326,14 +326,23 @@ export interface Auth {
 }
 
 /**
- * Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim
- * for jwt; identity/identity_name for none.
+ * Provider-specific auth config. keys[] for api_key;
+ * issuer/audience/jwks_url/scopes_claim/client_id/scope for jwt; identity/identity_name for
+ * none.
  */
 export interface Config {
     /**
      * Expected token audience (provider: jwt). Default: swarmkit.
      */
     audience?: string;
+    /**
+     * The browser's OIDC client registration (provider: jwt), advertised to clients via
+     * /auth-info. The server never uses it to validate anything — it advertises it because the
+     * portal ships as a pre-built static export, so a build-time env var would be fixed at
+     * publish and the same wheel serves every deployment. Without it the portal cannot start a
+     * sign-in flow.
+     */
+    client_id?: string;
     /**
      * Who the caller is asserted to be (provider: none). Default: anonymous. This mode already
      * grants wildcard scopes and authorizes everything, so naming the operator confers no new
@@ -358,6 +367,11 @@ export interface Config {
      * API key registry (provider: api_key).
      */
     keys?: KeyElement[];
+    /**
+     * OIDC scopes the portal requests (provider: jwt), advertised via /auth-info. Default:
+     * openid profile email.
+     */
+    scope?: string;
     /**
      * JWT claim holding scopes (provider: jwt). Default: scope.
      */

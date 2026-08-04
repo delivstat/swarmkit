@@ -673,7 +673,7 @@ class ContextCompression(BaseModel):
 
 class ServerAuthConfig(BaseModel):
     """
-    Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim for jwt; identity/identity_name for none.
+    Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim/client_id/scope for jwt; identity/identity_name for none.
     """
 
     model_config = ConfigDict(
@@ -693,6 +693,14 @@ class ServerAuthConfig(BaseModel):
     )
     scopes_claim: str | None = Field(
         None, description="JWT claim holding scopes (provider: jwt). Default: scope."
+    )
+    client_id: str | None = Field(
+        None,
+        description="The browser's OIDC client registration (provider: jwt), advertised to clients via /auth-info. The server never uses it to validate anything — it advertises it because the portal ships as a pre-built static export, so a build-time env var would be fixed at publish and the same wheel serves every deployment. Without it the portal cannot start a sign-in flow.",
+    )
+    scope: str | None = Field(
+        None,
+        description="OIDC scopes the portal requests (provider: jwt), advertised via /auth-info. Default: openid profile email.",
     )
     identity: str | None = Field(
         None,

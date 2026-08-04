@@ -517,7 +517,7 @@
     "server_auth_config": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim for jwt; identity/identity_name for none.",
+      "description": "Provider-specific auth config. keys[] for api_key; issuer/audience/jwks_url/scopes_claim/client_id/scope for jwt; identity/identity_name for none.",
       "properties": {
         "keys": {
           "type": "array",
@@ -528,6 +528,8 @@
         "audience": { "type": "string", "description": "Expected token audience (provider: jwt). Default: swarmkit." },
         "jwks_url": { "type": "string", "description": "JWKS URL (provider: jwt). Defaults to {issuer}/.well-known/jwks.json." },
         "scopes_claim": { "type": "string", "description": "JWT claim holding scopes (provider: jwt). Default: scope." },
+        "client_id": { "type": "string", "description": "The browser's OIDC client registration (provider: jwt), advertised to clients via /auth-info. The server never uses it to validate anything — it advertises it because the portal ships as a pre-built static export, so a build-time env var would be fixed at publish and the same wheel serves every deployment. Without it the portal cannot start a sign-in flow." },
+        "scope": { "type": "string", "description": "OIDC scopes the portal requests (provider: jwt), advertised via /auth-info. Default: openid profile email." },
         "identity": { "type": "string", "description": "Who the caller is asserted to be (provider: none). Default: anonymous. This mode already grants wildcard scopes and authorizes everything, so naming the operator confers no new capability — but the approval engine matches this value against members: in swarm/roles.yaml, so it is what makes a local gate approvable without standing up an identity provider. Asserted, not authenticated: the audit records provider=none." },
         "identity_name": { "type": "string", "description": "Display name for that identity (provider: none). Defaults to the identity itself." }
       }

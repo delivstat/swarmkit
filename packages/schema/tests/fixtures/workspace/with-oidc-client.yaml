@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: oidc-workspace
+  name: Workspace behind an identity provider
+  description: >-
+    `client_id` and `scope` travel with `issuer` and `audience` because the portal ships as a
+    pre-built static export: a build-time env var would be fixed at publish, so one wheel could
+    never serve more than one deployment. The server does not validate against these — it
+    advertises them on /auth-info so a browser can start the PKCE flow.
+governance:
+  provider: mock
+server:
+  auth:
+    provider: jwt
+    config:
+      issuer: https://id.example.com/application/o/swarmkit/
+      audience: swarmkit
+      client_id: swarmkit-portal
+      scope: openid profile email
+      scopes_claim: swarmkit_scopes
