@@ -5,6 +5,7 @@ See ``design/details/langgraph-compiler.md``.
 
 from __future__ import annotations
 
+import json
 import os
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -536,6 +537,89 @@ def _build_agent_node(  # noqa: PLR0915
     return node_fn
 
 
+def _harness_output_schema(agent: ResolvedAgent) -> dict[str, Any] | None:
+    """The schema enforced on a harness node's output — an EXPLICIT one only.
+
+    Deliberately not :func:`get_effective_output_schema`, which the model path uses. That falls back
+    to the worker platform default (``{findings: [{fact, source}], …}``) for any ``role: worker``
+    without an explicit schema. Applying it here would silently impose a findings-schema on every
+    harness worker — `examples/sdlc-pipeline` alone has a `developer` archetype that is
+    ``role: worker`` + ``kind: harness`` with no schema, and it produces a diff, not findings. Every
+    run of it would start failing validation and burning full harness retries to satisfy a contract
+    nobody wrote.
+
+    The platform default exists for structured inter-agent communication between model workers in
+    the delegation pattern. A harness node produces artifacts. So: enforce what the author actually
+    declared, and nothing more.
+    """
+    if agent.output_schema_disabled:
+        return None
+    return dict(agent.output_schema) if agent.output_schema is not None else None
+
+
+async def _enforce_harness_output_schema(
+    text: str,
+    schema: dict[str, Any],
+    *,
+    agent_id: str,
+    governance: GovernanceProvider,
+    reinvoke: Any,
+    max_retries: int = 2,
+) -> str:
+    """Validate a harness result against its declared schema, correcting through the harness.
+
+    Same shape as the model path's ``_validate_and_correct``, with the correction driven by the
+    agent's own executor: a model asked to fix the JSON would be editing a description of work done
+    in a sandbox it cannot reach. Field-specific errors go back as the correction, so the harness is
+    told which fields are wrong rather than "try again".
+
+    Bounded, and on exhaustion the text passes through ANNOTATED rather than silently — the whole
+    point of this gap was output that failed a declared contract and looked fine.
+    """
+    from swarmkit_runtime.skills._output_validator import (  # noqa: PLC0415
+        format_correction_prompt,
+        validate_all_skill_output,
+    )
+
+    current = text
+    errors: list[Any] = []
+    for attempt in range(max_retries + 1):
+        try:
+            parsed = json.loads(current)
+        except (json.JSONDecodeError, TypeError):
+            errors = [
+                type("FieldError", (), {"field": "(root)", "message": "output is not valid JSON"})()
+            ]
+        else:
+            errors = (
+                validate_all_skill_output(parsed, schema)
+                if isinstance(parsed, dict)
+                else [
+                    type(
+                        "FieldError",
+                        (),
+                        {"field": "(root)", "message": "output must be a JSON object"},
+                    )()
+                ]
+            )
+        if not errors:
+            return current
+        if attempt >= max_retries:
+            break
+        current = await reinvoke(format_correction_prompt(errors))
+
+    await governance.record_event(
+        AuditEvent(
+            event_type="output.schema_violation",
+            agent_id=agent_id,
+            timestamp=datetime.now(tz=UTC),
+            payload={"errors": [f"{e.field}: {e.message}" for e in errors]},
+        )
+    )
+    flags = "\n".join(f"  - {e.field}: {e.message}" for e in errors)
+    return f"{current}\n\n---\nOUTPUT SCHEMA VIOLATIONS:\n{flags}"
+
+
 async def _run_harness_with_gates(
     agent: ResolvedAgent,
     state: SwarmState,
@@ -575,8 +659,6 @@ async def _run_harness_with_gates(
         )
 
     result = await _invoke(state)
-    if not bindings:
-        return result
 
     # A harness that FAILED is not a non-conforming output. Gating it would ask a decision skill to
     # judge an error string, and a `required` skill would then retry — paying for a full harness run
@@ -584,49 +666,75 @@ async def _run_harness_with_gates(
     if result.get("node_errors"):
         return result
 
-    from swarmkit_runtime.langgraph_compiler._decision_gate import (  # noqa: PLC0415
-        evaluate_post_output,
-    )
-
     original_input = str(state.get("input", "") or "")
 
-    async def _retry(feedback: str) -> str:
-        """Re-run the harness with the gate's reasoning appended to the task statement."""
-        revised_input = (
-            f"{original_input}\n\n"
-            f"A governance review of your previous attempt requires changes before this can be "
-            f"accepted. Address this feedback and produce the COMPLETE corrected result:\n"
-            f"{feedback}"
-        )
-        retry_state: SwarmState = {**state, "input": revised_input}
+    async def _reinvoke(feedback: str, preamble: str) -> str:
+        """Re-run the harness with feedback appended to the task statement."""
+        revised = f"{original_input}\n\n{preamble}\n{feedback}"
+        retry_state: SwarmState = {**state, "input": revised}
         retried = await _invoke(retry_state)
-        # A harness that fails on the retry leaves the previous text in place: the gate then judges
-        # what it already judged and stops, rather than treating an infrastructure failure as the
-        # agent's revised answer.
+        # A harness that fails on the retry leaves the previous text in place, so an infrastructure
+        # failure is never mistaken for the agent's revised answer.
         if retried.get("node_errors"):
             return str(result.get("output", "") or "")
         return str(retried.get("output", "") or "")
+
+    # `output_schema` was ignored entirely on this path, so a harness agent had neither a schema
+    # constraint nor a post-hoc check — the two independent mechanisms that would each have caught
+    # a non-conforming output. This restores the first; the decision skills below are the second.
+    text = str(result.get("output", "") or "")
+    schema = _harness_output_schema(agent)
+    if schema is not None and text:
+        text = await _enforce_harness_output_schema(
+            text,
+            schema,
+            agent_id=agent_id,
+            governance=governance,
+            reinvoke=lambda fb: _reinvoke(
+                fb,
+                "Your previous output did not match the required output schema. "
+                "Return the COMPLETE corrected result:",
+            ),
+        )
+        if text != result.get("output"):
+            result = _replace_node_text(result, agent_id, text)
+
+    if not bindings:
+        return result
+
+    from swarmkit_runtime.langgraph_compiler._decision_gate import (  # noqa: PLC0415
+        evaluate_post_output,
+    )
 
     checked, _ = await evaluate_post_output(
         agent_id=agent_id,
         output=str(result.get("output", "") or ""),
         bindings=bindings,
         governance=governance,
-        retry_fn=_retry,
+        retry_fn=lambda fb: _reinvoke(
+            fb,
+            "A governance review of your previous attempt requires changes before this can be "
+            "accepted. Address this feedback and produce the COMPLETE corrected result:",
+        ),
     )
     if checked == result.get("output"):
         return result
+    return _replace_node_text(result, agent_id, checked)
 
-    # The revision has to REPLACE what flows downstream — output, the per-agent result and the
-    # message. Leaving the original in any of them would hand the next node the text the gate just
-    # rejected.
+
+def _replace_node_text(result: dict[str, Any], agent_id: str, text: str) -> dict[str, Any]:
+    """Put revised text everywhere the node's answer flows.
+
+    Output, the per-agent result AND the message: leaving the original in any of them would hand
+    the next node the text that was just rejected.
+    """
     from langchain_core.messages import AIMessage  # noqa: PLC0415
 
     return {
         **result,
-        "output": checked,
-        "agent_results": {agent_id: checked},
-        "messages": [AIMessage(content=checked, name=agent_id)],
+        "output": text,
+        "agent_results": {agent_id: text},
+        "messages": [AIMessage(content=text, name=agent_id)],
     }
 
 
