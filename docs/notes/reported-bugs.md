@@ -19,6 +19,29 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### A reworked stage overwrote the run it was replacing (1.159.0)
+
+Reported as "the rework does not show up in Jobs — is it because the new job has the same id?" It
+was, and the missing row was the least of it. `stage_run_id` was `<correlation>:<stage>` with no
+attempt, so a rework reused the id and three things collided at once:
+
+* the job INSERT failed on the primary key and was swallowed as best-effort, so the rework left no
+  record — the reported symptom;
+* the closing UPDATE then landed on the FIRST row, producing one chimera: round 1's input and
+  start time beside round 2's output, an elapsed time spanning the human's review, and round 1's
+  spend simply gone. Every pipeline with a rework under-reported its own cost;
+* the trace saves to `{run_id}.json`, so the rework destroyed the trace of the draft the reviewer
+  had objected to — the one a reader most wants when asking why changes were requested.
+
+`run_usage` rows append, so `/usage` had both rounds while the job row had one. Two views
+disagreed and neither said so.
+
+The id now carries the attempt (`WMS-5:design@2`), taken from `SagaState.attempts`, which the
+controller increments and saves before the stage runs. Attempt 1 stays unsuffixed so existing
+rows, traces and links keep resolving.
+
+Tests: `test_rework_is_its_own_run.py`.
+
 ### A harness agent never received its context files (1.158.0)
 
 Parity gap 4, the last of the assigned-once-read-never fields. `TaskSpec.context_files` was
