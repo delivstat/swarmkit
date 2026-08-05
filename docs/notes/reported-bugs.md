@@ -37,6 +37,13 @@ synthesis turn passes none. A schema-bound agent no longer returns directly from
 turn, so its document is still produced under the schema, and an agent that finishes with a schema,
 tools available and zero calls now warns.
 
+The prompt said the same thing one layer up, found while merging the grammar fix: "Return ONLY the
+JSON object. No markdown, no explanation" was appended on EVERY turn, including the ones offering
+tools, so a compliant model was still instructed not to call them. On a tool-carrying turn the
+instruction now describes the FINAL answer and says to use the tools first; with no tools the strict
+wording stands, since that turn has nothing to defer and the prompt is the only enforcement where a
+provider's structured-output support is weak (1.149.1).
+
 ### The retry envelope read as prompt injection (1.146.0)
 
 A regression from the decision-skill fix. With `post_output` skills running on harness executors,

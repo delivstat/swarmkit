@@ -150,6 +150,41 @@ def _looks_incomplete(text: str) -> bool:
     return len(lower) < 500 and any(m in lower for m in _INCOMPLETE_MARKERS)
 
 
+def _structured_output_instruction(effective_schema: Any, has_tools: bool) -> str:
+    """The prompt half of structured output — and it has to say WHEN.
+
+    "Return ONLY the JSON object. No markdown, no explanation" on a turn that also offers tools
+    tells a compliant model not to call them: the same suppression the grammar used to impose
+    (fixed in 1.149.0), one layer up. A model obeying it produces a schema-shaped document
+    explaining that it still needs to do the research — which validates, and looks finished.
+
+    So when tools are on the table the schema describes the FINAL answer and says so. With no tools
+    there is nothing to defer, and the original wording stands.
+    """
+    if not effective_schema:
+        return ""
+    import json as _json  # noqa: PLC0415
+
+    schema_json = _json.dumps(effective_schema, indent=2)
+    tail = (
+        "Every finding must have a 'fact' and 'source' field. If you found nothing relevant, "
+        'return {"findings": [], "not_found": ["<what you searched for>"]}.'
+    )
+    if has_tools:
+        return (
+            "\n\nSTRUCTURED OUTPUT: your FINAL answer must be valid JSON matching this schema:\n"
+            f"```json\n{schema_json}\n```\n"
+            "Use your tools first — call them as many times as the task needs. This format applies "
+            "only to the final answer you give once the research is done, not to the turns where "
+            f"you are calling tools. {tail}"
+        )
+    return (
+        "\n\nSTRUCTURED OUTPUT: You MUST respond with valid JSON matching this schema:\n"
+        f"```json\n{schema_json}\n```\n"
+        f"Return ONLY the JSON object. No markdown, no explanation, no preamble. {tail}"
+    )
+
+
 def _build_system_prompt(
     agent: ResolvedAgent,
     tools: list[ToolSpec],
@@ -270,19 +305,9 @@ def _build_system_prompt(
         names = ", ".join(f"`{t.name}`" for t in skill_tools)
         parts.append(f"Skills available: {names}")
 
-    if effective_schema:
-        import json as _json  # noqa: PLC0415
-
-        schema_json = _json.dumps(effective_schema, indent=2)
-        parts.append(
-            "\n\nSTRUCTURED OUTPUT: You MUST respond with valid JSON matching "
-            "this schema:\n"
-            f"```json\n{schema_json}\n```\n"
-            "Return ONLY the JSON object. No markdown, no explanation, no "
-            "preamble. Every finding must have a 'fact' and 'source' field. "
-            'If you found nothing relevant, return {"findings": [], '
-            '"not_found": ["<what you searched for>"]}.'
-        )
+    schema_block = _structured_output_instruction(effective_schema, bool(tools))
+    if schema_block:
+        parts.append(schema_block)
 
     return "\n".join(parts)
 
