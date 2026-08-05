@@ -953,6 +953,16 @@ class WorkspaceRuntime:
         return self._audit_provider
 
     @property
+    def store(self) -> Any:
+        """The workspace's durable store, from the one storage service.
+
+        Exposed so callers that need to record a run — chat, the CLI — reach the SAME store serve
+        resolved, rather than opening a second one that ignores the workspace's storage config
+        (design/details/storage-service.md).
+        """
+        return self._storage().store()
+
+    @property
     def mcp_manager(self) -> MCPClientManager | None:
         return self._mcp_manager
 
