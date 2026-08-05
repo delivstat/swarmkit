@@ -105,7 +105,7 @@ class JobService:
         job = await self._jobs.create(resolved_name, user_input)
         job.version = selected_version
         if store:
-            store.create_job(job.id, resolved_name, user_input)
+            store.create_job(job.id, resolved_name, user_input, None, "serve")
             if selected_version:
                 store.update_job(job.id, version=selected_version)
         _start_job(

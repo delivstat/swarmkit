@@ -300,6 +300,7 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
                 "usage_output_tokens": r.usage_output_tokens,
                 "usage_cost_usd": r.usage_cost_usd,
                 "correlation_id": r.correlation_id,
+                "source": r.source,
             }
             for r in rows
         ]

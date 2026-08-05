@@ -27,11 +27,18 @@ from swarmkit_runtime.review._hitl import HITLDeferredError
 
 class _Store:
     def __init__(self) -> None:
-        self.created: list[tuple[str, str, str]] = []
+        self.created: list[tuple[str, str, str, str]] = []
         self.updates: list[dict[str, Any]] = []
 
-    def create_job(self, job_id: str, topology: str, user_input: str) -> None:
-        self.created.append((job_id, topology, user_input))
+    def create_job(
+        self,
+        job_id: str,
+        topology: str,
+        user_input: str,
+        correlation_id: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        self.created.append((job_id, topology, user_input, source or ""))
 
     def update_job(self, job_id: str, **fields: Any) -> None:
         self.updates.append({"job_id": job_id, **fields})

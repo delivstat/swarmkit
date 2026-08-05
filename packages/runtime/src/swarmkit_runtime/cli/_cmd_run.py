@@ -20,6 +20,7 @@ from swarmkit_runtime._workspace_runtime import (
     WorkspaceRuntime,
 )
 from swarmkit_runtime.errors import ResolutionErrors
+from swarmkit_runtime.persistence import usage_fields
 from swarmkit_runtime.progress import ProgressEvent, set_progress_sink
 
 from ._app import app
@@ -219,10 +220,9 @@ def _finish_job(
         fields["output"] = output
     if error:
         fields["error"] = error
-    if usage is not None:
-        fields["usage_input_tokens"] = getattr(usage, "input_tokens", 0)
-        fields["usage_output_tokens"] = getattr(usage, "output_tokens", 0)
-        fields["usage_cost_usd"] = getattr(usage, "cost_usd", 0.0)
+    # One recorder for both usage sinks. Hand-rolling the job-level totals here wrote no
+    # `run_usage` rows, so `/usage` — the per-model cost breakdown — never saw a CLI run.
+    fields.update(usage_fields(usage, job_id, store))
     try:
         store.update_job(job_id, **fields)
     except Exception as exc:
@@ -250,7 +250,7 @@ def _execute_run(
     store = _job_store(workspace_path)
     if store is not None:
         try:
-            store.create_job(thread_id, topology_name, user_input)
+            store.create_job(thread_id, topology_name, user_input, None, "cli")
         except Exception as exc:
             _stderr(f"note: this run will not appear in history: {exc}")
             store = None

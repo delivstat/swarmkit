@@ -13,8 +13,7 @@ from uuid import uuid4
 
 from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
 from swarmkit_runtime.canary import CanaryRouter
-from swarmkit_runtime.model_providers._pricing import estimate_cost
-from swarmkit_runtime.persistence import Store, UsageRow
+from swarmkit_runtime.persistence import Store, usage_fields
 from swarmkit_runtime.progress import set_progress_sink
 
 from ._config import _DEFAULT_TIMEOUT_SECONDS
@@ -75,40 +74,16 @@ def _clear_progress_sink() -> None:
 
 
 def _record_run_usage(store: Store, job_id: str, result: RunResult) -> None:
-    """Persist a completed run's usage (design: runtime/usage-recording-and-cost). Writes both
-    sinks: one ``run_usage`` row per model (feeds ``/usage`` + ``/usage/{job_id}``), and the
-    job-level totals onto the jobs table (feeds ``/jobs/history``, which the fleet panel federates
-    for per-run cost). Without this the whole usage pipeline reports zero. Best-effort — a
-    bookkeeping failure must never fail an otherwise-successful run."""
-    usage = result.usage
-    if usage is None:
-        return
-    # Best-effort: a bookkeeping failure must never fail an otherwise-successful run.
-    with contextlib.suppress(Exception):
-        total_cost = 0.0
-        for model, tok in usage.by_model.items():
-            # Provider-reported cost is authoritative (OpenRouter, PR 1); when it's absent
-            # (token-only providers) derive it from the price table (PR 2).
-            cost = float(tok.get("cost", 0.0))
-            if cost == 0.0:
-                cost = estimate_cost(model, int(tok.get("input", 0)), int(tok.get("output", 0)))
-            total_cost += cost
-            store.record_usage(
-                UsageRow(
-                    agent_id="",
-                    model=model,
-                    input_tokens=int(tok.get("input", 0)),
-                    output_tokens=int(tok.get("output", 0)),
-                    cost_usd=cost,
-                    job_id=job_id,
-                )
-            )
-        store.update_job(
-            job_id,
-            usage_input_tokens=usage.input_tokens,
-            usage_output_tokens=usage.output_tokens,
-            usage_cost_usd=total_cost,
-        )
+    """Persist a completed run's usage (design: runtime/usage-recording-and-cost).
+
+    Delegates to the shared recorder. This function used to BE the implementation, and living here
+    meant only `POST /run/{topology}` could reach it — every other run path hand-rolled the
+    job-level half and wrote no per-model rows, so `/usage` answered for one path in four.
+    """
+    fields = usage_fields(result.usage, job_id, store)
+    if fields:
+        with contextlib.suppress(Exception):
+            store.update_job(job_id, **fields)
 
 
 async def execute_job(

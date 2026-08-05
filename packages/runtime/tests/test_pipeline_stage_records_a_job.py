@@ -29,13 +29,18 @@ from swarmkit_runtime.server._pipeline_stage import build_pipeline_run_stage
 
 class _Store:
     def __init__(self) -> None:
-        self.created: list[tuple[str, str, str, str]] = []
+        self.created: list[tuple[str, str, str, str, str]] = []
         self.updates: list[dict[str, Any]] = []
 
     def create_job(
-        self, job_id: str, topology: str, user_input: str, correlation_id: str | None = None
+        self,
+        job_id: str,
+        topology: str,
+        user_input: str,
+        correlation_id: str | None = None,
+        source: str | None = None,
     ) -> None:
-        self.created.append((job_id, topology, user_input, correlation_id or ""))
+        self.created.append((job_id, topology, user_input, correlation_id or "", source or ""))
 
     def update_job(self, job_id: str, **fields: Any) -> None:
         self.updates.append({"job_id": job_id, **fields})

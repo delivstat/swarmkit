@@ -13,6 +13,7 @@ from swarmkit_runtime.persistence._service import (
     storage_for_workspace,
 )
 from swarmkit_runtime.persistence._store import SqliteStore, Store, UsageRow
+from swarmkit_runtime.persistence._usage_recording import record_run_usage, usage_fields
 
 __all__ = [
     "SqliteStore",
@@ -23,5 +24,7 @@ __all__ = [
     "StoreTarget",
     "UsageRow",
     "create_store",
+    "record_run_usage",
     "storage_for_workspace",
+    "usage_fields",
 ]

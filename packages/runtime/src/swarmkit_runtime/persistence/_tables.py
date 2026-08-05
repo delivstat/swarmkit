@@ -32,6 +32,10 @@ jobs = Table(
     #: A stage execution used to leave no job row at all, so a pipeline's actual topology calls were
     #: invisible in Jobs while `/runs` showed only saga state — the work was unfindable from either.
     Column("correlation_id", Text),
+    #: Which front door produced this run — "serve" | "cli" | "pipeline" | "chat". Without it the
+    #: dashboard cannot say where work comes from, and `correlation_id` is ambiguous: a pipeline
+    #: run and a chat conversation both use it, and their ids are not reliably distinguishable.
+    Column("source", Text),
 )
 
 conversations = Table(
