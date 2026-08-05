@@ -812,7 +812,15 @@ async def _finish(
     if terminal.status == "success":
         summary = terminal.output if isinstance(terminal.output, str) else "completed"
         note = f" (+{len(diff)} bytes diff)" if diff else ""
-        result = _make_result(agent_id, f"[harness:{kind}] {summary}{note}")
+        # NO `[harness:{kind}]` prefix on a SUCCESSFUL result. That prefix is a display artifact the
+        # recorder adds; the agent never wrote it. Baked into the output it becomes part of the
+        # artifact — so a design spec's first bytes are a provenance claim its author can prove
+        # false, and replaying that draft into a retry asks a fresh process to accept a fabricated
+        # authorship. One did the right thing and refused the revision on safety grounds.
+        #
+        # Failure results keep the prefix (see `_make_failure` above): those ARE the runtime
+        # speaking, and saying so is the point.
+        result = _make_result(agent_id, f"{summary}{note}")
         # Surface the produced diff (not just its byte count) so a funnel gate's deterministic
         # validate layers — slice_budget, cited_change — can enforce on the change itself.
         if diff:

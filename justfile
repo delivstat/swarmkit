@@ -102,6 +102,11 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Demo the retry envelope (retry-envelope-attribution.md): what a retried harness run receives,
+# before and after — the version an agent refused as prompt injection, and the attributed one.
+demo-retry-envelope:
+    uv run python packages/runtime/demos/retry_envelope.py
+
 # Fail if a package's content changed but its version did not — publish_if_new would skip it and
 # the change would reach nobody (docs/notes/release-version-discipline.md). Run before tagging.
 release-check:

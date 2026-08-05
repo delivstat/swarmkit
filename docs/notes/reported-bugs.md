@@ -19,6 +19,22 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### The retry envelope read as prompt injection (1.146.0)
+
+A regression from the decision-skill fix. With `post_output` skills running on harness executors,
+the first revision was refused by the agent on safety grounds — it checked its worktree, found no
+trace of the "prior turn" it was shown, and declined. The refusal parked as the stage artifact, so a
+reviewer was asked to approve a safety refusal while the run reported success.
+
+Three defects: `[harness:{kind}]` was baked into successful output (a display artifact the agent
+never wrote, so replaying it fabricated authorship it could disprove); prior output was spliced raw,
+unattributed and unbounded; and the envelope referred to "your previous attempt" while supplying
+only the critique, to a process with no memory of it.
+
+Prior output now gets the attributed, delimited, versioned framing `render_decisions` already gives
+reviewer comments, and the prefix survives only on failure results, where the runtime really is the
+speaker. See `design/details/retry-envelope-attribution.md`.
+
 ### A transient error stranded an event as `claimed` forever (1.145.0)
 
 `run_drive_loop()` has no error handling around `handle_event`, so any exception propagates out of
