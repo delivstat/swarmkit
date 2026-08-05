@@ -1,0 +1,13 @@
+# `output_schema` accepts an inline object, a path, or null. A number is none of those — and a
+# silently-ignored malformed declaration is what this branch exists to prevent.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: bad-output-schema
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root
+    output_schema: 42

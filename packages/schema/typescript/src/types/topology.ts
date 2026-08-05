@@ -48,7 +48,7 @@ export interface Root {
     id:                 string;
     intent_monitoring?: IntentMonitoring;
     model?:             Model;
-    output_schema?:     { [key: string]: any } | null;
+    output_schema?:     OutputSchema;
     prompt?:            Prompt;
     role:               RootRole;
     /**
@@ -86,7 +86,7 @@ export interface ChildElement {
     id:                 string;
     intent_monitoring?: IntentMonitoring;
     model?:             Model;
-    output_schema?:     { [key: string]: any } | null;
+    output_schema?:     OutputSchema;
     prompt?:            Prompt;
     role:               ChildRole;
     /**
@@ -157,6 +157,8 @@ export interface Model {
     tool_provider?: string;
     [property: string]: any;
 }
+
+export type OutputSchema = { [key: string]: any } | null | string;
 
 export interface Prompt {
     persona?: string;

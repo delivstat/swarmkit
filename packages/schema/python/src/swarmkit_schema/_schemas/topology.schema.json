@@ -104,6 +104,11 @@
               "additionalProperties": true
             },
             {
+              "type": "string",
+              "minLength": 1,
+              "description": "Path to a JSON Schema file, relative to the artifact that declares it. Resolved and validated at load time, and normalised to the parsed schema \u2014 a consumer cannot tell which form was written. Must stay inside the workspace; remote URLs are not accepted, so a workspace's meaning never depends on the network."
+            },
+            {
               "type": "null",
               "description": "Opt out of output schema for this agent."
             }

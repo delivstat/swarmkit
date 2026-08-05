@@ -64,6 +64,14 @@ class Role(Enum):
     worker = "worker"
 
 
+class OutputSchema(RootModel[str]):
+    root: str = Field(
+        ...,
+        description="Path to a JSON Schema file, relative to the artifact that declares it. Resolved and validated at load time, and normalised to the parsed schema — a consumer cannot tell which form was written. Must stay inside the workspace; remote URLs are not accepted, so a workspace's meaning never depends on the network.",
+        min_length=1,
+    )
+
+
 class Role2(Enum):
     leader = "leader"
     worker = "worker"
@@ -356,7 +364,7 @@ class Agent(BaseModel):
         None, description="Skills merged onto the archetype defaults (design §6.6)."
     )
     iam: Iam | None = None
-    output_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | OutputSchema | None = None
     intent_monitoring: IntentMonitoring | None = None
     funnel: str | None = Field(
         None,

@@ -3,10 +3,13 @@ kind: Archetype
 metadata:
   id: bad-output-schema
   name: Bad Output Schema
-  description: Invalid archetype — output_schema must be object or null, not string.
+  description: >-
+    Invalid archetype — output_schema must be an inline object, a path to a schema file, or null.
+    A number is none of those. (A STRING is valid as of the file-reference support; this fixture
+    previously asserted the opposite and was updated with that change.)
 role: worker
 defaults:
-  output_schema: "not-an-object"
+  output_schema: 42
 provenance:
   authored_by: human
   version: 0.1.0

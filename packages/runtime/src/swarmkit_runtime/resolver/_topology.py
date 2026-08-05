@@ -22,6 +22,7 @@ from swarmkit_runtime.executors import ResolvedExecutor
 from swarmkit_runtime.skills import ResolvedSkill
 from swarmkit_runtime.workspace import DiscoveredArtifact
 
+from ._output_schema_ref import OutputSchemaError, resolve_output_schema
 from ._resolved import ResolvedAgent, ResolvedFunnel, ResolvedTopology
 
 
@@ -30,6 +31,7 @@ def build_topology_registry(
     skills: Mapping[str, ResolvedSkill],
     archetypes: Mapping[str, ResolvedArchetype],
     funnels: Mapping[str, ResolvedFunnel] | None = None,
+    workspace_root: Path | None = None,
 ) -> tuple[Mapping[str, ResolvedTopology], list[ResolutionError]]:
     errors: list[ResolutionError] = []
     registry: dict[str, ResolvedTopology] = {}
@@ -38,7 +40,9 @@ def build_topology_registry(
     for artifact in artifacts:
         if artifact.kind != "topology":
             continue
-        resolved, sub_errors = _resolve_topology(artifact, skills, archetypes, funnels)
+        resolved, sub_errors = _resolve_topology(
+            artifact, skills, archetypes, funnels, workspace_root
+        )
         errors.extend(sub_errors)
         if resolved is None:
             continue
@@ -70,6 +74,7 @@ def _resolve_topology(
     skills: Mapping[str, ResolvedSkill],
     archetypes: Mapping[str, ResolvedArchetype],
     funnels: Mapping[str, ResolvedFunnel],
+    workspace_root: Path | None = None,
 ) -> tuple[ResolvedTopology | None, list[ResolutionError]]:
     errors: list[ResolutionError] = []
     try:
@@ -100,6 +105,7 @@ def _resolve_topology(
         funnels=funnels,
         seen_ids=seen_ids,
         artifact_path=artifact.path,
+        workspace_root=workspace_root,
     )
     errors.extend(sub_errors)
     if root is None:
@@ -135,6 +141,7 @@ def _resolve_agent(
     funnels: Mapping[str, ResolvedFunnel],
     seen_ids: set[str],
     artifact_path: Path,
+    workspace_root: Path | None = None,
 ) -> tuple[ResolvedAgent | None, list[ResolutionError]]:
     errors: list[ResolutionError] = []
     agent_id = str(raw_agent.get("id", ""))
@@ -193,7 +200,24 @@ def _resolve_agent(
     model = _merge_model(archetype, raw_agent)
     prompt = _merge_prompt(archetype, raw_agent)
     iam = _merge_iam(archetype, raw_agent)
-    output_schema, output_schema_disabled = _merge_output_schema(archetype, raw_agent)
+    try:
+        output_schema, output_schema_disabled = _merge_output_schema(
+            archetype, raw_agent, declared_in=artifact_path, workspace_root=workspace_root
+        )
+    except OutputSchemaError as exc:
+        errors.append(
+            ResolutionError(
+                code="agent.output-schema",
+                message=str(exc),
+                artifact_path=artifact_path,
+                yaml_pointer=_pointer_with(parent_path, "output_schema"),
+                suggestion=(
+                    "Point output_schema at a JSON Schema file inside the workspace, or inline a "
+                    "valid JSON Schema object. Use null to opt this agent out."
+                ),
+            )
+        )
+        output_schema, output_schema_disabled = None, False
     funnel, funnel_errors = _resolve_funnel(
         raw_agent, agent_id, funnels, parent_path, artifact_path
     )
@@ -220,6 +244,7 @@ def _resolve_agent(
             funnels=funnels,
             seen_ids=seen_ids,
             artifact_path=artifact_path,
+            workspace_root=workspace_root,
         )
         errors.extend(child_errors)
         if child is not None:
@@ -326,18 +351,30 @@ def _merge_iam(
 def _merge_output_schema(
     archetype: ResolvedArchetype | None,
     raw_agent: Mapping[str, Any],
+    *,
+    declared_in: Path | None = None,
+    workspace_root: Path | None = None,
 ) -> tuple[Mapping[str, Any] | None, bool]:
     """Merge output_schema from archetype + agent-level override.
 
     Returns ``(schema, disabled)``. Agent-level wins over archetype.
     Explicit ``null`` in YAML means opt-out (``disabled=True``).
+
+    Either side may be an inline object OR a path to a JSON Schema file; both normalise to the
+    parsed object here, so nothing downstream can tell which form was written. A path resolves
+    against the artifact that declared it, and both forms are validated as JSON Schema — a
+    malformed one used to surface mid-run as a conformance failure blaming the agent.
     """
+    here = declared_in or Path.cwd()
+
     if "output_schema" in raw_agent:
         val = raw_agent["output_schema"]
         if val is None:
             return None, True
-        if isinstance(val, dict):
-            return val, False
+        if isinstance(val, (dict, str)):
+            return resolve_output_schema(
+                val, declared_in=here, workspace_root=workspace_root
+            ), False
 
     if archetype is not None:
         defaults = archetype.raw.defaults
@@ -346,8 +383,15 @@ def _merge_output_schema(
             arch_val = raw_defaults["output_schema"]
             if arch_val is None:
                 return None, True
-            if isinstance(arch_val, dict):
-                return arch_val, False
+            if isinstance(arch_val, (dict, str)):
+                # Relative to the ARCHETYPE that declared it, not the topology that inherits it.
+                arch_here = getattr(archetype, "source_path", None) or here
+                return (
+                    resolve_output_schema(
+                        arch_val, declared_in=Path(arch_here), workspace_root=workspace_root
+                    ),
+                    False,
+                )
 
     return None, False
 
