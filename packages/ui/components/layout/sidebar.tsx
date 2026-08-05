@@ -13,6 +13,8 @@ import {
 	LayoutDashboard,
 	ListChecks,
 	MessageCircle,
+	PanelLeftClose,
+	PanelLeftOpen,
 	PenTool,
 	PlayCircle,
 	Puzzle,
@@ -26,8 +28,13 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
+import {
+	SIDEBAR_WIDTH,
+	isActive,
+	loadCollapsed,
+	storeCollapsed,
+} from "@/lib/sidebar-state";
 import type { HealthResponse } from "@/lib/types";
-
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -51,35 +58,113 @@ const NAV = [
 	{ href: "/system", label: "System", icon: Database },
 ] as const;
 
+/**
+ * The nav, which scrolls, and collapses to icons.
+ *
+ * Eighteen entries sat in a `flex-col` with no overflow handling, inside a body that is
+ * `h-screen overflow-hidden`. On a short viewport — a laptop with devtools open, a split screen —
+ * the entries past the fold were not merely awkward to reach, they were unreachable: nothing
+ * scrolled, and the footer's `mt-auto` pushed the list further up. System, Triggers and Canary
+ * were the first to go.
+ *
+ * So: the link list is its own scroll region between a fixed header and a fixed footer, and the
+ * whole rail collapses to icon width for anyone who would rather have the horizontal space.
+ */
 export function Sidebar() {
 	const pathname = usePathname();
+	// Always expanded on the first render. The server has no `window`, so reading the stored
+	// preference here would produce markup the client disagrees with and make React throw the tree
+	// away. The effect below corrects it before paint.
+	const [collapsed, setCollapsed] = useState(false);
+
+	useEffect(() => {
+		const stored = loadCollapsed();
+		if (stored !== null) setCollapsed(stored);
+	}, []);
+
+	const toggle = () => {
+		setCollapsed((prev) => {
+			storeCollapsed(!prev);
+			return !prev;
+		});
+	};
 
 	return (
-		<nav className="flex w-56 shrink-0 flex-col gap-1 border-r bg-card p-3">
-			<div className="mb-2 px-3 py-4">
-				<h1 className="text-lg font-semibold tracking-tight">SwarmKit</h1>
-				<p className="text-xs text-muted-foreground">Runtime Dashboard</p>
+		<nav
+			className={cn(
+				"flex shrink-0 flex-col border-r bg-card transition-[width] duration-150",
+				collapsed ? SIDEBAR_WIDTH.collapsed : SIDEBAR_WIDTH.expanded,
+			)}
+			aria-label="Main"
+		>
+			{/* Fixed header. Shrink-0 throughout, or the flex parent compresses these instead of
+			    scrolling the list — which is what "no overflow handling" looked like. */}
+			<div className="flex shrink-0 items-center gap-2 border-b p-3">
+				{!collapsed && (
+					<div className="min-w-0 flex-1 px-1">
+						<h1 className="truncate text-lg font-semibold tracking-tight">
+							SwarmKit
+						</h1>
+						<p className="truncate text-xs text-muted-foreground">
+							Runtime Dashboard
+						</p>
+					</div>
+				)}
+				<button
+					type="button"
+					onClick={toggle}
+					aria-expanded={!collapsed}
+					aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+					title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+					className={cn(
+						"rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground",
+						collapsed && "mx-auto",
+					)}
+				>
+					{collapsed ? (
+						<PanelLeftOpen size={16} />
+					) : (
+						<PanelLeftClose size={16} />
+					)}
+				</button>
 			</div>
-			{NAV.map(({ href, label, icon: Icon }) => {
-				const active = pathname === href || pathname.startsWith(`${href}/`);
-				return (
-					<Link
-						key={href}
-						href={href}
-						className={cn(
-							"flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-							active
-								? "bg-accent font-medium text-accent-foreground"
-								: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-						)}
-					>
-						<Icon size={16} />
-						{label}
-					</Link>
-				);
-			})}
 
-			<VersionFooter />
+			{/* The scroll region. `min-h-0` is what actually makes it scroll: a flex child's default
+			    min-height is its content, so without it the list grows past the container and the
+			    overflow never engages. */}
+			<div className="min-h-0 flex-1 overflow-y-auto p-3">
+				<ul className="flex flex-col gap-1">
+					{NAV.map(({ href, label, icon: Icon }) => {
+						const active = isActive(pathname, href);
+						return (
+							<li key={href}>
+								<Link
+									href={href}
+									// The label is the accessible name when it is visible; when it is
+									// not, `title` carries it for pointer users and `aria-label` for
+									// assistive tech. A collapsed rail of unlabelled icons is not a
+									// navigation anyone can use.
+									title={collapsed ? label : undefined}
+									aria-label={collapsed ? label : undefined}
+									aria-current={active ? "page" : undefined}
+									className={cn(
+										"flex items-center rounded-md py-2 text-sm transition-colors",
+										collapsed ? "justify-center px-2" : "gap-2.5 px-3",
+										active
+											? "bg-accent font-medium text-accent-foreground"
+											: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+									)}
+								>
+									<Icon size={16} className="shrink-0" />
+									{!collapsed && <span className="truncate">{label}</span>}
+								</Link>
+							</li>
+						);
+					})}
+				</ul>
+			</div>
+
+			<VersionFooter collapsed={collapsed} />
 		</nav>
 	);
 }
@@ -90,8 +175,11 @@ export function Sidebar() {
  * the runtime was at 1.2.x. It also showed ONE number, which cannot be right: `swarmkit serve` is
  * the runtime hosting a separately versioned portal, and a mismatch between them is exactly what a
  * reader needs to see (an old portal paired with a new runtime is a real and silent failure mode).
+ *
+ * It no longer uses `mt-auto` — the scroll region above takes the slack now, and `mt-auto` on a
+ * list that overflows pushes the links off-screen rather than pinning the footer down.
  */
-function VersionFooter() {
+function VersionFooter({ collapsed }: { collapsed: boolean }) {
 	const [health, setHealth] = useState<HealthResponse | null>(null);
 
 	useEffect(() => {
@@ -104,10 +192,22 @@ function VersionFooter() {
 	const runtime = health?.runtime_version;
 	const webui = health?.webui_version;
 
+	if (collapsed) {
+		// Both numbers still reachable, since a version mismatch is the thing worth noticing.
+		return (
+			<div
+				className="shrink-0 border-t px-3 py-2 text-center text-muted-foreground"
+				title={`runtime ${runtime ?? "—"} · portal ${webui ?? "— (headless)"}`}
+			>
+				<Box size={14} className="mx-auto opacity-50" />
+			</div>
+		);
+	}
+
 	return (
-		<div className="mt-auto flex flex-col gap-0.5 px-3 py-2 text-[11px] text-muted-foreground">
+		<div className="flex shrink-0 flex-col gap-0.5 border-t px-3 py-2 text-[11px] text-muted-foreground">
 			<span className="flex items-center gap-1.5">
-				<Box size={14} className="opacity-50" />
+				<Box size={14} className="shrink-0 opacity-50" />
 				{runtime ? `runtime ${runtime}` : "runtime —"}
 			</span>
 			{webui ? (

@@ -28,13 +28,17 @@ conform, rather than the third.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from swarmkit_runtime.langgraph_compiler._harness_node import (
     _harness_output_schema,
     _output_contract,
     _task_spec,
 )
+
+if TYPE_CHECKING:
+    from swarmkit_runtime.langgraph_compiler._state import SwarmState
+    from swarmkit_runtime.resolver import ResolvedAgent
 
 SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -55,7 +59,8 @@ class _Agent:
 
 
 def _statement(agent: Any, text: str = "design the WMS change") -> str:
-    return _task_spec(agent, {"input": text}, None).statement
+    state = cast("SwarmState", {"input": text})
+    return _task_spec(cast("ResolvedAgent", agent), state, None).statement
 
 
 # ---- the suffix is gone from the artifact -----------------------------------------------------
@@ -147,12 +152,12 @@ def test_a_worker_without_a_schema_does_not_inherit_the_platform_default() -> No
     """`role: worker` + `kind: harness` with no schema is the `examples/sdlc-pipeline` developer,
     which produces a diff, not findings. Applying the model path's worker default here would fail
     every run against a contract nobody wrote."""
-    assert _harness_output_schema(_Agent(None, role="worker")) is None
+    assert _harness_output_schema(cast("ResolvedAgent", _Agent(None, role="worker"))) is None
 
 
 def test_an_explicit_schema_is_enforced() -> None:
-    assert _harness_output_schema(_Agent(SCHEMA)) == SCHEMA
+    assert _harness_output_schema(cast("ResolvedAgent", _Agent(SCHEMA))) == SCHEMA
 
 
 def test_an_opt_out_disables_enforcement() -> None:
-    assert _harness_output_schema(_Agent(SCHEMA, disabled=True)) is None
+    assert _harness_output_schema(cast("ResolvedAgent", _Agent(SCHEMA, disabled=True))) is None
