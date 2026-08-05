@@ -22,8 +22,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from swarmkit_runtime.orchestration import SagaState
 from swarmkit_runtime.artifacts import build_artifact_store
+from swarmkit_runtime.orchestration import SagaState
 from swarmkit_runtime.server._pipeline_stage import build_pipeline_run_stage
 
 
