@@ -27,10 +27,8 @@ from typing import Any, cast
 
 import pytest
 import swarmkit_runtime.langgraph_compiler._harness_node as hn
-from swarmkit_runtime.langgraph_compiler._compiler import (
-    _harness_output_schema,
-    _run_harness_with_gates,
-)
+from swarmkit_runtime.langgraph_compiler._compiler import _run_harness_with_gates
+from swarmkit_runtime.langgraph_compiler._harness_node import _harness_output_schema
 
 SCHEMA: dict[str, Any] = {
     "type": "object",

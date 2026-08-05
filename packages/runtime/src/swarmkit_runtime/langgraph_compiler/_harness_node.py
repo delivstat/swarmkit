@@ -122,6 +122,46 @@ def _budget_from_config(config: dict[str, Any]) -> BudgetEnvelope:
     )
 
 
+def _harness_output_schema(agent: ResolvedAgent) -> dict[str, Any] | None:
+    """The schema enforced on a harness node's output — an EXPLICIT one only.
+
+    Deliberately not :func:`get_effective_output_schema`, which the model path uses. That falls back
+    to the worker platform default (``{findings: [{fact, source}], …}``) for any ``role: worker``
+    without an explicit schema. Applying it here would silently impose a findings-schema on every
+    harness worker — `examples/sdlc-pipeline` alone has a `developer` archetype that is
+    ``role: worker`` + ``kind: harness`` with no schema, and it produces a diff, not findings. Every
+    run of it would start failing validation and burning full harness retries to satisfy a contract
+    nobody wrote.
+
+    The platform default exists for structured inter-agent communication between model workers in
+    the delegation pattern. A harness node produces artifacts. So: enforce what the author actually
+    declared, and nothing more.
+    """
+    # Read defensively. This is optional metadata, and it is now read during PROMPT ASSEMBLY —
+    # an AttributeError from a missing field would fail the whole node rather than the one thing
+    # that could not be determined.
+    if getattr(agent, "output_schema_disabled", False):
+        return None
+    schema = getattr(agent, "output_schema", None)
+    return dict(schema) if schema is not None else None
+
+
+def _output_contract(schema: dict[str, Any]) -> str:
+    """The declared output schema, stated to the agent as a contract.
+
+    Delimited and labelled for the same reason retry envelopes are (`review/_prior_output.py`):
+    the statement above it is the user's, this is the runtime's, and an agent that cannot tell them
+    apart is being asked to trust unattributed instructions.
+    """
+    return (
+        "<output-contract>\n"
+        "Your final message must be a single JSON object conforming to this JSON Schema, "
+        "with no prose, code fences or commentary around it:\n\n"
+        f"{json.dumps(schema, indent=2)}\n"
+        "</output-contract>"
+    )
+
+
 def _task_spec(agent: ResolvedAgent, state: SwarmState, workspace_root: Path | None) -> TaskSpec:
     """Assemble the checkpointed task (§6.0): the statement, workspace CLAUDE.md as a context file,
     the agent's declared skills as tool grants, and the base ref."""
@@ -134,6 +174,14 @@ def _task_spec(agent: ResolvedAgent, state: SwarmState, workspace_root: Path | N
         claude_md = workspace_root / "CLAUDE.md"
         if claude_md.is_file():
             context_files["CLAUDE.md"] = claude_md.read_text()
+    # Tell the agent the shape it is being held to. `output_schema` was a POST-HOC check only, so
+    # a harness agent was never shown its contract and had to discover it from correction feedback
+    # — one run invented its own 7-key document against a declared 22-field schema, which is a
+    # reasonable thing to do when nothing said otherwise. Each correction is a full agent session,
+    # so learning the shape by failing it costs two of them before the first plausible attempt.
+    schema = _harness_output_schema(agent)
+    if schema is not None and statement:
+        statement = f"{statement}\n\n{_output_contract(schema)}"
     mcp_tools = tuple(sid for sid in (getattr(s, "id", "") for s in agent.skills) if sid)
     return TaskSpec(
         statement=statement,
@@ -811,16 +859,25 @@ async def _finish(
 
     if terminal.status == "success":
         summary = terminal.output if isinstance(terminal.output, str) else "completed"
-        note = f" (+{len(diff)} bytes diff)" if diff else ""
-        # NO `[harness:{kind}]` prefix on a SUCCESSFUL result. That prefix is a display artifact the
-        # recorder adds; the agent never wrote it. Baked into the output it becomes part of the
-        # artifact — so a design spec's first bytes are a provenance claim its author can prove
-        # false, and replaying that draft into a retry asks a fresh process to accept a fabricated
-        # authorship. One did the right thing and refused the revision on safety grounds.
+        # NOTHING is appended to a SUCCESSFUL result, and nothing prefixed. Both ends were display
+        # artifacts the recorder added; the agent wrote neither. Baked into the output they become
+        # part of the artifact — a design spec whose first bytes are a provenance claim its author
+        # can prove false, and whose last bytes are ` (+N bytes diff)`.
+        #
+        # The suffix was the same bug as the prefix, at the other end of the string, and it was
+        # worse: for a schema-bound agent whose contract is JSON it makes the artifact unparseable,
+        # so `_enforce_harness_output_schema` reports "output is not valid JSON" instead of the
+        # field-specific errors it exists to produce. The correction retries then carry the one
+        # message the agent cannot act on, and cannot succeed by construction — two full harness
+        # sessions spent re-sending it. On non-schema runs it was merely cosmetic, which is how it
+        # survived: harmless noise until the contract is machine-checked.
+        #
+        # `diff_bytes` is telemetry and is already in the `executor.result` audit payload above,
+        # which is where a display annotation belongs.
         #
         # Failure results keep the prefix (see `_make_failure` above): those ARE the runtime
         # speaking, and saying so is the point.
-        result = _make_result(agent_id, f"{summary}{note}")
+        result = _make_result(agent_id, summary)
         # Surface the produced diff (not just its byte count) so a funnel gate's deterministic
         # validate layers — slice_budget, cited_change — can enforce on the change itself.
         if diff:
