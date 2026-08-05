@@ -19,6 +19,24 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### output_schema suppressed every tool call on a model node (1.149.0)
+
+`_build_completion_request` attached `response_format` whenever a schema resolved, regardless of
+whether the same request carried tools, and the OpenAI adapter sent both. Under structured-output
+enforcement the reply is constrained to the schema grammar and a `tool_calls` response is not in
+that grammar — so a model handed both had no legal way to call a tool. It complied by filling the
+schema with stubs saying it needed them.
+
+Nothing errored, the document validated, the stage parked, and a reviewer was shown a well-formed
+spec built from no evidence. A conformance check cannot catch that: the artifact is valid. Only the
+audit shows the tools were never called. It also read as model flakiness, because OpenRouter routes
+across providers that enforce json_schema inconsistently.
+
+The schema now attaches only to a turn carrying no tools — which the runtime already had, since the
+synthesis turn passes none. A schema-bound agent no longer returns directly from a tool-carrying
+turn, so its document is still produced under the schema, and an agent that finishes with a schema,
+tools available and zero calls now warns.
+
 ### The retry envelope read as prompt injection (1.146.0)
 
 A regression from the decision-skill fix. With `post_output` skills running on harness executors,

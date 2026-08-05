@@ -50,8 +50,17 @@ def _build_completion_request(
     # Ollama maps it to ``format=<schema>``. Without the schema the model only
     # gets "produce some JSON", which small models satisfy with malformed or
     # off-schema output.
+    #
+    # NOT on a turn that carries tools. Under structured-output enforcement the reply is constrained
+    # to the schema grammar, and a `tool_calls` response is not in that grammar — so a model handed
+    # both has no legal way to call a tool. It complies the only way it can: by filling the schema
+    # with stubs that SAY it needs the tools. Nothing errors, the document validates, and a reviewer
+    # is shown a well-formed spec built from no evidence.
+    #
+    # The loop already has a turn for producing the document — the synthesis call passes no tools —
+    # and that is the turn the schema is for.
     response_format: dict[str, object] | None = None
-    if effective_schema:
+    if effective_schema and not tools:
         response_format = {
             "type": "json_schema",
             "json_schema": {"name": "agent_output", "schema": effective_schema},
