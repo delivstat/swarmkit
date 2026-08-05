@@ -26,7 +26,7 @@ output being wrong, if you notice at all.
 | 1 | Tool-call outcomes discarded — a failed tool traced identically to a successful one | **fixed** (1.135.0) | `_harness_node.py`, all four adapters |
 | 2 | Decision skills never run, including `required: true` | **fixed** (1.142.0) | `_compiler.py` `node_fn()` |
 | 3 | `output_schema` ignored | **fixed** (1.143.0) | `_harness_node.py` (zero references) |
-| 4 | `TaskSpec.context_files` is dead — set, never delivered | **open** | executor plumbing |
+| 4 | `TaskSpec.context_files` is dead — set, never delivered | **fixed** (1.158.0) | executor plumbing |
 | 5 | Images reach a model only via MCP `ImageContent`; relative paths resolve nowhere in the sandbox | **open** | harness sandbox + MCP gateway |
 | 6 | `TaskSpec.mcp_tools` is dead, and the grant it would carry holds the wrong names | **open** | executor plumbing + gateway naming |
 
@@ -128,10 +128,27 @@ default would otherwise impose a findings-schema on every harness worker, includ
 `examples/sdlc-pipeline`'s `developer`, which produces a diff. See
 `design/details/harness-output-schema.md`.
 
-### 4. `TaskSpec.context_files` is dead (open)
+### 4. `TaskSpec.context_files` is dead (fixed, 1.158.0)
 
-The field exists and is populated; nothing delivers it to the harness. A topology that names context
-files gets a harness that never sees them, with no warning.
+The field exists and is populated with the workspace's `CLAUDE.md`; nothing delivered it. A harness
+agent therefore ran without the conventions a model agent is handed, with no warning — the same
+assigned-once-read-never shape as gap 6.
+
+**Fixed** by materialising the files into the sandbox working tree, which is where a harness reads
+its context from and why `CLAUDE.md` works at all. Two constraints shape it:
+
+*The worktree's own copy wins.* The sandbox is a worktree at `base_ref`, so a committed `CLAUDE.md`
+is already present and is the project's own; replacing it with a copy from elsewhere would quietly
+change what the agent is told the rules are. Delivery skips existing files.
+
+*A delivered file is excluded from the diff.* `collect_diff` runs `git add --intent-to-add --all`,
+so anything the runtime writes would otherwise appear as authored change — and that diff is the
+node's output artifact, the next stage's input, and what a human approves at a gate. Presenting a
+runtime-written file as the agent's work is the same defect as the display annotation baked into
+output text (bug 16), one layer down. Delivery is recorded as `executor.context_delivered`, since
+"the agent had the project's rules" is an auditable claim.
+
+Path traversal is refused rather than resolved: context delivery is not a file-write primitive.
 
 ### 5. Images (open)
 

@@ -47,6 +47,7 @@ from swarmkit_runtime.executors import (
     TaskSpec,
     collect_diff,
     container_sandbox,
+    deliver_context_files,
     enforce_budget,
     is_launch_approved,
     load_adapter_specs,
@@ -601,6 +602,19 @@ async def _execute(  # noqa: PLR0912, PLR0915
                 gateway_stack, agent, adapter_spec, mcp_manager, governance, sandbox, task
             )
 
+            # Deliver the task's context files into the working tree. A harness reads its context
+            # from there — that is why `CLAUDE.md` works at all — and this field was assembled and
+            # then never delivered, so a harness agent ran without the conventions a model agent is
+            # given. Recorded, because "the agent had the project's rules" is an auditable claim.
+            delivered = deliver_context_files(sandbox, task.context_files)
+            if delivered:
+                await _record(
+                    governance,
+                    "executor.context_delivered",
+                    agent_id,
+                    {"kind": kind, "files": list(delivered)},
+                )
+
             await _record(governance, "executor.started", agent_id, {"kind": kind})
 
             park_resume = (
@@ -753,7 +767,11 @@ async def _execute(  # noqa: PLR0912, PLR0915
             diff = ""
             if terminal is not None and terminal.status == "success":
                 try:
-                    diff = await collect_diff(sandbox)
+                    # Excluding what the RUNTIME wrote. The diff is the agent's output artifact —
+                    # it becomes the stage's artifact, the next stage's input, and what a human
+                    # approves at a gate — so a delivered context file appearing in it would be
+                    # presented as authored work.
+                    diff = await collect_diff(sandbox, delivered)
                 except SandboxError:
                     # A persistent working_dir need not be a git repo — the diff is informational
                     # there, not an isolation boundary, so a missing repo is not a failure.
