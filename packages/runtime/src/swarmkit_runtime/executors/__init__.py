@@ -61,7 +61,12 @@ from swarmkit_runtime.executors._run import (
     SandboxHandle,
     TaskSpec,
 )
-from swarmkit_runtime.executors._sandbox import SandboxError, collect_diff, worktree_sandbox
+from swarmkit_runtime.executors._sandbox import (
+    SandboxError,
+    collect_diff,
+    deliver_context_files,
+    worktree_sandbox,
+)
 
 __all__ = [
     "AdapterInterpreter",
@@ -103,6 +108,7 @@ __all__ = [
     "collect_diff",
     "container_sandbox",
     "default_executor_registry",
+    "deliver_context_files",
     "enforce_budget",
     "is_launch_approved",
     "launch_fingerprint",

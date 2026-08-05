@@ -17,13 +17,17 @@ Provisioning and teardown are core's job, not the adapter's — the adapter only
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import shutil
 import tempfile
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from swarmkit_runtime.executors._run import SandboxHandle
+
+logger = logging.getLogger("swarmkit.sandbox")
 
 
 class SandboxError(RuntimeError):
@@ -82,16 +86,57 @@ async def worktree_sandbox(
         shutil.rmtree(base, ignore_errors=True)
 
 
-async def collect_diff(handle: SandboxHandle) -> str:
+def deliver_context_files(handle: SandboxHandle, files: Mapping[str, str]) -> tuple[str, ...]:
+    """Materialise the task's context files into the sandbox, and report what was written.
+
+    A harness reads its context from the working tree — that is the whole mechanism, and it is why
+    `CLAUDE.md` works at all. ``TaskSpec.context_files`` was assembled and then never delivered, so
+    a harness agent ran without the conventions a model agent is given.
+
+    Two rules:
+
+    * **An existing file is never overwritten.** The sandbox is a worktree of the repo at
+      ``base_ref``, so a committed ``CLAUDE.md`` is already there and is the project's own.
+      Replacing it with a copy from elsewhere would quietly change what the agent is told to do.
+    * **Nothing escapes the sandbox.** A name containing ``..`` or an absolute path is refused
+      rather than resolved — context delivery is not a file-write primitive.
+
+    Returns the paths actually written, which the caller must exclude from the collected diff.
+    """
+    written: list[str] = []
+    root = handle.root.resolve()
+    for name, content in (files or {}).items():
+        target = (root / name).resolve()
+        if not str(target).startswith(str(root) + os.sep):
+            logger.warning("refusing to deliver context file outside the sandbox: %s", name)
+            continue
+        if target.exists():
+            continue  # the worktree's own copy wins
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        written.append(name)
+    return tuple(written)
+
+
+async def collect_diff(handle: SandboxHandle, exclude: Sequence[str] = ()) -> str:
     """Return the harness's changes as a unified diff against the sandbox's base ref.
 
     Uses ``git add --intent-to-add`` so newly created (untracked) files appear as additions without
     staging their content — the produced diff is the node's output artifact (§6.1). This never
     commits, merges, or pushes: integration is a downstream node's decision, gated as usual.
+
+    ``exclude`` drops paths the RUNTIME wrote — delivered context files. They are not the agent's
+    work, and the diff is the agent's output artifact: it becomes the stage's artifact, the next
+    stage's input, and what a human approves at a gate. Letting a runtime-written file through
+    would present it as authored work, which is the same defect as annotating the output text.
     """
     root = handle.root
     await _git("add", "--intent-to-add", "--all", cwd=root)
-    code, out, err = await _git("diff", cwd=root)
+    args = ["diff"]
+    if exclude:
+        # Pathspec form, so the exclusion is git's own and cannot mangle the diff body.
+        args += ["--", ".", *(f":(exclude){path}" for path in exclude)]
+    code, out, err = await _git(*args, cwd=root)
     if code != 0:
         raise SandboxError(f"failed to collect diff from {root}: {err.strip()}")
     return out

@@ -14,11 +14,26 @@ Ordered by how much damage the bug does while looking fine.
 | --- | --- | --- | --- |
 | — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
-| 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
 | 6 | A harness cannot see gateway tools once `allowed_tools` is set — the grant is written in skill ids, the gateway advertises `mcp__swarmkit__<server>__<tool>` | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #6 |
 
 ## Fixed
+
+### A harness agent never received its context files (1.158.0)
+
+Parity gap 4, the last of the assigned-once-read-never fields. `TaskSpec.context_files` was
+populated with the workspace's `CLAUDE.md` and delivered nowhere, so a harness agent ran without
+the conventions a model agent is handed — silently, since nothing reads as missing.
+
+The interesting half is the delivery, not the omission. `collect_diff` runs
+`git add --intent-to-add --all`, so writing a file into the sandbox naively would put it in the
+agent's diff — and that diff is the node's output artifact, the next stage's input, and what a
+human approves at a gate. That is bug 16 one layer down: a runtime-written thing presented as
+authored work. Delivered paths are excluded from the diff, existing files are never overwritten
+(the worktree's committed copy is the project's own), and traversal is refused rather than
+resolved.
+
+Tests: `test_harness_context_files.py`.
 
 ### A display annotation broke every schema-bound harness run (1.156.0)
 
