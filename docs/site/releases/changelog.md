@@ -8,6 +8,12 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.153.0** (2026-08-05) — runs and audit entries say what actually happened
+- **v1.150.0** (2026-08-05) — a CLI run is part of the record
+- **v1.149.1** (2026-08-05) — an output_schema no longer silently disables an agent's tools
+- **v1.148.0** (2026-08-05) — a schema can live in a file, and a retry stops looking like an attack
+- **v1.145.1** (2026-08-05) — the schema catches up, and a release fails rather than skipping a package
+- **v1.145.0** (2026-08-05) — a stalled pipeline recovers itself, and the jobs page remembers
 - **v1.144.0** (2026-08-04) — a harness node is finally a node, and two processes can start together
 - **v1.141.0** (2026-08-04) — the portal can reach an identity provider, gates are approvable locally, and a failed stage stops the run
 - **v1.137.0** (2026-08-03) — harness runs are observable, migrations leave a writable store, and rework carries the reviewer's comment
