@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-webui"
-version = "0.7.0"
+version = "0.8.0"
 description = "SwarmKit web portal — the static Next.js build, served by `swarmkit serve`."
 readme = "README.md"
 requires-python = ">=3.11"

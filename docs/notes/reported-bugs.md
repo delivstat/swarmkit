@@ -283,6 +283,15 @@ server list as filenames; `str(engine.url)` masking the password it was asked to
 `test_reported_bugs.py`, `test_store_factory.py`, `test_cli_command_registration.py`,
 `test_engine_url_password.py`.
 
+## Near misses
+
+### The portal fix that would not have shipped (caught at v1.145.0)
+
+The jobs-history page was in the built bundle, but `swarmkit-webui` was still 0.7.0 — already on
+PyPI — so `publish_if_new` would have skipped it. Every workflow would have gone green and no user
+would have received the fix. `packages/ui` and `packages/webui` have separate versions and the
+former does not publish anything. Rule written down in [portal-release-discipline](portal-release-discipline.md).
+
 ## The pattern
 
 Nearly every entry above is the same bug wearing different clothes:
