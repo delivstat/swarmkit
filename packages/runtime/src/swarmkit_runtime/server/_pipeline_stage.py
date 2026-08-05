@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from swarmkit_runtime.orchestration import RunStage, SagaStore, StageOutcome
+from swarmkit_runtime.persistence import usage_fields
 
 logger = logging.getLogger("swarmkit.pipeline")
 
@@ -266,7 +267,7 @@ def _record_stage_job(
     if store is None:
         return
     try:
-        store.create_job(run_id, topology, stage_input, correlation_id)
+        store.create_job(run_id, topology, stage_input, correlation_id, "pipeline")
     # A stage must run whether or not it can be recorded.
     except Exception:
         logger.warning("stage %s will not appear in jobs: could not create its row", run_id)
@@ -283,10 +284,8 @@ def _finish_stage_job(
         fields["output"] = output
     if error:
         fields["error"] = error
-    if usage is not None:
-        fields["usage_input_tokens"] = getattr(usage, "input_tokens", 0)
-        fields["usage_output_tokens"] = getattr(usage, "output_tokens", 0)
-        fields["usage_cost_usd"] = getattr(usage, "cost_usd", 0.0)
+    # Both usage sinks, through the one recorder — see persistence/_usage_recording.py.
+    fields.update(usage_fields(usage, run_id, store))
     try:
         store.update_job(run_id, **fields)
     # Same one-directional rule on the way out.

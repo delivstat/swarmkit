@@ -84,7 +84,14 @@ class _FakeStore:
         self.created: list[Any] = []
         self.updated: list[Any] = []
 
-    def create_job(self, job_id: str, topology: str, user_input: str) -> None:
+    def create_job(
+        self,
+        job_id: str,
+        topology: str,
+        user_input: str,
+        correlation_id: str | None = None,
+        source: str | None = None,
+    ) -> None:
         self.created.append((job_id, topology, user_input))
 
     def update_job(self, job_id: str, **kw: Any) -> None:

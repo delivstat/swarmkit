@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
+from swarmkit_runtime.persistence import usage_fields
 
 logger = logging.getLogger("swarmkit.conversation")
 
@@ -213,7 +214,7 @@ class ConversationManager:
         if store is None:
             return
         try:
-            store.create_job(run_id, conversation.topology_name, message, conversation.id)
+            store.create_job(run_id, conversation.topology_name, message, conversation.id, "chat")
         # A conversation must continue whether or not it can be recorded.
         except Exception:
             logger.warning("turn %s will not appear in jobs: could not create its row", run_id)
@@ -234,10 +235,8 @@ class ConversationManager:
             fields["output"] = output
         if error:
             fields["error"] = error
-        if usage is not None:
-            fields["usage_input_tokens"] = getattr(usage, "input_tokens", 0)
-            fields["usage_output_tokens"] = getattr(usage, "output_tokens", 0)
-            fields["usage_cost_usd"] = getattr(usage, "cost_usd", 0.0)
+        # Both usage sinks, through the one recorder — see persistence/_usage_recording.py.
+        fields.update(usage_fields(usage, run_id, store))
         try:
             store.update_job(run_id, **fields)
         # Same one-directional rule on the way out.

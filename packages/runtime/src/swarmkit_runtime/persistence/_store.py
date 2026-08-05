@@ -152,6 +152,7 @@ class JobRow:
     usage_output_tokens: int = 0
     usage_cost_usd: float = 0.0
     correlation_id: str | None = None
+    source: str | None = None
 
 
 @dataclass
@@ -192,20 +193,31 @@ class Store:
         create_all_idempotent(metadata, engine)
         self._migrate_jobs()
 
+    #: Columns added to ``jobs`` after the initial schema, in the order they arrived. Additive and
+    #: nullable only — this is the whole migration facility, so anything needing a backfill or a
+    #: type change does not belong here.
+    _ADDED_JOB_COLUMNS = (("correlation_id", "TEXT"), ("source", "TEXT"))
+
     def _migrate_jobs(self) -> None:
         """Add job columns introduced after the initial schema.
 
         ``create_all`` builds a fresh schema and does NOT alter an existing table, so without this
         an upgraded deployment fails on its next insert with "no such column". Same additive shape
         the saga store uses, applied to both dialects since Postgres is first-class here.
+
+        Driven by a list rather than a single early return: the previous version checked for one
+        column and returned, so the second column added would have been silently skipped on every
+        database that already had the first.
         """
         from sqlalchemy import inspect, text  # noqa: PLC0415
 
         existing = {c["name"] for c in inspect(self._engine).get_columns("jobs")}
-        if "correlation_id" in existing:
+        missing = [(n, t) for n, t in self._ADDED_JOB_COLUMNS if n not in existing]
+        if not missing:
             return
         with self._engine.begin() as conn:
-            conn.execute(text("ALTER TABLE jobs ADD COLUMN correlation_id TEXT"))
+            for name, sql_type in missing:
+                conn.execute(text(f"ALTER TABLE jobs ADD COLUMN {name} {sql_type}"))
 
     @property
     def engine(self) -> Engine:
@@ -214,7 +226,12 @@ class Store:
     # ---- Jobs ----------------------------------------------------------------
 
     def create_job(
-        self, job_id: str, topology: str, user_input: str, correlation_id: str | None = None
+        self,
+        job_id: str,
+        topology: str,
+        user_input: str,
+        correlation_id: str | None = None,
+        source: str | None = None,
     ) -> JobRow:
         now = datetime.now(UTC).isoformat()
         row = JobRow(
@@ -224,6 +241,7 @@ class Store:
             input=user_input,
             created_at=now,
             correlation_id=correlation_id,
+            source=source,
         )
         with self._engine.begin() as conn:
             conn.execute(
@@ -234,6 +252,7 @@ class Store:
                     input=row.input,
                     created_at=row.created_at,
                     correlation_id=row.correlation_id,
+                    source=row.source,
                 )
             )
         return row
@@ -294,6 +313,7 @@ class Store:
         return JobRow(
             id=row["id"],
             correlation_id=row.get("correlation_id"),
+            source=row.get("source"),
             topology=row["topology"],
             status=row["status"],
             input=row["input"],
