@@ -95,9 +95,14 @@ and the compiler builds the statement through this envelope rather than an f-str
 
 `just demo-retry-envelope` — the refused version and the attributed one, side by side.
 
-## Not in this change
+## The gate-driven rework (1.147.0)
 
-`_prior_input` still concatenates a stage's own previous output with upstream artifacts on a
-pipeline re-run. The node-level retry no longer depends on that, but a *rework* driven from the
-gate still hands a stage its own prior draft unmarked. Same fix shape, different call site;
-tracked separately rather than widened into this one.
+`_prior_input` concatenated every `*/output` artifact for the correlation — including the stage's
+own previous attempt — so a rework driven from the **gate** reproduced the same unmarked block by a
+different route. That is the path a human gate uses, so it was the likelier one to hit.
+
+The stage's own draft is now separated from upstream context and wrapped in the same
+`<prior-output>` block, with the round taken from the saga's attempt count. Upstream artifacts stay
+outside it: they are context, not the agent's work, and labelling them as its draft would be a
+different false claim. A first run has no own-draft block at all, because an empty one would assert
+a draft that does not exist.
