@@ -6,6 +6,7 @@ a final text response or the turn limit is hit.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import Any
@@ -20,6 +21,8 @@ from swarmkit_runtime.telemetry import record_governance_decision
 from ._helpers import ToolCallResult, _extract_text, _progress, _truncate_result
 from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomplete
 from ._sentinels import TaskStatus
+
+logger = logging.getLogger("swarmkit.compiler")
 
 
 def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResponse) -> None:
@@ -678,7 +681,26 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         current_results = next_results
 
     text = _extract_text(current_response)
-    if text and text != "(no response)" and not _looks_incomplete(text):
+    # A schema-bound agent must produce its document on a turn that carries NO tools, because that
+    # is the only turn the schema is attached to (see `_build_completion_request`). Returning here
+    # would hand back text written while tools were in play — unconstrained, and then only
+    # validate-and-correct stands between it and the artifact. One synthesis call is cheaper and
+    # deterministic.
+    from ._output_schema import get_effective_output_schema  # noqa: PLC0415
+
+    _schema_bound = get_effective_output_schema(agent) is not None
+    # An agent that was given tools, was bound to a schema, and called nothing is the signature of
+    # the suppression this turn-splitting fixes. It is worth a line even now that it should not
+    # happen: the output is valid and the run is green either way, so nothing else would say so.
+    if _schema_bound and tools and not tool_results:
+        logger.warning(
+            "agent %r finished with an output_schema and %d tool(s) available but made no tool "
+            "call. Its answer is unresearched — check the provider honours tools on an "
+            "unconstrained turn.",
+            agent.id,
+            len(tools),
+        )
+    if text and text != "(no response)" and not _looks_incomplete(text) and not _schema_bound:
         return text
 
     _progress(f"  [{agent.id}] tool limit reached — synthesizing final answer...")
