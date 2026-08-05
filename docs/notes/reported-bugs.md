@@ -19,6 +19,41 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### The audit API returned an event's header and dropped its content (1.153.0 / UI 0.32.0)
+
+Reported alongside bug 15: audit entries in serve showed basic info with no detail of what the
+audit was for or what was done. The page was not hiding anything — it was never sent anything.
+
+`AuditEvent` was expanded in M6 to carry policy decision and reason, skill category, inputs,
+outputs, verdict, reasoning, confidence, model, tokens, cost, duration and error. The store
+persists all 25 columns and reads all 25 back. `_audit_event_to_dict` serialized **nine**. So every
+governance decision rendered blank, making "allowed" and "never evaluated" identical on screen — in
+the one record whose job is to tell them apart.
+
+The regression test states the property against the table definition rather than a field list:
+anything the store has a column for must reach the client. A column that is persisted and never
+surfaced now fails a test instead of going unnoticed for four milestones.
+
+Tests: `test_audit_api_returns_detail.py`, `packages/ui/lib/audit.test.ts`.
+Design: [audit-detail-surfacing](../../design/details/audit-detail-surfacing.md).
+
+### Pipeline stages left no job row (1.152.0 / UI 0.31.0)
+
+Three ways to run a topology, two of them recorded it: `POST /run/{topology}` always did,
+`swarmkit run` since 1.150.0, a pipeline stage never. A pipeline showed saga state in `/runs` and an
+empty table in `/jobs`, so what a stage produced, what it cost and which trace belonged to it were
+findable from neither view. The most expensive runs in the system were the only ones nobody could
+look up.
+
+Stages now record a job keyed by `stage_run_id(correlation, stage)` — already the LangGraph thread
+and already the trace's `run_id` — carrying a `correlation_id` column so one run's stages are
+selectable by column. The store is injected from the one storage service; a test asserts the stage
+module never calls `storage_for_workspace`, because a second store would ignore the workspace's
+config and could write jobs to a different backend from the one the UI lists.
+
+Tests: `test_pipeline_stage_records_a_job.py`, `test_persistence.py`.
+Design: [pipeline-stage-jobs](../../design/details/pipeline-stage-jobs.md).
+
 ### The tool loop emitted no audit events (1.151.0)
 
 `skill.executed` came from a single site reached by the initial model call. The multi-turn loop
@@ -408,6 +443,13 @@ Two working rules follow:
    read the image bytes and dropped them one step before delivery. Where a caller needs to know
    whether the work happened, the producer should say so in a field — `node_errors`,
    `ExecToolStatus` — not in something a human happens to be able to read.
+
+A fourth rule, from the two most recent entries: **a producer that writes a field nobody reads is
+the same bug one layer up.** The audit store persisted 25 columns and the API returned 9; the
+pipeline stage computed a run id, an output and a cost and wrote none of them down. Neither failed —
+both rendered as a thin-looking row that a reader would take for the whole truth. Where a store and
+a reader are separated by a serializer, state the completeness as a test against the schema, not as
+a list somebody remembers to extend.
 
 And a testing rule, learned repeatedly: **these bugs are invisible to mocked tests.** The sequence
 bug needed a real Postgres; the governance bug needed a real run. Unit tests are for coverage; a
