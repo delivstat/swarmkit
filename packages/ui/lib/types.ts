@@ -85,6 +85,8 @@ export interface PersistedJob {
 	usage_input_tokens: number | null;
 	usage_output_tokens: number | null;
 	usage_cost_usd: number | null;
+	/** The pipeline run this job is a stage of, when it is one. Null for a standalone run. */
+	correlation_id: string | null;
 }
 
 export interface SkillItem {

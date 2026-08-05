@@ -132,7 +132,13 @@ export const api = {
 
 	jobs: () => get<JobListItem[]>("/jobs"),
 	/** Durable job rows. `/jobs` is the in-memory store — this is what survives a restart. */
-	jobsHistory: () => get<PersistedJob[]>("/jobs/history"),
+	/** Every recorded run, or just one pipeline run's stages when `correlationId` is given. */
+	jobsHistory: (correlationId?: string) =>
+		get<PersistedJob[]>(
+			correlationId
+				? `/jobs/history?correlation_id=${encodeURIComponent(correlationId)}`
+				: "/jobs/history",
+		),
 	job: (id: string) => get<JobResponse>(`/jobs/${id}`),
 	jobUsage: (id: string) => get<JobUsage>(`/usage/${id}`),
 	jobStreamUrl: (id: string) => `${BASE}/jobs/${id}/stream`,

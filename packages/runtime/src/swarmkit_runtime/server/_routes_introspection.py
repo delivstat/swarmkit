@@ -248,11 +248,15 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
         return s.get_usage_summary(job_id=job_id)
 
     @app.get("/jobs/history")
-    async def list_persisted_jobs(request: Request) -> list[dict[str, Any]]:
+    async def list_persisted_jobs(
+        request: Request, correlation_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Every recorded run, newest first — or just one pipeline run's stages when
+        ``?correlation_id=`` is given, which is how a run in ``/runs`` links to the work it did."""
         s: Store | None = getattr(request.app.state, "store", None)
         if s is None:
             return []
-        rows = s.list_jobs(limit=100)
+        rows = s.list_jobs(limit=100, correlation_id=correlation_id)
         return [
             {
                 "job_id": r.id,
@@ -264,6 +268,7 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
                 "usage_input_tokens": r.usage_input_tokens,
                 "usage_output_tokens": r.usage_output_tokens,
                 "usage_cost_usd": r.usage_cost_usd,
+                "correlation_id": r.correlation_id,
             }
             for r in rows
         ]

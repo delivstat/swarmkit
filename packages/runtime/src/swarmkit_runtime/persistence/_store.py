@@ -151,6 +151,7 @@ class JobRow:
     usage_input_tokens: int = 0
     usage_output_tokens: int = 0
     usage_cost_usd: float = 0.0
+    correlation_id: str | None = None
 
 
 @dataclass
@@ -189,6 +190,22 @@ class Store:
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
         create_all_idempotent(metadata, engine)
+        self._migrate_jobs()
+
+    def _migrate_jobs(self) -> None:
+        """Add job columns introduced after the initial schema.
+
+        ``create_all`` builds a fresh schema and does NOT alter an existing table, so without this
+        an upgraded deployment fails on its next insert with "no such column". Same additive shape
+        the saga store uses, applied to both dialects since Postgres is first-class here.
+        """
+        from sqlalchemy import inspect, text  # noqa: PLC0415
+
+        existing = {c["name"] for c in inspect(self._engine).get_columns("jobs")}
+        if "correlation_id" in existing:
+            return
+        with self._engine.begin() as conn:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN correlation_id TEXT"))
 
     @property
     def engine(self) -> Engine:
@@ -196,10 +213,17 @@ class Store:
 
     # ---- Jobs ----------------------------------------------------------------
 
-    def create_job(self, job_id: str, topology: str, user_input: str) -> JobRow:
+    def create_job(
+        self, job_id: str, topology: str, user_input: str, correlation_id: str | None = None
+    ) -> JobRow:
         now = datetime.now(UTC).isoformat()
         row = JobRow(
-            id=job_id, topology=topology, status="pending", input=user_input, created_at=now
+            id=job_id,
+            topology=topology,
+            status="pending",
+            input=user_input,
+            created_at=now,
+            correlation_id=correlation_id,
         )
         with self._engine.begin() as conn:
             conn.execute(
@@ -209,6 +233,7 @@ class Store:
                     status=row.status,
                     input=row.input,
                     created_at=row.created_at,
+                    correlation_id=row.correlation_id,
                 )
             )
         return row
@@ -252,12 +277,14 @@ class Store:
             row = conn.execute(select(jobs).where(jobs.c.id == job_id)).mappings().first()
         return self._row_to_job(row) if row is not None else None
 
-    def list_jobs(self, limit: int = 100) -> list[JobRow]:
+    def list_jobs(self, limit: int = 100, correlation_id: str | None = None) -> list[JobRow]:
+        """Persisted jobs, newest first. ``correlation_id`` narrows to one pipeline run's stages."""
+        stmt = select(jobs)
+        if correlation_id is not None:
+            stmt = stmt.where(jobs.c.correlation_id == correlation_id)
         with self._engine.connect() as conn:
             rows = (
-                conn.execute(select(jobs).order_by(jobs.c.created_at.desc()).limit(limit))
-                .mappings()
-                .all()
+                conn.execute(stmt.order_by(jobs.c.created_at.desc()).limit(limit)).mappings().all()
             )
         return [self._row_to_job(r) for r in rows]
 
@@ -266,6 +293,7 @@ class Store:
         events = json.loads(row["events"]) if row["events"] else []
         return JobRow(
             id=row["id"],
+            correlation_id=row.get("correlation_id"),
             topology=row["topology"],
             status=row["status"],
             input=row["input"],
