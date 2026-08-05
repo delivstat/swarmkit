@@ -102,6 +102,11 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Fail if a package's content changed but its version did not — publish_if_new would skip it and
+# the change would reach nobody (docs/notes/release-version-discipline.md). Run before tagging.
+release-check:
+    uv run python scripts/check_publishable.py
+
 # Demo orchestrator event recovery (orchestrator-event-recovery.md): a transient failure retried, a
 # deterministic one dead-lettered, and a killed worker's claim reclaimed.
 demo-orchestrator-recovery:
