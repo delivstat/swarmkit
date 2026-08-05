@@ -180,13 +180,29 @@ def _decisions_block(
     )
 
 
-def stage_run_id(correlation_id: str, stage_id: str) -> str:
-    """The run id for one stage of a pipeline run.
+def stage_run_id(correlation_id: str, stage_id: str, attempt: int = 1) -> str:
+    """The run id for one ATTEMPT at one stage of a pipeline run.
 
     Distinct per stage so traces, checkpoints and audit rows do not collide, prefixed with the
     correlation id so everything a run produced is still findable together.
+
+    Distinct per ATTEMPT for the same reason it is distinct per stage. A rework — a human requests
+    changes and the stage runs again — used to reuse the id, and everything keyed by it collided:
+
+    * the job row's INSERT failed on the primary key, was swallowed as best-effort, and the second
+      run left no record, so a rework never appeared in `/jobs`;
+    * the closing UPDATE then succeeded against the FIRST row, leaving one chimera — round 1's
+      input and start time beside round 2's output and cost, with round 1's spend simply gone;
+    * the trace saves to ``{run_id}.json``, so the rework destroyed the trace of the draft the
+      reviewer had actually objected to — the one a reader most wants when asking why.
+
+    Attempt 1 is unsuffixed, so existing rows, traces and links keep resolving; ``@2`` onward marks
+    a rework. ``@`` because the codebase already reads it as "this version of" (``hello@v2``), and
+    it is safe in both a filename and a URL path segment.
     """
-    return f"{correlation_id}:{stage_id}"
+    return (
+        f"{correlation_id}:{stage_id}" if attempt <= 1 else f"{correlation_id}:{stage_id}@{attempt}"
+    )
 
 
 def _revision_ref(ref: str, content: str) -> str:
@@ -314,7 +330,11 @@ def build_pipeline_run_stage(
             return StageOutcome(status="failed", detail="stage names no topology/agent to run")
 
         sid = _stage_id(stage)
-        run_id = stage_run_id(correlation_id, sid)
+        # The controller increments `attempts[sid]` and SAVES before calling us, so this is the
+        # attempt now starting — 1 on the first run, 2 on the first rework.
+        saga = saga_store.get(correlation_id)
+        attempt = int(getattr(saga, "attempts", {}).get(sid, 1) or 1)
+        run_id = stage_run_id(correlation_id, sid, attempt)
         try:
             stage_input = _stage_input(saga_store, artifact_store, correlation_id, stage)
             # Human decisions about THIS stage (a rework loop) and about the upstream one (an
@@ -323,7 +343,7 @@ def build_pipeline_run_stage(
                 getattr(runtime, "workspace_root", None),
                 correlation_id,
                 sid,
-                saga_store.get(correlation_id),
+                saga,
             )
             if decisions:
                 stage_input = f"{stage_input}\n\n{decisions}" if stage_input else decisions
