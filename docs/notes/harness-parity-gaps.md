@@ -28,6 +28,38 @@ output being wrong, if you notice at all.
 | 3 | `output_schema` ignored | **fixed** (1.143.0) | `_harness_node.py` (zero references) |
 | 4 | `TaskSpec.context_files` is dead — set, never delivered | **open** | executor plumbing |
 | 5 | Images reach a model only via MCP `ImageContent`; relative paths resolve nowhere in the sandbox | **open** | harness sandbox + MCP gateway |
+| 6 | `TaskSpec.mcp_tools` is dead, and the grant it would carry holds the wrong names | **open** | executor plumbing + gateway naming |
+
+### 6. `TaskSpec.mcp_tools` is dead, and holds the wrong names anyway (open)
+
+Reported as "the harness does not find tools that are in the gateway". Two problems stacked.
+
+**It is never delivered.** `TaskSpec.mcp_tools` is assigned in exactly one place and read in none:
+
+```
+$ grep -rn "\.mcp_tools\|mcp_tools=" packages/runtime/src packages/runtime/tests | grep -v "def \|field("
+packages/runtime/src/swarmkit_runtime/langgraph_compiler/_harness_node.py:189:        mcp_tools=mcp_tools,
+```
+
+Same shape as gap 4 — computed at the seam, dropped before the adapter. The only thing that
+reaches `--allowedTools` is `config.allowed_tools`, which a human has to write by hand.
+
+**The names would not match if it were.** `_task_spec` fills it with **skill ids** (`skill.id`, over
+*all* the agent's skills). The gateway advertises `<server>__<tool>`, and Claude Code then exposes
+that under its own MCP prefix as `mcp__swarmkit__<server>__<tool>` — three namespaces deep, none of
+them the skill id. So an operator who sets `config.allowed_tools: search-wms-tables` — the obvious
+thing, and the name the topology uses everywhere else — allowlists a tool that does not exist under
+that name, and every real tool falls outside the grant.
+
+The adapter comment says an unset grant means all tools, so the default path does work. It is
+*setting* the grant that silently denies everything, which is the wrong way round: constraining the
+agent should not be the thing that breaks it.
+
+Fix shape: derive the allowlist from the gateway's own tool surface — the `GatewayTool.name` values
+are already computed in `_wire_mcp_gateway` and recorded in the `executor.mcp_gateway` audit event —
+rather than from skill ids, and deliver it through the adapter DSL so `config.allowed_tools` stops
+being the only route. A translation table belongs in the adapter, since the prefix is harness-native
+(`mcp__<server>__<tool>` is Claude Code's convention, not a universal one).
 
 ### 1. Tool-call outcomes discarded (fixed, 1.135.0)
 
