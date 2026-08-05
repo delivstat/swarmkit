@@ -5,11 +5,10 @@ attempt as bare text asks that process to accept, on faith, that a large unattri
 own prior work — about a domain it may find nothing of in its working directory. That is the exact
 shape of a prompt-injection attempt, and a well-behaved agent declines it.
 
-That is not hypothetical. A `spec-conformance` revision on `wms-design` was refused on safety
-grounds; the agent inspected the worktree first and reported, correctly, that no such content
-appeared anywhere earlier in its conversation and no component named `harness:claude-code` existed
-in its environment. The refusal then parked as the stage's artifact, so a reviewer was asked to
-approve a safety refusal.
+That is not hypothetical. A reported conformance revision was refused on safety grounds; the agent
+inspected its worktree first and reported, correctly, that no such content appeared anywhere earlier
+in its conversation and no component named `harness:<kind>` existed in its environment. The refusal
+then parked as the stage's artifact, so a reviewer was asked to approve a safety refusal.
 
 The problem is not the agent's judgement — it is that legitimate retry content arrived in a form
 indistinguishable from an attack. A prompt-side workaround cannot fix it either: a system prompt

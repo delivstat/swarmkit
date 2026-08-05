@@ -33,7 +33,9 @@ only the critique, to a process with no memory of it.
 
 Prior output now gets the attributed, delimited, versioned framing `render_decisions` already gives
 reviewer comments, and the prefix survives only on failure results, where the runtime really is the
-speaker. See `design/details/retry-envelope-attribution.md`.
+speaker. The gate-driven rework path — `_prior_input`, which fed a stage its own draft unmarked by a
+different route — was closed the same way in 1.147.0. See
+`design/details/retry-envelope-attribution.md`.
 
 ### A transient error stranded an event as `claimed` forever (1.145.0)
 

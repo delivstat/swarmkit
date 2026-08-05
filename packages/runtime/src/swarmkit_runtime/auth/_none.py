@@ -13,8 +13,8 @@ event path instead of the authenticated one.
 
 Naming the operator grants no capability this mode does not already give. It is still an
 **assertion**, not an authentication: the identity carries ``provider="none"`` so an audit reader
-can tell "srijith approved this, verified by an IdP" from "someone on the loopback interface claimed
-to be srijith".
+can tell "this identity approved it, verified by an IdP" from "someone on the loopback interface
+claimed to be that identity".
 """
 
 from __future__ import annotations

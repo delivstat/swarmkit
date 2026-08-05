@@ -43,17 +43,35 @@ def _stage_id(stage: dict[str, Any]) -> str:
     return str(stage.get("id") or stage.get("topology") or stage.get("agent") or "stage")
 
 
-def _prior_input(store: ArtifactStore, correlation_id: str) -> str:
+def _prior_input(
+    store: ArtifactStore, correlation_id: str, stage_id: str = "", round_: int = 0
+) -> str:
     """Assemble a stage's input from the correlation's already-produced artifacts.
 
     Store-mediated inter-stage threading: the run-stage seam reads upstream content itself, so the
     orchestrator threads only references. Empty for the first stage of a run.
+
+    A stage's OWN previous output is separated out and wrapped, not concatenated with the upstream
+    ones. On a re-run — a gate-driven rework — this used to hand the agent its own earlier draft as
+    an unmarked block indistinguishable from upstream context. A harness re-run is a fresh process
+    with no memory of writing it, so that reads as injected content; one refused a revision on
+    exactly those grounds. The agent should see its draft, and should be told whose it is.
     """
+    from swarmkit_runtime.artifacts import artifact_ref  # noqa: PLC0415
+    from swarmkit_runtime.review._prior_output import render_prior_output  # noqa: PLC0415
+
     # Only upstream OUTPUTS thread downstream — not the per-stage `input` artifacts we also persist
     # for the inspector (which would otherwise feed a stage its own/earlier inputs).
-    refs = [r for r in store.list(correlation_id) if r.endswith("/output")]
+    own_ref = artifact_ref(correlation_id, stage_id) if stage_id else ""
+    refs = [r for r in store.list(correlation_id) if r.endswith("/output") and r != own_ref]
     parts = [c for ref in refs if (c := store.get(ref))]
-    return "\n\n".join(parts)
+    upstream = "\n\n".join(parts)
+
+    own = store.get(own_ref) if own_ref else ""
+    if not own:
+        return upstream
+    draft = render_prior_output(own, agent_id=stage_id, round_=round_, artifact_ref=own_ref)
+    return f"{upstream}\n\n{draft}" if upstream else draft
 
 
 def _stage_input(
@@ -78,7 +96,9 @@ def _stage_input(
     saga = saga_store.get(correlation_id)
     if saga is not None and not saga.passed_stages:
         return saga.input
-    return _prior_input(artifact_store, correlation_id)
+    stage_id = _stage_id(dict(stage)) if stage else ""
+    attempts = int((getattr(saga, "attempts", None) or {}).get(stage_id, 0)) if saga else 0
+    return _prior_input(artifact_store, correlation_id, stage_id, attempts)
 
 
 def _saga_decisions(saga: Any, stage_id: str) -> list[Any]:
@@ -297,8 +317,8 @@ def build_pipeline_run_stage(
 
         # A node that failed WITHOUT raising (a harness run that dies is a normal terminal event,
         # not an exception) used to reach here as an ordinary result. Its error string became the
-        # stage's output artifact and then the NEXT stage's input: on WMS-1 the design agent was
-        # prompted with `[harness:claude-code] failure: no result event` and replied, reasonably,
+        # stage's output artifact and then the NEXT stage's input: a downstream agent was
+        # prompted with `[harness:<kind>] failure: no result event` and replied, reasonably,
         # "I'm ready to help — what would you like to work on?" The gate parked on THAT and asked a
         # human to approve work never attempted, while the saga read `parked` throughout.
         #
