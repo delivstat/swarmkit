@@ -129,7 +129,7 @@ def test_the_correction_names_its_source() -> None:
     assert 'round="2"' in block
 
 
-# ---- the statement as a whole ----------------------------------------------------------------------
+# ---- the statement as a whole --------------------------------------------------------------
 
 
 def test_the_retry_carries_the_task_the_draft_and_the_critique() -> None:
@@ -164,7 +164,7 @@ def test_a_very_long_draft_is_elided_in_the_middle() -> None:
     assert len(block) < MAX_OUTPUT_CHARS + 2_000
 
 
-# ---- the wiring ------------------------------------------------------------------------------------
+# ---- the wiring ----------------------------------------------------------------------------
 
 
 def test_the_compiler_builds_the_retry_through_this_envelope() -> None:
