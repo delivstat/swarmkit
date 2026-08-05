@@ -27,6 +27,10 @@ spec:
       # task.mcp_config when the agent has granted MCP tools. Absent ⇒ the harness gets no MCP.
       - when: task.mcp_config
         args: [--mcp-config, "{task.mcp_config}"]
+    # A gateway tool reaches this harness three namespaces deep: the skill is `search-wms-tables`,
+    # the gateway advertises `<server>__<tool>`, and Claude Code re-exposes THAT under its own MCP
+    # prefix. A grant written in any of the first two names matches nothing here.
+    mcp_tool_name: "mcp__{gateway}__{tool}"
   auth:
     default: subscription
     modes:

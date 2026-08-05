@@ -40,6 +40,12 @@ class LaunchSpec:
     command: tuple[str, ...]
     optional_args: tuple[OptionalArgs, ...] = ()
     env: Mapping[str, str] = field(default_factory=dict)
+    #: How THIS harness names a governed gateway tool in its tool grant. ``{tool}`` is the
+    #: gateway's flat ``<server>__<tool>`` name and ``{gateway}`` is the MCP server SwarmKit
+    #: registers. Declarative because the mangling is harness-native — Claude Code's
+    #: ``mcp__<server>__<tool>`` is its own convention, not a universal one — and per the
+    #: executors-are-data rule a harness quirk belongs in its adapter, never in Python.
+    mcp_tool_name: str = "{tool}"
 
 
 @dataclass(frozen=True)
@@ -222,6 +228,7 @@ def parse_adapter_spec(raw: Mapping[str, Any]) -> AdapterSpec:
     launch_raw = spec["launch"]
     launch = LaunchSpec(
         command=tuple(launch_raw["command"]),
+        mcp_tool_name=str(launch_raw.get("mcp_tool_name") or "{tool}"),
         optional_args=tuple(
             OptionalArgs(when=o["when"], args=tuple(o["args"]))
             for o in launch_raw.get("optional_args") or ()

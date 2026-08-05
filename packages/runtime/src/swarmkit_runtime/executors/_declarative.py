@@ -60,8 +60,38 @@ _STDERR_DRAIN_TIMEOUT = 2.0
 _STDOUT_LINE_LIMIT = 16 * 1024 * 1024
 
 
+def _merged_tool_grant(task: TaskSpec, spec: Any, config: Mapping[str, Any]) -> str:
+    """The harness's ``allowed_tools`` value: the operator's grant, plus the agent's gateway tools
+    translated into this harness's own naming.
+
+    Only when the operator HAS set a grant. Unset means "all tools", and turning an MCP grant into
+    an allowlist would silently drop the built-ins (Read, Write, Bash) the agent also needs — a
+    restriction nobody asked for is not a fix for a restriction that was too tight.
+
+    The bug this closes: a grant is naturally written in the names the topology uses — skill ids —
+    while the gateway advertises `<server>__<tool>` and the harness mangles that again. So the
+    grant matched nothing and every real tool fell outside it. Constraining the agent was what
+    broke it.
+    """
+    configured = str(config.get("allowed_tools") or "").strip()
+    if not configured or not task.mcp_tools:
+        return configured
+    template = getattr(getattr(spec, "launch", None), "mcp_tool_name", "{tool}") or "{tool}"
+    from swarmkit_runtime.mcp._gateway import GATEWAY_SERVER_NAME  # noqa: PLC0415
+
+    gateway = GATEWAY_SERVER_NAME
+    names = [template.replace("{tool}", t).replace("{gateway}", gateway) for t in task.mcp_tools]
+    # Deduped, order preserved: the operator's entries first, then anything they did not name.
+    have = {part.strip() for part in configured.replace(",", " ").split() if part.strip()}
+    return ",".join([configured, *[n for n in names if n not in have]])
+
+
 def _ctx(
-    task: TaskSpec, sandbox: SandboxHandle, budget: BudgetEnvelope, config: Mapping[str, Any]
+    task: TaskSpec,
+    sandbox: SandboxHandle,
+    budget: BudgetEnvelope,
+    config: Mapping[str, Any],
+    spec: Any = None,
 ) -> dict[str, str]:
     """Build the closed substitution context from the run inputs + adapter config. Absent values
     are simply omitted (the template collapses them to empty)."""
@@ -79,6 +109,9 @@ def _ctx(
     for key, value in config.items():
         if isinstance(value, (str, int, float, bool)):
             ctx[f"config.{key}"] = str(value)
+    grant = _merged_tool_grant(task, spec, config)
+    if grant:
+        ctx["config.allowed_tools"] = grant
     return ctx
 
 
@@ -271,7 +304,7 @@ class DeclarativeExecutor(Executor):
             run_task = replace(task, statement=answer)
         elif resuming and self._spec.resume_prompt:
             run_task = replace(task, statement=self._spec.resume_prompt)
-        ctx = _ctx(run_task, sandbox, budget, self._config)
+        ctx = _ctx(run_task, sandbox, budget, self._config, self._spec)
         if resuming:
             ctx["resume.token"] = resume_token or ""
             if granted:

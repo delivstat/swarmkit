@@ -28,8 +28,15 @@ if TYPE_CHECKING:
     from ._client import MCPClientManager
 
 # The single MCP server name the harness sees; each workspace tool is a flat tool under it.
-_GATEWAY_SERVER_NAME = "swarmkit"
-_NAME_SEP = "__"  # flat tool name = "<server>__<tool>"
+#: The MCP server name SwarmKit registers with the harness. Part of the same contract — Claude
+#: Code exposes a gateway tool as ``mcp__<this>__<flat name>``.
+GATEWAY_SERVER_NAME = "swarmkit"
+_GATEWAY_SERVER_NAME = GATEWAY_SERVER_NAME
+#: Flat gateway tool name = ``<server><SEP><tool>``. Public because the name is a CONTRACT, not an
+#: internal detail: a harness adapter has to reconstruct it to write a tool grant the harness will
+#: match, and a grant written in any other namespace silently matches nothing.
+GATEWAY_NAME_SEP = "__"
+_NAME_SEP = GATEWAY_NAME_SEP
 
 
 @dataclass(frozen=True)
