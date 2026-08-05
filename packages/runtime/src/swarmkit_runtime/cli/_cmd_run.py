@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     pass
@@ -188,6 +188,47 @@ def _check_previous_plan(workspace_path: Path) -> dict | None:  # type: ignore[t
     return dict(plan_data)
 
 
+def _job_store(workspace_path: Path) -> Any:
+    """The durable store a CLI run records into, or None if it cannot be opened.
+
+    Best-effort by design: a store that will not open is a reason to lose the RECORD of a run, never
+    a reason to lose the run. The failure is reported once rather than swallowed.
+    """
+    try:
+        from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+
+        return storage_for_workspace(workspace_path).store()
+    except Exception as exc:
+        _stderr(f"note: this run will not appear in history — the store did not open: {exc}")
+        return None
+
+
+def _finish_job(
+    store: Any, job_id: str, status: str, *, output: str = "", error: str = "", usage: Any = None
+) -> None:
+    """Close out the job row. Never raises: the run already happened."""
+    if store is None:
+        return
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    fields: dict[str, Any] = {
+        "status": status,
+        "completed_at": datetime.now(UTC).isoformat(),
+    }
+    if output:
+        fields["output"] = output
+    if error:
+        fields["error"] = error
+    if usage is not None:
+        fields["usage_input_tokens"] = getattr(usage, "input_tokens", 0)
+        fields["usage_output_tokens"] = getattr(usage, "output_tokens", 0)
+        fields["usage_cost_usd"] = getattr(usage, "cost_usd", 0.0)
+    try:
+        store.update_job(job_id, **fields)
+    except Exception as exc:
+        _stderr(f"note: could not record the run's outcome: {exc}")
+
+
 def _execute_run(
     runtime: WorkspaceRuntime,
     topology_name: str,
@@ -201,8 +242,21 @@ def _execute_run(
     thread_id = str(uuid4())
     _save_thread_id(workspace_path, thread_id)
 
+    # Record the run so it appears in history. `swarmkit run` used to leave no job row at all —
+    # the only writer was serve's JobService — so a CLI run was invisible in the UI even though it
+    # had produced a trace and audit events. The THREAD id is the job id on purpose: it is also the
+    # trace's run_id, so the row links straight to `.swarmkit/traces/<id>.json` and to
+    # `/observability/runs/<id>/trace`, which a serve-started job cannot do.
+    store = _job_store(workspace_path)
+    if store is not None:
+        try:
+            store.create_job(thread_id, topology_name, user_input)
+        except Exception as exc:
+            _stderr(f"note: this run will not appear in history: {exc}")
+            store = None
+
     try:
-        return asyncio.run(
+        result = asyncio.run(
             runtime.run(
                 topology_name,
                 user_input,
@@ -211,9 +265,13 @@ def _execute_run(
             )
         )
     except KeyError as exc:
+        _finish_job(store, thread_id, "failed", error=str(exc).strip("'\""))
         _stderr(str(exc).strip("'\""))
         raise typer.Exit(_EXIT_USAGE) from exc
     except KeyboardInterrupt:
+        # Not "failed": the state is checkpointed and the run is resumable. StatusBadge falls back
+        # to a muted pill for a word it does not know, so an honest status costs nothing.
+        _finish_job(store, thread_id, "interrupted", error="interrupted; resumable with --resume")
         _stderr("\n⏸ Run interrupted. State checkpointed.")
         _stderr(f"  Resume with: swarmkit run {workspace_path} {topology_name} --resume")
         raise typer.Exit(0) from None
@@ -221,14 +279,25 @@ def _execute_run(
         from swarmkit_runtime.review._hitl import HITLDeferredError  # noqa: PLC0415
 
         if isinstance(exc, HITLDeferredError):
+            _finish_job(store, thread_id, "deferred", error=f"awaiting review: {exc.reason}")
             _stderr(f"\n⏸ Review deferred: {exc.reason}")
             _stderr(f"  1. Approve: swarmkit review approve <id> {workspace_path}")
             _stderr(f"  2. Resume:  swarmkit run {workspace_path} {topology_name} --resume")
             raise typer.Exit(0) from None
+        _finish_job(store, thread_id, "failed", error=f"{type(exc).__name__}: {exc}")
         _stderr(f"\nerror: execution failed: {exc}")
         _stderr("\n⏸ State may be checkpointed. Try resuming:")
         _stderr(f"  swarmkit run {workspace_path} {topology_name} --resume")
         raise typer.Exit(_EXIT_RESOLUTION_ERROR) from exc
+
+    _finish_job(
+        store,
+        thread_id,
+        "completed",
+        output=result.output or "",
+        usage=result.usage,
+    )
+    return result
 
 
 def _save_thread_id(workspace_path: Path, thread_id: str) -> None:

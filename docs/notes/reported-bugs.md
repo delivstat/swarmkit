@@ -19,6 +19,22 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### `swarmkit run` left no record (1.150.0)
+
+There was exactly one writer of a job row — serve's JobService, behind `POST /run/{topology}`. A CLI
+run built a runtime, executed, printed and exited, so it never appeared in the UI's jobs list or its
+history, even though it had produced a trace and audit events. Anyone driving SwarmKit from the
+terminal had no record of what they had run.
+
+It now creates the row before the run and closes it on every exit path. The job id is the run's
+THREAD id, which is also the trace's run_id, so the row points at its own trace — a link a
+serve-started job cannot make, since it mints a separate id. An interrupted run is recorded as
+`interrupted` and a deferred review as `deferred` rather than being flattened into `failed`: both
+are resumable, and StatusBadge renders an unknown status as a muted pill, so accuracy costs nothing.
+
+Recording is best-effort in one direction only — a store that will not open loses the record of a
+run, never the run.
+
 ### output_schema suppressed every tool call on a model node (1.149.0)
 
 `_build_completion_request` attached `response_format` whenever a schema resolved, regardless of
