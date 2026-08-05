@@ -16,8 +16,46 @@ Ordered by how much damage the bug does while looking fine.
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
+| 6 | A harness cannot see gateway tools once `allowed_tools` is set — the grant is written in skill ids, the gateway advertises `mcp__swarmkit__<server>__<tool>` | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #6 |
 
 ## Fixed
+
+### A display annotation broke every schema-bound harness run (1.156.0)
+
+Bug 16. ` (+<N> bytes diff)` was appended to a successful harness result. For an agent whose
+contract is JSON that makes the artifact unparseable, so `_enforce_harness_output_schema` reported
+`(root): output is not valid JSON` instead of the field-specific errors it exists to produce. The
+correction retries then re-sent the one message the agent could not act on until they exhausted —
+two full agent sessions, unable to succeed by construction.
+
+The same defect as the `[harness:<kind>]` prefix removed in 1.146.0, at the other end of the
+string, and the comment directly beneath the offending line already documented it for the prefix.
+`diff_bytes` had been in the `executor.result` audit payload seven lines above the whole time. On
+non-schema runs the suffix was merely cosmetic, which is how it survived.
+
+An existing test asserted the annotation WAS in the output — the bug was pinned in place by a test.
+
+Also fixed the reported second half: `output_schema` on a harness was a post-hoc check with no
+prompt-side statement, so the agent was never shown the shape and had to infer it from correction
+feedback. It is now stated in the task as a delimited `<output-contract>`.
+
+Tests: `test_harness_output_is_the_agents_own.py`.
+
+### The dashboard read the wrong store, over a usage pipeline that was mostly unwritten (1.156.0)
+
+Reported as stale analytics. Three layers.
+
+The page read `/jobs` — in-memory, this serve process only, emptied on restart. Underneath,
+`_record_run_usage` writes the per-model `run_usage` rows that ARE `/usage`, and it lived inside
+`server/_jobs.py`, so only `POST /run/{topology}` reached it; the CLI, pipeline and chat recorders
+each hand-rolled the job-level totals and wrote no breakdown. And those three read
+`usage.cost_usd` directly, which token-only providers leave at zero — recording real runs as free.
+
+Author's note: all three of those recorders are mine, added over 1.150.0–1.155.0. Each time I
+added a writer and did not check what read it. That is the same mistake as the entry below.
+
+Tests: `test_every_run_path_records_usage.py`, `packages/ui/lib/dashboard.test.ts`.
+Design: [dashboard-real-data](../../design/details/dashboard-real-data.md).
 
 ### Chat recorded no job, and its audits sat under an id nothing referenced (1.155.0)
 
