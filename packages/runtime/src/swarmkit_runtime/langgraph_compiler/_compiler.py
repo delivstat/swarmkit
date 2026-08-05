@@ -667,17 +667,47 @@ async def _run_harness_with_gates(
         return result
 
     original_input = str(state.get("input", "") or "")
+    # The draft the NEXT retry is correcting — the latest attempt, not the first. Tracked here
+    # because the gate hands the retry callback only its feedback.
+    latest_draft = {"text": str(result.get("output", "") or "")}
+    retry_round = {"n": 0}
 
-    async def _reinvoke(feedback: str, preamble: str) -> str:
-        """Re-run the harness with feedback appended to the task statement."""
-        revised = f"{original_input}\n\n{preamble}\n{feedback}"
+    async def _reinvoke(feedback: str, source: str) -> str:
+        """Re-run the harness with its own prior draft and the critique, both attributed.
+
+        A harness retry is a NEW PROCESS with no memory of the earlier turn. This used to append
+        "your previous attempt requires changes" and then supply only the critique — referring a
+        fresh process to work it could neither see nor verify — while the draft itself, where it
+        arrived at all, came concatenated with upstream artifacts and carrying a `[harness:…]`
+        prefix the agent never wrote.
+
+        That is the shape of a prompt-injection attempt, and an agent refused a revision on exactly
+        those grounds: it inspected the worktree, found no such content and no such component, and
+        declined. It was right to. So the draft is now attributed, delimited and unprefixed, in the
+        same shape `render_decisions` already uses for reviewer comments.
+        """
+        from swarmkit_runtime.review._prior_output import (  # noqa: PLC0415
+            render_retry_statement,
+        )
+
+        retry_round["n"] += 1
+        revised = render_retry_statement(
+            original_input,
+            latest_draft["text"],
+            feedback,
+            agent_id=agent_id,
+            round_=retry_round["n"],
+            source=source,
+        )
         retry_state: SwarmState = {**state, "input": revised}
         retried = await _invoke(retry_state)
         # A harness that fails on the retry leaves the previous text in place, so an infrastructure
         # failure is never mistaken for the agent's revised answer.
         if retried.get("node_errors"):
             return str(result.get("output", "") or "")
-        return str(retried.get("output", "") or "")
+        revised_text = str(retried.get("output", "") or "")
+        latest_draft["text"] = revised_text
+        return revised_text
 
     # `output_schema` was ignored entirely on this path, so a harness agent had neither a schema
     # constraint nor a post-hoc check — the two independent mechanisms that would each have caught
@@ -690,11 +720,7 @@ async def _run_harness_with_gates(
             schema,
             agent_id=agent_id,
             governance=governance,
-            reinvoke=lambda fb: _reinvoke(
-                fb,
-                "Your previous output did not match the required output schema. "
-                "Return the COMPLETE corrected result:",
-            ),
+            reinvoke=lambda fb: _reinvoke(fb, "output-schema"),
         )
         if text != result.get("output"):
             result = _replace_node_text(result, agent_id, text)
@@ -711,11 +737,7 @@ async def _run_harness_with_gates(
         output=str(result.get("output", "") or ""),
         bindings=bindings,
         governance=governance,
-        retry_fn=lambda fb: _reinvoke(
-            fb,
-            "A governance review of your previous attempt requires changes before this can be "
-            "accepted. Address this feedback and produce the COMPLETE corrected result:",
-        ),
+        retry_fn=lambda fb: _reinvoke(fb, "decision-skill"),
     )
     if checked == result.get("output"):
         return result
