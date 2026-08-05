@@ -10,6 +10,9 @@ serve and the runtime core never touch it. Durable: a restart resumes mid-saga f
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
+import socket
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -37,7 +40,10 @@ def _http_run_stage(serve_url: str, token: str | None) -> Any:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
 
     async def run_stage(correlation_id: str, stage: dict[str, Any]) -> StageOutcome:
-        async with httpx.AsyncClient(timeout=None) as client:
+        # `trust_env=False`: httpx honours HTTP_PROXY even for 127.0.0.1, and routing this
+        # control-plane call through an ambient proxy is never what an operator wants. A WSL
+        # `autoProxy` pointing at a dead port is what killed the orchestrator in the first place.
+        async with httpx.AsyncClient(timeout=None, trust_env=False) as client:
             resp = await client.post(
                 f"{serve_url.rstrip('/')}/pipelines/run-stage",
                 json={"correlation_id": correlation_id, "stage": stage},
@@ -55,20 +61,78 @@ def _http_run_stage(serve_url: str, token: str | None) -> Any:
     return run_stage
 
 
+logger = logging.getLogger("swarmkit.orchestration")
+
+#: How many times an event is handed out before it is dead-lettered. Each attempt is a real drive
+#: of real work, so this is deliberately small; the point is to survive a blip, not to grind.
+_DEFAULT_MAX_ATTEMPTS = 3
+
+#: How often a running handler refreshes its claim. Comfortably inside the store's visibility
+#: timeout, so a healthy worker never has its event taken from under it.
+_HEARTBEAT_SECONDS = 30.0
+
+
+def default_worker_name() -> str:
+    """A name that identifies THIS process.
+
+    The default used to be the literal `orchestrator-1` for every process, so two orchestrators on
+    one store were indistinguishable in `claimed_by` and raced for the same events. That matters
+    more now that a stale claim can be reclaimed: "whose claim is this" has to be answerable from
+    the data.
+    """
+    return f"{socket.gethostname()}-{os.getpid()}"
+
+
+async def _handle_with_heartbeat(
+    controller: ReferenceController,
+    store: Any,
+    event_id: int,
+    correlation_id: str,
+    event: str,
+) -> None:
+    """Run the handler, refreshing the claim while it works.
+
+    A stage run can legitimately outlast any visibility timeout worth setting. Keeping the claim
+    alive is what lets the timeout stay short enough to recover from a dead worker quickly, without
+    a long stage being stolen from a worker that is doing fine.
+    """
+    task = asyncio.ensure_future(controller.handle_event(correlation_id, event))
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=_HEARTBEAT_SECONDS)
+        if done:
+            await task  # re-raise the handler's exception, if any
+            return
+        store.heartbeat(event_id)
+
+
 async def run_drive_loop(
     controller: ReferenceController,
     store: Any,
     *,
-    worker: str = "orchestrator-1",
+    worker: str | None = None,
     once: bool = False,
     poll_seconds: float = 1.0,
     sleep: Any = asyncio.sleep,
+    max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
 ) -> int:
     """Claim + handle events until the queue drains (``once``) or forever. Returns the count done.
 
     Idempotent + durable: a claimed event is acked only after the controller applies it, and saga
-    state is persisted per transition, so a crash re-drives from the store.
+    state is persisted per transition.
+
+    A failing event does not take the process with it. This loop used to have no error handling at
+    all, so any exception from ``handle_event`` — a network blip was enough — escaped the loop and
+    ``asyncio.run()``, exiting the process AFTER the event was claimed and BEFORE it was acked.
+    Since ``claim`` only looked at queued rows, that event was then unreachable by any restart: the
+    orchestrator polled past it forever while its saga sat `active` with a frozen `updated_at`, and
+    `pipeline status` showed a normal in-progress run. Recovery meant hand-written SQL.
+
+    So a failure now ends one of two ways, both of them recorded: back to the queue for another
+    attempt, or dead-lettered as `failed` once the attempts are exhausted. Unbounded retry is not an
+    option — this loop drives real work at real cost, and a deterministically-failing event would
+    spin forever.
     """
+    worker = worker or default_worker_name()
     handled = 0
     while True:
         claimed = store.claim(worker)
@@ -78,7 +142,40 @@ async def run_drive_loop(
             await sleep(poll_seconds)
             continue
         event_id, correlation_id, event = claimed
-        await controller.handle_event(correlation_id, event)
+        try:
+            await _handle_with_heartbeat(controller, store, event_id, correlation_id, event)
+        except Exception as exc:
+            attempts = store.attempts(event_id)
+            reason = f"{type(exc).__name__}: {exc}"
+            if attempts >= max_attempts:
+                store.fail(event_id, reason)
+                logger.error(
+                    "event %s for %r DEAD-LETTERED after %d attempt(s): %s. It will not be "
+                    "retried; see `swarmkit pipeline status`.",
+                    event_id,
+                    correlation_id,
+                    attempts,
+                    reason,
+                )
+                continue
+            store.release(event_id, reason)
+            logger.warning(
+                "event %s for %r failed (attempt %d/%d), returned to the queue: %s",
+                event_id,
+                correlation_id,
+                attempts,
+                max_attempts,
+                reason,
+            )
+            # Do NOT re-claim it on this pass. Releasing and immediately re-claiming would burn
+            # every attempt within milliseconds, which is exactly useless for the failure this
+            # exists to survive — a network outage needs the retry to happen LATER, not three
+            # times in the same instant. Waiting a poll interval gives the retry real spacing
+            # without needing a scheduled-availability column.
+            if once:
+                return handled
+            await sleep(poll_seconds)
+            continue
         store.ack(event_id)
         handled += 1
 

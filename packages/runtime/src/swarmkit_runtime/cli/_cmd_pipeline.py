@@ -95,6 +95,52 @@ def status(
     typer.echo(f"  passed: {saga.passed_stages}   parked-on: {saga.pending_gate_stage or '—'}")
     for t in saga.timeline:
         typer.echo(f"    {t.at[:19]}  {t.kind:<10} {t.stage_id or ''}  {t.detail}")
+    _echo_dead_letters(workspace, correlation_id)
+
+
+def _echo_dead_letters(workspace: Path, correlation_id: str) -> None:
+    """Surface events that gave up on this run.
+
+    A stalled run used to be indistinguishable from a slow one — that is what made the reported
+    outage take over an hour to identify. An event that has stopped being retried has to say so
+    where an operator is already looking.
+    """
+    store = _store(workspace)
+    failed = [
+        e
+        for e in getattr(store, "failed_events", lambda: [])()
+        if e["correlation_id"] == correlation_id
+    ]
+    if not failed:
+        return
+    typer.echo("")
+    typer.echo(f"  {len(failed)} event(s) DEAD-LETTERED — this run will not advance on its own:")
+    for e in failed:
+        typer.echo(f"    event {e['id']}  after {e['attempts']} attempt(s)  {e['last_error']}")
+    typer.echo("  Re-queue with:  swarmkit pipeline retry-event <event-id>")
+
+
+@pipeline_app.command("retry-event")
+def retry_event(
+    event_id: Annotated[int, typer.Argument(help="The dead-lettered event id (see `status`).")],
+    workspace: _PathArg = Path("."),
+) -> None:
+    """Re-queue a dead-lettered event so the orchestrator picks it up again.
+
+    The reported outage was recovered with hand-written SQL against `pipeline_events`, because
+    there was no other route back: re-emitting is refused while a saga is active, and there is no
+    gate to clear. This is that route.
+    """
+    store = _store(workspace)
+    failed = {e["id"]: e for e in store.failed_events()}
+    if event_id not in failed:
+        typer.echo(
+            f"no dead-lettered event {event_id}. `swarmkit pipeline status <id>` lists them."
+        )
+        raise typer.Exit(1)
+    store.release(event_id, "")
+    typer.echo(f"event {event_id} re-queued for {failed[event_id]['correlation_id']}.")
+    typer.echo("The orchestrator will claim it on its next poll.")
 
 
 @pipeline_app.command()

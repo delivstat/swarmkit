@@ -12,13 +12,14 @@ Ordered by how much damage the bug does while looking fine.
 
 | # | Bug | Component | Detail |
 | --- | --- | --- | --- |
-| 12 | One transient error kills the orchestrator and strands the event as `claimed` forever | `_cmd_orchestrator.py` + `_saga_store.py` | [below](#12-a-transient-error-strands-an-event-as-claimed-forever) |
 | — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | 4 | `TaskSpec.context_files` set but never delivered | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #4 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
 
-### 12. A transient error strands an event as `claimed` forever
+## Fixed
+
+### A transient error stranded an event as `claimed` forever (1.145.0)
 
 `run_drive_loop()` has no error handling around `handle_event`, so any exception propagates out of
 the loop, out of `asyncio.run()`, and the process exits — after the event was claimed and before it
@@ -35,23 +36,17 @@ loopback `POST /pipelines/run-stage` raised `ConnectError`. The saga looked like
 over an hour; recovery took direct SQL against `pipeline_events`, because re-emitting is refused
 for an existing active saga and there is no gate to clear.
 
-**Fix direction (two independent changes; the first alone removes the permanent-stall class):**
+**Fixed** on all three fronts. The handler is wrapped, and a failure either returns to the queue or
+is dead-lettered once `attempts` is exhausted — spaced by a poll interval, because releasing and
+immediately re-claiming burns every attempt in milliseconds and is useless against the outage this
+exists to survive. `claim()` also takes claims older than a visibility timeout, with the handler
+heartbeating while it works, so a long stage is not stolen from a healthy worker; both paths share
+one attempt counter, which bounds a crash loop as well as a failure loop. Dead-lettered events
+surface in `pipeline status`, and `swarmkit pipeline retry-event` replaces the hand-written SQL.
 
-1. **Survive a failed event** — wrap the handler and decide the event's fate explicitly: release it
-   back to `queued`, or mark it terminally `failed`. A retry needs a bound (an `attempts` column on
-   the event, dead-lettering after N) or a deterministically-failing event spins forever, and
-   dead-lettered events must surface in `pipeline sagas` / `pipeline status` — the silence is what
-   made this take hours to find.
-2. **Make a claim expire** — add `claimed_at` and let `claim()` also take rows whose claim is older
-   than a visibility timeout. That covers what an `except` block never can: SIGKILL, an evicted
-   container, a lost machine.
-
-Also noted: the default worker name is `orchestrator-1` for **every** process, so two orchestrators
-on one store are indistinguishable in `claimed_by` and race for the same events. And the
-orchestrator's loopback call to serve should not honour an ambient proxy at all — `trust_env=False`
-on that client would have made this specific failure impossible.
-
-## Fixed
+Also: the loopback call to serve sets `trust_env=False` (httpx honours `HTTP_PROXY` even for
+127.0.0.1, which is what killed it), and the default worker name is host+pid rather than the literal
+`orchestrator-1` every process shared. See `design/details/orchestrator-event-recovery.md`.
 
 ### A failed stage's error became the next stage's input (1.139.0)
 

@@ -102,6 +102,11 @@ demo-approval-policy-schema: (_demo-schema "approval-policy")
 # valid + invalid fixtures.
 demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
 
+# Demo orchestrator event recovery (orchestrator-event-recovery.md): a transient failure retried, a
+# deterministic one dead-lettered, and a killed worker's claim reclaimed.
+demo-orchestrator-recovery:
+    uv run python packages/runtime/demos/orchestrator_recovery.py
+
 # Demo the jobs history page (jobs-history-ui.md): what /jobs and /jobs/history each return, and
 # why a running job must not be printed by both.
 demo-jobs-history:

@@ -46,6 +46,11 @@ EXPECTED = [
 # Sub-apps registered with add_typer.
 EXPECTED_GROUPS = ["author", "auth", "review", "pipeline", "memory", "trust", "fleet"]
 
+# Subcommands a message elsewhere tells an operator to run. A CLI that names a command it does not
+# have is worse than one that says nothing: `pipeline status` prints "re-queue with: swarmkit
+# pipeline retry-event <id>" when it finds a dead-lettered event.
+EXPECTED_SUBCOMMANDS = [("pipeline", "retry-event")]
+
 
 def _command_names() -> set[str]:
     return {
@@ -70,6 +75,19 @@ def test_command_is_registered(name: str) -> None:
 @pytest.mark.parametrize("group", EXPECTED_GROUPS)
 def test_command_group_is_registered(group: str) -> None:
     assert group in _group_names(), f"`swarmkit {group} ...` is not registered"
+
+
+@pytest.mark.parametrize(("group", "sub"), EXPECTED_SUBCOMMANDS)
+def test_subcommand_is_registered(group: str, sub: str) -> None:
+    from swarmkit_runtime.cli import app as root  # noqa: PLC0415
+
+    found = {
+        c.name or (c.callback.__name__ if c.callback else "")
+        for g in root.registered_groups
+        if g.name == group and g.typer_instance is not None
+        for c in g.typer_instance.registered_commands
+    }
+    assert sub in found, f"`swarmkit {group} {sub}` is not registered"
 
 
 def test_no_private_helper_leaked_into_the_command_list() -> None:
