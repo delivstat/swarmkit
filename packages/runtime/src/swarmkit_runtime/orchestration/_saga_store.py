@@ -11,6 +11,8 @@ every transition, so a restart resumes mid-saga. In-memory is demoted to a test 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import (
@@ -20,14 +22,32 @@ from sqlalchemy import (
     MetaData,
     Table,
     Text,
+    and_,
     delete,
     insert,
+    inspect,
+    or_,
     select,
+    text,
     update,
 )
 
 from swarmkit_runtime.orchestration._saga import SagaState, SagaStatus, TimelineEntry, now
 from swarmkit_runtime.persistence._store import create_all_idempotent, make_engine
+
+#: How long a claim survives without a heartbeat before another worker may take the event. The
+#: handler heartbeats while it works, so this bounds only a worker that stopped heartbeating —
+#: i.e. one that died — rather than one that is merely slow.
+_DEFAULT_VISIBILITY_TIMEOUT = 300.0
+
+
+def _now() -> str:
+    return now().isoformat()
+
+
+def _now_minus(seconds: float) -> str:
+    return (now() - timedelta(seconds=seconds)).isoformat()
+
 
 metadata = MetaData()
 
@@ -61,9 +81,19 @@ pipeline_events = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("correlation_id", Text, nullable=False),
     Column("event", Text, nullable=False),
-    Column("status", Text, nullable=False, default="queued"),  # queued | claimed | done
+    Column("status", Text, nullable=False, default="queued"),  # queued | claimed | done | failed
     Column("claimed_by", Text),
     Column("created_at", Text, nullable=False),
+    #: When the current claim was taken. A claim with no heartbeat older than the visibility
+    #: timeout is reclaimable — the only thing that recovers an event from a SIGKILLed worker,
+    #: which no `except` block ever sees.
+    Column("claimed_at", Text),
+    #: How many times this event has been handed to a worker. Incremented by `claim`, so it bounds
+    #: a crash loop and a failure loop with one counter.
+    Column("attempts", Integer, nullable=False, default=0),
+    #: Why the last attempt failed — the difference between a dead-lettered event and a
+    #: disappeared one.
+    Column("last_error", Text),
 )
 
 
@@ -73,6 +103,28 @@ class SqlSagaStore:
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
         create_all_idempotent(metadata, engine)
+        self._migrate_events()
+
+    def _migrate_events(self) -> None:
+        """Add event columns introduced after the initial schema.
+
+        ``create_all`` builds the full schema for a fresh database and does NOT alter an existing
+        table, so without this an upgraded deployment fails on the next claim with "no such column".
+        The same additive pattern the control-plane's stores use (``_registry._migrate``), applied
+        to both dialects because Postgres is a first-class backend here.
+        """
+        existing = {c["name"] for c in inspect(self._engine).get_columns("pipeline_events")}
+        additions = {
+            "claimed_at": "TEXT",
+            "attempts": "INTEGER NOT NULL DEFAULT 0",
+            "last_error": "TEXT",
+        }
+        missing = {c: ddl for c, ddl in additions.items() if c not in existing}
+        if not missing:
+            return
+        with self._engine.begin() as conn:
+            for column, ddl in missing.items():
+                conn.execute(text(f"ALTER TABLE pipeline_events ADD COLUMN {column} {ddl}"))
 
     @classmethod
     def from_url(cls, url: str) -> SqlSagaStore:
@@ -167,15 +219,36 @@ class SqlSagaStore:
             pk = result.inserted_primary_key
             return int(pk[0]) if pk is not None else 0
 
-    def claim(self, worker: str) -> tuple[int, str, str] | None:
-        """Atomically claim the oldest queued event (mirrors persistence.claim_queued): pick the
-        oldest, then UPDATE …WHERE status='queued' and check rowcount, retrying on a lost race."""
+    def claim(
+        self, worker: str, *, visibility_timeout: float = _DEFAULT_VISIBILITY_TIMEOUT
+    ) -> tuple[int, str, str] | None:
+        """Atomically claim the oldest available event: pick the oldest, then UPDATE …WHERE the
+        status is still what we saw and check rowcount, retrying on a lost race.
+
+        "Available" means queued **or** a claim that has gone stale. Without the second case an
+        event claimed by a worker that then died was unreachable forever: `claim` only looked at
+        `queued`, so a restarted orchestrator polled past it indefinitely while its saga sat
+        `active` with a frozen `updated_at` and `pipeline status` showed a normal in-progress run.
+
+        `attempts` is incremented here, which is what bounds a crash loop with the same counter that
+        bounds a failure loop — a worker dying mid-event repeatedly eventually dead-letters it
+        rather than crash-looping forever.
+        """
         while True:
+            stale_before = _now_minus(visibility_timeout)
             with self._engine.begin() as conn:
                 row = (
                     conn.execute(
                         select(pipeline_events)
-                        .where(pipeline_events.c.status == "queued")
+                        .where(
+                            or_(
+                                pipeline_events.c.status == "queued",
+                                and_(
+                                    pipeline_events.c.status == "claimed",
+                                    pipeline_events.c.claimed_at < stale_before,
+                                ),
+                            )
+                        )
                         .order_by(pipeline_events.c.id.asc())
                         .limit(1)
                     )
@@ -186,14 +259,98 @@ class SqlSagaStore:
                     return None
                 result = conn.execute(
                     update(pipeline_events)
-                    .where(pipeline_events.c.id == row["id"], pipeline_events.c.status == "queued")
-                    .values(status="claimed", claimed_by=worker)
+                    .where(
+                        pipeline_events.c.id == row["id"],
+                        pipeline_events.c.status == row["status"],
+                        # Guard the reclaim too: another worker may have heartbeated in between.
+                        pipeline_events.c.claimed_at.is_not_distinct_from(row["claimed_at"]),
+                    )
+                    .values(
+                        status="claimed",
+                        claimed_by=worker,
+                        claimed_at=_now(),
+                        attempts=int(row["attempts"] or 0) + 1,
+                    )
                 )
                 # psycopg reports rowcount = -1 for a matched-but-unchanged update; a real claim
                 # changes status, so a nonzero rowcount = we won the race. rowcount 0 = lost.
                 if result.rowcount != 0:
                     return (int(row["id"]), row["correlation_id"], row["event"])
-            # lost the race — loop and try the next queued event.
+            # lost the race — loop and try the next available event.
+
+    def attempts(self, event_id: int) -> int:
+        """How many times this event has been handed out. The drive loop's retry bound."""
+        with self._engine.connect() as conn:
+            row = (
+                conn.execute(
+                    select(pipeline_events.c.attempts).where(pipeline_events.c.id == event_id)
+                )
+                .mappings()
+                .first()
+            )
+        return int(row["attempts"]) if row else 0
+
+    def heartbeat(self, event_id: int) -> None:
+        """Refresh a claim while the handler is still working.
+
+        A stage run can legitimately outlast any visibility timeout worth setting, so the claim is
+        kept alive rather than the timeout being guessed high enough to cover the slowest plausible
+        stage. A guessed ceiling is how an event gets stolen from a worker that was doing fine.
+        """
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(pipeline_events)
+                .where(pipeline_events.c.id == event_id, pipeline_events.c.status == "claimed")
+                .values(claimed_at=_now())
+            )
+
+    def release(self, event_id: int, error: str = "") -> None:
+        """Return a failed event to the queue for another attempt, recording why."""
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(pipeline_events)
+                .where(pipeline_events.c.id == event_id)
+                .values(status="queued", claimed_by=None, claimed_at=None, last_error=error[:2000])
+            )
+
+    def fail(self, event_id: int, error: str = "") -> None:
+        """Dead-letter an event: terminal, with the reason kept.
+
+        Deliberately a distinct status rather than deletion or a silent drop. The reported bug took
+        hours to find because a stalled pipeline was indistinguishable from a slow one; an event
+        that has given up must be able to say so.
+        """
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(pipeline_events)
+                .where(pipeline_events.c.id == event_id)
+                .values(status="failed", claimed_at=None, last_error=error[:2000])
+            )
+
+    def failed_events(self, limit: int = 50) -> Sequence[dict[str, Any]]:
+        # `Sequence`, not `list`: this class defines a `list` METHOD, which shadows the builtin
+        # inside the class body.
+        """Dead-lettered events, newest first — what `pipeline status` shows an operator."""
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    select(pipeline_events)
+                    .where(pipeline_events.c.status == "failed")
+                    .order_by(pipeline_events.c.id.desc())
+                    .limit(limit)
+                )
+                .mappings()
+                .all()
+            )
+        return [
+            {
+                "id": int(r["id"]),
+                "correlation_id": r["correlation_id"],
+                "attempts": int(r["attempts"] or 0),
+                "last_error": r["last_error"] or "",
+            }
+            for r in rows
+        ]
 
     def ack(self, event_id: int) -> None:
         with self._engine.begin() as conn:
