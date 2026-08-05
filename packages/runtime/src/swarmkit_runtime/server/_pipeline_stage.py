@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -258,11 +259,47 @@ async def _open_stage_gate(
     )
 
 
+def _record_stage_job(
+    store: Any, run_id: str, correlation_id: str, topology: str, stage_input: str
+) -> None:
+    """Open a job row for a pipeline stage. Best-effort: losing the record never costs the run."""
+    if store is None:
+        return
+    try:
+        store.create_job(run_id, topology, stage_input, correlation_id)
+    # A stage must run whether or not it can be recorded.
+    except Exception:
+        logger.warning("stage %s will not appear in jobs: could not create its row", run_id)
+
+
+def _finish_stage_job(
+    store: Any, run_id: str, status: str, *, output: str = "", error: str = "", usage: Any = None
+) -> None:
+    """Close a stage's job row on every exit path, so none is left sitting at `running`."""
+    if store is None:
+        return
+    fields: dict[str, Any] = {"status": status, "completed_at": datetime.now(tz=UTC).isoformat()}
+    if output:
+        fields["output"] = output
+    if error:
+        fields["error"] = error
+    if usage is not None:
+        fields["usage_input_tokens"] = getattr(usage, "input_tokens", 0)
+        fields["usage_output_tokens"] = getattr(usage, "output_tokens", 0)
+        fields["usage_cost_usd"] = getattr(usage, "cost_usd", 0.0)
+    try:
+        store.update_job(run_id, **fields)
+    # Same one-directional rule on the way out.
+    except Exception:
+        logger.warning("could not record the outcome of stage %s", run_id)
+
+
 def build_pipeline_run_stage(
     runtime: WorkspaceRuntime,
     artifact_store: ArtifactStore,
     saga_store: SagaStore,
     *,
+    job_store: Any = None,
     max_steps: int = 50,
 ) -> RunStage:
     """A :data:`RunStage` that executes a stage's topology and persists its artifact.
@@ -278,6 +315,7 @@ def build_pipeline_run_stage(
             return StageOutcome(status="failed", detail="stage names no topology/agent to run")
 
         sid = _stage_id(stage)
+        run_id = stage_run_id(correlation_id, sid)
         try:
             stage_input = _stage_input(saga_store, artifact_store, correlation_id, stage)
             # Human decisions about THIS stage (a rework loop) and about the upstream one (an
@@ -301,15 +339,26 @@ def build_pipeline_run_stage(
             # the run progressed. Sharing a checkpoint thread was wrong independently: stages run
             # DIFFERENT topologies, so stage N inherited graph state from a different graph.
             # The prefix keeps every stage correlated to its run.
+            # Record the stage as a JOB. A pipeline's actual topology executions used to leave no
+            # job row — the only writers were serve's JobService and (from 1.150.0) the CLI — so
+            # `/jobs` showed nothing for a pipeline while `/runs` showed only saga state. The work
+            # itself, its output, its cost, were findable from neither.
+            #
+            # The row is keyed by the stage's run id (`<correlation>:<stage>`), which is also the
+            # LangGraph thread and the trace's run_id, and carries `correlation_id` so one run's
+            # stages can be selected directly rather than by parsing ids.
+            _record_stage_job(job_store, run_id, correlation_id, topology, stage_input)
             result = await runtime.run(
                 topology,
                 stage_input,
                 max_steps=max_steps,
-                thread_id=stage_run_id(correlation_id, sid),
+                thread_id=run_id,
             )
         except KeyError:
+            _finish_stage_job(job_store, run_id, "failed", error=f"unknown topology {topology!r}")
             return StageOutcome(status="failed", detail=f"unknown topology {topology!r}")
         except Exception as exc:  # surface any run error as a terminal outcome
+            _finish_stage_job(job_store, run_id, "failed", error=f"{type(exc).__name__}: {exc}")
             return StageOutcome(status="failed", detail=f"{type(exc).__name__}: {exc}")
 
         output = result.output or ""
@@ -331,12 +380,23 @@ def build_pipeline_run_stage(
         # crash here, and it must not be treated as failed either.
         node_errors = getattr(result, "node_errors", None) or {}
         if node_errors:
+            _finish_stage_job(
+                job_store,
+                run_id,
+                "failed",
+                error="; ".join(f"{node}: {why}" for node, why in sorted(node_errors.items())),
+                usage=getattr(result, "usage", None),
+            )
             return StageOutcome(
                 status="failed",
                 artifact=ref,
                 detail="; ".join(f"{node}: {why}" for node, why in sorted(node_errors.items())),
                 artifact_bytes=len(output.encode()),
             )
+
+        _finish_stage_job(
+            job_store, run_id, "completed", output=output, usage=getattr(result, "usage", None)
+        )
 
         funnel_id = str(stage.get("gate") or stage.get("funnel") or "")
         if not funnel_id:

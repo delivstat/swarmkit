@@ -148,8 +148,11 @@ def create_app(  # noqa: PLR0915
         # its artifact. Content stays runtime-side; the orchestrator threads only the reference.
         from ._pipeline_stage import build_pipeline_run_stage  # noqa: PLC0415
 
+        # The job store comes from the SAME storage service that resolved every other store
+        # above — a stage must not open a second one, or it would land on a different backend
+        # from the jobs the UI lists (design/details/storage-service.md).
         app.state.pipeline_run_stage = build_pipeline_run_stage(
-            runtime, app.state.artifact_store, saga_store
+            runtime, app.state.artifact_store, saga_store, job_store=app.state.store
         )
 
         # Parse server config from workspace.yaml

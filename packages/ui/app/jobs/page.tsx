@@ -34,6 +34,19 @@ function Cell({
 	);
 }
 
+/** A stage's link back to the pipeline run that asked for it. A standalone run has none. */
+function PipelineLink({ id }: { id: string | null }) {
+	if (!id) return <span className="text-muted-foreground">-</span>;
+	return (
+		<Link
+			href={`/runs?run=${encodeURIComponent(id)}`}
+			className="font-mono text-xs text-sky-500 hover:underline"
+		>
+			{id}
+		</Link>
+	);
+}
+
 function JobIdLink({ id }: { id: string }) {
 	return (
 		<Link
@@ -137,6 +150,7 @@ export default function JobsPage() {
 								<tr className="bg-muted text-muted-foreground">
 									<th className="px-4 py-2 text-left font-medium">Job ID</th>
 									<th className="px-4 py-2 text-left font-medium">Topology</th>
+									<th className="px-4 py-2 text-left font-medium">Pipeline</th>
 									<th className="px-4 py-2 text-left font-medium">Version</th>
 									<th className="px-4 py-2 text-left font-medium">Status</th>
 									<th className="px-4 py-2 text-left font-medium">Started</th>
@@ -157,6 +171,9 @@ export default function JobsPage() {
 											<JobIdLink id={job.job_id} />
 										</Cell>
 										<Cell>{job.topology}</Cell>
+										<Cell muted>
+											<PipelineLink id={job.correlation_id} />
+										</Cell>
 										<Cell muted>{job.version ? `v${job.version}` : "-"}</Cell>
 										<Cell>
 											<StatusBadge status={job.status} />

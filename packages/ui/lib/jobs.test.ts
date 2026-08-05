@@ -37,6 +37,7 @@ function past(over: Partial<PersistedJob> = {}): PersistedJob {
 		usage_input_tokens: 1200,
 		usage_output_tokens: 340,
 		usage_cost_usd: 0.42,
+		correlation_id: null,
 		...over,
 	};
 }

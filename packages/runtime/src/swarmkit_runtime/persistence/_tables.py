@@ -28,6 +28,10 @@ jobs = Table(
     Column("usage_input_tokens", Integer, default=0),
     Column("usage_output_tokens", Integer, default=0),
     Column("usage_cost_usd", Float, default=0.0),
+    #: The pipeline run this job belongs to, when it is a stage of one. Null for a standalone run.
+    #: A stage execution used to leave no job row at all, so a pipeline's actual topology calls were
+    #: invisible in Jobs while `/runs` showed only saga state — the work was unfindable from either.
+    Column("correlation_id", Text),
 )
 
 conversations = Table(

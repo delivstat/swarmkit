@@ -78,6 +78,31 @@ def test_list_jobs(store: SqliteStore) -> None:
     assert len(jobs) == 3
 
 
+def test_jobs_can_be_listed_for_one_pipeline_run(store: SqliteStore) -> None:
+    """A pipeline stage's job carries the correlation id of the run that asked for it, so one run's
+    stages are selectable by column rather than by parsing `<correlation>:<stage>` ids apart."""
+    store.create_job("WMS-5:design", "design-swarm", "a", "WMS-5")
+    store.create_job("WMS-5:build", "build-swarm", "b", "WMS-5")
+    store.create_job("WMS-6:design", "design-swarm", "c", "WMS-6")
+    store.create_job("standalone", "hello", "d")
+
+    assert {j.id for j in store.list_jobs(correlation_id="WMS-5")} == {
+        "WMS-5:design",
+        "WMS-5:build",
+    }
+    assert len(store.list_jobs()) == 4, "unfiltered still returns everything"
+
+
+def test_a_standalone_run_has_no_correlation_id(store: SqliteStore) -> None:
+    """Only pipeline stages belong to a run; a `swarmkit run` or a `POST /run/` job does not, and
+    must not be swept up by a filter."""
+    store.create_job("solo", "hello", "a")
+
+    job = store.get_job("solo")
+    assert job is not None
+    assert job.correlation_id is None
+
+
 def test_get_nonexistent_job(store: SqliteStore) -> None:
     assert store.get_job("nonexistent") is None
 
