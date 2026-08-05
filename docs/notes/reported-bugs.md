@@ -19,6 +19,27 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### The tool loop emitted no audit events (1.151.0)
+
+`skill.executed` came from a single site reached by the initial model call. The multi-turn loop
+executes every subsequent call and emitted nothing, so coverage was structural: turn 1 audited, turns
+2..n not. An agent making 16 calls was recorded as making 1 — and since the first turn is usually a
+single orienting call, the log kept the least informative fraction of the run.
+
+Nothing unauthorised was hidden (every skill was kb:read), but the guarantee that the log SHOWS what
+was read was untrue, which is the property the log exists to provide. It also misled diagnosis:
+during bug 14 an output citing tools the log did not show read as fabricated citations, when the
+calls had simply happened in unrecorded turns. A false fabrication finding against a model is an
+expensive kind of wrong.
+
+Every dispatched skill call now emits the same event in the same shape, so existing readers are
+unchanged, and `policy_decision` is stated rather than left null — a reader could not otherwise
+tell "allowed" from "never evaluated".
+
+Noted, not folded in: the loop's three built-in coordination tools (create-scope, read-task-result,
+context_retrieve) remain unaudited. They are runtime built-ins with no skill id, IAM scopes or
+provenance; recording them as `skill.executed` would put non-skills in the governance record.
+
 ### `swarmkit run` left no record (1.150.0)
 
 There was exactly one writer of a job row — serve's JobService, behind `POST /run/{topology}`. A CLI
