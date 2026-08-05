@@ -138,7 +138,15 @@ async def test_success_run_collects_diff_and_records_audit(tmp_path: Path) -> No
     )
 
     assert "Created generated.txt" in result["output"]
-    assert "diff" in result["output"]  # artifact note
+    # NOTHING is appended to the artifact. This assertion used to be `"diff" in result["output"]`,
+    # pinning the ` (+N bytes diff)` note in place — a display annotation baked into the agent's
+    # own output. For a schema-bound agent whose contract is JSON it made the artifact unparseable,
+    # so the enforcement path reported "output is not valid JSON" instead of the field-specific
+    # errors it exists to produce, and the correction retries could not succeed by construction.
+    # The byte count is telemetry and lives in the `executor.result` audit payload; the diff itself
+    # is on `result["diff"]` for gates to enforce against.
+    assert result["output"] == "Created generated.txt"
+    assert "bytes diff" not in result["output"]
     # The produced diff is surfaced on the result (not just its byte count) so a funnel gate's
     # deterministic validate layers can enforce on the change (funnel-deterministic-validate.md).
     assert "generated.txt" in result["diff"]

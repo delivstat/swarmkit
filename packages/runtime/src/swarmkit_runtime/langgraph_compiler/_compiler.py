@@ -24,6 +24,7 @@ from ._dag import _has_dag_deps, _run_dag  # noqa: F401
 from ._decision_gate import evaluate_post_output
 from ._delegation import _dispatch_response
 from ._drift import _create_drift_observer, _handle_drift_result, _is_error_passthrough
+from ._harness_node import _harness_output_schema
 from ._helpers import (
     _check_governance,
     _check_trust,
@@ -535,26 +536,6 @@ def _build_agent_node(  # noqa: PLR0915
 
     node_fn.__name__ = f"agent_{agent.id}"
     return node_fn
-
-
-def _harness_output_schema(agent: ResolvedAgent) -> dict[str, Any] | None:
-    """The schema enforced on a harness node's output — an EXPLICIT one only.
-
-    Deliberately not :func:`get_effective_output_schema`, which the model path uses. That falls back
-    to the worker platform default (``{findings: [{fact, source}], …}``) for any ``role: worker``
-    without an explicit schema. Applying it here would silently impose a findings-schema on every
-    harness worker — `examples/sdlc-pipeline` alone has a `developer` archetype that is
-    ``role: worker`` + ``kind: harness`` with no schema, and it produces a diff, not findings. Every
-    run of it would start failing validation and burning full harness retries to satisfy a contract
-    nobody wrote.
-
-    The platform default exists for structured inter-agent communication between model workers in
-    the delegation pattern. A harness node produces artifacts. So: enforce what the author actually
-    declared, and nothing more.
-    """
-    if agent.output_schema_disabled:
-        return None
-    return dict(agent.output_schema) if agent.output_schema is not None else None
 
 
 async def _enforce_harness_output_schema(
