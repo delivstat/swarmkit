@@ -148,3 +148,53 @@ def test_zero_tool_calls_with_a_schema_is_surfaced() -> None:
     ).read_text()
     assert "made no tool" in src
     assert "_schema_bound and tools and not tool_results" in src
+
+
+# ---- the prompt half -----------------------------------------------------------------------
+
+
+def test_the_prompt_does_not_forbid_tool_use_when_tools_are_offered() -> None:
+    """The second layer, found after the grammar fix. The system prompt said "Return ONLY the JSON
+    object. No markdown, no explanation" on EVERY turn — including the ones offering tools. A
+    compliant model reads that as "do not call tools", which is the same suppression one layer up.
+    """
+    from swarmkit_runtime.langgraph_compiler._prompts import (  # noqa: PLC0415
+        _structured_output_instruction,
+    )
+
+    with_tools = _structured_output_instruction(SCHEMA, True)
+
+    assert "Return ONLY the JSON object" not in with_tools
+    assert "Use your tools first" in with_tools
+    assert "final answer" in with_tools.lower()
+
+
+def test_the_prompt_still_demands_json_when_there_are_no_tools() -> None:
+    """The document turn has nothing to defer to, so the strict wording stands — and it is the only
+    enforcement for a provider whose structured-output support is weak."""
+    from swarmkit_runtime.langgraph_compiler._prompts import (  # noqa: PLC0415
+        _structured_output_instruction,
+    )
+
+    without = _structured_output_instruction(SCHEMA, False)
+
+    assert "Return ONLY the JSON object" in without
+    assert "You MUST respond with valid JSON" in without
+
+
+def test_both_forms_carry_the_schema() -> None:
+    """Whatever the wording, the model must be told the shape."""
+    from swarmkit_runtime.langgraph_compiler._prompts import (  # noqa: PLC0415
+        _structured_output_instruction,
+    )
+
+    for has_tools in (True, False):
+        assert '"spec"' in _structured_output_instruction(SCHEMA, has_tools)
+
+
+def test_no_schema_means_no_instruction() -> None:
+    from swarmkit_runtime.langgraph_compiler._prompts import (  # noqa: PLC0415
+        _structured_output_instruction,
+    )
+
+    assert _structured_output_instruction(None, True) == ""
