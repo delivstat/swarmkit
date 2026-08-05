@@ -8,6 +8,9 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.156.0** (2026-08-06) — the dashboard shows real work, and a harness artifact is the agent's own
+- **v1.155.0** (2026-08-06) — a chat turn is recorded, and its audits are findable
+- **v1.154.0** (2026-08-05) — a job listed in history can actually be opened
 - **v1.153.0** (2026-08-05) — runs and audit entries say what actually happened
 - **v1.150.0** (2026-08-05) — a CLI run is part of the record
 - **v1.149.1** (2026-08-05) — an output_schema no longer silently disables an agent's tools
