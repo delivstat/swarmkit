@@ -76,6 +76,49 @@ def _app_state_run_deps(
     )
 
 
+def _durable_job(request: Request, job_id: str) -> Any:
+    """The job as the durable store has it, or None. Both stores' rows expose the same fields."""
+    store: Store | None = getattr(request.app.state, "store", None)
+    return store.get_job(job_id) if store is not None else None
+
+
+def _to_response(job: Any) -> JobResponse:
+    """One shape for both stores — an in-memory Job and a persisted JobRow carry the same fields
+    under the same names, so the client cannot tell which one answered."""
+    return JobResponse(
+        job_id=job.id,
+        status=job.status,
+        topology=job.topology,
+        output=job.output,
+        error=job.error,
+    )
+
+
+def _sse(generator: AsyncGenerator[str]) -> StreamingResponse:
+    """An SSE response with the headers a browser EventSource needs."""
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+def _replay(events: list[str], status: str) -> StreamingResponse:
+    """Replay a finished job's recorded events and close.
+
+    A durable job is over by definition, so there is nothing to poll for — this yields what was
+    kept (often nothing, for a run recorded only by its outcome) and then the terminator the
+    client waits for, rather than leaving an EventSource to fail and the page to look broken.
+    """
+
+    async def generate() -> AsyncGenerator[str]:
+        for event in events:
+            yield f"data: {event}\n\n"
+        yield f"data: [done] status={status}\n\n"
+
+    return _sse(generate())
+
+
 def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
     """Register async job execution, polling, streaming, and webhook endpoints."""
     jobs = JobService(job_store)
@@ -115,23 +158,34 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
         ]
 
     @app.get("/jobs/{job_id}")
-    async def get_job(job_id: str) -> JobResponse:
-        job = await job_store.get(job_id)
-        if job is None:
+    async def get_job(job_id: str, request: Request) -> JobResponse:
+        """One job, from the in-memory store or — failing that — the durable one.
+
+        There are two job stores and this endpoint used to read only the first. `JobStore` holds
+        what THIS serve process started via `POST /run/{topology}`; the durable store holds that
+        plus every `swarmkit run` (1.150.0) and every pipeline stage (1.152.0), and survives a
+        restart.
+
+        So the history table listed rows whose detail page 404'd: the row came from
+        `/jobs/history`, the page fetched `/jobs/{id}`, and the two are not the same store. A CLI
+        run was visible and unopenable, and so was every job from before the last restart.
+        """
+        found = await job_store.get(job_id) or _durable_job(request, job_id)
+        if found is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
-        return JobResponse(
-            job_id=job.id,
-            status=job.status,
-            topology=job.topology,
-            output=job.output,
-            error=job.error,
-        )
+        return _to_response(found)
 
     @app.get("/jobs/{job_id}/stream")
-    async def stream_job(job_id: str) -> StreamingResponse:
+    async def stream_job(job_id: str, request: Request) -> StreamingResponse:
         job = await job_store.get(job_id)
         if job is None:
-            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+            # A job this process did not start — a CLI run, a pipeline stage, or anything from
+            # before the last restart. There is nothing live to follow, but 404ing makes the
+            # detail page look broken; replaying what was recorded and closing is the truth.
+            row = _durable_job(request, job_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+            return _replay(row.events, row.status)
 
         async def event_generator() -> AsyncGenerator[str]:
             sent = 0
