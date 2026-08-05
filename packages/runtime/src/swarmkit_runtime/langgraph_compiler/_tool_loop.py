@@ -65,7 +65,7 @@ def _record_tool_call(
             tool_name=tool_name,
             arguments=arguments,
             result_length=result_length,
-            duration_ms=duration_ms,
+            duration_ms=int(duration_ms) if duration_ms is not None else None,
             error=error,
         )
     )
@@ -523,7 +523,63 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
             )
         )
 
+        # Audit EVERY call, not just the first turn's. `skill.executed` used to be emitted from one
+        # site on the initial model call, and this loop — which executes every subsequent call —
+        # emitted nothing. So an agent that made 16 calls was recorded as having made 1, and since
+        # the first turn is usually a single orienting call, the log kept the least informative
+        # fraction of the run.
+        #
+        # That is not only an incomplete record; it misleads. A triage output citing tools the log
+        # did not show reads as fabricated citations, when the calls had simply happened in turns
+        # nothing recorded. A false fabrication finding against a model is an expensive kind of
+        # wrong.
+        if governance is not None:
+            await _record_skill_executed(
+                governance,
+                agent_id=agent.id,
+                skill_id=block.tool_name,
+                arguments=block.tool_input if isinstance(block.tool_input, dict) else {},
+                result=text_result or "",
+                duration_ms=_tc_dur,
+            )
+
     return results if results else None
+
+
+async def _record_skill_executed(
+    governance: GovernanceProvider,
+    *,
+    agent_id: str,
+    skill_id: str,
+    arguments: dict[str, Any],
+    result: str,
+    duration_ms: float | None = None,
+) -> None:
+    """Emit `skill.executed` for one tool call, in the shape the initial turn already emits.
+
+    Same event_type and fields, so every existing reader works unchanged — the point is coverage,
+    not a new format. `policy_decision` is stated rather than left null: a reader could not
+    otherwise tell "allowed" from "never evaluated", and a call reaching here has passed the
+    governed path.
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+    await governance.record_event(
+        AuditEvent(
+            event_type="skill.executed",
+            agent_id=agent_id,
+            timestamp=datetime.now(tz=UTC),
+            skill_id=skill_id,
+            policy_decision="allow",
+            duration_ms=int(duration_ms) if duration_ms is not None else None,
+            payload={
+                "inputs": arguments,
+                "outputs": {"result": result[:1000]},
+            },
+        )
+    )
 
 
 async def _run_tool_loop(  # noqa: PLR0912, PLR0915
