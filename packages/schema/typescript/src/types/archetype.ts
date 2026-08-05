@@ -23,7 +23,7 @@ export type APIVersion = "swarmkit/v1";
 export interface Defaults {
     iam?:           Iam;
     model?:         Model;
-    output_schema?: { [key: string]: any } | null;
+    output_schema?: OutputSchema;
     prompt?:        Prompt;
     skills?:        SkillElement[];
 }
@@ -56,6 +56,8 @@ export interface Model {
     tool_provider?: string;
     [property: string]: any;
 }
+
+export type OutputSchema = { [key: string]: any } | null | string;
 
 export interface Prompt {
     persona?: string;

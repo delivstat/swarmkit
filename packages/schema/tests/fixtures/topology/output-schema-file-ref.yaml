@@ -1,0 +1,14 @@
+# `output_schema` naming a file instead of inlining it. The declaration was already
+# `oneOf: [object, null]`; a path is a third branch, not a second key — so "both declared" is
+# unrepresentable rather than resolved by a precedence rule whose loser is silently ignored.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: design-with-schema-file
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    archetype: supervisor-root
+    output_schema: ./schemas/design-spec.json

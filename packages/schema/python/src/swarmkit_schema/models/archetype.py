@@ -66,6 +66,14 @@ class Executor(BaseModel):
     )
 
 
+class OutputSchema(RootModel[str]):
+    root: str = Field(
+        ...,
+        description="Path to a JSON Schema file, relative to the artifact that declares it. Resolved and validated at load time, and normalised to the parsed schema — a consumer cannot tell which form was written. Must stay inside the workspace; remote URLs are not accepted, so a workspace's meaning never depends on the network.",
+        min_length=1,
+    )
+
+
 class Model(BaseModel):
     model_config = ConfigDict(
         extra="allow",
@@ -162,7 +170,7 @@ class Defaults(BaseModel):
     prompt: Prompt | None = None
     skills: list[Identifier | SkillEntry1] | None = None
     iam: Iam | None = None
-    output_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | OutputSchema | None = None
 
 
 class SwarmKitArchetype(BaseModel):

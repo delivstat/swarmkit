@@ -1,6 +1,6 @@
 # `output_schema` may name a file
 
-Status: proposed. Design-only — no implementation in this PR.
+Status: implemented (runtime 1.148.0, swarmkit-schema 1.25.0).
 
 ## Why
 
@@ -131,10 +131,12 @@ artifact change. That is the same rule every other artifact follows.
 Schema work follows `docs/notes/schema-change-discipline.md`: source, bundled copy, both codegen
 targets, a valid fixture using the string form, and an invalid one.
 
-## Open question
+## Resolved: the inline check errors immediately
 
-Whether the inline-validity check should be an error or a warning in its first release. It is
-strictly better behaviour, but it can fail a workspace that loads today — so it may deserve one
-release as a warning before it becomes an error. My inclination is error immediately, with the
-changelog calling it out: a malformed schema was never doing what its author believed, and a warning
-that is ignored for a release is a slower way to reach the same place.
+A malformed schema was never doing what its author believed, and a warning ignored for a release is
+a slower way to reach the same place. It is a resolution error from 1.148.0.
+
+One existing fixture asserted the opposite of part of this change —
+`archetype-invalid/output-schema-bad-type.yaml` used a *string* as its example of an invalid
+`output_schema`, which is now valid. It was updated to use a number, and says so, because the
+fixture is where that invariant was written down.

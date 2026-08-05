@@ -400,7 +400,9 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     errors.extend(funnel_errors)
     role_registry, role_errors = build_role_registry(artifacts)
     errors.extend(role_errors)
-    topologies, topo_errors = build_topology_registry(artifacts, skills, archetypes, funnels)
+    topologies, topo_errors = build_topology_registry(
+        artifacts, skills, archetypes, funnels, workspace_root=Path(root).resolve()
+    )
     errors.extend(topo_errors)
     triggers, trigger_errors = build_trigger_registry(artifacts, topologies)
     errors.extend(trigger_errors)
