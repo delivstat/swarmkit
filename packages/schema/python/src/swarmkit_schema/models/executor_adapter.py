@@ -132,6 +132,10 @@ class Launch(BaseModel):
         None,
         description="Environment variables injected at launch. The only allowed secret is the model-provider credential (RFC §7): {credential.model_provider}. All other secrets are proxy-injected only (not here).",
     )
+    mcp_tool_name: str | None = Field(
+        "{tool}",
+        description="How this harness names a governed gateway tool in its tool grant. `{tool}` is the gateway's flat `<server>__<tool>` name; `{gateway}` is the MCP server SwarmKit registers. Declared per adapter because the mangling is harness-native — Claude Code's `mcp__<server>__<tool>` is its own convention. Omit to use the gateway name unchanged; declaring a shape that is wrong for the harness produces a grant that silently matches nothing.",
+    )
 
 
 class Default(Enum):

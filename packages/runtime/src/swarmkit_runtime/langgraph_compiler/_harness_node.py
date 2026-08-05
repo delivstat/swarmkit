@@ -182,7 +182,15 @@ def _task_spec(agent: ResolvedAgent, state: SwarmState, workspace_root: Path | N
     schema = _harness_output_schema(agent)
     if schema is not None and statement:
         statement = f"{statement}\n\n{_output_contract(schema)}"
-    mcp_tools = tuple(sid for sid in (getattr(s, "id", "") for s in agent.skills) if sid)
+    # The GATEWAY's names, not skill ids. This field held `skill.id` — a name that exists nowhere
+    # downstream: the gateway advertises `<server>__<tool>` and the harness mangles that again. A
+    # grant built from skill ids matches nothing, so constraining an agent denied every real tool.
+    # Only `mcp_tool` skills appear; a prompt-only or built-in skill has no gateway tool to grant.
+    from swarmkit_runtime.mcp._gateway import GATEWAY_NAME_SEP  # noqa: PLC0415
+
+    mcp_tools = tuple(
+        f"{server}{GATEWAY_NAME_SEP}{tool}" for server, tool, _ in _granted_mcp_tools(agent)
+    )
     return TaskSpec(
         statement=statement,
         context_files=context_files,

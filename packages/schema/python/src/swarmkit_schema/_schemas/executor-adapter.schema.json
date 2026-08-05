@@ -2,16 +2,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.swarmkit.dev/v1/executor-adapter.schema.json",
   "title": "SwarmKit ExecutorAdapter",
-  "description": "A declarative harness adapter (design/details/executor-declarative-adapters-plan.md). Defines how to launch an external agentic harness as a subprocess and map its line-delimited JSON output into the normalized ExecEvent vocabulary — so a new harness is added as data (this artifact), with no Python and no runtime release. The DSL is deliberately minimal (RFC executor-abstraction.md decision 1a): JSONL streams only, literal-equality matching, dotted-path/for_each extraction, a named map for enum translation; anything past that ceiling declares `requires: code` and graduates to a Tier-1 Python Executor.",
+  "description": "A declarative harness adapter (design/details/executor-declarative-adapters-plan.md). Defines how to launch an external agentic harness as a subprocess and map its line-delimited JSON output into the normalized ExecEvent vocabulary \u2014 so a new harness is added as data (this artifact), with no Python and no runtime release. The DSL is deliberately minimal (RFC executor-abstraction.md decision 1a): JSONL streams only, literal-equality matching, dotted-path/for_each extraction, a named map for enum translation; anything past that ceiling declares `requires: code` and graduates to a Tier-1 Python Executor.",
   "type": "object",
-  "required": ["apiVersion", "kind", "metadata", "spec", "provenance"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec",
+    "provenance"
+  ],
   "additionalProperties": false,
   "properties": {
-    "apiVersion": { "const": "swarmkit/v1" },
-    "kind": { "const": "ExecutorAdapter" },
-    "metadata": { "$ref": "#/$defs/metadata" },
-    "spec": { "$ref": "#/$defs/spec" },
-    "provenance": { "$ref": "#/$defs/provenance" }
+    "apiVersion": {
+      "const": "swarmkit/v1"
+    },
+    "kind": {
+      "const": "ExecutorAdapter"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "spec": {
+      "$ref": "#/$defs/spec"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
   },
   "$defs": {
     "identifier": {
@@ -25,20 +41,37 @@
     },
     "template": {
       "type": "string",
-      "description": "A value template. May contain closed substitution variables in braces — {task.statement}, {task.base_ref}, {sandbox.root}, {budget.max_turns}, {budget.max_cost_usd}, {budget.max_wall_clock_minutes}, {resume.token}, {config.*}, {credential.model_provider}. Substituted into argv positions only — never concatenated into a shell string."
+      "description": "A value template. May contain closed substitution variables in braces \u2014 {task.statement}, {task.base_ref}, {sandbox.root}, {budget.max_turns}, {budget.max_cost_usd}, {budget.max_wall_clock_minutes}, {resume.token}, {config.*}, {credential.model_provider}. Substituted into argv positions only \u2014 never concatenated into a shell string."
     },
     "extract_or_literal": {
       "description": "A value in an event `with`/`set` block. A string starting with `$.` is a dotted-path extraction from the parsed JSON line (with array indexing; iterate arrays via a rule's `for_each`); any other scalar is a literal.",
-      "type": ["string", "number", "boolean", "null"]
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ]
     },
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "description"],
+      "required": [
+        "id",
+        "name",
+        "description"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "name": { "type": "string", "minLength": 1 },
-        "description": { "type": "string", "minLength": 10 }
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10
+        }
       }
     },
     "spec": {
@@ -48,56 +81,99 @@
         "^(?!event_map$)[a-z][a-z0-9_]*_map$": {
           "type": "object",
           "$comment": "`event_map` is excluded: it ends in _map but is the rule list, not a lookup table.",
-          "description": "A named translation table. A `{from, map}` value in an emit names one of these; `_default` covers unlisted values. `status_map` classifies the run's terminal status; a harness that reports some other enum — a tool outcome, an exit code — declares its own table here rather than requiring a runtime change, because adapters are data.",
-          "additionalProperties": { "type": "string" }
+          "description": "A named translation table. A `{from, map}` value in an emit names one of these; `_default` covers unlisted values. `status_map` classifies the run's terminal status; a harness that reports some other enum \u2014 a tool outcome, an exit code \u2014 declares its own table here rather than requiring a runtime change, because adapters are data.",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
-      "required": ["launch", "stream", "event_map"],
+      "required": [
+        "launch",
+        "stream",
+        "event_map"
+      ],
       "allOf": [
         {
-          "$comment": "relay requires a bidirectional interaction driver (RFC §6.2).",
+          "$comment": "relay requires a bidirectional interaction driver (RFC \u00a76.2).",
           "if": {
-            "properties": { "on_unanswerable": { "const": "relay" } },
-            "required": ["on_unanswerable"]
+            "properties": {
+              "on_unanswerable": {
+                "const": "relay"
+              }
+            },
+            "required": [
+              "on_unanswerable"
+            ]
           },
-          "then": { "required": ["interaction"] }
+          "then": {
+            "required": [
+              "interaction"
+            ]
+          }
         }
       ],
       "properties": {
-        "launch": { "$ref": "#/$defs/launch" },
-        "auth": { "$ref": "#/$defs/auth" },
-        "stream": { "$ref": "#/$defs/stream" },
+        "launch": {
+          "$ref": "#/$defs/launch"
+        },
+        "auth": {
+          "$ref": "#/$defs/auth"
+        },
+        "stream": {
+          "$ref": "#/$defs/stream"
+        },
         "event_map": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/rule" }
+          "items": {
+            "$ref": "#/$defs/rule"
+          }
         },
         "status_map": {
           "type": "object",
           "description": "Vendor discriminator value -> ExecResultStatus (success|failure|budget_exceeded|cancelled|needs_approval|stalled). `_default` covers the rest.",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          }
         },
-        "resume": { "$ref": "#/$defs/resume" },
-        "grant": { "$ref": "#/$defs/grant" },
+        "resume": {
+          "$ref": "#/$defs/resume"
+        },
+        "grant": {
+          "$ref": "#/$defs/grant"
+        },
         "success_when": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Terminal success predicate. Core layers its semantic check (typed output + artifact-manifest match) on top — exit code alone is necessary, not sufficient.",
-          "properties": { "exit_code": { "type": "integer" } }
+          "description": "Terminal success predicate. Core layers its semantic check (typed output + artifact-manifest match) on top \u2014 exit code alone is necessary, not sufficient.",
+          "properties": {
+            "exit_code": {
+              "type": "integer"
+            }
+          }
         },
         "on_unanswerable": {
-          "enum": ["deny", "abort", "relay"],
+          "enum": [
+            "deny",
+            "abort",
+            "relay"
+          ],
           "default": "abort",
-          "description": "How a mid-run request outside the launch grant is handled (RFC §6.2). `deny` refuses it in place; `abort` terminates needs_approval; `relay` pauses the harness and routes the request to the approval inbox, then feeds the decision back. `relay` requires an `interaction` block with a driver (the one Tier-1 seam — bidirectional session control)."
+          "description": "How a mid-run request outside the launch grant is handled (RFC \u00a76.2). `deny` refuses it in place; `abort` terminates needs_approval; `relay` pauses the harness and routes the request to the approval inbox, then feeds the decision back. `relay` requires an `interaction` block with a driver (the one Tier-1 seam \u2014 bidirectional session control)."
         },
         "interaction": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC §6.2). Declares the bidirectional driver that feeds an approval decision back into the running session — the single per-harness code seam; everything else (inbox, policy, scoping, audit, never-hang) is generic core.",
-          "required": ["driver"],
+          "description": "Mid-run interaction config, required when `on_unanswerable` is `relay` (RFC \u00a76.2). Declares the bidirectional driver that feeds an approval decision back into the running session \u2014 the single per-harness code seam; everything else (inbox, policy, scoping, audit, never-hang) is generic core.",
+          "required": [
+            "driver"
+          ],
           "properties": {
             "driver": {
-              "enum": ["hold-stream", "park-resume"],
+              "enum": [
+                "hold-stream",
+                "park-resume"
+              ],
               "description": "`hold-stream` keeps the session alive and answers over streaming stdin (short waits); `park-resume` checkpoints the session id and re-launches with an expanded grant on approval (long waits, survives restarts)."
             },
             "max_approval_wait_seconds": {
@@ -107,9 +183,14 @@
             }
           }
         },
-        "sandbox": { "$ref": "#/$defs/sandbox" },
+        "sandbox": {
+          "$ref": "#/$defs/sandbox"
+        },
         "telemetry_grade": {
-          "enum": ["normalized", "opaque"],
+          "enum": [
+            "normalized",
+            "opaque"
+          ],
           "default": "normalized",
           "description": "`opaque` (unobservable) adapters are denied by default (RFC decision 5); use requires explicit per-archetype opt-in."
         },
@@ -118,13 +199,19 @@
           "additionalProperties": false,
           "properties": {
             "profile": {
-              "enum": ["files", "structured", "media"],
+              "enum": [
+                "files",
+                "structured",
+                "media"
+              ],
               "default": "files"
             }
           }
         },
         "requires": {
-          "enum": ["code"],
+          "enum": [
+            "code"
+          ],
           "description": "Present only when this adapter has hit the declarative DSL ceiling and must be implemented as a Tier-1 Python Executor instead. A validator/loader treats `requires: code` as 'not runnable declaratively'."
         }
       }
@@ -132,13 +219,17 @@
     "launch": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["command"],
+      "required": [
+        "command"
+      ],
       "description": "How to launch the harness subprocess. `command` is argv (no shell); substitution is value-only.",
       "properties": {
         "command": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/template" }
+          "items": {
+            "$ref": "#/$defs/template"
+          }
         },
         "optional_args": {
           "type": "array",
@@ -146,7 +237,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["when", "args"],
+            "required": [
+              "when",
+              "args"
+            ],
             "properties": {
               "when": {
                 "type": "string",
@@ -154,25 +248,37 @@
               },
               "args": {
                 "type": "array",
-                "items": { "$ref": "#/$defs/template" }
+                "items": {
+                  "$ref": "#/$defs/template"
+                }
               }
             }
           }
         },
         "env": {
           "type": "object",
-          "description": "Environment variables injected at launch. The only allowed secret is the model-provider credential (RFC §7): {credential.model_provider}. All other secrets are proxy-injected only (not here).",
-          "additionalProperties": { "$ref": "#/$defs/template" }
+          "description": "Environment variables injected at launch. The only allowed secret is the model-provider credential (RFC \u00a77): {credential.model_provider}. All other secrets are proxy-injected only (not here).",
+          "additionalProperties": {
+            "$ref": "#/$defs/template"
+          }
+        },
+        "mcp_tool_name": {
+          "type": "string",
+          "description": "How this harness names a governed gateway tool in its tool grant. `{tool}` is the gateway's flat `<server>__<tool>` name; `{gateway}` is the MCP server SwarmKit registers. Declared per adapter because the mangling is harness-native \u2014 Claude Code's `mcp__<server>__<tool>` is its own convention. Omit to use the gateway name unchanged; declaring a shape that is wrong for the harness produces a grant that silently matches nothing.",
+          "default": "{tool}"
         }
       }
     },
     "auth": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Which authentication modes the harness supports (RFC decision 4), expressed generically. A mode contributes to the launch however the harness needs — env vars, extra command args, and/or provisioned credential paths — so auth may be an env var, a command flag, saved CLI credentials, or any combination; the engine has no per-mode special-casing. Both modes may be declared; `default` sets the mode used when the workspace/archetype does not override. In headless mode api_key takes precedence over subscription where both are usable.",
+      "description": "Which authentication modes the harness supports (RFC decision 4), expressed generically. A mode contributes to the launch however the harness needs \u2014 env vars, extra command args, and/or provisioned credential paths \u2014 so auth may be an env var, a command flag, saved CLI credentials, or any combination; the engine has no per-mode special-casing. Both modes may be declared; `default` sets the mode used when the workspace/archetype does not override. In headless mode api_key takes precedence over subscription where both are usable.",
       "properties": {
         "default": {
-          "enum": ["api_key", "subscription"],
+          "enum": [
+            "api_key",
+            "subscription"
+          ],
           "description": "The auth mode used when the workspace/archetype does not override."
         },
         "modes": {
@@ -181,8 +287,12 @@
           "minProperties": 1,
           "description": "The auth modes this adapter can run under, keyed by mode name; each value declares that mode's contribution to the launch.",
           "properties": {
-            "api_key": { "$ref": "#/$defs/auth_mode" },
-            "subscription": { "$ref": "#/$defs/auth_mode" }
+            "api_key": {
+              "$ref": "#/$defs/auth_mode"
+            },
+            "subscription": {
+              "$ref": "#/$defs/auth_mode"
+            }
           }
         }
       }
@@ -190,29 +300,37 @@
     "auth_mode": {
       "type": "object",
       "additionalProperties": false,
-      "description": "What an auth mode contributes to the launch. All parts optional — combine as the harness requires. Env and args are merged into the launch command/environment when this mode is active; credential_paths are provisioned into the sandbox.",
+      "description": "What an auth mode contributes to the launch. All parts optional \u2014 combine as the harness requires. Env and args are merged into the launch command/environment when this mode is active; credential_paths are provisioned into the sandbox.",
       "properties": {
         "env": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/template" },
+          "additionalProperties": {
+            "$ref": "#/$defs/template"
+          },
           "description": "Env vars this mode injects, e.g. {\"ANTHROPIC_API_KEY\": \"{credential.model_provider}\"}."
         },
         "args": {
           "type": "array",
-          "items": { "$ref": "#/$defs/template" },
-          "description": "Command args this mode appends, e.g. [--api-key, \"{credential.model_provider}\"] — for harnesses that take the key on the command line rather than the environment."
+          "items": {
+            "$ref": "#/$defs/template"
+          },
+          "description": "Command args this mode appends, e.g. [--api-key, \"{credential.model_provider}\"] \u2014 for harnesses that take the key on the command line rather than the environment."
         },
         "credential_paths": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Paths (files/dirs) holding the vendor's saved auth state to provision into the sandbox, e.g. ~/.claude — for subscription/CLI-login modes."
+          "items": {
+            "type": "string"
+          },
+          "description": "Paths (files/dirs) holding the vendor's saved auth state to provision into the sandbox, e.g. ~/.claude \u2014 for subscription/CLI-login modes."
         }
       }
     },
     "stream": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["format"],
+      "required": [
+        "format"
+      ],
       "properties": {
         "format": {
           "const": "jsonl",
@@ -233,7 +351,9 @@
         "when": {
           "type": "object",
           "description": "Literal-equality match on dotted field paths of the parsed line (keys are dotted paths, values are the required literals). Empty/absent = matches every line.",
-          "additionalProperties": { "$ref": "#/$defs/extract_or_literal" }
+          "additionalProperties": {
+            "$ref": "#/$defs/extract_or_literal"
+          }
         },
         "for_each": {
           "type": "string",
@@ -242,24 +362,32 @@
         "set": {
           "type": "object",
           "description": "Capture values into adapter state (no event). The only recognized key is `session_id` (used for resume tokens).",
-          "additionalProperties": { "$ref": "#/$defs/extract_or_literal" }
+          "additionalProperties": {
+            "$ref": "#/$defs/extract_or_literal"
+          }
         },
         "emit": {
           "type": "array",
-          "items": { "$ref": "#/$defs/emit_spec" }
+          "items": {
+            "$ref": "#/$defs/emit_spec"
+          }
         }
       }
     },
     "emit_spec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["event"],
+      "required": [
+        "event"
+      ],
       "description": "Emit one ExecEvent. `with` maps event fields to extracted values or literals.",
       "properties": {
         "when": {
           "type": "object",
           "description": "Optional per-item literal match (used inside a `for_each` to select array items by type).",
-          "additionalProperties": { "$ref": "#/$defs/extract_or_literal" }
+          "additionalProperties": {
+            "$ref": "#/$defs/extract_or_literal"
+          }
         },
         "event": {
           "enum": [
@@ -279,14 +407,23 @@
           "description": "Event field -> extraction path ($.a.b) or literal. A field whose value is {\"from\": \"$.x\", \"map\": \"status_map\"} is translated through the named map (the only enum-translation primitive).",
           "additionalProperties": {
             "oneOf": [
-              { "$ref": "#/$defs/extract_or_literal" },
+              {
+                "$ref": "#/$defs/extract_or_literal"
+              },
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["from", "map"],
+                "required": [
+                  "from",
+                  "map"
+                ],
                 "properties": {
-                  "from": { "type": "string" },
-                  "map": { "type": "string" }
+                  "from": {
+                    "type": "string"
+                  },
+                  "map": {
+                    "type": "string"
+                  }
                 }
               }
             ]
@@ -301,23 +438,27 @@
       "properties": {
         "arg": {
           "type": "array",
-          "items": { "$ref": "#/$defs/template" },
+          "items": {
+            "$ref": "#/$defs/template"
+          },
           "description": "Args appended when resuming, e.g. [--resume, \"{resume.token}\"]."
         },
         "prompt": {
           "type": "string",
-          "description": "The nudge statement sent on a park-resume relaunch (substituted for {task.statement}), e.g. 'Continue — the requested permissions have been granted.'"
+          "description": "The nudge statement sent on a park-resume relaunch (substituted for {task.statement}), e.g. 'Continue \u2014 the requested permissions have been granted.'"
         }
       }
     },
     "grant": {
       "type": "object",
       "additionalProperties": false,
-      "description": "How an approved capability is passed to the harness on a park-resume relaunch (RFC §6.2). The whole park-resume mechanism is data: no harness is special-cased in code.",
+      "description": "How an approved capability is passed to the harness on a park-resume relaunch (RFC \u00a76.2). The whole park-resume mechanism is data: no harness is special-cased in code.",
       "properties": {
         "arg": {
           "type": "array",
-          "items": { "$ref": "#/$defs/template" },
+          "items": {
+            "$ref": "#/$defs/template"
+          },
           "description": "Args appended on a grant-expanding resume, e.g. [--allowedTools, \"{grant.capabilities}\"]. {grant.capabilities} is the approved capabilities joined by `separator`."
         },
         "separator": {
@@ -330,31 +471,51 @@
     "sandbox": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Opt-in isolation tier for the harness subprocess (executor-container-sandbox.md). Absent ⇒ the native git-worktree sandbox (default; today's behaviour). `container` runs the harness inside a docker|podman container with resource limits and enforced egress. A global disable switch (SWARMKIT_DISABLE_CONTAINER_SANDBOX) forces the worktree regardless of this block — the operator is never trapped by an archetype that insists on a container.",
+      "description": "Opt-in isolation tier for the harness subprocess (executor-container-sandbox.md). Absent \u21d2 the native git-worktree sandbox (default; today's behaviour). `container` runs the harness inside a docker|podman container with resource limits and enforced egress. A global disable switch (SWARMKIT_DISABLE_CONTAINER_SANDBOX) forces the worktree regardless of this block \u2014 the operator is never trapped by an archetype that insists on a container.",
       "allOf": [
         {
-          "$comment": "Use a prebuilt image OR build one from a base+install — not both.",
-          "not": { "required": ["image", "build"] }
+          "$comment": "Use a prebuilt image OR build one from a base+install \u2014 not both.",
+          "not": {
+            "required": [
+              "image",
+              "build"
+            ]
+          }
         }
       ],
       "properties": {
         "kind": {
-          "enum": ["worktree", "container"],
+          "enum": [
+            "worktree",
+            "container"
+          ],
           "default": "worktree",
           "description": "`worktree` (default) runs the harness directly in an ephemeral git worktree, as today. `container` provisions an isolated container with the worktree bind-mounted read-write, resource limits, and the `network` policy enforced."
         },
         "image": {
           "type": "string",
-          "description": "A prebuilt container image for kind=container, in which the harness is already installed — any image you choose (yours, or a public one). Falls back to $SWARMKIT_HARNESS_IMAGE when unset. SwarmKit publishes no required image: if neither `image`, `build`, nor $SWARMKIT_HARNESS_IMAGE is given, provisioning fails with a clear error rather than guessing. Secrets are never baked in — they are injected at run via -e (same rule as the MCP sandbox). Use `build` instead to provision the harness into a derived image with no local install."
+          "description": "A prebuilt container image for kind=container, in which the harness is already installed \u2014 any image you choose (yours, or a public one). Falls back to $SWARMKIT_HARNESS_IMAGE when unset. SwarmKit publishes no required image: if neither `image`, `build`, nor $SWARMKIT_HARNESS_IMAGE is given, provisioning fails with a clear error rather than guessing. Secrets are never baked in \u2014 they are injected at run via -e (same rule as the MCP sandbox). Use `build` instead to provision the harness into a derived image with no local install."
         },
         "build": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Provision the harness into a derived image so it runs in-container with NO local install — the user brings only their API key/subscription. Built once, content-addressed by the resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline` (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so all three go through one builder.",
+          "description": "Provision the harness into a derived image so it runs in-container with NO local install \u2014 the user brings only their API key/subscription. Built once, content-addressed by the resolved Dockerfile + context, and cached; alternative to a prebuilt `image`. Give exactly one of `base` (+ optional `install`, the ergonomic path that keeps the adapter self-contained), `dockerfile` (a path, for full Docker control), or `dockerfile_inline` (Dockerfile content inline). `base`+`install` is lowered to a Dockerfile internally, so all three go through one builder.",
           "oneOf": [
-            { "required": ["base"] },
-            { "required": ["dockerfile"] },
-            { "required": ["dockerfile_inline"] }
+            {
+              "required": [
+                "base"
+              ]
+            },
+            {
+              "required": [
+                "dockerfile"
+              ]
+            },
+            {
+              "required": [
+                "dockerfile_inline"
+              ]
+            }
           ],
           "properties": {
             "base": {
@@ -363,26 +524,31 @@
             },
             "install": {
               "type": "array",
-              "items": { "type": "string" },
-              "description": "Shell commands run at build time to install the harness into the image, e.g. [\"npm install -g @anthropic-ai/claude-code\"]. Only used with `base`. No secrets here — install must not need the user's credential (that arrives at run via -e)."
+              "items": {
+                "type": "string"
+              },
+              "description": "Shell commands run at build time to install the harness into the image, e.g. [\"npm install -g @anthropic-ai/claude-code\"]. Only used with `base`. No secrets here \u2014 install must not need the user's credential (that arrives at run via -e)."
             },
             "dockerfile": {
               "type": "string",
-              "description": "Path to a Dockerfile (relative → workspace root) for harnesses needing COPY / multi-stage / ARG beyond base+install. The build context is the file's directory."
+              "description": "Path to a Dockerfile (relative \u2192 workspace root) for harnesses needing COPY / multi-stage / ARG beyond base+install. The build context is the file's directory."
             },
             "dockerfile_inline": {
               "type": "string",
-              "description": "Dockerfile content inline — full control while keeping the adapter a single self-contained artifact (no second file to ship)."
+              "description": "Dockerfile content inline \u2014 full control while keeping the adapter a single self-contained artifact (no second file to ship)."
             }
           }
         },
         "mounts": {
           "type": "array",
-          "description": "Extra resources bind-mounted into the container beyond the worktree — a source tree, a knowledge-base directory, shared read-only config. Secrets do NOT belong here (use auth modes / -e injection).",
+          "description": "Extra resources bind-mounted into the container beyond the worktree \u2014 a source tree, a knowledge-base directory, shared read-only config. Secrets do NOT belong here (use auth modes / -e injection).",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["source", "target"],
+            "required": [
+              "source",
+              "target"
+            ],
             "properties": {
               "source": {
                 "type": "string",
@@ -393,7 +559,10 @@
                 "description": "Absolute path the resource is mounted at inside the container."
               },
               "mode": {
-                "enum": ["ro", "rw"],
+                "enum": [
+                  "ro",
+                  "rw"
+                ],
                 "default": "ro",
                 "description": "Read-only (default) or read-write."
               }
@@ -401,23 +570,37 @@
           }
         },
         "network": {
-          "enum": ["deny", "allowlist"],
+          "enum": [
+            "deny",
+            "allowlist"
+          ],
           "default": "deny",
-          "description": "Enforced egress policy for kind=container. `deny` → no outbound access (--network none); suits a local-model harness. `allowlist` → egress only to `allow` hosts, via a managed forward proxy — the mode a cloud harness needs to reach its model API and nothing else."
+          "description": "Enforced egress policy for kind=container. `deny` \u2192 no outbound access (--network none); suits a local-model harness. `allowlist` \u2192 egress only to `allow` hosts, via a managed forward proxy \u2014 the mode a cloud harness needs to reach its model API and nothing else."
         },
         "allow": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Hosts the harness may reach when network=allowlist, e.g. [api.anthropic.com]. Empty ⇒ effectively deny (a strict base to add to)."
+          "items": {
+            "type": "string"
+          },
+          "description": "Hosts the harness may reach when network=allowlist, e.g. [api.anthropic.com]. Empty \u21d2 effectively deny (a strict base to add to)."
         },
         "resources": {
           "type": "object",
           "additionalProperties": false,
           "description": "Container resource limits for kind=container. Omitted fields are unbounded.",
           "properties": {
-            "cpus": { "type": "string", "description": "Max CPUs, passed to --cpus (e.g. \"2\")." },
-            "memory": { "type": "string", "description": "Max memory, passed to --memory (e.g. \"2g\")." },
-            "pids": { "type": "integer", "description": "Max process count, passed to --pids-limit." }
+            "cpus": {
+              "type": "string",
+              "description": "Max CPUs, passed to --cpus (e.g. \"2\")."
+            },
+            "memory": {
+              "type": "string",
+              "description": "Max memory, passed to --memory (e.g. \"2g\")."
+            },
+            "pids": {
+              "type": "integer",
+              "description": "Max process count, passed to --pids-limit."
+            }
           }
         }
       }
@@ -425,7 +608,10 @@
     "provenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["authored_by", "version"],
+      "required": [
+        "authored_by",
+        "version"
+      ],
       "properties": {
         "authored_by": {
           "enum": [
@@ -436,10 +622,19 @@
             "vendor_published"
           ]
         },
-        "authored_date": { "type": "string", "format": "date" },
-        "version": { "$ref": "#/$defs/semver" },
-        "registry": { "type": "string" },
-        "vendor": { "type": "string" }
+        "authored_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "registry": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string"
+        }
       }
     }
   }

@@ -262,6 +262,15 @@ export interface Launch {
      */
     env?: { [key: string]: string };
     /**
+     * How this harness names a governed gateway tool in its tool grant. `{tool}` is the
+     * gateway's flat `<server>__<tool>` name; `{gateway}` is the MCP server SwarmKit registers.
+     * Declared per adapter because the mangling is harness-native — Claude Code's
+     * `mcp__<server>__<tool>` is its own convention. Omit to use the gateway name unchanged;
+     * declaring a shape that is wrong for the harness produces a grant that silently matches
+     * nothing.
+     */
+    mcp_tool_name?: string;
+    /**
      * Arg groups appended only when the referenced variable is set; the whole group drops when
      * it is empty.
      */
