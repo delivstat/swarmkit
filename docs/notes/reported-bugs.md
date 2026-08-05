@@ -290,7 +290,19 @@ server list as filenames; `str(engine.url)` masking the password it was asked to
 The jobs-history page was in the built bundle, but `swarmkit-webui` was still 0.7.0 — already on
 PyPI — so `publish_if_new` would have skipped it. Every workflow would have gone green and no user
 would have received the fix. `packages/ui` and `packages/webui` have separate versions and the
-former does not publish anything. Rule written down in [portal-release-discipline](portal-release-discipline.md).
+former does not publish anything. Rule written down in [release-version-discipline](release-version-discipline.md).
+
+### Four features that shipped unreachable (found at v1.145.0)
+
+`swarmkit-schema` was never republished after 2026-07-27 — the version sat at 1.23.0 through six
+releases while `packages/schema/schemas` kept changing. So `server.auth.config.identity`,
+`client_id` / `scope`, `storage.artifacts` and the adapters' `*_map` tables were all rejected by the
+schema every installed user actually had; the runtime shipped bundled adapters its own published
+schema refused. Merged, tested, reviewed, released — and unreachable.
+
+Found because an operator reported the named-operator config being rejected and I checked whether
+the schema in the repo matched the one on PyPI. Fixed in 1.145.1 / schema 1.24.0, with
+`scripts/check_publishable.py` so the next one fails the release instead of shipping.
 
 ## The pattern
 

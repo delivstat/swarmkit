@@ -135,7 +135,12 @@ Examples:
 
 When cutting a release:
 
-1. **Bump versions** in `packages/runtime/pyproject.toml` and `packages/schema/python/pyproject.toml`.
+1. **Bump versions** for every package whose content changed — not just the runtime. `just
+   release-check` fails the release when a changed package's version is already on PyPI, because
+   `publish_if_new` would silently skip it (this shipped four unreachable features once; see
+   `docs/notes/release-version-discipline.md`). Versions live in `packages/runtime/pyproject.toml`,
+   `packages/schema/python/pyproject.toml`, `packages/webui/pyproject.toml` and
+   `packages/control-plane/pyproject.toml`.
 2. **Commit** the version bump.
 3. **Build** both packages: `uv build --all-packages` — verify both succeed.
 4. **Tag**: `git tag -a v1.x.y -m "SwarmKit v1.x.y — summary"`.
