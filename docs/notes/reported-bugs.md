@@ -19,6 +19,37 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### Chat recorded no job, and its audits sat under an id nothing referenced (1.155.0)
+
+Chat was the last topology run recording nothing — and the most-used, since the conversational CLI
+is the v1.0 on-ramp. Measured before the fix: 0 job rows, 2 audit rows, the audit rows under a
+fresh random UUID.
+
+Two problems that look like one from outside. No job row, so a conversation never appeared in
+`/jobs` and its cost was attributable to nobody. And `ConversationManager.send` called
+`runtime.run` **without a `thread_id`**, so every turn's events and its trace landed under a UUID
+no conversation pointed at.
+
+The second is the instructive one: auditing was never broken, only unfindable. A count of audit
+rows would have looked healthy. This is the counterpart to the 1.153.0 entry below — there the
+fields were written and not returned; here they were written and not addressable.
+
+Tests: `test_chat_records_a_job.py`.
+Design: [chat-run-recording](../../design/details/chat-run-recording.md).
+
+### A job listed in history could not be opened (1.154.0)
+
+`GET /jobs/{id}` read the in-memory `JobStore` only, while the history table it is reached from is
+fed by the durable store. So a CLI run was listed and 404'd on click, as was every job from before
+the last restart.
+
+**1.150.0 created this by fixing the list**: it put rows on screen that nothing could open. A
+second writer landed without the read path being asked whether it could serve what it wrote — the
+same not-checking-the-other-half mistake as bug 14, where the grammar was fixed and the prompt
+layer had to be pointed out separately.
+
+Tests: `test_job_detail_reads_the_durable_store.py`.
+
 ### The audit API returned an event's header and dropped its content (1.153.0 / UI 0.32.0)
 
 Reported alongside bug 15: audit entries in serve showed basic info with no detail of what the

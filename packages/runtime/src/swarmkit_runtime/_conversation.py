@@ -10,6 +10,7 @@ Conversations persist as JSON in .swarmkit/conversations/.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -17,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
+
+logger = logging.getLogger("swarmkit.conversation")
 
 
 @dataclass
@@ -51,6 +54,18 @@ class Conversation:
     def from_dict(cls, data: dict[str, Any]) -> Conversation:
         turns = [ConversationTurn(**t) for t in data.pop("turns", [])]
         return cls(**data, turns=turns)
+
+
+def turn_run_id(conversation_id: str, turn_index: int) -> str:
+    """The run id for one turn of a conversation: ``<conversation>:<turn>``.
+
+    Per-TURN, not per-conversation, for the same reason a pipeline stage gets its own: the id is
+    also the LangGraph checkpoint thread and the trace's ``run_id``, and a trace saves to
+    ``{run_id}.json``. Sharing one id across turns would make each turn overwrite the previous
+    turn's trace and inherit its graph state — while the conversation already carries history
+    itself, as text, which is what a turn is actually given.
+    """
+    return f"{conversation_id}:{turn_index}"
 
 
 class ConversationManager:
@@ -137,7 +152,26 @@ class ConversationManager:
 
         context = self._build_context(conversation)
 
-        result = await self._runtime.run(conversation.topology_name, context)
+        # A chat turn is a topology run like any other, and was the last one recording nothing.
+        # `POST /run/{topology}` wrote a job, `swarmkit run` since 1.150.0, a pipeline stage since
+        # 1.152.0 — a turn wrote none, so a conversation was invisible in `/jobs` and its cost was
+        # attributable to nobody. Worse, the run had no thread id, so its trace and its audit rows
+        # landed under a fresh random UUID that no conversation pointed at: the events existed and
+        # could not be found from the thing that caused them.
+        # Numbered by EXCHANGE, not by list position: turns hold both sides, so positions would
+        # run 1, 3, 5 and read as gaps in a record that has none.
+        run_id = turn_run_id(
+            conversation.id, sum(1 for t in conversation.turns if t.role == "human")
+        )
+        self._record_turn_job(run_id, conversation, user_message)
+        try:
+            result = await self._runtime.run(conversation.topology_name, context, thread_id=run_id)
+        except BaseException as exc:
+            self._finish_turn_job(run_id, "failed", error=f"{type(exc).__name__}: {exc}")
+            raise
+        self._finish_turn_job(
+            run_id, "completed", output=result.output, usage=getattr(result, "usage", None)
+        )
 
         conversation.turns.append(
             ConversationTurn(
@@ -160,6 +194,55 @@ class ConversationManager:
         self._save(conversation)
 
         return result
+
+    def _store(self) -> Any:
+        """The durable store, or None. Reached through the runtime's one storage service."""
+        try:
+            return self._runtime.store
+        except Exception:
+            logger.warning("this conversation will not appear in jobs: the store did not open")
+            return None
+
+    def _record_turn_job(self, run_id: str, conversation: Conversation, message: str) -> None:
+        """Open a job row for this turn, linked to the conversation by ``correlation_id``.
+
+        Best-effort in one direction only, as everywhere else: a store that will not open loses the
+        RECORD of a turn, never the turn.
+        """
+        store = self._store()
+        if store is None:
+            return
+        try:
+            store.create_job(run_id, conversation.topology_name, message, conversation.id)
+        # A conversation must continue whether or not it can be recorded.
+        except Exception:
+            logger.warning("turn %s will not appear in jobs: could not create its row", run_id)
+
+    def _finish_turn_job(
+        self, run_id: str, status: str, *, output: str = "", error: str = "", usage: Any = None
+    ) -> None:
+        """Close the turn's row. A row left at `running` is indistinguishable from a turn still
+        being answered."""
+        store = self._store()
+        if store is None:
+            return
+        fields: dict[str, Any] = {
+            "status": status,
+            "completed_at": datetime.now(tz=UTC).isoformat(),
+        }
+        if output:
+            fields["output"] = output
+        if error:
+            fields["error"] = error
+        if usage is not None:
+            fields["usage_input_tokens"] = getattr(usage, "input_tokens", 0)
+            fields["usage_output_tokens"] = getattr(usage, "output_tokens", 0)
+            fields["usage_cost_usd"] = getattr(usage, "cost_usd", 0.0)
+        try:
+            store.update_job(run_id, **fields)
+        # Same one-directional rule on the way out.
+        except Exception:
+            logger.warning("could not record the outcome of turn %s", run_id)
 
     def _build_context(self, conversation: Conversation) -> str:
         """Build the full input for this turn: history + current message."""
