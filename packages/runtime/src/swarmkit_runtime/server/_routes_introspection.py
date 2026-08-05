@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
@@ -43,10 +44,35 @@ def _span_to_dict(span: Any) -> dict[str, Any]:
     }
 
 
+#: Everything an AuditEvent carries beyond the identifying header, in the order a reader wants it:
+#: what was decided, what went in and came back, what the judge concluded, what it cost, how long it
+#: took, and how it failed. The store has had every one of these columns since M6 and the API
+#: returned none of them, so the log rendered as a list of event types with no content — a reader
+#: could see THAT a skill ran and never what it was asked or what it answered.
+_AUDIT_DETAIL_FIELDS = (
+    "policy_decision",
+    "policy_reason",
+    "skill_category",
+    "inputs",
+    "outputs",
+    "verdict",
+    "reasoning",
+    "confidence",
+    "model_provider",
+    "model_name",
+    "tokens_in",
+    "tokens_out",
+    "cost_usd",
+    "duration_ms",
+    "error",
+    "parent_event_id",
+)
+
+
 def _audit_event_to_dict(event: Any) -> dict[str, Any]:
     """Serialize an AuditEvent to JSON (UUID → str, datetime → isoformat). Read-only view."""
     ts = getattr(event, "timestamp", None)
-    return {
+    out: dict[str, Any] = {
         "event_id": str(getattr(event, "event_id", "")),
         "event_type": getattr(event, "event_type", ""),
         "agent_id": getattr(event, "agent_id", ""),
@@ -57,6 +83,11 @@ def _audit_event_to_dict(event: Any) -> dict[str, Any]:
         "run_id": getattr(event, "run_id", None),
         "payload": getattr(event, "payload", {}),
     }
+    for name in _AUDIT_DETAIL_FIELDS:
+        value = getattr(event, name, None)
+        # UUIDs are not JSON. Everything else here is already a scalar, a dict, or None.
+        out[name] = str(value) if isinstance(value, UUID) else value
+    return out
 
 
 def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915

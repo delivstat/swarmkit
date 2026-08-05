@@ -235,6 +235,30 @@ export interface AuditEvent {
 	skill_id: string | null;
 	run_id: string | null;
 	payload: Record<string, unknown>;
+
+	/* The M6 detail. The store has held all of it since M6; `/audit` began returning it in
+	 * runtime 1.153.0, which is what makes the log say what an event was FOR. */
+	policy_decision: "allow" | "deny" | null;
+	policy_reason: string | null;
+	skill_category:
+		| "capability"
+		| "decision"
+		| "coordination"
+		| "persistence"
+		| null;
+	inputs: Record<string, unknown> | null;
+	outputs: Record<string, unknown> | null;
+	verdict: "pass" | "fail" | "needs-review" | null;
+	reasoning: string | null;
+	confidence: number | null;
+	model_provider: string | null;
+	model_name: string | null;
+	tokens_in: number | null;
+	tokens_out: number | null;
+	cost_usd: number | null;
+	duration_ms: number | null;
+	error: Record<string, string> | null;
+	parent_event_id: string | null;
 }
 
 /** Per-run usage totals — the flat shape GET /usage/{job_id} returns (no by-model breakdown). */
