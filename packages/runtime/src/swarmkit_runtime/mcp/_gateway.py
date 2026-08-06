@@ -113,6 +113,34 @@ def build_gateway_tools(
     return [seen[k] for k in sorted(seen)]
 
 
+async def gateway_serves(url: str, token: str, timeout: float = 5.0) -> bool:
+    """Whether this gateway actually serves its SSE endpoint.
+
+    Bound and a recorded tool list are not evidence that it works. A gateway can come up, report a
+    port, be audited with all its tools — and then serve nothing, which is how a harness came to run
+    with none of its 33 granted tools while reporting success. The only proof is the endpoint event
+    an MCP client receives on connect, so that is what this asks for.
+
+    Cheap (one connection, closed immediately) and worth it: the alternative to knowing here is
+    finding out after a full harness session has been paid for.
+    """
+    import httpx  # noqa: PLC0415
+
+    try:
+        async with (
+            httpx.AsyncClient(timeout=timeout) as client,
+            client.stream("GET", url, headers={"Authorization": f"Bearer {token}"}) as response,
+        ):
+            if response.status_code != 200:
+                return False
+            async for line in response.aiter_lines():
+                if line.startswith("event:"):
+                    return True
+    except Exception:  # a gateway that cannot be probed is a gateway that cannot be used
+        return False
+    return False
+
+
 def harness_mcp_config(url: str, token: str) -> dict[str, Any]:
     """The Claude-Code-shaped MCP config that points a harness at the gateway (one SSE server,
     bearer-authenticated). Other harnesses declare their own consumption in their adapter."""
@@ -199,12 +227,30 @@ async def mcp_gateway(
         headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
         return bool(headers.get("authorization", "") == f"Bearer {bearer}")
 
+    class _AlreadyStreamed(Response):
+        """A Response that writes nothing, because the SSE handler already did.
+
+        Starlette's request-response route requires a Response back, and returning a real one here
+        sends a SECOND `http.response.start` on a connection `connect_sse` has already started —
+        the ASGI protocol error seen in the wild. Uvicorn raises on it, the connection tears down
+        badly, and the server's own shutdown then waits on it: which is why the FIRST gateway in a
+        process is healthy and later ones come up bound-but-dead.
+        """
+
+        async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+            # Close the response the SSE handler opened, and nothing else. Sending a second
+            # `http.response.start` is the protocol error; sending NOTHING leaves the response
+            # unfinished and the connection open, so teardown then blocks on it. A terminal
+            # empty body is the one message that ends the exchange cleanly.
+            with contextlib.suppress(RuntimeError):
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
+
     async def _handle_sse(request: Request) -> Any:
         if not _authed(request.scope):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         async with sse.connect_sse(request.scope, request.receive, request._send) as (r, w):
             await server.run(r, w, server.create_initialization_options())
-        return Response()  # the SSE stream already flushed via request._send; keep Starlette happy
+        return _AlreadyStreamed()
 
     async def _handle_post(scope: Any, receive: Any, send: Any) -> None:
         if not _authed(scope):

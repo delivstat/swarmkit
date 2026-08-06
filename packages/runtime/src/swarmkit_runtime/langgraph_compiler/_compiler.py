@@ -537,6 +537,22 @@ def _build_agent_node(  # noqa: PLR0915
     return node_fn
 
 
+class ExecutorUnavailable(Exception):
+    """A re-invocation did not run: the sandbox, gateway or harness failed before the agent could
+    answer.
+
+    A bare ``str`` return cannot express this. `_reinvoke` reads `node_errors`, correctly discards
+    the failed run and keeps the previous text — and then the caller sees the same string it had,
+    re-validates it, gets the identical errors, and spends its next attempt the same way. Every
+    remaining attempt is a full harness session that cannot succeed, and the run is finally recorded
+    as an `output.schema_violation`: a schema problem that was never the cause.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
 async def _enforce_harness_output_schema(
     text: str,
     schema: dict[str, Any],
@@ -597,7 +613,46 @@ async def _enforce_harness_output_schema(
                 },
             )
         )
-        current = await reinvoke(format_correction_prompt(errors))
+        previous = current
+        try:
+            current = await reinvoke(format_correction_prompt(errors))
+        except ExecutorUnavailable as exc:
+            # The executor is broken, not the answer. Retrying spends whole harness sessions that
+            # cannot succeed — measured at $0.55 across two of them on the reported run — and then
+            # blames the output. Stop, and attribute it to what actually happened.
+            await governance.record_event(
+                AuditEvent(
+                    event_type="output.schema_abandoned",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={
+                        "attempt": attempt + 1,
+                        "reason": exc.detail,
+                        "schema_errors": [f"{e.field}: {e.message}" for e in errors],
+                    },
+                )
+            )
+            return f"{current}\n\n---\nOUTPUT SCHEMA NOT ENFORCED: {exc.detail}"
+        if current == previous:
+            # Byte-identical across a correction means the re-invocation changed nothing — an
+            # executor failing the same way each time, whether or not it reported `node_errors`.
+            # Independent of the signal above, and cheap: spending the remaining budget to receive
+            # the same string a third time helps nobody.
+            # `stalled`, not `abandoned`: the executor worked and the answer did not improve.
+            # That is the agent failing its contract, so the violation below still stands — unlike
+            # a dead executor, where nothing was ever checked.
+            await governance.record_event(
+                AuditEvent(
+                    event_type="output.schema_stalled",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    payload={
+                        "attempt": attempt + 1,
+                        "reason": "the re-invocation returned an identical draft",
+                    },
+                )
+            )
+            break
 
     await governance.record_event(
         AuditEvent(
@@ -693,9 +748,13 @@ async def _run_harness_with_gates(
         retry_state: SwarmState = {**state, "input": revised}
         retried = await _invoke(retry_state)
         # A harness that fails on the retry leaves the previous text in place, so an infrastructure
-        # failure is never mistaken for the agent's revised answer.
+        # failure is never mistaken for the agent's revised answer — and it is RAISED, not returned,
+        # because a bare str cannot tell the caller "this did not run". Returning the old text made
+        # the schema loop re-validate it, get the same errors, and spend every remaining attempt on
+        # an executor that was broken, before blaming the output.
         if retried.get("node_errors"):
-            return str(result.get("output", "") or "")
+            why = "; ".join(f"{node}: {reason}" for node, reason in retried["node_errors"].items())
+            raise ExecutorUnavailable(why or "the retry did not run")
         revised_text = str(retried.get("output", "") or "")
         latest_draft["text"] = revised_text
         return revised_text
