@@ -8,6 +8,8 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.160.0** (2026-08-06) — a good artifact is not discarded, and a toolless run is not a success
+- **v1.159.0** (2026-08-06) — a reworked stage is its own run, not an overwrite of the one before
 - **v1.158.0** (2026-08-06) — a harness agent receives its context files
 - **v1.157.0** (2026-08-06) — a harness tool grant names the tools the gateway actually advertises
 - **v1.156.0** (2026-08-06) — the dashboard shows real work, and a harness artifact is the agent's own
