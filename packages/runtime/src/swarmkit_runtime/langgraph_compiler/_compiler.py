@@ -5,7 +5,6 @@ See ``design/details/langgraph-compiler.md``.
 
 from __future__ import annotations
 
-import json
 import os
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -558,6 +557,7 @@ async def _enforce_harness_output_schema(
     point of this gap was output that failed a declared contract and looked fine.
     """
     from swarmkit_runtime.skills._output_validator import (  # noqa: PLC0415
+        extract_json_object,
         format_correction_prompt,
         validate_all_skill_output,
     )
@@ -565,28 +565,38 @@ async def _enforce_harness_output_schema(
     current = text
     errors: list[Any] = []
     for attempt in range(max_retries + 1):
-        try:
-            parsed = json.loads(current)
-        except (json.JSONDecodeError, TypeError):
+        parsed = extract_json_object(current)
+        if parsed is None:
             errors = [
                 type("FieldError", (), {"field": "(root)", "message": "output is not valid JSON"})()
             ]
         else:
-            errors = (
-                validate_all_skill_output(parsed, schema)
-                if isinstance(parsed, dict)
-                else [
-                    type(
-                        "FieldError",
-                        (),
-                        {"field": "(root)", "message": "output must be a JSON object"},
-                    )()
-                ]
-            )
+            errors = validate_all_skill_output(parsed, schema)
         if not errors:
+            # The FIRST passing attempt, not the last. Enforcement used to return whatever came
+            # back most recently, so a valid-but-empty artifact beat a valid-and-complete one purely
+            # by arriving second — and on one run a $1.44, 13-minute, fully-cited document was
+            # replaced by nine "no source access" stubs that also validated.
             return current
         if attempt >= max_retries:
             break
+        # A re-invocation is a WHOLE new harness session — minutes and dollars. It used to happen
+        # with no record at all: `output.schema_violation` is written only when retries are
+        # exhausted, so a re-run that then succeeded left an operator looking at two executions and
+        # no reason for the second. The draft size is here because "correction" silently degrading
+        # into "start over" is the failure that made this expensive.
+        await governance.record_event(
+            AuditEvent(
+                event_type="output.schema_reinvoke",
+                agent_id=agent_id,
+                timestamp=datetime.now(tz=UTC),
+                payload={
+                    "attempt": attempt + 1,
+                    "errors": [f"{e.field}: {e.message}" for e in errors],
+                    "prior_draft_chars": len(current),
+                },
+            )
+        )
         current = await reinvoke(format_correction_prompt(errors))
 
     await governance.record_event(

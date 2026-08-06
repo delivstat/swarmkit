@@ -14,10 +14,59 @@ Ordered by how much damage the bug does while looking fine.
 | --- | --- | --- | --- |
 | — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
+| — | The MCP gateway's SSE endpoint can double-start an ASGI response; not reproducible from outside, and its consequence is now caught | mcp gateway | bug 18 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
-| 6 | A harness cannot see gateway tools once `allowed_tools` is set — the grant is written in skill ids, the gateway advertises `mcp__swarmkit__<server>__<tool>` | executor plumbing | [harness-parity-gaps](harness-parity-gaps.md) #6 |
 
 ## Fixed
+
+### A schema-valid harness artifact was re-run and replaced by a worse one (1.160.0)
+
+Bug 17. A single-agent topology ran its harness twice: the first execution produced a complete,
+fully-cited, schema-valid artifact ($1.44, 13 minutes); the runtime re-ran the agent from scratch;
+the second produced nine "no source access" stubs which also validated, and those became the run's
+output. Nothing recorded that the first existed.
+
+Root cause: enforcement parsed the harness result with a strict `json.loads`. That is right where a
+GRAMMAR guarantees bare JSON — the model path sets `response_format: json_schema`, so a provider
+cannot emit anything else — and wrong on the harness path, where a CLI agent's final message is
+free text and the `<output-contract>` is a request, not a constraint. An object wrapped in a
+` ```json ` fence "is not valid JSON" while its content is perfectly valid, so enforcement spent a
+whole harness session correcting an artifact that was already right.
+
+Two amplifiers, both fixed: enforcement returned the LAST attempt, so valid-but-empty beat
+valid-and-complete purely by arriving second; and a re-invocation was invisible, because
+`output.schema_violation` is written only on exhaustion. It now records `output.schema_reinvoke`
+with the attempt, the errors, and the prior draft's size — so "correction" degrading into "start
+over" is visible.
+
+Also `AgentStep.result_length`, documented as the result's length and assigned
+`len(diff) or len(output)`: two executions producing 56 KB and 14 KB both recorded 400, the size of
+the runtime's own scratch files. The diff now has its own field.
+
+Tests: `test_harness_schema_enforcement.py`.
+
+### A harness that reached none of its tools was recorded successful (1.160.0)
+
+Bug 18. A per-execution MCP gateway advertised 33 tools, recorded them, and served none — its SSE
+endpoint raised an ASGI protocol error on every connection. The agent probed, found nothing, read
+the sandbox, correctly diagnosed that no tools were exposed, and wrote stubs saying so. Because
+those stubs were well-formed JSON satisfying `output_schema`, every downstream check passed and
+(with bug 17) they replaced the good artifact.
+
+A harness that reached none of its granted tools is not a successful run of that agent — it is a
+successful run of a different, toolless agent. The gateway now counts sessions that listed its
+tools, and a run that advertised tools and was never reached fails with
+`executor.mcp_unreachable`. `listed`, not `called`: an MCP client lists at session init, so it is
+non-zero for any session that connected, while an agent that legitimately needed no tool would
+still have listed them.
+
+The ASGI double-start is NOT fixed. `return Response()` after `connect_sse` has streamed is
+structurally a double-start, but it does not reproduce on a clean connect or disconnect, so the
+trigger is likely an exception inside the session that Starlette turns into a 500 after streaming
+began. Changing streaming semantics on a hypothesis is worse than catching the class; the class is
+now caught. Tracked as an open item.
+
+Tests: `test_gateway_unreachable_is_a_failure.py`.
 
 ### A reworked stage overwrote the run it was replacing (1.159.0)
 

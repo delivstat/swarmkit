@@ -23,7 +23,13 @@ class ToolCall:
 
     tool_name: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    #: Length of the RESULT the node produced. Was conflated with the diff, so a harness step that
+    #: touched any file reported its diff size instead and a 56 KB artifact was indistinguishable
+    #: from an empty one.
     result_length: int = 0
+    #: Length of the diff a harness produced, when it produced one. Separate, because they answer
+    #: different questions: what the agent said, and what it changed.
+    diff_length: int = 0
     error: str | None = None
     duration_ms: int = 0
     cached: bool = False
@@ -46,7 +52,13 @@ class AgentStep:
     cost_usd: float = 0.0
     tool_calls: list[ToolCall] = field(default_factory=list)
     delegations: list[str] = field(default_factory=list)
+    #: Length of the RESULT the node produced. Was conflated with the diff, so a harness step that
+    #: touched any file reported its diff size instead and a 56 KB artifact was indistinguishable
+    #: from an empty one.
     result_length: int = 0
+    #: Length of the diff a harness produced, when it produced one. Separate, because they answer
+    #: different questions: what the agent said, and what it changed.
+    diff_length: int = 0
     error: str | None = None
     forced_synthesis: bool = False
     # How this step executed (design executor-abstraction §5). Defaults to ``model`` so every step —

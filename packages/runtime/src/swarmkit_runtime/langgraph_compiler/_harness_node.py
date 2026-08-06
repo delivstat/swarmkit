@@ -462,7 +462,13 @@ def _record_trace_step(
     end_ts = datetime.now(tz=UTC).timestamp()
     status = terminal.status if terminal is not None else "failure"
     output = terminal.output if terminal is not None else None
-    result_length = len(diff) or (len(output) if isinstance(output, str) else 0)
+    # The RESULT's length, which is what the field is documented as and what a reader needs. It
+    # was `len(diff) or len(output)`, so a run that touched any file reported its DIFF size: two
+    # executions producing a 56 KB artifact and a 14 KB one both recorded 400 — the size of the
+    # runtime's own scratch files in a fresh worktree. The one field an operator would reach for to
+    # tell a full artifact from an empty one could not tell them apart. The diff has its own size.
+    result_length = len(output) if isinstance(output, str) else 0
+    diff_length = len(diff)
     trace.add_step(
         AgentStep(
             agent_id=agent.id,
@@ -478,6 +484,7 @@ def _record_trace_step(
             cost_usd=cost_usd,
             tool_calls=meter.tool_calls,
             result_length=result_length,
+            diff_length=diff_length,
             error=None if status == "success" else status,
             executor_kind=kind,
             executor_ref=ref,
@@ -511,18 +518,18 @@ async def _wire_mcp_gateway(
     governance: GovernanceProvider,
     sandbox: SandboxHandle,
     task: TaskSpec,
-) -> TaskSpec:
+) -> tuple[TaskSpec, Any]:
     """If the adapter opts into ``task.mcp_config`` and the agent has granted MCP tools, start the
     ephemeral governed gateway (on ``stack``, torn down with the run), write the harness-native MCP
     config into the sandbox, and return the task with ``mcp_config`` pointing at it. Otherwise the
     task is unchanged (no gateway, no config) — a harness with no MCP grants is untouched."""
     if mcp_manager is None or adapter_spec is None:
-        return task
+        return task, None
     if not any(g.when == "task.mcp_config" for g in adapter_spec.launch.optional_args):
-        return task  # the adapter's harness has no --mcp-config seam
+        return task, None  # the adapter's harness has no --mcp-config seam
     granted = _granted_mcp_tools(agent)
     if not granted:
-        return task
+        return task, None
 
     from swarmkit_runtime.executors._container import _HOST_ALIAS  # noqa: PLC0415
     from swarmkit_runtime.mcp._gateway import build_gateway_tools, mcp_gateway  # noqa: PLC0415
@@ -552,7 +559,7 @@ async def _wire_mcp_gateway(
         agent.id,
         {"tools": [t.name for t in tools], "url": gw.url},
     )
-    return replace(task, mcp_config=str(config_path))
+    return replace(task, mcp_config=str(config_path)), gw
 
 
 async def _execute(  # noqa: PLR0912, PLR0915
@@ -598,7 +605,7 @@ async def _execute(  # noqa: PLR0912, PLR0915
 
             # Stand up the governed MCP gateway (if the adapter opts in + the agent has MCP grants)
             # and point the harness at it via task.mcp_config; torn down with the run.
-            task = await _wire_mcp_gateway(
+            task, gateway = await _wire_mcp_gateway(
                 gateway_stack, agent, adapter_spec, mcp_manager, governance, sandbox, task
             )
 
@@ -763,6 +770,42 @@ async def _execute(  # noqa: PLR0912, PLR0915
                 answered[request.question] = ans
                 resume_token, pending_answer = token.value, ans
                 rounds += 1
+
+            # A harness that reached NONE of its granted tools is not a successful run of that
+            # agent — it is a successful run of a different, toolless agent. One run's gateway
+            # advertised 33 tools, recorded them in `executor.mcp_gateway`, and then served none:
+            # the session's own probes came back empty, the agent wrote nine "no source access"
+            # stubs, and because that output was well-formed JSON satisfying `output_schema`, every
+            # downstream check passed and it replaced a complete artifact from a prior execution.
+            #
+            # `listed` is the signal, not `called`: an MCP client asks for the tool list at session
+            # init, so it is non-zero for any session that CONNECTED, while an agent legitimately
+            # needing no tool would still have listed them.
+            if terminal is not None and terminal.status == "success" and gateway is not None:
+                if not gateway.reached:
+                    detail = (
+                        f"the MCP gateway advertised {len(gateway.tools)} tool(s) and no session "
+                        f"reached it — this agent ran without any of its granted tools"
+                    )
+                    await _record(
+                        governance,
+                        "executor.mcp_unreachable",
+                        agent_id,
+                        {
+                            "kind": kind,
+                            "advertised": len(gateway.tools),
+                            "listed": gateway.listed,
+                            "called": gateway.called,
+                            "url": gateway.url,
+                        },
+                    )
+                    return _make_failure(agent_id, f"[harness:{kind}] failure: {detail}")
+                await _record(
+                    governance,
+                    "executor.mcp_usage",
+                    agent_id,
+                    {"kind": kind, "advertised": len(gateway.tools), "calls": gateway.called},
+                )
 
             diff = ""
             if terminal is not None and terminal.status == "success":
