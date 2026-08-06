@@ -551,6 +551,23 @@ async def _wire_mcp_gateway(
             advertise_host=advertise,
         )
     )
+    # Prove it SERVES before handing its config to the harness. A gateway that bound, reported a
+    # port and was audited with all its tools can still serve nothing — and the cost of finding
+    # that out later is a whole harness session that ran without any of them.
+    from swarmkit_runtime.mcp._gateway import gateway_serves  # noqa: PLC0415
+
+    if not await gateway_serves(gw.url, gw.token):
+        await _record(
+            governance,
+            "executor.mcp_gateway_dead",
+            agent.id,
+            {"tools": len(tools), "url": gw.url},
+        )
+        raise ExecutorError(
+            f"the MCP gateway for {agent.id!r} came up on {gw.url} but does not serve its "
+            f"endpoint — the agent would run without any of its {len(tools)} granted tools"
+        )
+
     config_path = Path(sandbox.root) / ".swarmkit-mcp.json"
     config_path.write_text(json.dumps(gw.harness_config(), indent=2), encoding="utf-8")
     await _record(
@@ -827,6 +844,14 @@ async def _execute(  # noqa: PLR0912, PLR0915
     except SandboxError as exc:
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": str(exc)})
         return _make_failure(agent_id, f"[harness:{kind}] sandbox error: {exc}")
+    except ExecutorError as exc:
+        # A harness failure is a NODE failure, not an exception out of the node. Only SandboxError
+        # was caught here, so an executor problem raised after the sandbox opened — a gateway that
+        # will not serve — escaped and killed the graph, and never reached the caller as
+        # `node_errors`, which is what tells a retry loop the executor is broken rather than the
+        # answer wrong.
+        await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": str(exc)})
+        return _make_failure(agent_id, f"[harness:{kind}] unavailable: {exc}")
 
 
 async def _resolve_denials(

@@ -141,7 +141,11 @@ async def test_exhausted_retries_annotate_rather_than_pass_silently(harness: Any
     gov = _Governance()
     result = await _run(_Agent(output_schema=SCHEMA), gov)
 
-    assert len(seen) == 3, "one attempt plus two bounded corrections"
+    # TWO, not three. This harness returns the identical draft to every correction, and a
+    # re-invocation that changes nothing ends the loop (bug 19) rather than spending a further
+    # full harness session to receive the same string a third time. The contract was still
+    # checked and still failed, so the violation below is unchanged.
+    assert len(seen) == 2, "one attempt plus one correction that did not move"
     assert "OUTPUT SCHEMA VIOLATIONS" in result["output"]
     assert any(getattr(e, "event_type", "") == "output.schema_violation" for e in gov.events), (
         "and the violation is auditable, not only visible in the text"

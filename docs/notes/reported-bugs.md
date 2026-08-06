@@ -14,10 +14,52 @@ Ordered by how much damage the bug does while looking fine.
 | --- | --- | --- | --- |
 | — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
-| — | The MCP gateway's SSE endpoint can double-start an ASGI response; not reproducible from outside, and its consequence is now caught | mcp gateway | bug 18 |
+| — | **A process serves ~3 MCP gateways, then every later one comes up bound-but-dead.** Reproduced; root cause not found. Detected before a session is spent (1.161.0), so it fails fast — but a run with several harness executions still cannot use its tools after the first few | mcp gateway | bug 18 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
 
 ## Fixed
+
+### A correction loop spent its budget on a broken executor, then blamed the output (1.161.0)
+
+Bug 19. `_reinvoke` correctly discarded a retry that failed on infrastructure and kept the previous
+text — and returned a `str`, which cannot say "this did not run". Enforcement re-validated the same
+string, got the same errors, and spent every remaining attempt on an executor that could not
+succeed: $0.55 across two full harness sessions on the reported run, ending in an
+`output.schema_violation` that named a schema problem which was never the cause. An operator
+reading that log concludes the agent cannot produce conforming JSON; two of the three executions
+never ran the task.
+
+`_reinvoke` now raises `ExecutorUnavailable`, the loop stops on the first infrastructure failure,
+and the outcome is recorded as `output.schema_abandoned` with the real reason — the schema errors
+kept as context rather than as the headline. Independently, an identical draft across a correction
+ends the loop as `output.schema_stalled`: the executor worked, the answer did not move, and the
+violation still stands.
+
+`ExecutorError` raised after the sandbox opened also escaped the node entirely — only
+`SandboxError` was caught — so it never reached a retry loop as `node_errors` at all.
+
+Tests: `test_schema_retry_stops_on_broken_executor.py`.
+
+### The MCP gateway's ASGI double-start, and a dead gateway used anyway (1.161.0)
+
+Bug 18, second round. `return Response()` after `connect_sse` has streamed sends a second
+`http.response.start`; the response now closes with a terminal empty body instead. Verified: 16
+ASGI tracebacks on the reported run, **zero** across six sequential gateways after the change.
+
+That was not the whole fault. Reproduced separately: a process serves roughly three gateways and
+every later one comes up bound, audited with its full tool list, and serves nothing. Ruled out —
+server churn alone is harmless (six create/teardowns then a healthy seventh), teardown completes in
+~0.15s, no task leak, ports are distinct, old servers are dead, and `connect_sse` does not raise.
+A delay between gateways makes it WORSE, so it is not rate-limiting. Root cause unfound; it sits
+inside the uvicorn/MCP-SDK interaction.
+
+Until it is found, a gateway is PROBED before its config is handed to the harness — one connection,
+requiring the endpoint event an MCP client would receive. A gateway that will not serve now fails
+the node immediately rather than after a full session has been paid for, and the probe distinguishes
+healthy from dead exactly (`[True, True, True, False, False]` on the reproduction).
+
+The likely resolution is architectural: one gateway per process rather than one per execution,
+since the first is always healthy. Recorded as open.
 
 ### A schema-valid harness artifact was re-run and replaced by a worse one (1.160.0)
 
