@@ -28,9 +28,9 @@ output being wrong, if you notice at all.
 | 3 | `output_schema` ignored | **fixed** (1.143.0) | `_harness_node.py` (zero references) |
 | 4 | `TaskSpec.context_files` is dead — set, never delivered | **fixed** (1.158.0) | executor plumbing |
 | 5 | Images reach a model only via MCP `ImageContent`; relative paths resolve nowhere in the sandbox | **open** | harness sandbox + MCP gateway |
-| 6 | `TaskSpec.mcp_tools` is dead, and the grant it would carry holds the wrong names | **open** | executor plumbing + gateway naming |
+| 6 | `TaskSpec.mcp_tools` is dead, and the grant it would carry holds the wrong names | **fixed** (1.157.0) | executor plumbing + gateway naming |
 
-### 6. `TaskSpec.mcp_tools` is dead, and holds the wrong names anyway (open)
+### 6. `TaskSpec.mcp_tools` is dead, and holds the wrong names anyway (fixed, 1.157.0)
 
 Reported as "the harness does not find tools that are in the gateway". Two problems stacked.
 
@@ -55,7 +55,7 @@ The adapter comment says an unset grant means all tools, so the default path doe
 *setting* the grant that silently denies everything, which is the wrong way round: constraining the
 agent should not be the thing that breaks it.
 
-Fix shape: derive the allowlist from the gateway's own tool surface — the `GatewayTool.name` values
+**Fixed** by deriving the allowlist from the gateway's own tool surface — the `GatewayTool.name` values
 are already computed in `_wire_mcp_gateway` and recorded in the `executor.mcp_gateway` audit event —
 rather than from skill ids, and deliver it through the adapter DSL so `config.allowed_tools` stops
 being the only route. A translation table belongs in the adapter, since the prefix is harness-native

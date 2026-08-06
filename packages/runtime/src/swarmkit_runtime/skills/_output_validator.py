@@ -10,11 +10,43 @@ for targeted auto-correction re-prompts.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
 
 import jsonschema
+
+
+def extract_json_object(text: str) -> dict[str, Any] | None:
+    """The JSON object in ``text``, tolerating prose and code fences around it. None if there
+    is none.
+
+    A strict ``json.loads`` is right where a GRAMMAR guarantees bare JSON — the model path sets
+    ``response_format: json_schema``, so the provider cannot emit anything else. Nothing guarantees
+    it on the harness path: a CLI agent's final message is free text, and being told to emit only
+    JSON is a request, not a constraint. Agents routinely wrap the object in ```json fences or a
+    sentence of preamble.
+
+    Parsed strictly, such an output "is not valid JSON" while its CONTENT is perfectly valid — and
+    enforcement then spends a whole new harness session, minutes and dollars, correcting an artifact
+    that was already right. This is the same tolerance `governed_memory` has always applied for the
+    same reason.
+
+    Deliberately narrow: the OUTERMOST ``{...}`` span, parsed as one object. It does not repair
+    malformed JSON, and a non-object (a bare array, a number) is not an object — both remain
+    validation failures, because a contract that says "object" means it.
+    """
+    if not isinstance(text, str):
+        return None
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 @dataclass(frozen=True)

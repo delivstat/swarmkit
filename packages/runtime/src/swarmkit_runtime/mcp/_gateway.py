@@ -51,7 +51,7 @@ class GatewayTool:
     input_schema: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
+@dataclass
 class GatewayHandle:
     """A running gateway: the URL + bearer token to put in the harness's MCP config, and the tools
     it exposes."""
@@ -59,6 +59,29 @@ class GatewayHandle:
     url: str
     token: str
     tools: tuple[GatewayTool, ...]
+    #: Live serving counters, owned by the running gateway. Read after the run.
+    counters: dict[str, int] = field(default_factory=lambda: {"listed": 0, "called": 0})
+
+    @property
+    def listed(self) -> int:
+        """How many times a session asked for the tool list. An MCP client lists at session init,
+        so this is non-zero for ANY session that connected — independent of whether the agent then
+        chose to call anything."""
+        return self.counters["listed"]
+
+    @property
+    def called(self) -> int:
+        """Tool calls served. Zero can be legitimate — an agent may simply not need one."""
+        return self.counters["called"]
+
+    @property
+    def reached(self) -> bool:
+        """Whether any session actually saw the tool surface.
+
+        False with tools advertised means no session ever reached the gateway: the harness ran with
+        none of its granted tools, and reported success.
+        """
+        return self.listed > 0
 
     def harness_config(self) -> dict[str, Any]:
         """The harness-native MCP config (Claude Code shape) pointing at this gateway."""
@@ -131,8 +154,12 @@ async def mcp_gateway(
 
     bearer = token or secrets.token_urlsafe(24)
     by_name = {t.name: t for t in tools}
+    # Mutable, because the handle is yielded before any session exists — the caller reads these
+    # after the run to tell "the agent needed no tools" from "the agent could not reach any".
+    counters = {"listed": 0, "called": 0}
 
     async def _list() -> list[Any]:
+        counters["listed"] += 1
         return [
             Tool(
                 name=t.name,
@@ -145,6 +172,7 @@ async def mcp_gateway(
         ]
 
     async def _call(name: str, arguments: dict[str, Any]) -> list[Any]:
+        counters["called"] += 1
         tool = by_name.get(name)
         if tool is None:
             return [TextContent(type="text", text=f"unknown tool: {name}")]
@@ -198,7 +226,9 @@ async def mcp_gateway(
             await asyncio.sleep(0.02)
         port = userver.servers[0].sockets[0].getsockname()[1]
         url = f"http://{advertise_host or host}:{port}/sse"
-        yield GatewayHandle(url=url, token=bearer, tools=tuple(tools))
+        # The counters are shared with the running handlers, so the caller can read them after the
+        # run and tell "the agent needed no tools" from "no session ever reached the gateway".
+        yield GatewayHandle(url=url, token=bearer, tools=tuple(tools), counters=counters)
     finally:
         userver.should_exit = True
         with contextlib.suppress(asyncio.CancelledError, Exception):
