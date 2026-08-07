@@ -10,13 +10,21 @@ import { CopyablePre } from "@/components/copyable";
 import { StatusBadge } from "@/components/status-badge";
 import { TopologyCanvas } from "@/components/topology-canvas";
 import { Badge } from "@/components/ui/badge";
+import {
+	Dialog,
+	DialogContent,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { sourceLabel } from "@/lib/dashboard";
 import {
+	type ToolDetail,
 	executorBadge,
 	formatTokens,
 	formatUsd,
 	spanCostUsd,
+	toolDetail,
 } from "@/lib/format";
 import { traceToOverlay } from "@/lib/topology-run";
 import type {
@@ -122,9 +130,78 @@ function flattenSpans(
 	return out;
 }
 
+/** A tool call, opened: its full name, what it was asked, and what it answered.
+ *
+ * A dialog rather than an inline expansion: a bounded result is up to 2000 characters, and unfolding
+ * that into the waterfall pushes every row below it around while a reader is trying to compare
+ * timings. It also gives the arguments and the result room to be read.
+ */
+function ToolCallDialog({
+	detail,
+	onClose,
+}: {
+	detail: ToolDetail;
+	onClose: () => void;
+}) {
+	const args = Object.keys(detail.arguments).length
+		? JSON.stringify(detail.arguments, null, 2)
+		: "";
+	return (
+		<Dialog open onOpenChange={(o) => !o && onClose()}>
+			<DialogContent className="max-h-[85vh] gap-3 overflow-y-auto sm:max-w-3xl">
+				<DialogHeader>
+					<DialogTitle className="font-mono text-sm break-all">
+						{detail.name}
+					</DialogTitle>
+				</DialogHeader>
+
+				<p className="text-xs text-muted-foreground">
+					{detail.cached && "cached · "}
+					{detail.resultLength.toLocaleString()} characters returned
+				</p>
+
+				{args && (
+					<div>
+						<div className="mb-1 text-xs text-muted-foreground">Arguments</div>
+						<CopyablePre
+							value={args}
+							label="the tool arguments"
+							className="text-xs"
+						/>
+					</div>
+				)}
+
+				<div>
+					<div className="mb-1 text-xs text-muted-foreground">
+						Result
+						{detail.truncated && " — truncated; the trace keeps a bounded copy"}
+					</div>
+					{detail.result ? (
+						<CopyablePre
+							value={detail.result}
+							label="the tool result"
+							className="max-h-[45vh] text-xs"
+						/>
+					) : (
+						// A trace written before results were recorded, or a genuinely empty
+						// answer. Say which, rather than showing an empty box that reads as
+						// "the tool returned nothing".
+						<p className="text-xs text-muted-foreground">
+							{detail.resultLength > 0
+								? "Not recorded — this run predates tool-result capture."
+								: "The tool returned nothing."}
+						</p>
+					)}
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 function TraceWaterfall({ runId }: { runId: string }) {
 	const fetchTrace = useCallback(() => api.runTrace(runId), [runId]);
 	const { data } = usePoll<TraceSpan>(fetchTrace, 5000);
+	const [openTool, setOpenTool] = useState<ToolDetail | null>(null);
 	// No trace yet (run unfinished / not recorded) → the endpoint 404s → hide the card.
 	if (!data) return null;
 	const rootStart = data.start_ns;
@@ -143,51 +220,72 @@ function TraceWaterfall({ runId }: { runId: string }) {
 					// distinct from a model node; both share the same waterfall row (design §5).
 					const badge = executorBadge(span.attributes);
 					const cost = spanCostUsd(span.attributes);
+					const tool = toolDetail(span.attributes);
+					const key = `${span.name}-${span.start_ns}`;
 					return (
-						<div
-							key={`${span.name}-${span.start_ns}`}
-							className="flex items-center gap-2 text-xs"
-						>
+						<div key={key}>
 							<div
 								className={cn(
-									"flex w-48 shrink-0 items-center gap-1 font-mono",
-									span.error && "text-destructive",
+									"flex items-center gap-2 text-xs",
+									tool && "cursor-pointer",
 								)}
-								style={{ paddingLeft: depth * 12 }}
-								title={span.error ?? span.name}
+								onClick={tool ? () => setOpenTool(tool) : undefined}
+								onKeyDown={
+									tool
+										? (e) => {
+												if (e.key === "Enter" || e.key === " ") {
+													e.preventDefault();
+													setOpenTool(tool);
+												}
+											}
+										: undefined
+								}
+								tabIndex={tool ? 0 : undefined}
 							>
-								<span className="truncate">{span.name}</span>
-								{badge && (
-									<Badge
-										variant="outline"
-										className="shrink-0 px-1 py-0 text-[10px]"
-										title={`executor: ${badge}`}
-									>
-										{badge}
-									</Badge>
-								)}
-							</div>
-							<div className="relative h-4 flex-1 rounded bg-muted">
 								<div
 									className={cn(
-										"absolute h-4 rounded",
-										span.error ? "bg-destructive" : "bg-sky-500",
+										"flex w-48 shrink-0 items-center gap-1 font-mono",
+										span.error && "text-destructive",
 									)}
-									style={{ left: `${offset}%`, width: `${width}%` }}
-								/>
-							</div>
-							{cost > 0 && (
-								<div className="w-14 shrink-0 text-right text-muted-foreground">
-									{formatUsd(cost)}
+									style={{ paddingLeft: depth * 12 }}
+									title={span.error ?? span.name}
+								>
+									<span className="truncate">{span.name}</span>
+									{badge && (
+										<Badge
+											variant="outline"
+											className="shrink-0 px-1 py-0 text-[10px]"
+											title={`executor: ${badge}`}
+										>
+											{badge}
+										</Badge>
+									)}
 								</div>
-							)}
-							<div className="w-16 shrink-0 text-right text-muted-foreground">
-								{span.duration_ms}ms
+								<div className="relative h-4 flex-1 rounded bg-muted">
+									<div
+										className={cn(
+											"absolute h-4 rounded",
+											span.error ? "bg-destructive" : "bg-sky-500",
+										)}
+										style={{ left: `${offset}%`, width: `${width}%` }}
+									/>
+								</div>
+								{cost > 0 && (
+									<div className="w-14 shrink-0 text-right text-muted-foreground">
+										{formatUsd(cost)}
+									</div>
+								)}
+								<div className="w-16 shrink-0 text-right text-muted-foreground">
+									{span.duration_ms}ms
+								</div>
 							</div>
 						</div>
 					);
 				})}
 			</div>
+			{openTool && (
+				<ToolCallDialog detail={openTool} onClose={() => setOpenTool(null)} />
+			)}
 		</Card>
 	);
 }

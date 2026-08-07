@@ -133,6 +133,12 @@ def _run_trace_to_span(trace: Any, workspace_id: str) -> Any:
                         "swarmkit.tool.name": tc.tool_name,
                         "swarmkit.tool.result_length": tc.result_length,
                         "swarmkit.tool.cached": tc.cached,
+                        # What it was ASKED and what it ANSWERED. The span carried a name and a
+                        # character count, so a reader could see that `search-wms-tables` ran and
+                        # not what it looked for or found — which is most of what makes a run
+                        # reviewable, and the question a waterfall is opened to answer.
+                        "swarmkit.tool.arguments": dict(tc.arguments),
+                        "swarmkit.tool.result": tc.result,
                     },
                     error=tc.error,
                 )
