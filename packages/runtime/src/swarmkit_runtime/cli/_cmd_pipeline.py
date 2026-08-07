@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -74,7 +75,15 @@ def sagas(
         return
     for s in runs:
         where = s.pending_gate_stage or s.current_stage or "—"
-        typer.echo(f"  {s.correlation_id}  [{s.status}]  {s.graph_id}  @ {where}  {s.tag}")
+        idle = _stale_for(s)
+        # Marked in the LIST too: an operator scanning runs should not have to open each one to
+        # find the stuck ones.
+        flag = (
+            f"  STALLED? {_humanise(idle)}"
+            if idle is not None and idle >= _STALE_AFTER_SECONDS
+            else ""
+        )
+        typer.echo(f"  {s.correlation_id}  [{s.status}]  {s.graph_id}  @ {where}  {s.tag}{flag}")
 
 
 @pipeline_app.command()
@@ -96,6 +105,7 @@ def status(
     for t in saga.timeline:
         typer.echo(f"    {t.at[:19]}  {t.kind:<10} {t.stage_id or ''}  {t.detail}")
     _echo_dead_letters(workspace, correlation_id)
+    _echo_staleness(saga)
 
 
 def _echo_dead_letters(workspace: Path, correlation_id: str) -> None:
@@ -169,6 +179,63 @@ def skip(
     typer.echo(f"rejected {correlation_id} at {stage}")
 
 
+#: How long an ACTIVE saga may go without moving before `status` says so. Generous on purpose: a
+#: harness stage legitimately runs for many minutes, and crying stall over normal work would teach
+#: an operator to ignore the signal — which is worse than not having one.
+_STALE_AFTER_SECONDS = 15 * 60
+
+
+def _stale_for(saga: SagaState) -> float | None:
+    """Seconds since an active saga last moved, or None if it is not the kind of run that can stall.
+
+    A saga has no timeout, so "active with a frozen `updated_at`" is the only evidence that a run
+    has stopped — and it was visible nowhere. The reported outage looked exactly like a healthy
+    in-progress run for over an hour: every individual record said success, and the view an operator
+    reaches for showed nothing unusual.
+
+    Parked runs are excluded. A gate waits on a human, so days of no movement is the correct
+    behaviour and flagging it would be noise.
+    """
+    if saga.status != "active" or saga.pending_gate_stage:
+        return None
+    stamp = saga.updated_at or saga.created_at
+    if not stamp:
+        return None
+    try:
+        moved = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    if moved.tzinfo is None:
+        moved = moved.replace(tzinfo=UTC)
+    return max(0.0, (datetime.now(tz=UTC) - moved).total_seconds())
+
+
+def _echo_staleness(saga: SagaState) -> None:
+    """Say how long an active run has been still, when that is long enough to be worth a look."""
+    idle = _stale_for(saga)
+    if idle is None or idle < _STALE_AFTER_SECONDS:
+        return
+    typer.echo("")
+    typer.echo(
+        f"  STALLED? this run has not moved in {_humanise(idle)} "
+        f"(active, no gate, on {saga.current_stage or '—'})."
+    )
+    # Deliberately a question, not a verdict: a long harness stage looks identical from here, and
+    # the checks below are what tell them apart.
+    typer.echo("  If its stage has already finished, the orchestrator will absorb it on the next")
+    typer.echo(
+        "  event; otherwise check the orchestrator is running and see the dead letters above."
+    )
+
+
+def _humanise(seconds: float) -> str:
+    if seconds < 90:
+        return f"{int(seconds)}s"
+    if seconds < 5400:
+        return f"{int(seconds // 60)}m"
+    return f"{seconds / 3600:.1f}h"
+
+
 def _summary(s: SagaState) -> dict[str, object]:
     return {
         "correlation_id": s.correlation_id,
@@ -178,4 +245,7 @@ def _summary(s: SagaState) -> dict[str, object]:
         "passed_stages": s.passed_stages,
         "pending_gate_stage": s.pending_gate_stage,
         "tag": s.tag,
+        # Machine-readable, so a fleet view or a check script can act on it rather than parsing
+        # the human line. Null when the run is not the kind that can stall.
+        "stale_for_seconds": _stale_for(s),
     }
