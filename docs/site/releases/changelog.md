@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.164.0** (2026-08-07) — a restart no longer leaves work that looks like it is still happening
 - **v1.163.0** (2026-08-07) — a run's detail page says what the run was, not only what it returned
 - **v1.162.0** (2026-08-07) — a process's gateways all work, and a harness's artifact is not thrown away
 - **v1.161.0** (2026-08-06) — stop correcting a broken executor, and never hand a harness a dead gateway
