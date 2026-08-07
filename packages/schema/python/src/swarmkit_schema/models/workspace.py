@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -476,7 +476,7 @@ class Synthesis(BaseModel):
     )
 
 
-class Trigger(Enum):
+class Trigger(StrEnum):
     """
     When the skill fires: pre_input (before agent runs, validates user input), post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis).
     """

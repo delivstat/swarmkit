@@ -654,6 +654,7 @@
           "description": "Decision skill ID. Must exist in workspace skill registry."
         },
         "trigger": {
+          "type": "string",
           "enum": [
             "pre_input",
             "post_output",
