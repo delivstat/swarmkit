@@ -254,7 +254,10 @@ def _build_agent_node(  # noqa: PLR0915
                     )
 
         # ---- workspace memory (pre_input context injection) ----------------
-        if _memory and _ds_bindings:
+        # `or governed_memory_store`: a workspace can curate facts without configuring workspace
+        # memory at all, and this gate used to require the latter — so the curated store was never
+        # even consulted.
+        if (_memory or governed_memory_store) and _ds_bindings:
             from swarmkit_runtime.memory._gate import memory_pre_input  # noqa: PLC0415
 
             memory_context = await memory_pre_input(
@@ -262,6 +265,12 @@ def _build_agent_node(  # noqa: PLR0915
                 user_input=state.get("input", ""),
                 bindings=_ds_bindings,
                 store=_memory,
+                # The RAW store, not `_governed_memory`: that is gated on carrying the
+                # `governed-memory` WRITE skill, and requiring it to read would mean granting
+                # `kb:write` to every agent that should merely see curated facts — precisely the
+                # workaround a curated store exists to prevent. Reading is gated by the
+                # `memory-reader` binding instead, which the gate already checks.
+                governed_store=governed_memory_store,
             )
             if memory_context:
                 _progress(f"  [{agent_id}] memory context injected")

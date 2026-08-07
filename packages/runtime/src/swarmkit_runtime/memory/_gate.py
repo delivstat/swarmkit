@@ -56,8 +56,20 @@ async def memory_pre_input(
     bindings: list[DecisionSkillBinding],
     store: Any,
     user: str | None = None,
+    governed_store: Any = None,
 ) -> str | None:
-    """Search memory and return context to inject, or None."""
+    """Search memory and return context to inject, or None.
+
+    Reads BOTH memory subsystems. They are separate stores with different shapes — workspace memory
+    is ``{topic, context, key_points}``, governed memory is ``{subject, attribute, value}`` — and
+    this reader only ever saw the first. So a workspace could curate a fact through the documented
+    flow (reconcile-on-write, quarantine, a human gate on resolution, confidence and decay), see it
+    in `swarmkit memory search` and the `/memory` page, and watch every run behave as though memory
+    did not exist. Nothing said so: the reader searched a store the facts were not in and reported
+    finding nothing, which is what finding nothing looks like.
+
+    That machinery exists to make a fact trustworthy enough to act on. Nothing could act on it.
+    """
     reader = next(
         (
             b
@@ -71,7 +83,12 @@ async def memory_pre_input(
 
     cfg = reader.config or {}
 
-    if _is_gbrain(store):
+    # A workspace can curate governed memory without configuring workspace memory at all, so the
+    # workspace branch has to tolerate not having a store rather than assuming one.
+    context: str | None = ""
+    if store is None:
+        pass
+    elif _is_gbrain(store):
         context = await _gbrain_retrieve(
             user_input=user_input,
             user=user,
@@ -86,6 +103,13 @@ async def memory_pre_input(
             config=cfg,
         )
 
+    curated = _governed_context(governed_store, user_input, cfg)
+    if curated:
+        # Curated facts FIRST. They went through reconciliation and a human gate; workspace memory
+        # is whatever a previous run happened to record. When the two disagree, the reviewed one
+        # should be the one an agent reads first.
+        context = f"{curated}\n\n{context}" if context else curated
+
     if context:
         logger.info(
             "Memory context injected for agent=%s (user=%s, query=%s...)",
@@ -93,7 +117,35 @@ async def memory_pre_input(
             user,
             user_input[:50],
         )
-    return context
+    # None, not "": the signature says `str | None` and a caller checking `is not None` would
+    # otherwise inject an empty block. Reachable now that the workspace store may be absent.
+    return context or None
+
+
+def _governed_context(governed_store: Any, user_input: str, config: dict[str, Any]) -> str:
+    """Curated facts relevant to this input, rendered for a prompt. Empty when there are none.
+
+    Best-effort by design: a governed store that cannot be read costs the curated context, never the
+    run. Silence here was the original defect, so a failure is logged rather than swallowed.
+    """
+    if governed_store is None:
+        return ""
+    limit = int(config.get("governed_limit", config.get("limit", 5)) or 5)
+    try:
+        found = governed_store.search(user_input, limit=limit)
+    except Exception:
+        logger.warning("curated memory could not be read; this run has none of it")
+        return ""
+    if not found:
+        return ""
+    lines = [f"- {m.subject} · {m.attribute}: {m.value}" for m in found]
+    # Labelled and delimited, like every other injected block: an agent that cannot tell a curated
+    # fact from the user's own words is being asked to trust unattributed instructions.
+    return (
+        "<curated-memory>\nEstablished facts for this workspace:\n"
+        + "\n".join(lines)
+        + "\n</curated-memory>"
+    )
 
 
 async def memory_post_output(
