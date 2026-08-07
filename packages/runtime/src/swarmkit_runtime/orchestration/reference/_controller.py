@@ -281,6 +281,42 @@ class ReferenceController:
         if outcome is None or getattr(outcome, "status", "") != "completed":
             return False
 
+        # A GATED stage is never absorbed. The stage finished, but what did not happen is the
+        # review, and opening a gate needs the workspace funnels, the review queue and the artifact
+        # — all serve-side. Absorbing here could only ever synthesise "completed", so the saga
+        # advanced straight past an approval the pipeline declares as required and the next stage
+        # ran unreviewed. That is the QUIET direction of failure: the stranding this recovery
+        # exists to fix is visible as a run that never progresses, while this looks like a run that
+        # went fine.
+        #
+        # So gated stages keep the stranding, loudly, and a human releases them. Automating past a
+        # human decision is not a recovery.
+        if self._declares_a_gate(saga, sid):
+            logger.warning(
+                "saga %r is waiting on stage %r, which has already completed — NOT absorbing it, "
+                "because the stage declares a gate and the approval has not happened. The work is "
+                "done (see the job record); release it with `swarmkit pipeline advance %s` after "
+                "review, or resolve the gate.",
+                saga.correlation_id,
+                sid,
+                saga.correlation_id,
+            )
+            # On the saga's own timeline, so `pipeline status` says why it is not moving rather
+            # than leaving an operator to infer it from silence. Once, not once per redelivery —
+            # the lease keeps handing this event back, and a timeline that scrolls is a timeline
+            # nobody reads.
+            if not any(e.kind == "blocked" and e.stage_id == sid for e in saga.timeline):
+                saga.add(
+                    "blocked",
+                    stage_id=sid,
+                    detail=(
+                        "stage completed while the orchestrator was down; "
+                        "its gate still needs a human"
+                    ),
+                )
+                self._store.save(saga)
+            return False
+
         logger.warning(
             "saga %r was waiting on stage %r, which had already completed — absorbing it. The "
             "orchestrator was down when the stage finished; without this the run would stay "
@@ -295,6 +331,15 @@ class ReferenceController:
         saga.add("completed", stage_id=sid, detail="reconciled after an orchestrator restart")
         self._store.save(saga)
         await self._drive(saga)
+        return True
+
+    def _declares_a_gate(self, saga: SagaState, stage_id: str) -> bool:
+        """Whether the named stage of this saga's graph declares a human gate."""
+        for index, stage in enumerate(self._graphs.get(saga.graph_id, {}).get("stages") or []):
+            if _stage_id(stage, index) == stage_id:
+                return bool(stage.get("gate") or stage.get("funnel"))
+        # An unknown stage is not assumed ungated: absorbing one whose spec cannot be read would be
+        # deciding on missing information, in the direction that skips reviews.
         return True
 
     async def _drive(self, saga: SagaState) -> None:
