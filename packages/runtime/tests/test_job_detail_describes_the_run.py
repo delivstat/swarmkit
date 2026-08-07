@@ -54,7 +54,8 @@ def _client(durable: Any = None, job_store: JobStore | None = None) -> TestClien
 
 
 def _get(job_id: str = DURABLE.id) -> dict[str, Any]:
-    return _client(_DurableStore()).get(f"/jobs/{job_id}").json()
+    body: dict[str, Any] = _client(_DurableStore()).get(f"/jobs/{job_id}").json()
+    return body
 
 
 # ---- what the run was --------------------------------------------------------------------------
