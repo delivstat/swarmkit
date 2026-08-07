@@ -2,35 +2,69 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.swarmkit.dev/v1/workspace.schema.json",
   "title": "SwarmKit Workspace",
-  "description": "Deployment-level config: identity, governance, model providers, MCP registry, storage. See design §9.3 and design/details/workspace-schema-v1.md.",
+  "description": "Deployment-level config: identity, governance, model providers, MCP registry, storage. See design \u00a79.3 and design/details/workspace-schema-v1.md.",
   "type": "object",
-  "required": ["apiVersion", "kind", "metadata"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata"
+  ],
   "additionalProperties": false,
   "properties": {
-    "apiVersion": { "const": "swarmkit/v1" },
-    "kind": { "const": "Workspace" },
-    "metadata": { "$ref": "#/$defs/metadata" },
-    "organisation": { "$ref": "#/$defs/org_or_team" },
-    "team": { "$ref": "#/$defs/org_or_team" },
-    "governance": { "$ref": "#/$defs/governance" },
-    "identity": { "$ref": "#/$defs/identity" },
+    "apiVersion": {
+      "const": "swarmkit/v1"
+    },
+    "kind": {
+      "const": "Workspace"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "organisation": {
+      "$ref": "#/$defs/org_or_team"
+    },
+    "team": {
+      "$ref": "#/$defs/org_or_team"
+    },
+    "governance": {
+      "$ref": "#/$defs/governance"
+    },
+    "identity": {
+      "$ref": "#/$defs/identity"
+    },
     "model_providers": {
       "type": "array",
-      "items": { "$ref": "#/$defs/model_provider_registration" }
+      "items": {
+        "$ref": "#/$defs/model_provider_registration"
+      }
     },
     "credentials": {
       "type": "object",
-      "additionalProperties": { "$ref": "#/$defs/credential_ref" }
+      "additionalProperties": {
+        "$ref": "#/$defs/credential_ref"
+      }
     },
     "mcp_servers": {
       "type": "array",
-      "items": { "$ref": "#/$defs/mcp_server" }
+      "items": {
+        "$ref": "#/$defs/mcp_server"
+      }
     },
-    "storage": { "$ref": "#/$defs/storage" },
-    "context_compression": { "$ref": "#/$defs/context_compression" },
-    "planning": { "$ref": "#/$defs/planning" },
-    "synthesis": { "$ref": "#/$defs/synthesis" },
-    "server": { "$ref": "#/$defs/server_config" }
+    "storage": {
+      "$ref": "#/$defs/storage"
+    },
+    "context_compression": {
+      "$ref": "#/$defs/context_compression"
+    },
+    "planning": {
+      "$ref": "#/$defs/planning"
+    },
+    "synthesis": {
+      "$ref": "#/$defs/synthesis"
+    },
+    "server": {
+      "$ref": "#/$defs/server_config"
+    }
   },
   "$defs": {
     "identifier": {
@@ -40,14 +74,26 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name"],
+      "required": [
+        "id",
+        "name"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "name": { "type": "string", "minLength": 1 },
-        "description": { "type": "string" },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
         "annotations": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "description": "Arbitrary key-value metadata the runtime ignores. For enterprise use: cost_center, team, environment, compliance tags, etc."
         }
       }
@@ -55,26 +101,45 @@
     "org_or_team": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id"],
+      "required": [
+        "id"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "name": { "type": "string" }
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "type": "string"
+        }
       }
     },
     "governance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider"],
+      "required": [
+        "provider"
+      ],
       "properties": {
         "provider": {
-          "enum": ["agt", "mock", "custom"],
-          "description": "GovernanceProvider implementation (design §8.5)."
+          "enum": [
+            "agt",
+            "mock",
+            "custom"
+          ],
+          "description": "GovernanceProvider implementation (design \u00a78.5)."
         },
         "policy_language": {
-          "enum": ["yaml", "rego", "cedar"],
-          "description": "§21 open question — default yaml for v1.0."
+          "enum": [
+            "yaml",
+            "rego",
+            "cedar"
+          ],
+          "description": "\u00a721 open question \u2014 default yaml for v1.0."
         },
-        "config": { "type": "object", "additionalProperties": true },
+        "config": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "limits": {
           "type": "object",
           "additionalProperties": false,
@@ -100,39 +165,64 @@
         "decision_skills": {
           "type": "array",
           "description": "Mandatory decision skills that fire at specified trigger points. Topologies inherit these and can override by id.",
-          "items": { "$ref": "#/$defs/decision_skill_binding" }
+          "items": {
+            "$ref": "#/$defs/decision_skill_binding"
+          }
         }
       }
     },
     "identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider"],
+      "required": [
+        "provider"
+      ],
       "properties": {
         "provider": {
-          "enum": ["builtin", "auth0", "okta", "google", "azure-ad", "oidc"],
-          "description": "Human-identity provider (design §16.1)."
+          "enum": [
+            "builtin",
+            "auth0",
+            "okta",
+            "google",
+            "azure-ad",
+            "oidc"
+          ],
+          "description": "Human-identity provider (design \u00a716.1)."
         },
-        "config": { "type": "object", "additionalProperties": true }
+        "config": {
+          "type": "object",
+          "additionalProperties": true
+        }
       }
     },
     "model_provider_registration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["class", "provider_id"],
+      "required": [
+        "class",
+        "provider_id"
+      ],
       "properties": {
         "class": {
           "type": "string",
           "description": "Fully-qualified Python class path."
         },
-        "provider_id": { "$ref": "#/$defs/identifier" },
-        "config": { "type": "object", "additionalProperties": true }
+        "provider_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true
+        }
       }
     },
     "credential_ref": {
       "$comment": "Credentials are never stored literally in workspace.yaml. Each entry is a reference with a uniform shape: { source, config }. The runtime dispatches to the SecretsProvider identified by `source` and validates `config` against that provider's contract. See design note for the provider list and per-source config shapes. `source: plugin` additionally requires `provider_id` to identify a SecretsProvider registered via entry points.",
       "type": "object",
-      "required": ["source", "config"],
+      "required": [
+        "source",
+        "config"
+      ],
       "additionalProperties": false,
       "properties": {
         "source": {
@@ -159,23 +249,45 @@
       "allOf": [
         {
           "if": {
-            "properties": { "source": { "const": "plugin" } },
-            "required": ["source"]
+            "properties": {
+              "source": {
+                "const": "plugin"
+              }
+            },
+            "required": [
+              "source"
+            ]
           },
-          "then": { "required": ["provider_id"] }
+          "then": {
+            "required": [
+              "provider_id"
+            ]
+          }
         }
       ]
     },
     "mcp_server": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "transport"],
+      "required": [
+        "id",
+        "transport"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "transport": { "enum": ["stdio", "http"] },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "transport": {
+          "enum": [
+            "stdio",
+            "http"
+          ]
+        },
         "command": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Required when transport=stdio."
         },
         "endpoint": {
@@ -184,31 +296,45 @@
         },
         "env": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
+          "additionalProperties": {
+            "type": "string"
+          },
           "description": "Environment variables passed to a stdio server. Values support ${VAR} expansion from the runtime process environment. Use `credentials_ref` for secrets; `env` is for configuration."
         },
         "cwd": {
           "type": "string",
           "description": "Working directory for stdio servers. Supports ${VAR} expansion. Defaults to workspace root."
         },
-        "credentials_ref": { "type": "string" },
+        "credentials_ref": {
+          "type": "string"
+        },
         "sandboxed": {
           "type": "boolean",
-          "description": "True forces Docker-or-equivalent isolation (design §8.8)."
+          "description": "True forces Docker-or-equivalent isolation (design \u00a78.8)."
         },
         "sandbox_image": {
           "type": "string",
           "description": "Docker image for sandboxed servers. Defaults to swarmkit-mcp-sandbox (Python + mcp SDK). Use node:22-slim for Node.js servers."
         },
         "permission": {
-          "enum": ["open", "cautious", "strict", "readonly"],
+          "enum": [
+            "open",
+            "cautious",
+            "strict",
+            "readonly"
+          ],
           "default": "cautious",
           "description": "Governance permission tier for this server's tools. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: write operations denied."
         },
         "permission_overrides": {
           "type": "object",
           "additionalProperties": {
-            "enum": ["open", "cautious", "strict", "readonly"]
+            "enum": [
+              "open",
+              "cautious",
+              "strict",
+              "readonly"
+            ]
           },
           "description": "Per-tool permission overrides. Keys are MCP tool names, values are permission tiers that override the server default."
         }
@@ -216,17 +342,37 @@
       "allOf": [
         {
           "if": {
-            "properties": { "transport": { "const": "stdio" } },
-            "required": ["transport"]
+            "properties": {
+              "transport": {
+                "const": "stdio"
+              }
+            },
+            "required": [
+              "transport"
+            ]
           },
-          "then": { "required": ["command"] }
+          "then": {
+            "required": [
+              "command"
+            ]
+          }
         },
         {
           "if": {
-            "properties": { "transport": { "const": "http" } },
-            "required": ["transport"]
+            "properties": {
+              "transport": {
+                "const": "http"
+              }
+            },
+            "required": [
+              "transport"
+            ]
           },
-          "then": { "required": ["endpoint"] }
+          "then": {
+            "required": [
+              "endpoint"
+            ]
+          }
         }
       ]
     },
@@ -240,11 +386,16 @@
           "description": "LangGraph run-state checkpointer. The one block that does NOT inherit storage.runtime: postgres here needs `pip install 'swarmkit-runtime[postgres]'`, so it is opt-in rather than implied.",
           "properties": {
             "backend": {
-              "enum": ["sqlite", "postgres"],
+              "enum": [
+                "sqlite",
+                "postgres"
+              ],
               "default": "sqlite",
               "description": "Checkpointer backend. Defaults to sqlite at .swarmkit/state/checkpoints.db."
             },
-            "path": { "type": "string" },
+            "path": {
+              "type": "string"
+            },
             "url": {
               "type": "string",
               "description": "Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default} interpolation. Optional: inherits storage.runtime.url when omitted."
@@ -257,10 +408,16 @@
           "description": "Append-only audit trail. Inherits storage.runtime unless it overrides it.",
           "properties": {
             "backend": {
-              "enum": ["sqlite", "postgres"],
-              "description": "Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here until 1.130.0, but no writer ever implemented it — selecting it silently wrote sqlite.)"
+              "enum": [
+                "sqlite",
+                "postgres"
+              ],
+              "description": "Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here until 1.130.0, but no writer ever implemented it \u2014 selecting it silently wrote sqlite.)"
             },
-            "retention_days": { "type": "integer", "minimum": 1 },
+            "retention_days": {
+              "type": "integer",
+              "minimum": 1
+            },
             "url": {
               "type": "string",
               "description": "Connection URL for the postgres backend. Supports ${ENV_VAR} and ${ENV_VAR:-default} interpolation. Optional: inherits storage.runtime.url when omitted."
@@ -270,13 +427,33 @@
         "artifacts": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine. Read by the runtime since the bundled orchestrator shipped, but undeclarable until 1.130.0 — `additionalProperties: false` rejected the very key the code looked for.",
+          "description": "Where pipeline stage outputs live. Defaults to `database` on the storage.runtime engine. Read by the runtime since the bundled orchestrator shipped, but undeclarable until 1.130.0 \u2014 `additionalProperties: false` rejected the very key the code looked for.",
           "properties": {
-            "backend": { "enum": ["database", "filesystem", "s3"], "default": "database" },
-            "path": { "type": "string", "description": "filesystem backend: root directory. Defaults to .swarmkit/artifacts." },
-            "bucket": { "type": "string", "description": "s3 backend: bucket name (requires the boto3 optional dep)." },
-            "prefix": { "type": "string", "default": "artifacts", "description": "s3 backend: key prefix." },
-            "database_url": { "type": "string", "description": "database backend: override the inherited connection URL." }
+            "backend": {
+              "enum": [
+                "database",
+                "filesystem",
+                "s3"
+              ],
+              "default": "database"
+            },
+            "path": {
+              "type": "string",
+              "description": "filesystem backend: root directory. Defaults to .swarmkit/artifacts."
+            },
+            "bucket": {
+              "type": "string",
+              "description": "s3 backend: bucket name (requires the boto3 optional dep)."
+            },
+            "prefix": {
+              "type": "string",
+              "default": "artifacts",
+              "description": "s3 backend: key prefix."
+            },
+            "database_url": {
+              "type": "string",
+              "description": "database backend: override the inherited connection URL."
+            }
           }
         },
         "runtime": {
@@ -285,7 +462,10 @@
           "description": "Backend for jobs, conversations, usage, pipeline sagas, artifacts, fleet enrollment and governed memory. Every other storage block inherits this one unless it overrides it. Defaults to sqlite at .swarmkit/store.sqlite.",
           "properties": {
             "backend": {
-              "enum": ["sqlite", "postgres"],
+              "enum": [
+                "sqlite",
+                "postgres"
+              ],
               "default": "sqlite",
               "description": "Storage backend. sqlite (default, zero config) or postgres (production, shared)."
             },
@@ -299,7 +479,12 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "default_backend": { "enum": ["sqlite", "postgres"] }
+            "default_backend": {
+              "enum": [
+                "sqlite",
+                "postgres"
+              ]
+            }
           }
         }
       }
@@ -309,26 +494,52 @@
       "additionalProperties": false,
       "description": "Opt-in read-side compression of bulk tool/MCP output before it re-enters an agent's context. Off by default. Never applied to the audit log or the inter-agent contract. Env vars SWARMKIT_CONTEXT_COMPRESSION and SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES override the default per deployment. See design/details/context-compression.md.",
       "properties": {
-        "backend": { "$ref": "#/$defs/compression_backend" },
-        "backend_class": { "$ref": "#/$defs/compression_backend_class" },
-        "min_bytes": { "$ref": "#/$defs/compression_min_bytes" },
+        "backend": {
+          "$ref": "#/$defs/compression_backend"
+        },
+        "backend_class": {
+          "$ref": "#/$defs/compression_backend_class"
+        },
+        "min_bytes": {
+          "$ref": "#/$defs/compression_min_bytes"
+        },
         "overrides": {
           "type": "array",
           "description": "Per-surface rules matched by tool-name and/or server-id glob. The first override that matches wins; otherwise the top-level backend/min_bytes apply.",
-          "items": { "$ref": "#/$defs/compression_override" }
+          "items": {
+            "$ref": "#/$defs/compression_override"
+          }
         }
       },
       "allOf": [
         {
-          "if": { "properties": { "backend": { "const": "plugin" } }, "required": ["backend"] },
-          "then": { "required": ["backend_class"] }
+          "if": {
+            "properties": {
+              "backend": {
+                "const": "plugin"
+              }
+            },
+            "required": [
+              "backend"
+            ]
+          },
+          "then": {
+            "required": [
+              "backend_class"
+            ]
+          }
         }
       ]
     },
     "compression_backend": {
-      "enum": ["off", "columnar", "headtail", "plugin"],
+      "enum": [
+        "off",
+        "columnar",
+        "headtail",
+        "plugin"
+      ],
       "default": "off",
-      "description": "Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy — keep head+tail, elide the middle, recallable via the context_retrieve tool (for lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by backend_class."
+      "description": "Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy \u2014 keep head+tail, elide the middle, recallable via the context_retrieve tool (for lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by backend_class."
     },
     "compression_backend_class": {
       "type": "string",
@@ -338,13 +549,24 @@
       "type": "integer",
       "minimum": 0,
       "default": 2000,
-      "description": "Payloads smaller than this (in characters) are left untouched — avoids overhead on small results."
+      "description": "Payloads smaller than this (in characters) are left untouched \u2014 avoids overhead on small results."
     },
     "compression_override": {
       "type": "object",
       "additionalProperties": false,
       "description": "A per-surface compression rule. At least one of match / match_server is required.",
-      "anyOf": [{ "required": ["match"] }, { "required": ["match_server"] }],
+      "anyOf": [
+        {
+          "required": [
+            "match"
+          ]
+        },
+        {
+          "required": [
+            "match_server"
+          ]
+        }
+      ],
       "properties": {
         "match": {
           "type": "string",
@@ -356,9 +578,15 @@
           "minLength": 1,
           "description": "Glob matched against the MCP server id backing the tool (e.g. 'frigate', 'logs-*')."
         },
-        "backend": { "$ref": "#/$defs/compression_backend" },
-        "backend_class": { "$ref": "#/$defs/compression_backend_class" },
-        "min_bytes": { "$ref": "#/$defs/compression_min_bytes" }
+        "backend": {
+          "$ref": "#/$defs/compression_backend"
+        },
+        "backend_class": {
+          "$ref": "#/$defs/compression_backend_class"
+        },
+        "min_bytes": {
+          "$ref": "#/$defs/compression_min_bytes"
+        }
       }
     },
     "planning": {
@@ -378,7 +606,9 @@
         },
         "synthesis_roles": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Default synthesis/output roles for all topologies: auto-wired to depend on research tasks so they run last. Defaults to ['self', 'document-writer']. Topology-level planning overrides this."
         },
         "synthesizer_role": {
@@ -405,12 +635,18 @@
           "description": "Custom system prompt for the synthesizer. Overrides the platform default. Use this to control document style, diagram generation (mermaid), grounding rules, and section handling."
         }
       },
-      "required": ["provider", "model"]
+      "required": [
+        "provider",
+        "model"
+      ]
     },
     "decision_skill_binding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "trigger"],
+      "required": [
+        "id",
+        "trigger"
+      ],
       "description": "Binds a decision skill to a trigger point. Workspace bindings are inherited by all topologies; topology bindings can override by id.",
       "properties": {
         "id": {
@@ -418,7 +654,12 @@
           "description": "Decision skill ID. Must exist in workspace skill registry."
         },
         "trigger": {
-          "enum": ["pre_input", "post_output", "checkpoint", "pre_synthesis"],
+          "enum": [
+            "pre_input",
+            "post_output",
+            "checkpoint",
+            "pre_synthesis"
+          ],
           "description": "When the skill fires: pre_input (before agent runs, validates user input), post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis)."
         },
         "scope": {
@@ -428,12 +669,17 @@
         "required": {
           "type": "boolean",
           "default": true,
-          "description": "If true, output is rejected when this skill returns a failing verdict. Set false to disable an inherited workspace binding."
+          "description": "Whether a failing verdict from this skill STOPS the run. true (the default) means a `fail` rejects the output; false means the skill still runs and its rejection is advisory \u2014 logged, not fatal. It does NOT disable the binding: use `enabled: false` for that. Until 1.169.0 a falsey `required` silently discarded the binding, so an advisory skill was never evaluated at all."
         },
         "config": {
           "type": "object",
           "additionalProperties": true,
           "description": "Skill-specific configuration (confidence thresholds, retry limits, etc)."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this binding is active. Set false in a topology to switch off a binding inherited from the workspace. Separate from `required` because the two are different questions \u2014 whether a skill runs, and whether its verdict can stop the run."
         }
       }
     },
@@ -479,11 +725,15 @@
             "routes": {
               "type": "array",
               "description": "Canary routes. Each route splits traffic for one topology across multiple versions.",
-              "items": { "$ref": "#/$defs/canary_route" }
+              "items": {
+                "$ref": "#/$defs/canary_route"
+              }
             }
           }
         },
-        "auth": { "$ref": "#/$defs/server_auth" }
+        "auth": {
+          "$ref": "#/$defs/server_auth"
+        }
       }
     },
     "server_auth": {
@@ -492,7 +742,11 @@
       "description": "HTTP authentication for swarmkit serve. Off by default (provider: none). For a non-loopback bind, leaving provider=none refuses to start unless require_on_nonloopback is false (default-secure). See design/details/control-plane/12-auth.md.",
       "properties": {
         "provider": {
-          "enum": ["none", "api_key", "jwt"],
+          "enum": [
+            "none",
+            "api_key",
+            "jwt"
+          ],
           "default": "none",
           "description": "none: open access (default; only safe on loopback). api_key: bearer tokens from a static key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS)."
         },
@@ -501,16 +755,58 @@
           "default": true,
           "description": "When true (default), a non-loopback bind (--host other than 127.0.0.1/::1) with provider=none refuses to start. Set false to allow an open non-loopback bind (not recommended)."
         },
-        "config": { "$ref": "#/$defs/server_auth_config" }
+        "config": {
+          "$ref": "#/$defs/server_auth_config"
+        }
       },
       "allOf": [
         {
-          "if": { "properties": { "provider": { "const": "api_key" } }, "required": ["provider"] },
-          "then": { "required": ["config"], "properties": { "config": { "required": ["keys"] } } }
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "api_key"
+              }
+            },
+            "required": [
+              "provider"
+            ]
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "keys"
+                ]
+              }
+            }
+          }
         },
         {
-          "if": { "properties": { "provider": { "const": "jwt" } }, "required": ["provider"] },
-          "then": { "required": ["config"], "properties": { "config": { "required": ["issuer"] } } }
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "jwt"
+              }
+            },
+            "required": [
+              "provider"
+            ]
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "issuer"
+                ]
+              }
+            }
+          }
         }
       ]
     },
@@ -522,38 +818,85 @@
         "keys": {
           "type": "array",
           "description": "API key registry (provider: api_key).",
-          "items": { "$ref": "#/$defs/server_auth_key" }
+          "items": {
+            "$ref": "#/$defs/server_auth_key"
+          }
         },
-        "issuer": { "type": "string", "description": "OIDC issuer URL (provider: jwt)." },
-        "audience": { "type": "string", "description": "Expected token audience (provider: jwt). Default: swarmkit." },
-        "jwks_url": { "type": "string", "description": "JWKS URL (provider: jwt). Defaults to {issuer}/.well-known/jwks.json." },
-        "scopes_claim": { "type": "string", "description": "JWT claim holding scopes (provider: jwt). Default: scope." },
-        "client_id": { "type": "string", "description": "The browser's OIDC client registration (provider: jwt), advertised to clients via /auth-info. The server never uses it to validate anything — it advertises it because the portal ships as a pre-built static export, so a build-time env var would be fixed at publish and the same wheel serves every deployment. Without it the portal cannot start a sign-in flow." },
-        "scope": { "type": "string", "description": "OIDC scopes the portal requests (provider: jwt), advertised via /auth-info. Default: openid profile email." },
-        "identity": { "type": "string", "description": "Who the caller is asserted to be (provider: none). Default: anonymous. This mode already grants wildcard scopes and authorizes everything, so naming the operator confers no new capability — but the approval engine matches this value against members: in swarm/roles.yaml, so it is what makes a local gate approvable without standing up an identity provider. Asserted, not authenticated: the audit records provider=none." },
-        "identity_name": { "type": "string", "description": "Display name for that identity (provider: none). Defaults to the identity itself." }
+        "issuer": {
+          "type": "string",
+          "description": "OIDC issuer URL (provider: jwt)."
+        },
+        "audience": {
+          "type": "string",
+          "description": "Expected token audience (provider: jwt). Default: swarmkit."
+        },
+        "jwks_url": {
+          "type": "string",
+          "description": "JWKS URL (provider: jwt). Defaults to {issuer}/.well-known/jwks.json."
+        },
+        "scopes_claim": {
+          "type": "string",
+          "description": "JWT claim holding scopes (provider: jwt). Default: scope."
+        },
+        "client_id": {
+          "type": "string",
+          "description": "The browser's OIDC client registration (provider: jwt), advertised to clients via /auth-info. The server never uses it to validate anything \u2014 it advertises it because the portal ships as a pre-built static export, so a build-time env var would be fixed at publish and the same wheel serves every deployment. Without it the portal cannot start a sign-in flow."
+        },
+        "scope": {
+          "type": "string",
+          "description": "OIDC scopes the portal requests (provider: jwt), advertised via /auth-info. Default: openid profile email."
+        },
+        "identity": {
+          "type": "string",
+          "description": "Who the caller is asserted to be (provider: none). Default: anonymous. This mode already grants wildcard scopes and authorizes everything, so naming the operator confers no new capability \u2014 but the approval engine matches this value against members: in swarm/roles.yaml, so it is what makes a local gate approvable without standing up an identity provider. Asserted, not authenticated: the audit records provider=none."
+        },
+        "identity_name": {
+          "type": "string",
+          "description": "Display name for that identity (provider: none). Defaults to the identity itself."
+        }
       }
     },
     "server_auth_key": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["key_ref", "client_id"],
-      "description": "One API key. Grant scopes via a tier (read/run/admin → serve:* scopes) OR explicit scopes — not both.",
-      "not": { "required": ["tier", "scopes"] },
+      "required": [
+        "key_ref",
+        "client_id"
+      ],
+      "description": "One API key. Grant scopes via a tier (read/run/admin \u2192 serve:* scopes) OR explicit scopes \u2014 not both.",
+      "not": {
+        "required": [
+          "tier",
+          "scopes"
+        ]
+      },
       "properties": {
         "key_ref": {
           "type": "string",
           "description": "Reference to the secret, never a literal: 'env:VAR' or a credentials entry. Resolved at startup."
         },
-        "client_id": { "type": "string", "minLength": 1, "description": "Stable id for this caller (appears in audit)." },
-        "client_name": { "type": "string", "description": "Human-readable name. Defaults to client_id." },
+        "client_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable id for this caller (appears in audit)."
+        },
+        "client_name": {
+          "type": "string",
+          "description": "Human-readable name. Defaults to client_id."
+        },
         "tier": {
-          "enum": ["read", "run", "admin"],
+          "enum": [
+            "read",
+            "run",
+            "admin"
+          ],
           "description": "Transport scope tier: read (observe) | run (+ execute) | admin (+ mutate artifacts/rollout). Expands to serve:* scopes."
         },
         "scopes": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Explicit scopes, as an alternative to tier (e.g. ['serve:read','serve:run'])."
         }
       }
@@ -561,7 +904,10 @@
     "canary_route": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["topology", "versions"],
+      "required": [
+        "topology",
+        "versions"
+      ],
       "description": "Traffic splitting rule for a single topology.",
       "properties": {
         "topology": {
@@ -572,14 +918,19 @@
           "type": "array",
           "minItems": 2,
           "description": "Version entries. Weights must sum to 100.",
-          "items": { "$ref": "#/$defs/canary_version" }
+          "items": {
+            "$ref": "#/$defs/canary_version"
+          }
         }
       }
     },
     "canary_version": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "weight"],
+      "required": [
+        "version",
+        "weight"
+      ],
       "description": "A single version in a canary route with its traffic weight and optional promotion criteria.",
       "properties": {
         "version": {

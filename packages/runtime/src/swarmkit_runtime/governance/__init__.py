@@ -10,6 +10,7 @@ method signatures, type contracts, and async rationale.
 
 from __future__ import annotations
 
+import logging
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -24,6 +25,9 @@ from swarmkit_runtime.governance._limits import (
 )
 
 # ---- types --------------------------------------------------------------
+
+
+logger = logging.getLogger("swarmkit.governance")
 
 
 @dataclass(frozen=True)
@@ -239,7 +243,12 @@ class DecisionSkillBinding:
     id: str
     trigger: Literal["pre_input", "post_output", "checkpoint", "pre_synthesis"]
     scope: str = "*"
+    #: Whether a failing verdict STOPS the run. False means the skill still runs and its rejection
+    #: is advisory. It does not mean "off" — that is `enabled`.
     required: bool = True
+    #: Whether the binding is active at all. A topology sets this False to switch off a binding it
+    #: inherited from the workspace.
+    enabled: bool = True
     config: dict[str, Any] = field(default_factory=dict)
 
     def applies_to(self, agent_id: str) -> bool:
@@ -255,22 +264,51 @@ def merge_decision_skills(
     """Merge workspace and topology decision skill bindings.
 
     Topology entries override workspace entries with the same id.
-    Bindings with required=False are excluded from the result.
+
+    Two questions, two flags. They used to be one, and it collapsed them:
+
+    * ``enabled`` — does this binding run at all? A topology sets it False to switch off something
+      it inherited from the workspace.
+    * ``required`` — can this skill's ``fail`` verdict stop the run? False means it still runs and
+      its rejection is advisory.
+
+    A falsey ``required`` used to discard the binding, so "advisory" meant ABSENT: there was no path
+    by which such a skill could ever be evaluated. `memory-reader` is bound that way by the docs and
+    examples — a memory read that can fail a run is worse than no memory — so the only sane
+    configuration was the one that silently did nothing, and the governed-memory read path added in
+    1.168.0 sat behind it, correct and unreachable.
+
+    The old spelling is not silently reinterpreted. A topology override saying ``required: false``
+    and nothing about ``enabled`` used to mean "disable" and now means "advisory" — a real change
+    of behaviour, so it warns rather than changing under an operator without a word.
     """
     merged: dict[str, dict[str, Any]] = {s["id"]: s for s in workspace}
+    overridden = {s["id"] for s in topology if s["id"] in merged}
     for s in topology:
         merged[s["id"]] = s
-    return [
-        DecisionSkillBinding(
-            id=raw["id"],
-            trigger=raw["trigger"],
-            scope=raw.get("scope", "*"),
-            required=raw.get("required", True),
-            config=raw.get("config", {}),
+
+    bindings = []
+    for raw in merged.values():
+        if not raw.get("enabled", True):
+            continue
+        if raw["id"] in overridden and not raw.get("required", True) and "enabled" not in raw:
+            logger.warning(
+                "topology binding %r sets `required: false`, which used to DISABLE an inherited "
+                "binding and now makes it advisory — it will run, and its rejections will not stop "
+                "the run. Write `enabled: false` if you meant to switch it off.",
+                raw["id"],
+            )
+        bindings.append(
+            DecisionSkillBinding(
+                id=raw["id"],
+                trigger=raw["trigger"],
+                scope=raw.get("scope", "*"),
+                required=raw.get("required", True),
+                enabled=True,
+                config=raw.get("config", {}),
+            )
         )
-        for raw in merged.values()
-        if raw.get("required", True)
-    ]
+    return bindings
 
 
 # ---- ABC ----------------------------------------------------------------

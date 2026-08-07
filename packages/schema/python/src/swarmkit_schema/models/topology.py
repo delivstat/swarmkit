@@ -274,10 +274,15 @@ class DecisionSkillBinding(BaseModel):
         None, description="Comma-separated agent IDs. Default '*' = all agents."
     )
     required: bool | None = Field(
-        True, description="Set false to disable an inherited workspace binding."
+        True,
+        description="Whether a failing verdict from this skill STOPS the run. true (the default) means a `fail` rejects the output; false means the skill still runs and its rejection is advisory — logged, not fatal. It does NOT disable the binding: use `enabled: false` for that. Until 1.169.0 a falsey `required` silently discarded the binding, so an advisory skill was never evaluated at all.",
     )
     config: dict[str, Any] | None = Field(
         None, description="Skill-specific configuration."
+    )
+    enabled: bool | None = Field(
+        True,
+        description="Whether this binding is active. Set false in a topology to switch off a binding inherited from the workspace. Separate from `required` because the two are different questions — whether a skill runs, and whether its verdict can stop the run.",
     )
 
 
@@ -305,7 +310,7 @@ class Governance(BaseModel):
     )
     decision_skills: list[DecisionSkillBinding] | None = Field(
         None,
-        description="Decision skill bindings that override or extend workspace-level bindings. Same id = override, new id = extend, required: false = disable inherited.",
+        description="Decision skill bindings that override or extend workspace-level bindings. Same id = override, new id = extend, enabled: false = disable inherited.",
     )
 
 

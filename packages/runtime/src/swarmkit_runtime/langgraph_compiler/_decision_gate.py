@@ -10,6 +10,7 @@ See ``design/details/governance-decision-skills.md``.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -20,6 +21,8 @@ from swarmkit_runtime.governance import (
 )
 
 from ._helpers import _progress
+
+logger = logging.getLogger("swarmkit.decisions")
 
 _DEFAULT_MAX_RETRIES = 4
 
@@ -62,6 +65,41 @@ def _effective_max_retries(bindings: list[DecisionSkillBinding], default: int) -
     return max(declared) if declared else default
 
 
+def _blocking(
+    results: list[DecisionSkillResult],
+    bindings: list[DecisionSkillBinding],
+    verdicts: tuple[str, ...] = ("fail",),
+) -> list[DecisionSkillResult]:
+    """The failures that may stop the run — those from a ``required`` binding.
+
+    `required` now decides what a verdict DOES, which is what the setting reads as:
+
+    * ``required: true``  — a ``fail`` stops the run.
+    * ``required: false`` — the skill runs and its rejection is advisory: logged, not fatal.
+
+    It used to decide whether a binding existed at all — `merge_decision_skills` discarded every
+    non-required one — so "advisory" meant absent and there was no path by which such a skill could
+    be evaluated. Moving the flag here without this guard would swing it the other way and let an
+    advisory skill fail a run, which is worse than the bug: nobody binds `memory-reader` expecting a
+    missing memory to abort the work.
+    """
+    required = {b.id for b in bindings if b.required}
+    blocking = []
+    for result in results:
+        if result.verdict not in verdicts:
+            continue
+        if result.skill_id in required:
+            blocking.append(result)
+        else:
+            logger.info(
+                "advisory decision skill %r returned %r; the run continues: %s",
+                result.skill_id,
+                result.verdict,
+                result.reasoning[:160],
+            )
+    return blocking
+
+
 async def evaluate_pre_input(
     *,
     agent_id: str,
@@ -91,7 +129,7 @@ async def evaluate_pre_input(
         )
         results.append(result)
 
-    failed = [r for r in results if r.verdict == "fail"]
+    failed = _blocking(results, applicable)
     if not failed:
         return True, None, results
 
@@ -155,7 +193,7 @@ async def evaluate_post_output(
             )
             last_results.append(result)
 
-        failed = [r for r in last_results if r.verdict == "fail"]
+        failed = _blocking(last_results, applicable)
         if not failed:
             return current_output, last_results
 
@@ -174,7 +212,7 @@ async def evaluate_post_output(
                 )
             break
 
-    failed = [r for r in last_results if r.verdict == "fail"]
+    failed = _blocking(last_results, applicable)
     if failed:
         flags = []
         for r in failed:
@@ -304,6 +342,7 @@ def _read_scope(workspace_root: Any) -> dict[str, Any] | None:
 
 def format_gate_feedback(results: list[DecisionSkillResult]) -> str:
     """Format failed decision skill results as feedback for the coordinator."""
+    # No filtering here: this only FORMATS results a caller has already decided are blocking.
     failed = [r for r in results if r.verdict in ("fail", "needs-revision")]
     if not failed:
         return ""
