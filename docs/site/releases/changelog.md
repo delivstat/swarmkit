@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.169.0** (2026-08-07) — advisory means advisory, and the memory that was unreachable is documented
 - **v1.168.0** (2026-08-07) — curated facts reach the agent, tool calls open, and the workspace reloads
 - **v1.164.0** (2026-08-07) — a restart no longer leaves work that looks like it is still happening
 - **v1.163.0** (2026-08-07) — a run's detail page says what the run was, not only what it returned
