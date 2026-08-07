@@ -33,3 +33,40 @@ export function spanCostUsd(attributes: Record<string, unknown>): number {
 	const cost = attributes["swarmkit.model.cost_usd"];
 	return typeof cost === "number" && Number.isFinite(cost) ? cost : 0;
 }
+
+/** What a tool span was asked and what it answered, or null when the span is not a tool call.
+ *
+ * A trace span carried a tool's name and how many characters came back — never the arguments or
+ * the result. So a waterfall could show that `search-wms-tables` ran for 800ms and not what it
+ * looked for or found, which is the question the waterfall is usually opened to answer.
+ */
+export interface ToolDetail {
+	name: string;
+	arguments: Record<string, unknown>;
+	result: string;
+	resultLength: number;
+	cached: boolean;
+	truncated: boolean;
+}
+
+export function toolDetail(
+	attributes: Record<string, unknown>,
+): ToolDetail | null {
+	const name = attributes["swarmkit.tool.name"];
+	if (typeof name !== "string" || !name) return null;
+	const args = attributes["swarmkit.tool.arguments"];
+	const result = attributes["swarmkit.tool.result"];
+	const resultLength = Number(attributes["swarmkit.tool.result_length"] ?? 0);
+	const text = typeof result === "string" ? result : "";
+	return {
+		name,
+		arguments:
+			args && typeof args === "object" ? (args as Record<string, unknown>) : {},
+		result: text,
+		resultLength,
+		// The trace keeps a bounded copy, so say when there was more rather than letting a reader
+		// take a cut-off payload for the whole answer.
+		truncated: resultLength > text.length,
+		cached: attributes["swarmkit.tool.cached"] === true,
+	};
+}

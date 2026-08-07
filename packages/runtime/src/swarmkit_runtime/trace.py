@@ -23,13 +23,13 @@ class ToolCall:
 
     tool_name: str
     arguments: dict[str, Any] = field(default_factory=dict)
-    #: Length of the RESULT the node produced. Was conflated with the diff, so a harness step that
-    #: touched any file reported its diff size instead and a 56 KB artifact was indistinguishable
-    #: from an empty one.
     result_length: int = 0
-    #: Length of the diff a harness produced, when it produced one. Separate, because they answer
-    #: different questions: what the agent said, and what it changed.
-    diff_length: int = 0
+    #: The result itself, bounded. The trace recorded a tool's name, its arguments and how many
+    #: characters came back — never WHAT came back. A reader could see that `search-wms-tables` was
+    #: asked about PGM and had to take on faith what it answered, which is most of what makes a
+    #: run reviewable. Bounded because a trace is a record of a run, not a copy of every payload
+    #: in it.
+    result: str = ""
     error: str | None = None
     duration_ms: int = 0
     cached: bool = False

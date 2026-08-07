@@ -42,12 +42,19 @@ def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResp
         )
 
 
+#: How much of a tool's result the trace keeps. A trace is a record of a run, not a copy of every
+#: payload in it: a corpus search can return megabytes, and a run with 300 calls would be
+#: unopenable in a browser. Enough to see WHAT came back and judge whether it answered.
+_MAX_TRACED_RESULT = 2000
+
+
 def _record_tool_call(
     tool_name: str,
     arguments: dict[str, Any],
     result_length: int,
     duration_ms: int,
     error: str | None = None,
+    result: str = "",
 ) -> None:
     """Record a tool/MCP call into the active trace's current step."""
     from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
@@ -65,6 +72,10 @@ def _record_tool_call(
             tool_name=tool_name,
             arguments=arguments,
             result_length=result_length,
+            # The result itself, bounded. Only its LENGTH was kept, so a reader could see that a
+            # tool was asked something and had to take on faith what it answered — which is most of
+            # what makes a run reviewable.
+            result=result[:_MAX_TRACED_RESULT],
             duration_ms=int(duration_ms) if duration_ms is not None else None,
             error=error,
         )
@@ -512,6 +523,7 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
             tool_name=block.tool_name,
             arguments=block.tool_input if isinstance(block.tool_input, dict) else {},
             result_length=len(text_result or ""),
+            result=text_result or "",
             duration_ms=_tc_dur,
         )
         results.append(
