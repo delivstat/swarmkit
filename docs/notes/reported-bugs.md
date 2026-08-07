@@ -18,6 +18,49 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### A stage that completed while the orchestrator was down stranded its saga (1.164.0)
+
+If the orchestrator died between "serve finished the stage" and "the saga records it", the work was
+not lost — the completed result sat in `jobs` with its output and cost — but nothing reconciled it.
+The lease added for bug 12 correctly made the event reachable again after the visibility timeout,
+and the controller then dropped it as a duplicate, marked it `done`, and no further reclaim could
+occur. Observed end state, stable an hour later: event `done`, job `completed`, saga `active` with
+`passed_stages` empty and `updated_at` frozen at creation. Every individual record was the record of
+a success, and no timeout, retry or restart could move the run.
+
+The de-duplication is right in general — a second `ticket.created` for a live saga must not start a
+second run. It was wrong only where the saga had never absorbed a stage that did in fact complete.
+The controller now asks, before dropping, whether the stage it is waiting on already finished, and
+absorbs it. Nothing new is stored: `jobs` is keyed `<correlation>:<stage>` and the artifact
+reference is deterministic.
+
+Conservative by construction — only an active saga, only with a `current_stage` and no gate, only
+when the job says `completed`. Recovering a run that did not finish would be a worse error than
+leaving one stuck, and absorbing past a gate would resume a run a human had paused.
+
+Also corrects the drop message, which said "resolve or clear the gate to resume" whenever a saga
+existed. In the stranded case there is no gate, so it sent readers after something that did not
+exist — the worst kind of wrong remedy, specific and actionable.
+
+Not done: the drop is still logged rather than recorded as an audit event against the correlation.
+The controller has no governance handle, and threading one through is a larger change than this.
+
+Tests: `test_saga_reconciles_a_completed_stage.py`.
+
+### Jobs left running by a dead serve process are closed (1.164.0)
+
+A `POST /run/{topology}` job executes as a task in the serve process. When that process died the
+task died with it, the in-memory store was empty on restart, and nothing reconciled the durable
+row — it sat at `running` for ever, indistinguishable in the UI from work still in flight.
+
+Serve now sweeps on startup, bounded by the job timeout rather than by "everything running": several
+instances can share one Postgres store, and a blanket sweep would close another live instance's
+jobs, trading a stuck row for a false one. Marked `interrupted`, not `failed` — the run may well
+have finished its work before the process died, and claiming more than is known is how a record
+starts lying in the other direction.
+
+Tests: `test_serve_closes_jobs_a_dead_process_left.py`.
+
 ### A harness's artifact was discarded because the agent signed off after producing it (1.162.0)
 
 Bug 17, root cause. A harness's captured output is its FINAL message — the adapter maps `output`

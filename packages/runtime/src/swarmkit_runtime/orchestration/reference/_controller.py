@@ -54,10 +54,15 @@ class ReferenceController:
         graphs: Mapping[
             str, Mapping[str, Any]
         ],  # graph_id -> the graph spec (stages under "stages")
+        stage_result: Any = None,
     ) -> None:
         self._run = run_stage
         self._store = store
         self._graphs = graphs
+        #: Optional seam: ``(correlation_id, stage_id) -> StageOutcome | None``, answering "did
+        #: this stage already finish?" from the durable job record. Without it a stage that
+        #: completed while the orchestrator was down is unrecoverable — see `_reconcile`.
+        self._stage_result = stage_result
 
     # ── inbound events (from the claimed queue) ─────────────────────────────────────────────────
     async def handle_event(self, correlation_id: str, event: str) -> None:
@@ -98,16 +103,31 @@ class ReferenceController:
             # Say WHY, and at warning: an event accepted and dropped with no trace reads exactly
             # like an event that ran, and a stale artifact then looks like a fresh result.
             existing = self._store.get(correlation_id)
+            # Before dropping: did the stage this saga is waiting on already FINISH?
+            #
+            # The lease makes a stranded event reachable again (bug 12), and reaching it was not
+            # enough. If the orchestrator died between "serve finished the stage" and "the saga
+            # recorded it", the reclaim delivers the event here and this branch discarded it — the
+            # work was done, paid for and sitting in `jobs`, while the saga stayed `active` with an
+            # empty `passed_stages` and an `updated_at` frozen at creation. Every individual record
+            # said success; the run never moved again, and no timeout or restart could move it.
+            if await self._reconcile(existing):
+                return
             logger.warning(
                 "pipeline event %r for existing saga %r DROPPED (status=%s%s). The bundled "
-                "controller advances sequentially; resolve or clear the gate to resume — "
-                "re-emitting does nothing.",
+                "controller advances sequentially; %s — re-emitting does nothing.",
                 name,
                 correlation_id,
                 getattr(existing, "status", "unknown"),
                 f", parked on {existing.pending_gate_stage!r}"
                 if existing is not None and existing.pending_gate_stage
                 else "",
+                # The remedy has to match the state. "resolve or clear the gate" was printed
+                # whenever a saga existed, so a reader whose saga had no gate went looking for one
+                # that was not there.
+                "resolve or clear the gate to resume"
+                if existing is not None and existing.pending_gate_stage
+                else "this run is already in progress",
             )
             return
         matches = [gid for gid, g in self._graphs.items() if name in _entry_events(g)]
@@ -232,6 +252,51 @@ class ReferenceController:
         await self._drive(saga)
 
     # ── the drive loop ──────────────────────────────────────────────────────────────────────────
+    async def _reconcile(self, saga: SagaState | None) -> bool:
+        """Absorb a stage that finished while nobody was listening. True if the saga moved.
+
+        A saga is stranded when the orchestrator dies between a stage completing and the saga
+        recording it: `current_stage` is set, `passed_stages` is empty, and the reclaimed event is
+        then dropped as a duplicate — correctly, in general, because a second `ticket.created` for
+        a live saga must not start a second run. It is wrong only here, where the saga never
+        absorbed a stage that did in fact complete.
+
+        Nothing new is stored to make this work. `jobs` is already keyed `<correlation>:<stage>`
+        and holds the stage's status, output and cost, so "waiting on X, and X completed" is a
+        question the existing record can answer.
+
+        Conservative on purpose: only an ACTIVE saga, only one with a `current_stage` and no gate,
+        and only when the job says `completed`. A stage that failed, is still running, or was never
+        recorded leaves the saga exactly as it was — recovering a run that did not finish would be
+        a worse error than leaving it stuck.
+        """
+        if self._stage_result is None or saga is None:
+            return False
+        if saga.status != "active" or not saga.current_stage or saga.pending_gate_stage:
+            return False
+        sid = saga.current_stage
+        if sid in saga.passed_stages:
+            return False
+        outcome = self._stage_result(saga.correlation_id, sid, saga.attempts.get(sid, 1))
+        if outcome is None or getattr(outcome, "status", "") != "completed":
+            return False
+
+        logger.warning(
+            "saga %r was waiting on stage %r, which had already completed — absorbing it. The "
+            "orchestrator was down when the stage finished; without this the run would stay "
+            "`active` for ever with the work done and paid for.",
+            saga.correlation_id,
+            sid,
+        )
+        saga.passed_stages.append(sid)
+        if getattr(outcome, "artifact", ""):
+            saga.artifacts[sid] = outcome.artifact
+        saga.current_stage = None
+        saga.add("completed", stage_id=sid, detail="reconciled after an orchestrator restart")
+        self._store.save(saga)
+        await self._drive(saga)
+        return True
+
     async def _drive(self, saga: SagaState) -> None:
         stages = list(self._graphs.get(saga.graph_id, {}).get("stages") or [])
         while True:

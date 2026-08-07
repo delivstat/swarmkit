@@ -83,6 +83,40 @@ def default_worker_name() -> str:
     return f"{socket.gethostname()}-{os.getpid()}"
 
 
+def _stage_result_lookup(workspace: Path) -> Any:
+    """A ``(correlation_id, stage_id, attempt) -> StageOutcome | None`` reader over the job record.
+
+    No new state: `jobs` is already keyed `<correlation>:<stage>` (with `@n` for a rework), and the
+    artifact reference is deterministic, so "waiting on X, and X completed" is answerable from what
+    is already stored.
+
+    Best-effort — a store that will not open costs the reconciliation, never the orchestrator.
+    """
+    from swarmkit_runtime.artifacts import artifact_ref  # noqa: PLC0415
+    from swarmkit_runtime.orchestration import StageOutcome  # noqa: PLC0415
+    from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+    from swarmkit_runtime.server._pipeline_stage import stage_run_id  # noqa: PLC0415
+
+    try:
+        store = storage_for_workspace(workspace).store()
+    except Exception:
+        logger.warning("stage reconciliation is unavailable: the job store did not open")
+        return None
+
+    def lookup(correlation_id: str, stage_id: str, attempt: int = 1) -> Any:
+        try:
+            row = store.get_job(stage_run_id(correlation_id, stage_id, attempt))
+        except Exception:
+            return None
+        if row is None or row.status != "completed":
+            return None
+        return StageOutcome(
+            status="completed", artifact=artifact_ref(correlation_id, stage_id), detail=""
+        )
+
+    return lookup
+
+
 async def _handle_with_heartbeat(
     controller: ReferenceController,
     store: Any,
@@ -222,7 +256,13 @@ def orchestrator(
     store = SqlSagaStore.from_url(db)
     graphs = _load_graphs(workspace)
     controller = ReferenceController(
-        run_stage=_http_run_stage(serve_url, token), store=store, graphs=graphs
+        run_stage=_http_run_stage(serve_url, token),
+        store=store,
+        graphs=graphs,
+        # Lets the controller ask "did this stage already finish?" before dropping a reclaimed
+        # event. Without it a stage that completed while the orchestrator was down strands its
+        # saga: the work is done and paid for, and the run never moves again.
+        stage_result=_stage_result_lookup(workspace),
     )
     # redacted_url, not the raw one: this line lands in terminal scrollback, any redirected log
     # and CI capture. The store URL routinely carries a database password.
