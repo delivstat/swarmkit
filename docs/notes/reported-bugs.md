@@ -18,6 +18,33 @@ Ordered by how much damage the bug does while looking fine.
 
 ## Fixed
 
+### A harness's artifact was discarded because the agent signed off after producing it (1.162.0)
+
+Bug 17, root cause. A harness's captured output is its FINAL message — the adapter maps `output`
+from Claude Code's `$.result`. An agent that emits its artifact and then adds a closing sentence
+hands the runtime the sentence. On the reported run a 68 KB conforming artifact was produced and
+`prior_draft_chars=236` was recorded: schema enforcement saw no JSON, re-ran the agent, and the
+re-run — toolless, per bug 18 — returned stubs that also validated and won.
+
+The messages were in hand the whole time. `round_messages` collected every one, used them for a
+single yes/no question-detection check, and dropped them; they were also reset per round, so an
+artifact from an earlier round was lost twice over.
+
+For a schema-bound harness the session is now searched backwards for the last message carrying a
+CONFORMING object — conformance, not braces, so a tool-call echo or an intermediate sketch cannot
+outrank the real artifact. The canonical object is returned rather than the message that held it,
+so no surrounding prose reaches the stage artifact (bug 16, one layer up), and a recovery is
+audited as `executor.artifact_recovered` because a run whose final message was not its artifact is
+worth seeing. Nothing conforming anywhere leaves the output untouched: this recovers a lost
+artifact, it does not invent one.
+
+Two earlier theories were wrong and are recorded as such: the 1.160.0 fence tolerance was a real
+fix but could not help here (there is no JSON in a sign-off), and a "the agent wrote it to files"
+theory was killed by the operator pointing out the agent had no filesystem access at all — only
+named tools. The artifact could only ever have been in the messages, which is where it was.
+
+Tests: `test_harness_artifact_from_session.py`.
+
 ### A process could only serve about three MCP gateways (1.162.0)
 
 Bug 18, closed. A server per EXECUTION was the fault: a process served roughly three and every later
