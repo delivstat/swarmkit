@@ -18,6 +18,7 @@ import {
 	PenTool,
 	PlayCircle,
 	Puzzle,
+	RefreshCw,
 	ScrollText,
 	Timer,
 	Users,
@@ -164,8 +165,86 @@ export function Sidebar() {
 				</ul>
 			</div>
 
+			<ReloadWorkspace collapsed={collapsed} />
 			<VersionFooter collapsed={collapsed} />
 		</nav>
+	);
+}
+
+/** Re-read the workspace from disk.
+ *
+ * `swarmkit serve` resolves the workspace once at startup and holds it. Edits made through the UI
+ * already trigger a reload, but a topology, skill or archetype changed on disk — by an editor, a
+ * git pull, an authoring swarm writing files — was invisible until the server was restarted, with
+ * nothing to say the running config and the files had diverged.
+ *
+ * The outcome is reported rather than assumed. A reload that fails validation leaves the PREVIOUS
+ * runtime serving, so "invalid" here means the change on disk is not live — not that a broken
+ * config is now running. Those are opposite situations and the wrong reading sends an operator
+ * looking for the wrong problem.
+ */
+function ReloadWorkspace({ collapsed }: { collapsed: boolean }) {
+	const [busy, setBusy] = useState(false);
+	const [result, setResult] = useState<{ ok: boolean; text: string } | null>(
+		null,
+	);
+
+	const reload = async () => {
+		setBusy(true);
+		setResult(null);
+		try {
+			const validation = await api.reloadWorkspace();
+			setResult(
+				validation.valid
+					? {
+							ok: true,
+							text: `Reloaded — ${validation.topologies.length} topologies, ${validation.skills.length} skills`,
+						}
+					: {
+							ok: false,
+							text: "Workspace is invalid — the previous config is still serving",
+						},
+			);
+		} catch (err) {
+			setResult({
+				ok: false,
+				text: err instanceof Error ? err.message : "Reload failed",
+			});
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<div className="shrink-0 border-t p-3">
+			<button
+				type="button"
+				onClick={reload}
+				disabled={busy}
+				title="Re-read topologies, skills and archetypes from disk"
+				aria-label="Reload workspace from disk"
+				className={cn(
+					"flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground disabled:opacity-50",
+					collapsed && "justify-center",
+				)}
+			>
+				<RefreshCw
+					size={16}
+					className={cn("shrink-0", busy && "animate-spin")}
+				/>
+				{!collapsed && <span>{busy ? "Reloading…" : "Reload workspace"}</span>}
+			</button>
+			{!collapsed && result && (
+				<p
+					className={cn(
+						"mt-1 px-2 text-[11px]",
+						result.ok ? "text-muted-foreground" : "text-destructive",
+					)}
+				>
+					{result.text}
+				</p>
+			)}
+		</div>
 	);
 }
 
