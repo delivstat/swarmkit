@@ -458,6 +458,7 @@
           "description": "Decision skill ID."
         },
         "trigger": {
+          "type": "string",
           "enum": [
             "pre_input",
             "post_output",

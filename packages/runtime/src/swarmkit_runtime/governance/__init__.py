@@ -15,7 +15,7 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
 from swarmkit_runtime.governance._limits import (
@@ -252,7 +252,11 @@ class DecisionSkillBinding:
     config: dict[str, Any] = field(default_factory=dict)
 
     def applies_to(self, agent_id: str) -> bool:
-        if self.scope == "*":
+        # An absent scope means every agent. Guarded here rather than only at construction, because
+        # `model_dump()` emits an unset field as None — so a workspace binding that simply does not
+        # name a scope (the documented, ordinary way to bind `memory-reader`) arrived as None and
+        # raised. It held only while the trigger comparison short-circuited to False first.
+        if not self.scope or self.scope == "*":
             return True
         return agent_id in {s.strip() for s in self.scope.split(",")}
 
@@ -301,11 +305,17 @@ def merge_decision_skills(
         bindings.append(
             DecisionSkillBinding(
                 id=raw["id"],
-                trigger=raw["trigger"],
-                scope=raw.get("scope", "*"),
-                required=raw.get("required", True),
+                # `str(...)`: the trigger may arrive as a `Trigger` enum from `model_dump()` or as
+                # a plain string from YAML, and downstream compares it against string literals.
+                # Normalised once here so no comparison site has to know which it got.
+                trigger=cast("Any", str(raw["trigger"])),
+                # `or`, not a dict default: `model_dump()` emits an unset field as None, and a
+                # default only applies when the KEY is missing. Every optional field here arrives
+                # present-and-None from a pydantic model.
+                scope=raw.get("scope") or "*",
+                required=raw.get("required", True) is not False,
                 enabled=True,
-                config=raw.get("config", {}),
+                config=raw.get("config") or {},
             )
         )
     return bindings

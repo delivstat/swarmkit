@@ -83,6 +83,12 @@ def _generate_one(artifact: str) -> None:
         "--field-constraints",
         "--enum-field-as-literal",
         "one",
+        # `class Trigger(str, Enum)`, not `class Trigger(Enum)`. A plain Enum member never equals
+        # its own string, so every `binding.trigger == "pre_input"` in the runtime was False and no
+        # decision skill fired at any trigger point — silently, because an empty selection is
+        # indistinguishable from "none configured". Applies to every generated enum, since the next
+        # one compared against a literal would have the same bug.
+        "--use-subclass-enum",
         # Aliases keep Python-keyword fields (like `class:`) loadable from
         # the original JSON/YAML while presenting a Pythonic attribute name
         # (`class_`). `populate-by-field-name` lets code also construct the
