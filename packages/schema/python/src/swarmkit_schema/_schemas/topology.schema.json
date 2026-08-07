@@ -2,22 +2,41 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.swarmkit.dev/v1/topology.schema.json",
   "title": "SwarmKit Topology",
-  "description": "A complete swarm definition. See design §10 and design/details/topology-schema-v1.md.",
+  "description": "A complete swarm definition. See design \u00a710 and design/details/topology-schema-v1.md.",
   "type": "object",
-  "required": ["apiVersion", "kind", "metadata", "agents"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "agents"
+  ],
   "additionalProperties": false,
   "properties": {
     "apiVersion": {
       "const": "swarmkit/v1",
       "description": "Schema version. Breaking changes bump this major."
     },
-    "kind": { "const": "Topology" },
-    "metadata": { "$ref": "#/$defs/metadata" },
-    "runtime": { "$ref": "#/$defs/runtime" },
-    "agents": { "$ref": "#/$defs/agents" },
-    "artifacts": { "$ref": "#/$defs/artifacts" },
-    "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" },
-    "governance": { "$ref": "#/$defs/governance" }
+    "kind": {
+      "const": "Topology"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtime"
+    },
+    "agents": {
+      "$ref": "#/$defs/agents"
+    },
+    "artifacts": {
+      "$ref": "#/$defs/artifacts"
+    },
+    "intent_monitoring": {
+      "$ref": "#/$defs/intent_monitoring"
+    },
+    "governance": {
+      "$ref": "#/$defs/governance"
+    }
   },
   "$defs": {
     "identifier": {
@@ -32,11 +51,20 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version"],
+      "required": [
+        "name",
+        "version"
+      ],
       "properties": {
-        "name": { "$ref": "#/$defs/identifier" },
-        "version": { "$ref": "#/$defs/semver" },
-        "description": { "type": "string" }
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "runtime": {
@@ -44,18 +72,37 @@
       "additionalProperties": false,
       "properties": {
         "mode": {
-          "enum": ["one-shot", "persistent", "scheduled"],
-          "description": "Execution mode (design §14.1)."
+          "enum": [
+            "one-shot",
+            "persistent",
+            "scheduled"
+          ],
+          "description": "Execution mode (design \u00a714.1)."
         },
-        "max_concurrent_tasks": { "type": "integer", "minimum": 1 },
-        "task_timeout_seconds": { "type": "integer", "minimum": 1 },
-        "planning": { "$ref": "#/$defs/planning" },
-        "synthesis": { "$ref": "#/$defs/synthesis" },
+        "max_concurrent_tasks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "task_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "planning": {
+          "$ref": "#/$defs/planning"
+        },
+        "synthesis": {
+          "$ref": "#/$defs/synthesis"
+        },
         "checkpointing": {
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "storage": { "enum": ["sqlite", "postgres"] }
+            "storage": {
+              "enum": [
+                "sqlite",
+                "postgres"
+              ]
+            }
           }
         }
       }
@@ -63,12 +110,22 @@
     "agents": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["root"],
+      "required": [
+        "root"
+      ],
       "properties": {
         "root": {
           "allOf": [
-            { "$ref": "#/$defs/agent" },
-            { "properties": { "role": { "const": "root" } } }
+            {
+              "$ref": "#/$defs/agent"
+            },
+            {
+              "properties": {
+                "role": {
+                  "const": "root"
+                }
+              }
+            }
           ]
         }
       }
@@ -76,26 +133,50 @@
     "agent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "role"],
+      "required": [
+        "id",
+        "role"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/identifier" },
-        "role": { "enum": ["root", "leader", "worker"] },
-        "archetype": { "$ref": "#/$defs/identifier", "x-swarmkit-ref": "archetype" },
-        "model": { "$ref": "#/$defs/model" },
-        "prompt": { "$ref": "#/$defs/prompt" },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "role": {
+          "enum": [
+            "root",
+            "leader",
+            "worker"
+          ]
+        },
+        "archetype": {
+          "$ref": "#/$defs/identifier",
+          "x-swarmkit-ref": "archetype"
+        },
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "prompt": {
+          "$ref": "#/$defs/prompt"
+        },
         "skills": {
           "type": "array",
-          "items": { "$ref": "#/$defs/identifier" },
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
           "x-swarmkit-ref": "skill",
-          "description": "Skill IDs (design §6.1). Replaces the archetype's skill list when present."
+          "description": "Skill IDs (design \u00a76.1). Replaces the archetype's skill list when present."
         },
         "skills_additional": {
           "type": "array",
-          "items": { "$ref": "#/$defs/identifier" },
+          "items": {
+            "$ref": "#/$defs/identifier"
+          },
           "x-swarmkit-ref": "skill",
-          "description": "Skills merged onto the archetype defaults (design §6.6)."
+          "description": "Skills merged onto the archetype defaults (design \u00a76.6)."
         },
-        "iam": { "$ref": "#/$defs/iam" },
+        "iam": {
+          "$ref": "#/$defs/iam"
+        },
         "output_schema": {
           "oneOf": [
             {
@@ -114,30 +195,43 @@
             }
           ]
         },
-        "intent_monitoring": { "$ref": "#/$defs/intent_monitoring" },
+        "intent_monitoring": {
+          "$ref": "#/$defs/intent_monitoring"
+        },
         "funnel": {
           "$ref": "#/$defs/identifier",
           "x-swarmkit-ref": "funnel",
-          "description": "Optional reference (by id) to a Funnel artifact — a reusable per-artifact quality gate on this agent's output: validate -> judge -> (review) -> multi-party human approval (design/details/gate-funnel.md). When set, the agent's output must clear the funnel's automated layers and a human approval before the run advances."
+          "description": "Optional reference (by id) to a Funnel artifact \u2014 a reusable per-artifact quality gate on this agent's output: validate -> judge -> (review) -> multi-party human approval (design/details/gate-funnel.md). When set, the agent's output must clear the funnel's automated layers and a human approval before the run advances."
         },
         "children": {
           "type": "array",
-          "items": { "$ref": "#/$defs/child_agent" },
-          "description": "Nested agents. Tree structure, one parent per agent (design §5.2)."
+          "items": {
+            "$ref": "#/$defs/child_agent"
+          },
+          "description": "Nested agents. Tree structure, one parent per agent (design \u00a75.2)."
         },
         "depends_on": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Sibling agent IDs that must complete before this agent runs — DAG execution ordering (design/details/dag-dependency-graph.md). Meaningful for child agents; ignored for the root, which has no siblings. Defined on the base agent (rather than only on child_agent) because a JSON Schema `allOf` branch cannot add a property the base's `additionalProperties: false` would then reject."
+          "items": {
+            "type": "string"
+          },
+          "description": "Sibling agent IDs that must complete before this agent runs \u2014 DAG execution ordering (design/details/dag-dependency-graph.md). Meaningful for child agents; ignored for the root, which has no siblings. Defined on the base agent (rather than only on child_agent) because a JSON Schema `allOf` branch cannot add a property the base's `additionalProperties: false` would then reject."
         }
       }
     },
     "child_agent": {
       "allOf": [
-        { "$ref": "#/$defs/agent" },
+        {
+          "$ref": "#/$defs/agent"
+        },
         {
           "properties": {
-            "role": { "enum": ["leader", "worker"] }
+            "role": {
+              "enum": [
+                "leader",
+                "worker"
+              ]
+            }
           }
         }
       ]
@@ -150,9 +244,18 @@
           "type": "string",
           "description": "Typically anthropic | openai | google | azure | local | custom."
         },
-        "name": { "type": "string" },
-        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
-        "max_tokens": { "type": "integer", "minimum": 1 },
+        "name": {
+          "type": "string"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
         "tool_provider": {
           "type": "string",
           "description": "Model provider for tool-calling turns. Falls back to provider if unset."
@@ -172,8 +275,12 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "system": { "type": "string" },
-        "persona": { "type": "string" }
+        "system": {
+          "type": "string"
+        },
+        "persona": {
+          "type": "string"
+        }
       }
     },
     "iam": {
@@ -182,11 +289,15 @@
       "properties": {
         "base_scope": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "elevated_scopes": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -196,28 +307,53 @@
       "properties": {
         "knowledge_bases": {
           "type": "array",
-          "items": { "type": "object", "additionalProperties": true }
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
         },
         "review_queues": {
           "type": "array",
-          "items": { "type": "object", "additionalProperties": true }
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
         },
         "audit": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "level": { "enum": ["minimal", "standard", "detailed"] },
-            "storage": { "enum": ["sqlite", "postgres"] },
-            "retention_days": { "type": "integer", "minimum": 1 }
+            "level": {
+              "enum": [
+                "minimal",
+                "standard",
+                "detailed"
+              ]
+            },
+            "storage": {
+              "enum": [
+                "sqlite",
+                "postgres"
+              ]
+            },
+            "retention_days": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         },
         "skill_gap_logging": {
           "type": "object",
           "additionalProperties": false,
-          "description": "See design §12.1.",
+          "description": "See design \u00a712.1.",
           "properties": {
-            "enabled": { "type": "boolean" },
-            "surface_threshold": { "type": "integer", "minimum": 1 }
+            "enabled": {
+              "type": "boolean"
+            },
+            "surface_threshold": {
+              "type": "integer",
+              "minimum": 1
+            }
           }
         }
       }
@@ -238,7 +374,11 @@
           "description": "Drift score above which action is taken. Default: 0.75. Range guide: 0.5=aggressive, 0.75=balanced, 0.9=permissive."
         },
         "on_drift": {
-          "enum": ["log", "warn", "nudge"],
+          "enum": [
+            "log",
+            "warn",
+            "nudge"
+          ],
           "description": "Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject refocus message."
         }
       }
@@ -250,8 +390,10 @@
       "properties": {
         "decision_skills": {
           "type": "array",
-          "description": "Decision skill bindings that override or extend workspace-level bindings. Same id = override, new id = extend, required: false = disable inherited.",
-          "items": { "$ref": "#/$defs/decision_skill_binding" }
+          "description": "Decision skill bindings that override or extend workspace-level bindings. Same id = override, new id = extend, enabled: false = disable inherited.",
+          "items": {
+            "$ref": "#/$defs/decision_skill_binding"
+          }
         }
       }
     },
@@ -268,11 +410,13 @@
         "two_phase": {
           "type": "boolean",
           "default": false,
-          "description": "Enforce two-phase planning: Phase 1 (research) → create-scope → Phase 2 (targeted tasks). The compiler auto-injects checkpoint prompts."
+          "description": "Enforce two-phase planning: Phase 1 (research) \u2192 create-scope \u2192 Phase 2 (targeted tasks). The compiler auto-injects checkpoint prompts."
         },
         "synthesis_roles": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Agent roles treated as synthesis/output roles by the planner: they are auto-wired to depend on research tasks so they run last, not in parallel. Defaults to ['self', 'document-writer']. 'self' is always a structural synthesis role even if omitted."
         },
         "synthesizer_role": {
@@ -303,7 +447,10 @@
     "decision_skill_binding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "trigger"],
+      "required": [
+        "id",
+        "trigger"
+      ],
       "description": "Binds a decision skill to a trigger point.",
       "properties": {
         "id": {
@@ -311,7 +458,12 @@
           "description": "Decision skill ID."
         },
         "trigger": {
-          "enum": ["pre_input", "post_output", "checkpoint", "pre_synthesis"],
+          "enum": [
+            "pre_input",
+            "post_output",
+            "checkpoint",
+            "pre_synthesis"
+          ],
           "description": "When the skill fires: pre_input (before agent runs), post_output (after agent output), checkpoint (between task batches), pre_synthesis (before final synthesis)."
         },
         "scope": {
@@ -321,12 +473,17 @@
         "required": {
           "type": "boolean",
           "default": true,
-          "description": "Set false to disable an inherited workspace binding."
+          "description": "Whether a failing verdict from this skill STOPS the run. true (the default) means a `fail` rejects the output; false means the skill still runs and its rejection is advisory \u2014 logged, not fatal. It does NOT disable the binding: use `enabled: false` for that. Until 1.169.0 a falsey `required` silently discarded the binding, so an advisory skill was never evaluated at all."
         },
         "config": {
           "type": "object",
           "additionalProperties": true,
           "description": "Skill-specific configuration."
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this binding is active. Set false in a topology to switch off a binding inherited from the workspace. Separate from `required` because the two are different questions \u2014 whether a skill runs, and whether its verdict can stop the run."
         }
       }
     }

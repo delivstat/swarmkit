@@ -47,6 +47,13 @@ MANIFEST: list[tuple[str, list[str]]] = [
         ["docs/site/guides/building-swarms.md"],
     ),
     (
+        # Configuration whose failure mode is silence: a curated fact that reaches no agent, a
+        # binding accepted and never evaluated. An LLM asked "why is memory not working" needs
+        # this, and neither answer is derivable from the schemas alone.
+        "Memory and decision-skill bindings",
+        ["docs/site/guides/memory-and-decision-skills.md"],
+    ),
+    (
         "Artifact references",
         [
             "docs/site/reference/topology.md",

@@ -71,16 +71,53 @@ class TestMergeDecisionSkills:
         assert result[0].scope == "jira-researcher"
 
     def test_topology_disables_workspace_binding(self) -> None:
+        """`enabled: false` is what switches an inherited binding off.
+
+        This used to be spelled `required: false`, which overloaded one flag with two questions —
+        does the skill run, and can its verdict stop the run. That made "advisory" mean absent:
+        `memory-reader`, bound advisory by the docs, was discarded and never evaluated.
+        """
         workspace = [
             {"id": "grounding-verifier", "trigger": "post_output"},
             {"id": "contradiction-detector", "trigger": "pre_synthesis"},
         ]
         topology = [
-            {"id": "grounding-verifier", "trigger": "post_output", "required": False},
+            {"id": "grounding-verifier", "trigger": "post_output", "enabled": False},
         ]
         result = merge_decision_skills(workspace, topology)
         assert len(result) == 1
         assert result[0].id == "contradiction-detector"
+
+    def test_the_old_disable_spelling_now_runs_the_skill_and_warns(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A real behaviour change, so it is announced rather than applied under an operator.
+
+        `required: false` on a topology override used to disable. It now makes the binding
+        advisory — it runs, and its rejections do not stop the run.
+        """
+        workspace = [{"id": "grounding-verifier", "trigger": "post_output"}]
+        topology = [{"id": "grounding-verifier", "trigger": "post_output", "required": False}]
+
+        with caplog.at_level("WARNING"):
+            result = merge_decision_skills(workspace, topology)
+
+        assert [b.id for b in result] == ["grounding-verifier"]
+        assert result[0].required is False
+        assert "enabled: false" in caplog.text
+
+    def test_an_explicit_enabled_false_does_not_warn(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Someone who has already migrated should not be nagged."""
+        topology = [
+            {"id": "g", "trigger": "post_output", "required": False, "enabled": False},
+        ]
+
+        with caplog.at_level("WARNING"):
+            merge_decision_skills([{"id": "g", "trigger": "post_output"}], topology)
+
+        assert "enabled: false" not in caplog.text
 
     def test_empty_both(self) -> None:
         result = merge_decision_skills([], [])

@@ -13,7 +13,9 @@
    - SwarmKit — `llms.txt`
 2. **The playbook**
    - Building swarms — the complete playbook — `docs/site/guides/building-swarms.md`
-3. **Artifact references**
+3. **Memory and decision-skill bindings**
+   - Memory and decision-skill bindings — `docs/site/guides/memory-and-decision-skills.md`
+4. **Artifact references**
    - Topology — `docs/site/reference/topology.md`
    - Workspace — `docs/site/reference/workspace.md`
    - Archetypes catalogue — `docs/site/reference/archetypes.md`
@@ -25,11 +27,11 @@
    - Trigger — `docs/site/reference/trigger.md`
    - Executor adapter — `docs/site/reference/executor-adapter.md`
    - Approval policy — `docs/site/reference/approval-policy.md`
-4. **Operate references**
+5. **Operate references**
    - CLI commands — `docs/site/reference/cli.md`
    - Serve mode — `docs/site/reference/serve.md`
    - Governed memory — `docs/site/reference/governed-memory.md`
-5. **Design notes (the depth)**
+6. **Design notes (the depth)**
    - Gate funnel (per-artifact quality gate composition) — `docs/site/design-notes/gate-funnel.md`
    - Pipeline controller + stage-graph (saga sequencing) — `docs/site/design-notes/pipeline-controller.md`
    - Orchestration provider seam — `docs/site/design-notes/orchestration-provider-seam.md`
@@ -64,6 +66,7 @@ This file is also published on the docs site at <https://delivstat.github.io/swa
 ## Start here
 
 - [Docs site](https://delivstat.github.io/swarmkit/): the published documentation (this llms.txt lives at `/llms.txt` there).
+- [Memory and decision-skill bindings](https://delivstat.github.io/swarmkit/guides/memory-and-decision-skills/): the two memories, turning governed memory on, and `enabled` vs `required`.
 - [Building swarms — the complete playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/): the ordered, step-by-step build recipe from one agent to a governed multi-app pipeline. **Read this first if you are building a swarm.**
 - [SDLC pipeline example (video walkthrough)](https://delivstat.github.io/swarmkit/sdlc-example/): the worked reference — a complete software-delivery lifecycle as data, toured on-screen.
 - [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, what works today, milestone progress.
@@ -441,7 +444,7 @@ Canary config in workspace.yaml: `server.canary.routes[].versions[].weight` (tra
 
 Output validation: two layers, not interchangeable. `output_schema` on an agent checks SHAPE (free, deterministic, kills shape-level hallucination); a **decision skill** bound at `post_output` checks SEMANTICS (grounding, scope, contradiction) and costs an LLM call. Bind under `governance.decision_skills` in the topology (or workspace, where a topology must explicitly opt out with `required: false` — auditable). `scope` defaults to `*`, which fires after EVERY agent: name the root agent for "the topology's answer". Triggers: `pre_input` (reject before any LLM work), `post_output` (the answer), `checkpoint` (between task batches), `pre_synthesis` (task results BEFORE the coordinator launders them into a fluent summary; auto-loads scope.json).
 
-A decision skill is NOT necessarily an LLM call: `implementation.type` may be `mcp_tool` (deterministic — a validator, linter, test run, schema check), `llm_prompt`, or `composed` (`strategy: parallel-consensus` to require agreement). The binding is identical either way. Prefer `mcp_tool` wherever the question has a computable answer; `reference/skills/` ships `lint-check`, `run-tests`, `security-scan`, `validate-workspace`, `gate-validator`. A decision skill's `verdict` must be `pass` | `fail` | `needs-revision`. FORM is normalised from 1.131.0 (`FAIL`, `Fail`, ` fail `, `needs_revision` all read correctly — before that they were unrecognised and therefore silently PASSED); VOCABULARY is not (`rejected`, `invalid`, `false` stay unrecognised — guessing a synonym would invent a verdict the skill never gave). An absent or unrecognised verdict is read as **pass**, so a mis-mapped validator reports success on every rejection; both cases now log a warning naming the skill ("the check is not running") instead of failing silently. **`fail` does not block**: the runtime builds feedback from the failed results, asks the agent to revise (it still holds its context), and after `max_retries` returns the output ANNOTATED with `GOVERNANCE FLAGS` rather than dropping it. Write `reasoning`/`violations` as instructions to the agent that will act on them — that text is the retry prompt. A hard stop is an approval gate, not a decision skill. `config.max_retries` on the binding (default 4) is honoured from 1.131.0 — before that the whole `config:` block was accepted by the schema and read by nothing. Guide: `docs/site/guides/validating-topology-output.md`.
+A decision skill is NOT necessarily an LLM call: `implementation.type` may be `mcp_tool` (deterministic — a validator, linter, test run, schema check), `llm_prompt`, or `composed` (`strategy: parallel-consensus` to require agreement). The binding is identical either way. Prefer `mcp_tool` wherever the question has a computable answer; `reference/skills/` ships `lint-check`, `run-tests`, `security-scan`, `validate-workspace`, `gate-validator`. A decision skill's `verdict` must be `pass` | `fail` | `needs-revision`. FORM is normalised from 1.131.0 (`FAIL`, `Fail`, ` fail `, `needs_revision` all read correctly — before that they were unrecognised and therefore silently PASSED); VOCABULARY is not (`rejected`, `invalid`, `false` stay unrecognised — guessing a synonym would invent a verdict the skill never gave). An absent or unrecognised verdict is read as **pass**, so a mis-mapped validator reports success on every rejection; both cases now log a warning naming the skill ("the check is not running") instead of failing silently. **`fail` does not block**: the runtime builds feedback from the failed results, asks the agent to revise (it still holds its context), and after `max_retries` returns the output ANNOTATED with `GOVERNANCE FLAGS` rather than dropping it. Write `reasoning`/`violations` as instructions to the agent that will act on them — that text is the retry prompt. A hard stop is an approval gate, not a decision skill. `config.max_retries` on the binding (default 4) is honoured from 1.131.0 — before that the whole `config:` block was accepted by the schema and read by nothing. **`enabled` and `required` are different questions and were one flag until 1.169.0**: `enabled: false` means the binding does not run (this is how a topology switches off a workspace binding); `required: false` means it DOES run and its `fail` is advisory — logged, not fatal. Before 1.169.0 a falsey `required` discarded the binding entirely, so an advisory binding was accepted, validated, displayed and never evaluated — which is why `memory-reader`, bound advisory by the docs, never ran. A topology override still spelling the old `required: false` now makes the binding advisory and warns, rather than silently changing from off to on. Guides: `docs/site/guides/validating-topology-output.md`, `docs/site/guides/memory-and-decision-skills.md`.
 
 ## Workspace memory (shipped)
 
@@ -476,8 +479,13 @@ The failure mode is silent: a path that does not resolve makes the tool report "
 
 - [Getting an image to a model](https://delivstat.github.io/swarmkit/guides/getting-an-image-to-a-model/): the channel, the trap, and a measured before/after.
 
+## Memory
+
+There are TWO memory subsystems and they are not interchangeable. **Governed memory** (`governed_memory/`, shape `{subject, attribute, value, type, confidence}`) is curated: reconcile-on-write, contradictions quarantined rather than applied, resolution a human action, confidence decaying by recency. It is what `swarmkit memory search|get|quarantine|resolve`, the `/memory` page and the `governed-memory` persistence skill address. **Workspace memory** (`memory/_store.py`, shape `{topic, context, key_points, tags}`) is what a run recorded by itself, unreviewed, in `.swarmkit/memory.json` or GBrain. From 1.168.0 the `memory-reader` binding at `pre_input` reads BOTH and injects curated facts first, in a delimited `<curated-memory>` block; before that it read only workspace memory, so a curated fact was visible in the CLI and the UI and reachable by no agent at any trigger by any skill. Enabling governed memory needs three things and each fails silently alone: declare `governed-memory` in workspace `skills:` (this constructs the store), bind `memory-reader` at `pre_input` with `required: false` (advisory — and see the 1.169.0 note above, since earlier versions discard that binding), and grant the `governed-memory` skill only to agents that should WRITE (it carries `kb:write`; granting it to obtain reads is how a curated store stops being curated). Confirm with the `Memory context injected for agent=…` log line, not with `swarmkit memory search` — the latter proves the fact exists, not that an agent can see it. Guide: `docs/site/guides/memory-and-decision-skills.md`.
+
 ## Guides
 
+- [Memory and decision-skill bindings](https://delivstat.github.io/swarmkit/guides/memory-and-decision-skills/): the two memories, turning governed memory on, and `enabled` vs `required`.
 - [Building swarms — the complete playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/): the ordered, step-by-step build recipe (one agent → governed multi-app pipeline), with a runnable artifact at every step and the SDLC worked example.
 - [Sterling OMS workspace](https://github.com/delivstat/swarmkit/blob/main/docs/guides/sterling-oms-workspace.md): building domain-specific agent workspaces with knowledge bases.
 - [Model selection](https://github.com/delivstat/swarmkit/blob/main/docs/guides/model-selection.md): pricing comparison, per-agent config, env vars.
@@ -880,7 +888,198 @@ The resolver rejects a lock that names no contract, an approval rule whose scope
 - **Learn by doing:** the [16-level tutorial ladder](../tutorials/index.md) walks the same arc one runnable step at a time.
 
 ══════════════════════════════════════════════════════════════════════════════
-# Part 3 — Artifact references
+# Part 3 — Memory and decision-skill bindings
+══════════════════════════════════════════════════════════════════════════════
+
+══════════════════════════════════════════════════════════════════════════════
+## Source: docs/site/guides/memory-and-decision-skills.md
+## Published: https://delivstat.github.io/swarmkit/guides/memory-and-decision-skills/
+══════════════════════════════════════════════════════════════════════════════
+
+# Memory and decision-skill bindings
+
+Two subsystems that look like one, and one flag that used to mean two things. Both caused silent
+failures — a curated fact that reached no agent, and a binding that was accepted and never
+evaluated. This is what each actually does and how to turn it on.
+
+## There are two memories
+
+They are separate stores with different shapes, different write paths, and different purposes.
+`swarmkit memory` addresses the first; the `memory-reader` skill historically read only the second.
+
+| | governed memory | workspace memory |
+| --- | --- | --- |
+| shape | `{subject, attribute, value, type, confidence}` | `{topic, context, key_points, tags}` |
+| written by | `governed-memory` skill, `swarmkit memory`, the curation flow | `memory-writer` skill, automatically after a run |
+| reviewed | reconcile-on-write, quarantine on contradiction, human gate | no |
+| decays | yes (confidence by recency) | no |
+| stored in | the configured store (`storage.runtime`) | `.swarmkit/memory.json`, or GBrain |
+| CLI | `swarmkit memory search \| get \| quarantine \| resolve` | — |
+| UI | `/memory` | — |
+
+**Governed memory is for facts you want an agent to treat as established** — a correction a human
+made, a decision that should not be re-litigated. It is curated: a write is reconciled against what
+is already there, a contradiction is quarantined rather than applied, and resolution is a human
+action. That machinery is what makes a fact trustworthy enough to act on.
+
+**Workspace memory is what a run remembered by itself.** Useful, unreviewed, and rewritten freely.
+
+Since 1.168.0 the `memory-reader` binding reads **both**, and curated facts are rendered first —
+they went through review; workspace memory is whatever a previous run happened to record.
+
+## Turning governed memory on
+
+Three things have to be true. Missing any one of them fails silently, which is what made this worth
+a guide.
+
+### 1. Declare the `governed-memory` skill in the workspace
+
+This is what causes the store to be constructed at all.
+
+```yaml
+# workspace.yaml
+skills:
+  - governed-memory
+```
+
+### 2. Bind `memory-reader` at `pre_input`
+
+This is what causes curated facts to be injected into an agent's input.
+
+```yaml
+# workspace.yaml
+governance:
+  decision_skills:
+    - id: memory-reader
+      trigger: pre_input
+      required: false          # advisory — see below, and read that section
+      config:
+        governed_limit: 5      # how many curated facts to inject (default 5)
+```
+
+`required: false` is correct here. A memory read that can fail a run is worse than no memory. Note
+that before **1.169.0** this silently discarded the binding — if you are on an earlier version, the
+reader never runs, and `swarmkit memory search` showing your fact tells you nothing about whether an
+agent can see it.
+
+### 3. Grant `governed-memory` to an agent that should WRITE
+
+Reading needs no grant beyond the binding. Writing does, and the skill carries `kb:write`:
+
+```yaml
+# archetypes/curator.yaml
+defaults:
+  skills:
+    - governed-memory        # write access — grant deliberately
+```
+
+Do **not** grant this to make reading work. Reading comes from the `memory-reader` binding; granting
+the write skill to get reads is how a curated store stops being curated.
+
+### Confirming it works
+
+The reader logs when it injects:
+
+```
+Memory context injected for agent=triage (user=None, query=enumerate the cartons...)
+```
+
+and the agent's input gains a delimited block:
+
+```
+<curated-memory>
+Established facts for this workspace:
+- sn8 · carton-count-source: Carton count comes from the TASK LIST, not Shipment/Containers.
+</curated-memory>
+```
+
+If `swarmkit memory search` finds the fact and that line never appears, the binding is not reaching
+the compiler — check your version and the `enabled`/`required` spelling below.
+
+## Writing a curated fact
+
+```bash
+swarmkit memory search "carton count"          # what is already known
+swarmkit memory get sn8 carton-count-source    # one fact, with its history
+```
+
+A write goes through reconciliation: a new value for an existing `(subject, attribute)` is compared
+against the current one and classified — reinforce, refine, update, or **contradict**. A
+contradiction is quarantined rather than applied, and `swarmkit memory resolve` is a human decision.
+That is the point of the store; an agent cannot overwrite a reviewed fact by asserting louder.
+
+## Decision-skill bindings: `enabled` and `required`
+
+Two questions, two flags. They were one flag until 1.169.0, and collapsing them is what made an
+advisory binding disappear.
+
+```yaml
+governance:
+  decision_skills:
+    - id: memory-reader
+      trigger: pre_input
+      enabled: true          # does it run at all?      (default true)
+      required: false        # can a `fail` stop the run? (default true)
+```
+
+| | `enabled` | `required` |
+| --- | --- | --- |
+| asks | does this binding run? | can its verdict stop the run? |
+| `false` means | the skill is not bound; nothing happens | the skill runs; a `fail` is logged, not fatal |
+| set it in a topology to | switch off something inherited from the workspace | make an inherited gate advisory |
+
+### The triggers
+
+| trigger | fires | a `fail` from a required binding |
+| --- | --- | --- |
+| `pre_input` | before any LLM work | rejects the input; no tokens spent |
+| `post_output` | after the agent answers | sends it back for revision, bounded by retries |
+| `checkpoint` | between task batches | logged only |
+| `pre_synthesis` | before a leader synthesises | logged only |
+
+### Migrating from the old spelling
+
+Before 1.169.0, a topology disabled an inherited binding with `required: false`, and a workspace
+binding with `required: false` was discarded outright. If you have either:
+
+```yaml
+# was: disable an inherited binding
+- id: grounding-verifier
+  trigger: post_output
+  required: false      # now means ADVISORY — it will run
+
+# write instead:
+- id: grounding-verifier
+  trigger: post_output
+  enabled: false       # off
+```
+
+The runtime warns when it sees the old shape on a topology override, naming the binding. It does not
+reinterpret silently, because a gate that starts running when it used to be off is a real change.
+
+## Why both of these failed quietly
+
+Each is the same shape, and it is worth recognising:
+
+- Governed memory had a full curation flow, a CLI, a UI page and a store — and no agent read path.
+  The reader searched a different store and reported finding nothing, which is exactly what finding
+  nothing looks like.
+- An advisory binding was accepted by `swarmkit validate`, appeared in the resolved workspace, and
+  was dropped at compile time with no message.
+
+Neither produced an error. If you are configuring either and it appears to do nothing, the useful
+question is not "is my YAML right" — it is "what does the runtime say it loaded". `swarmkit validate`
+answers the first; the injection log line above answers the second.
+
+## Related
+
+- [Getting an image to a model](getting-an-image-to-a-model.md) — the same "it exists but nothing
+  surfaces it" shape, one subsystem over
+- `design/details/governed-memory.md` in the repo — the store, reconciliation and decay
+- `docs/notes/reported-bugs.md` in the repo — bugs 21 and 22, the two failures above
+
+══════════════════════════════════════════════════════════════════════════════
+# Part 4 — Artifact references
 ══════════════════════════════════════════════════════════════════════════════
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -2140,7 +2339,7 @@ still says pending.
 - [Funnel](funnel.md) — the artifact whose required `approve` layer *is* an approval policy.
 
 ══════════════════════════════════════════════════════════════════════════════
-# Part 4 — Operate references
+# Part 5 — Operate references
 ══════════════════════════════════════════════════════════════════════════════
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -2594,7 +2793,7 @@ The `swarmkit memory` commands and the serve `/memory` endpoints resolve the **s
 - `just demo-knowledge-curator` — the reconcile skill + curator topology.
 
 ══════════════════════════════════════════════════════════════════════════════
-# Part 5 — Design notes (the depth)
+# Part 6 — Design notes (the depth)
 ══════════════════════════════════════════════════════════════════════════════
 
 ══════════════════════════════════════════════════════════════════════════════
