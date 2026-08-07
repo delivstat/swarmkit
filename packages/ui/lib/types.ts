@@ -55,6 +55,17 @@ export interface SystemReport {
 }
 
 export interface JobResponse {
+	/* The run itself, not only what it returned. These were all in the store and dropped by the
+	 * API, so a run's page could say what came back and nothing about the run. */
+	input: string;
+	version: string | null;
+	created_at: string;
+	completed_at: string | null;
+	source: string | null;
+	correlation_id: string | null;
+	usage_input_tokens: number | null;
+	usage_output_tokens: number | null;
+	usage_cost_usd: number | null;
 	job_id: string;
 	status: "pending" | "running" | "completed" | "failed";
 	topology: string;

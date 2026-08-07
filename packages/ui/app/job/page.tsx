@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +11,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { TopologyCanvas } from "@/components/topology-canvas";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { sourceLabel } from "@/lib/dashboard";
 import {
 	executorBadge,
 	formatTokens,
@@ -224,6 +226,76 @@ function RunGraph({ runId, topology }: { runId: string; topology: string }) {
 	);
 }
 
+/** What this run WAS: which topology, when, where from, what it cost.
+ *
+ * The page opened on a status badge and an output blob. Everything here was in the store and
+ * dropped by the API, so a reader could see what came back and nothing about the run that produced
+ * it — not the topology version, not when it started, not what it was asked.
+ */
+function RunSummary({ job }: { job: JobResponse }) {
+	const started = job.created_at ? new Date(job.created_at) : null;
+	const finished = job.completed_at ? new Date(job.completed_at) : null;
+	// Elapsed only when both ends are known. A running job has no duration yet, and showing the
+	// time since it started as if it were final would misreport it.
+	const elapsed =
+		started && finished
+			? `${Math.max(0, Math.round((finished.getTime() - started.getTime()) / 1000))}s`
+			: null;
+
+	return (
+		<Card>
+			<CardTitle>Run</CardTitle>
+			<dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-3">
+				<Field label="Topology">
+					{job.topology ? (
+						<Link
+							href={`/topologies?id=${encodeURIComponent(job.topology)}`}
+							className="text-sky-500 hover:underline"
+						>
+							{job.topology}
+						</Link>
+					) : (
+						"-"
+					)}
+				</Field>
+				<Field label="Version">{job.version ? `v${job.version}` : "-"}</Field>
+				<Field label="Started">
+					{started ? started.toLocaleString() : "-"}
+				</Field>
+				<Field label="Finished">
+					{finished ? finished.toLocaleString() : "-"}
+				</Field>
+				<Field label="Elapsed">{elapsed ?? "-"}</Field>
+				<Field label="Source">
+					{sourceLabel((job.source ?? null) as never)}
+				</Field>
+				{job.correlation_id && (
+					<Field label="Part of">
+						<Link
+							href={`/runs?run=${encodeURIComponent(job.correlation_id)}`}
+							className="font-mono text-xs text-sky-500 hover:underline"
+						>
+							{job.correlation_id}
+						</Link>
+					</Field>
+				)}
+			</dl>
+		</Card>
+	);
+}
+
+function Field({
+	label,
+	children,
+}: { label: string; children: React.ReactNode }) {
+	return (
+		<div>
+			<dt className="text-xs text-muted-foreground">{label}</dt>
+			<dd className="truncate">{children}</dd>
+		</div>
+	);
+}
+
 function JobDetail() {
 	const jobId = useSearchParams().get("id") ?? "";
 
@@ -248,6 +320,22 @@ function JobDetail() {
 						<CardTitle>Status</CardTitle>
 						<StatusBadge status={job.status} />
 					</Card>
+
+					<RunSummary job={job} />
+
+					{job.input && (
+						<Card>
+							<CardTitle>Input</CardTitle>
+							{/* What the run was asked. An output is not reviewable without it — and
+							    on a pipeline stage this is the resolved input, upstream artifacts
+							    and human decisions included. */}
+							<CopyablePre
+								value={job.input}
+								label="the job input"
+								className="max-h-64 text-sm"
+							/>
+						</Card>
+					)}
 
 					{job.output && (
 						<Card>

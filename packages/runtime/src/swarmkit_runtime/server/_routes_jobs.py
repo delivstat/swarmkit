@@ -91,6 +91,18 @@ def _to_response(job: Any) -> JobResponse:
         topology=job.topology,
         output=job.output,
         error=job.error,
+        input=getattr(job, "input", "") or "",
+        version=getattr(job, "version", None),
+        created_at=getattr(job, "created_at", "") or "",
+        completed_at=getattr(job, "completed_at", None),
+        # Read defensively: the in-memory Job predates the durable row's columns, so a live job
+        # simply has no source or cost yet. Absent stays absent rather than becoming a zero, which
+        # would read as "this run was free".
+        source=getattr(job, "source", None),
+        correlation_id=getattr(job, "correlation_id", None),
+        usage_input_tokens=getattr(job, "usage_input_tokens", None),
+        usage_output_tokens=getattr(job, "usage_output_tokens", None),
+        usage_cost_usd=getattr(job, "usage_cost_usd", None),
     )
 
 
