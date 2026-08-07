@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.162.0** (2026-08-07) — a process's gateways all work, and a harness's artifact is not thrown away
 - **v1.161.0** (2026-08-06) — stop correcting a broken executor, and never hand a harness a dead gateway
 - **v1.160.0** (2026-08-06) — a good artifact is not discarded, and a toolless run is not a success
 - **v1.159.0** (2026-08-06) — a reworked stage is its own run, not an overwrite of the one before
