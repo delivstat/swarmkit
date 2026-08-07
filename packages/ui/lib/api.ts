@@ -302,7 +302,10 @@ export const api = {
 			`/api/contracts/${id}`,
 			{ yaml },
 		),
-	reloadWorkspace: () => post<{ valid: boolean }>("/api/reload"),
+	/** Rebuild the runtime from disk. Returns the workspace's validation AFTER the attempt — and
+	 * note a failed reload leaves the PREVIOUS runtime serving, so `valid: false` means the change
+	 * on disk is not live rather than that a broken config is. */
+	reloadWorkspace: () => post<ValidateResponse>("/api/reload"),
 
 	// Governed memory (design/details/governed-memory.md) — the same store `swarmkit memory` uses.
 	searchMemory: (query = "", type?: string, limit = 100) => {

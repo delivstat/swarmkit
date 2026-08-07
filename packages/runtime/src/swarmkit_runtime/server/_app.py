@@ -372,6 +372,24 @@ def create_app(  # noqa: PLR0915
     else:
         logger.warning("mcp package not installed; /mcp endpoint disabled")
 
+    # An unmatched /api path must get an API answer, not the app shell. The portal mounts at "/"
+    # and catches everything the API did not match, which includes a GET to a POST-only route:
+    # Starlette would have answered 405, and the mount turned that into the SPA (or a bare 404).
+    # "Wrong method" then read as "no such endpoint" — `GET /api/reload` was reported as exactly
+    # that. Registered before the portal so it wins, and after every real route so it never
+    # shadows one.
+    @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+    async def _unmatched_api(rest: str, request: Request) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": f"no {request.method} route for /api/{rest}",
+                # The common case, and the one that costs an afternoon: the path exists, the method
+                # does not. Say so rather than leaving a reader to conclude the endpoint is missing.
+                "hint": "some endpoints are POST-only because they mutate — /api/reload among them",
+            },
+        )
+
     # The static web portal is the catch-all — mounted last so every API route + /mcp win first.
     if not mount_webui(app):
         logger.info("web portal not installed; API only (pip install 'swarmkit-runtime[ui]')")
