@@ -287,9 +287,10 @@ class _SharedGatewayServer:
                 return JSONResponse({"error": "unknown gateway"}, status_code=404)
             if not self._authed(reg, request.scope):
                 return JSONResponse({"error": "unauthorized"}, status_code=401)
-            async with reg.transport.connect_sse(
-                request.scope, request.receive, request._send
-            ) as (read, write):
+            async with reg.transport.connect_sse(request.scope, request.receive, request._send) as (
+                read,
+                write,
+            ):
                 await reg.server.run(read, write, reg.server.create_initialization_options())
             return _AlreadyStreamed()
 
