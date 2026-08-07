@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -145,6 +145,46 @@ def _harness_output_schema(agent: ResolvedAgent) -> dict[str, Any] | None:
         return None
     schema = getattr(agent, "output_schema", None)
     return dict(schema) if schema is not None else None
+
+
+def _artifact_from_session(
+    final: str, messages: Sequence[str], schema: dict[str, Any]
+) -> tuple[str, bool]:
+    """The schema-conforming artifact this session produced, and whether it came from a message.
+
+    A harness's captured output is its FINAL message — the adapter maps `output` from Claude Code's
+    ``$.result``. An agent that emits a large artifact and then signs off ("the nine documents are
+    above…") therefore hands the runtime a closing remark, and schema enforcement, seeing no JSON,
+    spends whole sessions correcting an artifact that was already correct and already in hand.
+
+    The messages were collected all along and used for one question-detection check. This looks
+    back through them for the last one carrying an object that CONFORMS — conformance, not merely
+    braces, so a tool-call echo or an intermediate sketch cannot outrank the real artifact.
+
+    Returns the canonical object rather than the message that held it. The declared contract is the
+    object; carrying its surrounding prose forward would put commentary into the stage artifact and
+    the next stage's input. Selecting is not the same as annotating (bug 16) — nothing is added.
+    """
+    from swarmkit_runtime.skills._output_validator import (  # noqa: PLC0415
+        extract_json_object,
+        validate_all_skill_output,
+    )
+
+    def _conforming(text: str) -> dict[str, Any] | None:
+        parsed = extract_json_object(text)
+        if parsed is None or validate_all_skill_output(parsed, schema):
+            return None
+        return parsed
+
+    if _conforming(final) is not None:
+        return final, False
+    for text in reversed(list(messages)):
+        found = _conforming(text)
+        if found is not None:
+            return json.dumps(found), True
+    # Nothing conformed anywhere. The final output stands, and enforcement reports on it as before —
+    # this recovers a lost artifact, it does not invent one.
+    return final, False
 
 
 def _output_contract(schema: dict[str, Any]) -> str:
@@ -652,6 +692,11 @@ async def _execute(  # noqa: PLR0912, PLR0915
             granted: list[str] = []
             answered: dict[str, str] = {}  # §6.3 session memo: never ask the same question twice
             rounds = 0
+            #: Every assistant message of the SESSION. A round's messages were collected, used for
+            #: one yes/no question-detection check, and dropped — so an agent that emitted its
+            #: artifact in a message and then signed off left the runtime holding 68 KB it threw
+            #: away, keeping only the closing remark.
+            session_messages: list[str] = []
             while True:
                 round_denials: list[ExecApprovalRequested] = []
                 round_messages: list[str] = []
@@ -675,6 +720,7 @@ async def _execute(  # noqa: PLR0912, PLR0915
                         emit_progress(ProgressEvent(agent_id, "usage", _usage_summary(event)))
                     elif isinstance(event, ExecMessage):
                         round_messages.append(event.text)
+                        session_messages.append(event.text)
                         # summary is the first line only; the full text is `detail`, which serve
                         # never publishes — a harness message can quote a file, and a file can
                         # quote a credential.
@@ -840,7 +886,16 @@ async def _execute(  # noqa: PLR0912, PLR0915
 
             cost_usd = meter.cost(ref)
             _record_trace_step(agent, kind, ref, start_ts, meter, cost_usd, terminal, diff)
-            return await _finish(governance, agent_id, kind, terminal, cost_usd, diff)
+            return await _finish(
+                governance,
+                agent_id,
+                kind,
+                terminal,
+                cost_usd,
+                diff,
+                _harness_output_schema(agent),
+                session_messages,
+            )
     except SandboxError as exc:
         await _record(governance, "executor.failed", agent_id, {"kind": kind, "reason": str(exc)})
         return _make_failure(agent_id, f"[harness:{kind}] sandbox error: {exc}")
@@ -931,6 +986,8 @@ async def _finish(
     terminal: ExecResult | None,
     cost_usd: float,
     diff: str,
+    schema: dict[str, Any] | None = None,
+    session_messages: Sequence[str] = (),
 ) -> dict[str, Any]:
     if terminal is None:
         # The executor emits a synthetic terminal carrying the exit code + stderr tail, so reaching
@@ -953,6 +1010,18 @@ async def _finish(
 
     if terminal.status == "success":
         summary = terminal.output if isinstance(terminal.output, str) else "completed"
+        if schema is not None:
+            summary, recovered = _artifact_from_session(summary, session_messages, schema)
+            if recovered:
+                # Never silent. A run whose artifact came from an earlier message is a run whose
+                # final message was NOT the artifact, and that is worth seeing — it is the shape
+                # that used to cost a full correction session to discover.
+                await _record(
+                    governance,
+                    "executor.artifact_recovered",
+                    agent_id,
+                    {"kind": kind, "chars": len(summary), "messages": len(session_messages)},
+                )
         # NOTHING is appended to a SUCCESSFUL result, and nothing prefixed. Both ends were display
         # artifacts the recorder added; the agent wrote neither. Baked into the output they become
         # part of the artifact — a design spec whose first bytes are a provenance claim its author
