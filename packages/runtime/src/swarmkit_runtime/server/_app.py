@@ -68,6 +68,25 @@ def _wire_storage(app: FastAPI, workspace_path: Path, runtime: WorkspaceRuntime)
     return saga_store
 
 
+def _sweep_stale_jobs(store: Any, timeout_seconds: int) -> None:
+    """Mark jobs a dead process left `running` as interrupted, and say how many.
+
+    Best-effort: a store that cannot be swept is a reason to lose the cleanup, never a reason to
+    refuse to start serving.
+    """
+    if store is None:
+        return
+    try:
+        swept = store.sweep_stale_jobs(
+            timeout_seconds, "the server restarted while this run was in flight"
+        )
+    except Exception:
+        logger.warning("could not close jobs left running by a previous process")
+        return
+    if swept:
+        logger.info("Marked %d job(s) interrupted: left running by a previous process", swept)
+
+
 def _warn_if_identity_is_not_a_role_member(auth: AuthProvider, runtime: Any) -> None:
     """Warn when the asserted identity matches no member in the role registry.
 
@@ -159,6 +178,16 @@ def create_app(  # noqa: PLR0915
         cfg = _parse_server_config(runtime.workspace)
         app.state.server_config = cfg
         app.state.job_semaphore = asyncio.Semaphore(cfg.max_concurrent)
+        # Close jobs a previous process left in flight. A job started via `POST /run/{topology}`
+        # runs as a task in THIS process; when the process dies the task dies with it, and nothing
+        # reconciled the durable row — it sat at `running` for ever, indistinguishable from work
+        # still in progress. Pipeline runs recover themselves (a stale claim is reclaimable); these
+        # never did.
+        #
+        # Bounded by the job timeout, not by "everything running right now": several instances can
+        # share one Postgres store, and a blanket sweep would close another live instance's jobs.
+        _sweep_stale_jobs(app.state.store, cfg.timeout_seconds)
+
         logger.info(
             "Server config: max_concurrent=%d, timeout=%ds, mcp_enabled=%s",
             cfg.max_concurrent,

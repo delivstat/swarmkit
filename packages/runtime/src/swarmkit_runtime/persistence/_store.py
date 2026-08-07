@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -295,6 +295,34 @@ class Store:
         with self._engine.connect() as conn:
             row = conn.execute(select(jobs).where(jobs.c.id == job_id)).mappings().first()
         return self._row_to_job(row) if row is not None else None
+
+    def sweep_stale_jobs(self, older_than_seconds: float, reason: str) -> int:
+        """Close jobs left `running` longer than any job may legitimately run. Returns the count.
+
+        A job started through `POST /run/{topology}` executes as a task in the serve process. When
+        that process dies the task goes with it, the in-memory store is empty on restart, and
+        NOTHING reconciled the durable row — so it sat at `running` for ever, indistinguishable in
+        the UI from work still in flight. That is the stalled shape: the record does not say the
+        work stopped, so a reader waits for something that will never finish.
+
+        Bounded by the server's job timeout rather than by "everything running at startup", because
+        several instances can share one Postgres store. A blanket sweep would close another live
+        instance's jobs — trading a stuck row for a false one, which is worse. No job may exceed the
+        timeout, so a row older than it is not running whoever owns it.
+
+        Deliberately not `failed`: the run may well have completed its work before the process died.
+        What is known is that it was interrupted, and claiming more than that is how a record starts
+        lying in the other direction.
+        """
+        cutoff = (datetime.now(UTC) - timedelta(seconds=older_than_seconds)).isoformat()
+        now = datetime.now(UTC).isoformat()
+        stmt = (
+            update(jobs)
+            .where(jobs.c.status.in_(("pending", "running")), jobs.c.created_at < cutoff)
+            .values(status="interrupted", completed_at=now, error=reason)
+        )
+        with self._engine.begin() as conn:
+            return int(conn.execute(stmt).rowcount or 0)
 
     def list_jobs(self, limit: int = 100, correlation_id: str | None = None) -> list[JobRow]:
         """Persisted jobs, newest first. ``correlation_id`` narrows to one pipeline run's stages."""
