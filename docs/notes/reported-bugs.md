@@ -14,10 +14,35 @@ Ordered by how much damage the bug does while looking fine.
 | --- | --- | --- | --- |
 | — | A dedicated `/auth/callback` redirect URI (today `origin + pathname` forces wildcard IdP config) | webui | [oidc-client-config](../../design/details/oidc-client-config.md) |
 | — | `jwt` identity (`sub`) matching no role member fails with a 403 that reads as unauthenticated | auth | [oidc-client-config](../../design/details/oidc-client-config.md) |
-| — | **A process serves ~3 MCP gateways, then every later one comes up bound-but-dead.** Reproduced; root cause not found. Detected before a session is spent (1.161.0), so it fails fast — but a run with several harness executions still cannot use its tools after the first few | mcp gateway | bug 18 |
 | 5 | Relative image paths resolve nowhere inside the harness sandbox | sandbox | [harness-parity-gaps](harness-parity-gaps.md) #5 |
 
 ## Fixed
+
+### A process could only serve about three MCP gateways (1.162.0)
+
+Bug 18, closed. A server per EXECUTION was the fault: a process served roughly three and every later
+one came up bound, audited with its full tool list, and serving nothing — so a run with more than a
+few harness executions could not use its tools, and a schema-correction retry is by definition a
+second execution. 1.161.0 detected it and failed fast; this removes it.
+
+One `uvicorn` server per process now, with one registration per execution: its own transport, MCP
+server, tool list, bearer token and `agent_id`. Measured 7/7 executions healthy against 3/7 before,
+and 25/25 under a longer stress.
+
+The isolation the old design got for free — a whole server each — is now asserted and tested: a
+token authorises one registration and is rejected on another's path, ids are unguessable, a
+released path 404s so a URL cannot outlive its grant, and `agent_id` follows the registration so
+the audit record stays true.
+
+Two mistakes worth recording, both caught by measurement rather than review. Reference-counting the
+server down to zero reproduced the original bug exactly — executions are sequential, so the count
+returns to zero between them and the next one starts a fresh server (2/7 healthy). And a
+process-global server is bound to the event loop that started it: a second `asyncio.run` found it
+"started" on a closed loop and served nothing, the same bug through the back door.
+
+The underlying uvicorn fault is still unexplained. This stops depending on it.
+
+Design: [shared-mcp-gateway](../../design/details/shared-mcp-gateway.md).
 
 ### A correction loop spent its budget on a broken executor, then blamed the output (1.161.0)
 
