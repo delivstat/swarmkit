@@ -11,6 +11,7 @@ Protected by a per-run bearer token; bound to an ephemeral port; torn down on ex
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import secrets
 from collections.abc import AsyncIterator, Iterable, Sequence
@@ -61,6 +62,9 @@ class GatewayHandle:
     tools: tuple[GatewayTool, ...]
     #: Live serving counters, owned by the running gateway. Read after the run.
     counters: dict[str, int] = field(default_factory=lambda: {"listed": 0, "called": 0})
+    #: This execution's registration on the shared server. Released on exit, after which the URL
+    #: 404s — a path must not outlive the governance decision that granted its tools.
+    gid: str = ""
 
     @property
     def listed(self) -> int:
@@ -155,6 +159,221 @@ def harness_mcp_config(url: str, token: str) -> dict[str, Any]:
     }
 
 
+class _Registration:
+    """One execution's slice of the shared gateway: its own transport, MCP server, tools, token,
+    agent id and counters. Everything except the HTTP server is per-execution, which is where the
+    isolation lives now that the server itself is shared."""
+
+    def __init__(
+        self,
+        gid: str,
+        token: str,
+        tools: tuple[GatewayTool, ...],
+        agent_id: str,
+        mcp_manager: Any,
+        governance: Any,
+    ) -> None:
+        from mcp.server.sse import SseServerTransport  # noqa: PLC0415
+
+        self.gid = gid
+        self.token = token
+        self.tools = tools
+        self.agent_id = agent_id
+        self.counters: dict[str, int] = {"listed": 0, "called": 0}
+        self._by_name = {t.name: t for t in tools}
+        self.transport = SseServerTransport(f"/gw/{gid}/messages/")
+        self.server: Any = build_low_level_server(
+            _GATEWAY_SERVER_NAME, list_tools=self._list, call_tool=self._call
+        )
+        self._mcp_manager = mcp_manager
+        self._governance = governance
+
+    async def _list(self) -> list[Any]:
+        from mcp.types import Tool  # noqa: PLC0415
+
+        self.counters["listed"] += 1
+        return [
+            Tool(
+                name=t.name,
+                description=t.description,
+                inputSchema=tool_input_schema(t) or {"type": "object"},
+            )
+            for t in self.tools
+        ]
+
+    async def _call(self, name: str, arguments: dict[str, Any]) -> list[Any]:
+        from mcp.types import ImageContent, TextContent  # noqa: PLC0415
+
+        self.counters["called"] += 1
+        tool = self._by_name.get(name)
+        if tool is None:
+            return [TextContent(type="text", text=f"unknown tool: {name}")]
+        try:
+            resp = await governed_mcp_call(
+                self._mcp_manager,
+                self._governance,
+                # The REGISTRATION's agent, never a server-wide one. A shared server that attributed
+                # every call to one agent would leave a governance record that is quietly false —
+                # the failure this design flagged as the one worth guarding hardest.
+                agent_id=self.agent_id,
+                server_id=tool.server_id,
+                tool_name=tool.tool_name,
+                arguments=arguments,
+            )
+        except MCPCallDenied as exc:
+            return [TextContent(type="text", text=f"DENIED by governance: {exc}")]
+        return _to_content(resp, TextContent, ImageContent)
+
+
+class _SharedGatewayServer:
+    """One uvicorn server per (process, bind host), shared by every execution.
+
+    A server per EXECUTION is what breaks: a process serves roughly three and every later one comes
+    up bound, audited with its full tool list, and serving nothing — measured, with churn, teardown,
+    task leaks, port reuse and a teardown race each ruled out, and a delay making it worse rather
+    than better (`design/details/shared-mcp-gateway.md`). The first instance in a process works, so
+    there is exactly one.
+
+    Reference-counted: starts on the first registration, stops on the last, so a process that runs
+    no harness node never opens a socket.
+    """
+
+    def __init__(self, host: str) -> None:
+        self._host = host
+        self._regs: dict[str, _Registration] = {}
+        self._server: Any = None
+        self._task: Any = None
+        self._port = 0
+        self._loop: Any = None
+        self._lock = asyncio.Lock()
+
+    def _lookup(self, path: str) -> _Registration | None:
+        parts = [p for p in path.split("/") if p]
+        return self._regs.get(parts[1]) if len(parts) > 1 and parts[0] == "gw" else None
+
+    @staticmethod
+    def _bearer(headers: Any) -> str:
+        found = {k.decode().lower(): v.decode() for k, v in headers}.get("authorization", "")
+        return str(found)
+
+    def _authed(self, reg: _Registration | None, scope: Any) -> bool:
+        """A token authorises ONE registration, not the gateway. Checked against the registration
+        the path names, so a token minted for A is rejected on B's path."""
+        return reg is not None and self._bearer(scope.get("headers", [])) == f"Bearer {reg.token}"
+
+    def _build_app(self) -> Any:
+        from starlette.applications import Starlette  # noqa: PLC0415
+        from starlette.responses import JSONResponse, Response  # noqa: PLC0415
+        from starlette.routing import Mount, Route  # noqa: PLC0415
+
+        class _AlreadyStreamed(Response):
+            """A Response that writes nothing new, because the SSE handler already streamed.
+
+            Starlette's request-response route requires a Response back, and returning a real one
+            sends a SECOND `http.response.start` on a connection `connect_sse` already began — the
+            ASGI protocol error seen in the wild. Sending NOTHING is not the fix either: the
+            response never completes and teardown blocks on it. A terminal empty body ends the
+            exchange cleanly.
+            """
+
+            async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+                with contextlib.suppress(RuntimeError):
+                    await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+        async def sse_endpoint(request: Any) -> Any:
+            reg = self._lookup(request.scope["path"])
+            if reg is None:
+                # A released registration 404s: a URL must not outlive the grant that created it.
+                return JSONResponse({"error": "unknown gateway"}, status_code=404)
+            if not self._authed(reg, request.scope):
+                return JSONResponse({"error": "unauthorized"}, status_code=401)
+            async with reg.transport.connect_sse(
+                request.scope, request.receive, request._send
+            ) as (read, write):
+                await reg.server.run(read, write, reg.server.create_initialization_options())
+            return _AlreadyStreamed()
+
+        async def post_endpoint(scope: Any, receive: Any, send: Any) -> None:
+            reg = self._lookup(scope["path"])
+            if reg is None:
+                await JSONResponse({"error": "unknown gateway"}, status_code=404)(
+                    scope, receive, send
+                )
+                return
+            if not self._authed(reg, scope):
+                await JSONResponse({"error": "unauthorized"}, status_code=401)(scope, receive, send)
+                return
+            await reg.transport.handle_post_message(scope, receive, send)
+
+        return Starlette(
+            routes=[Route("/gw/{gid}/sse", endpoint=sse_endpoint), Mount("/gw", app=post_endpoint)]
+        )
+
+    async def _ensure_started(self) -> None:
+        # A running server belongs to the event loop that started it. The registry is process-wide,
+        # so a SECOND loop in the same process — a later `asyncio.run`, another test — would find a
+        # server marked started whose serve task is on a loop that has closed, hand out its URL, and
+        # serve nothing: the original bug, reintroduced through the back door. Bound to its loop,
+        # and replaced when the loop changes.
+        loop = asyncio.get_running_loop()
+        if self._server is not None and self._loop is loop and not loop.is_closed():
+            return
+        if self._server is not None:
+            self._server, self._task, self._port = None, None, 0
+            self._regs.clear()
+        import uvicorn  # noqa: PLC0415
+
+        config = uvicorn.Config(
+            self._build_app(), host=self._host, port=0, log_level="warning", lifespan="off"
+        )
+        server = uvicorn.Server(config)
+        task = asyncio.create_task(server.serve())
+        while not server.started:
+            await asyncio.sleep(0.02)
+        self._server, self._task, self._loop = server, task, loop
+        self._port = server.servers[0].sockets[0].getsockname()[1]
+
+    async def register(
+        self,
+        tools: Sequence[GatewayTool],
+        mcp_manager: Any,
+        governance: Any,
+        *,
+        agent_id: str,
+        advertise_host: str | None,
+    ) -> GatewayHandle:
+        async with self._lock:
+            await self._ensure_started()
+            # Unguessable, so a path cannot be walked from a neighbouring execution.
+            gid = secrets.token_urlsafe(16)
+            reg = _Registration(
+                gid, secrets.token_urlsafe(24), tuple(tools), agent_id, mcp_manager, governance
+            )
+            self._regs[gid] = reg
+            url = f"http://{advertise_host or self._host}:{self._port}/gw/{gid}/sse"
+            return GatewayHandle(
+                url=url, token=reg.token, tools=reg.tools, counters=reg.counters, gid=gid
+            )
+
+    async def release(self, gid: str) -> None:
+        """Drop the registration. The SERVER stays up for the life of the process.
+
+        Stopping it when idle was the first version of this, and it reproduced the very bug the
+        design exists to fix: executions are usually SEQUENTIAL, so the count returns to zero
+        between them, the server stops, and the next execution starts a fresh one — a server per
+        execution again, measured at 2/7 healthy. Lazy start already gives the property that
+        mattered (a process with no harness node never opens a socket); eagerly stopping gives
+        nothing and costs everything.
+        """
+        async with self._lock:
+            self._regs.pop(gid, None)
+
+
+#: One shared server per bind host. Keyed, because a container sandbox needs `0.0.0.0` while a
+#: local one uses loopback, and a server already bound to loopback cannot serve the container.
+_SERVERS: dict[str, _SharedGatewayServer] = {}
+
+
 @asynccontextmanager
 async def mcp_gateway(
     tools: Sequence[GatewayTool],
@@ -166,119 +385,21 @@ async def mcp_gateway(
     advertise_host: str | None = None,
     token: str | None = None,
 ) -> AsyncIterator[GatewayHandle]:
-    """Serve an SSE MCP server exposing ``tools`` (governed) on an ephemeral port; yield the handle;
-    shut down on exit. No tools ⇒ nothing is served (the caller shouldn't wire a config).
+    """Register this execution on the process's shared gateway; release it on exit.
 
-    ``host`` is the bind address; ``advertise_host`` (default = ``host``) is the host put in the URL
-    the harness connects to — for a container sandbox, bind ``0.0.0.0`` but advertise
-    ``host.docker.internal`` so the container reaches the host."""
-    import uvicorn  # noqa: PLC0415
-    from mcp.server.sse import SseServerTransport  # noqa: PLC0415
-    from mcp.types import ImageContent, TextContent, Tool  # noqa: PLC0415
-    from starlette.applications import Starlette  # noqa: PLC0415
-    from starlette.requests import Request  # noqa: PLC0415
-    from starlette.responses import JSONResponse, Response  # noqa: PLC0415
-    from starlette.routing import Mount, Route  # noqa: PLC0415
-
-    bearer = token or secrets.token_urlsafe(24)
-    by_name = {t.name: t for t in tools}
-    # Mutable, because the handle is yielded before any session exists — the caller reads these
-    # after the run to tell "the agent needed no tools" from "the agent could not reach any".
-    counters = {"listed": 0, "called": 0}
-
-    async def _list() -> list[Any]:
-        counters["listed"] += 1
-        return [
-            Tool(
-                name=t.name,
-                description=t.description,
-                # inputSchema= is the WIRE name and correct on both SDKs; the read is what
-                # differs, so it goes through the compat accessor.
-                inputSchema=tool_input_schema(t) or {"type": "object"},
-            )
-            for t in tools
-        ]
-
-    async def _call(name: str, arguments: dict[str, Any]) -> list[Any]:
-        counters["called"] += 1
-        tool = by_name.get(name)
-        if tool is None:
-            return [TextContent(type="text", text=f"unknown tool: {name}")]
-        try:
-            resp = await governed_mcp_call(
-                mcp_manager,
-                governance,
-                agent_id=agent_id,
-                server_id=tool.server_id,
-                tool_name=tool.tool_name,
-                arguments=arguments,
-            )
-        except MCPCallDenied as exc:
-            return [TextContent(type="text", text=f"DENIED by governance: {exc}")]
-        return _to_content(resp, TextContent, ImageContent)
-
-    # 1.x registers these with decorators, 2.0 with constructor kwargs and a different handler
-    # shape. The compat builder is the only place that knows which.
-    server: Any = build_low_level_server(_GATEWAY_SERVER_NAME, list_tools=_list, call_tool=_call)
-
-    sse = SseServerTransport("/messages/")
-
-    def _authed(scope: Any) -> bool:
-        headers = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
-        return bool(headers.get("authorization", "") == f"Bearer {bearer}")
-
-    class _AlreadyStreamed(Response):
-        """A Response that writes nothing, because the SSE handler already did.
-
-        Starlette's request-response route requires a Response back, and returning a real one here
-        sends a SECOND `http.response.start` on a connection `connect_sse` has already started —
-        the ASGI protocol error seen in the wild. Uvicorn raises on it, the connection tears down
-        badly, and the server's own shutdown then waits on it: which is why the FIRST gateway in a
-        process is healthy and later ones come up bound-but-dead.
-        """
-
-        async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-            # Close the response the SSE handler opened, and nothing else. Sending a second
-            # `http.response.start` is the protocol error; sending NOTHING leaves the response
-            # unfinished and the connection open, so teardown then blocks on it. A terminal
-            # empty body is the one message that ends the exchange cleanly.
-            with contextlib.suppress(RuntimeError):
-                await send({"type": "http.response.body", "body": b"", "more_body": False})
-
-    async def _handle_sse(request: Request) -> Any:
-        if not _authed(request.scope):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-        async with sse.connect_sse(request.scope, request.receive, request._send) as (r, w):
-            await server.run(r, w, server.create_initialization_options())
-        return _AlreadyStreamed()
-
-    async def _handle_post(scope: Any, receive: Any, send: Any) -> None:
-        if not _authed(scope):
-            await JSONResponse({"error": "unauthorized"}, status_code=401)(scope, receive, send)
-            return
-        await sse.handle_post_message(scope, receive, send)
-
-    app = Starlette(
-        routes=[Route("/sse", endpoint=_handle_sse), Mount("/messages/", app=_handle_post)]
+    Same contract as before — the caller gets a URL and a bearer token exposing exactly the tools it
+    was granted, governed and audited. What changed is underneath: the HTTP server is shared and
+    only the registration is per-execution, because a server per execution is what stops working
+    after the first few in a process (`design/details/shared-mcp-gateway.md`).
+    """
+    server = _SERVERS.setdefault(host, _SharedGatewayServer(host))
+    handle = await server.register(
+        tools, mcp_manager, governance, agent_id=agent_id, advertise_host=advertise_host
     )
-    config = uvicorn.Config(app, host=host, port=0, log_level="warning", lifespan="off")
-    userver = uvicorn.Server(config)
-    import asyncio  # noqa: PLC0415
-
-    serve_task = asyncio.create_task(userver.serve())
     try:
-        # Wait for uvicorn to bind + report its ephemeral port.
-        while not userver.started:
-            await asyncio.sleep(0.02)
-        port = userver.servers[0].sockets[0].getsockname()[1]
-        url = f"http://{advertise_host or host}:{port}/sse"
-        # The counters are shared with the running handlers, so the caller can read them after the
-        # run and tell "the agent needed no tools" from "no session ever reached the gateway".
-        yield GatewayHandle(url=url, token=bearer, tools=tuple(tools), counters=counters)
+        yield handle
     finally:
-        userver.should_exit = True
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            await asyncio.wait_for(serve_task, timeout=5)
+        await server.release(handle.gid)
 
 
 def _to_content(resp: Any, text_content: type, image_content: type | None = None) -> list[Any]:
