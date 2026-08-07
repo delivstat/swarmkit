@@ -127,7 +127,14 @@ def test_reload_is_a_post_and_a_browser_get_is_not_it(tmp_path: Path) -> None:
 
     with TestClient(create_app(ws)) as client:
         assert client.post("/api/reload").status_code == 200
-        assert client.get("/api/reload").status_code == 404
+        wrong_method = client.get("/api/reload")
+
+    # Not a specific code: with the portal installed the SPA mount catches it, without it Starlette
+    # answers 405. Asserting either made this test pass locally and fail in CI. What must hold is
+    # that a GET does not reload, and that the answer EXPLAINS itself rather than reading as "no
+    # such endpoint" — which is how the 404 was reported.
+    assert wrong_method.status_code >= 400
+    assert "POST-only" in wrong_method.text
 
 
 def test_reload_returns_the_validation_so_the_caller_can_report_it(tmp_path: Path) -> None:
