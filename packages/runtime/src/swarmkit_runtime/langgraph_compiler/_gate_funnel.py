@@ -20,13 +20,17 @@ shape*, not on prompts.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import logging
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from itertools import pairwise
+from pathlib import Path
 from typing import Any, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+
+logger = logging.getLogger("swarmkit.funnels")
 
 _DEFAULT_MAX_RETRIES = 2
 _DEFAULT_THRESHOLD = 0.8
@@ -203,6 +207,9 @@ def compile_funnel_gate(
     async def approve_node(state: FunnelGateState) -> dict[str, Any]:
         provenance = {
             "artifact": state.get("artifact"),
+            # `validate_ok` was the one layer result the bundle omitted, so a reader of the
+            # provenance could not tell a passed schema check from an absent one.
+            "validate_ok": state.get("validate_ok", True),
             "judge": state.get("judge"),
             "review": state.get("review"),
             "retries": state.get("retries", 0),
@@ -309,6 +316,134 @@ def build_multiparty_approver(
     return approver
 
 
+def _resolve_validate_schema(
+    validate_cfg: Mapping[str, Any],
+    declared_in: Path | None,
+    workspace_root: Path | None,
+) -> dict[str, Any] | None:
+    """Resolve ``validate.schema`` — inline object or a path — to a parsed JSON Schema.
+
+    Paths resolve against the FUNNEL that declared them, matching how ``output_schema`` resolves
+    against the artifact that declared it. A schema that cannot be read is a configuration error
+    the operator has to see, not a validate layer that quietly disappears: it warns and returns
+    None, so the rest of the funnel still runs.
+    """
+    raw = validate_cfg.get("schema")
+    if raw is None or not isinstance(raw, (dict, str)):
+        return None
+    from swarmkit_runtime.resolver._output_schema_ref import (  # noqa: PLC0415
+        OutputSchemaError,
+        resolve_output_schema,
+    )
+
+    try:
+        resolved = resolve_output_schema(
+            raw, declared_in=declared_in or Path.cwd(), workspace_root=workspace_root
+        )
+    except (OutputSchemaError, OSError) as exc:
+        logger.warning(
+            "funnel `validate.schema` %r could not be read (%s) — the schema check will not run. "
+            "The rest of the funnel is unaffected.",
+            raw,
+            exc,
+        )
+        return None
+    return dict(resolved) if resolved else None
+
+
+def _schema_verdict(artifact: str, schema: dict[str, Any]) -> str:
+    """The validate layer's critique for a schema failure, or ``""`` when the artifact conforms.
+
+    Parsing is tolerant (``extract_json_object``) because a model that fences its JSON has produced
+    a conforming artifact badly presented, not a non-conforming one — and this critique goes back to
+    the drafter as a retry instruction, where "not valid JSON" would send it to fix the wrong thing.
+    """
+    from swarmkit_runtime.skills._output_validator import (  # noqa: PLC0415
+        extract_json_object,
+        validate_all_skill_output,
+    )
+
+    parsed = extract_json_object(artifact)
+    if parsed is None:
+        return (
+            "the artifact is not a JSON object, so it cannot be checked against `validate.schema`"
+        )
+    errors = validate_all_skill_output(parsed, schema)
+    if not errors:
+        return ""
+    joined = "; ".join(str(e) for e in errors)
+    return f"the artifact does not conform to `validate.schema`: {joined}"
+
+
+def build_advisory_approver(
+    *,
+    governance: Any,
+    topology_id: str,
+    agent_id: str,
+    gate_id: str,
+    declares_approve: bool,
+) -> Approver:
+    """The ``approve`` layer on a path that has no durable parking.
+
+    ``approve`` is the sole predecessor of END — the structural invariant that stops an advisory
+    layer from ever deciding — so a gate that runs at all must have an approver. On the in-node
+    path there is nothing a human can be parked in: `resolve_multiparty` would poll the review
+    queue inside the agent's coroutine for up to seven days, holding the run and the model session,
+    and losing the wait entirely on a serve restart. A `swarmkit run` from a terminal could not
+    approve at all.
+
+    So here the layer records and passes. Human approval on the pipeline path is the stage-level
+    ``gate:``, which parks the saga durably and survives restarts — the mechanism that already
+    exists for exactly this, rather than a second one that blocks a coroutine for a week.
+
+    It is not a silent pass. Every advisory failure that reached this layer is audited, and a
+    funnel that declares ``approve:`` is warned about at compile time (`_compiler.py`), because a
+    quality gate downgraded to nothing without saying so is the defect this whole chain is made of.
+    """
+    from swarmkit_runtime.review._multiparty import _audit  # noqa: PLC0415
+
+    async def approver(state: FunnelGateState) -> ApproveOutcome:
+        provenance = dict(state.get("provenance") or {})
+        judge = provenance.get("judge") or {}
+        review = provenance.get("review") or {}
+        failed = [
+            name
+            for name, ok in (
+                ("validate", provenance.get("validate_ok", True)),
+                ("judge", judge.get("passed", True)),
+                ("review", not review.get("route_back")),
+            )
+            if not ok
+        ]
+        await _audit(
+            governance,
+            "funnel.advisory_completed",
+            agent_id,
+            {
+                "gate_id": gate_id,
+                "topology_id": topology_id,
+                "failed_layers": failed,
+                "retries": provenance.get("retries", 0),
+                "escalated": provenance.get("escalated", False),
+                # Stated on every record, so a reader of the audit log never has to infer why a
+                # declared approve layer produced no approval event.
+                "approve": "deferred to the stage gate" if declares_approve else "not declared",
+            },
+        )
+        if failed:
+            logger.warning(
+                "funnel gate on %r/%r: %s failed after %d retries — the artifact proceeds with the "
+                "failure recorded. Human approval is the stage-level `gate:`, not this layer.",
+                topology_id,
+                agent_id,
+                " and ".join(failed),
+                provenance.get("retries", 0),
+            )
+        return ApproveOutcome(approved=True, detail="advisory layers only; see the stage gate")
+
+    return approver
+
+
 def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str) -> Judge | None:
     """Bind the funnel's ``judge`` layer to the governance decision-skill seam.
 
@@ -335,7 +470,12 @@ def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str
     return judge
 
 
-def build_deterministic_validator(spec: dict[str, Any]) -> Validator | None:
+def build_deterministic_validator(
+    spec: dict[str, Any],
+    *,
+    declared_in: Path | None = None,
+    workspace_root: Path | None = None,
+) -> Validator | None:
     """Bind the funnel's ``validate`` layer to deterministic checks (design/details/
     funnel-deterministic-validate.md).
 
@@ -348,13 +488,23 @@ def build_deterministic_validator(spec: dict[str, Any]) -> Validator | None:
     * ``validate.cited_change`` — reads ``ctx.artifact`` as a change-rationale and resolves its
       citations against ``ctx.diff``; an uncited change fails.
 
-    Returns ``None`` when no deterministic check is configured (a schema-only validate stays handled
-    by output governance and no validate node is wired — unchanged behaviour).
+    * ``validate.schema`` — the artifact must conform to the named JSON Schema.
+
+    This docstring used to say a schema-only validate "stays handled by output governance", and it
+    was not: ``output_schema`` is merged from the AGENT and its ARCHETYPE only
+    (``_merge_output_schema`` in the resolver), never from the funnel, and nothing bridged the two.
+    So a funnel declaring ``validate: {schema: ...}`` wired no validate node and no other check
+    either — three consecutive specs shipped with ``code_changes`` entries whose ``kind`` and
+    ``action`` are not in their own schema's enums, read and approved by a human against a contract
+    nothing had enforced.
+
+    Returns ``None`` when no deterministic check is configured.
     """
     validate_cfg = spec.get("validate") or {}
     budget = validate_cfg.get("slice_budget")
     cited = bool(validate_cfg.get("cited_change"))
-    if not budget and not cited:
+    schema = _resolve_validate_schema(validate_cfg, declared_in, workspace_root)
+    if not budget and not cited and schema is None:
         return None
 
     from swarmkit_runtime.cited_change import check_rationale  # noqa: PLC0415
@@ -365,6 +515,10 @@ def build_deterministic_validator(spec: dict[str, Any]) -> Validator | None:
 
     async def validator(ctx: ValidateContext) -> ValidateOutcome:
         diff = ctx.diff if ctx.diff is not None else ctx.artifact
+        if schema is not None:
+            detail = _schema_verdict(ctx.artifact, schema)
+            if detail:
+                return ValidateOutcome(ok=False, artifact=ctx.artifact, detail=detail)
         if budget:
             result = check_diff_text(diff, max_diff_lines=max_diff_lines, max_files=max_files)
             if not result.within_budget:
@@ -383,14 +537,22 @@ async def run_agent_funnel_gate(
     *,
     produce: Callable[[str | None], Awaitable[str]],
     governance: Any,
-    review_queue: Any,
-    role_registry: Any,
+    # Only the multi-party approver reads these. A caller supplying its own ``approver`` needs
+    # neither — which is the whole reason the compiler's guard on `review_queue` was wrong: it
+    # gated validate/judge/review, none of which touch a queue, behind the one layer that does.
+    review_queue: Any = None,
+    role_registry: Any = None,
     topology_id: str,
     agent_id: str,
     gate_id: str | None = None,
     author: str | None = None,
     initial_artifact: str = "",
     diff_source: DiffSource | None = None,
+    approver: Approver | None = None,
+    #: where the funnel was declared, so `validate.schema` resolves against it (as `output_schema`
+    #: resolves against the artifact that declared it) rather than against the process cwd.
+    funnel_source_path: Path | None = None,
+    workspace_root: Path | None = None,
     **resolve_kwargs: Any,
 ) -> FunnelGateState:
     """Run a funnel gate around an agent's production and return the terminal state.
@@ -407,7 +569,7 @@ async def run_agent_funnel_gate(
         return await produce(state.get("critique"))
 
     judge = build_decision_judge(funnel_spec, governance=governance, agent_id=agent_id)
-    approver = build_multiparty_approver(
+    gate_approver = approver or build_multiparty_approver(
         funnel_spec,
         governance=governance,
         review_queue=review_queue,
@@ -418,11 +580,13 @@ async def run_agent_funnel_gate(
         author=author,
         **resolve_kwargs,
     )
-    validator = build_deterministic_validator(funnel_spec)
+    validator = build_deterministic_validator(
+        funnel_spec, declared_in=funnel_source_path, workspace_root=workspace_root
+    )
     compiled = compile_funnel_gate(
         funnel_spec,
         drafter=drafter,
-        approver=approver,
+        approver=gate_approver,
         judge=judge,
         validator=validator,
         diff_source=diff_source,
