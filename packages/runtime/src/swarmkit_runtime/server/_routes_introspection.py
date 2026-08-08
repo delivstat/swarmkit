@@ -164,6 +164,16 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
             "archetypes": sorted(ws.archetypes.keys()),
         }
 
+    @app.get("/workspace/reachability")
+    async def workspace_reachability(request: Request) -> dict[str, Any]:
+        """Declared configuration that no code path reaches.
+
+        The same pure function `swarmkit validate` and serve's startup log call
+        (design/details/declared-but-unreachable.md) — one question, one implementation, three
+        surfaces.
+        """
+        return dict(_get_runtime(request).reachability().to_dict())
+
     @app.get("/capabilities")
     async def capabilities(request: Request) -> dict[str, Any]:
         """What this instance can do — the control plane reads this at enroll/refresh."""

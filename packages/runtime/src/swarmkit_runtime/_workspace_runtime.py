@@ -12,6 +12,7 @@ architectural decision in ``memory/feedback_cli_architecture.md``.
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,8 @@ if TYPE_CHECKING:
     from swarmkit_runtime._observability import Observability
 from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 from swarmkit_runtime.skills import impl_get
+
+logger = logging.getLogger("swarmkit.workspace")
 
 
 def _get_field(obj: Any, name: str) -> str:
@@ -433,6 +436,93 @@ class WorkspaceRuntime:
             synthesis_config=synthesis,
             memory_store=self._memory_store,
             governed_memory_store=self._governed_memory_store,
+        )
+
+    def reachability(self) -> Any:
+        """Which declared configuration no code path reaches.
+
+        `design/details/declared-but-unreachable.md`.
+
+        Compiles every topology with a wiring ledger attached and diffs what was built against what
+        the resolved workspace declares. Compilation is the check: asking the real compiler is the
+        only way to get an answer that cannot be stale, and a hand-maintained registry of "which
+        code consumes which field" would have been wrong for every bug in this family.
+
+        Read-only — compiling builds nodes, it does not run them. Business logic lives here rather
+        than in the CLI so `swarmkit validate`, serve's startup log and
+        `GET /workspace/reachability` all ask one question of one implementation.
+        """
+        from swarmkit_runtime.reachability import (  # noqa: PLC0415
+            Declaration,
+            ReachabilityReport,
+            WiringLedger,
+            compute_reachability,
+            declarations_for_bindings,
+            declarations_for_topology,
+        )
+
+        ledger = WiringLedger()
+        declarations: list[Declaration] = []
+        for name in sorted(self._workspace.topologies):
+            bindings = self._resolve_decision_bindings(name)
+            declarations.extend(declarations_for_bindings(bindings, name))
+            declarations.extend(declarations_for_topology(self._workspace, name))
+            try:
+                self._compile_with_ledger(name, ledger)
+            except Exception:
+                # A topology that cannot compile is a different problem, reported elsewhere by
+                # `validate`. Swallowing it here keeps one broken topology from hiding the
+                # reachability answer for every other one.
+                logger.warning("topology %r could not be compiled for the reachability check", name)
+        report: ReachabilityReport = compute_reachability(declarations, ledger)
+        return report
+
+    async def inert_bindings(self, *, limit: int = 1000) -> Any:
+        """Bindings that were wired and have never once fired (class B).
+
+        The half a static check cannot do. Bug 23 — `Trigger` compared unequal to its own string —
+        left every binding correctly wired and never selected; nothing at compile time was wrong.
+        This asks the audit log instead, against a denominator, because "zero evaluations" is
+        indistinguishable from "the trigger point was never reached" without one.
+        """
+        from swarmkit_runtime.reachability import compute_inert_bindings  # noqa: PLC0415
+
+        bindings_by_topology = {
+            name: self._resolve_decision_bindings(name)
+            for name in sorted(self._workspace.topologies)
+        }
+
+        runs: dict[str, int] = {}
+        for job in self._storage().store().list_jobs(limit=limit):
+            if getattr(job, "status", "") == "completed":
+                runs[str(job.topology)] = runs.get(str(job.topology), 0) + 1
+
+        evaluations: dict[tuple[str, str], int] = {}
+        async for event in self._audit_provider.query(event_type="decision.evaluated", limit=limit):
+            skill_id = str(getattr(event, "skill_id", "") or "")
+            trigger = str((getattr(event, "payload", {}) or {}).get("trigger", "") or "")
+            if skill_id:
+                key = (skill_id, trigger)
+                evaluations[key] = evaluations.get(key, 0) + 1
+
+        return compute_inert_bindings(bindings_by_topology, evaluations, runs)
+
+    def _compile_with_ledger(self, topology_name: str, ledger: Any) -> None:
+        """`compile`, with the ledger attached. Kept beside `compile` so the two cannot drift."""
+        topology = self._workspace.topologies[topology_name]
+        compile_topology(
+            topology,
+            provider_registry=self._provider_registry,
+            governance=self._governance,
+            mcp_manager=self._mcp_manager,
+            checkpointer=None,
+            workspace_root=self._workspace_root,
+            decision_skill_bindings=self._resolve_decision_bindings(topology_name),
+            planning_config=self._resolve_planning_config(topology_name),
+            synthesis_config=self._resolve_synthesis_config(topology_name),
+            memory_store=self._memory_store,
+            governed_memory_store=self._governed_memory_store,
+            ledger=ledger,
         )
 
     def _resolve_planning_config(self, topology_name: str) -> Any:

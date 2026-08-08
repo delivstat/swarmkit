@@ -323,10 +323,19 @@ def _resolve_validate_schema(
 ) -> dict[str, Any] | None:
     """Resolve ``validate.schema`` — inline object or a path — to a parsed JSON Schema.
 
-    Paths resolve against the FUNNEL that declared them, matching how ``output_schema`` resolves
-    against the artifact that declared it. A schema that cannot be read is a configuration error
-    the operator has to see, not a validate layer that quietly disappears: it warns and returns
-    None, so the rest of the funnel still runs.
+    Paths resolve against the FUNNEL that declared them first, matching how ``output_schema``
+    resolves against the artifact that declared it — then, failing that, against the WORKSPACE ROOT.
+
+    The fallback is not cosmetic. ``schemas/`` is a workspace-level directory beside ``funnels/``,
+    so ``schema: schemas/spec-review.schema.json`` in a funnel is the spelling every author reaches
+    for, and it is what the reference workspace and the reporter's own funnel both use. Without the
+    fallback the layer resolves nothing and the funnel is fixed but still inert — the same defect
+    one level down. The declaring-artifact rule stays first, so nothing that resolves today changes
+    meaning; no real layout has a ``funnels/schemas/`` directory for the two to disagree about.
+
+    A schema that resolves to neither is a configuration error the operator has to see, not a
+    validate layer that quietly disappears: it warns and returns None, so the rest of the funnel
+    still runs.
     """
     raw = validate_cfg.get("schema")
     if raw is None or not isinstance(raw, (dict, str)):
@@ -336,19 +345,25 @@ def _resolve_validate_schema(
         resolve_output_schema,
     )
 
-    try:
-        resolved = resolve_output_schema(
-            raw, declared_in=declared_in or Path.cwd(), workspace_root=workspace_root
-        )
-    except (OutputSchemaError, OSError) as exc:
-        logger.warning(
-            "funnel `validate.schema` %r could not be read (%s) — the schema check will not run. "
-            "The rest of the funnel is unaffected.",
-            raw,
-            exc,
-        )
-        return None
-    return dict(resolved) if resolved else None
+    bases = [declared_in or Path.cwd()]
+    if isinstance(raw, str) and workspace_root is not None:
+        bases.append(Path(workspace_root))
+    first_error: Exception | None = None
+    for base in bases:
+        try:
+            resolved = resolve_output_schema(raw, declared_in=base, workspace_root=workspace_root)
+        except (OutputSchemaError, OSError) as exc:
+            first_error = first_error or exc
+            continue
+        return dict(resolved) if resolved else None
+
+    logger.warning(
+        "funnel `validate.schema` %r could not be read (%s) — the schema check will not run. "
+        "The rest of the funnel is unaffected.",
+        raw,
+        first_error,
+    )
+    return None
 
 
 def _schema_verdict(artifact: str, schema: dict[str, Any]) -> str:
@@ -553,6 +568,11 @@ async def run_agent_funnel_gate(
     #: resolves against the artifact that declared it) rather than against the process cwd.
     funnel_source_path: Path | None = None,
     workspace_root: Path | None = None,
+    #: pre-built layers. The compiler builds these once at wrap time — both so they are not
+    #: reconstructed on every invocation, and so the wiring ledger can record what was actually
+    #: built at the moment it is built (`swarmkit_runtime.reachability`).
+    judge: Judge | None = None,
+    validator: Validator | None = None,
     **resolve_kwargs: Any,
 ) -> FunnelGateState:
     """Run a funnel gate around an agent's production and return the terminal state.
@@ -568,7 +588,9 @@ async def run_agent_funnel_gate(
     async def drafter(state: FunnelGateState) -> str:
         return await produce(state.get("critique"))
 
-    judge = build_decision_judge(funnel_spec, governance=governance, agent_id=agent_id)
+    gate_judge = judge or build_decision_judge(
+        funnel_spec, governance=governance, agent_id=agent_id
+    )
     gate_approver = approver or build_multiparty_approver(
         funnel_spec,
         governance=governance,
@@ -580,15 +602,15 @@ async def run_agent_funnel_gate(
         author=author,
         **resolve_kwargs,
     )
-    validator = build_deterministic_validator(
+    gate_validator = validator or build_deterministic_validator(
         funnel_spec, declared_in=funnel_source_path, workspace_root=workspace_root
     )
     compiled = compile_funnel_gate(
         funnel_spec,
         drafter=drafter,
         approver=gate_approver,
-        judge=judge,
-        validator=validator,
+        judge=gate_judge,
+        validator=gate_validator,
         diff_source=diff_source,
     )
     result = await compiled.ainvoke({"artifact": initial_artifact, "retries": 0})

@@ -68,6 +68,23 @@ def _wire_storage(app: FastAPI, workspace_path: Path, runtime: WorkspaceRuntime)
     return saga_store
 
 
+def _log_unreachable(runtime: Any) -> None:
+    """Report declared configuration that no code path reaches, once, at startup.
+
+    Best-effort: a check that can crash the server is worse than a check that is absent, and this
+    one compiles every topology to answer.
+    """
+    try:
+        report = runtime.reachability()
+    except Exception:
+        logger.debug("reachability check skipped", exc_info=True)
+        return
+    if report.ok:
+        return
+    for item in report.unreachable:
+        logger.warning("declared but unreachable: %s", item.line())
+
+
 def _sweep_stale_jobs(store: Any, timeout_seconds: int) -> None:
     """Mark jobs a dead process left `running` as interrupted, and say how many.
 
@@ -194,6 +211,11 @@ def create_app(  # noqa: PLR0915
             cfg.timeout_seconds,
             cfg.mcp_enabled,
         )
+
+        # Named, not counted: an operator who reads "3 unreachable" still has to go looking, and
+        # going looking is what nobody did for five bugs running
+        # (design/details/declared-but-unreachable.md).
+        _log_unreachable(runtime)
 
         # Wire OpenTelemetry trace export (design: runtime/otel-trace-export): a run's spans go to
         # the configured OTLP collector so Jaeger/Grafana show it. No-op unless SWARMKIT_OTEL_* set.
