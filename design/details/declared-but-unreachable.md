@@ -1,6 +1,6 @@
 # Reporting configuration that no code path can reach
 
-**Status:** proposed — design only.
+**Status:** implemented — swarmkit-runtime 1.173.0.
 
 ## Goal
 
@@ -156,13 +156,44 @@ every wiring site records to the ledger.
 the funnel path — the `review:` layer as unreachable, and after reverting bug 25's fix locally, the
 funnel itself.
 
-## Open questions for review
+## Decisions taken at implementation
 
-1. **Does `validate` fail by default once this is accurate?** I lean no, per above — report always,
-   exit non-zero only under `--require`. But an unreachable `required: true` binding is arguably a
-   broken workspace and not a warning.
-2. **Is the inert report a new command or a flag?** `swarmkit inert` is discoverable; a flag on
-   `gaps` keeps the command surface small. Weak preference for the flag.
-3. **How far does the declaration registry go in v1?** Decision skills and funnel layers are the
-   demonstrated need. MCP grants, executors and `output_schema` are plausible next entries and each
-   adds enumeration code with no evidence yet that it is inert anywhere.
+The three open questions were resolved as: report always and exit non-zero only under `--require`;
+the retrospective report is `swarmkit gaps --inert`, not a new command; and the registry covers
+decision skills and funnel layers only.
+
+Two things changed once the code met reality.
+
+**`--require` gates on ANY unreachable declaration, not only `required: true` ones.** Funnel layers
+carry no `required` flag, so gating on that alone passed a workspace whose every `validate` layer
+was inert — which was the state of the reference workspace when this was written. `REQUIRED` stays
+as emphasis in the report rather than as the gate.
+
+**`validate.schema` gained a workspace-root fallback.** Resolution tries the declaring funnel first
+(the documented `output_schema` rule, so nothing that resolves today changes meaning), then the
+workspace root. `schemas/` is a workspace-level directory beside `funnels/`, so
+`schema: schemas/spec-review.schema.json` is the spelling every author reaches for — it is what the
+reference workspace and the reporter's own funnel both use. Without the fallback bug 25's fix landed
+and the layer was still inert: the same defect one level down.
+
+## What it found on day one
+
+Against `examples/sdlc-pipeline/workspace`, unmodified:
+
+```
+reachability: 5 declared, nothing wired them
+  funnel_layer 'integration-designer:consolidated-design-approval:validate' … nothing wired it
+  funnel_layer 'integration-designer:consolidated-design-approval:review'   … nothing wired it
+  funnel_layer 'deploy-coordinator:deploy-approval:validate'                … nothing wired it
+  funnel_layer 'release-gate:security-review-approval:validate'             … nothing wired it
+  funnel_layer 'release-gate:security-review-approval:review'               … nothing wired it
+```
+
+`review` is the predicted acceptance test. The three `validate` layers were not predicted: those
+funnels name schema files — `schemas/consolidated-design.json` and two others — that **do not exist
+anywhere in the workspace**. Three shipped example funnels have declared deterministic validation
+against a contract nobody ever wrote, and every reader of that example has been shown a four-layer
+gate that was a three-layer gate.
+
+Left as a finding rather than fixed here: writing those three schemas means inventing contract
+content nobody has reviewed, and the check reporting them is the correct outcome.

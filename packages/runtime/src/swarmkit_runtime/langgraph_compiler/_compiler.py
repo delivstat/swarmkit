@@ -92,6 +92,10 @@ def compile_topology(
     governed_memory_store: Any = None,
     review_queue: Any = None,
     role_registry: Any = None,
+    #: when supplied, every wiring site below records what it built into it, so a caller can ask
+    #: which declarations no code path reached (`swarmkit_runtime.reachability`). Optional and
+    #: write-only — nothing in the compile depends on it.
+    ledger: Any = None,
 ) -> CompiledStateGraph:  # type: ignore[type-arg]
     """Compile a resolved topology into a runnable LangGraph graph.
 
@@ -112,6 +116,11 @@ def compile_topology(
 
     _bindings = decision_skill_bindings or []
     _planning = planning_config or PlanningConfig()
+    if ledger is not None:
+        # Recorded here because THIS is where a binding reaches a node — the merge already ran, and
+        # what remains to be answered is whether anything consumes the survivors.
+        for _b in _bindings:
+            ledger.wired("decision_skill", f"{topology.id}:{_b.id}:{_b.trigger}")
     for agent in agents.values():
         agent_provider = _resolve_agent_provider(agent, provider_registry, model_provider)
         node_fn = _build_agent_node(
@@ -149,6 +158,7 @@ def compile_topology(
                 topology.id,
                 governance=governance,
                 workspace_root=workspace_root,
+                ledger=ledger,
             )
         graph.add_node(agent.id, node_fn)
 
@@ -839,6 +849,7 @@ def _wrap_with_funnel_gate(
     *,
     governance: GovernanceProvider,
     workspace_root: Any = None,
+    ledger: Any = None,
 ) -> Any:
     """Wrap a gated agent's node so a live run routes its output through its funnel.
 
@@ -856,12 +867,37 @@ def _wrap_with_funnel_gate(
     """
     from swarmkit_runtime.langgraph_compiler._gate_funnel import (  # noqa: PLC0415
         build_advisory_approver,
+        build_decision_judge,
+        build_deterministic_validator,
         run_agent_funnel_gate,
     )
 
     funnel = agent.funnel
     assert funnel is not None
     declares_approve = "approve" in funnel.spec
+
+    # The layers are built ONCE, here, rather than on every invocation of the node — and the ledger
+    # records each on the line that builds it. That is the whole mechanism: the claim and the act
+    # are one statement, so this cannot report a layer that was not built. Under bug 25 the wrap
+    # itself never happened, so nothing below ran and the report would have named the funnel.
+    spec = dict(funnel.spec)
+    judge = build_decision_judge(spec, governance=governance, agent_id=agent.id)
+    validator = build_deterministic_validator(
+        spec,
+        declared_in=getattr(funnel, "source_path", None),
+        workspace_root=workspace_root,
+    )
+    if ledger is not None:
+        key = f"{agent.id}:{funnel.id}"
+        ledger.wired("funnel", key)
+        if validator is not None:
+            ledger.wired("funnel_layer", f"{key}:validate")
+        if judge is not None:
+            ledger.wired("funnel_layer", f"{key}:judge")
+        ledger.wired("funnel_layer", f"{key}:approve")
+        # No `review` entry, deliberately: `run_agent_funnel_gate` builds no reviewer at all, on
+        # either binding. That omission is this check's own acceptance test — a declared `review:`
+        # reports as unreachable on day one, with nothing reconstructed.
     if declares_approve:
         # Said, not hidden — but at INFO, because `approve` is a REQUIRED property of the Funnel
         # schema: every funnel has one, so a warning here would fire on every compile of every
@@ -903,6 +939,8 @@ def _wrap_with_funnel_gate(
             diff_source=diff_source,
             funnel_source_path=getattr(funnel, "source_path", None),
             workspace_root=workspace_root,
+            judge=judge,
+            validator=validator,
             approver=build_advisory_approver(
                 governance=governance,
                 topology_id=topology_id,

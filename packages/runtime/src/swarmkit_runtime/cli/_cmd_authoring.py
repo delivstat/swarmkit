@@ -6,7 +6,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     pass
@@ -62,6 +62,16 @@ def validate(
         bool,
         typer.Option("--quiet", "-q", help="Suppress the success summary; errors still print."),
     ] = False,
+    require: Annotated[
+        bool,
+        typer.Option(
+            "--require",
+            help=(
+                "Exit non-zero when anything declared is reached by no code path. For CI. Off by "
+                "default: turning green pipelines red on upgrade is not this check's job."
+            ),
+        ),
+    ] = False,
     color: Annotated[
         bool | None,
         typer.Option(
@@ -88,10 +98,54 @@ def validate(
         _stderr(f"error: {exc}")
         raise typer.Exit(_EXIT_USAGE) from exc
 
-    if quiet:
-        return
+    # Reachability is reported ALWAYS, because the complaint in every bug of this family is that
+    # `validate` accepted the binding and displayed it while nothing loaded it
+    # (design/details/declared-but-unreachable.md).
+    report = _reachability_report(workspace_root)
 
-    _emit_success(workspace, json_mode=json_output, tree=tree, color=use_colour)
+    if not quiet:
+        _emit_success(workspace, json_mode=json_output, tree=tree, color=use_colour)
+        if report is not None:
+            _emit_reachability(report, json_mode=json_output)
+
+    # Any unreachable declaration fails under `--require`, not only the REQUIRED ones: funnel
+    # layers carry no `required` flag, so gating on that alone would pass a workspace whose every
+    # validate layer is inert. REQUIRED stays as emphasis in the report, not as the gate.
+    if require and report is not None and not report.ok:
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR)
+
+
+def _reachability_report(workspace_root: Path) -> Any:
+    """Compile every topology with a wiring ledger and diff against what is declared.
+
+    Returns None when a runtime cannot be built at all (unconfigured MCP servers, missing
+    credentials). `validate`'s job is to report what it can; a workspace that cannot be wired is a
+    different failure, and losing the resolution result to it would be a worse outcome than a
+    missing section.
+    """
+    from swarmkit_runtime._workspace_runtime import WorkspaceRuntime  # noqa: PLC0415
+
+    try:
+        return WorkspaceRuntime.from_workspace_path(workspace_root).reachability()
+    except Exception:
+        return None
+
+
+def _emit_reachability(report: Any, *, json_mode: bool) -> None:
+    if json_mode:
+        typer.echo(json.dumps({"event": "validate.reachability", **report.to_dict()}))
+        return
+    if report.ok:
+        typer.echo(f"\nreachability: all {len(report.reachable)} declared bindings are wired")
+        return
+    typer.echo(f"\nreachability: {len(report.unreachable)} declared, nothing wired them")
+    for item in report.unreachable:
+        typer.echo(f"  {item.line()}")
+    if report.blocking:
+        typer.echo(
+            f"\n  {len(report.blocking)} of these is REQUIRED — the workspace believes a check "
+            f"is enforcing something that has never run."
+        )
 
 
 # ---- review + gaps -------------------------------------------------------
@@ -343,8 +397,21 @@ def gaps(
     workspace_path: Annotated[
         Path, typer.Argument(help="Workspace root.", show_default=False)
     ] = Path("."),
+    inert: Annotated[
+        bool,
+        typer.Option(
+            "--inert",
+            help=(
+                "Instead of skill gaps: decision-skill bindings that were wired and have never "
+                "once fired, against a denominator of applicable runs."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """List recorded skill gaps."""
+    if inert:
+        _echo_inert(workspace_path.resolve())
+        return
     log = SkillGapLog(workspace_path.resolve())
     gap_list = log.list_gaps()
     if not gap_list:
@@ -354,6 +421,29 @@ def gaps(
         typer.echo(
             f"  {gap.skill_id:<24} {gap.pattern:<40} ({gap.occurrences}x) → {gap.suggested_action}"
         )
+
+
+def _echo_inert(workspace_root: Path) -> None:
+    """`swarmkit gaps --inert` — wired is not fired (design/details/declared-but-unreachable.md).
+
+    A `required: true` binding at 0/N is the loudest line this system can print, and it is the line
+    bug 23 would have produced months before anyone noticed.
+    """
+    import asyncio  # noqa: PLC0415
+
+    from swarmkit_runtime._workspace_runtime import WorkspaceRuntime  # noqa: PLC0415
+
+    runtime = WorkspaceRuntime.from_workspace_path(workspace_root)
+    rows = asyncio.run(runtime.inert_bindings())
+    if not rows:
+        typer.echo(
+            "No inert bindings: every declared decision skill has fired at least once, or has "
+            "had no applicable runs yet."
+        )
+        return
+    typer.echo("Wired, and never fired:\n")
+    for row in rows:
+        typer.echo(f"  {row.line()}")
 
 
 # ---- authoring -----------------------------------------------------------
