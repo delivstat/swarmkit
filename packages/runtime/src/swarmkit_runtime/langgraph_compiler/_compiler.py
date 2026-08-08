@@ -5,6 +5,7 @@ See ``design/details/langgraph-compiler.md``.
 
 from __future__ import annotations
 
+import logging
 import os
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -54,6 +55,8 @@ from ._sentinels import (
     is_task_plan_status,
 )
 from ._state import PlanningConfig, SwarmState
+
+_logger = logging.getLogger("swarmkit.funnels")
 
 # Per-run active state. ContextVar (not a module global) so concurrent runs in one
 # process — e.g. several jobs under `swarmkit serve` — don't clobber each other: asyncio
@@ -125,17 +128,27 @@ def compile_topology(
             memory_store=memory_store,
             governed_memory_store=governed_memory_store,
         )
-        # In-node funnel gate: if the agent references a funnel and the gate deps are wired,
-        # wrap the node so a live run produces -> judges -> parks for multi-party approval,
-        # retrying the agent on failure. The structural invariant lives in the gate subgraph.
-        if agent.funnel is not None and review_queue is not None:
+        # In-node funnel gate: wrap the node so a live run produces -> validates -> judges,
+        # retrying the agent with the critique on failure. The structural invariant lives in the
+        # gate subgraph.
+        #
+        # This used to require `review_queue is not None` as well, and NOTHING in the runtime ever
+        # passed one — `WorkspaceRuntime.compile()` did not, so the guard was False on every run
+        # serve or the CLI ever made and the wrap never happened. A declared `validate` and `judge`
+        # were resolved, attached, validated and then inert; three specs shipped violating their
+        # own schema's enums, and the judge's bounded retry — which exists to fix a draft BEFORE a
+        # human is asked to read it — had never executed.
+        #
+        # The guard was also on the wrong dependency. The review queue is used by exactly one
+        # thing here, the multi-party approver; `validate` needs nothing and `judge` needs only
+        # governance. Three layers that need no queue were gated behind the one that does.
+        if agent.funnel is not None:
             node_fn = _wrap_with_funnel_gate(
                 node_fn,
                 agent,
                 topology.id,
                 governance=governance,
-                review_queue=review_queue,
-                role_registry=role_registry,
+                workspace_root=workspace_root,
             )
         graph.add_node(agent.id, node_fn)
 
@@ -825,22 +838,44 @@ def _wrap_with_funnel_gate(
     topology_id: str,
     *,
     governance: GovernanceProvider,
-    review_queue: Any,
-    role_registry: Any,
+    workspace_root: Any = None,
 ) -> Any:
     """Wrap a gated agent's node so a live run routes its output through its funnel.
 
-    The wrapped node runs the funnel gate (validate -> judge -> multi-party approve, with
-    a bounded retry that re-invokes the agent carrying the gate critique). The run advances
-    only on human approval; a rejection surfaces as a gate-rejected agent result. The
-    ``approve`` layer blocks on ``resolve_multiparty`` — the same engine used elsewhere.
+    The wrapped node runs the funnel's ADVISORY layers — validate -> judge -> review, with a
+    bounded retry that re-invokes the agent carrying the gate critique. On retry exhaustion the
+    artifact proceeds with the failure recorded in provenance and in the audit log, rather than
+    failing the run: a schema contract that the output violates is worth a rewrite and a record,
+    and turning every currently-passing pipeline into a failing one is not what a quality gate is
+    for.
+
+    Human approval is NOT this layer. `build_advisory_approver` explains why at length: the
+    in-node path has nothing to park a human in, so `resolve_multiparty` here would poll inside
+    the agent's coroutine for up to seven days and lose the wait on a restart. The pipeline's
+    stage-level ``gate:`` already parks the saga durably; that is where an approval belongs.
     """
     from swarmkit_runtime.langgraph_compiler._gate_funnel import (  # noqa: PLC0415
+        build_advisory_approver,
         run_agent_funnel_gate,
     )
 
     funnel = agent.funnel
     assert funnel is not None
+    declares_approve = "approve" in funnel.spec
+    if declares_approve:
+        # Said, not hidden — but at INFO, because `approve` is a REQUIRED property of the Funnel
+        # schema: every funnel has one, so a warning here would fire on every compile of every
+        # gated topology and mean nothing. The durable "never silently" guarantee is the audit
+        # record instead: `funnel.advisory_completed` states the deferral on every run, which
+        # survives log levels and can be queried after the fact.
+        _logger.info(
+            "funnel %r on agent %r: the advisory layers (validate/judge/review) run in-node; its "
+            "`approve` layer does not. Human approval is the stage-level `gate:` on the pipeline, "
+            "which parks the saga durably — an in-node approve would block this run's coroutine "
+            "waiting for a person and lose the wait on a restart.",
+            funnel.id,
+            agent.id,
+        )
 
     async def gated_node(state: SwarmState) -> dict[str, Any]:
         captured: dict[str, Any] = {}
@@ -863,11 +898,18 @@ def _wrap_with_funnel_gate(
             dict(funnel.spec),
             produce=produce,
             governance=governance,
-            review_queue=review_queue,
-            role_registry=role_registry,
             topology_id=topology_id,
             agent_id=agent.id,
             diff_source=diff_source,
+            funnel_source_path=getattr(funnel, "source_path", None),
+            workspace_root=workspace_root,
+            approver=build_advisory_approver(
+                governance=governance,
+                topology_id=topology_id,
+                agent_id=agent.id,
+                gate_id=f"{topology_id}:{agent.id}",
+                declares_approve=declares_approve,
+            ),
         )
         out: dict[str, Any] = captured.get("out", {})
         if gate_state.get("outcome") != "approved":
