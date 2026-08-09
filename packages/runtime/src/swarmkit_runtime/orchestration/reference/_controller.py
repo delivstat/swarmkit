@@ -226,8 +226,33 @@ class ReferenceController:
         self._store.save(saga)
         await self._drive(saga)
 
+    def _blocked_stage(self, saga: SagaState | None) -> str | None:
+        """The stage a saga is BLOCKED on, if reconciliation refused to absorb it.
+
+        A gated stage that finished while the orchestrator was down is deliberately not absorbed
+        (`_reconcile`): the work is done and the review is not, and only a human can supply the
+        missing approval. That leaves the saga `active` with `pending_gate_stage` unset — which is
+        NOT `parked`, so the gate handler dropped the operator's release and the CLI reported
+        success anyway. The remedy printed in the refusal log named a command that could not work.
+
+        This is the state that makes it work: a human running `pipeline advance` IS the approval
+        that never happened, so the release is honoured here rather than dropped.
+        """
+        if saga is None or saga.status != "active" or saga.pending_gate_stage:
+            return None
+        sid = saga.current_stage
+        if not sid or sid in saga.passed_stages:
+            return None
+        if any(e.kind == "blocked" and e.stage_id == sid for e in saga.timeline):
+            return sid
+        return None
+
     async def _resolve_gate(self, correlation_id: str, data: dict[str, Any]) -> None:
         saga = self._store.get(correlation_id)
+        blocked = self._blocked_stage(saga)
+        if saga is not None and blocked is not None:
+            await self._release_blocked(saga, blocked, data)
+            return
         if saga is None or saga.status != "parked":
             logger.warning(
                 "gate event for correlation %r DROPPED: %s",
@@ -295,11 +320,13 @@ class ReferenceController:
             logger.warning(
                 "saga %r is waiting on stage %r, which has already completed — NOT absorbing it, "
                 "because the stage declares a gate and the approval has not happened. The work is "
-                "done (see the job record); release it with `swarmkit pipeline advance %s` after "
-                "review, or resolve the gate.",
+                "done (see the job record); after review, release it with "
+                "`swarmkit pipeline advance %s %s`, which absorbs the finished stage and "
+                "continues the run.",
                 saga.correlation_id,
                 sid,
                 saga.correlation_id,
+                sid,
             )
             # On the saga's own timeline, so `pipeline status` says why it is not moving rather
             # than leaving an operator to infer it from silence. Once, not once per redelivery —
@@ -341,6 +368,37 @@ class ReferenceController:
         # An unknown stage is not assumed ungated: absorbing one whose spec cannot be read would be
         # deciding on missing information, in the direction that skips reviews.
         return True
+
+    async def _release_blocked(self, saga: SagaState, stage_id: str, data: dict[str, Any]) -> None:
+        """Honour an operator's release of a stage reconciliation refused to absorb.
+
+        The distinction bug 24 turns on is preserved: reconciliation must not advance past a human
+        gate on its own, and this is not reconciliation — it is the human, arriving late, doing the
+        approving. So the absorb happens here, under an explicit act, and is recorded as one.
+        """
+        if not bool(data.get("approved", False)):
+            saga.status = "rejected"
+            saga.add("rejected", stage_id=stage_id, detail=str(data.get("detail", "")))
+            self._store.save(saga)
+            return
+
+        outcome = (
+            self._stage_result(saga.correlation_id, stage_id, saga.attempts.get(stage_id, 1))
+            if self._stage_result is not None
+            else None
+        )
+        artifact = str(getattr(outcome, "artifact", "") or "") if outcome is not None else ""
+        if artifact:
+            saga.artifacts[stage_id] = artifact
+        saga.passed_stages.append(stage_id)
+        saga.current_stage = None
+        saga.add(
+            "resumed",
+            stage_id=stage_id,
+            detail="released by an operator after the orchestrator restarted mid-stage",
+        )
+        self._store.save(saga)
+        await self._drive(saga)
 
     async def _drive(self, saga: SagaState) -> None:
         stages = list(self._graphs.get(saga.graph_id, {}).get("stages") or [])
