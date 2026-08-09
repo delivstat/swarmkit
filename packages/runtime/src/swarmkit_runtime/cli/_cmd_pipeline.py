@@ -13,7 +13,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -160,10 +160,10 @@ def advance(
     workspace: _PathArg = Path("."),
 ) -> None:
     """Operator act: approve a parked gate so the run advances."""
-    _store(workspace).enqueue(
-        correlation_id, json.dumps({"kind": "gate", "approved": True, "stage": stage})
-    )
-    typer.echo(f"advanced {correlation_id} past {stage}")
+    store = _store(workspace)
+    _refuse_if_not_releasable(store, correlation_id, "advance")
+    store.enqueue(correlation_id, json.dumps({"kind": "gate", "approved": True, "stage": stage}))
+    typer.echo(f"queued: advance {correlation_id} past {stage} (the orchestrator applies it)")
 
 
 @pipeline_app.command()
@@ -173,10 +173,47 @@ def skip(
     workspace: _PathArg = Path("."),
 ) -> None:
     """Operator act: reject a parked gate (terminates the run)."""
-    _store(workspace).enqueue(
-        correlation_id, json.dumps({"kind": "gate", "approved": False, "stage": stage})
-    )
-    typer.echo(f"rejected {correlation_id} at {stage}")
+    store = _store(workspace)
+    _refuse_if_not_releasable(store, correlation_id, "skip")
+    store.enqueue(correlation_id, json.dumps({"kind": "gate", "approved": False, "stage": stage}))
+    typer.echo(f"queued: reject {correlation_id} at {stage} (the orchestrator applies it)")
+
+
+def _refuse_if_not_releasable(store: Any, correlation_id: str, verb: str) -> None:
+    """Refuse rather than enqueue an event the controller is going to drop.
+
+    These commands enqueued unconditionally and printed success, while `_resolve_gate` dropped
+    anything whose saga was not `parked` — so the operator was told the run had advanced when
+    nothing had happened. That is the same "reports success, changes nothing" shape as the bugs
+    this run of work has been fixing, in the CLI this time.
+
+    It stays a pre-check rather than a promise: the orchestrator applies the event asynchronously,
+    so the honest wording is "queued", and this refuses only what is already knowably wrong.
+    """
+    saga = store.get(correlation_id)
+    if saga is None:
+        _fail(f"no saga {correlation_id!r} — nothing to {verb}.")
+    status = getattr(saga, "status", "")
+    if status == "parked":
+        return
+    # A saga blocked by reconciliation is `active`, not `parked`, and IS releasable: the operator
+    # is supplying the approval the restart skipped (`_release_blocked`).
+    if status == "active" and any(
+        e.kind == "blocked" and e.stage_id == saga.current_stage for e in saga.timeline
+    ):
+        return
+    if status == "active":
+        _fail(
+            f"saga {correlation_id!r} is running (stage {saga.current_stage!r}), not waiting on a "
+            f"gate. Nothing to {verb} — `swarmkit pipeline status {correlation_id}` shows where it "
+            f"is."
+        )
+    _fail(f"saga {correlation_id!r} is {status!r}, not waiting on a gate. Nothing to {verb}.")
+
+
+def _fail(message: str) -> None:
+    typer.echo(f"error: {message}", err=True)
+    raise typer.Exit(1)
 
 
 #: How long an ACTIVE saga may go without moving before `status` says so. Generous on purpose: a

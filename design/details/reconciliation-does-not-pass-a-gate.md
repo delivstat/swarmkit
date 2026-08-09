@@ -1,6 +1,7 @@
 # Reconciliation does not advance past a human gate
 
-**Status:** implemented — swarmkit-runtime 1.171.0. Fixes a defect in the bug-20 fix (1.168.0).
+**Status:** implemented — swarmkit-runtime 1.171.0, completed in 1.174.0. Fixes a defect in the
+bug-20 fix (1.168.0).
 
 ## Goal
 
@@ -52,6 +53,23 @@ missing information in the direction that skips reviews is the bug itself.
 - Not a change to bug 20's recovery anywhere else. An ungated stranded stage is still absorbed and
   the run still resumes; that is asserted.
 - Not a new store, endpoint or field.
+
+## The gap this left, and how it closed (1.174.0)
+
+Refusing to absorb leaves the saga `active` with a `blocked` timeline entry and `pending_gate_stage`
+unset — which is **not `parked`**, and `_resolve_gate` dropped everything that was not parked. The
+refusal log named `swarmkit pipeline advance` as the remedy; the CLI enqueued the event and printed
+success; the controller dropped it. The remedy this note printed did not work, and said it had.
+
+That is the same "reports success, changes nothing" shape as the bugs this whole run of work has
+been fixing — introduced here by one of the fixes.
+
+Closed by making the state releasable rather than by parking it. `_release_blocked` absorbs the
+finished stage and continues the run **on an explicit gate event**, and the CLI refuses upfront
+instead of enqueueing something the controller will discard. The distinction the note turns on is
+intact: reconciliation still must not advance past a human gate on its own. A human running
+`pipeline advance` is not reconciliation — it is the approval that never happened, arriving late,
+and it is recorded as one (`resumed … released by an operator`).
 
 ## The follow-up this defers
 
