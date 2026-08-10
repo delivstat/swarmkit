@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
-from swarmkit_runtime._run_scope import current_run_id
+from swarmkit_runtime._run_scope import current_labels, current_run_id
 from swarmkit_runtime.governance._limits import (
     CircuitBreakerError,
     CircuitBreakerTracker,
@@ -66,6 +66,9 @@ class AuditEvent:
     #: run's events from another's — and every run re-persisted every earlier run's events under
     #: its own id (`swarmkit_runtime._run_scope`).
     run_id: str | None = field(default_factory=current_run_id)
+    #: Caller-supplied grouping, stamped at construction from the same per-task scope as `run_id`.
+    #: Opaque to the runtime — it carries the caller's model, it does not impose one.
+    labels: dict[str, str] = field(default_factory=current_labels)
     parent_event_id: UUID | None = None
 
     # M6 expansion: agent context

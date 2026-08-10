@@ -39,6 +39,10 @@ audit_events = Table(
     Column("policy_reason", Text),
     Column("error", Text),
     Column("payload", Text),
+    # Caller-supplied {key: value}, JSON. Its own column rather than folded into `payload` because
+    # payload is subject to redaction policy — a grouping key that disappears at audit level
+    # `minimal` is a grouping key nobody can rely on.
+    Column("labels", Text),
     Index("idx_audit_run_id", "run_id"),
     Index("idx_audit_agent_id", "agent_id"),
     Index("idx_audit_timestamp", "timestamp"),

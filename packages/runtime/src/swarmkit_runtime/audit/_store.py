@@ -37,6 +37,24 @@ class SqlAuditProvider(AuditProvider):
         self._engine = engine
         self._retention_days = retention_days
         create_all_idempotent(audit_metadata, engine)
+        self._migrate()
+
+    #: Columns added to ``audit_events`` after the initial schema. Additive and nullable only —
+    #: the same deliberately-small facility the job store has, and for the same reason:
+    #: ``create_all`` builds a fresh schema and does not alter an existing table, so without this
+    #: an upgraded deployment fails on its next insert with "no such column".
+    _ADDED_COLUMNS = (("labels", "TEXT"),)
+
+    def _migrate(self) -> None:
+        from sqlalchemy import inspect, text  # noqa: PLC0415
+
+        existing = {c["name"] for c in inspect(self._engine).get_columns("audit_events")}
+        missing = [(n, t) for n, t in self._ADDED_COLUMNS if n not in existing]
+        if not missing:
+            return
+        with self._engine.begin() as conn:
+            for name, sql_type in missing:
+                conn.execute(text(f"ALTER TABLE audit_events ADD COLUMN {name} {sql_type}"))
 
     async def record(self, event: AuditEvent) -> None:
         values = {
@@ -45,6 +63,7 @@ class SqlAuditProvider(AuditProvider):
             "agent_id": event.agent_id,
             "timestamp": event.timestamp.isoformat(),
             "run_id": event.run_id,
+            "labels": _dumps(event.labels) if event.labels else None,
             "parent_event_id": str(event.parent_event_id) if event.parent_event_id else None,
             "topology_id": event.topology_id,
             "skill_id": event.skill_id,
@@ -205,4 +224,5 @@ def _row_to_event(row: RowMapping) -> AuditEvent:
         policy_reason=row["policy_reason"],
         error=_loads(row["error"]),
         payload=_loads(row["payload"]) or {},
+        labels=_loads(row.get("labels")) or {},
     )

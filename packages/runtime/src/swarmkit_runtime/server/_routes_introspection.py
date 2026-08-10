@@ -82,6 +82,7 @@ def _audit_event_to_dict(event: Any) -> dict[str, Any]:
         "skill_id": getattr(event, "skill_id", None),
         "run_id": getattr(event, "run_id", None),
         "payload": getattr(event, "payload", {}),
+        "labels": getattr(event, "labels", {}) or {},
     }
     for name in _AUDIT_DETAIL_FIELDS:
         value = getattr(event, name, None)
