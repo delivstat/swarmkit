@@ -21,6 +21,7 @@ trust_app = typer.Typer(help="Trust accrual — apply repeated-approval capabili
 memory_app = typer.Typer(help="Governed memory — search, inspect history, resolve contradictions.")
 pipeline_app = typer.Typer(help="Pipelines — dispatch events and inspect run status.")
 storage_app = typer.Typer(help="Storage — show where data lives, migrate sqlite to postgres.")
+artifacts_app = typer.Typer(help="Artifacts — list and fetch run outputs by correlation id.")
 
 app.add_typer(review_app, name="review")
 app.add_typer(author_app, name="author")
@@ -31,3 +32,4 @@ app.add_typer(adapters_app, name="adapters")
 app.add_typer(trust_app, name="trust")
 app.add_typer(memory_app, name="memory")
 app.add_typer(pipeline_app, name="pipeline")
+app.add_typer(artifacts_app, name="artifacts")
