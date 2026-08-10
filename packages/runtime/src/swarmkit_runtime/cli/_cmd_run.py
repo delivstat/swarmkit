@@ -74,6 +74,17 @@ def run(  # noqa: PLR0912
             ),
         ),
     ] = None,
+    save_artifact: Annotated[
+        bool,
+        typer.Option(
+            "--save-artifact",
+            help=(
+                "Persist this run's output to the workspace artifact store as "
+                "<correlation-id>/<run-id>/output. Requires --correlation-id. Read it back with "
+                "`swarmkit artifacts get`."
+            ),
+        ),
+    ] = False,
     label: Annotated[
         list[str] | None,
         typer.Option(
@@ -116,6 +127,15 @@ def run(  # noqa: PLR0912
     color: Annotated[bool | None, typer.Option("--color/--no-color")] = None,
 ) -> None:
     """One-shot execution of a topology (design §14.1)."""
+    # Flag consistency first, before the workspace is even resolved: a usage error should not
+    # require a valid workspace to report, and certainly should not arrive after a paid run.
+    if save_artifact and not correlation_id:
+        _stderr(
+            "error: --save-artifact needs --correlation-id — artifacts are addressed by "
+            "correlation, and one written under an invented id could not be listed."
+        )
+        raise typer.Exit(_EXIT_USAGE)
+
     _suppress_noisy_logs()
     if quiet:
         os.environ["SWARMKIT_QUIET"] = "1"
@@ -175,6 +195,7 @@ def run(  # noqa: PLR0912
                 previous_plan=prev_plan,
                 correlation_id=correlation_id,
                 labels=run_labels,
+                save_artifact=save_artifact,
             )
         else:
             result = _execute_run(
@@ -184,6 +205,7 @@ def run(  # noqa: PLR0912
                 workspace_path,
                 correlation_id=correlation_id,
                 labels=run_labels,
+                save_artifact=save_artifact,
             )
 
     if result.output:
@@ -288,6 +310,7 @@ def _execute_run(
     previous_plan: dict | None = None,  # type: ignore[type-arg]
     correlation_id: str | None = None,
     labels: dict[str, str] | None = None,
+    save_artifact: bool = False,
 ) -> RunResult:
     """Execute a topology run with HITL and interrupt handling."""
     from uuid import uuid4  # noqa: PLC0415
@@ -353,7 +376,47 @@ def _execute_run(
         output=result.output or "",
         usage=result.usage,
     )
+    if save_artifact:
+        _persist_artifact(workspace_path, correlation_id, thread_id, result.output or "")
     return result
+
+
+def _persist_artifact(
+    workspace_path: Path, correlation_id: str | None, run_id: str, content: str
+) -> None:
+    """Write a one-shot run's output to the workspace artifact store.
+
+    The ref is ``<correlation_id>/<run_id>/output`` — the same three-part shape a pipeline stage
+    uses, with the RUN in the stage slot. A one-shot run has no stage, and the run id is the segment
+    that keeps retries and re-runs under one correlation from overwriting each other. It is also the
+    id the rest of the chain already uses (`jobs.id`, `audit_events.run_id`), so a reader who has
+    one has the other.
+
+    Requires a correlation id rather than inventing one: an artifact nobody can group is an artifact
+    nobody finds, and `list()` addresses by correlation.
+    """
+    if not correlation_id:
+        # Unreachable from the CLI (checked up front, before the run costs anything); kept because
+        # `_execute_run` is called directly by tests and could be by future callers.
+        _stderr("note: not saving an artifact: no correlation id")
+        return
+
+    from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+
+    try:
+        # The one resolver, not a second store: the workspace's `storage.artifacts` backend
+        # (database / filesystem / s3) is the caller's choice and this must honour it.
+        ref = (
+            storage_for_workspace(workspace_path)
+            .artifact_store()
+            .put(correlation_id, run_id, content)
+        )
+    except Exception as exc:
+        # The run itself succeeded and its output has already been printed and recorded on the job
+        # row. Failing here would throw away work over a storage problem.
+        _stderr(f"note: could not save the artifact: {exc}")
+        return
+    typer.echo(f"artifact: {ref}")
 
 
 def _save_thread_id(workspace_path: Path, thread_id: str) -> None:

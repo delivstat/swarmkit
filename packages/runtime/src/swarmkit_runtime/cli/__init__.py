@@ -18,6 +18,7 @@ import typer
 # Import the command modules so their @app.command handlers register on `app`.
 from . import (  # noqa: F401
     _cmd_adapters,
+    _cmd_artifacts,
     _cmd_authoring,
     _cmd_chat,
     _cmd_fleet,
