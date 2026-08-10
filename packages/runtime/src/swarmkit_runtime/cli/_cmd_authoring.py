@@ -131,14 +131,31 @@ def _reachability_report(workspace_root: Path) -> Any:
         return None
 
 
+def _reachable_line(decl: Any) -> str:
+    """One wired declaration, shaped like an unreachable one so the two read as a single list."""
+    required = "  REQUIRED" if getattr(decl, "required", False) else ""
+    detail = f" — {decl.detail}" if getattr(decl, "detail", "") else ""
+    return f"{decl.kind} {decl.key!r} declared on {decl.declared_on}{detail}: wired{required}"
+
+
 def _emit_reachability(report: Any, *, json_mode: bool) -> None:
     if json_mode:
         typer.echo(json.dumps({"event": "validate.reachability", **report.to_dict()}))
         return
+    # Named, not counted. "all 12 declared bindings are wired" is a summary OF a check, not the
+    # check: with per-kind funnels a reader wants to know WHICH twelve, and an aggregate hides the
+    # case where the twelve are not the twelve they meant to declare.
     if report.ok:
-        typer.echo(f"\nreachability: all {len(report.reachable)} declared bindings are wired")
+        typer.echo(f"\nreachability: {len(report.reachable)} declared, all wired")
+        for decl in report.reachable:
+            typer.echo(f"  {_reachable_line(decl)}")
         return
-    typer.echo(f"\nreachability: {len(report.unreachable)} declared, nothing wired them")
+    typer.echo(
+        f"\nreachability: {len(report.reachable) + len(report.unreachable)} declared, "
+        f"{len(report.unreachable)} reached by nothing"
+    )
+    for decl in report.reachable:
+        typer.echo(f"  {_reachable_line(decl)}")
     for item in report.unreachable:
         typer.echo(f"  {item.line()}")
     if report.blocking:

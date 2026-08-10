@@ -459,7 +459,43 @@ def build_advisory_approver(
     return approver
 
 
-def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str) -> Judge | None:
+def _read_rubric(raw: Any, declared_in: Path | None, workspace_root: Path | None) -> str:
+    """Load ``judge.rubric``, or return "" when there is none / it cannot be read.
+
+    The schema calls it workspace-relative, so the workspace root is tried first; the declaring
+    funnel's directory is a fallback, matching how `validate.schema` resolves. An unreadable rubric
+    warns and the judge still runs unscored-against-it rather than the layer vanishing — a judge
+    that stops working because a path is wrong is worse than one judging without the document, and
+    silence is worse than both.
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    bases = [b for b in (workspace_root, declared_in.parent if declared_in else None) if b]
+    for base in bases:
+        candidate = Path(base) / raw
+        try:
+            if candidate.is_file():
+                return str(candidate.read_text())
+        except OSError:  # pragma: no cover - unreadable file, same outcome as missing
+            continue
+    logger.warning(
+        "funnel `judge.rubric` %r could not be read (looked in %s) — the judge will run without "
+        "it. The rubric is what the judge scores against, so a score produced without it is not "
+        "the score the funnel asked for.",
+        raw,
+        " and ".join(str(b) for b in bases) or "nowhere: no workspace root given",
+    )
+    return ""
+
+
+def build_decision_judge(
+    spec: dict[str, Any],
+    *,
+    governance: Any,
+    agent_id: str,
+    declared_in: Path | None = None,
+    workspace_root: Path | None = None,
+) -> Judge | None:
     """Bind the funnel's ``judge`` layer to the governance decision-skill seam.
 
     Returns a :class:`Judge` that scores an artifact with the funnel's ``judge.skill``
@@ -471,6 +507,10 @@ def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str
         return None
     skill_id = str(judge_cfg["skill"])
     threshold = float(judge_cfg.get("threshold", _DEFAULT_THRESHOLD))
+    # `judge.rubric` was declared in the schema, accepted by validation, displayed — and read by
+    # nothing, so every workspace using it had to repeat the rubric inside the skill prompt. Loaded
+    # once at build time: it is a file on disk, not something to re-read per artifact.
+    rubric = _read_rubric(judge_cfg.get("rubric"), declared_in, workspace_root)
 
     async def judge(artifact: str) -> JudgeOutcome:
         result = await governance.evaluate_decision_skill(
@@ -478,6 +518,7 @@ def build_decision_judge(spec: dict[str, Any], *, governance: Any, agent_id: str
             trigger="post_output",
             agent_id=agent_id,
             content=artifact,
+            context={"rubric": rubric} if rubric else None,
         )
         passed = result.verdict == "pass" and result.confidence >= threshold
         return JudgeOutcome(passed=passed, score=result.confidence, critique=result.reasoning)

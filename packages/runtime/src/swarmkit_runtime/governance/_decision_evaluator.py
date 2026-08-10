@@ -78,12 +78,21 @@ def _build_input(
             parts.append(str(scope_data))
         parts.append("--- END SCOPE ---")
 
+    if context and context.get("rubric"):
+        # Its own section rather than the JSON blob below. A rubric is a document the judge is
+        # meant to read and score against, and `Context: {"rubric": "## Criteria\n..."}` buries it
+        # in escapes. Same shape `WorkspaceRuntime.judge_rubric` already uses for the eval harness.
+        parts.append("")
+        parts.append("--- RUBRIC (score the content against this) ---")
+        parts.append(str(context["rubric"]))
+        parts.append("--- END RUBRIC ---")
+
     parts.append("")
     parts.append("--- CONTENT TO EVALUATE ---")
     parts.append(content)
     parts.append("--- END CONTENT ---")
 
-    remaining_context = {k: v for k, v in (context or {}).items() if k != "scope"}
+    remaining_context = {k: v for k, v in (context or {}).items() if k not in {"scope", "rubric"}}
     if remaining_context:
         parts.append(f"\nContext: {json.dumps(remaining_context, default=str)}")
     return "\n".join(parts)
