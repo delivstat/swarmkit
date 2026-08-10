@@ -28,6 +28,8 @@ from swarmkit_runtime.review._hitl import HITLDeferredError
 class _Store:
     def __init__(self) -> None:
         self.created: list[tuple[str, str, str, str]] = []
+        self.correlations: list[str | None] = []
+        self.labels: list[dict[str, str]] = []
         self.updates: list[dict[str, Any]] = []
 
     def create_job(
@@ -37,8 +39,11 @@ class _Store:
         user_input: str,
         correlation_id: str | None = None,
         source: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> None:
         self.created.append((job_id, topology, user_input, source or ""))
+        self.correlations.append(correlation_id)
+        self.labels.append(dict(labels or {}))
 
     def update_job(self, job_id: str, **fields: Any) -> None:
         self.updates.append({"job_id": job_id, **fields})
@@ -66,8 +71,22 @@ def store(monkeypatch: pytest.MonkeyPatch) -> _Store:
     return s
 
 
-def _run(runtime: Any, tmp_path: Path) -> Any:
-    return _cmd_run._execute_run(runtime, "hello", "say hi", tmp_path)
+def _run(runtime: Any, tmp_path: Path, **kw: Any) -> Any:
+    return _cmd_run._execute_run(runtime, "hello", "say hi", tmp_path, **kw)
+
+
+def test_the_correlation_id_and_labels_reach_the_row(store: _Store, tmp_path: Path) -> None:
+    """`jobs.correlation_id` was NULL for every CLI run, breaking the trace chain at its first
+    link. The store double is duck-typed, so this also guards the signature it has to match."""
+    _run(
+        _Runtime(result=RunResult(output="x")),
+        tmp_path,
+        correlation_id="WMS-30",
+        labels={"map": "WMS-30"},
+    )
+
+    assert store.correlations == ["WMS-30"]
+    assert store.labels == [{"map": "WMS-30"}]
 
 
 # ---- the record exists -----------------------------------------------------------------------

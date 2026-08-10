@@ -169,6 +169,12 @@ def test_every_path_names_its_source() -> None:
 
     for rel, source in expected.items():
         body = (root / rel).read_text()
-        creates = [line for line in body.splitlines() if "create_job(" in line]
-        assert creates, f"{rel} no longer creates a job"
-        assert any(source in line for line in creates), f"{rel} does not record source={source}"
+        # Scanned as a call SPAN, not a single line: these calls are long enough to be wrapped by
+        # the formatter, and a guard a reformat can silently satisfy is not a guard. The window
+        # only has to cover one call's arguments.
+        lines = body.splitlines()
+        spans = [
+            "\n".join(lines[i : i + 8]) for i, line in enumerate(lines) if "create_job(" in line
+        ]
+        assert spans, f"{rel} no longer creates a job"
+        assert any(source in span for span in spans), f"{rel} does not record source={source}"

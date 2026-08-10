@@ -26,6 +26,13 @@ from __future__ import annotations
 from contextvars import ContextVar, Token
 
 _current_run_id: ContextVar[str | None] = ContextVar("swarmkit_current_run_id", default=None)
+#: Caller-supplied {key: value} for the current run. Opaque to the runtime by design: a caller
+#: groups runs by whatever it is modelling — a Wayfinder map, a requirement, a tenant — and
+#: SwarmKit never has to learn what any of those are. Same per-task scoping as the run id.
+#: `None`, not `{}` — a mutable ContextVar default is shared by every task that never sets one.
+_current_labels: ContextVar[dict[str, str] | None] = ContextVar(
+    "swarmkit_current_labels", default=None
+)
 
 
 def current_run_id() -> str | None:
@@ -35,6 +42,25 @@ def current_run_id() -> str | None:
     construction without each emitter having to know or pass it.
     """
     return _current_run_id.get()
+
+
+def current_labels() -> dict[str, str]:
+    """The calling task's run labels, or an empty dict outside a run.
+
+    Used as the ``default_factory`` for :attr:`AuditEvent.labels`, so a caller's grouping reaches
+    the audit log without any emitter knowing what the labels mean.
+    """
+    return dict(_current_labels.get() or {})
+
+
+def set_current_labels(labels: dict[str, str] | None) -> Token[dict[str, str] | None]:
+    """Enter a label scope. Pass the returned token to :func:`reset_current_labels`."""
+    return _current_labels.set(dict(labels or {}))
+
+
+def reset_current_labels(token: Token[dict[str, str] | None]) -> None:
+    """Leave a label scope."""
+    _current_labels.reset(token)
 
 
 def set_current_run_id(run_id: str | None) -> Token[str | None]:

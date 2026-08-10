@@ -153,6 +153,8 @@ class JobRow:
     usage_cost_usd: float = 0.0
     correlation_id: str | None = None
     source: str | None = None
+    #: caller-supplied {key: value}; opaque to the runtime (see the `labels` column)
+    labels: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -196,7 +198,7 @@ class Store:
     #: Columns added to ``jobs`` after the initial schema, in the order they arrived. Additive and
     #: nullable only — this is the whole migration facility, so anything needing a backfill or a
     #: type change does not belong here.
-    _ADDED_JOB_COLUMNS = (("correlation_id", "TEXT"), ("source", "TEXT"))
+    _ADDED_JOB_COLUMNS = (("correlation_id", "TEXT"), ("source", "TEXT"), ("labels", "TEXT"))
 
     def _migrate_jobs(self) -> None:
         """Add job columns introduced after the initial schema.
@@ -232,6 +234,7 @@ class Store:
         user_input: str,
         correlation_id: str | None = None,
         source: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> JobRow:
         now = datetime.now(UTC).isoformat()
         row = JobRow(
@@ -242,6 +245,7 @@ class Store:
             created_at=now,
             correlation_id=correlation_id,
             source=source,
+            labels=dict(labels or {}),
         )
         with self._engine.begin() as conn:
             conn.execute(
@@ -253,6 +257,7 @@ class Store:
                     created_at=row.created_at,
                     correlation_id=row.correlation_id,
                     source=row.source,
+                    labels=json.dumps(row.labels) if row.labels else None,
                 )
             )
         return row
@@ -342,6 +347,7 @@ class Store:
             id=row["id"],
             correlation_id=row.get("correlation_id"),
             source=row.get("source"),
+            labels=json.loads(row["labels"]) if row.get("labels") else {},
             topology=row["topology"],
             status=row["status"],
             input=row["input"],

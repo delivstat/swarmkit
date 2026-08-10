@@ -20,7 +20,13 @@ from typing import TYPE_CHECKING, Any
 
 from langgraph.graph.state import CompiledStateGraph
 
-from swarmkit_runtime._run_scope import reset_current_run_id, set_current_run_id
+from swarmkit_runtime._run_scope import (
+    current_labels,
+    reset_current_labels,
+    reset_current_run_id,
+    set_current_labels,
+    set_current_run_id,
+)
 from swarmkit_runtime.audit import AuditProvider, SqlAuditProvider, audit_provider_for_path
 from swarmkit_runtime.governance import (
     DecisionSkillBinding,
@@ -651,6 +657,7 @@ class WorkspaceRuntime:
         max_steps: int = 50,
         thread_id: str | None = None,
         previous_plan: dict | None = None,  # type: ignore[type-arg]
+        labels: dict[str, str] | None = None,
     ) -> RunResult:
         """Execute a topology end-to-end and return the result.
 
@@ -679,7 +686,7 @@ class WorkspaceRuntime:
 
         trace = RunTrace()
         trace.start(run_thread, topology_name)
-        _run_scope_token = self._begin_run(trace)
+        _run_scope_token = self._begin_run(trace, labels)
         # Opt-in read-side context compression for this run. Resolved from the workspace
         # `context_compression:` block (default backend + per-surface overrides), with env
         # vars overriding the default per deployment. Off unless configured.
@@ -816,7 +823,7 @@ class WorkspaceRuntime:
         topology = self._workspace.topologies[topology_name]
         # Same scope as `run`, keyed by the thread: a resume's events must be attributable to the
         # resumed run and not to whatever else this process has done since.
-        _resume_scope_token = set_current_run_id(thread_id)
+        _resume_scope_token = (set_current_run_id(thread_id), set_current_labels(None))
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
 
@@ -913,8 +920,8 @@ class WorkspaceRuntime:
         )
         return _parse_result("inline-rubric", text)
 
-    def _begin_run(self, trace: Any) -> Any:
-        """Enter a run: make the trace active and stamp this task with the run id.
+    def _begin_run(self, trace: Any, labels: dict[str, str] | None = None) -> Any:
+        """Enter a run: make the trace active and stamp this task with the run id and labels.
 
         One call because it is one fact — every AuditEvent constructed from here on belongs to this
         run, and `_end_run` relies on that to tell it apart from a concurrent job's events.
@@ -924,7 +931,7 @@ class WorkspaceRuntime:
         )
 
         set_active_trace(trace)
-        return set_current_run_id(trace.run_id)
+        return (set_current_run_id(trace.run_id), set_current_labels(labels))
 
     async def _end_run(self, token: Any, topology_name: str, run_id: str) -> list[RunEvent]:
         """Leave a run and persist only the events it emitted.
@@ -932,13 +939,23 @@ class WorkspaceRuntime:
         The filter is the fix: the provider's log is cumulative and never cleared, so an unfiltered
         drain re-persisted every earlier run's events under this run's id.
         """
-        reset_current_run_id(token)
+        run_token, label_token = token
+        # Captured BEFORE the reset: `_persist_events_to_audit` builds fresh AuditEvents, and once
+        # the scope is gone their `labels` default to empty — the run's grouping would reach `jobs`
+        # and silently not reach `audit_events`, which is half a feature and the worse half.
+        labels = current_labels()
+        reset_current_run_id(run_token)
+        reset_current_labels(label_token)
         events = _extract_events(self._governance, run_id=run_id)
-        await self._persist_events_to_audit(events, topology_name, run_id)
+        await self._persist_events_to_audit(events, topology_name, run_id, labels)
         return events
 
     async def _persist_events_to_audit(
-        self, events: list[RunEvent], topology_name: str, run_id: str | None = None
+        self,
+        events: list[RunEvent],
+        topology_name: str,
+        run_id: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> None:
         """Write extracted events to the AuditProvider with redaction applied.
 
@@ -979,6 +996,7 @@ class WorkspaceRuntime:
                 duration_ms=duration,
                 agent_role=role,  # type: ignore[arg-type]
                 run_id=run_id,
+                labels=dict(labels or {}),
             )
             await self._audit_provider.record(audit_event)
 

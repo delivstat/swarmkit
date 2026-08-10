@@ -36,6 +36,23 @@ from ._render import should_colour
 # ---- run -----------------------------------------------------------------
 
 
+def _parse_labels(raw: list[str] | None) -> dict[str, str]:
+    """Parse repeated ``--label key=value`` into a dict.
+
+    A malformed label fails the run rather than being dropped: a label exists to make a run findable
+    later, and one silently discarded is a run that is quietly missing from whatever query the
+    caller is about to trust.
+    """
+    out: dict[str, str] = {}
+    for item in raw or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            _stderr(f"error: --label must be key=value, got {item!r}")
+            raise typer.Exit(2)
+        out[key.strip()] = value.strip()
+    return out
+
+
 @app.command()
 def run(  # noqa: PLR0912
     workspace_path: Annotated[
@@ -46,6 +63,28 @@ def run(  # noqa: PLR0912
         ),
     ],
     topology_name: Annotated[str, typer.Argument(help="Name of the topology to run.")],
+    correlation_id: Annotated[
+        str | None,
+        typer.Option(
+            "--correlation-id",
+            help=(
+                "Group this run with others under one id (a pipeline run, a ticket, a "
+                "requirement). Written to jobs.correlation_id, which was NULL for every CLI run "
+                "until now — breaking the trace chain at its first link."
+            ),
+        ),
+    ] = None,
+    label: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--label",
+            help=(
+                "Attach key=value to this run; repeatable. Reaches jobs.labels and "
+                "audit_events.labels. Opaque to SwarmKit — it carries your model, it does not "
+                "impose one."
+            ),
+        ),
+    ] = None,
     input_text: Annotated[
         str | None,
         typer.Option(
@@ -114,6 +153,9 @@ def run(  # noqa: PLR0912
         # credentials; serve publishes summaries only (harness-progress-stream.md).
         set_progress_sink(_print_progress)
 
+    # Parsed before anything runs: a malformed label should cost nothing.
+    run_labels = _parse_labels(label)
+
     if resume:
         result = _execute_resume(runtime, topology_name, workspace_path)
     else:
@@ -131,9 +173,18 @@ def run(  # noqa: PLR0912
                 user_input,
                 workspace_path,
                 previous_plan=prev_plan,
+                correlation_id=correlation_id,
+                labels=run_labels,
             )
         else:
-            result = _execute_run(runtime, topology_name, user_input, workspace_path)
+            result = _execute_run(
+                runtime,
+                topology_name,
+                user_input,
+                workspace_path,
+                correlation_id=correlation_id,
+                labels=run_labels,
+            )
 
     if result.output:
         typer.echo(result.output)
@@ -235,6 +286,8 @@ def _execute_run(
     user_input: str,
     workspace_path: Path,
     previous_plan: dict | None = None,  # type: ignore[type-arg]
+    correlation_id: str | None = None,
+    labels: dict[str, str] | None = None,
 ) -> RunResult:
     """Execute a topology run with HITL and interrupt handling."""
     from uuid import uuid4  # noqa: PLC0415
@@ -250,7 +303,9 @@ def _execute_run(
     store = _job_store(workspace_path)
     if store is not None:
         try:
-            store.create_job(thread_id, topology_name, user_input, None, "cli")
+            store.create_job(
+                thread_id, topology_name, user_input, correlation_id, "cli", labels=labels
+            )
         except Exception as exc:
             _stderr(f"note: this run will not appear in history: {exc}")
             store = None
@@ -260,6 +315,7 @@ def _execute_run(
             runtime.run(
                 topology_name,
                 user_input,
+                labels=labels,
                 thread_id=thread_id,
                 previous_plan=previous_plan,
             )

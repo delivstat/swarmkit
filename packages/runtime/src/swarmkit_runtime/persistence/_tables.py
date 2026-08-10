@@ -36,6 +36,10 @@ jobs = Table(
     #: dashboard cannot say where work comes from, and `correlation_id` is ambiguous: a pipeline
     #: run and a chat conversation both use it, and their ids are not reliably distinguishable.
     Column("source", Text),
+    # Caller-supplied {key: value}, JSON. Opaque to the runtime ON PURPOSE: a caller can group runs
+    # by whatever it is modelling — a Wayfinder map, a requirement, a tenant — without SwarmKit
+    # having to learn what any of those are.
+    Column("labels", Text),
 )
 
 conversations = Table(
