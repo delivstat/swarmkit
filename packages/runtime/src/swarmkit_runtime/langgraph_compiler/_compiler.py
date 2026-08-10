@@ -881,7 +881,13 @@ def _wrap_with_funnel_gate(
     # are one statement, so this cannot report a layer that was not built. Under bug 25 the wrap
     # itself never happened, so nothing below ran and the report would have named the funnel.
     spec = dict(funnel.spec)
-    judge = build_decision_judge(spec, governance=governance, agent_id=agent.id)
+    judge = build_decision_judge(
+        spec,
+        governance=governance,
+        agent_id=agent.id,
+        declared_in=getattr(funnel, "source_path", None),
+        workspace_root=workspace_root,
+    )
     validator = build_deterministic_validator(
         spec,
         declared_in=getattr(funnel, "source_path", None),
