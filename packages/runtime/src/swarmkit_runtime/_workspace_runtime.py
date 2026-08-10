@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from langgraph.graph.state import CompiledStateGraph
 
+from swarmkit_runtime._run_scope import reset_current_run_id, set_current_run_id
 from swarmkit_runtime.audit import AuditProvider, SqlAuditProvider, audit_provider_for_path
 from swarmkit_runtime.governance import (
     DecisionSkillBinding,
@@ -678,7 +679,7 @@ class WorkspaceRuntime:
 
         trace = RunTrace()
         trace.start(run_thread, topology_name)
-        set_active_trace(trace)
+        _run_scope_token = self._begin_run(trace)
         # Opt-in read-side context compression for this run. Resolved from the workspace
         # `context_compression:` block (default backend + per-surface overrides), with env
         # vars overriding the default per deployment. Off unless configured.
@@ -743,9 +744,7 @@ class WorkspaceRuntime:
         set_active_trace(None)
         _finalize_trace(trace, self._workspace_root, self.workspace_id)
 
-        events = _extract_events(self._governance)
-
-        await self._persist_events_to_audit(events, topology_name, trace.run_id)
+        events = await self._end_run(_run_scope_token, topology_name, trace.run_id)
 
         usage = UsageSummary(
             input_tokens=trace.total_input_tokens,
@@ -815,6 +814,9 @@ class WorkspaceRuntime:
         await self._ensure_checkpointer()
         graph = self.compile(topology_name)
         topology = self._workspace.topologies[topology_name]
+        # Same scope as `run`, keyed by the thread: a resume's events must be attributable to the
+        # resumed run and not to whatever else this process has done since.
+        _resume_scope_token = set_current_run_id(thread_id)
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
 
@@ -834,10 +836,9 @@ class WorkspaceRuntime:
             if owns_mcp and self._mcp_manager is not None:
                 await self._mcp_manager.close_all()
 
-        events = _extract_events(self._governance)
         # A resumed run is identified by its thread — that is the id `swarmkit resume` was given
         # and the one a caller has to correlate with.
-        await self._persist_events_to_audit(events, topology_name, thread_id)
+        events = await self._end_run(_resume_scope_token, topology_name, thread_id)
 
         return RunResult(
             output=result.get("output", "") if result else "",
@@ -911,6 +912,30 @@ class WorkspaceRuntime:
             or "(no response)"
         )
         return _parse_result("inline-rubric", text)
+
+    def _begin_run(self, trace: Any) -> Any:
+        """Enter a run: make the trace active and stamp this task with the run id.
+
+        One call because it is one fact — every AuditEvent constructed from here on belongs to this
+        run, and `_end_run` relies on that to tell it apart from a concurrent job's events.
+        """
+        from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
+            set_active_trace,
+        )
+
+        set_active_trace(trace)
+        return set_current_run_id(trace.run_id)
+
+    async def _end_run(self, token: Any, topology_name: str, run_id: str) -> list[RunEvent]:
+        """Leave a run and persist only the events it emitted.
+
+        The filter is the fix: the provider's log is cumulative and never cleared, so an unfiltered
+        drain re-persisted every earlier run's events under this run's id.
+        """
+        reset_current_run_id(token)
+        events = _extract_events(self._governance, run_id=run_id)
+        await self._persist_events_to_audit(events, topology_name, run_id)
+        return events
 
     async def _persist_events_to_audit(
         self, events: list[RunEvent], topology_name: str, run_id: str | None = None
@@ -1070,12 +1095,20 @@ class WorkspaceRuntime:
 # ---- event extraction ----------------------------------------------------
 
 
-def _extract_events(governance: GovernanceProvider) -> list[RunEvent]:
-    """Pull audit events from the governance provider after a run.
+def _extract_events(governance: GovernanceProvider, *, run_id: str | None = None) -> list[RunEvent]:
+    """Pull this run's audit events from the governance provider.
 
     Works with MockGovernanceProvider (has .events property) and
     AGTGovernanceProvider (has .get_log() on the FlightRecorder).
     Returns empty list for providers that don't expose events.
+
+    Filtered to ``run_id`` when one is given. The provider's log is cumulative and never cleared,
+    so an unfiltered drain returns every event since the process started — which is how a second
+    run came to re-persist the first run's events under its own id, growing quadratically and
+    attributing every earlier run's work to whichever run happened to be last. Events stamped with
+    a different run, or with none at all (emitted outside any run), are not this run's to record.
+
+    ``run_id=None`` keeps the old unfiltered behaviour for callers that have no run to scope to.
     """
     raw_events = getattr(governance, "events", None)
     if raw_events is None:
@@ -1084,6 +1117,9 @@ def _extract_events(governance: GovernanceProvider) -> list[RunEvent]:
             raw_events = recorder.get_log()
     if not raw_events:
         return []
+
+    if run_id is not None:
+        raw_events = [e for e in raw_events if getattr(e, "run_id", None) == run_id]
 
     result: list[RunEvent] = []
     for evt in raw_events:

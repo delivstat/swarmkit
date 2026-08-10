@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
+from swarmkit_runtime._run_scope import current_run_id
 from swarmkit_runtime.governance._limits import (
     CircuitBreakerError,
     CircuitBreakerTracker,
@@ -60,7 +61,11 @@ class AuditEvent:
 
     # M6 expansion: identity + correlation
     event_id: UUID = field(default_factory=uuid4)
-    run_id: str | None = None
+    #: Which run emitted this, stamped at CONSTRUCTION from the per-task run scope. Without it an
+    #: event carried no attribution, so draining a provider's accumulated log could not tell one
+    #: run's events from another's — and every run re-persisted every earlier run's events under
+    #: its own id (`swarmkit_runtime._run_scope`).
+    run_id: str | None = field(default_factory=current_run_id)
     parent_event_id: UUID | None = None
 
     # M6 expansion: agent context
