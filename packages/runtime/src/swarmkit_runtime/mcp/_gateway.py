@@ -13,12 +13,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import secrets
+import time
 from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
+from swarmkit_runtime._run_scope import current_labels, current_run_id
 from swarmkit_runtime.mcp._sdk_compat import build_low_level_server, tool_input_schema
 
 from ._governed import MCPCallDenied, governed_mcp_call
@@ -37,7 +40,22 @@ _GATEWAY_SERVER_NAME = GATEWAY_SERVER_NAME
 #: internal detail: a harness adapter has to reconstruct it to write a tool grant the harness will
 #: match, and a grant written in any other namespace silently matches nothing.
 GATEWAY_NAME_SEP = "__"
+logger = logging.getLogger("swarmkit.mcp.gateway")
+
 _NAME_SEP = GATEWAY_NAME_SEP
+
+
+def _result_preview(content: Sequence[Any]) -> str:
+    """A short textual rendering of a tool result, for the audit record.
+
+    Text is kept as text; anything else (an image, say) is named by type rather than dumped — the
+    audit log records WHAT was returned, not the bytes.
+    """
+    parts: list[str] = []
+    for item in content:
+        text = getattr(item, "text", None)
+        parts.append(text if isinstance(text, str) else f"<{type(item).__name__}>")
+    return " ".join(parts)
 
 
 @dataclass(frozen=True)
@@ -187,6 +205,12 @@ class _Registration:
         )
         self._mcp_manager = mcp_manager
         self._governance = governance
+        # Captured HERE, not at call time. Registration happens inside the run's task, so the run
+        # scope is correct; the tool calls are served on uvicorn's tasks, which do not inherit it.
+        # Without this every harness tool call would be audited with no run, and the run-scoped
+        # drain (`_extract_events`) would discard it — the record would exist and reach nothing.
+        self._run_id = current_run_id()
+        self._labels = current_labels()
 
     async def _list(self) -> list[Any]:
         from mcp.types import Tool  # noqa: PLC0415
@@ -205,8 +229,12 @@ class _Registration:
         from mcp.types import ImageContent, TextContent  # noqa: PLC0415
 
         self.counters["called"] += 1
+        started = time.monotonic()
         tool = self._by_name.get(name)
         if tool is None:
+            # Audited, not just returned. An agent calling a tool it was not granted is a
+            # governance signal, and it reached the model as ordinary text.
+            await self._audit(name, arguments, "unknown tool", decision="deny", started=started)
             return [TextContent(type="text", text=f"unknown tool: {name}")]
         try:
             resp = await governed_mcp_call(
@@ -221,8 +249,53 @@ class _Registration:
                 arguments=arguments,
             )
         except MCPCallDenied as exc:
+            await self._audit(name, arguments, str(exc), decision="deny", started=started)
             return [TextContent(type="text", text=f"DENIED by governance: {exc}")]
-        return _to_content(resp, TextContent, ImageContent)
+        content = _to_content(resp, TextContent, ImageContent)
+        await self._audit(name, arguments, _result_preview(content), started=started)
+        return content
+
+    async def _audit(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        result: str,
+        *,
+        decision: Literal["allow", "deny"] = "allow",
+        started: float,
+    ) -> None:
+        """Record one harness tool call, in the shape the model tool loop already emits.
+
+        Same `skill.executed` event and fields, so every existing reader works unchanged — the
+        point is coverage, not a new format (`_tool_loop._record_tool_call`).
+
+        Until now a harness run recorded `executor.mcp_usage: advertised 43, calls 55` and nothing
+        about WHICH tools. For a research task the tool list IS the deliverable, and "called it and
+        ignored the answer" was indistinguishable from "never called it" — a distinction that cost
+        a wrong diagnosis.
+        """
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+        try:
+            await self._governance.record_event(
+                AuditEvent(
+                    event_type="skill.executed",
+                    agent_id=self.agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    skill_id=name,
+                    policy_decision=decision,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    payload={"inputs": arguments, "outputs": {"result": result[:1000]}},
+                    run_id=self._run_id,
+                    labels=dict(self._labels),
+                )
+            )
+        except Exception:
+            # A tool call must not fail because its audit did. The counters still move, and the
+            # gateway's job is to serve the call.
+            logger.warning("failed to audit harness tool call %r", name, exc_info=True)
 
 
 class _SharedGatewayServer:
