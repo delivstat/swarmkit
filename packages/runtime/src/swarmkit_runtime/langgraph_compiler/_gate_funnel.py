@@ -438,6 +438,12 @@ def build_advisory_approver(
                 "gate_id": gate_id,
                 "topology_id": topology_id,
                 "failed_layers": failed,
+                # WHAT was wrong, not just which layer. The field-level errors exist at this
+                # moment and used to be discarded, so a reader who queried the audit log learned
+                # only that validation failed and had to re-run the validator by hand to find out
+                # why. `failed_layers: ["validate"]` alone is not actionable.
+                "critique": str(provenance.get("critique") or "")[:4000],
+                "judge_score": (judge or {}).get("score"),
                 "retries": provenance.get("retries", 0),
                 "escalated": provenance.get("escalated", False),
                 # Stated on every record, so a reader of the audit log never has to infer why a

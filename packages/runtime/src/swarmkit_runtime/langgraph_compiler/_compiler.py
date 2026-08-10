@@ -959,10 +959,54 @@ def _wrap_with_funnel_gate(
         if gate_state.get("outcome") != "approved":
             critique = (gate_state.get("provenance") or {}).get("critique") or ""
             return _make_result(agent.id, f"[GATE REJECTED] {critique}".strip())
-        return out
+        return _annotate_escalation(out, agent.id, gate_state)
 
     gated_node.__name__ = f"gated_{agent.id}"
     return gated_node
+
+
+def _annotate_escalation(out: dict[str, Any], agent_id: str, gate_state: Any) -> dict[str, Any]:
+    """Mark an artifact the funnel escalated with the reason it escalated.
+
+    The funnel's own schema says `max_retries` is "retries before the funnel escalates to a human
+    with the last critique attached — it never drops or silently passes". The escalation happened
+    and the critique reached only the audit log, so a reviewer opened a spec the system already knew
+    violated its own schema with nothing on the page to say so — and the saga parked exactly as a
+    clean run does.
+
+    Annotating the artifact puts it where the reviewer is already looking, and carries onward for
+    free: the stage's artifact IS this text, so the gate's review item and the next stage's input
+    both inherit it. Same shape as `_enforce_harness_output_schema`, which is the comparable
+    "escalate on exhaustion" path and already did this — two mechanisms that behave differently at
+    the point a person is looking is the defect, not the missing string.
+    """
+    provenance = gate_state.get("provenance") or {}
+    judge = provenance.get("judge") or {}
+    review = provenance.get("review") or {}
+    failed = [
+        name
+        for name, ok in (
+            ("validate", provenance.get("validate_ok", True)),
+            ("judge", judge.get("passed", True)),
+            ("review", not review.get("route_back")),
+        )
+        if not ok
+    ]
+    if not failed:
+        return out
+
+    results = dict(out.get("agent_results") or {})
+    current = str(results.get(agent_id, ""))
+    retries = provenance.get("retries", 0)
+    critique = str(provenance.get("critique") or "").strip()
+    body = f"\n  {critique}" if critique else ""
+    results[agent_id] = (
+        f"{current}\n\n---\nFUNNEL GATE ESCALATED: "
+        f"{' and '.join(failed)} failed after {retries} "
+        f"{'retry' if retries == 1 else 'retries'}; a human is being asked to review it "
+        f"anyway.{body}"
+    )
+    return {**out, "agent_results": results}
 
 
 # ---- routing / edges ----------------------------------------------------
