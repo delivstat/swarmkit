@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
@@ -66,6 +66,29 @@ class JobStore:
         async with self._lock:
             return list(self._jobs.values())
 
+    async def adopt(self, row: Any) -> Job:
+        """Rehydrate an in-memory job from a durable row and track it.
+
+        A run that parked before a restart, or was started by another instance, has no live object
+        here — and `execute_job` mutates one. Rebuilding from the row is what lets such a run be
+        resumed rather than being permanently stuck as a `deferred` row nobody can continue.
+        """
+        job = Job(
+            id=row.id,
+            topology=row.topology,
+            status=row.status,
+            input=row.input,
+            version=getattr(row, "version", None),
+            output=getattr(row, "output", None),
+            error=getattr(row, "error", None),
+            events=list(getattr(row, "events", []) or []),
+            created_at=getattr(row, "created_at", "") or "",
+            completed_at=getattr(row, "completed_at", None),
+        )
+        async with self._lock:
+            self._jobs[job.id] = job
+        return job
+
     def track_task(self, task: asyncio.Task[None]) -> None:
         """Keep a reference to a background task to prevent GC."""
         self._background_tasks.add(task)
@@ -101,8 +124,14 @@ async def execute_job(
     semaphore: asyncio.Semaphore | None = None,
     canary_router: CanaryRouter | None = None,
     store: Store | None = None,
+    resume: bool = False,
 ) -> None:
     """Run topology in background, updating job state.
+
+    ``resume`` continues a run that parked on a human gate, from its checkpoint, instead of starting
+    a new one. It shares every surrounding concern deliberately — the semaphore slot, the timeout,
+    usage recording and the deferral branch — because a resumed run can park again, and a second
+    implementation would drift from the first exactly there.
 
     When a *semaphore* is provided the slot is held for the duration
     of execution so ``_register_job_routes`` can reject new requests
@@ -122,8 +151,10 @@ async def execute_job(
         if semaphore is not None:
             await semaphore.acquire()
         try:
-            result = await asyncio.wait_for(
-                rt.run(
+            call = (
+                rt.resume(job.topology, job.id, max_steps=max_steps)
+                if resume
+                else rt.run(
                     job.topology,
                     job.input,
                     max_steps=max_steps,
@@ -131,9 +162,9 @@ async def execute_job(
                     # the job id, so GET /observability/runs/{job_id}/trace resolves it directly —
                     # no separate job→run_id mapping. run_id == job_id == thread_id for serve runs.
                     thread_id=job.id,
-                ),
-                timeout=timeout_seconds,
+                )
             )
+            result = await asyncio.wait_for(call, timeout=timeout_seconds)
             job.output = result.output
             job.status = "completed"
             job.events.append("Job completed successfully")
@@ -193,6 +224,7 @@ def _start_job(
     semaphore: asyncio.Semaphore | None = None,
     canary_router: CanaryRouter | None = None,
     store: Store | None = None,
+    resume: bool = False,
 ) -> None:
     """Create a background task for a job and track it."""
     task = asyncio.create_task(
@@ -204,6 +236,7 @@ def _start_job(
             semaphore=semaphore,
             canary_router=canary_router,
             store=store,
+            resume=resume,
         )
     )
     job_store.track_task(task)

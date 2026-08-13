@@ -76,6 +76,12 @@ def _app_state_run_deps(
     )
 
 
+#: Step budget for a resumed run. The original request's `max_steps` is not recorded on the job, and
+#: a resume continues from a checkpoint rather than starting over, so it needs a fresh allowance
+#: rather than the remainder of one nobody stored.
+_DEFAULT_RESUME_STEPS = 50
+
+
 def _durable_job(request: Request, job_id: str) -> Any:
     """The job as the durable store has it, or None."""
     store: Store | None = getattr(request.app.state, "store", None)
@@ -236,6 +242,47 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
         if found is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
         return _to_response(found)
+
+    @app.post("/jobs/{job_id}/resume")
+    async def resume_job(job_id: str, request: Request) -> JobResponse:
+        """Continue a run that parked on a human gate.
+
+        The state is checkpointed under `thread_id == job.id`, so resuming needs nothing but the id.
+        Without this, serve could DEFER a run and never continue it: an application that started a
+        run over HTTP and saw it park had no way back in, and `swarmkit run --resume` needs the
+        workspace on the same machine.
+
+        Only a `deferred` job resumes. A completed one has nothing to continue and a running one is
+        already going — replying 409 rather than quietly starting a second execution against the
+        same thread, which would interleave two runs on one checkpoint.
+        """
+        live = await job_store.get(job_id)
+        row = _durable_job(request, job_id)
+        found = _resolve_job(live, row)
+        if found is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        if found.status != "deferred":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Job '{job_id}' is {found.status!r}, not 'deferred' — only a run parked on a "
+                    f"gate can be resumed"
+                ),
+            )
+
+        rt = _get_runtime(request)
+        canary, store, cfg, semaphore = _app_state_run_deps(request)
+        job = await jobs.resume(
+            rt=rt,
+            store=store,
+            cfg=cfg,
+            semaphore=semaphore,
+            canary=canary,
+            job_id=job_id,
+            durable=row,
+            max_steps=_DEFAULT_RESUME_STEPS,
+        )
+        return _to_response(job)
 
     @app.get("/jobs/{job_id}/diff")
     async def get_job_diff(job_id: str, request: Request) -> dict[str, Any]:
