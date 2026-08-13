@@ -82,6 +82,19 @@ def _durable_job(request: Request, job_id: str) -> Any:
     return store.get_job(job_id) if store is not None else None
 
 
+def _diff_length(job: Any) -> int | None:
+    """Total diff characters, or None when the run carried no diff out at all.
+
+    None and 0 are different answers: 0 means a harness ran and changed nothing, None means no
+    diff reached the record. Collapsing them is what let an 850-second run that edited 11 files
+    report success with its work gone.
+    """
+    diffs = getattr(job, "diffs", None)
+    if diffs is None:
+        return None
+    return sum(len(d) for d in diffs.values())
+
+
 def _to_response(job: Any) -> JobResponse:
     """One shape for both stores — an in-memory Job and a persisted JobRow carry the same fields
     under the same names, so the client cannot tell which one answered."""
@@ -98,6 +111,7 @@ def _to_response(job: Any) -> JobResponse:
         # Read defensively: the in-memory Job predates the durable row's columns, so a live job
         # simply has no source or cost yet. Absent stays absent rather than becoming a zero, which
         # would read as "this run was free".
+        diff_length=_diff_length(job),
         source=getattr(job, "source", None),
         correlation_id=getattr(job, "correlation_id", None),
         usage_input_tokens=getattr(job, "usage_input_tokens", None),
@@ -131,7 +145,7 @@ def _replay(events: list[str], status: str) -> StreamingResponse:
     return _sse(generate())
 
 
-def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
+def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PLR0915
     """Register async job execution, polling, streaming, and webhook endpoints."""
     jobs = JobService(job_store)
 
@@ -186,6 +200,28 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:
         if found is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
         return _to_response(found)
+
+    @app.get("/jobs/{job_id}/diff")
+    async def get_job_diff(job_id: str, request: Request) -> dict[str, Any]:
+        """The unified diff a harness run produced, per agent.
+
+        Its own endpoint rather than a field on `GET /jobs/{id}`: a diff can be megabytes and every
+        job fetch would carry it. The job response holds `diff_length` so a caller can tell there
+        is something here without paying for it.
+        """
+        found = await job_store.get(job_id) or _durable_job(request, job_id)
+        if found is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        diffs = getattr(found, "diffs", None)
+        if diffs is None:
+            # 404 on the DIFF, not on the job: this run carried none out. Distinct from an empty
+            # dict, which is a harness that ran and changed nothing.
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' recorded no harness diff")
+        return {
+            "job_id": job_id,
+            "diffs": dict(diffs),
+            "length": sum(len(d) for d in diffs.values()),
+        }
 
     @app.get("/jobs/{job_id}/stream")
     async def stream_job(job_id: str, request: Request) -> StreamingResponse:

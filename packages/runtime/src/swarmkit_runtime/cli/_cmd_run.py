@@ -278,7 +278,14 @@ def _job_store(workspace_path: Path) -> Any:
 
 
 def _finish_job(
-    store: Any, job_id: str, status: str, *, output: str = "", error: str = "", usage: Any = None
+    store: Any,
+    job_id: str,
+    status: str,
+    *,
+    output: str = "",
+    error: str = "",
+    usage: Any = None,
+    diffs: dict[str, str] | None = None,
 ) -> None:
     """Close out the job row. Never raises: the run already happened."""
     if store is None:
@@ -289,6 +296,8 @@ def _finish_job(
         "status": status,
         "completed_at": datetime.now(UTC).isoformat(),
     }
+    if diffs is not None:
+        fields["diffs"] = diffs
     if output:
         fields["output"] = output
     if error:
@@ -375,6 +384,7 @@ def _execute_run(
         "completed",
         output=result.output or "",
         usage=result.usage,
+        diffs=result.diffs,
     )
     if save_artifact:
         _persist_artifact(workspace_path, correlation_id, thread_id, result.output or "")

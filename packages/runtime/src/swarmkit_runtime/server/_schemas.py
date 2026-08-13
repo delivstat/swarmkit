@@ -35,6 +35,11 @@ class JobResponse(BaseModel):
     job_id: str
     status: str
     topology: str = ""  # which topology this run executed (for the run-detail graph overlay)
+    #: Total characters of unified diff this run produced, or None when no harness diff was
+    #: carried out of it. The CONTENT is at `GET /jobs/{id}/diff`, so an ordinary job fetch does
+    #: not carry megabytes — but the length is here, because "changed nothing" and "the changes
+    #: were dropped" used to be the same answer and that is what made the loss dangerous.
+    diff_length: int | None = None
     output: str | None = None
     error: str | None = None
     #: What the run was asked. The single most useful thing on a detail page after the output —

@@ -291,12 +291,21 @@ def _record_stage_job(
 
 
 def _finish_stage_job(
-    store: Any, run_id: str, status: str, *, output: str = "", error: str = "", usage: Any = None
+    store: Any,
+    run_id: str,
+    status: str,
+    *,
+    output: str = "",
+    error: str = "",
+    usage: Any = None,
+    diffs: dict[str, str] | None = None,
 ) -> None:
     """Close a stage's job row on every exit path, so none is left sitting at `running`."""
     if store is None:
         return
     fields: dict[str, Any] = {"status": status, "completed_at": datetime.now(tz=UTC).isoformat()}
+    if diffs is not None:
+        fields["diffs"] = diffs
     if output:
         fields["output"] = output
     if error:
@@ -414,6 +423,9 @@ def build_pipeline_run_stage(
                 "failed",
                 error="; ".join(f"{node}: {why}" for node, why in sorted(node_errors.items())),
                 usage=getattr(result, "usage", None),
+                # Recorded on the FAILING path too: a harness that edited files and then failed
+                # still produced work, and the worktree is gone either way.
+                diffs=getattr(result, "diffs", None),
             )
             return StageOutcome(
                 status="failed",
@@ -423,7 +435,12 @@ def build_pipeline_run_stage(
             )
 
         _finish_stage_job(
-            job_store, run_id, "completed", output=output, usage=getattr(result, "usage", None)
+            job_store,
+            run_id,
+            "completed",
+            output=output,
+            usage=getattr(result, "usage", None),
+            diffs=getattr(result, "diffs", None),
         )
 
         funnel_id = str(stage.get("gate") or stage.get("funnel") or "")

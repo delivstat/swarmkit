@@ -85,3 +85,10 @@ class SwarmState(TypedDict):
     #: was never reliably recognisable: `_is_error_passthrough` matches "Error:"/"Tool error:" and
     #: never matched "[harness:claude-code] failure: no result event" at all.
     node_errors: Annotated[dict[str, str], _merge_dicts]
+    #: Agent id -> the unified diff that agent's harness produced. A harness node set
+    #: `result["diff"]` for the funnel's deterministic validate layers, which read the return dict
+    #: closure — but `diff` was never a state key, so it never reached the graph result and nothing
+    #: downstream could persist it. The worktree is torn down on exit, so the agent's entire work
+    #: product was unrecoverable while the run reported success. Keyed by agent, not a single
+    #: last-write-wins string: two harness agents in one run would otherwise lose one's work.
+    diffs: Annotated[dict[str, str], _merge_dicts]
