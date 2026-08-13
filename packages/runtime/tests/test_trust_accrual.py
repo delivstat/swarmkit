@@ -118,6 +118,9 @@ class _DecidedQueue:
     def list_pending(self) -> list[ReviewItem]:
         return []
 
+    def list_all(self) -> list[ReviewItem]:
+        return []
+
     def resolve(self, item_id: str, status: str, comment: str = "") -> bool:
         return True
 

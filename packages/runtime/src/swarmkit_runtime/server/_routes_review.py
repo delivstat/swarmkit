@@ -297,6 +297,40 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
     async def list_all(kind: str = "", gate_id: str = "") -> list[dict[str, Any]]:
         return _filtered(_queue().list_all(), kind, gate_id)
 
+    @app.get("/gates/{gate_id}")
+    async def gate_state(gate_id: str, request: Request, author: str = "") -> dict[str, Any]:
+        """A gate's state with its approval policy applied.
+
+        The endpoint an external driver polls: `GET /review?gate_id=…` returns role-tasks, and
+        deciding whether they add up to an approval means reimplementing quorum, distinct-approver
+        counting and exclude_author (design/details/gate-state-and-deferring-approval.md).
+
+        ``author`` is optional and only matters when the policy excludes the author; when it is
+        needed and absent the response says so rather than quietly evaluating without it.
+        """
+        from swarmkit_runtime.gate_state import (  # noqa: PLC0415
+            PolicyUnresolvedError,
+            UnknownGateError,
+            compute_gate_state,
+        )
+
+        runtime = _get_runtime(request)
+        try:
+            state = compute_gate_state(
+                _queue(),
+                runtime.workspace.role_registry,
+                runtime.workspace,
+                gate_id,
+                author=author or None,
+            )
+        except UnknownGateError as exc:
+            raise HTTPException(status_code=404, detail=f"No gate {gate_id!r}") from exc
+        except PolicyUnresolvedError as exc:
+            # 409, not 500: the gate is real and the workspace is the thing that cannot answer for
+            # it. A 500 would read as "SwarmKit broke" rather than "this funnel is not here".
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return dict(state.to_dict())
+
     @app.get("/review/{item_id}")
     async def get_item(item_id: str) -> dict[str, Any]:
         return _item_to_dict(_find(_queue(), item_id))
