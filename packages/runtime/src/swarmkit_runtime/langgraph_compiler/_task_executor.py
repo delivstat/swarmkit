@@ -276,6 +276,7 @@ async def _execute_child_task(
         "current_agent": child.id,
         "output": "",
         "node_errors": {},
+        "diffs": {},
     }
 
     result_state = await child_fn(child_state)

@@ -222,6 +222,7 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
                     "current_agent": cid,
                     "output": "",
                     "node_errors": {},
+                    "diffs": {},
                 }
                 child_provider = _resolve_agent_provider(
                     child,

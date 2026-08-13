@@ -1045,6 +1045,9 @@ async def _finish(
         # validate layers — slice_budget, cited_change — can enforce on the change itself.
         if diff:
             result["diff"] = diff
+            # AND into graph state. The line above feeds the funnel's validate layers, which read
+            # this dict directly; without the state key the diff stopped at the node boundary.
+            result["diffs"] = {agent_id: diff}
         return result
 
     reason = terminal.exit_metadata.get("reason") or terminal.exit_metadata.get("denied") or ""

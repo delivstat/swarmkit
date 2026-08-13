@@ -104,6 +104,15 @@ class RunResult:
     #: a normal terminal event, not an exception, so its failure used to be visible ONLY as the
     #: output text — leaving every caller to guess from prose whether the work happened.
     node_errors: dict[str, str] = field(default_factory=dict)
+    #: Agent id -> the unified diff its harness produced. The agent's actual work product for a
+    #: harness run: the worktree is torn down on exit, so if this is not carried out of the run the
+    #: changes are gone and the run still reports success.
+    diffs: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def diff(self) -> str:
+        """Every agent's diff, concatenated — what a caller wants to read or apply."""
+        return "\n".join(d for d in self.diffs.values() if d)
 
     @property
     def failed(self) -> bool:
@@ -812,6 +821,11 @@ class WorkspaceRuntime:
             },
             events=events,
             usage=usage,
+            diffs={
+                k: str(v)
+                for k, v in ((result or {}).get("diffs") or {}).items()
+                if isinstance(v, str)
+            },
             trace_data=trace_summary,
             node_errors={
                 k: str(v)

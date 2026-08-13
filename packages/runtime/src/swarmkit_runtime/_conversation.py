@@ -171,7 +171,11 @@ class ConversationManager:
             self._finish_turn_job(run_id, "failed", error=f"{type(exc).__name__}: {exc}")
             raise
         self._finish_turn_job(
-            run_id, "completed", output=result.output, usage=getattr(result, "usage", None)
+            run_id,
+            "completed",
+            output=result.output,
+            usage=getattr(result, "usage", None),
+            diffs=getattr(result, "diffs", {}) or {},
         )
 
         conversation.turns.append(
@@ -220,7 +224,14 @@ class ConversationManager:
             logger.warning("turn %s will not appear in jobs: could not create its row", run_id)
 
     def _finish_turn_job(
-        self, run_id: str, status: str, *, output: str = "", error: str = "", usage: Any = None
+        self,
+        run_id: str,
+        status: str,
+        *,
+        output: str = "",
+        error: str = "",
+        usage: Any = None,
+        diffs: dict[str, str] | None = None,
     ) -> None:
         """Close the turn's row. A row left at `running` is indistinguishable from a turn still
         being answered."""
@@ -237,6 +248,8 @@ class ConversationManager:
             fields["error"] = error
         # Both usage sinks, through the one recorder — see persistence/_usage_recording.py.
         fields.update(usage_fields(usage, run_id, store))
+        if diffs is not None:
+            fields["diffs"] = diffs
         try:
             store.update_job(run_id, **fields)
         # Same one-directional rule on the way out.

@@ -83,6 +83,7 @@ async def _run_dag(
                 "current_agent": child.id,
                 "output": "",
                 "node_errors": {},
+                "diffs": {},
             }
             child_provider = _resolve_agent_provider(
                 child,

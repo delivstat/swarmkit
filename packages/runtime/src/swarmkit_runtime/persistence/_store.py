@@ -155,6 +155,9 @@ class JobRow:
     source: str | None = None
     #: caller-supplied {key: value}; opaque to the runtime (see the `labels` column)
     labels: dict[str, str] = field(default_factory=dict)
+    #: agent id -> unified diff. None when no harness diff was carried out of the run at all;
+    #: an empty dict when a harness ran and changed nothing.
+    diffs: dict[str, str] | None = None
 
 
 @dataclass
@@ -198,7 +201,12 @@ class Store:
     #: Columns added to ``jobs`` after the initial schema, in the order they arrived. Additive and
     #: nullable only — this is the whole migration facility, so anything needing a backfill or a
     #: type change does not belong here.
-    _ADDED_JOB_COLUMNS = (("correlation_id", "TEXT"), ("source", "TEXT"), ("labels", "TEXT"))
+    _ADDED_JOB_COLUMNS = (
+        ("correlation_id", "TEXT"),
+        ("source", "TEXT"),
+        ("labels", "TEXT"),
+        ("diff", "TEXT"),
+    )
 
     def _migrate_jobs(self) -> None:
         """Add job columns introduced after the initial schema.
@@ -275,6 +283,7 @@ class Store:
         usage_input_tokens: int | None = None,
         usage_output_tokens: int | None = None,
         usage_cost_usd: float | None = None,
+        diffs: dict[str, str] | None = None,
     ) -> None:
         values: dict[str, Any] = {}
         for col, val in (
@@ -291,6 +300,10 @@ class Store:
                 values[col] = val
         if events is not None:
             values["events"] = json.dumps(events)
+        if diffs is not None:
+            # Written even when empty: "{}" says a harness ran and changed nothing, which is a
+            # different fact from NULL — no diff was carried out of the run at all.
+            values["diff"] = json.dumps(diffs)
         if not values:
             return
         with self._engine.begin() as conn:
@@ -348,6 +361,7 @@ class Store:
             correlation_id=row.get("correlation_id"),
             source=row.get("source"),
             labels=json.loads(row["labels"]) if row.get("labels") else {},
+            diffs=json.loads(row["diff"]) if row.get("diff") else None,
             topology=row["topology"],
             status=row["status"],
             input=row["input"],

@@ -84,9 +84,12 @@ def _record_run_usage(store: Store, job_id: str, result: RunResult) -> None:
     job-level half and wrote no per-model rows, so `/usage` answered for one path in four.
     """
     fields = usage_fields(result.usage, job_id, store)
-    if fields:
-        with contextlib.suppress(Exception):
-            store.update_job(job_id, **fields)
+    # The harness's work product. Always passed, never conditionally: an empty dict says a harness
+    # ran and changed nothing, which is a different fact from NULL, and telling them apart is what
+    # stops a dropped diff looking like a clean run.
+    fields["diffs"] = getattr(result, "diffs", {}) or {}
+    with contextlib.suppress(Exception):
+        store.update_job(job_id, **fields)
 
 
 async def execute_job(

@@ -40,6 +40,11 @@ jobs = Table(
     # by whatever it is modelling — a Wayfinder map, a requirement, a tenant — without SwarmKit
     # having to learn what any of those are.
     Column("labels", Text),
+    # The unified diff a harness run produced, as JSON {agent_id: diff}. NULL means no harness
+    # diff was carried out of the run; "{}" means one ran and changed nothing. That distinction is
+    # the point: they used to be indistinguishable, and a run whose work was dropped looked exactly
+    # like a run that changed nothing.
+    Column("diff", Text),
 )
 
 conversations = Table(
