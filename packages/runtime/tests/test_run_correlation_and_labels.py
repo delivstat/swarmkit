@@ -208,6 +208,45 @@ def test_no_labels_parses_to_empty() -> None:
     assert _parse_labels(None) == {}
 
 
+# ---- the HTTP surface correlates too -------------------------------------------------------------
+
+
+def test_the_run_request_can_carry_a_correlation_and_labels() -> None:
+    """The CLI has had these since 1.176.0 and `RunRequest` did not, so a run started over the API
+    was uncorrelated no matter what the caller sent — and the HTTP surface is the one an application
+    sequencing its own runs actually uses. Found by writing the reference orchestrator against it.
+    """
+    from swarmkit_runtime.server._schemas import RunRequest  # noqa: PLC0415
+
+    body = RunRequest(input="draft it", correlation_id="WMS-35", labels={"map": "WMS-35"})
+
+    assert body.correlation_id == "WMS-35"
+    assert body.labels == {"map": "WMS-35"}
+
+
+def test_an_uncorrelated_request_still_works() -> None:
+    """Optional: an ad-hoc run should not have to invent a correlation."""
+    from swarmkit_runtime.server._schemas import RunRequest  # noqa: PLC0415
+
+    body = RunRequest(input="hello")
+
+    assert body.correlation_id is None
+    assert body.labels == {}
+
+
+def test_the_route_passes_them_to_the_service() -> None:
+    """A field on the request model that the route drops is the shape of defect this codebase
+    keeps finding — so it is asserted, not assumed."""
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    src = (
+        _Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_routes_jobs.py"
+    ).read_text()
+
+    assert "correlation_id=body.correlation_id" in src
+    assert "labels=body.labels" in src
+
+
 # ---- the migration -------------------------------------------------------------------------------
 
 
