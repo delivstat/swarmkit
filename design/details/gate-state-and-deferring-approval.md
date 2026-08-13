@@ -191,6 +191,88 @@ after it, or serve can defer and never continue.
 
 ---
 
+# Part 3 — the approval surface
+
+## The UI mislinks a topology-run gate today
+
+`packages/ui/app/gates/page.tsx:13` hard-codes one of the two conventions:
+
+```ts
+/** A gate id is `<correlation_id>:<agent_id>`; split on the LAST colon */
+export function runOf(gateId) { … }   // → correlation_id
+export function stageOf(gateId) { … } // → agent_id, but named "stage"
+```
+
+That is the stage-runner shape. For an in-node gate (`{topology_id}:{agent_id}`) `runOf()` returns a
+**topology id**, and the link goes to `/runs?run=wms-design&stage=designer` — a saga search, which
+finds nothing and renders *"No pipeline runs to show"*.
+
+Latent only because the in-node approve is advisory and opens no gate. It breaks the day Part 2
+lands: every topology-run gate would list correctly and link to a dead pipeline view.
+
+**This settles the convention question.** Unify on `{run_id}:{agent_id}` where `run_id` is always
+`jobs.id`. A stage's run id is already `<correlation>:<stage>`, so its gate becomes
+`WMS-27:design:designer` — correlation-bearing and run-unique, and the existing split still resolves.
+The alternative is a client branching on which convention a gate happens to carry, which is
+unmaintainable.
+
+Better: **stop parsing gate ids in the client.** `GET /gates/{gate_id}` returns `run_id`,
+`topology_id`, `agent_id` and `artifact_ref` resolved, so no surface infers structure from a string.
+The parse function is the "two systems must agree about identity" hazard in miniature.
+
+## Approval belongs in the gate UI, not the job page
+
+The gates page currently punts — *"role-tasks are LISTED here but resolved in the run view: this page
+has no artifact to show"*. That is true today, and not because the item lacks the artifact: `ReviewItem`
+carries `artifact_ref` and `_item_to_dict` returns it. **There is simply no `GET /artifacts/{ref}` to
+fetch the content** — the same gap Part 1's note lists for external orchestrators. One endpoint
+serves both.
+
+With it, approval stays where the approver is:
+
+- **Gate UI — the approver's inbox.** Renders the artifact, the policy state from `GET /gates/{id}`
+  (who has approved, what is still needed), approve/reject with a comment, and a **link to the job**
+  for execution detail.
+- **Job page — read-only about the decision.** Shows that this run is gated and links to its gate;
+  no approval controls.
+
+The split is not cosmetic. The job page is about **execution** — tool calls, usage, trace; approval
+is a **decision**. Merging them makes the job page do two jobs and buries the approver's queue inside
+a browse surface. It also survives Part 3 of the extraction: when the pipeline surfaces leave serve,
+the gate UI is unaffected, whereas an approval control living in `/runs` would leave with them.
+
+## A re-run is a new job, and the chain has to be recorded
+
+A rejected artifact is redone by running again, which writes a **new job row**. Two consequences.
+
+**The new run gets a new gate, automatically.** Because the gate id is keyed on `run_id`, a re-run
+cannot land on the previous run's gate. That is the correct behaviour and it is structural rather
+than remembered: `open_gate` documents the hazard today — *"those approvals were cast against the
+PREVIOUS artifact, which is arguably wrong"* — and keying on the run removes it.
+
+**`correlation_id` cannot express the chain.** It groups runs, but it is already overloaded: in the
+application-owned model a correlation is a *ticket*, holding different units of work as well as
+retries. "Same ticket" and "supersedes" are different facts.
+
+Proposed: **`jobs.parent_job_id`**, nullable, through the existing additive-column facility
+(`_ADDED_JOB_COLUMNS`). Then the attempt number is derivable, the chain is walkable in both
+directions, and "what did this artifact cost including retries" becomes answerable — which the
+per-run cost figures cannot answer today.
+
+### The rejection carries forward as a critique
+
+A reviewer rejects with a comment. That comment is a **critique** — the same thing the funnel's judge
+produces, and the funnel already carries a critique back to the drafter on retry. A human rejection
+should reuse that channel: the re-run starts with the reviewer's words as its critique, rather than
+re-drafting blind and rediscovering the objection.
+
+**The runtime does not re-run on its own.** A rejection means a human said no; spending again is an
+operator decision, and a runtime that automatically re-spends on rejection would be deciding budget
+on a human's behalf. The runtime records the link and carries the critique; the driver or operator
+triggers the new run.
+
+---
+
 ## Test plan
 
 **Part 1**
@@ -213,6 +295,17 @@ after it, or serve can defer and never continue.
 - Serve records `deferred` rather than `failed`, and the job resumes over HTTP.
 - Parity: the same funnel-gated topology approves identically under the bundled controller, under a
   bare `swarmkit run` loop, and over HTTP.
+
+**Part 3**
+- A topology-run gate and a stage gate both link to a resolvable job — the mislink asserted against
+  the id the UI actually builds, not against a fixture.
+- `GET /artifacts/{ref}` returns the artifact a gate references, so the gate UI can render what is
+  being approved.
+- A re-run writes a new job carrying `parent_job_id`, and **opens a NEW gate**: approvals cast on the
+  previous run's gate do not satisfy the new one.
+- The chain is walkable and the attempt number derivable; cost sums across it.
+- A rejection's comment reaches the re-run as its critique.
+- The runtime does **not** start a re-run by itself on rejection.
 
 ## Demo plan
 
@@ -245,6 +338,10 @@ Plus the cost line before and after resume, showing the second half added nothin
 4. **Unify the gate-id convention now, or leave the stage path alone?** One rule is better than
    two — two is what produced the collision above — but changing the stage path breaks gates open at
    upgrade time.
-5. **Should `deferred` be terminal for the job row, or a distinct resumable state?** It closes the
+5. **Does `parent_job_id` belong on the job, or should the chain live in the application?** The
+   application already models ticket hierarchy; a runtime-side chain is a second place the same fact
+   lives. Against that: cost-across-retries is a runtime question, and the runtime is the only thing
+   that knows a run superseded another.
+6. **Should `deferred` be terminal for the job row, or a distinct resumable state?** It closes the
    row today, which makes "how many runs are waiting on a human" a query over `status='deferred'` —
    convenient, but it conflates "finished" and "paused" in the same column.
