@@ -1,4 +1,4 @@
-import { runOf, stageOf } from "@/app/gates/page";
+import { runOf } from "@/app/gates/page";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
 
@@ -78,20 +78,24 @@ describe("gateStatus", () => {
 	});
 });
 
-describe("gate id split", () => {
-	it("splits a gate id into its run and stage", () => {
-		expect(runOf("run-42:design")).toBe("run-42");
-		expect(stageOf("run-42:design")).toBe("design");
+describe("which run a gate belongs to", () => {
+	it("prefers the server's run_id over parsing the gate id", () => {
+		// The whole point: the id has two shapes — `<correlation>:<stage>` for a pipeline stage and
+		// `<run>:<agent>` for an in-node funnel gate — so a client that splits has to know which it
+		// is holding, and got it wrong for one of them.
+		expect(runOf({ gate_id: "wms-design:designer", run_id: "job-abc" })).toBe("job-abc");
+	});
+
+	it("falls back to splitting for items written before run_id existed", () => {
+		expect(runOf({ gate_id: "run-42:design" })).toBe("run-42");
 	});
 
 	it("splits on the LAST colon so a correlation id containing one still resolves", () => {
-		expect(runOf("tenant:run-42:design")).toBe("tenant:run-42");
-		expect(stageOf("tenant:run-42:design")).toBe("design");
+		expect(runOf({ gate_id: "tenant:run-42:design" })).toBe("tenant:run-42");
 	});
 
 	it("degrades safely on a malformed gate id", () => {
-		expect(runOf("nocolon")).toBe("nocolon");
-		expect(stageOf("nocolon")).toBe("");
+		expect(runOf({ gate_id: "nocolon" })).toBe("nocolon");
 	});
 });
 

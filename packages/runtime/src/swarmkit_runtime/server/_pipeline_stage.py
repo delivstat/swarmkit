@@ -226,6 +226,7 @@ async def _open_stage_gate(
     funnel_id: str,
     *,
     artifact_ref: str = "",
+    run_id: str = "",
 ) -> None:
     """Fan the stage's funnel ``approve`` policy into role-tasks on the review queue.
 
@@ -274,6 +275,7 @@ async def _open_stage_gate(
         # Stamps every role-task with the artifact it is about, so a rework loop opens a new round
         # and decisions about an earlier draft stop counting toward quorum.
         artifact_ref=artifact_ref,
+        run_id=run_id,
     )
 
 
@@ -455,7 +457,14 @@ def build_pipeline_run_stage(
         # could only be released by `swarmkit pipeline advance`, a single reserved-scope operator
         # act with none of the multi-party guarantees the funnel declares.
         await _open_stage_gate(
-            runtime, correlation_id, sid, funnel_id, artifact_ref=_revision_ref(ref, output)
+            runtime,
+            correlation_id,
+            sid,
+            funnel_id,
+            artifact_ref=_revision_ref(ref, output),
+            # The stage's job id, so a reader opens the run that produced the artifact rather than
+            # parsing it back out of the gate id.
+            run_id=run_id,
         )
         return StageOutcome(status="parked", artifact=ref, artifact_bytes=len(output.encode()))
 

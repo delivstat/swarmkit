@@ -119,6 +119,7 @@ def open_gate(
     funnel_id: str = "",
     artifact_ref: str = "",
     artifact: str = "",
+    run_id: str = "",
 ) -> int:
     """Fan the gate out into one review item per role-task. Returns the gate's current round.
 
@@ -156,6 +157,12 @@ def open_gate(
                     # approved THIS text, and a fresh draft would be a different one they never saw.
                     # Duplicated across a gate's role-tasks; artifacts here are kilobytes.
                     "artifact": artifact,
+                    # The RUN this gate belongs to — always `jobs.id`, for both an in-node gate and
+                    # a pipeline stage's. Carried so a reader can open the run without parsing the
+                    # gate id, which is two different shapes and would need the reader to know
+                    # which. The UI linked every gate at a saga view by splitting the id, so a
+                    # topology-run gate pointed at a pipeline run that does not exist.
+                    "run_id": run_id,
                 },
                 artifact_ref=artifact_ref,
                 round=round_no,

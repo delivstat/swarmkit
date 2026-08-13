@@ -67,6 +67,9 @@ class GateState:
     gate_id: str
     status: str  # pending | approved | rejected | changes-requested
     funnel_id: str
+    #: The run that produced the artifact — always `jobs.id`, for an in-node gate and a stage's
+    #: alike. What a surface links to, instead of parsing the gate id.
+    run_id: str
     topology_id: str
     agent_id: str
     artifact_ref: str
@@ -91,6 +94,7 @@ class GateState:
             "status": self.status,
             "resolved": self.resolved,
             "funnel_id": self.funnel_id,
+            "run_id": self.run_id,
             "topology_id": self.topology_id,
             "agent_id": self.agent_id,
             "artifact_ref": self.artifact_ref,
@@ -197,6 +201,7 @@ def _evaluate(
         gate_id=gate_id,
         status=str(ev.status.value),
         funnel_id=funnel_id,
+        run_id=str((first.output or {}).get("run_id") or ""),
         topology_id=first.topology_id,
         agent_id=first.agent_id,
         artifact_ref=artifact_ref,

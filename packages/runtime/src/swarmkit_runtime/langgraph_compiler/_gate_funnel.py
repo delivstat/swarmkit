@@ -414,6 +414,7 @@ def build_deferring_approver(
     role-tasks and the run resumes — at which point the gated node reads the gate rather than
     re-drafting (`_wrap_with_funnel_gate`).
     """
+    from swarmkit_runtime._run_scope import current_run_id  # noqa: PLC0415
     from swarmkit_runtime.review._hitl import GateDeferredError  # noqa: PLC0415
     from swarmkit_runtime.review._multiparty import _audit, open_gate  # noqa: PLC0415
 
@@ -433,6 +434,7 @@ def build_deferring_approver(
             funnel_id=funnel_id,
             artifact_ref=artifact_ref,
             artifact=artifact,
+            run_id=current_run_id() or "",
         )
         await _audit(
             governance,
