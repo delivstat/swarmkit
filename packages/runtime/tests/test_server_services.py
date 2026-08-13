@@ -82,6 +82,8 @@ def test_resolve_unknown_topology_raises_not_found() -> None:
 class _FakeStore:
     def __init__(self) -> None:
         self.created: list[Any] = []
+        self.correlations: list[str | None] = []
+        self.labels: list[dict[str, str]] = []
         self.updated: list[Any] = []
 
     def create_job(
@@ -91,8 +93,14 @@ class _FakeStore:
         user_input: str,
         correlation_id: str | None = None,
         source: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> None:
+        # Correlation and labels recorded, so a test can assert the HTTP surface passes them —
+        # `RunRequest` could not carry either until now, so a run started over the API was
+        # uncorrelated no matter what the caller sent.
         self.created.append((job_id, topology, user_input))
+        self.correlations.append(correlation_id)
+        self.labels.append(dict(labels or {}))
 
     def update_job(self, job_id: str, **kw: Any) -> None:
         self.updated.append((job_id, kw))

@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RunRequest(BaseModel):
     input: str
     max_steps: int = 10
+    #: Group this run with others — a ticket, a requirement, a pipeline run. The CLI has had this
+    #: since 1.176.0 and the HTTP surface did not, so a run started over the API could not be
+    #: correlated at all: `jobs.correlation_id` was NULL and the whole chain
+    #: `jobs -> audit_events.run_id -> artifacts` had nothing to hang off. That is the surface an
+    #: application sequencing its own runs actually uses.
+    correlation_id: str | None = None
+    #: Arbitrary grouping, opaque to the runtime — it carries the caller's model, not ours.
+    labels: dict[str, str] = Field(default_factory=dict)
 
 
 class CreateConversationRequest(BaseModel):

@@ -97,6 +97,8 @@ class JobService:
         topology_name: str,
         user_input: str,
         max_steps: int,
+        correlation_id: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> Job:
         """Resolve, gate on capacity, create + persist the job, and start it in the background."""
         resolved_name, selected_version = self.resolve_topology(rt, canary, topology_name)
@@ -105,7 +107,9 @@ class JobService:
         job = await self._jobs.create(resolved_name, user_input)
         job.version = selected_version
         if store:
-            store.create_job(job.id, resolved_name, user_input, None, "serve")
+            store.create_job(
+                job.id, resolved_name, user_input, correlation_id, "serve", labels=labels
+            )
             if selected_version:
                 store.update_job(job.id, version=selected_version)
         _start_job(
@@ -117,6 +121,7 @@ class JobService:
             semaphore=semaphore,
             canary_router=canary,
             store=store,
+            labels=labels,
         )
         return job
 
