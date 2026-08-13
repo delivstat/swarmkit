@@ -168,6 +168,74 @@ def _emit_reachability(report: Any, *, json_mode: bool) -> None:
 # ---- review + gaps -------------------------------------------------------
 
 
+@review_app.command("gate")
+def review_gate(
+    gate_id: Annotated[str, typer.Argument(help="Gate id, e.g. wms-design:designer.")],
+    workspace_path: Annotated[
+        Path, typer.Argument(help="Workspace root.", show_default=False)
+    ] = Path("."),
+    author: Annotated[
+        str,
+        typer.Option(
+            "--author",
+            help="Artifact's author — needed when the policy excludes the author from approving.",
+        ),
+    ] = "",
+    json_output: Annotated[bool, typer.Option("--json", help="Emit JSON.")] = False,
+) -> None:
+    """Whether a gate is resolved, with its approval policy applied.
+
+    Under `review`, not `gates`: `swarmkit gates` is pipeline gate COVERAGE — a static analysis of
+    which edges are verified — and this is a live question about one queue.
+    """
+    from swarmkit_runtime.gate_state import (  # noqa: PLC0415
+        PolicyUnresolvedError,
+        UnknownGateError,
+        compute_gate_state,
+    )
+    from swarmkit_runtime.resolver import resolve_workspace  # noqa: PLC0415
+    from swarmkit_runtime.review import FileReviewQueue  # noqa: PLC0415
+
+    root = workspace_path.resolve()
+    workspace = resolve_workspace(root)
+    try:
+        state = compute_gate_state(
+            FileReviewQueue(root),
+            workspace.role_registry,
+            workspace,
+            gate_id,
+            author=author or None,
+        )
+    except UnknownGateError:
+        _stderr(f"error: no gate {gate_id!r} in this workspace's review queue.")
+        raise typer.Exit(1) from None
+    except PolicyUnresolvedError as exc:
+        _stderr(f"error: {exc}")
+        raise typer.Exit(1) from None
+
+    if json_output:
+        typer.echo(json.dumps(state.to_dict()))
+        return
+
+    typer.echo(f"{state.status}  {state.gate_id}")
+    typer.echo(f"  funnel {state.funnel_id or '-'} on {state.topology_id}/{state.agent_id}")
+    if state.artifact_ref:
+        typer.echo(f"  about  {state.artifact_ref} (round {state.round})")
+    for res in state.resolutions:
+        mark = "  (stale — decided on an earlier artifact)" if res.stale else ""
+        who = f" by {res.resolved_by}" if res.resolved_by else ""
+        typer.echo(f"  {res.status:<18} {res.role} ({res.scope}){who}{mark}")
+    if state.outstanding:
+        typer.echo(f"  waiting on: {', '.join(state.outstanding)}")
+    if state.exclude_author_unapplied:
+        # Never silently: this policy discounts the author's own approval, and without an identity
+        # that rule was not applied — so `approved` here may not be the real verdict.
+        typer.echo(
+            "  note: this policy excludes the author, and no --author was given, so that rule "
+            "was NOT applied."
+        )
+
+
 _KINDS = {
     "harness-approval": "permission",
     "harness-input": "input",
