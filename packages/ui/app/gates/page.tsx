@@ -167,7 +167,8 @@ function GateCard({
 							Open the run that produced this →
 						</a>
 						<span className="text-xs text-muted-foreground">
-							every gated run has a job row — a stage's and a one-shot run's alike
+							every gated run has a job row — a stage's and a one-shot run's
+							alike
 						</span>
 					</div>
 				</>

@@ -83,7 +83,9 @@ describe("which run a gate belongs to", () => {
 		// The whole point: the id has two shapes — `<correlation>:<stage>` for a pipeline stage and
 		// `<run>:<agent>` for an in-node funnel gate — so a client that splits has to know which it
 		// is holding, and got it wrong for one of them.
-		expect(runOf({ gate_id: "wms-design:designer", run_id: "job-abc" })).toBe("job-abc");
+		expect(runOf({ gate_id: "wms-design:designer", run_id: "job-abc" })).toBe(
+			"job-abc",
+		);
 	});
 
 	it("falls back to splitting for items written before run_id existed", () => {

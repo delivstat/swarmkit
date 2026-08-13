@@ -153,8 +153,7 @@ def test_refs_are_listable_by_correlation(tmp_path: Path) -> None:
 )
 def test_the_artifact_routes_are_registered(needle: str) -> None:
     src = (
-        Path(__file__).resolve().parents[1]
-        / "src/swarmkit_runtime/server/_routes_introspection.py"
+        Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_routes_introspection.py"
     ).read_text()
 
     assert needle in src
@@ -163,8 +162,7 @@ def test_the_artifact_routes_are_registered(needle: str) -> None:
 def test_a_missing_artifact_is_a_404_not_an_empty_string() -> None:
     """So a caller threading one run's output onward cannot carry "" forward as the output."""
     src = (
-        Path(__file__).resolve().parents[1]
-        / "src/swarmkit_runtime/server/_routes_introspection.py"
+        Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_routes_introspection.py"
     ).read_text()
     handler = src[src.index('@app.get("/artifacts/{ref:path}")') :][:1400]
 
