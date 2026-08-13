@@ -487,9 +487,12 @@ export interface ReviewGate {
 	question: string;
 	options: string[];
 	free_text_allowed: boolean;
-	/** Multi-party role-task fields — empty for the harness kinds. `gate_id` is
-	 * `<correlation_id>:<agent_id>`, so a run's gate can be located from an inbox row. */
+	/** Multi-party role-task fields — empty for the harness kinds. */
 	gate_id: string;
+	/** The run that produced what is being approved — always a job id, for an in-node funnel gate
+	 * and a pipeline stage's alike. Link on THIS rather than splitting `gate_id`: the id has two
+	 * shapes and a client would have to know which it was holding. */
+	run_id: string;
 	role: string;
 	scope: string;
 	rule_index: number | null;

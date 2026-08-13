@@ -92,6 +92,9 @@ def _item_to_dict(item: ReviewItem) -> dict[str, Any]:
         # Multi-party role-task fields. `resolved_by` mirrors `answer` under a name that says what
         # it holds for this kind — the identity that cast the resolution, empty while pending.
         "gate_id": item.output.get("gate_id", ""),
+        # The run that produced what is being approved. A client should link on THIS rather than
+        # split the gate id: the id has two shapes and a reader would have to know which.
+        "run_id": item.output.get("run_id", ""),
         "role": item.output.get("role", ""),
         "scope": item.output.get("scope", ""),
         "rule_index": item.output.get("rule_index"),

@@ -165,6 +165,35 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
             "archetypes": sorted(ws.archetypes.keys()),
         }
 
+    @app.get("/artifacts/{ref:path}")
+    async def get_artifact(ref: str, request: Request) -> dict[str, Any]:
+        """One artifact's content, by its `<correlation>/<stage-or-run>/<name>` reference.
+
+        `{ref:path}` because a ref contains slashes. The store has existed since the pipeline
+        orchestrator shipped and only stage code ever wrote to it; `swarmkit artifacts get` reads it
+        from a terminal, and nothing could over HTTP — so an application sequencing its own runs
+        could not thread one stage's output into the next, and a gate UI could not render the
+        artifact it was asking someone to approve.
+        """
+        store = getattr(request.app.state, "artifact_store", None)
+        if store is None:
+            raise HTTPException(status_code=503, detail="no artifact store is configured")
+        content = store.get(ref)
+        if content is None:
+            raise HTTPException(status_code=404, detail=f"No artifact at {ref!r}")
+        return {"ref": ref, "content": content, "length": len(content)}
+
+    @app.get("/artifacts")
+    async def list_artifacts(correlation_id: str, request: Request) -> dict[str, Any]:
+        """Every artifact reference recorded under one correlation id.
+
+        The read half of the correlation chain: given a ticket, what did its runs produce.
+        """
+        store = getattr(request.app.state, "artifact_store", None)
+        if store is None:
+            raise HTTPException(status_code=503, detail="no artifact store is configured")
+        return {"correlation_id": correlation_id, "refs": list(store.list(correlation_id))}
+
     @app.get("/workspace/reachability")
     async def workspace_reachability(request: Request) -> dict[str, Any]:
         """Declared configuration that no code path reaches.

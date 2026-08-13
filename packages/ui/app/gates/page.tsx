@@ -10,16 +10,19 @@ import { api } from "@/lib/api";
 import type { ReviewGate } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
-/** A gate id is `<correlation_id>:<agent_id>`; split on the LAST colon so a correlation id that
- * itself contains one still resolves. */
-export function runOf(gateId: string): string {
-	const i = gateId.lastIndexOf(":");
-	return i === -1 ? gateId : gateId.slice(0, i);
-}
-
-export function stageOf(gateId: string): string {
-	const i = gateId.lastIndexOf(":");
-	return i === -1 ? "" : gateId.slice(i + 1);
+/** The run to open for a gate.
+ *
+ * Prefer the server's `run_id`, which is always a job id. The fallback splits `gate_id` on the last
+ * colon, for items written before the field existed.
+ *
+ * This page used to ALWAYS split, and link at `/runs` — the pipeline saga view. That is one of the
+ * two gate-id shapes: a stage's is `<correlation>:<stage>`, but an in-node funnel gate's is
+ * `<run>:<agent>`, so `runOf` returned a topology id and the link searched for a pipeline run that
+ * does not exist. Every gated topology run pointed at "No pipeline runs to show". */
+export function runOf(gate: { gate_id: string; run_id?: string }): string {
+	if (gate.run_id) return gate.run_id;
+	const i = gate.gate_id.lastIndexOf(":");
+	return i === -1 ? gate.gate_id : gate.gate_id.slice(0, i);
 }
 
 /** Pending human decisions — §6.2 permission approvals, §6.3 input requests, and multi-party
@@ -159,12 +162,13 @@ function GateCard({
 					<div className="mt-3 flex items-center gap-3">
 						<a
 							className="text-sm underline underline-offset-4"
-							href={`/runs?run=${encodeURIComponent(runOf(gate.gate_id))}&stage=${encodeURIComponent(stageOf(gate.gate_id))}`}
+							href={`/job/?id=${encodeURIComponent(runOf(gate))}`}
 						>
-							Open the run to approve →
+							Open the run that produced this →
 						</a>
 						<span className="text-xs text-muted-foreground">
-							decided in the run view, where the artifact is
+							every gated run has a job row — a stage's and a one-shot run's
+							alike
 						</span>
 					</div>
 				</>
