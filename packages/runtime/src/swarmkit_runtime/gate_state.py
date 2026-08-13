@@ -128,6 +128,26 @@ def _policy_for(workspace: ResolvedWorkspace, funnel_id: str) -> ApprovalPolicy:
     return ApprovalPolicy.from_dict(approve)
 
 
+def gate_state_for_policy(
+    queue: ReviewQueue,
+    registry: RoleRegistry,
+    policy: ApprovalPolicy,
+    gate_id: str,
+    *,
+    author: str | None = None,
+) -> GateState:
+    """The core: evaluate a gate against a policy the caller already holds.
+
+    Split out because the in-node funnel gate has the policy in hand (it is reading its own funnel's
+    ``approve`` block) and should not have to resolve a workspace to ask whether it is approved.
+    :func:`compute_gate_state` is this plus policy resolution, for callers holding only an id.
+    """
+    items = _items_for(queue, gate_id)
+    if not items:
+        raise UnknownGateError(gate_id)
+    return _evaluate(items, queue, registry, policy, gate_id, author)
+
+
 def compute_gate_state(
     queue: ReviewQueue,
     registry: RoleRegistry,
@@ -146,10 +166,20 @@ def compute_gate_state(
     items = _items_for(queue, gate_id)
     if not items:
         raise UnknownGateError(gate_id)
+    funnel_id = str((items[0].output or {}).get("funnel_id") or "")
+    return _evaluate(items, queue, registry, _policy_for(workspace, funnel_id), gate_id, author)
 
+
+def _evaluate(
+    items: list[ReviewItem],
+    queue: ReviewQueue,
+    registry: RoleRegistry,
+    policy: ApprovalPolicy,
+    gate_id: str,
+    author: str | None,
+) -> GateState:
     first = items[0]
     funnel_id = str((first.output or {}).get("funnel_id") or "")
-    policy = _policy_for(workspace, funnel_id)
 
     # The artifact under review is the newest round's; earlier rounds decided a different artifact.
     current_round = max(getattr(i, "round", 0) for i in items)

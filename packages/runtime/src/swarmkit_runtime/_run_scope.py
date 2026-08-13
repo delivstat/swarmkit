@@ -35,6 +35,27 @@ _current_labels: ContextVar[dict[str, str] | None] = ContextVar(
 )
 
 
+#: Whether this task is running a PIPELINE STAGE. A stage opens its own gate and parks the saga
+#: (`server/_pipeline_stage.py`), so the in-node approve layer must stay advisory there: gating
+#: twice is the mild failure, and the real one is that the run would defer, never complete, and the
+#: stage would never reach the code that opens its gate at all.
+_in_pipeline_stage: ContextVar[bool] = ContextVar("swarmkit_in_pipeline_stage", default=False)
+
+
+def in_pipeline_stage() -> bool:
+    """Whether the calling task is executing a pipeline stage."""
+    return _in_pipeline_stage.get()
+
+
+def set_in_pipeline_stage(value: bool) -> Token[bool]:
+    """Mark this task as a pipeline stage. Pass the token to :func:`reset_in_pipeline_stage`."""
+    return _in_pipeline_stage.set(value)
+
+
+def reset_in_pipeline_stage(token: Token[bool]) -> None:
+    _in_pipeline_stage.reset(token)
+
+
 def current_run_id() -> str | None:
     """The run the calling task belongs to, or None outside a run.
 

@@ -118,6 +118,7 @@ def open_gate(
     policy: ApprovalPolicy,
     funnel_id: str = "",
     artifact_ref: str = "",
+    artifact: str = "",
 ) -> int:
     """Fan the gate out into one review item per role-task. Returns the gate's current round.
 
@@ -149,6 +150,12 @@ def open_gate(
                     # The funnel this gate came from. Carried on the item so a resolver can rebuild
                     # the policy to re-evaluate the gate, without walking saga -> graph -> stage.
                     "funnel_id": funnel_id,
+                    # The artifact ITSELF, not just its ref. Two readers need it and neither can
+                    # get it elsewhere: the reviewer, who must see what they are approving, and the
+                    # gated node on resume, which returns this rather than re-drafting — the human
+                    # approved THIS text, and a fresh draft would be a different one they never saw.
+                    # Duplicated across a gate's role-tasks; artifacts here are kilobytes.
+                    "artifact": artifact,
                 },
                 artifact_ref=artifact_ref,
                 round=round_no,

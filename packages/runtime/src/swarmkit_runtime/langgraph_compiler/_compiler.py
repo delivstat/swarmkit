@@ -159,6 +159,8 @@ def compile_topology(
                 governance=governance,
                 workspace_root=workspace_root,
                 ledger=ledger,
+                review_queue=review_queue,
+                role_registry=role_registry,
             )
         graph.add_node(agent.id, node_fn)
 
@@ -850,6 +852,8 @@ def _wrap_with_funnel_gate(
     governance: GovernanceProvider,
     workspace_root: Any = None,
     ledger: Any = None,
+    review_queue: Any = None,
+    role_registry: Any = None,
 ) -> Any:
     """Wrap a gated agent's node so a live run routes its output through its funnel.
 
@@ -868,6 +872,7 @@ def _wrap_with_funnel_gate(
     from swarmkit_runtime.langgraph_compiler._gate_funnel import (  # noqa: PLC0415
         build_advisory_approver,
         build_decision_judge,
+        build_deferring_approver,
         build_deterministic_validator,
         run_agent_funnel_gate,
     )
@@ -919,7 +924,23 @@ def _wrap_with_funnel_gate(
             agent.id,
         )
 
+    # A real human gate needs a queue to open onto and a registry to count quorum against. Absent
+    # either — or on a pipeline stage, which opens its own gate and parks the saga — the layer stays
+    # advisory, exactly as it behaved before. Resolved once here, not per invocation.
+    approver_deps = _approver_deps(funnel, review_queue, role_registry)
+
     async def gated_node(state: SwarmState) -> dict[str, Any]:
+        # Re-entry first, and this is the load-bearing part. LangGraph checkpoints at super-step
+        # boundaries, so a node that raised is RE-RUN on resume — a naive defer would re-draft the
+        # artifact after approval (~$2.40 on a design agent), and the human would have approved
+        # something that no longer exists. So: read the gate before producing anything.
+        gate_id = _in_node_gate_id(agent.id)
+        enforcing = approver_deps is not None and _enforces_gate(funnel.id)
+        if enforcing:
+            decided = _gate_decision(approver_deps or {}, gate_id, agent.id)
+            if decided is not None:
+                return decided
+
         captured: dict[str, Any] = {}
 
         async def produce(critique: str | None) -> str:
@@ -947,12 +968,24 @@ def _wrap_with_funnel_gate(
             workspace_root=workspace_root,
             judge=judge,
             validator=validator,
-            approver=build_advisory_approver(
-                governance=governance,
-                topology_id=topology_id,
-                agent_id=agent.id,
-                gate_id=f"{topology_id}:{agent.id}",
-                declares_approve=declares_approve,
+            approver=(
+                build_deferring_approver(
+                    governance=governance,
+                    queue=approver_deps["queue"],
+                    policy=approver_deps["policy"],
+                    topology_id=topology_id,
+                    agent_id=agent.id,
+                    gate_id=gate_id,
+                    funnel_id=funnel.id,
+                )
+                if enforcing and approver_deps is not None
+                else build_advisory_approver(
+                    governance=governance,
+                    topology_id=topology_id,
+                    agent_id=agent.id,
+                    gate_id=gate_id,
+                    declares_approve=declares_approve,
+                )
             ),
         )
         out: dict[str, Any] = captured.get("out", {})
@@ -963,6 +996,124 @@ def _wrap_with_funnel_gate(
 
     gated_node.__name__ = f"gated_{agent.id}"
     return gated_node
+
+
+def _approver_deps(funnel: Any, review_queue: Any, role_registry: Any) -> dict[str, Any] | None:
+    """The COMPILE-time deps a real approve layer needs, or None to stay advisory.
+
+    Only facts known at compile time belong here — the funnel declares `approve`, a queue and a
+    registry exist, and the registry can actually satisfy the policy. Whether this particular RUN
+    should enforce is decided in the node by :func:`_enforces_gate`, because `compile()` runs before
+    the run scope is entered and reading it here would always see an empty one.
+    """
+    from swarmkit_runtime.governance._approval import ApprovalPolicy  # noqa: PLC0415
+
+    approve = (dict(funnel.spec).get("approve") if funnel is not None else None) or None
+    if approve is None or review_queue is None or role_registry is None:
+        return None
+    try:
+        policy = ApprovalPolicy.from_dict(approve)
+    except (KeyError, TypeError, ValueError):
+        _logger.exception(
+            "funnel %r has an unusable `approve` policy; its gate will not be enforced", funnel.id
+        )
+        return None
+    # A gate whose roles the workspace does not define cannot be satisfied by anyone. Parking on
+    # it would be the "stall nobody can release" — every run of this topology waiting forever on an
+    # approver who does not exist, which is worse than the advisory behaviour it replaces. So: warn
+    # and stay advisory. `swarmkit validate` is where this should be caught before a run.
+    known = set(getattr(role_registry, "roles", {}) or {})
+    named = {role for rule in policy.rules for role in rule.roles}
+    missing = named - known
+    if missing:
+        _logger.warning(
+            "funnel %r names role(s) %s that no RoleRegistry in this workspace defines, so its "
+            "gate could never be satisfied. The approve layer stays ADVISORY for this run — "
+            "define the roles to enforce it.",
+            funnel.id,
+            ", ".join(sorted(missing)),
+        )
+        return None
+    return {"queue": review_queue, "registry": role_registry, "policy": policy}
+
+
+def _enforces_gate(funnel_id: str) -> bool:
+    """Whether THIS run should enforce its funnel's gate. Run-time, so it lives outside `compile`.
+
+    Two states stay advisory because parking would be worse than not gating:
+
+    * a **pipeline stage** — `_pipeline_stage` opens that gate itself and parks the saga, so gating
+      here would mean the run defers, never completes, and never reaches the code that opens it;
+    * **no run id** — a gate is identified by its run, and resuming means finding the same gate
+      again; without one every invocation opens a fresh gate and no approval is ever found on
+      re-entry, stranding the caller. Production always has one; a direct `compile_topology` +
+      `ainvoke` does not.
+    """
+    from swarmkit_runtime._run_scope import current_run_id, in_pipeline_stage  # noqa: PLC0415
+
+    if in_pipeline_stage():
+        return False
+    if current_run_id() is None:
+        _logger.warning(
+            "funnel %r declares an `approve` layer but this run has no run id, so its gate could "
+            "not be resumed. The approve layer stays ADVISORY.",
+            funnel_id,
+        )
+        return False
+    return True
+
+
+def _in_node_gate_id(agent_id: str) -> str:
+    """`{run_id}:{agent_id}` — unique to THIS run of this agent.
+
+    It used to be `{topology_id}:{agent_id}`, which is not unique per run: every run of `wms-design`
+    produced the gate `wms-design:designer`, so two tickets in flight would share review items, have
+    quorum counted across both, and approving one would release the other. Latent only while the
+    approve layer was advisory and opened nothing.
+
+    The RUN, not the correlation: a correlation groups several runs (a retry, a second attempt at
+    one ticket), and a gate keyed on it would let approvals cast against a PREVIOUS artifact satisfy
+    a new one — the hazard `open_gate` documents. A re-run gets a fresh gate, structurally.
+    """
+    from swarmkit_runtime._run_scope import current_run_id  # noqa: PLC0415
+
+    return f"{current_run_id() or 'run'}:{agent_id}"
+
+
+def _gate_decision(deps: dict[str, Any], gate_id: str, agent_id: str) -> dict[str, Any] | None:
+    """What the gate already says, or None when there is no gate yet and the agent should produce.
+
+    Approved returns the artifact the human actually saw — read back off the gate rather than
+    re-drafted. Rejected returns the rejection with the resolver's comment. Pending defers again,
+    which is the same code path as the first defer rather than a special case.
+    """
+    from swarmkit_runtime.gate_state import UnknownGateError, gate_state_for_policy  # noqa: PLC0415
+    from swarmkit_runtime.review._hitl import GateDeferredError  # noqa: PLC0415
+
+    try:
+        state = gate_state_for_policy(deps["queue"], deps["registry"], deps["policy"], gate_id)
+    except UnknownGateError:
+        return None  # nothing opened yet: this is the first pass, go and produce
+
+    if state.status == "approved":
+        _logger.info("gate %r approved — resuming without re-drafting", gate_id)
+        return _make_result(agent_id, _approved_artifact(deps["queue"], gate_id))
+    if state.status in {"rejected", "changes-requested"}:
+        comments = "; ".join(r.comment for r in state.resolutions if r.comment)
+        return _make_result(agent_id, f"[GATE REJECTED] {comments}".strip())
+    raise GateDeferredError(agent_id, gate_id, "still awaiting approval")
+
+
+def _approved_artifact(queue: Any, gate_id: str) -> str:
+    """The artifact the gate was opened on, off its newest round's items."""
+    items = [i for i in queue.list_all() if (i.output or {}).get("gate_id") == gate_id]
+    if not items:  # pragma: no cover - guarded by the caller having just read the gate
+        return ""
+    newest = max(getattr(i, "round", 0) for i in items)
+    for item in items:
+        if getattr(item, "round", 0) == newest and (item.output or {}).get("artifact"):
+            return str(item.output["artifact"])
+    return ""
 
 
 def _annotate_escalation(out: dict[str, Any], agent_id: str, gate_state: Any) -> dict[str, Any]:

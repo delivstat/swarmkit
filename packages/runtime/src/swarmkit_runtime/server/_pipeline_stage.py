@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from swarmkit_runtime._run_scope import reset_in_pipeline_stage, set_in_pipeline_stage
 from swarmkit_runtime.orchestration import RunStage, SagaStore, StageOutcome
 from swarmkit_runtime.persistence import usage_fields
 
@@ -367,12 +368,20 @@ def build_pipeline_run_stage(
             # LangGraph thread and the trace's run_id, and carries `correlation_id` so one run's
             # stages can be selected directly rather than by parsing ids.
             _record_stage_job(job_store, run_id, correlation_id, topology, stage_input)
-            result = await runtime.run(
-                topology,
-                stage_input,
-                max_steps=max_steps,
-                thread_id=run_id,
-            )
+            # Marked as a STAGE for the duration of the run: this path opens the funnel's gate
+            # itself below and parks the saga, so the in-node approve layer must stay advisory.
+            # Without this the run would defer, never complete, and never reach the code that
+            # opens the gate — a gated stage would simply stop.
+            _stage_token = set_in_pipeline_stage(True)
+            try:
+                result = await runtime.run(
+                    topology,
+                    stage_input,
+                    max_steps=max_steps,
+                    thread_id=run_id,
+                )
+            finally:
+                reset_in_pipeline_stage(_stage_token)
         except KeyError:
             _finish_stage_job(job_store, run_id, "failed", error=f"unknown topology {topology!r}")
             return StageOutcome(status="failed", detail=f"unknown topology {topology!r}")

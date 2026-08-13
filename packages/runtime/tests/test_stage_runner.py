@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import pytest
+from swarmkit_runtime._run_scope import reset_current_run_id, set_current_run_id
 from swarmkit_runtime.governance import DecisionSkillResult, PolicyDecision
 from swarmkit_runtime.governance._approval import ApprovalPolicy, Role, RoleRegistry
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
@@ -173,18 +174,24 @@ async def test_iam_scope_denies_cross_app_stage() -> None:
 
 
 async def test_in_node_gate_embeds_in_a_live_topology_run() -> None:
-    """A gated agent's node, compiled with gate deps, routes its output through the funnel."""
+    """A gated agent's node, compiled with gate deps, routes its output through the funnel.
+
+    The gate is seeded under `{run_id}:{agent_id}` — the unified convention. It used to be
+    `{topology_id}:{agent_id}`, which is not unique per run: two runs of one topology shared a gate,
+    so approving one released the other. Latent while the approve layer was advisory.
+    """
     ws = resolve_workspace(_EXAMPLE_WS)
     topo = ws.topologies["hello"]
     # Make the root a childless, gated leaf so the run is a single produce -> gate.
     gated_root = dataclasses.replace(topo.root, children=(), funnel=_funnel())
     gated_topo = dataclasses.replace(topo, root=gated_root)
 
+    token = set_current_run_id("run-1")
     with tempfile.TemporaryDirectory() as d:
         queue = FileReviewQueue(Path(d))
         _seed_gate(
             queue,
-            topo.id,
+            "run-1",
             gated_root.id,
             ("oms-lead", "alice", "approved"),
             ("web-lead", "bob", "approved"),
@@ -196,7 +203,10 @@ async def test_in_node_gate_embeds_in_a_live_topology_run() -> None:
             review_queue=queue,
             role_registry=REGISTRY,
         )
-        result = await graph.ainvoke({"input": "hello", "agent_results": {}})
+        try:
+            result = await graph.ainvoke({"input": "hello", "agent_results": {}})
+        finally:
+            reset_current_run_id(token)
 
     # Approved → the real agent output flows through, not a gate rejection.
     assert "[GATE REJECTED]" not in result.get("output", "")
