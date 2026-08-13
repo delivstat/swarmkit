@@ -390,6 +390,80 @@ def _schema_verdict(artifact: str, schema: dict[str, Any]) -> str:
     return f"the artifact does not conform to `validate.schema`: {joined}"
 
 
+def build_deferring_approver(
+    *,
+    governance: Any,
+    queue: Any,
+    policy: Any,
+    topology_id: str,
+    agent_id: str,
+    gate_id: str,
+    funnel_id: str,
+) -> Approver:
+    """The ``approve`` layer as a real human gate: open it, checkpoint, and defer.
+
+    1.172.0 made this layer advisory, on the grounds that human approval was the stage-level
+    ``gate:`` which parks the saga durably. That was the weaker of the two branches considered —
+    the choice was framed as *block the coroutine for seven days* (`resolve_multiparty` polling
+    in-node) or *pass advisorily*, and rejecting the block was right, but defer-and-resume already
+    existed and beats both. It is also unavailable to a run that has no saga, which is every run an
+    application sequences itself.
+
+    So: fan the policy into role-tasks and **raise**. The graph checkpoints, the job closes
+    ``deferred``, no process is held, and the state survives a restart. A human resolves the
+    role-tasks and the run resumes — at which point the gated node reads the gate rather than
+    re-drafting (`_wrap_with_funnel_gate`).
+    """
+    from swarmkit_runtime.review._hitl import GateDeferredError  # noqa: PLC0415
+    from swarmkit_runtime.review._multiparty import _audit, open_gate  # noqa: PLC0415
+
+    async def approver(state: FunnelGateState) -> ApproveOutcome:
+        provenance = dict(state.get("provenance") or {})
+        artifact = str(state.get("artifact") or "")
+        # The ref identifies WHICH artifact each decision was about, so a rework opens a new round
+        # and earlier approvals stop counting. Content-addressed: the artifact is what changed, and
+        # the gate has no run-scoped id of its own to use here.
+        artifact_ref = f"{gate_id}#{_artifact_fingerprint(artifact)}"
+        open_gate(
+            queue,
+            gate_id=gate_id,
+            topology_id=topology_id,
+            agent_id=agent_id,
+            policy=policy,
+            funnel_id=funnel_id,
+            artifact_ref=artifact_ref,
+            artifact=artifact,
+        )
+        await _audit(
+            governance,
+            "funnel.gate_opened",
+            agent_id,
+            {
+                "gate_id": gate_id,
+                "topology_id": topology_id,
+                "artifact_ref": artifact_ref,
+                "retries": provenance.get("retries", 0),
+                "escalated": provenance.get("escalated", False),
+                "critique": str(provenance.get("critique") or "")[:4000],
+            },
+        )
+        raise GateDeferredError(agent_id, gate_id, "role-tasks opened on the review queue")
+
+    return approver
+
+
+def _artifact_fingerprint(artifact: str) -> str:
+    """A short stable digest of an artifact, so a revision is a different round.
+
+    Content-addressed rather than counter-based: a re-run that produces a byte-identical artifact
+    should land on the SAME round and keep the approvals already cast, while any change opens a
+    fresh one. A counter cannot tell those apart.
+    """
+    import hashlib  # noqa: PLC0415
+
+    return hashlib.sha256(artifact.encode()).hexdigest()[:12]
+
+
 def build_advisory_approver(
     *,
     governance: Any,

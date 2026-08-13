@@ -443,7 +443,19 @@ class WorkspaceRuntime:
             synthesis_config=synthesis,
             memory_store=self._memory_store,
             governed_memory_store=self._governed_memory_store,
+            # The funnel's `approve` layer needs a queue to open onto and a registry to count
+            # quorum against. Passing these was what bug 25 was reported as MISSING — but the fix
+            # then was to stop `validate`/`judge` depending on them, which was right and stays.
+            # These are for the approve layer alone.
+            review_queue=self._review_queue(),
+            role_registry=getattr(self._workspace, "role_registry", None),
         )
+
+    def _review_queue(self) -> Any:
+        """The workspace's review queue — where a funnel's approve layer opens its role-tasks."""
+        from swarmkit_runtime.review import FileReviewQueue  # noqa: PLC0415
+
+        return FileReviewQueue(self._workspace_root)
 
     def reachability(self) -> Any:
         """Which declared configuration no code path reaches.
@@ -676,7 +688,6 @@ class WorkspaceRuntime:
             build_policy,
             set_active_policy,
         )
-        from swarmkit_runtime.langgraph_compiler._compiler import set_active_trace  # noqa: PLC0415
         from swarmkit_runtime.langgraph_compiler._run_context import run_context  # noqa: PLC0415
         from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
 
@@ -742,16 +753,19 @@ class WorkspaceRuntime:
                         "configurable": {"thread_id": run_thread},
                     },
                 )
+        except BaseException:
+            # A run that PARKS raises out of the node — a funnel gate deferring to a human is the
+            # ordinary case now, not an error. Without this the trace was never written, the audit
+            # events were never persisted and the run-scope token leaked, so a deferred run left no
+            # record of the work it had already done and paid for.
+            await self._finalize(trace, _run_scope_token, topology_name)
+            raise
         finally:
             set_active_policy(None)
             if owns_mcp and self._mcp_manager is not None:
                 await self._mcp_manager.close_all()
 
-        trace.finish()
-        set_active_trace(None)
-        _finalize_trace(trace, self._workspace_root, self.workspace_id)
-
-        events = await self._end_run(_run_scope_token, topology_name, trace.run_id)
+        events = await self._finalize(trace, _run_scope_token, topology_name)
 
         usage = UsageSummary(
             input_tokens=trace.total_input_tokens,
@@ -919,6 +933,21 @@ class WorkspaceRuntime:
             or "(no response)"
         )
         return _parse_result("inline-rubric", text)
+
+    async def _finalize(self, trace: Any, token: Any, topology_name: str) -> list[RunEvent]:
+        """Close a run out: finish the trace, write it, leave the scope and persist its events.
+
+        Called on BOTH the completing and the parking path — a run that defers to a human has still
+        done work, and its trace and audit record are the evidence of it.
+        """
+        from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
+            set_active_trace,
+        )
+
+        trace.finish()
+        set_active_trace(None)
+        _finalize_trace(trace, self._workspace_root, self.workspace_id)
+        return await self._end_run(token, topology_name, trace.run_id)
 
     def _begin_run(self, trace: Any, labels: dict[str, str] | None = None) -> Any:
         """Enter a run: make the trace active and stamp this task with the run id and labels.

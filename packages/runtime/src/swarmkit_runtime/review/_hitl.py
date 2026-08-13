@@ -23,6 +23,23 @@ class HITLDeferredError(Exception):
         )
 
 
+class GateDeferredError(HITLDeferredError):
+    """Raised when a funnel's ``approve`` layer parks a run on a multi-party gate.
+
+    A subclass of :class:`HITLDeferredError` on purpose: every caller that already knows how to
+    checkpoint-and-exit on a deferral — the CLI marks the job ``deferred`` and prints the resume
+    steps — handles this without changing, and the ones that want the gate id can ask for it.
+    """
+
+    def __init__(self, agent_id: str, gate_id: str, detail: str = "") -> None:
+        self.gate_id = gate_id
+        super().__init__(
+            agent_id,
+            "multi-party-approval",
+            f"gate {gate_id!r} awaits approval{f' — {detail}' if detail else ''}",
+        )
+
+
 def prompt_human_review(
     *,
     agent_id: str,
