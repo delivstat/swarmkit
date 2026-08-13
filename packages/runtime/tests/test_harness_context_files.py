@@ -155,6 +155,9 @@ def test_the_node_delivers_and_excludes() -> None:
     ).read_text()
 
     assert "deliver_context_files(sandbox, task.context_files)" in src
-    assert "collect_diff(sandbox, delivered)" in src, (
+    # The PROPERTY, not the exact call: `delivered` must reach the exclusion list. It is now
+    # joined by the runtime's own sandbox writes (the MCP gateway config), which were being
+    # presented as the agent's authored work.
+    assert "collect_diff(sandbox, [*delivered," in src, (
         "the delivered files must be excluded from the agent's diff"
     )

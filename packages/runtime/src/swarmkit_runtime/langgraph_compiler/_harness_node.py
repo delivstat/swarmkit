@@ -251,6 +251,12 @@ def _usage_summary(event: Any) -> str:
     return " · ".join(parts) or "usage"
 
 
+#: Written into the sandbox by the runtime, never by the agent — excluded from the collected diff
+#: so it is not presented as authored work. It also carries the gateway's bearer token.
+_MCP_CONFIG_NAME = ".swarmkit-mcp.json"
+_RUNTIME_WRITTEN: tuple[str, ...] = (_MCP_CONFIG_NAME,)
+
+
 async def _record(
     governance: GovernanceProvider, event_type: str, agent_id: str, payload: dict[str, Any]
 ) -> None:
@@ -608,7 +614,7 @@ async def _wire_mcp_gateway(
             f"endpoint — the agent would run without any of its {len(tools)} granted tools"
         )
 
-    config_path = Path(sandbox.root) / ".swarmkit-mcp.json"
+    config_path = Path(sandbox.root) / _MCP_CONFIG_NAME
     config_path.write_text(json.dumps(gw.harness_config(), indent=2), encoding="utf-8")
     await _record(
         governance,
@@ -875,9 +881,14 @@ async def _execute(  # noqa: PLR0912, PLR0915
                 try:
                     # Excluding what the RUNTIME wrote. The diff is the agent's output artifact —
                     # it becomes the stage's artifact, the next stage's input, and what a human
-                    # approves at a gate — so a delivered context file appearing in it would be
+                    # approves at a gate — so a runtime-written file appearing in it would be
                     # presented as authored work.
-                    diff = await collect_diff(sandbox, delivered)
+                    #
+                    # `delivered` covers context files only. The MCP gateway config is written into
+                    # the sandbox root too, and was NOT excluded — so every gated harness diff
+                    # opened with `diff --git a/.swarmkit-mcp.json`, which is the runtime's own
+                    # bearer token rendered as the agent's first change.
+                    diff = await collect_diff(sandbox, [*delivered, *_RUNTIME_WRITTEN])
                 except SandboxError:
                     # A persistent working_dir need not be a git repo — the diff is informational
                     # there, not an isolation boundary, so a missing repo is not a failure.
