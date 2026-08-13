@@ -45,6 +45,10 @@ jobs = Table(
     # the point: they used to be indistinguishable, and a run whose work was dropped looked exactly
     # like a run that changed nothing.
     Column("diff", Text),
+    # The job this one supersedes — a re-run after a rejected gate or a failure. Distinct from
+    # `correlation_id`, which groups a ticket's runs: "same unit of work" and "replaces that
+    # attempt" are different facts, and only this one makes cost-across-retries answerable.
+    Column("parent_job_id", Text),
 )
 
 conversations = Table(

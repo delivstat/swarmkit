@@ -120,6 +120,42 @@ class JobService:
         )
         return job
 
+    async def resume(
+        self,
+        *,
+        rt: Any,
+        store: Any,
+        cfg: Any,
+        semaphore: Any,
+        canary: Any,
+        job_id: str,
+        durable: Any,
+        max_steps: int,
+    ) -> Any:
+        """Continue a run that parked on a human gate.
+
+        Sibling to :meth:`start` so both go through one place: the semaphore slot, the timeout and
+        the deferral branch are shared, and a resumed run can park again.
+
+        The in-memory job is what `execute_job` mutates, so a run this process did not start — after
+        a restart, or from another instance — is rehydrated from its durable row first.
+        """
+        job = await self._jobs.get(job_id) or await self._jobs.adopt(durable)
+        job.status = "running"
+        job.error = None
+        _start_job(
+            self._jobs,
+            job,
+            rt,
+            max_steps,
+            timeout_seconds=cfg.timeout_seconds,
+            semaphore=semaphore,
+            canary_router=canary,
+            store=store,
+            resume=True,
+        )
+        return job
+
 
 class ArtifactService:
     """Topology/skill/archetype YAML editing — find/read/write/validate/reload + read projections.

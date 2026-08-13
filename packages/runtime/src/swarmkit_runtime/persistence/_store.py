@@ -158,6 +158,8 @@ class JobRow:
     #: agent id -> unified diff. None when no harness diff was carried out of the run at all;
     #: an empty dict when a harness ran and changed nothing.
     diffs: dict[str, str] | None = None
+    #: the job this run supersedes, when it is a re-run
+    parent_job_id: str | None = None
 
 
 @dataclass
@@ -206,6 +208,7 @@ class Store:
         ("source", "TEXT"),
         ("labels", "TEXT"),
         ("diff", "TEXT"),
+        ("parent_job_id", "TEXT"),
     )
 
     def _migrate_jobs(self) -> None:
@@ -243,6 +246,7 @@ class Store:
         correlation_id: str | None = None,
         source: str | None = None,
         labels: dict[str, str] | None = None,
+        parent_job_id: str | None = None,
     ) -> JobRow:
         now = datetime.now(UTC).isoformat()
         row = JobRow(
@@ -254,6 +258,7 @@ class Store:
             correlation_id=correlation_id,
             source=source,
             labels=dict(labels or {}),
+            parent_job_id=parent_job_id,
         )
         with self._engine.begin() as conn:
             conn.execute(
@@ -266,6 +271,7 @@ class Store:
                     correlation_id=row.correlation_id,
                     source=row.source,
                     labels=json.dumps(row.labels) if row.labels else None,
+                    parent_job_id=row.parent_job_id,
                 )
             )
         return row
@@ -362,6 +368,7 @@ class Store:
             source=row.get("source"),
             labels=json.loads(row["labels"]) if row.get("labels") else {},
             diffs=json.loads(row["diff"]) if row.get("diff") else None,
+            parent_job_id=row.get("parent_job_id"),
             topology=row["topology"],
             status=row["status"],
             input=row["input"],

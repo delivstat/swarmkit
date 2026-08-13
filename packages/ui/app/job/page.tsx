@@ -136,6 +136,69 @@ function flattenSpans(
  * that into the waterfall pushes every row below it around while a reader is trying to compare
  * timings. It also gives the arguments and the result room to be read.
  */
+/** One span's detail: the failure first when it failed, then whatever the span carries.
+ *
+ * A row used to be clickable ONLY when it was a tool call, so a step that FAILED had no detail at
+ * all — the error was a hover tooltip and a red bar, and the actual message was unreachable. The
+ * failure is the thing a reader opening a red row wants, so it leads. */
+function SpanDialog({
+	span,
+	onClose,
+}: {
+	span: TraceSpan;
+	onClose: () => void;
+}) {
+	const tool = toolDetail(span.attributes);
+	const attrs = Object.entries(span.attributes).filter(
+		// The tool payload has its own rendering below; the rest is the span's own context.
+		([k]) => !k.startsWith("swarmkit.tool."),
+	);
+	return (
+		<Dialog open onOpenChange={(o) => !o && onClose()}>
+			<DialogContent className="max-h-[85vh] gap-3 overflow-y-auto sm:max-w-3xl">
+				<DialogHeader>
+					<DialogTitle className="font-mono text-sm break-all">
+						{span.name}
+					</DialogTitle>
+				</DialogHeader>
+
+				<p className="text-xs text-muted-foreground">
+					{span.duration_ms}ms
+					{tool &&
+						` · ${tool.resultLength.toLocaleString()} characters returned`}
+					{tool?.cached && " · cached"}
+				</p>
+
+				{span.error && (
+					<div>
+						<div className="mb-1 text-xs font-medium text-destructive">
+							Failure
+						</div>
+						<CopyablePre
+							value={span.error}
+							label="the failure"
+							className="max-h-[45vh] text-xs"
+						/>
+					</div>
+				)}
+
+				{tool && <ToolCallBody detail={tool} />}
+
+				{attrs.length > 0 && (
+					<div>
+						<div className="mb-1 text-xs text-muted-foreground">Attributes</div>
+						<CopyablePre
+							value={JSON.stringify(Object.fromEntries(attrs), null, 2)}
+							label="the span attributes"
+							className="max-h-[30vh] text-xs"
+						/>
+					</div>
+				)}
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 function ToolCallDialog({
 	detail,
 	onClose,
@@ -143,9 +206,6 @@ function ToolCallDialog({
 	detail: ToolDetail;
 	onClose: () => void;
 }) {
-	const args = Object.keys(detail.arguments).length
-		? JSON.stringify(detail.arguments, null, 2)
-		: "";
 	return (
 		<Dialog open onOpenChange={(o) => !o && onClose()}>
 			<DialogContent className="max-h-[85vh] gap-3 overflow-y-auto sm:max-w-3xl">
@@ -159,49 +219,62 @@ function ToolCallDialog({
 					{detail.cached && "cached · "}
 					{detail.resultLength.toLocaleString()} characters returned
 				</p>
-
-				{args && (
-					<div>
-						<div className="mb-1 text-xs text-muted-foreground">Arguments</div>
-						<CopyablePre
-							value={args}
-							label="the tool arguments"
-							className="text-xs"
-						/>
-					</div>
-				)}
-
-				<div>
-					<div className="mb-1 text-xs text-muted-foreground">
-						Result
-						{detail.truncated && " — truncated; the trace keeps a bounded copy"}
-					</div>
-					{detail.result ? (
-						<CopyablePre
-							value={detail.result}
-							label="the tool result"
-							className="max-h-[45vh] text-xs"
-						/>
-					) : (
-						// A trace written before results were recorded, or a genuinely empty
-						// answer. Say which, rather than showing an empty box that reads as
-						// "the tool returned nothing".
-						<p className="text-xs text-muted-foreground">
-							{detail.resultLength > 0
-								? "Not recorded — this run predates tool-result capture."
-								: "The tool returned nothing."}
-						</p>
-					)}
-				</div>
+				<ToolCallBody detail={detail} />
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+/** A tool call's arguments and result — shared by the tool dialog and the span dialog. */
+function ToolCallBody({ detail }: { detail: ToolDetail }) {
+	const args = Object.keys(detail.arguments).length
+		? JSON.stringify(detail.arguments, null, 2)
+		: "";
+	return (
+		<>
+			{args && (
+				<div>
+					<div className="mb-1 text-xs text-muted-foreground">Arguments</div>
+					<CopyablePre
+						value={args}
+						label="the tool arguments"
+						className="text-xs"
+					/>
+				</div>
+			)}
+
+			<div>
+				<div className="mb-1 text-xs text-muted-foreground">
+					Result
+					{detail.truncated && " — truncated; the trace keeps a bounded copy"}
+				</div>
+				{detail.result ? (
+					<CopyablePre
+						value={detail.result}
+						label="the tool result"
+						className="max-h-[45vh] text-xs"
+					/>
+				) : (
+					// A trace written before results were recorded, or a genuinely empty
+					// answer. Say which, rather than showing an empty box that reads as
+					// "the tool returned nothing".
+					<p className="text-xs text-muted-foreground">
+						{detail.resultLength > 0
+							? "Not recorded — this run predates tool-result capture."
+							: "The tool returned nothing."}
+					</p>
+				)}
+			</div>
+		</>
 	);
 }
 
 function TraceWaterfall({ runId }: { runId: string }) {
 	const fetchTrace = useCallback(() => api.runTrace(runId), [runId]);
 	const { data } = usePoll<TraceSpan>(fetchTrace, 5000);
-	const [openTool, setOpenTool] = useState<ToolDetail | null>(null);
+	// The SPAN, not just its tool call: a failed step carries no tool payload, so keying the dialog
+	// on the tool made every failure unopenable.
+	const [openSpan, setOpenSpan] = useState<TraceSpan | null>(null);
 	// No trace yet (run unfinished / not recorded) → the endpoint 404s → hide the card.
 	if (!data) return null;
 	const rootStart = data.start_ns;
@@ -220,27 +293,33 @@ function TraceWaterfall({ runId }: { runId: string }) {
 					// distinct from a model node; both share the same waterfall row (design §5).
 					const badge = executorBadge(span.attributes);
 					const cost = spanCostUsd(span.attributes);
+					// Openable when there is anything to show: a tool call, a failure, or any
+					// attributes the span recorded.
 					const tool = toolDetail(span.attributes);
+					const openable =
+						Boolean(tool) ||
+						Boolean(span.error) ||
+						Object.keys(span.attributes).length > 0;
 					const key = `${span.name}-${span.start_ns}`;
 					return (
 						<div key={key}>
 							<div
 								className={cn(
 									"flex items-center gap-2 text-xs",
-									tool && "cursor-pointer",
+									openable && "cursor-pointer",
 								)}
-								onClick={tool ? () => setOpenTool(tool) : undefined}
+								onClick={openable ? () => setOpenSpan(span) : undefined}
 								onKeyDown={
-									tool
+									openable
 										? (e) => {
 												if (e.key === "Enter" || e.key === " ") {
 													e.preventDefault();
-													setOpenTool(tool);
+													setOpenSpan(span);
 												}
 											}
 										: undefined
 								}
-								tabIndex={tool ? 0 : undefined}
+								tabIndex={openable ? 0 : undefined}
 							>
 								<div
 									className={cn(
@@ -248,7 +327,7 @@ function TraceWaterfall({ runId }: { runId: string }) {
 										span.error && "text-destructive",
 									)}
 									style={{ paddingLeft: depth * 12 }}
-									title={span.error ?? span.name}
+									title={span.error ? `failed: ${span.error}` : span.name}
 								>
 									<span className="truncate">{span.name}</span>
 									{badge && (
@@ -283,8 +362,8 @@ function TraceWaterfall({ runId }: { runId: string }) {
 					);
 				})}
 			</div>
-			{openTool && (
-				<ToolCallDialog detail={openTool} onClose={() => setOpenTool(null)} />
+			{openSpan && (
+				<SpanDialog span={openSpan} onClose={() => setOpenSpan(null)} />
 			)}
 		</Card>
 	);
