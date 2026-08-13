@@ -28,7 +28,7 @@ from ._helpers import (
     _check_webhook_signature,
     _get_runtime,
 )
-from ._jobs import JobStore
+from ._jobs import Job, JobStore
 from ._routes_pipelines import (
     PipelineIngressError,
     _ingress_pipeline_event,
@@ -77,9 +77,45 @@ def _app_state_run_deps(
 
 
 def _durable_job(request: Request, job_id: str) -> Any:
-    """The job as the durable store has it, or None. Both stores' rows expose the same fields."""
+    """The job as the durable store has it, or None."""
     store: Store | None = getattr(request.app.state, "store", None)
     return store.get_job(job_id) if store is not None else None
+
+
+#: What the in-memory `Job` can answer for. Everything else a reader asks for comes from the
+#: durable row, which is the only place it exists.
+_LIVE_FIELDS = frozenset(Job.__dataclass_fields__)
+
+
+class _JobView:
+    """One job as BOTH stores see it.
+
+    The two rows were described as exposing "the same fields". They do not: the in-memory `Job`
+    carries what changes during a run, and `JobRow` carries that plus everything only persistence
+    knows — `diffs`, `labels`, `source`, `correlation_id`, usage. Resolving in-memory-first meant a
+    job THIS process started never consulted the durable row, so a diff that had been written
+    correctly read as absent and `/jobs/{id}/diff` 404'd against a stored 20,997-character row.
+
+    The live object wins for the fields it has, because they change while the run is in flight; the
+    row supplies the rest. A column added to `JobRow` later is served automatically, which is the
+    property whose absence caused this.
+    """
+
+    def __init__(self, live: Any, row: Any) -> None:
+        self._live = live
+        self._row = row
+
+    def __getattr__(self, name: str) -> Any:
+        if name in _LIVE_FIELDS:
+            return getattr(self._live, name)
+        return getattr(self._row, name, None)
+
+
+def _resolve_job(live: Any, row: Any) -> Any:
+    """The best available view of a job: merged when both exist, whichever one does otherwise."""
+    if live is not None and row is not None:
+        return _JobView(live, row)
+    return live if live is not None else row
 
 
 def _diff_length(job: Any) -> int | None:
@@ -196,7 +232,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
         `/jobs/history`, the page fetched `/jobs/{id}`, and the two are not the same store. A CLI
         run was visible and unopenable, and so was every job from before the last restart.
         """
-        found = await job_store.get(job_id) or _durable_job(request, job_id)
+        found = _resolve_job(await job_store.get(job_id), _durable_job(request, job_id))
         if found is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
         return _to_response(found)
@@ -209,7 +245,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
         job fetch would carry it. The job response holds `diff_length` so a caller can tell there
         is something here without paying for it.
         """
-        found = await job_store.get(job_id) or _durable_job(request, job_id)
+        found = _resolve_job(await job_store.get(job_id), _durable_job(request, job_id))
         if found is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
         diffs = getattr(found, "diffs", None)
