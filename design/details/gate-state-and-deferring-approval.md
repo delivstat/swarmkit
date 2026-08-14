@@ -1,6 +1,10 @@
 # Reading a gate, and approving without a saga
 
-**Status:** proposed — design only.
+**Status:** implemented — #794, #795, #797, #799. `GET /gates/{gate_id}` resolves a gate with the
+approval policy applied (`gate_state.py`); the funnel `approve` layer raises `HITLDeferredError` and
+the run checkpoints as `deferred`, resumed by `swarmkit run --resume` or `POST /jobs/{id}/resume`;
+gate ids unified on `{run_id}:{agent_id}`; the gate UI approves with a link to the job, backed by
+`GET /artifacts/{ref}`; and a re-run records `parent_job_id`.
 
 Implements the two items from [`finishing-the-orchestration-seam.md`](finishing-the-orchestration-seam.md)
 that block an application owning its own sequencing. Everything else in that note can wait; these
