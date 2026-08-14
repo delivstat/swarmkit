@@ -62,6 +62,19 @@ def validate(
         bool,
         typer.Option("--quiet", "-q", help="Suppress the success summary; errors still print."),
     ] = False,
+    require_verified: Annotated[
+        bool,
+        typer.Option(
+            "--require-verified",
+            help=(
+                "Exit non-zero when any topology's ROOT agent has no funnel. A STRICT bar — for "
+                "many workspaces the honest answer is that most outputs are unchecked, so turn it "
+                "on where that matters. Successor to `swarmkit gates --require`; separate from "
+                "--require because 'is my config wired' and 'is my output checked' are different "
+                "questions a CI job may want independently."
+            ),
+        ),
+    ] = False,
     require: Annotated[
         bool,
         typer.Option(
@@ -103,14 +116,20 @@ def validate(
     # (design/details/declared-but-unreachable.md).
     report = _reachability_report(workspace_root)
 
+    verification = _verification_report(workspace_root)
+
     if not quiet:
         _emit_success(workspace, json_mode=json_output, tree=tree, color=use_colour)
         if report is not None:
             _emit_reachability(report, json_mode=json_output)
+        if verification is not None:
+            _emit_verification(verification, json_mode=json_output)
 
     # Any unreachable declaration fails under `--require`, not only the REQUIRED ones: funnel
     # layers carry no `required` flag, so gating on that alone would pass a workspace whose every
     # validate layer is inert. REQUIRED stays as emphasis in the report, not as the gate.
+    if require_verified and verification is not None and not verification.ok:
+        raise typer.Exit(_EXIT_RESOLUTION_ERROR)
     if require and report is not None and not report.ok:
         raise typer.Exit(_EXIT_RESOLUTION_ERROR)
 
@@ -136,6 +155,44 @@ def _reachable_line(decl: Any) -> str:
     required = "  REQUIRED" if getattr(decl, "required", False) else ""
     detail = f" — {decl.detail}" if getattr(decl, "detail", "") else ""
     return f"{decl.kind} {decl.key!r} declared on {decl.declared_on}{detail}: wired{required}"
+
+
+def _verification_report(workspace_root: Path) -> Any:
+    """How strongly each agent's output is checked. None when no runtime can be built — same
+    posture as the reachability report: say what can be said rather than lose the whole run."""
+    from swarmkit_runtime._workspace_runtime import WorkspaceRuntime  # noqa: PLC0415
+
+    try:
+        return WorkspaceRuntime.from_workspace_path(workspace_root).verification()
+    except Exception:
+        return None
+
+
+def _emit_verification(report: Any, *, json_mode: bool) -> None:
+    """Report verification strength, roots first.
+
+    Only ROOTS are findings. A leaf worker returning a fact to its parent is not producing a
+    reviewable artifact, and flagging every agent would make a report nobody reads — which is how
+    `swarmkit gates` would have failed if it had been per-agent.
+    """
+    if json_mode:
+        typer.echo(json.dumps({"event": "validate.verification", **report.to_dict()}))
+        return
+
+    roots = [a for a in report.agents if a.is_root]
+    typer.echo(f"\nverification: {len(roots)} topology root(s)")
+    for agent in roots:
+        typer.echo(f"  {agent.line()}")
+
+    inert = [a for a in report.agents if a.inert and not a.is_root]
+    for agent in inert:
+        typer.echo(f"  {agent.line()}")
+
+    if report.unverified_roots:
+        typer.echo(
+            f"\n  {len(report.unverified_roots)} topology root(s) produce an output that nothing "
+            f"checks — the run's answer is whatever the model said."
+        )
 
 
 def _emit_reachability(report: Any, *, json_mode: bool) -> None:

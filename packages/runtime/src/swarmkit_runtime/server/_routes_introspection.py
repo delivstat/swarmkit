@@ -190,6 +190,17 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
             raise HTTPException(status_code=503, detail="no artifact store is configured")
         return {"correlation_id": correlation_id, "refs": list(store.list(correlation_id))}
 
+    @app.get("/workspace/verification")
+    async def workspace_verification(request: Request) -> dict[str, Any]:
+        """How strongly each agent's output is checked.
+
+        Sibling of `/workspace/reachability`, and the successor to
+        `GET /pipelines/{id}/gate-coverage`: that classified the edges of a stage graph, and the
+        question underneath — which agents produce an artifact and what checks it — was never about
+        pipelines (`swarmkit_runtime.verification`).
+        """
+        return dict(_get_runtime(request).verification().to_dict())
+
     @app.get("/workspace/reachability")
     async def workspace_reachability(request: Request) -> dict[str, Any]:
         """Declared configuration that no code path reaches.

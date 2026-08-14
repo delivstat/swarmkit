@@ -158,6 +158,7 @@ over HTTP — producing the same artifacts, the same approval, and one correlate
 2. **Does `stage-graph.schema.json` stay in `packages/schema`?** If sequencing is the application's,
    the format arguably is too — but a shared format is how the reference app and the bundled
    controller stay compatible during the transition.
-3. **What replaces `swarmkit gates --require` for CI?** The funnel-strength check can gate on "every
-   agent producing an artifact carries a funnel", which is close but not the same guarantee.
+3. ~~**What replaces `swarmkit gates --require` for CI?**~~ **Resolved** —
+   `swarmkit validate --require-verified`, gating on "every topology root's output is checked by
+   something that actually runs". See `design/details/funnel-verification-check.md`.
 4. **Is one release enough deprecation** for a subsystem someone is running in production?
