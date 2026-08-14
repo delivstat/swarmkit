@@ -505,6 +505,25 @@ class WorkspaceRuntime:
         report: ReachabilityReport = compute_reachability(declarations, ledger)
         return report
 
+    def verification(self) -> Any:
+        """How strongly each agent's output is checked (`swarmkit_runtime.verification`).
+
+        Shares `reachability`'s compile: strength counts WIRED layers, not declared ones, so the
+        two answers come from one ledger and a declared-but-inert layer cannot inflate a strength
+        score. The successor to `swarmkit gates`, which classified stage-graph edges and left with
+        the bundled sequencer — the question underneath was never about pipelines.
+        """
+        from swarmkit_runtime.reachability import WiringLedger  # noqa: PLC0415
+        from swarmkit_runtime.verification import compute_verification  # noqa: PLC0415
+
+        ledger = WiringLedger()
+        for name in sorted(self._workspace.topologies):
+            try:
+                self._compile_with_ledger(name, ledger)
+            except Exception:
+                logger.warning("topology %r could not be compiled for the verification check", name)
+        return compute_verification(self._workspace, ledger)
+
     async def inert_bindings(self, *, limit: int = 1000) -> Any:
         """Bindings that were wired and have never once fired (class B).
 
