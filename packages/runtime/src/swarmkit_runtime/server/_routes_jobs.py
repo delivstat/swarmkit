@@ -17,9 +17,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from swarmkit_runtime.canary import CanaryRouter
-from swarmkit_runtime.orchestration import PipelineSignal
 from swarmkit_runtime.persistence import Store
-from swarmkit_runtime.triggers import extract_correlation_id, find_pipeline_webhook_trigger
+from swarmkit_runtime.triggers import (
+    PipelineIngressError,
+    PipelineSignal,
+    _ingress_pipeline_event,
+    extract_correlation_id,
+    find_pipeline_webhook_trigger,
+)
 from swarmkit_runtime.triggers._pipeline_ingress import DEFAULT_CORRELATION_PATH
 
 from ._config import ServerCfg
@@ -29,10 +34,6 @@ from ._helpers import (
     _get_runtime,
 )
 from ._jobs import Job, JobStore
-from ._routes_pipelines import (
-    PipelineIngressError,
-    _ingress_pipeline_event,
-)
 from ._schemas import (
     JobListItem,
     JobResponse,

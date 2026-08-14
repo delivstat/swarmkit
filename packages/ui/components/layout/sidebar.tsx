@@ -16,13 +16,11 @@ import {
 	PanelLeftClose,
 	PanelLeftOpen,
 	PenTool,
-	PlayCircle,
 	Puzzle,
 	RefreshCw,
 	ScrollText,
 	Timer,
 	Users,
-	Workflow,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -49,8 +47,6 @@ const NAV = [
 	{ href: "/skills", label: "Skills", icon: Puzzle },
 	{ href: "/archetypes", label: "Archetypes", icon: Users },
 	{ href: "/funnels", label: "Funnels", icon: Funnel },
-	{ href: "/pipelines", label: "Pipelines", icon: Workflow },
-	{ href: "/runs", label: "Runs", icon: PlayCircle },
 	{ href: "/contracts", label: "Contracts", icon: Handshake },
 	{ href: "/comprehension", label: "Comprehension", icon: Gauge },
 	{ href: "/memory", label: "Memory", icon: BrainCircuit },

@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 from swarmkit_runtime.cli import app
 
-# Commands the docs promise (docs/site/reference/cli.md) plus the pipeline pair. Add to this list
+# Commands the docs promise (docs/site/reference/cli.md). Add to this list
 # when adding a command — that is the point.
 EXPECTED = [
     "ask",
@@ -27,13 +27,11 @@ EXPECTED = [
     "edit",
     "eval",
     "gaps",
-    "gates",
     "init",
     "knowledge-pack",
     "knowledge-server",
     "logs",
     "mcp-serve",
-    "orchestrator",
     "run",
     "serve",
     "status",
@@ -44,12 +42,11 @@ EXPECTED = [
 ]
 
 # Sub-apps registered with add_typer.
-EXPECTED_GROUPS = ["author", "auth", "review", "pipeline", "memory", "trust", "fleet"]
+EXPECTED_GROUPS = ["author", "auth", "review", "memory", "trust", "fleet"]
 
 # Subcommands a message elsewhere tells an operator to run. A CLI that names a command it does not
-# have is worse than one that says nothing: `pipeline status` prints "re-queue with: swarmkit
-# pipeline retry-event <id>" when it finds a dead-lettered event.
-EXPECTED_SUBCOMMANDS = [("pipeline", "retry-event")]
+# have is worse than one that says nothing.
+EXPECTED_SUBCOMMANDS: list[tuple[str, str]] = [("review", "gate")]
 
 
 def _command_names() -> set[str]:
@@ -98,16 +95,3 @@ def test_no_private_helper_leaked_into_the_command_list() -> None:
     """
     leaked = sorted(n for n in _command_names() if n.startswith(("_", "-")))
     assert not leaked, f"private helpers registered as CLI commands: {leaked}"
-
-
-def test_orchestrator_takes_the_flags_the_docs_document() -> None:
-    """The reported invocation: `swarmkit orchestrator <ws> --serve-url … --database-url …`."""
-    cmd = next(
-        c
-        for c in app.registered_commands
-        if (c.name or (c.callback.__name__ if c.callback else "")) == "orchestrator"
-    )
-    assert cmd.callback is not None
-    code = cmd.callback.__code__
-    params = set(code.co_varnames[: code.co_argcount])
-    assert {"workspace", "serve_url", "database_url"} <= params

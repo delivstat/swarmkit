@@ -43,11 +43,11 @@ def _build_saga_store(db: str, q: Any, barrier: Any) -> None:
     flake. Releasing them together reproduces it every run.
     """
     try:
-        from swarmkit_runtime.orchestration._saga_store import SqlSagaStore  # noqa: PLC0415
+        from swarmkit_runtime.audit import SqlAuditProvider  # noqa: PLC0415
 
         engine = make_engine(f"sqlite:///{db}")
         barrier.wait(timeout=60)
-        SqlSagaStore(engine)
+        SqlAuditProvider(engine)
         q.put("ok")
     except Exception as exc:  # the child reports, the parent asserts
         q.put(f"{type(exc).__name__}: {exc}")

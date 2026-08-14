@@ -25,7 +25,7 @@ ledger entry cannot report a wrap that did not happen.
 
 ``swarmkit validate``, ``swarmkit serve``'s startup log and ``GET /workspace/reachability`` all call
 :func:`compute_reachability` — one pure function, surfaced three times (Surface parity, as
-``gate_coverage``).
+one pure function behind thin interfaces).
 """
 
 from __future__ import annotations

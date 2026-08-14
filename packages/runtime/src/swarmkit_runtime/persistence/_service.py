@@ -91,7 +91,6 @@ class StoreKind(StrEnum):
     CHECKPOINTS = "checkpoints"
     ARTIFACTS = "artifacts"
     MEMORY = "memory"
-    SAGA = "saga"
     FLEET = "fleet"
 
 
@@ -111,7 +110,6 @@ _ALWAYS_LOCAL: set[StoreKind] = set()
 
 _SQLITE_FILE = {
     StoreKind.RUNTIME: "store.sqlite",
-    StoreKind.SAGA: "store.sqlite",  # coexisting tables, one file
     StoreKind.ARTIFACTS: "store.sqlite",
     StoreKind.MEMORY: "store.sqlite",
     StoreKind.AUDIT: "audit.sqlite",
@@ -336,11 +334,6 @@ class StorageService:
         if target.backend == "sqlite":
             return SqliteStore(self._root)
         return Store(self.engine(StoreKind.RUNTIME))
-
-    def saga_store(self) -> Any:
-        from swarmkit_runtime.orchestration import SqlSagaStore  # noqa: PLC0415
-
-        return SqlSagaStore(self.engine(StoreKind.SAGA))
 
     def artifact_store(self) -> Any:
         from swarmkit_runtime.artifacts import build_artifact_store  # noqa: PLC0415

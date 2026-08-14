@@ -10,19 +10,16 @@ Bug 1 (storage config never read) lives in test_store_factory.py, next to the te
 from __future__ import annotations
 
 import asyncio
-import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pytest
-from conftest import copy_workspace
 from fastapi import HTTPException
 from swarmkit_runtime.executors._adapter_spec import parse_adapter_spec
 from swarmkit_runtime.executors._declarative import DeclarativeExecutor
 from swarmkit_runtime.executors._events import ExecResult
 from swarmkit_runtime.executors._run import BudgetEnvelope, SandboxHandle, TaskSpec
-from swarmkit_runtime.orchestration import StageOutcome
 
 REPO = Path(__file__).resolve().parents[3]
 EXAMPLE_WS = REPO / "examples" / "hello-swarm" / "workspace"
@@ -132,32 +129,6 @@ async def test_stderr_tail_is_bounded(tmp_path: Path) -> None:
 # ---- bug 3: run-stage accepted stage.input and silently ignored it ------------------------------
 
 
-def test_stage_input_precedence(tmp_path: Path) -> None:
-    from swarmkit_runtime.server._pipeline_stage import _stage_input  # noqa: PLC0415
-
-    class _Saga:
-        input = "saga payload"
-        passed_stages: ClassVar[list[str]] = []
-
-    class _SagaStore:
-        def get(self, _cid: str) -> Any:
-            return _Saga()
-
-    class _Artifacts:
-        def list(self, _cid: str) -> list[str]:
-            return []
-
-        def get(self, _ref: str) -> str | None:
-            return None
-
-    store, artifacts = _SagaStore(), _Artifacts()
-    # 1. an explicit stage.input wins — it used to be accepted and dropped
-    assert _stage_input(store, artifacts, "c", {"input": "explicit"}) == "explicit"  # type: ignore[arg-type]
-    # 2. else the saga's payload, for the first stage
-    assert _stage_input(store, artifacts, "c", {}) == "saga payload"  # type: ignore[arg-type]
-    assert _stage_input(store, artifacts, "c", None) == "saga payload"  # type: ignore[arg-type]
-
-
 def test_task_spec_does_not_fall_back_to_the_role_name() -> None:
     """The worst of the reported bugs: with no resolvable input the harness node used the agent's
     ROLE NAME as the prompt, so the node called the model, returned success and wrote a plausible
@@ -224,76 +195,3 @@ def test_webhook_without_declared_auth_still_passes() -> None:
 
 
 # ---- bug 4 / traps: the orchestrator resolved its store independently ---------------------------
-
-
-def test_orchestrator_resolves_the_same_store_as_serve(tmp_path: Path) -> None:
-    """Masked while serve ignored storage.runtime (both landed on sqlite and agreed by accident).
-    With bug 1 fixed an independent default is a live split brain: serve queues events into one
-    database while the orchestrator polls another, and neither process warns."""
-    from swarmkit_runtime.cli._cmd_orchestrator import _resolve_saga_store_url  # noqa: PLC0415
-
-    ws = tmp_path / "ws"
-    copy_workspace(EXAMPLE_WS, ws)
-    (ws / "workspace.yaml").write_text(
-        (ws / "workspace.yaml").read_text()
-        + "\nstorage:\n  runtime:\n    backend: postgres\n    url: postgresql://db/app\n"
-    )
-    url, source = _resolve_saga_store_url(ws, None)
-    assert url == "postgresql://db/app"
-    # The source names the SETTING now, not the file: an operator reading the startup report needs
-    # to know which key won, and "workspace.yaml" does not say that.
-    assert source == "storage.runtime"
-
-
-def test_orchestrator_database_url_is_an_explicit_override(tmp_path: Path) -> None:
-    from swarmkit_runtime.cli._cmd_orchestrator import _resolve_saga_store_url  # noqa: PLC0415
-
-    url, source = _resolve_saga_store_url(tmp_path, "sqlite:///elsewhere.db")
-    assert (url, source) == ("sqlite:///elsewhere.db", "--database-url")
-
-
-# ---- operational trap: a parked stage's artifact size distinguishes failure from success ---------
-
-
-def test_stage_outcome_reports_artifact_size() -> None:
-    """A FAILED stage parks exactly like a successful one and the two render identically. A real
-    record is kilobytes; a harness failure is a ~46-character error string."""
-    assert StageOutcome(status="parked").artifact_bytes is None
-    assert StageOutcome(status="parked", artifact_bytes=3421).artifact_bytes == 3421
-
-
-@pytest.mark.asyncio
-async def test_run_stage_populates_artifact_bytes(tmp_path: Path) -> None:
-    from swarmkit_runtime.artifacts import build_artifact_store  # noqa: PLC0415
-    from swarmkit_runtime.server._pipeline_stage import build_pipeline_run_stage  # noqa: PLC0415
-
-    ws = tmp_path / "ws"
-    copy_workspace(EXAMPLE_WS, ws)
-    shutil.rmtree(ws / ".swarmkit", ignore_errors=True)
-    (ws / ".swarmkit").mkdir()
-
-    class _Saga:
-        input = "a real payload"
-        passed_stages: ClassVar[list[str]] = []
-
-    class _SagaStore:
-        def get(self, _cid: str) -> Any:
-            return _Saga()
-
-    class _Result:
-        output = "x" * 3421
-
-    class _Runtime:
-        async def run(self, *a: Any, **k: Any) -> Any:
-            return _Result()
-
-    run_stage = build_pipeline_run_stage(
-        _Runtime(),  # type: ignore[arg-type]
-        build_artifact_store(
-            None, workspace_root=ws, database_url=f"sqlite:///{ws / '.swarmkit' / 's.sqlite'}"
-        ),
-        _SagaStore(),  # type: ignore[arg-type]
-    )
-    outcome = await run_stage("c1", {"id": "s1", "topology": "hello", "gate": "g"})
-    assert outcome.status == "parked"
-    assert outcome.artifact_bytes == 3421

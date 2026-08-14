@@ -19,7 +19,6 @@ ALL: tuple[SchemaName, ...] = (
     "role-registry",
     "approval-policy",
     "funnel",
-    "stage-graph",
     "contract",
 )
 
@@ -136,17 +135,6 @@ def test_funnel_valid_fixtures(fixture: Path) -> None:
 def test_funnel_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("funnel", _load_yaml(fixture))
-
-
-@pytest.mark.parametrize("fixture", _fixtures("stage-graph"), ids=lambda p: p.name)
-def test_stage_graph_valid_fixtures(fixture: Path) -> None:
-    validate("stage-graph", _load_yaml(fixture))
-
-
-@pytest.mark.parametrize("fixture", _fixtures("stage-graph-invalid"), ids=lambda p: p.name)
-def test_stage_graph_invalid_fixtures_fail(fixture: Path) -> None:
-    with pytest.raises(ValidationError):
-        validate("stage-graph", _load_yaml(fixture))
 
 
 @pytest.mark.parametrize("fixture", _fixtures("contract"), ids=lambda p: p.name)

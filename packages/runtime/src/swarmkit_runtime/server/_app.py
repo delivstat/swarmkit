@@ -35,13 +35,12 @@ from ._jobs import JobStore
 from ._mcp import _boot_mcp, _mcp_available, _mount_mcp, _start_scheduler
 from ._routes_conversations import _register_conversation_routes
 from ._routes_crud import _register_crud_routes
+from ._routes_events import _register_event_routes
 from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
 from ._routes_memory import _register_memory_routes
-from ._routes_pipelines import _register_pipeline_routes
 from ._routes_review import _register_review_routes
-from ._routes_sagas import _register_saga_routes
 from ._services import ArtifactService
 from ._webui import mount_webui
 
@@ -53,7 +52,7 @@ def _wire_storage(app: FastAPI, workspace_path: Path, runtime: WorkspaceRuntime)
 
     Serve used to build four stores from three different resolvers; the pipeline CLI and the
     orchestrator built more. They agreed only while all of them ignored configuration and landed
-    on the same SQLite file (design/details/storage-service.md). Returns the saga store, which the
+    on the same SQLite file (design/details/storage-service.md). The
     caller needs for the signal sink and the run-stage seam.
     """
     storage = storage_for_workspace(workspace_path, runtime.workspace.raw)
@@ -63,9 +62,6 @@ def _wire_storage(app: FastAPI, workspace_path: Path, runtime: WorkspaceRuntime)
     # Fleet enrollment store, on the same backend as the main store (design 19 Q4).
     app.state.membership_store = storage.membership_store()
     app.state.artifact_store = storage.artifact_store()
-    saga_store = storage.saga_store()
-    app.state.saga_store = saga_store
-    return saga_store
 
 
 def _log_unreachable(runtime: Any) -> None:
@@ -172,24 +168,13 @@ def create_app(  # noqa: PLR0915
         app.state.runtime = runtime
         app.state.workspace_path = workspace_path  # for GET /fleet/state (reads artifact content)
         _warn_if_identity_is_not_a_role_member(_auth, runtime)
-        saga_store = _wire_storage(app, workspace_path, runtime)
+        _wire_storage(app, workspace_path, runtime)
 
-        async def _pipeline_sink(correlation_id: str, event: str) -> None:
-            saga_store.enqueue(correlation_id, event)
-
-        app.state.pipeline_signal = _pipeline_sink
-
-        # The run-stage EXECUTION seam: the bundled orchestrator calls POST /pipelines/run-stage,
-        # which delegates here to run the stage's topology as a bounded governed run and persist
-        # its artifact. Content stays runtime-side; the orchestrator threads only the reference.
-        from ._pipeline_stage import build_pipeline_run_stage  # noqa: PLC0415
-
-        # The job store comes from the SAME storage service that resolved every other store
-        # above — a stage must not open a second one, or it would land on a different backend
-        # from the jobs the UI lists (design/details/storage-service.md).
-        app.state.pipeline_run_stage = build_pipeline_run_stage(
-            runtime, app.state.artifact_store, saga_store, job_store=app.state.store
-        )
+        # The inbound event seam. It had one consumer — the bundled sequencer — and its queue left
+        # with it, so nothing is wired by default: an application that wants correlated webhook
+        # events sets `app.state.event_signal` to its own sink
+        # (`docs/notes/pipeline-deprecation.md`).
+        app.state.pipeline_signal = getattr(app.state, "event_signal", None)
 
         # Parse server config from workspace.yaml
         cfg = _parse_server_config(runtime.workspace)
@@ -380,12 +365,11 @@ def create_app(  # noqa: PLR0915
 
     # Routes
     _register_introspection_routes(app)
+    _register_event_routes(app)
     _register_job_routes(app, job_store)
     _register_conversation_routes(app, workspace_path)
     _register_crud_routes(app, ArtifactService(workspace_path))
     _register_review_routes(app, workspace_path)
-    _register_pipeline_routes(app, workspace_path)
-    _register_saga_routes(app)
     _register_fleet_routes(app)
     _register_memory_routes(app)
 

@@ -280,7 +280,6 @@ def _ensure_schema(service: Any) -> None:
     from swarmkit_runtime.persistence import StoreKind  # noqa: PLC0415
 
     service.store()
-    service.saga_store()
     service.membership_store()
     if service.target(StoreKind.AUDIT).backend == "postgres":
         service.audit_provider()

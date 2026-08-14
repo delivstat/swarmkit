@@ -2,9 +2,9 @@
 
 A multi-party role-task used to serialize as ``kind: "other"`` with its gate, role and scope
 dropped, so no front-end could render or group one. This covers the fourth kind, the review-queue
-filters, and the per-role detail on ``GET /pipelines/gate-status`` — including the quorum
-correction: the aggregate status is now evaluated through the approval engine, not folded from the
-items, so it agrees with the decision the runtime actually gates on.
+filters and the fourth kind. The per-role gate detail this also covered moved to
+``GET /gates/{gate_id}`` (1.181.0), which resolves the policy from the gate's own funnel and applies
+quorum through the approval engine — see `test_gate_state.py`.
 """
 
 from __future__ import annotations
@@ -123,69 +123,3 @@ def test_review_all_takes_the_same_filters(client: TestClient) -> None:
 
 
 # ---- gate detail + the quorum correction ---------------------------------
-
-
-def test_gate_status_carries_per_role_items(client: TestClient) -> None:
-    body = client.get("/pipelines/gate-status/run-42/greeter").json()
-    roles = {i["role"]: i for i in body["items"]}
-    assert set(roles) == {"security-reviewer", "release-manager"}
-    assert roles["security-reviewer"]["status"] == "pending"
-    assert roles["security-reviewer"]["scope"] == "greet:approve"
-
-
-def test_gate_status_falls_back_to_the_fold_without_a_policy(client: TestClient, ws: Path) -> None:
-    """The hello-swarm greeter carries no funnel, so no policy is locatable — the endpoint says so
-    rather than pretending it evaluated quorum."""
-    FileReviewQueue(ws).record_resolution(f"mpa-{GATE}-0-security-reviewer", "approved", "alice")
-    body = client.get("/pipelines/gate-status/run-42/greeter").json()
-    assert body["quorum_evaluated"] is False
-    assert body["status"] == "pending"  # the fold requires every task approved
-
-
-def test_gate_status_evaluates_quorum_when_the_policy_is_reachable(tmp_path: Path) -> None:
-    """`quorum: any` approves on the first resolution. Folding the items would still report
-    pending, and an orchestrator polling this would wait for a gate that had already opened."""
-    from swarmkit_runtime.server import create_app  # noqa: PLC0415
-
-    ws = tmp_path / "ws"
-    copy_workspace(EXAMPLE_WS, ws)
-    (ws / "roles").mkdir(exist_ok=True)
-    (ws / "roles" / "r.yaml").write_text(
-        "apiVersion: swarmkit/v1\n"
-        "kind: RoleRegistry\n"
-        "metadata:\n  id: r\n  name: R\n"
-        "roles:\n"
-        "  - id: security-reviewer\n    members: [alice]\n    scopes: [greet:approve]\n"
-        "  - id: release-manager\n    members: [bob]\n    scopes: [greet:approve]\n"
-    )
-    (ws / "funnels").mkdir(exist_ok=True)
-    (ws / "funnels" / "f.yaml").write_text(
-        "apiVersion: swarmkit/v1\n"
-        "kind: Funnel\n"
-        "metadata:\n  id: greet-funnel\n  name: Greet funnel\n  description: Test gate.\n"
-        "approve:\n"
-        "  rules:\n"
-        "    - scope: greet:approve\n"
-        "      roles: [security-reviewer, release-manager]\n"
-        "      quorum: any\n"
-        "provenance:\n  authored_by: human\n  version: 1.0.0\n"
-    )
-    topo = next((ws / "topologies").glob("*.yaml"))
-    text = topo.read_text()
-    assert "        archetype: greeter" in text
-    topo.write_text(
-        text.replace(
-            "        archetype: greeter", "        archetype: greeter\n        funnel: greet-funnel"
-        )
-    )
-
-    queue = FileReviewQueue(ws)
-    queue.submit(_role_task("security-reviewer"))
-    queue.submit(_role_task("release-manager"))
-    queue.record_resolution(f"mpa-{GATE}-0-security-reviewer", "approved", "alice")
-
-    with TestClient(create_app(ws)) as c:
-        body = c.get("/pipelines/gate-status/run-42/greeter").json()
-
-    assert body["quorum_evaluated"] is True
-    assert body["status"] == "approved", body

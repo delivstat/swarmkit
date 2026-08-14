@@ -1,7 +1,7 @@
 """The single storage service (design/details/storage-service.md).
 
 Each test here is a bug that shipped. The workspace declared Postgres, `swarmkit validate` passed
-with no warning, runs succeeded — and the sagas, the audit trail and the governed memory went to a
+with no warning, runs succeeded — and the artifacts, audit trail and governed memory went to a
 SQLite file on one laptop. Four separate resolvers disagreed and nothing compared them.
 """
 
@@ -42,7 +42,7 @@ def test_every_store_follows_storage_runtime(tmp_path: Path) -> None:
     """One `storage.runtime` block moves ALL of it. Sagas, artifacts and governed memory each had
     their own hardcoded SQLite path, so declaring Postgres moved only part of the workspace."""
     svc = _svc(tmp_path, {"runtime": {"backend": "postgres", "url": PG}})
-    for kind in (StoreKind.RUNTIME, StoreKind.SAGA, StoreKind.ARTIFACTS, StoreKind.MEMORY):
+    for kind in (StoreKind.RUNTIME, StoreKind.ARTIFACTS, StoreKind.MEMORY):
         assert svc.target(kind).backend == "postgres", kind
         assert svc.target(kind).url == PG
 
@@ -166,7 +166,7 @@ def test_a_record_holding_store_still_refuses(tmp_path: Path) -> None:
 def test_stores_on_the_same_url_share_one_engine(tmp_path: Path) -> None:
     """Six components opening six pools against one database is six times the connections."""
     svc = _svc(tmp_path)
-    assert svc.engine(StoreKind.RUNTIME) is svc.engine(StoreKind.SAGA)
+    assert svc.engine(StoreKind.RUNTIME) is svc.engine(StoreKind.ARTIFACTS)
 
 
 def test_audit_keeps_its_own_sqlite_file(tmp_path: Path) -> None:

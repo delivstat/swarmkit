@@ -19,7 +19,7 @@ resolver that parsed the id would have to know which, and be wrong for the other
 off the item works for both, and keeps working when the shapes are unified.
 
 Both ``GET /gates/{gate_id}`` and ``swarmkit review gate`` call :func:`compute_gate_state` — one
-pure function, surfaced twice, as ``gate_coverage`` is.
+pure function, surfaced twice.
 """
 
 from __future__ import annotations

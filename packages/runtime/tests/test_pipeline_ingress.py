@@ -101,7 +101,7 @@ def test_signal_emit_delivers_to_injected_sink(client: TestClient) -> None:
 
     client.app.state.pipeline_signal = fake_signal  # type: ignore[attr-defined]
     resp = client.post(
-        "/pipelines/signal",
+        "/events/signal",
         json={"correlation_id": "CORR-1", "event": "build.ready-in-qa", "mode": "emit"},
     )
     assert resp.status_code == 200
@@ -136,7 +136,7 @@ def test_signal_skip_without_scope_is_denied_and_audited(client: TestClient) -> 
 
     client.app.state.pipeline_signal = fake_signal  # type: ignore[attr-defined]
     resp = client.post(
-        "/pipelines/signal",
+        "/events/signal",
         json={"correlation_id": "CORR-2", "event": "design.kickoff", "mode": "skip"},
     )
     assert resp.status_code == 403
@@ -166,7 +166,7 @@ def test_signal_skip_with_scope_is_delivered_and_audited(client: TestClient) -> 
 
     client.app.state.pipeline_signal = fake_signal  # type: ignore[attr-defined]
     resp = client.post(
-        "/pipelines/signal",
+        "/events/signal",
         json={
             "correlation_id": "CORR-3",
             "event": "design.kickoff",
@@ -195,7 +195,7 @@ def test_signal_sink_unset_is_503(client: TestClient) -> None:
     # defensive 503 branch a deployment that stripped the signal sink would hit.
     client.app.state.pipeline_signal = None  # type: ignore[attr-defined]
     resp = client.post(
-        "/pipelines/signal",
+        "/events/signal",
         json={"correlation_id": "CORR-4", "event": "build.ready-in-qa", "mode": "emit"},
     )
     assert resp.status_code == 503

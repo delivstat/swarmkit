@@ -37,11 +37,10 @@ def _register_pipeline_event_tool(mcp_server: Any, app: FastAPI) -> None:
     transport/agent principal (``mcp``), which under real governance holds neither reserved scope,
     so an agent may ``emit`` an authorised event but can never advance or skip on its own authority.
     """
-    from swarmkit_runtime.orchestration import PipelineSignal  # noqa: PLC0415
-
-    from ._routes_pipelines import (  # noqa: PLC0415
+    from swarmkit_runtime.triggers import (  # noqa: PLC0415
         PipelineIngressError,
         PipelineMode,
+        PipelineSignal,
         _ingress_pipeline_event,
     )
 

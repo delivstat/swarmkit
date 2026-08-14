@@ -143,14 +143,15 @@ def test_the_column_is_added_to_an_existing_table(tmp_path: Path) -> None:
 
 
 def test_every_run_path_passes_the_diff_through() -> None:
-    """Four writers — serve, cli, pipeline, chat — and a diff recorded by three of them is a diff
-    lost on the fourth. Asserted as a property against the source, the way the `source` field is.
+    """Three writers — serve, cli, chat — and a diff recorded by two of them is a diff lost on the
+    third. Asserted as a property against the source, the way the `source` field is.
+
+    It was four until the bundled pipeline was removed; the stage writer left with it.
     """
     root = Path(__file__).resolve().parents[1] / "src/swarmkit_runtime"
     expected = {
         "cli/_cmd_run.py": "diffs=result.diffs",
         "_conversation.py": 'diffs=getattr(result, "diffs", {}) or {}',
-        "server/_pipeline_stage.py": 'diffs=getattr(result, "diffs", None)',
         "server/_jobs.py": 'fields["diffs"]',
     }
 
@@ -206,19 +207,6 @@ def test_run_result_exposes_a_combined_diff() -> None:
     """What a caller wants to read or pipe to `git apply`."""
     assert RunResult(output="", diffs={}).diff == ""
     assert RunResult(output="", diffs={"a": DIFF}).diff == DIFF
-
-
-def test_a_failed_stage_still_records_its_diff() -> None:
-    """A harness that edited files and then failed still produced work, and the worktree is gone
-    either way."""
-    src = (
-        Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_pipeline_stage.py"
-    ).read_text()
-    # The node_errors branch — a run that completed but whose nodes reported failure.
-    start = src.index("if node_errors:")
-    failing = src[start : start + 600]
-
-    assert "diffs=" in failing, "the failing path must record the diff too"
 
 
 def test_job_row_defaults_to_none(tmp_path: Path) -> None:

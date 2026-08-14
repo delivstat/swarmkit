@@ -102,9 +102,9 @@ describe("isActive", () => {
 	});
 
 	it("does not match a sibling that merely shares a prefix", () => {
-		/** Without the boundary, `/runs` would light up `/run` and two entries would look active at
+		/** Without the boundary, `/jobs` would light up `/job` and two entries would look active at
 		 * once — the nav would be lying about where you are. */
-		expect(isActive("/runs", "/run")).toBe(false);
+		expect(isActive("/jobs", "/job")).toBe(false);
 	});
 
 	it("does not match an unrelated page", () => {
