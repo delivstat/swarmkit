@@ -1,8 +1,20 @@
 # Finishing the orchestration seam
 
-**Status:** proposed — design only. Extends
-[`orchestration-provider-seam.md`](orchestration-provider-seam.md) (status: partially-implemented);
-does not re-argue it. Supersedes `event-routed-stage-graphs.md`, which should not be implemented.
+**Status:** partly implemented, partly superseded — kept as the record of how the decision moved.
+Extends [`orchestration-provider-seam.md`](orchestration-provider-seam.md); does not re-argue it.
+Supersedes `event-routed-stage-graphs.md`, which should not be implemented.
+
+The two items this note called blockers were built —
+[`gate-state-and-deferring-approval.md`](gate-state-and-deferring-approval.md): `GET /gates/{id}`
+with the approval policy already applied, and a funnel `approve` layer that defers a run for a human
+without a saga holding it open.
+
+The rest is superseded. Finishing the seam assumed SwarmKit keeps a sequencer behind a provider
+interface; the call that followed was that it should keep none at all — see
+[`extracting-the-pipeline.md`](extracting-the-pipeline.md). The bundled controller, the stage graph
+and the capability contract were removed rather than completed, and sequencing became the
+application's, with `examples/pipeline-orchestrator/` as the reference. Open question 3 below —
+"should the bundled controller get a deprecation date?" — was answered yes, and then closed.
 
 ## What is already decided, and already built
 
