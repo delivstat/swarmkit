@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import archetypeSchema from "../../schema/schemas/archetype.schema.json";
 import skillSchema from "../../schema/schemas/skill.schema.json";
-import stageGraphSchema from "../../schema/schemas/stage-graph.schema.json";
 import topologySchema from "../../schema/schemas/topology.schema.json";
 import {
 	type JsonSchema,
@@ -254,7 +253,7 @@ describe("arrayRefType", () => {
 		).toBe("skill");
 	});
 
-	it("reads the ref from the items node (the stage-graph `locks` shape)", () => {
+	it("reads the ref from the items node (an array-of-refs field)", () => {
 		expect(
 			arrayRefType(ROOT, {
 				type: "array",
@@ -270,14 +269,9 @@ describe("arrayRefType", () => {
 		expect(arrayRefType(ROOT, { type: "string" })).toBeNull();
 	});
 
-	it("resolves the real stage-graph `locks` field to a contract picker", () => {
-		// The load-bearing check: `locks` renders as a contract chips-picker, not free text.
-		const root = stageGraphSchema as JsonSchema;
-		const defs = root.$defs as Record<string, JsonSchema>;
-		const stageProps = defs.stage?.properties as Record<string, JsonSchema>;
-		const locks = normalizeSchema(root, stageProps.locks as JsonSchema);
-		expect(arrayRefType(root, locks)).toBe("contract");
-	});
+	// A companion case read the real `stage-graph.schema.json` to prove an array-of-refs field
+	// renders as a picker against a SHIPPED schema rather than a fixture. That schema left with the
+	// bundled pipeline; the inline cases above still cover the resolution rule.
 });
 
 describe("objectFields", () => {

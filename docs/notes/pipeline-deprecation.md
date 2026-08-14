@@ -1,17 +1,29 @@
 # The bundled pipeline orchestrator is deprecated
 
-**Status:** deprecated in swarmkit-runtime 1.188.0. Still supported; removal is a later release.
+**Status:** removed in swarmkit-runtime 1.189.0 (deprecated in 1.188.0). Kept as the migration
+guide — everything below still describes what replaced it.
 
-## What this means today
+## What went
 
-Nothing breaks. `swarmkit pipeline`, `swarmkit orchestrator`, the pipeline and saga HTTP routes and
-the `/runs` and `/pipelines` UI pages all keep working and keep getting bug fixes.
+`swarmkit pipeline`, `swarmkit orchestrator`, the pipeline and saga HTTP routes, the `/runs` and
+`/pipelines` UI pages, the saga store and reference controller, and the StageGraph schema. A
+workspace with a `pipelines/` directory now has those artifacts ignored rather than resolved.
 
-What stops is **growth**. No event routing, no fan-out, no cycles, no new stage-graph fields. A
-workspace that needs those is a workspace that should own its sequencing, and that signal is more
-useful than the feature would be.
+Three things filed beside them were not pipeline-specific and were moved rather than deleted:
 
-Running it now prints one deprecation line per process — once, not per command.
+* **the inbound event ingress** — `POST /events/signal` (was `/pipelines/signal`), the webhook front
+  door, and the MCP `submit_pipeline_event` tool, all now over `triggers/_ingress.py`. Its
+  guardrails are why it survived intact: `advance` / `skip` need a reserved human-identity scope no
+  agent token can hold, and every attempt is audited whether allowed or denied.
+* **`EventSignal`** (was `PipelineSignal`) — a type alias, the seam an application-owned
+  orchestrator is driven through. Nothing sets a sink by default now, so `POST /events/signal`
+  answers 503 until a deployment assigns one; "nobody is listening" is the honest answer.
+* **`swarmkit comprehension`, `cited-change`, `slice-check`** — filed beside `swarmkit gates` but
+  about a single run's artifact, now in `cli/_cmd_checks.py`. `gates` itself went: it classified the
+  edges of a stage graph, and there are no stages.
+
+`Contract` artifacts still resolve and validate, but `locks` on a stage was their only reader, so
+nothing in the runtime consumes one today.
 
 ## Why
 

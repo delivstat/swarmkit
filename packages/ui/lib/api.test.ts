@@ -66,12 +66,6 @@ describe("observability endpoints", () => {
 		expect(urlOf(fetchMock)).toContain("/observability/runs/job-1/trace");
 	});
 
-	it("getGateCoverage hits the per-pipeline gate-coverage path", async () => {
-		const fetchMock = stubFetch(200);
-		await api.getGateCoverage("p1");
-		expect(urlOf(fetchMock)).toContain("/api/pipelines/p1/gate-coverage");
-	});
-
 	it("getComprehension hits /comprehension, with the threshold query when given", async () => {
 		const bare = stubFetch(200);
 		await api.getComprehension();

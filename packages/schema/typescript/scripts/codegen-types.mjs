@@ -40,7 +40,6 @@ const ARTIFACTS = {
   "role-registry": "SwarmKitRoleRegistry",
   "approval-policy": "SwarmKitApprovalPolicy",
   funnel: "SwarmKitFunnel",
-  "stage-graph": "SwarmKitStageGraph",
   contract: "SwarmKitContract",
 };
 

@@ -52,9 +52,6 @@ import roleRegistrySchema from "../../schemas/role-registry.schema.json" with {
 	type: "json",
 };
 import skillSchema from "../../schemas/skill.schema.json" with { type: "json" };
-import stageGraphSchema from "../../schemas/stage-graph.schema.json" with {
-	type: "json",
-};
 import topologySchema from "../../schemas/topology.schema.json" with {
 	type: "json",
 };
@@ -75,7 +72,6 @@ export type SchemaName =
 	| "role-registry"
 	| "approval-policy"
 	| "funnel"
-	| "stage-graph"
 	| "contract";
 
 const SCHEMAS = {
@@ -88,7 +84,6 @@ const SCHEMAS = {
 	"role-registry": roleRegistrySchema,
 	"approval-policy": approvalPolicySchema,
 	funnel: funnelSchema,
-	"stage-graph": stageGraphSchema,
 	contract: contractSchema,
 } as const;
 

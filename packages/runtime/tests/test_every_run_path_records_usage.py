@@ -142,7 +142,6 @@ def test_no_run_path_hand_rolls_the_usage_fields() -> None:
     recorders = [
         root / "cli/_cmd_run.py",
         root / "_conversation.py",
-        root / "server/_pipeline_stage.py",
         root / "server/_jobs.py",
     ]
 
@@ -163,7 +162,6 @@ def test_every_path_names_its_source() -> None:
     expected = {
         "cli/_cmd_run.py": '"cli"',
         "_conversation.py": '"chat"',
-        "server/_pipeline_stage.py": '"pipeline"',
         "server/_services.py": '"serve"',
     }
 

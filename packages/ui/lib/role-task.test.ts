@@ -66,23 +66,10 @@ describe("reviewPending filters", () => {
 	});
 });
 
-describe("gateStatus", () => {
-	afterEach(() => vi.restoreAllMocks());
-
-	it("encodes both path segments", async () => {
-		const fetchMock = stubFetch({ items: [] });
-		await api.gateStatus("run 42", "design/stage");
-		expect(urlOf(fetchMock)).toBe(
-			"/pipelines/gate-status/run%2042/design%2Fstage",
-		);
-	});
-});
-
 describe("which run a gate belongs to", () => {
 	it("prefers the server's run_id over parsing the gate id", () => {
-		// The whole point: the id has two shapes — `<correlation>:<stage>` for a pipeline stage and
-		// `<run>:<agent>` for an in-node funnel gate — so a client that splits has to know which it
-		// is holding, and got it wrong for one of them.
+		// The whole point: a client that splits the id has to know its shape, and got it wrong.
+		// The server carries `run_id` so nothing has to infer structure from a string.
 		expect(runOf({ gate_id: "wms-design:designer", run_id: "job-abc" })).toBe(
 			"job-abc",
 		);

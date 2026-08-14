@@ -26,7 +26,6 @@ ArtifactKind = Literal[
     "executor-adapter",
     "funnel",
     "role-registry",
-    "stage-graph",
     "contract",
 ]
 
@@ -42,7 +41,6 @@ _KIND_DIRS: dict[str, ArtifactKind] = {
     "adapters": "executor-adapter",
     "funnels": "funnel",
     "roles": "role-registry",
-    "pipelines": "stage-graph",
     "contracts": "contract",
 }
 
@@ -56,7 +54,6 @@ _EXPECTED_KIND_STR: dict[ArtifactKind, str] = {
     "executor-adapter": "ExecutorAdapter",
     "funnel": "Funnel",
     "role-registry": "RoleRegistry",
-    "stage-graph": "StageGraph",
     "contract": "Contract",
 }
 

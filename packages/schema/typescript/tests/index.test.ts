@@ -21,7 +21,6 @@ const ALL_SCHEMAS: SchemaName[] = [
 	"role-registry",
 	"approval-policy",
 	"funnel",
-	"stage-graph",
 	"contract",
 ];
 
@@ -99,5 +98,4 @@ describeFixtures(
 	"approval-policy",
 );
 describeFixtures("funnel", "funnel", "funnel-invalid", "funnel");
-describeFixtures("stage-graph", "stage-graph", "stage-graph-invalid", "stage-graph");
 describeFixtures("contract", "contract", "contract-invalid", "contract");

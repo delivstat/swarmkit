@@ -261,9 +261,7 @@ def test_storage_endpoint_reports_every_store(hello_client: TestClient) -> None:
     error, and nothing saying the rows were in a SQLite file on one machine."""
     body = hello_client.get("/storage").json()
     stores = {row["store"]: row for row in body["stores"]}
-    assert {"runtime", "audit", "checkpoints", "artifacts", "memory", "saga", "fleet"} <= set(
-        stores
-    )
+    assert {"runtime", "audit", "checkpoints", "artifacts", "memory", "fleet"} <= set(stores)
     assert stores["runtime"]["backend"] == "sqlite"
     assert stores["runtime"]["source"]  # always says which setting won
     assert body["warnings"] == []

@@ -1040,19 +1040,16 @@ def _approver_deps(funnel: Any, review_queue: Any, role_registry: Any) -> dict[s
 def _enforces_gate(funnel_id: str) -> bool:
     """Whether THIS run should enforce its funnel's gate. Run-time, so it lives outside `compile`.
 
-    Two states stay advisory because parking would be worse than not gating:
+    Advisory only when there is **no run id**: a gate is identified by its run, and resuming means
+    finding the same gate again — without one, every invocation opens a fresh gate and no approval
+    is ever found on re-entry, stranding the caller. Production always has one; a direct
+    `compile_topology` + `ainvoke` does not.
 
-    * a **pipeline stage** — `_pipeline_stage` opens that gate itself and parks the saga, so gating
-      here would mean the run defers, never completes, and never reaches the code that opens it;
-    * **no run id** — a gate is identified by its run, and resuming means finding the same gate
-      again; without one every invocation opens a fresh gate and no approval is ever found on
-      re-entry, stranding the caller. Production always has one; a direct `compile_topology` +
-      `ainvoke` does not.
+    (It also stood down for a pipeline stage, which opened its own gate. The bundled sequencer is
+    gone, so a funnel's approve layer is now the only gate there is.)
     """
-    from swarmkit_runtime._run_scope import current_run_id, in_pipeline_stage  # noqa: PLC0415
+    from swarmkit_runtime._run_scope import current_run_id  # noqa: PLC0415
 
-    if in_pipeline_stage():
-        return False
     if current_run_id() is None:
         _logger.warning(
             "funnel %r declares an `approve` layer but this run has no run id, so its gate could "

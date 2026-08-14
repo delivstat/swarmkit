@@ -19,13 +19,10 @@ that no longer exists. So the gated node reads its gate before producing anythin
 `test_resuming_after_approval_does_not_call_the_model_again` is the assertion the whole design
 exists for.
 
-Two states stay advisory rather than parking, because parking would be worse than not gating:
-
-* **a pipeline stage** — `_pipeline_stage` opens that gate itself and parks the saga, so gating
-  in-node would mean the run defers, never completes, and never reaches the code that opens the
-  gate at all;
-* **a policy naming roles no RoleRegistry defines** — nobody can satisfy it, so every run would wait
-  forever on an approver who does not exist.
+Two states stay advisory rather than parking, because parking would be worse than not gating: a
+policy naming roles no RoleRegistry defines (nobody could satisfy it, so every run would wait
+forever on an approver who does not exist), and a run with no run id (a gate is found again by its
+run, so without one no approval could ever be located on re-entry).
 """
 
 from __future__ import annotations
@@ -36,12 +33,7 @@ from typing import Any
 
 import pytest
 import yaml
-from swarmkit_runtime._run_scope import (
-    reset_current_run_id,
-    reset_in_pipeline_stage,
-    set_current_run_id,
-    set_in_pipeline_stage,
-)
+from swarmkit_runtime._run_scope import reset_current_run_id, set_current_run_id
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.model_providers import (
@@ -307,20 +299,6 @@ async def test_a_parked_run_still_writes_its_audit_events(tmp_path: Path) -> Non
 
 
 # ---- what stays advisory, and why ---------------------------------------------------------------
-
-
-async def test_a_pipeline_stage_does_not_gate_in_node(tmp_path: Path) -> None:
-    """`_pipeline_stage` opens that gate itself and parks the saga. Gating here would mean the run
-    defers, never completes, and never reaches the code that opens the gate."""
-    root = _workspace(tmp_path)
-    token = set_in_pipeline_stage(True)
-    try:
-        result = await _run(_runtime(root, _Counting()))
-    finally:
-        reset_in_pipeline_stage(token)
-
-    assert result.output or result.agent_results, "the stage run must complete, not park"
-    assert FileReviewQueue(root).list_pending() == []
 
 
 async def test_a_policy_naming_unknown_roles_stays_advisory(tmp_path: Path) -> None:

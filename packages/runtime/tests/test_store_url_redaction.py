@@ -55,13 +55,15 @@ def test_an_unparseable_url_is_not_echoed_back() -> None:
 
 
 def test_no_caller_displays_a_raw_store_url() -> None:
-    """Guards the rule at the two sites that print one."""
-    root = Path(__file__).resolve().parents[1] / "src/swarmkit_runtime"
-    orchestrator = (root / "cli/_cmd_orchestrator.py").read_text()
-    assert "redacted_url(db)" in orchestrator
-    assert not re.search(r"driving events from \{db\}", orchestrator)
+    """Guards the rule where a store URL reaches a log line.
 
-    # Resolution moved into the service, so that is where a URL now reaches a log line.
+    It used to guard two sites; the orchestrator CLI was the second and left with the bundled
+    pipeline. The rule is unchanged — a store URL routinely carries a database password, and this
+    line lands in terminal scrollback, redirected logs and CI capture.
+    """
+    root = Path(__file__).resolve().parents[1] / "src/swarmkit_runtime"
+
+    # Resolution lives in the service, so that is where a URL reaches a log line.
     service = (root / "persistence/_service.py").read_text()
     assert "redacted_url(t.url)" in service
     # The comment explaining the old bug names `url[:30]` deliberately; match a logging ARGUMENT.
