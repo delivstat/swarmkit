@@ -19,7 +19,12 @@ fleet_app = typer.Typer(help="Fleet enrollment — mint join codes, list members
 adapters_app = typer.Typer(help="Declarative harness adapters — inspect + approve launch blocks.")
 trust_app = typer.Typer(help="Trust accrual — apply repeated-approval capabilities to allowlists.")
 memory_app = typer.Typer(help="Governed memory — search, inspect history, resolve contradictions.")
-pipeline_app = typer.Typer(help="Pipelines — dispatch events and inspect run status.")
+pipeline_app = typer.Typer(
+    help=(
+        "Pipelines — dispatch events and inspect run status. DEPRECATED: sequencing is moving to "
+        "the application (see examples/pipeline-orchestrator). Still supported; no new capability."
+    )
+)
 storage_app = typer.Typer(help="Storage — show where data lives, migrate sqlite to postgres.")
 artifacts_app = typer.Typer(help="Artifacts — list and fetch run outputs by correlation id.")
 

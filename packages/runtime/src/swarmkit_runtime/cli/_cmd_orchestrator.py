@@ -229,6 +229,12 @@ def _resolve_saga_store_url(workspace: Path, override: str | None) -> tuple[str,
     return target.url, target.source
 
 
+def _deprecated() -> None:
+    from swarmkit_runtime.orchestration._deprecation import warn_deprecated  # noqa: PLC0415
+
+    warn_deprecated("swarmkit orchestrator")
+
+
 @app.command()
 def orchestrator(
     workspace: Annotated[
@@ -252,6 +258,7 @@ def orchestrator(
     # config too — both landed on SQLite and agreed by accident. With serve honouring it, an
     # independent default is a split brain: serve queues events into one database while the
     # orchestrator polls another, no stage ever runs, and neither process warns.
+    _deprecated()
     db, source = _resolve_saga_store_url(workspace, database_url)
     store = SqlSagaStore.from_url(db)
     graphs = _load_graphs(workspace)
