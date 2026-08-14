@@ -1,6 +1,8 @@
 """Slice 8 — cross-app SIT + PT (mock rigs), the pre-release security gate, and the defect loop.
 
-Covers design/details/sdlc-pipeline-example.md (build order item 8) + pipeline-controller.md
+Covers design/details/sdlc-pipeline-example.md (build order item 8). The saga/stage-graph half went
+with the bundled pipeline (docs/notes/pipeline-deprecation.md); the topologies, funnels and rigs it
+sequenced are unaffected and still asserted here.
 (the defect loop):
 
   - the cross-app ``sit`` / ``pt`` topologies + the ``security-review`` topology resolve + compile,
@@ -35,15 +37,7 @@ _WS = _EXAMPLE / "workspace"
 if str(_EXAMPLE) not in sys.path:
     sys.path.insert(0, str(_EXAMPLE))
 
-import demo_defect_loop as loop  # type: ignore[import-not-found]  # noqa: E402
 import sit_pt  # type: ignore[import-not-found]  # noqa: E402
-from controller import (  # type: ignore[import-not-found]  # noqa: E402
-    InboundEvent,
-    PipelineController,
-    StageGraph,
-    StageRunOutcome,
-    StageRunRequest,
-)
 
 # --------------------------------------------------------------------------------------------
 # Topologies: SIT + PT + security-review resolve, compile, and are scoped correctly
@@ -129,31 +123,6 @@ def test_security_funnel_has_harness_review_and_resolving_roles() -> None:
 # --------------------------------------------------------------------------------------------
 
 
-def test_stage_graph_resolves_with_sit_pt_release_and_defect_loop() -> None:
-    ws = resolve_workspace(_WS)
-    spec = ws.stage_graphs["sdlc-sit-pt"].spec
-    stages = {s["id"]: s for s in spec["stages"]}
-    assert set(stages) == {"build", "sit", "pt", "security-review"}
-    assert stages["sit"]["topology"] == "sit"
-    assert stages["pt"]["topology"] == "pt"
-    assert stages["security-review"]["gate"] == "security-review-approval"
-    # the defect loop: defect.raised -> build, defect.fixed -> sit.
-    loops = {loop_["when"]: loop_["to"] for loop_ in spec["loops"]}
-    assert loops == {"defect.raised": "build", "defect.fixed": "sit"}
-
-
-# --------------------------------------------------------------------------------------------
-# The mock rigs + pt-analysis determination
-# --------------------------------------------------------------------------------------------
-
-
-def test_sit_rig_passes_clean_and_files_a_defect_on_a_failing_flow() -> None:
-    assert all(f.passed for f in sit_pt.run_sit_rig())
-    failed = [f for f in sit_pt.run_sit_rig(failing_flow="checkout") if not f.passed]
-    assert len(failed) == 1
-    assert "checkout" in failed[0].flow and failed[0].detail
-
-
 def test_pt_analysis_passes_within_thresholds_and_fails_on_regression() -> None:
     ok = sit_pt.pt_analysis(sit_pt.run_pt_rig())
     assert ok.verdict == "pass" and ok.breaches == ()
@@ -187,69 +156,3 @@ async def test_security_gate_routes_high_finding_back_then_passes() -> None:
     assert run.retries == 1  # the HIGH finding routed back once
     assert run.outcome == "approved"
     assert run.approvers == frozenset({"dana"})
-
-
-# --------------------------------------------------------------------------------------------
-# The centerpiece: the controller-driven defect loop over the real stage-graph
-# --------------------------------------------------------------------------------------------
-
-
-def _graph() -> StageGraph:
-    ws = resolve_workspace(_WS)
-    return StageGraph.from_spec(ws.stage_graphs["sdlc-sit-pt"].spec)
-
-
-class _Seam:
-    """A scripted run_stage seam: parks the gated security stage, completes every other stage."""
-
-    def __init__(self) -> None:
-        self.calls: list[StageRunRequest] = []
-
-    def kicked(self, topology: str) -> int:
-        return sum(1 for c in self.calls if c.topology == topology)
-
-    async def __call__(self, request: StageRunRequest) -> StageRunOutcome:
-        self.calls.append(request)
-        if request.topology in loop.GATED_TOPOLOGIES:
-            return StageRunOutcome(status="parked")
-        return StageRunOutcome(status="completed")
-
-
-@pytest.mark.asyncio
-async def test_defect_loop_rekicks_build_and_retriggers_sit_then_reaches_done() -> None:
-    seam = _Seam()
-    controller = PipelineController(_graph(), seam, external_events=loop.EXTERNAL_EVENTS)
-    cid = "REQ-8"
-
-    # Drive to SIT: design approved -> build -> (CI) build.ready-in-qa -> sit.
-    await controller.handle_event(InboundEvent(cid, "design.approved", "d1"))
-    await controller.handle_event(InboundEvent(cid, "build.ready-in-qa", "ci1"))
-    assert seam.kicked("oms-build") == 1
-    assert seam.kicked("sit") == 1  # SIT ran against the mock rig
-
-    # SIT raises a defect -> the controller RE-KICKS BUILD (loop re-entry).
-    await controller.handle_event(InboundEvent(cid, "defect.raised", "qa1"))
-    assert seam.kicked("oms-build") == 2
-    assert any(e.kind == "loop.reentry" for e in controller.timeline(cid))
-
-    # The fix -> the controller RE-TRIGGERS SIT.
-    await controller.handle_event(InboundEvent(cid, "defect.fixed", "dev1"))
-    assert seam.kicked("sit") == 2
-
-    # The re-run SIT passes -> PT -> the pre-release security gate -> sign-off -> done.
-    await controller.handle_event(InboundEvent(cid, "sit.passed", "qa-pass"))
-    await controller.handle_event(InboundEvent(cid, "pt.passed", "perf-pass"))
-    assert controller.saga(cid).pending_gate == "security-review-approval"
-    await controller.resolve_gate(cid, approved=True)
-
-    saga = controller.saga(cid)
-    assert saga is not None and saga.status == "done"
-    # every run correlates by the correlation id (the DORA/audit view).
-    assert all(c.correlation_id == cid for c in seam.calls)
-    assert all(e.correlation_id == cid for e in controller.timeline(cid))
-
-
-@pytest.mark.asyncio
-async def test_defect_loop_demo_main_runs_green() -> None:
-    """The shipped demo runs end to end and reaches the done saga (the acceptance gate)."""
-    await loop.main()
