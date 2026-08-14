@@ -26,6 +26,12 @@ _PathArg = Annotated[
 ]
 
 
+def _deprecated() -> None:
+    from swarmkit_runtime.orchestration._deprecation import warn_deprecated  # noqa: PLC0415
+
+    warn_deprecated("swarmkit pipeline")
+
+
 def _store(workspace: Path) -> SqlSagaStore:
     """The saga store the CONFIGURED backend names — not a hardcoded file.
 
@@ -34,6 +40,9 @@ def _store(workspace: Path) -> SqlSagaStore:
     """
     from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
 
+    # Every command in this app resolves the store first, so this is the one chokepoint that says
+    # the subsystem is deprecated without repeating it on a dozen commands.
+    _deprecated()
     store: SqlSagaStore = storage_for_workspace(workspace).saga_store()
     return store
 
