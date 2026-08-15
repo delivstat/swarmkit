@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 from langgraph.graph.state import CompiledStateGraph
 
+from swarmkit_runtime import prerequisites
 from swarmkit_runtime._run_scope import (
     current_labels,
     reset_current_labels,
@@ -1006,6 +1007,9 @@ class WorkspaceRuntime:
         # the scope is gone their `labels` default to empty — the run's grouping would reach `jobs`
         # and silently not reach `audit_events`, which is half a feature and the worse half.
         labels = current_labels()
+        # The prerequisite ledger is keyed by (run, agent) and nothing else drops it, so a
+        # long-lived `swarmkit serve` would keep one entry per agent of every run it ever ran.
+        prerequisites.forget_run(run_id)
         reset_current_run_id(run_token)
         reset_current_labels(label_token)
         events = _extract_events(self._governance, run_id=run_id)

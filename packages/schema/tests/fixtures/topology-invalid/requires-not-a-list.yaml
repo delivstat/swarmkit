@@ -1,0 +1,14 @@
+# A `requires` entry maps a guarded skill to a LIST of prerequisites. A bare string is the natural
+# typo and would otherwise iterate as characters.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: broken-requires-type
+  version: 0.1.0
+agents:
+  root:
+    id: coordinator
+    role: root
+    skills: [list-build-conventions, get-build-convention]
+    requires:
+      get-build-convention: list-build-conventions

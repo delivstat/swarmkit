@@ -27,6 +27,7 @@ Required top-level: `apiVersion`, `kind`, `metadata`, `agents`. `metadata` requi
 | `prompt` | no | `system` / `persona`. |
 | `skills` | no | Skill IDs — **replaces** the archetype's skill list when present. |
 | `skills_additional` | no | Skill IDs **merged onto** the archetype defaults. |
+| `requires` | no | Ordering rules over this agent's skills: `{guarded: [prerequisite, ...]}`. The guarded skill is **refused** until every prerequisite has returned successfully in the same run, and the refusal names what to call first, so the agent recovers inside its own loop. Both sides must be skills the agent holds; a cycle is a resolution error. |
 | `iam` | no | `base_scope` / `elevated_scopes`. |
 | `output_schema` | no | JSON Schema for structured output (overrides the archetype default), or `null` to opt out. |
 | `funnel` | no | A [Funnel](funnel.md) id — a reusable per-artifact quality gate on this agent's output. |

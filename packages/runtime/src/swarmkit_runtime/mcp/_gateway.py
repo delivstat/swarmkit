@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from swarmkit_runtime._run_scope import current_labels, current_run_id
 from swarmkit_runtime.mcp._sdk_compat import build_low_level_server, tool_input_schema
+from swarmkit_runtime.prerequisites import Requires
 
 from ._governed import MCPCallDenied, governed_mcp_call
 
@@ -68,6 +69,11 @@ class GatewayTool:
     tool_name: str
     description: str
     input_schema: dict[str, Any] = field(default_factory=dict)
+    #: The skill this tool was granted as. `requires:` names skills and this seam sees tools, so
+    #: the mapping has to exist somewhere; it is carried here because the grant is where both facts
+    #: are known at once — deriving it at dispatch would mean rebuilding it per call from data the
+    #: registration no longer has.
+    skill_id: str = ""
 
 
 @dataclass
@@ -111,13 +117,13 @@ class GatewayHandle:
 
 
 def build_gateway_tools(
-    granted: Iterable[tuple[str, str, str]], mcp_manager: MCPClientManager
+    granted: Iterable[tuple[str, str, str, str]], mcp_manager: MCPClientManager
 ) -> list[GatewayTool]:
     """Build the gateway's tool surface from the agent's granted ``(server_id, tool_name,
-    description)`` triples — the input schema comes from the manager's pre-fetched cache. Deduped by
-    flat name, sorted for a stable surface."""
+    description, skill_id)`` grants — the input schema comes from the manager's pre-fetched cache.
+    Deduped by flat name, sorted for a stable surface."""
     seen: dict[str, GatewayTool] = {}
-    for server_id, tool_name, description in granted:
+    for server_id, tool_name, description, skill_id in granted:
         if not server_id or not tool_name:
             continue
         flat = f"{server_id}{_NAME_SEP}{tool_name}"
@@ -131,6 +137,7 @@ def build_gateway_tools(
             input_schema=(
                 mcp_manager.get_tool_input_schema(server_id, tool_name) or {"type": "object"}
             ),
+            skill_id=skill_id,
         )
     return [seen[k] for k in sorted(seen)]
 
@@ -190,6 +197,7 @@ class _Registration:
         agent_id: str,
         mcp_manager: Any,
         governance: Any,
+        requires: Requires | None = None,
     ) -> None:
         from mcp.server.sse import SseServerTransport  # noqa: PLC0415
 
@@ -205,6 +213,8 @@ class _Registration:
         )
         self._mcp_manager = mcp_manager
         self._governance = governance
+        #: The agent's `requires:` map, enforced at the same seam the model path uses.
+        self._requires = requires or {}
         # Captured HERE, not at call time. Registration happens inside the run's task, so the run
         # scope is correct; the tool calls are served on uvicorn's tasks, which do not inherit it.
         # Without this every harness tool call would be audited with no run, and the run-scoped
@@ -247,6 +257,12 @@ class _Registration:
                 server_id=tool.server_id,
                 tool_name=tool.tool_name,
                 arguments=arguments,
+                skill_id=tool.skill_id,
+                requires=self._requires,
+                # The run captured at REGISTRATION. These calls are served on uvicorn's tasks,
+                # which do not inherit the run scope — reading it here would find nothing, and a
+                # prerequisite ledger keyed on "" would leak across concurrent runs.
+                run_id=self._run_id,
             )
         except MCPCallDenied as exc:
             await self._audit(name, arguments, str(exc), decision="deny", started=started)
@@ -415,13 +431,20 @@ class _SharedGatewayServer:
         *,
         agent_id: str,
         advertise_host: str | None,
+        requires: Requires | None = None,
     ) -> GatewayHandle:
         async with self._lock:
             await self._ensure_started()
             # Unguessable, so a path cannot be walked from a neighbouring execution.
             gid = secrets.token_urlsafe(16)
             reg = _Registration(
-                gid, secrets.token_urlsafe(24), tuple(tools), agent_id, mcp_manager, governance
+                gid,
+                secrets.token_urlsafe(24),
+                tuple(tools),
+                agent_id,
+                mcp_manager,
+                governance,
+                requires,
             )
             self._regs[gid] = reg
             url = f"http://{advertise_host or self._host}:{self._port}/gw/{gid}/sse"
@@ -458,6 +481,7 @@ async def mcp_gateway(
     host: str = "127.0.0.1",
     advertise_host: str | None = None,
     token: str | None = None,
+    requires: Requires | None = None,
 ) -> AsyncIterator[GatewayHandle]:
     """Register this execution on the process's shared gateway; release it on exit.
 
@@ -468,7 +492,12 @@ async def mcp_gateway(
     """
     server = _SERVERS.setdefault(host, _SharedGatewayServer(host))
     handle = await server.register(
-        tools, mcp_manager, governance, agent_id=agent_id, advertise_host=advertise_host
+        tools,
+        mcp_manager,
+        governance,
+        agent_id=agent_id,
+        advertise_host=advertise_host,
+        requires=requires,
     )
     try:
         yield handle

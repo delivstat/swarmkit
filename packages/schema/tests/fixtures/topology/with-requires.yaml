@@ -1,0 +1,26 @@
+# Declarative skill prerequisites (design/details/skill-prerequisites.md).
+# `requires` is a sibling block, not a mixed-type `skills` list: it keeps `skills` a plain
+# identifier array for every consumer, makes duplicate rules impossible, and puts the ordering
+# rules where a reviewer can see all of them at once.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: with-requires
+  version: 0.1.0
+agents:
+  root:
+    id: coordinator
+    role: root
+    archetype: supervisor-root
+    children:
+      - id: builder
+        role: worker
+        archetype: code-gen-worker
+        skills:
+          - list-build-conventions
+          - get-build-convention
+          - search-solution-code
+        requires:
+          # Order-independent among peers: both must have been called, in any order.
+          get-build-convention: [list-build-conventions]
+          search-solution-code: [get-build-convention, list-build-conventions]

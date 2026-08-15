@@ -38,8 +38,8 @@ from swarmkit_runtime.mcp._gateway import GATEWAY_NAME_SEP, GATEWAY_SERVER_NAME,
 ADAPTERS = Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/executors/adapters"
 
 GRANTED = [
-    ("sterling", "search_docs", "search the docs"),
-    ("wms", "get_table", "read a table"),
+    ("sterling", "search_docs", "search the docs", "search-sterling-docs"),
+    ("wms", "get_table", "read a table", "get-wms-table"),
 ]
 
 

@@ -230,7 +230,7 @@ def _task_spec(agent: ResolvedAgent, state: SwarmState, workspace_root: Path | N
     from swarmkit_runtime.mcp._gateway import GATEWAY_NAME_SEP  # noqa: PLC0415
 
     mcp_tools = tuple(
-        f"{server}{GATEWAY_NAME_SEP}{tool}" for server, tool, _ in _granted_mcp_tools(agent)
+        f"{server}{GATEWAY_NAME_SEP}{tool}" for server, tool, _, _ in _granted_mcp_tools(agent)
     )
     return TaskSpec(
         statement=statement,
@@ -538,12 +538,15 @@ def _record_trace_step(
     )
 
 
-def _granted_mcp_tools(agent: ResolvedAgent) -> list[tuple[str, str, str]]:
-    """The agent's granted MCP tools as ``(server_id, tool_name, description)`` — one per
-    ``mcp_tool`` skill. These are exactly what the gateway re-exposes to the harness."""
+def _granted_mcp_tools(agent: ResolvedAgent) -> list[tuple[str, str, str, str]]:
+    """The agent's granted MCP tools as ``(server_id, tool_name, description, skill_id)`` — one per
+    ``mcp_tool`` skill. These are exactly what the gateway re-exposes to the harness.
+
+    The skill id rides along because `requires:` names skills while the permission seam sees tools;
+    this is the one place both are known without re-deriving anything."""
     from swarmkit_runtime.skills import impl_get  # noqa: PLC0415
 
-    out: list[tuple[str, str, str]] = []
+    out: list[tuple[str, str, str, str]] = []
     for skill in agent.skills:
         impl = getattr(skill.raw, "implementation", None)
         if impl is None or impl_get(impl, "type") != "mcp_tool":
@@ -552,7 +555,7 @@ def _granted_mcp_tools(agent: ResolvedAgent) -> list[tuple[str, str, str]]:
         tool = str(impl_get(impl, "tool") or "")
         desc = str(getattr(getattr(skill.raw, "metadata", None), "description", "") or "")
         if server and tool:
-            out.append((server, tool, desc))
+            out.append((server, tool, desc, skill.id))
     return out
 
 
@@ -595,6 +598,10 @@ async def _wire_mcp_gateway(
             agent_id=agent.id,
             host=bind_host,
             advertise_host=advertise,
+            # The same ordering rules the model path enforces. A `requires:` that held on one
+            # executor and not the other would make the guarantee depend on how a node happens to
+            # run, which is exactly what the executor seam exists to prevent.
+            requires=agent.requires,
         )
     )
     # Prove it SERVES before handing its config to the harness. A gateway that bound, reported a

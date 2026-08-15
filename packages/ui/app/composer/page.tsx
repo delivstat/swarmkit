@@ -151,6 +151,7 @@ function PropertyPanel({
 	const style = roleStyle(agent.role);
 	const [editingYaml, setEditingYaml] = useState(false);
 	const [yamlContent, setYamlContent] = useState(yaml ?? "");
+	const requiresEntries = Object.entries(agent.requires ?? {});
 
 	useEffect(() => {
 		if (yaml) setYamlContent(yaml);
@@ -244,6 +245,37 @@ function PropertyPanel({
 							</div>
 						)}
 					</Card>
+
+					{requiresEntries.length > 0 && (
+						<Card>
+							{/* Ordering rules are part of what this agent may do — a guarded skill is
+							    refused until its prerequisites have run — so they belong beside the
+							    grant, not only in the YAML. */}
+							<CardTitle>Prerequisites ({requiresEntries.length})</CardTitle>
+							<div className="space-y-1.5">
+								{requiresEntries.map(([guarded, needed]) => (
+									<div
+										key={guarded}
+										className="flex flex-wrap items-center gap-1.5 text-xs"
+									>
+										<Badge variant="outline" className="font-normal">
+											{guarded}
+										</Badge>
+										<span className="text-muted-foreground">requires</span>
+										{needed.map((n) => (
+											<Badge
+												key={n}
+												variant="secondary"
+												className="font-normal"
+											>
+												{n}
+											</Badge>
+										))}
+									</div>
+								))}
+							</div>
+						</Card>
+					)}
 
 					{agent.children && agent.children.length > 0 && (
 						<Card>

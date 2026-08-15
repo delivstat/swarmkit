@@ -1,6 +1,13 @@
 # Declarative skill prerequisites (`requires:`)
 
-**Status:** proposed — design only. Filed from the tlgsg-wms workspace against 1.180.0.
+**Status:** implemented — runtime 1.191.0. Filed from the tlgsg-wms workspace against 1.180.0.
+
+Shipped as designed, with the open questions resolved as follows: **shape B** (a sibling `requires:`
+block, `skills` unchanged); **grant-only**, on the topology agent node — an agent can order skills it
+inherits from an archetype, and no skill definition declares its own prerequisites; **MCP-scoped**,
+as the note bounds it; and **no refusal ceiling** — the existing per-turn tool cap already bounds a
+thrashing loop, and a second limiter that fails the run would turn a recoverable refusal into a
+terminal one.
 
 ## Goal
 
@@ -178,14 +185,15 @@ lines of the topology. Alongside it, the same workspace with `_ack.py` deleted.
 
 ## Open questions for review
 
-1. **Shape A or B?** B keeps `skills` a plain array and gathers the rules where a reviewer can see
-   them; A reads better at the point of use. A surface decision.
-2. **Should a refusal be capped?** An agent that loops refuse → wrong call → refuse burns tokens. A
-   per-skill refusal ceiling that fails the run with a clear reason may be kinder than an infinite
-   polite "no".
-3. **Does `requires:` belong on the grant only, or also on the skill definition** as a default a
-   grant can override? The request says grant-only and gives the right reason — ordering is a
-   property of how this workspace works — but a skill whose author knows it is meaningless without a
-   predecessor may want to say so.
-4. **Is MCP-only scope acceptable for v1**, or does a non-MCP capability skill need the same guard
-   before this is worth having?
+1. ~~**Shape A or B?**~~ **B.** A plain identifier array for every consumer, duplicates impossible
+   because it is a map, and the ordering rules readable in one block.
+2. ~~**Should a refusal be capped?**~~ **No, not separately.** `SWARMKIT_MAX_TOOLS` already bounds
+   calls per turn, and a ceiling that failed the run would convert the one failure mode this feature
+   is designed to keep recoverable into a terminal one. Revisit if a real run thrashes.
+3. ~~**Grant only, or also the skill definition?**~~ **Grant only.** Ordering is a property of how
+   a workspace works, and a skill-level default would be a second place to look for a rule that the
+   resolver would then have to merge — the reason shape B was chosen in the first place.
+4. ~~**Is MCP-only scope acceptable for v1?**~~ **Yes.** Every skill in the reporting workspace is
+   an `mcp_tool`, and the guard sits at the one function both executors dispatch through. A non-MCP
+   capability skill dispatches elsewhere and is **not** covered — stated in `## Scope` rather than
+   widened silently.

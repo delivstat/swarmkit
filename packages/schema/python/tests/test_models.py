@@ -65,6 +65,10 @@ SHAPE_ONLY_INVALID: set[tuple[str, str]] = {
     ("workspace-invalid", "mcp-stdio-missing-command.yaml"),
     ("trigger-invalid", "cron-missing-config.yaml"),
     ("trigger-invalid", "plugin-missing-provider-id.yaml"),
+    # `minItems` on an array is not translated by the pydantic codegen, so an ordering rule with an
+    # empty prerequisite list is caught by `validate()` and not by the generated model. The sibling
+    # fixture `requires-not-a-list.yaml` is rejected by both.
+    ("topology-invalid", "requires-empty-list.yaml"),
 }
 
 

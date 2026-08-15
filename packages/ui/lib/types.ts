@@ -307,6 +307,11 @@ export interface ResolvedAgent {
 	source_archetype: string | null;
 	model: Record<string, unknown> | null;
 	skills: string[];
+	/** Ordering rules over this agent's skills (design/details/skill-prerequisites.md):
+	 * `{guarded: [prerequisite, ...]}`. The guarded skill is refused until every prerequisite has
+	 * returned successfully in the same run, so this is part of what the agent may do — not
+	 * decoration. Absent or empty ⇒ no ordering rules. */
+	requires?: Record<string, string[]>;
 	/** Optional per-artifact quality gate (design/details/gate-funnel.md): a Funnel id (the topology
 	 * schema annotates `funnel` as an `x-swarmkit-ref: funnel`) — or, for a staged canvas edit, the
 	 * raw funnel value. Drives the "gated" badge on the agent card. Absent ⇒ no gate. */

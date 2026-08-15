@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Any
+from typing import Any, Literal
 
 from swarmkit_runtime.compression import maybe_compress_tool_result
 from swarmkit_runtime.governance import GovernanceProvider
@@ -21,6 +21,7 @@ from swarmkit_runtime.telemetry import record_governance_decision
 from ._helpers import ToolCallResult, _extract_text, _progress, _truncate_result
 from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomplete
 from ._sentinels import TaskStatus
+from ._skill_executor import is_refusal
 
 logger = logging.getLogger("swarmkit.compiler")
 
@@ -506,6 +507,7 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
             mcp_manager=mcp_manager,
             governance=governance,
             agent_id=agent.id,
+            requires=agent.requires,
         )
         _tc_dur = int((_time.monotonic() - _tc_start) * 1000)
         if isinstance(raw_result, tuple):
@@ -553,6 +555,7 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
                 arguments=block.tool_input if isinstance(block.tool_input, dict) else {},
                 result=text_result or "",
                 duration_ms=_tc_dur,
+                decision="deny" if is_refusal(text_result or "") else "allow",
             )
 
     return results if results else None
@@ -566,13 +569,18 @@ async def _record_skill_executed(
     arguments: dict[str, Any],
     result: str,
     duration_ms: float | None = None,
+    decision: Literal["allow", "deny"] = "allow",
 ) -> None:
     """Emit `skill.executed` for one tool call, in the shape the initial turn already emits.
 
     Same event_type and fields, so every existing reader works unchanged — the point is coverage,
     not a new format. `policy_decision` is stated rather than left null: a reader could not
-    otherwise tell "allowed" from "never evaluated", and a call reaching here has passed the
-    governed path.
+    otherwise tell "allowed" from "never evaluated".
+
+    A refused call is recorded as `deny`. It used to be hardcoded `allow`, which made a refusal
+    indistinguishable from a successful call in the log — and a gate that is working then looks
+    exactly like a gate that is never reached (skill-prerequisites.md). The gateway path has
+    recorded denials correctly since 1.177.0; this is the model path catching up.
     """
     from datetime import UTC, datetime  # noqa: PLC0415
 
@@ -584,7 +592,7 @@ async def _record_skill_executed(
             agent_id=agent_id,
             timestamp=datetime.now(tz=UTC),
             skill_id=skill_id,
-            policy_decision="allow",
+            policy_decision=decision,
             duration_ms=int(duration_ms) if duration_ms is not None else None,
             payload={
                 "inputs": arguments,

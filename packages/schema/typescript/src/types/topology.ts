@@ -50,7 +50,14 @@ export interface Root {
     model?:             Model;
     output_schema?:     OutputSchema;
     prompt?:            Prompt;
-    role:               RootRole;
+    /**
+     * Ordering rules over this agent's skills: {guarded_skill: [prerequisite, ...]}. The
+     * guarded skill is refused until every prerequisite has returned successfully for this
+     * (run, agent), and the refusal names what to call first. Both sides must be skills this
+     * agent holds; a cycle is a resolution error.
+     */
+    requires?: { [key: string]: string[] };
+    role:      RootRole;
     /**
      * Skill IDs (design §6.1). Replaces the archetype's skill list when present.
      */
@@ -88,7 +95,14 @@ export interface ChildElement {
     model?:             Model;
     output_schema?:     OutputSchema;
     prompt?:            Prompt;
-    role:               ChildRole;
+    /**
+     * Ordering rules over this agent's skills: {guarded_skill: [prerequisite, ...]}. The
+     * guarded skill is refused until every prerequisite has returned successfully for this
+     * (run, agent), and the refusal names what to call first. Both sides must be skills this
+     * agent holds; a cycle is a resolution error.
+     */
+    requires?: { [key: string]: string[] };
+    role:      ChildRole;
     /**
      * Skill IDs (design §6.1). Replaces the archetype's skill list when present.
      */
