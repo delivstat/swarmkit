@@ -160,6 +160,8 @@ class JobRow:
     diffs: dict[str, str] | None = None
     #: the job this run supersedes, when it is a re-run
     parent_job_id: str | None = None
+    #: when a human asked this run to stop; None once it has stopped and been resumed
+    stop_requested_at: str | None = None
 
 
 @dataclass
@@ -209,6 +211,7 @@ class Store:
         ("labels", "TEXT"),
         ("diff", "TEXT"),
         ("parent_job_id", "TEXT"),
+        ("stop_requested_at", "TEXT"),
     )
 
     def _migrate_jobs(self) -> None:
@@ -290,6 +293,8 @@ class Store:
         usage_output_tokens: int | None = None,
         usage_cost_usd: float | None = None,
         diffs: dict[str, str] | None = None,
+        stop_requested_at: str | None = None,
+        clear_stop_request: bool = False,
     ) -> None:
         values: dict[str, Any] = {}
         for col, val in (
@@ -310,6 +315,13 @@ class Store:
             # Written even when empty: "{}" says a harness ran and changed nothing, which is a
             # different fact from NULL — no diff was carried out of the run at all.
             values["diff"] = json.dumps(diffs)
+        if stop_requested_at is not None:
+            values["stop_requested_at"] = stop_requested_at
+        if clear_stop_request:
+            # Explicit, because `None` already means "leave it alone" for every other field here.
+            # Without a way to clear it a resumed run would re-stop on the stale request, which
+            # reads as a resume that does not work.
+            values["stop_requested_at"] = None
         if not values:
             return
         with self._engine.begin() as conn:
@@ -369,6 +381,7 @@ class Store:
             labels=json.loads(row["labels"]) if row.get("labels") else {},
             diffs=json.loads(row["diff"]) if row.get("diff") else None,
             parent_job_id=row.get("parent_job_id"),
+            stop_requested_at=row.get("stop_requested_at"),
             topology=row["topology"],
             status=row["status"],
             input=row["input"],

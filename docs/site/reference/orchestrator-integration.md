@@ -23,7 +23,8 @@ is a boolean will misreport its state.
 | `GET /jobs/{job_id}` | Status, output, usage, diff length, correlation, labels, parent |
 | `GET /jobs/{job_id}/stream` | SSE progress for a running job |
 | `GET /jobs/{job_id}/diff` | The unified diff a harness run produced |
-| `POST /jobs/{job_id}/resume` | Continue a run parked on a human gate |
+| `POST /jobs/{job_id}/resume` | Continue a run parked on a human gate, or stopped by a human |
+| `POST /jobs/{job_id}/stop` | Ask a running job to stop at its next agent boundary |
 | `GET /gates/{gate_id}` | Is this gate resolved, **with the approval policy applied** |
 | `GET /review` | What is waiting for a human |
 | `POST /review/{item_id}/resolve` | Cast one multi-party role-task |
@@ -66,9 +67,23 @@ Nothing has to stay resident. When the gate resolves, continue it:
 POST /jobs/a46614b1/resume
 ```
 
-Only a `deferred` job resumes — a completed run has nothing to continue, and starting a second
-execution against one checkpoint would interleave two runs on it (409 otherwise). A resumed run can
-park **again**, and does so identically.
+A `deferred` or `stopped` job resumes — both are parked mid-flight with their state on the
+checkpoint, and only the reason differs. A completed run has nothing to continue, and starting a
+second execution against one checkpoint would interleave two runs on it (409 otherwise). A resumed
+run can park **again**, and does so identically.
+
+### Stopping one
+
+```http
+POST /jobs/a46614b1/stop
+```
+
+Writes the same durable flag `swarmkit stop` writes — one mechanism, two front doors. **Cooperative,
+not a kill**: the run stops between agents, so a harness session or a slow tool call in flight
+finishes first, and everything already done stays on the checkpoint. The job goes `stopped` (not
+`failed` — nothing went wrong; not `deferred` — it waits on nothing) and resumes like any parked run.
+Asking twice is not an error, and a resume clears the request so the run does not immediately
+re-stop.
 
 Locally the same thing is `swarmkit run <topology> --resume <job-id>`.
 

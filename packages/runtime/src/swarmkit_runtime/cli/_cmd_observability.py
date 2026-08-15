@@ -23,7 +23,6 @@ from swarmkit_runtime.resolver import resolve_workspace
 from ._app import app
 from ._common import (
     _EXIT_USAGE,
-    _not_implemented,
     _stderr,
 )
 
@@ -357,19 +356,71 @@ def _load_events_for_why(workspace_path: Path, run_id: str) -> str:
 def stop(
     run_id: Annotated[
         str,
-        typer.Argument(help="Run ID to stop."),
+        typer.Argument(help="Run id to stop (the job id `swarmkit status` and `logs` show)."),
     ],
     workspace_path: Annotated[
         Path,
         typer.Argument(help="Workspace root.", show_default=False),
     ] = Path("."),
 ) -> None:
-    """Gracefully stop a running topology.
+    """Ask a running run to stop at its next agent boundary.
 
-    Requests the runtime to checkpoint state and abort the current run.
-    The run can be resumed later with `swarmkit run --resume`.
+    The run checkpoints and keeps everything it has already done; resume it later with
+    `swarmkit run <workspace> <topology> --resume`. Cooperative, not a kill: a run inside a harness
+    session or a slow tool call finishes that call first (design/details/stopping-a-run.md).
     """
-    _not_implemented("stop", milestone="M6 (persistent mode integration)")
+    from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+
+    try:
+        store = storage_for_workspace(workspace_path).store()
+    except Exception as exc:
+        _stderr(f"error: could not open the store: {exc}")
+        raise typer.Exit(1) from exc
+
+    import asyncio  # noqa: PLC0415
+
+    from swarmkit_runtime.stop import record_stop_requested, request_stop  # noqa: PLC0415
+
+    outcome = request_stop(store, run_id)
+    if outcome is None:
+        _stderr(f"error: no run {run_id!r} in this workspace's store.")
+        _stderr("  `swarmkit status` lists recent runs.")
+        raise typer.Exit(1)
+
+    # Not an error: an operator racing a run that just finished should not get a stack trace, and
+    # the honest answer is that there is nothing to stop.
+    if not outcome.requested:
+        typer.echo(f"{run_id} is {outcome.status} — nothing to stop.")
+        return
+
+    if outcome.already_requested:
+        typer.echo(f"stop already requested for {run_id} at {outcome.requested_at}.")
+        typer.echo("It stops at its next agent boundary; a call in flight finishes first.")
+        return
+
+    row = store.get_job(run_id)
+    asyncio.run(
+        record_stop_requested(
+            workspace_path,
+            outcome,
+            requested_by=_local_identity(),
+            topology_id=getattr(row, "topology", "") or "",
+        )
+    )
+    typer.echo(f"stop requested for {run_id} — it will stop at the next agent boundary.")
+    typer.echo("Runs mid-call (a harness session, a slow tool) finish that call first.")
+    typer.echo(f"Resume later with: swarmkit run {workspace_path} <topology> --resume {run_id}")
+
+
+def _local_identity() -> str:
+    """Who asked, for the audit record. The OS user is the only identity a local CLI has — stated
+    as such rather than dressed up as an authenticated principal."""
+    import getpass  # noqa: PLC0415
+
+    try:
+        return f"cli:{getpass.getuser()}"
+    except Exception:
+        return "cli:unknown"
 
 
 # ---- debug ---------------------------------------------------------------

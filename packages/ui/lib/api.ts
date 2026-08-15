@@ -23,6 +23,7 @@ import type {
 	SendMessageResponse,
 	SkillDetail,
 	SkillItem,
+	StopJobResponse,
 	StorageReport,
 	SystemReport,
 	TopologyDetail,
@@ -116,6 +117,16 @@ export const api = {
 				: "/jobs/history",
 		),
 	job: (id: string) => get<JobResponse>(`/jobs/${id}`),
+	/**
+	 * Ask a running job to stop at its next agent boundary
+	 * (design/details/stopping-a-run.md). Not a kill: the run keeps everything it has already done
+	 * and is resumable, and a call in flight finishes first — the UI says so rather than implying
+	 * the job is dead, because an operator who believes that and starts a replacement gets two runs
+	 * writing the same artifacts.
+	 */
+	stopJob: (id: string) => post<StopJobResponse>(`/jobs/${id}/stop`),
+	/** Continue a job parked on a gate (`deferred`) or stopped by a human (`stopped`). */
+	resumeJob: (id: string) => post<JobResponse>(`/jobs/${id}/resume`),
 	jobUsage: (id: string) => get<JobUsage>(`/usage/${id}`),
 	jobStreamUrl: (id: string) => `${BASE}/jobs/${id}/stream`,
 

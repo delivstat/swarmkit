@@ -49,6 +49,10 @@ jobs = Table(
     # `correlation_id`, which groups a ticket's runs: "same unit of work" and "replaces that
     # attempt" are different facts, and only this one makes cost-across-retries answerable.
     Column("parent_job_id", Text),
+    # A human asked this run to stop (design/details/stopping-a-run.md). A COLUMN, not a signal or
+    # an in-memory token: `stop` has to reach a run in another process, and the durable store is
+    # the only channel that already connects every writer to every reader.
+    Column("stop_requested_at", Text),
 )
 
 conversations = Table(

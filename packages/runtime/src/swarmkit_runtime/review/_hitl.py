@@ -40,6 +40,24 @@ class GateDeferredError(HITLDeferredError):
         )
 
 
+class RunStoppedError(HITLDeferredError):
+    """Raised at a node boundary when a human asked this run to stop.
+
+    A subclass of :class:`HITLDeferredError` for the same reason :class:`GateDeferredError` is one:
+    a stop IS a deferral, with a different reason. Every caller that already knows how to
+    checkpoint-and-exit on a deferral handles it unchanged, and there is no second resumption path
+    to keep in step with the first (design/details/stopping-a-run.md).
+    """
+
+    def __init__(self, run_id: str, agent_id: str) -> None:
+        self.run_id = run_id
+        super().__init__(
+            agent_id,
+            "stop",
+            f"stopped by request before {agent_id!r} ran",
+        )
+
+
 def prompt_human_review(
     *,
     agent_id: str,

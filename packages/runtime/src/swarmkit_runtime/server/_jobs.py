@@ -15,7 +15,7 @@ from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.persistence import Store, usage_fields
 from swarmkit_runtime.progress import set_progress_sink
-from swarmkit_runtime.review._hitl import HITLDeferredError
+from swarmkit_runtime.review._hitl import HITLDeferredError, RunStoppedError
 
 from ._config import _DEFAULT_TIMEOUT_SECONDS
 
@@ -28,7 +28,9 @@ class Job:
     topology: str
     #: `deferred` is a PAUSE, not an end: the run parked on a human gate, its state is
     #: checkpointed under this job's id, and it continues when the gate resolves.
-    status: Literal["pending", "running", "completed", "failed", "deferred"]
+    #: `stopped` is its own status, not a flavour of `deferred` or `failed`: deferred means
+    #: "waiting on a human decision that will arrive", and nothing went wrong here.
+    status: Literal["pending", "running", "completed", "failed", "deferred", "stopped"]
     input: str
     version: str | None = None
     output: str | None = None
@@ -176,6 +178,13 @@ async def execute_job(
             job.error = f"Job timed out after {timeout_seconds}s"
             job.status = "failed"
             job.events.append(f"Job timed out after {timeout_seconds}s")
+        except RunStoppedError as exc:
+            # Before the HITLDeferredError branch, since a stop IS one — the subclass is what lets
+            # every existing checkpoint-and-exit caller work unchanged while this one distinguishes
+            # "a human stopped it" from "waiting on an approval".
+            job.error = "stopped by request"
+            job.status = "stopped"
+            job.events.append(f"Stopped: {exc.reason}")
         except HITLDeferredError as exc:
             # A run parked on a human is NOT a failure, and serve used to record it as one — the
             # CLI has handled this since HITL landed and serve never learned to. The state is

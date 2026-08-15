@@ -54,6 +54,27 @@ export interface SystemReport {
 	properties: WorkspaceProperty[];
 }
 
+/**
+ * Every status a job row can actually hold.
+ *
+ * The union used to stop at `failed`, so a run that PARKED — `deferred` since 1.182.0, `stopped`
+ * since 1.193.0 — had a status TypeScript said was impossible, and `interrupted` (written by the
+ * stale-job sweep and by Ctrl-C) had been outside it for longer still. A type that excludes states
+ * the server sends is worse than `string`: it makes a wrong narrowing look checked.
+ *
+ * - `deferred` — parked on a human gate; resumable.
+ * - `stopped` — a human asked it to stop; resumable (design/details/stopping-a-run.md).
+ * - `interrupted` — the process went away mid-run; state may be on the checkpoint.
+ */
+export type JobStatus =
+	| "pending"
+	| "running"
+	| "completed"
+	| "failed"
+	| "deferred"
+	| "stopped"
+	| "interrupted";
+
 export interface JobResponse {
 	/* The run itself, not only what it returned. These were all in the store and dropped by the
 	 * API, so a run's page could say what came back and nothing about the run. */
@@ -67,7 +88,7 @@ export interface JobResponse {
 	usage_output_tokens: number | null;
 	usage_cost_usd: number | null;
 	job_id: string;
-	status: "pending" | "running" | "completed" | "failed";
+	status: JobStatus;
 	topology: string;
 	output: string | null;
 	error: string | null;
@@ -77,7 +98,7 @@ export interface JobListItem {
 	job_id: string;
 	topology: string;
 	version: string | null;
-	status: "pending" | "running" | "completed" | "failed";
+	status: JobStatus;
 	created_at: string;
 	completed_at: string | null;
 }
@@ -90,7 +111,7 @@ export interface PersistedJob {
 	job_id: string;
 	topology: string;
 	version: string | null;
-	status: "pending" | "running" | "completed" | "failed";
+	status: JobStatus;
 	created_at: string;
 	completed_at: string | null;
 	usage_input_tokens: number | null;
@@ -317,6 +338,17 @@ export interface ResolvedAgent {
 	 * raw funnel value. Drives the "gated" badge on the agent card. Absent ⇒ no gate. */
 	funnel?: string | Record<string, unknown> | null;
 	children?: ResolvedAgent[];
+}
+
+/** What `POST /jobs/{id}/stop` answers (design/details/stopping-a-run.md). */
+export interface StopJobResponse {
+	job_id: string;
+	/** ISO timestamp of the request. */
+	stop_requested_at: string;
+	/** True when a stop was already pending — asking twice is not an error. */
+	already_requested?: boolean;
+	/** Human-readable: when it takes effect, and what it does not do. */
+	detail: string;
 }
 
 export interface TopologyDetail {

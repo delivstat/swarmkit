@@ -10,6 +10,7 @@ import { CopyablePre } from "@/components/copyable";
 import { StatusBadge } from "@/components/status-badge";
 import { TopologyCanvas } from "@/components/topology-canvas";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -26,6 +27,7 @@ import {
 	spanCostUsd,
 	toolDetail,
 } from "@/lib/format";
+import { canResume, canStop } from "@/lib/run-controls";
 import { traceToOverlay } from "@/lib/topology-run";
 import type {
 	JobResponse,
@@ -473,11 +475,99 @@ function Field({
 	);
 }
 
+/**
+ * Stop a live run, or resume a parked one (design/details/stopping-a-run.md).
+ *
+ * Both act on the same durable state the CLI does — `swarmkit stop` and `swarmkit run --resume` are
+ * peers of these buttons, not alternatives to them.
+ *
+ * A stop is **cooperative**: it lands at the next agent boundary and a call in flight finishes
+ * first, so this says "stopping…" rather than reporting the run dead. `deferred` and `stopped` both
+ * resume — both are parked mid-flight with their state on the checkpoint, and only the reason
+ * differs.
+ */
+function RunControls({
+	job,
+	onDone,
+}: { job: JobResponse; onDone: () => void }) {
+	const [busy, setBusy] = useState(false);
+	const [note, setNote] = useState("");
+	const [failed, setFailed] = useState(false);
+
+	const live = canStop(job.status);
+	const parked = canResume(job.status);
+	if (!live && !parked) return null;
+
+	const act = async (fn: () => Promise<unknown>, done: string) => {
+		setBusy(true);
+		setFailed(false);
+		try {
+			await fn();
+			setNote(done);
+			onDone();
+		} catch (err) {
+			setFailed(true);
+			setNote(err instanceof Error ? err.message : "request failed");
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<div className="flex items-center gap-3">
+			{note && (
+				<span
+					className={
+						failed
+							? "text-xs text-destructive"
+							: "text-xs text-muted-foreground"
+					}
+				>
+					{note}
+				</span>
+			)}
+			{live && (
+				<Button
+					type="button"
+					size="sm"
+					variant="outline"
+					disabled={busy}
+					title="Stops at the next agent boundary; a call in flight finishes first. The run keeps what it has already done and stays resumable."
+					onClick={() =>
+						act(
+							() => api.stopJob(job.job_id),
+							"stopping… it stops between agents",
+						)
+					}
+				>
+					Stop
+				</Button>
+			)}
+			{parked && (
+				<Button
+					type="button"
+					size="sm"
+					disabled={busy}
+					title="Continue from the checkpoint. A resumed run can park again."
+					onClick={() => act(() => api.resumeJob(job.job_id), "resuming…")}
+				>
+					Resume
+				</Button>
+			)}
+		</div>
+	);
+}
+
 function JobDetail() {
 	const jobId = useSearchParams().get("id") ?? "";
 
 	const fetchJob = useCallback(() => api.job(jobId), [jobId]);
-	const { data: job, error, loading } = usePoll<JobResponse>(fetchJob, 2000);
+	const {
+		data: job,
+		error,
+		loading,
+		refetch,
+	} = usePoll<JobResponse>(fetchJob, 2000);
 
 	return (
 		<div>
@@ -495,7 +585,10 @@ function JobDetail() {
 				<div className="grid gap-4">
 					<Card>
 						<CardTitle>Status</CardTitle>
-						<StatusBadge status={job.status} />
+						<div className="flex items-center justify-between gap-4">
+							<StatusBadge status={job.status} />
+							<RunControls job={job} onDone={refetch} />
+						</div>
 					</Card>
 
 					<RunSummary job={job} />
