@@ -6,14 +6,15 @@ This file is also published on the docs site at <https://delivstat.github.io/swa
 
 **Two tiers.** This `llms.txt` is the compact, link-first map. Its companion **[`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt)** inlines the *full text* of the playbook, all 11 artifact references, and the core design notes into one file — fetch it once and you have the entire corpus, no link-following. Use `llms.txt` to navigate; use `llms-full.txt` when you want everything in context at once.
 
-**Status:** runtime v1.131.3. M0-M10 shipped; fleet control plane + harness executors (M19) shipped. The **delivery-pipeline layer is complete**: a whole SDLC pipeline expressed as data (`StageGraph`), sequenced as a weeks-long saga by a reference controller, gated by reusable `Funnel`s, locked on `Contract` artifacts, and advanced by external events — see the SDLC example + Orchestration section below. The **bundled durable orchestrator** (`swarmkit orchestrator`) + dispatch surface (`swarmkit pipeline` CLI, serve **Runs** view, `deploy/pipeline` compose) make pipelines runnable out of the box; Temporal remains the distributed swap. Structured delegation v2 compiler, planner-driven task execution, crash-resilient plans. CLI + HTTP server (`swarmkit serve`) with async jobs, SSE streaming, webhook + pipeline triggers, MCP endpoint (Streamable HTTP), pluggable auth (API key, JWT/JWKS), canary deployments (weighted version routing, auto-promotion by error rate + drift). **Harness executors** — run Claude Code / opencode / any JSONL subprocess as a node via declarative `adapter.yaml`; worktree isolation, mid-run relay approvals + trust accrual, opt-in container sandbox (resource limits, enforced egress, no-local-install build). 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, structured inter-agent communication (provenance envelopes, output_schema, deterministic grounding), Postgres backend (one storage service resolves every store; `swarmkit storage status`/`migrate` and a **System** page report where data actually lives), fleet aggregation + panel UI. **11 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, stage-graph, contract, role-registry, trigger, executor-adapter + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the full SDLC pipeline example. Next: container-sandbox provisioner, topology canvas (M20).
+**Status:** runtime v1.192.0. M0-M10 shipped; fleet control plane + harness executors (M19) + topology canvas (M20) shipped. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. Governance is unchanged and is the point: reusable `Funnel` gates, multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit. A funnel's `approve` layer **defers** the run — it checkpoints, the job goes `deferred`, and `POST /jobs/{id}/resume` (or `swarmkit run --resume`) continues it, so nothing has to stay resident while a human decides. `GET /gates/{gate_id}` answers "is this gate resolved" **with the approval policy applied**, and `GET /artifacts/{ref}` fetches what is being approved. Skills can declare ordering: `requires:` refuses a guarded skill until its prerequisite has actually run. Two read-only reports catch dead configuration before a run — `swarmkit validate --require` (reachability: config no code path can reach) and `--require-verified` (which topology roots produce an output nothing checks). Structured delegation v2 compiler, planner-driven task execution, crash-resilient plans. CLI + HTTP server (`swarmkit serve`) with async jobs, SSE streaming, webhook ingress, MCP endpoint (Streamable HTTP), pluggable auth (API key, JWT/JWKS), canary deployments. **Harness executors** — run Claude Code / opencode / any JSONL subprocess as a node via declarative `adapter.yaml`; worktree isolation, mid-run relay approvals + trust accrual, opt-in container sandbox, per-tool audit of what the harness actually called. 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, structured inter-agent communication, Postgres backend (one storage service resolves every store), fleet aggregation + panel UI. **10 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace.
 
 ## Start here
 
 - [Docs site](https://delivstat.github.io/swarmkit/): the published documentation (this llms.txt lives at `/llms.txt` there).
 - [Memory and decision-skill bindings](https://delivstat.github.io/swarmkit/guides/memory-and-decision-skills/): the two memories, turning governed memory on, and `enabled` vs `required`.
-- [Building swarms — the complete playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/): the ordered, step-by-step build recipe from one agent to a governed multi-app pipeline. **Read this first if you are building a swarm.**
-- [SDLC pipeline example (video walkthrough)](https://delivstat.github.io/swarmkit/sdlc-example/): the worked reference — a complete software-delivery lifecycle as data, toured on-screen.
+- [Building swarms — the complete playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/): the ordered, step-by-step build recipe from one agent to a governed multi-app delivery flow. **Read this first if you are building a swarm.**
+- [SDLC example (video walkthrough)](https://delivstat.github.io/swarmkit/sdlc-example/): the worked reference — a complete software-delivery lifecycle as data, toured on-screen. Recorded while SwarmKit still bundled a sequencer; the topologies, funnels, archetypes and gates are current, the stage-graph/controller parts are not.
+- [Driving SwarmKit from your application](https://delivstat.github.io/swarmkit/reference/orchestrator-integration/): the HTTP contract for sequencing runs yourself — correlation, gates, defer/resume, artifacts.
 - [README](https://github.com/delivstat/swarmkit/blob/main/README.md): project overview, what works today, milestone progress.
 - [CLAUDE.md](https://github.com/delivstat/swarmkit/blob/main/CLAUDE.md): repo-wide invariants, feature-delivery workflow, release checklist.
 - [SwarmKit Design v0.6](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md): the authoritative architecture. §5 (Core Concepts), §6 (Skills), §8 (Separation of Powers), §14 (Runtime), §18 (MCP Integration).
@@ -31,29 +32,29 @@ The [playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/) wal
 6. **Governance** — decision skills + `GovernanceProvider`; reserved human-only scopes; append-only audit.
 7. **A quality gate** — a `Funnel` (`validate → judge → review → approve`); automated layers filter + retry, only humans approve.
 8. **A harness node** — an archetype `executor: { kind: harness, ref: claude-code }` for a real diff-producing coding agent.
-9. **A pipeline as data** — a `StageGraph` of bounded stages, `Contract` locks, compensations, a defect loop; a controller sequences it as a saga on an opaque `correlation_id`.
+9. **Order the tool calls** — `requires:` on the agent, so a guarded skill is refused until its prerequisite has actually run (a rule in a prompt is a request; this is mechanism).
 10. **Multi-party approval** — a `RoleRegistry` + a gate's embedded `ApprovalPolicy` (quorum + four-eyes floor).
-11. **Trigger + serve + observe + grow** — a `Trigger` emits pipeline events into `swarmkit serve`; trace/why/ask observe it; `swarmkit gaps` → author the missing skill.
+11. **Sequence it from your application** — start each run over `POST /run/{topology}` with a shared `correlation_id`; a gated run parks as `deferred` and `POST /jobs/{id}/resume` continues it. SwarmKit runs the bounded work and keeps the record; your application decides what comes next (`examples/pipeline-orchestrator/`).
+12. **Trigger + serve + observe + grow** — a `Trigger` delivers a signed webhook into `swarmkit serve`; trace/why/ask observe the run; `swarmkit gaps` → author the missing skill.
 
-Then validate the whole thing before running it: `swarmkit validate .`.
+Then validate the whole thing before running it: `swarmkit validate .` — add `--require` to fail on configuration nothing reads, and `--require-verified` to fail when a topology root's output is checked by nothing.
 
 ## CLI commands
 
-Author & run: `init` (scaffold via conversation), `edit`, `validate`, `run` (`--verbose`, `--dry-run`), `chat` (multi-turn, `--resume`), `conversations` (`--pick`), `eval` (score a topology against an eval-set), `checkpoints` (resume checkpointed runs). Serve & connect: `serve` (HTTP: async jobs, SSE, auth, MCP, webhook + pipeline triggers, canary), `connect` (edge poll connector). Observe: `status`, `logs` (`--run-id`, `--agent`, `--format markdown`), `trace` (call graph + token counts), `why` (LLM post-mortem), `ask` (`--run` scoping), `debug` (local prompt ring buffer), `stop`. Grow & govern: `gaps` (recorded capability gaps), `review list/show/approve/reject/resolve` (the human relay/approval inbox; `list --kind role_task --gate <id>` narrows it; `resolve --as <identity> --approve|--reject|--changes-requested -m "why"` casts a multi-party role-task, checked against the role registry; `approve`/`reject` take `-m` too). Pipelines: `orchestrator` (run the bundled durable saga driver), `pipeline emit|sagas|status|advance|skip` (dispatch events + inspect run state). Knowledge & packaging: `knowledge-server`, `knowledge-pack`, `docs-reader`, `install` / `packages` / `publish` (expertise packages).
+Author & run: `init` (scaffold via conversation), `edit`, `validate` (`--require` reachability, `--require-verified` funnel strength), `run` (`--verbose`, `--dry-run`, `--correlation-id`, `--label k=v`, `--supersedes <job-id>`, `--save-artifact`, `--resume <job-id>`), `chat` (multi-turn, `--resume`), `conversations` (`--pick`), `eval` (score a topology against an eval-set), `checkpoints` (resume checkpointed runs). Serve & connect: `serve` (HTTP: async jobs, SSE, auth, MCP, webhook ingress, canary), `connect` (edge poll connector). Observe: `status`, `logs` (`--run-id`, `--agent`, `--format markdown`), `trace` (call graph + token counts), `why` (LLM post-mortem), `ask` (`--run` scoping), `debug` (local prompt ring buffer), `stop`. Grow & govern: `gaps` (recorded capability gaps), `review list/show/approve/reject/resolve` (the human relay/approval inbox; `list --kind role_task --gate <id>` narrows it; `resolve --as <identity> --approve|--reject|--changes-requested -m "why"` casts a multi-party role-task, checked against the role registry; `approve`/`reject` take `-m` too). Artifacts: `artifacts get|list` (read a run's saved output by ref). Knowledge & packaging: `knowledge-server`, `knowledge-pack`, `docs-reader`, `install` / `packages` / `publish` (expertise packages).
 
 ## Schemas
 
-Eleven canonical artifact schemas (JSON Schema 2020-12) — ten standalone artifact kinds plus the embedded `approval-policy`. Each has a published reference page under <https://delivstat.github.io/swarmkit/reference/>.
+Ten canonical artifact schemas (JSON Schema 2020-12) — nine standalone artifact kinds plus the embedded `approval-policy`. Each has a published reference page under <https://delivstat.github.io/swarmkit/reference/>.
 
 - [topology.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/topology.schema.json): a bounded swarm run — [reference](https://delivstat.github.io/swarmkit/reference/topology/).
 - [workspace.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/workspace.schema.json): the root manifest — [reference](https://delivstat.github.io/swarmkit/reference/workspace/).
 - [archetype.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/archetype.schema.json): a reusable agent template — [reference](https://delivstat.github.io/swarmkit/reference/archetypes/).
 - [skill.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/skill.schema.json): the capability-extension primitive — [reference](https://delivstat.github.io/swarmkit/reference/skills/).
 - [funnel.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/funnel.schema.json): a reusable per-artifact quality gate — see Funnel below; [reference](https://delivstat.github.io/swarmkit/reference/funnel/).
-- [stage-graph.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/stage-graph.schema.json): a pipeline as data — an ordered set of bounded stages a controller sequences as a saga; see StageGraph below; [reference](https://delivstat.github.io/swarmkit/reference/stage-graph/).
-- [contract.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/contract.schema.json): an integration contract — the agreed interface between apps, referenced by a StageGraph stage's `locks`; see Contract below; [reference](https://delivstat.github.io/swarmkit/reference/contract/).
+- [contract.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/contract.schema.json): an integration contract — the agreed interface between apps, and the checked vocabulary a sequencer's locks name; see Contract below; [reference](https://delivstat.github.io/swarmkit/reference/contract/).
 - [role-registry.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/role-registry.schema.json): named roles → member identities + the scopes they confer; how approval rules resolve to people; [reference](https://delivstat.github.io/swarmkit/reference/role-registry/).
-- [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json): an external event source that starts a topology or emits a pipeline event; [reference](https://delivstat.github.io/swarmkit/reference/trigger/).
+- [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json): an external event source that starts a topology or delivers a signed webhook event; [reference](https://delivstat.github.io/swarmkit/reference/trigger/).
 - [executor-adapter.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/executor-adapter.schema.json): a declarative `adapter.yaml` running a coding harness as a node — data, not per-harness Python; [reference](https://delivstat.github.io/swarmkit/reference/executor-adapter/).
 - [approval-policy.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/approval-policy.schema.json): **embedded config** (no `kind`) inside a gate's `approve:` — multi-party rules, quorum, four-eyes floor; [reference](https://delivstat.github.io/swarmkit/reference/approval-policy/).
 
@@ -122,86 +123,64 @@ provenance:
 - [Gate funnel design note](https://github.com/delivstat/swarmkit/blob/main/design/details/gate-funnel.md): composition, control flow, bounded retry, the structural invariant, provenance bundle.
 - [Example funnel artifact](https://github.com/delivstat/swarmkit/blob/main/examples/sdlc-pipeline/workspace/funnels/consolidated-design-approval.yaml): all four layers, referenced by id from an SDLC pipeline node.
 
-## StageGraph (pipeline as data)
+## Sequencing (it lives in your application)
 
-A **StageGraph** is a first-class artifact (`kind: StageGraph`) — a whole pipeline expressed as data: an ordered set of bounded `stages[]` that a **controller** sequences as a **saga**, keyed on an opaque `correlation_id` and advanced by external enterprise events (Jira/CI/Git/SAST) or signals emitted by a prior stage. Each stage kicks a SwarmKit topology run; the runtime only ever runs the bounded stages. The controller — a reference component under `examples/sdlc-pipeline/controller/`, **not** the SwarmKit runtime — owns the durable weeks-long per-run state (current stage, held locks, pending gate, attempt counts, status), reacts to events with dedup + reconciliation, manages integration-contract locks, and unwinds on cancel. A different pipeline is new *data*, not new controller code — topology-as-data applied at the sequencing layer.
+SwarmKit **used to** ship a sequencer: `kind: StageGraph`, a durable saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`. It was removed in runtime 1.189.0. The reason is the layering: sequencing across weeks is *application* logic — retries, business calendars, what an event means, when to give up — and every one of those pulled SwarmKit toward becoming a workflow engine. Do not write a `StageGraph`; a runtime that reads one no longer exists.
 
-**Domain-neutrality:** the runtime and the drive contract are keyed only on an opaque `correlation_id` and model no business instance — there is no `requirement_id`, `order_id`, or `ticket_id` anywhere in the runtime. A concrete pipeline (like the SDLC example) maps *its* business key (a requirement) to a `correlation_id` in *its own* controller. See the Orchestration section below.
+What SwarmKit keeps is the part that is genuinely its own: **one bounded governed run**, its gate, and its record.
 
-Each `stages[]` entry has: `id`, `topology` (the run it kicks), `when` (entry event(s) — one arrival starts the stage), `success` (the signal emitted on clean completion, which drives the next stage's `when`), `locks` (integration-contract lock ids, acquired all-or-none in fixed order before the run starts), `release_locks_on` (the signal that releases those locks — e.g. hold a contract through approval, then release), `gate` (a `Funnel` id the run parks on; the controller emits `success` when it resolves), and `compensation` (a topology run to unwind the stage if the requirement is cancelled after it passed). Top-level `loops[]` are cross-stage edges (the defect cycle): each `{when, to}` routes an inbound event to a stage id.
+- **Correlate** — `POST /run/{topology}` takes `correlation_id` ("same ticket"), `labels` (opaque `{k: v}` reaching `jobs` *and* `audit_events`), and `parent_job_id` ("this run replaces that attempt"). Runs are independent and connected by a correlation id — not stages of a graph the runtime knows about. Walk `parent_job_id` to answer "what did this artifact really cost across retries".
+- **Park and resume** — a funnel's `approve` layer raises `HITLDeferredError`: the run checkpoints, the job goes `deferred`, and its `error` names the gate. Nothing stays resident. `POST /jobs/{job_id}/resume` (409 unless `deferred`) or `swarmkit run --resume <job-id>` continues it, and a resumed run can park again identically.
+- **Read the gate** — `GET /gates/{gate_id}` returns `status` with the **approval policy already applied** (quorum, `min_distinct_approvers`, `exclude_author`) plus `items` and `quorum_evaluated`. A gate id is `<run_id>:<agent_id>`, where `run_id` is the job id — split on the LAST colon. `GET /review?gate_id=…` is not a substitute: it returns role-tasks, and folding those into a decision means reading a funnel a client cannot see.
+- **Fetch what is being approved** — `GET /artifacts/{ref}`, ref shaped `<correlation>/<run>/<name>`; a review item carries the one it is about. An approver deciding without the artifact is deciding on a title.
+- **Receive events** — `POST /events/signal` is the surviving ingress seam (signed webhook → validated → opaque `correlation_id` extracted by JSONPath → handed to your listener). SwarmKit does not decide what an event *means*.
 
-**The entry-event field is `when`, not `on`.** A bare `on:` key is coerced to the boolean `true` by YAML 1.1 parsers, so the schema uses `when` for both a stage's entry events and a loop's trigger. The design note's early YAML sketch predates this and shows `on:` — the canonical schema and all authored artifacts use `when`.
+- [Extracting the pipeline](https://delivstat.github.io/swarmkit/design-notes/extracting-the-pipeline/): the removal — what went, what stayed, and the migration inventory.
+- [Reading a gate, and approving without a saga](https://delivstat.github.io/swarmkit/design-notes/gate-state-and-deferring-approval/): the gate read, the deferral, and why the gate id had to become run-unique.
+- [Driving SwarmKit from your application](https://delivstat.github.io/swarmkit/reference/orchestrator-integration/): the whole HTTP contract in one page.
+- [`examples/pipeline-orchestrator/`](https://github.com/delivstat/swarmkit/tree/main/examples/pipeline-orchestrator): a reference application that sequences runs with **no `swarmkit_runtime` import anywhere in it**.
 
-Minimal (two sequential stages, event-driven):
+## Skill prerequisites (`requires:`)
 
-```yaml
-apiVersion: swarmkit/v1
-kind: StageGraph
-metadata:
-  id: sdlc-pipeline
-  name: SDLC Pipeline
-  description: Intake a requirement, then kick off design once intake completes.
-stages:
-  - id: intake
-    topology: sdlc-intake
-    when: [requirement.created]      # entry event(s) — NOT `on:` (YAML coerces it to a boolean)
-    success: design.kickoff          # signal emitted on clean completion
-  - id: design
-    topology: sdlc-design
-    when: [design.kickoff]
-provenance:
-  authored_by: human
-  version: 1.0.0
-```
-
-Fuller (locks, a Funnel gate, compensation, and the defect loop):
+An ordering rule stated in a prompt is a request; a model follows mechanism over instruction. The evidence: in a single run, same agent, same prompt, an ack-gated tool was called 4 times and a merely-requested one 0 times. So ordering is declared on the agent and **enforced**:
 
 ```yaml
-apiVersion: swarmkit/v1
-kind: StageGraph
-metadata:
-  id: sdlc-pipeline
-  name: SDLC Pipeline
-  description: >
-    A requirement sequenced across intake, design (contract-locked, gated by a
-    Funnel), build, and SIT as a saga, with a defect cycle.
-stages:
-  - id: intake
-    topology: sdlc-intake
-    when: [requirement.created]
-    success: design.kickoff
-  - id: design
-    topology: sdlc-design
-    when: [design.kickoff]
-    locks: [contract-oms-web, contract-oms-inventory]   # all-or-none, fixed order, before the run
-    gate: consolidated-design-approval                   # a Funnel id; the run parks on it
-    success: design.approved                             # emitted when the gate approves
-    release_locks_on: design.approved                    # contract held through approval, then freed
-    compensation: sdlc-compensate-design                 # unwind topology if the requirement cancels
-  - id: build
-    topology: sdlc-build
-    when: [design.approved]
-    success: build.ready-in-qa
-  - id: sit
-    topology: sdlc-sit
-    when: [build.ready-in-qa]                            # EXTERNAL event (CI), not a SwarmKit signal
-    success: sit.passed
-loops:                                                    # cross-stage edges (the defect cycle)
-  - when: defect.raised
-    to: defect-triage
-  - when: defect.fixed
-    to: re-test
-provenance:
-  authored_by: human
-  version: 1.0.0
+skills: [list-build-conventions, get-build-convention, search-solution-code]
+requires:
+  get-build-convention: [list-build-conventions]
+  search-solution-code: [get-build-convention, list-build-conventions]
 ```
 
-- [StageGraph reference](https://github.com/delivstat/swarmkit/blob/main/docs/site/reference/stage-graph.md): the stage/loop fields, the saga/controller framing, the `when`-not-`on` gotcha, referenced-by-id.
-- [Pipeline controller design note](https://github.com/delivstat/swarmkit/blob/main/design/details/pipeline-controller.md): the controller as a reference component, saga state, event dedup + reconciliation, contract locking, compensation, and the two serve seams it depends on.
+A sibling block, not entries inside `skills` — `skills` stays a plain identifier array, duplicate rules are impossible because it is a map, and every ordering rule reads in one place.
+
+- **Enforced at the MCP permission seam** — the one function both executors dispatch through, so a model agent and a harness agent behave identically; checked *before* the policy call, since an ordering refusal is not a policy question.
+- **The refusal is actionable**, which is the part doing the work: `get-build-convention requires list-build-conventions, which has not been called in this session. Call list-build-conventions first, then retry.` The agent recovers inside its own loop; the server is never touched by the refused call.
+- **Per `(run, agent)`** — a sibling agent's call does not satisfy this agent's prerequisite, because a prerequisite is about what is in *this* agent's context.
+- **Only a successful call satisfies** — an exception or an MCP `isError` unlocks nothing. A tool that reports failure in its *payload* does satisfy; the seam cannot read meaning.
+- **Validated at resolution** — a rule naming a skill the agent does not hold is `agent.requires-unknown-skill`; a cycle is `agent.requires-cycle` (an agent that can never recover is worse than no rule).
+- Scope: guards skills that dispatch through the MCP seam. A refusal is audited as `skill.executed` with `policy_decision="deny"`, so a gate that is working is distinguishable from one never reached.
+
+- [Skill prerequisites design note](https://delivstat.github.io/swarmkit/design-notes/skill-prerequisites/): the evidence, the shape decision, the semantics, and the non-goals (not parameterised, not cross-agent, not guarding decisions).
+
+## Two checks before you run (reachability + verification)
+
+Both are read-only, both come from **one compile of the workspace**, so they cannot disagree.
+
+- `swarmkit validate --require` · `GET /workspace/reachability` — **configuration no code path can reach.** The recurring defect in this codebase was config that is declared, accepted, validated, displayed and loaded by *nothing*; the compiler now records what it actually built, on the line that builds it, and anything declared-but-unwired is reported by name.
+- `swarmkit validate --require-verified` · `GET /workspace/verification` — **which topology roots produce an output nothing checks.** Strength counts *wired* funnel layers, never declared ones (counting a declaration would repeat the defect above); declared-but-inert layers are named. Only roots are findings — a leaf worker returning a fact to its parent is not producing a reviewable artifact.
+
+```
+verification: 15 topology root(s)
+  deploy/deploy-coordinator (root): funnel deploy-approval — approve; declared but inert: validate
+  oms-build-harness/builder (root): funnel oms-code-review — judge, approve
+  12 topology root(s) produce an output that nothing checks — the run's answer is whatever the model said.
+```
+
+The two flags stay separate: "is my config wired" and "is my output checked" are different questions a CI job may want independently.
 
 ## Contract (integration contract between apps)
 
-A **Contract** is a first-class artifact (`kind: Contract`) — the agreed interface between two (or more) applications, identified by id. It is what makes a StageGraph stage's `locks` real: a lock **is** an integration contract, so a stage's `locks: [oms-web, oms-inventory]` mean "hold the OMS↔Web and OMS↔Inventory interfaces while I change them, so no concurrent requirement commits a conflicting version." Making the contract an artifact turns those lock ids from free-form strings (where a typo silently becomes a *different* lock and two requirements that should serialise don't) into a **checked, pickable vocabulary**: the resolver rejects a lock that names no contract, and the pipeline's contention overlay ("which stages fight over the same contract") is exact. A contract is **not executed** — the controller/orchestrator is still the lock manager; the registry only makes the vocabulary real and records which apps each lock binds.
+A **Contract** is a first-class artifact (`kind: Contract`) — the agreed interface between two (or more) applications, identified by id. It is what makes a sequencer's locks real: a lock **is** an integration contract, so `locks: [oms-web, oms-inventory]` mean "hold the OMS↔Web and OMS↔Inventory interfaces while I change them, so no concurrent requirement commits a conflicting version." Making the contract an artifact turns those lock ids from free-form strings (where a typo silently becomes a *different* lock and two requirements that should serialise don't) into a **checked, pickable vocabulary**: the resolver rejects a lock that names no contract, and the contention view ("which work fights over the same contract") is exact. A contract is **not executed** — your sequencer is the lock manager; the registry only makes the vocabulary real and records which apps each lock binds.
 
 Fields: `parties` (required, ≥2 app ids — what makes it a contract, an interface *between* apps; drives the contention/ownership display; app ids are free strings, apps are not artifacts) and `interface` (optional — a pointer to where the interface spec itself lives, an API/event schema; not interpreted by core, it is documentation + a handle for reviewers). Core does not parse or diff the `interface` — identity + locking only, not interface compatibility.
 
@@ -237,31 +216,15 @@ provenance:
 ```
 
 - [Contract reference](https://github.com/delivstat/swarmkit/blob/main/docs/site/reference/contract.md): the fields, the locking/contention framing, referenced-by-`locks`, and the runtime ref-check.
-- [Integration-contract registry design note](https://github.com/delivstat/swarmkit/blob/main/design/details/contract-registry.md): why lock ids become a checked vocabulary, the StageGraph lock ref-check, and the non-goals (no interface-content validation, no app artifacts, no new lock manager).
+- [Integration-contract registry design note](https://github.com/delivstat/swarmkit/blob/main/design/details/contract-registry.md): why lock ids become a checked vocabulary, the lock ref-check, and the non-goals (no interface-content validation, no app artifacts, no new lock manager).
 
-## Orchestration & pipeline triggering (the drive seam)
+## Webhook ingress (the surviving inbound seam)
 
-Pipeline *sequencing* is a pluggable seam, not a bespoke engine baked into the runtime. The runtime keeps only three things: the `StageGraph` spec, the governed bounded stage run, and the correlated audit. Everything durable — state, timers, signals, locking, compensation — lives in an **orchestrator** the runtime drives through a small, **domain-neutral drive contract**:
+`swarmkit serve` is the front door. A `Trigger` (`type: webhook`) validates the signature, extracts an opaque `correlation_id` from the body by JSONPath, and delivers an `EventSignal` to whatever your application registered. What the event *means* — which topology it starts, whether it advances anything — is your application's decision, because that judgement is what left with the sequencer.
 
-- `RunStage = (correlation_id, stage) -> StageOutcome` — kick one bounded stage and report its outcome.
-- `PipelineSignal = (correlation_id, event) -> None` — deliver an external event onto a running pipeline.
-- `StageOutcome` / `StageStatus` — the result vocabulary. All live in `swarmkit_runtime.orchestration` and are keyed only on an opaque `correlation_id`.
+A trigger whose `credentials_ref` names an absent environment variable **refuses to start**: accepting unsigned requests because the secret is missing is a fail-open, and the old behaviour (warn, skip validation) was indistinguishable at runtime from a correctly configured trigger. `swarmkit serve` does not load a `.env` file.
 
-The reference `OrchestrationProvider` + in-memory saga controller + a Temporal production adapter live **in the example**, not the runtime (`examples/sdlc-pipeline/orchestrator/`, `controller/`) — `temporalio` never enters the runtime dependency set. This is the design non-goal in action: the runtime gains only the small drive seam; the saga engine is swappable data-adjacent code.
-
-**Bundled orchestrator (usable out of the box).** So pipelines run without wiring an engine, the runtime ships a **durable reference orchestrator** as a *separate* `swarmkit orchestrator` process (design/details/bundled-pipeline-orchestrator.md). It is store-mediated: `serve` enqueues events to a durable saga store (`pipeline_saga`/`pipeline_events` on the same SQLite/Postgres backend) and the orchestrator claims + drives them, so it touches neither the runtime core nor serve (only the orchestrator imports the controller; enforced by import-linter). Each stage is executed by serve's run-stage seam (`app.state.pipeline_run_stage`) as one bounded governed topology run whose output is written to a pluggable `ArtifactStore` (`database` default / `filesystem` / `s3`) and threaded to the next stage by **reference** — the orchestrator stays content-free. A gated stage **opens its funnel's `ApprovalPolicy`** and parks; humans resolve the role-tasks (Runs UI or `swarmkit review resolve`), and the resolution that satisfies quorum emits the `gate` event the orchestrator resumes on — `swarmkit pipeline advance/skip` remains as break-glass, not the only way out. Durable: a restart resumes mid-saga. `deploy/pipeline/docker-compose.yml` runs `serve` + `orchestrator` over one shared workspace with a commented Temporal alternative — swapping to Temporal is a signal-sink change, `serve` unchanged.
-
-**Dispatch + inspect surface.** `swarmkit pipeline emit|sagas|status|advance|skip` dispatches events and reads run state over the shared store (searchable by `correlation_id`); the serve **Runs** view (`/runs`) lists + searches runs, replays one over its `StageGraph` on a read-only canvas coloured by per-stage status, and inspects each node's timeline + lazily-loaded artifact. CLI and UI go through the same serve saga read endpoints.
-
-**Triggering a pipeline.** `swarmkit serve` is the front door. A `Trigger` (`type: webhook`) targets a pipeline event with `{ pipeline, emit, correlation_id: $.<jsonpath> }`; the receiver validates the signature, extracts the opaque `correlation_id` from the body, and emits the event. Emitting a pipeline event is a **reserved, human/authorized-only authority**: `pipeline:advance` and `pipeline:skip` are in the runtime's reserved scope set (alongside `topologies:modify`, `iam:modify`, …) — enforced by the policy engine, audited, and denied with 403 otherwise. No agent can advance a pipeline by talking.
-
-Serve endpoints: `POST /pipelines/run-stage`, `GET /pipelines/gate-status/{correlation_id}/{gate}`, `POST /pipelines/signal`, `GET /pipelines/sagas` (list + filter/search), `GET /pipelines/sagas/{correlation_id}` (detail + timeline), `GET /pipelines/sagas/{correlation_id}/node/{stage}` (lazy artifact).
-
-`run-stage` honours `stage.input` when supplied (precedence: `stage.input` → the saga's payload for the first stage → the upstream artifact); a harness stage with no resolvable input **fails** rather than running the model on its own role name. `StageOutcome` carries `artifact_bytes`, which separates a stage parked with a real record from one parked with a short error string. `gate-status` returns per-role `items` plus `quorum_evaluated`: `true` means the **approval engine** evaluated the gate's policy (so the report matches the runtime's own decision), `false` means the policy was unreachable and the server folded the items, which is only correct for `quorum: all`. A client polling a `quorum: any` gate against an older runtime waits for a gate that already opened.
-
-- [Orchestration provider seam](https://delivstat.github.io/swarmkit/design-notes/orchestration-provider-seam/): the drive contract, the runtime/example split, the non-goal.
-- [Pipeline triggering](https://delivstat.github.io/swarmkit/design-notes/pipeline-triggering/): the webhook → pipeline-ingress path, the guardrail, the reserved scopes.
-- [Pipeline controller](https://delivstat.github.io/swarmkit/design-notes/pipeline-controller/): the reference saga controller — state, dedup, reconciliation, locking, compensation.
+`POST /run/{topology_name}` and `POST /hooks/{topology_name}` start runs directly; the reserved-scope discipline is unchanged — human-only authorities (`skills:activate`, `mcp_servers:deploy`, `topologies:modify`, `iam:modify`, `approvals:resolve`) are enforced by the policy engine and structurally un-grantable to an agent.
 
 ## Human decisions at a gate (the approval API)
 
@@ -271,7 +234,7 @@ A gate is resolved by a **human identity**, and the decision is a record — not
 
 `reject` ends the run. **`changes-requested` does not** — it re-runs the stage with the reviewer's comment in its input, via a `rework` event distinct from `gate`. `POST /review/{id}/approve|reject` and `/answer` also accept `{"comment": …}`; a §6.3 input answer plus its comment becomes the parked harness's resume statement, so a conditional approval ("yes, staging only") reaches the agent instead of flattening to `true`.
 
-Review items serialize with `kind` = `permission` | `input` | `role_task` | `other`. A role-task carries `gate_id` (`<correlation_id>:<stage>`, split on the LAST colon), `role`, `scope`, `rule_index`, `resolved_by`, `comment`, `artifact_ref` and `round`. Narrow the queue with `GET /review?kind=role_task&gate_id=…`.
+Review items serialize with `kind` = `permission` | `input` | `role_task` | `other`. A role-task carries `gate_id` (`<run_id>:<agent_id>`, where `run_id` is the job id — split on the LAST colon), `role`, `scope`, `rule_index`, `resolved_by`, `comment`, `artifact_ref` and `round`. Narrow the queue with `GET /review?kind=role_task&gate_id=…`.
 
 **Rounds and staleness.** A rework loop re-opens the gate against a new artifact and advances the round; the ref is keyed on a **content digest**, so an identical re-run does not re-ask reviewers. **Only decisions about the current artifact count toward quorum** — earlier rounds are retained, returned by the read APIs and rendered as `STALE`, but an approval of v1 is not an approval of v3. An empty `artifact_ref` (externally-driven gate, or an item predating this) is unfiltered.
 
@@ -287,14 +250,13 @@ What the agent receives is a fenced, attributed, typed and versioned block — h
 
 `GET /whoami` returns the authenticated caller (`/auth-info` is public and describes the server, not the caller). Every attempt — allowed or denied — is audited as `approval.role_task_resolved`, with `approval.gate_opened` per round and `approval.changes_requested` on a rework.
 
-## The SDLC pipeline example (the worked reference)
+## The SDLC example (the worked reference)
 
-[`examples/sdlc-pipeline`](https://github.com/delivstat/swarmkit/tree/main/examples/sdlc-pipeline) assembles every feature above into one complete software-delivery lifecycle as data — **intake → design → build → sit → pt → security-review → deploy → support-handover** — carrying three multi-party human gates, integration-contract locks held through approval, per-stage compensations, a cross-stage defect loop, a harness build/review node, webhook triggering, and the reference saga controller (+ a Temporal adapter). It is the canonical "how the pieces fit" reference.
+[`examples/sdlc-pipeline`](https://github.com/delivstat/swarmkit/tree/main/examples/sdlc-pipeline) is the largest worked workspace: a software-delivery lifecycle — **intake → design → build → sit → pt → security-review → deploy → support-handover** — as topologies, archetypes, funnels, contracts and rigs, carrying three multi-party human gates, a harness build/review node, and IAM-scoped agents. Its *sequencing* half (the stage graph, the saga controller, the Temporal adapter) was removed with the bundled pipeline in 1.189.0; the artifacts, the gates and the per-stage demos remain, and `examples/pipeline-orchestrator/` shows how an application drives them.
 
-- [Video walkthrough](https://delivstat.github.io/swarmkit/sdlc-example/): every artifact toured on-screen, with a stage run end to end.
-- [SDLC example design note](https://github.com/delivstat/swarmkit/blob/main/design/details/sdlc-pipeline-example.md): the build-order narrative (slices 1–9) + the automation map (agent-run vs. human-gated).
-- Run it: `just demo-sdlc` (all eight stages + three gates, deterministic via the reference controller) · `just demo-sdlc-stage-run` (one gated stage) · `python examples/sdlc-pipeline/validate_library.py` (validate every artifact).
-- The full pipeline artifact: [`pipelines/sdlc-full.yaml`](https://github.com/delivstat/swarmkit/blob/main/examples/sdlc-pipeline/workspace/pipelines/sdlc-full.yaml).
+- [Video walkthrough](https://delivstat.github.io/swarmkit/sdlc-example/): every artifact toured on-screen. Recorded before the extraction — the artifact tour is current, the stage-graph/controller sections are historical.
+- Run it: `just demo-sdlc-stage-run` (one gated stage) · `just demo-consolidated-design` · `just demo-harness-build` · `just demo-sit-pt` · `python examples/sdlc-pipeline/validate_library.py` (validate every artifact).
+- Check it: `swarmkit validate --require --require-verified` in `examples/sdlc-pipeline/workspace` reports both the inert funnel layers and the roots nothing checks.
 
 ## Reference workspace
 
@@ -367,15 +329,15 @@ Run a coding harness (Claude Code, opencode, or any subprocess emitting line-del
 
 `swarmkit serve` endpoints: `GET /health`, `GET /topologies`, `GET /skills`, `GET /archetypes`, `GET /validate`, `GET /triggers`, `POST /run/{topology}`, `GET /jobs`, `GET /jobs/{id}`, `GET /jobs/{id}/stream` (SSE), `POST /hooks/{topology}`, `POST /conversations`, `GET /conversations`, `POST /conversations/{id}/messages`, `POST /mcp` (Streamable HTTP), `GET /canary`, `POST /canary/{topology}/promote`, `POST /canary/{topology}/rollback`, `GET /storage` (where each store resolves), `GET /system` (versions + storage + properties + env, secrets masked), `GET /whoami` (the authenticated caller), `GET /review[/all]?kind=&gate_id=`, `POST /review/{id}/approve|reject|answer|resolve`.
 
-Storage (1.130.0+): **one service resolves every store** — nothing else opens a database (`design/details/storage-service.md`). Seven kinds: `runtime` (jobs, conversations, usage), `audit`, `artifacts`, `saga`, `memory`, `fleet`, `checkpoints`. All of them follow `storage.runtime` unless they declare their own block, EXCEPT `checkpoints`, which follows only `storage.checkpoints` because the Postgres LangGraph checkpointer is a separate install (`pip install "swarmkit-runtime[postgres]"`). Asking for postgres checkpoints WITHOUT that extra degrades to the local SQLite checkpointer with a warning (1.131.1+) rather than refusing to start — the one place degrading is right, because checkpoints are disposable run state and a missing optional dep should not take down serve. (1.130.0 and 1.131.0 refused, which broke upgrades for workspaces that had been carrying that silently-ignored config.) Everything that holds RECORDS still fails closed. A per-store block inherits `storage.runtime.url` when it declares none. `${VAR}` and `${VAR:-default}` are expanded in these URLs.
+Storage (1.130.0+): **one service resolves every store** — nothing else opens a database (`design/details/storage-service.md`). Six kinds: `runtime` (jobs, conversations, usage), `audit`, `artifacts`, `memory`, `fleet`, `checkpoints` (the `saga` store went with the bundled pipeline). All of them follow `storage.runtime` unless they declare their own block, EXCEPT `checkpoints`, which follows only `storage.checkpoints` because the Postgres LangGraph checkpointer is a separate install (`pip install "swarmkit-runtime[postgres]"`). Asking for postgres checkpoints WITHOUT that extra degrades to the local SQLite checkpointer with a warning (1.131.1+) rather than refusing to start — the one place degrading is right, because checkpoints are disposable run state and a missing optional dep should not take down serve. (1.130.0 and 1.131.0 refused, which broke upgrades for workspaces that had been carrying that silently-ignored config.) Everything that holds RECORDS still fails closed. A per-store block inherits `storage.runtime.url` when it declares none. `${VAR}` and `${VAR:-default}` are expanded in these URLs.
 
 `SWARMKIT_STORE_URL` vs `SWARMKIT_STORE_BACKEND`: **the URL alone is sufficient** — a URL names its own backend, so `SWARMKIT_STORE_URL=postgresql://…` selects Postgres with no other variable set. `DATABASE_URL` is the fallback when `SWARMKIT_STORE_URL` is unset. `SWARMKIT_STORE_BACKEND` (`sqlite`|`postgres`) is a rarely-needed override, mainly to force SQLite while a URL is present. Env is a global signal: it moves every store that follows `storage.runtime`, and never `checkpoints`. (Before 1.130.0, setting only `SWARMKIT_STORE_URL` was silently ignored, and `url: ${SWARMKIT_STORE_URL}` in workspace.yaml was never expanded — both wrote to SQLite while reporting success.)
 
-A backend naming a real database with **no resolvable URL raises at startup** rather than degrading to SQLite — a run must not write to a different database than the one configured. `swarmkit orchestrator` resolves through the same service, with `--database-url` as the explicit override; serve and the orchestrator must agree or they split brain.
+A backend naming a real database with **no resolvable URL raises at startup** rather than degrading to SQLite — a run must not write to a different database than the one configured. If your application keeps its own sequencing state, keep it in *your* database: SwarmKit's store holds runs, audit, artifacts, memory, fleet and checkpoints, not your workflow.
 
 Inspecting + migrating: `swarmkit storage status <ws>` prints one line per store — backend, location, and **which setting won**. `swarmkit storage migrate <ws> [--dry-run] [--yes]` copies local SQLite rows into the configured Postgres: additive, idempotent (`ON CONFLICT DO NOTHING`), and it never deletes the SQLite files. `swarmkit system <ws>` adds versions, `workspace.env.yaml` properties, and the environment. Same data at `GET /storage` and `GET /system`, and on the web UI's **System** page. Passwords are masked in every surface.
 
-SQLite → Postgres runbook (`docs/site/reference/storage.md`): 1. create the database (no schema step — tables are created on connect); 2. set `storage.runtime.backend: postgres` + `url: ${SWARMKIT_STORE_URL}` and export the URL; 3. `swarmkit storage status` and confirm every store says postgres BEFORE moving data; 4. stop the runtime and `swarmkit storage migrate`; 5. verify counts, then archive `.swarmkit/*.sqlite` — leaving them is how a split brain starts; 6. restart serve AND orchestrator with the same environment. Skipping step 4 abandons the audit trail, pipeline state and governed memory.
+SQLite → Postgres runbook (`docs/site/reference/storage.md`): 1. create the database (no schema step — tables are created on connect); 2. set `storage.runtime.backend: postgres` + `url: ${SWARMKIT_STORE_URL}` and export the URL; 3. `swarmkit storage status` and confirm every store says postgres BEFORE moving data; 4. stop the runtime and `swarmkit storage migrate`; 5. verify counts, then archive `.swarmkit/*.sqlite` — leaving them is how a split brain starts; 6. restart serve with the same environment. Skipping step 4 abandons the audit trail, run history and governed memory.
 
 Every audit event carries its `run_id` (1.130.0+; it was NULL on every row before, so `query(run_id=…)` always returned empty and reported it as "no events").
 
@@ -431,7 +393,7 @@ There are TWO memory subsystems and they are not interchangeable. **Governed mem
 ## Guides
 
 - [Memory and decision-skill bindings](https://delivstat.github.io/swarmkit/guides/memory-and-decision-skills/): the two memories, turning governed memory on, and `enabled` vs `required`.
-- [Building swarms — the complete playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/): the ordered, step-by-step build recipe (one agent → governed multi-app pipeline), with a runnable artifact at every step and the SDLC worked example.
+- [Building swarms — the complete playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/): the ordered, step-by-step build recipe (one agent → governed multi-app delivery flow), with a runnable artifact at every step and the SDLC worked example.
 - [Sterling OMS workspace](https://github.com/delivstat/swarmkit/blob/main/docs/guides/sterling-oms-workspace.md): building domain-specific agent workspaces with knowledge bases.
 - [Model selection](https://github.com/delivstat/swarmkit/blob/main/docs/guides/model-selection.md): pricing comparison, per-agent config, env vars.
 - [Authoring a harness adapter](https://github.com/delivstat/swarmkit/blob/main/docs/guides/authoring-harness-adapters.md): declarative `adapter.yaml`, event-map DSL, auth, launch gate, opt-in container sandbox.

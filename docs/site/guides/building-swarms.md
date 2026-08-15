@@ -1,6 +1,6 @@
 # Building swarms — the complete playbook
 
-This is the end-to-end guide to building a **complete automated agent swarm** with SwarmKit — from a single agent to a governed, multi-app delivery pipeline that a controller sequences as a weeks-long saga. It is written to be read top to bottom: each step adds exactly one capability, shows the smallest real artifact that unlocks it, gives the command to run it, and links to the deep reference.
+This is the end-to-end guide to building a **complete automated agent swarm** with SwarmKit — from a single agent to a governed, multi-app delivery flow that your application sequences over weeks. It is written to be read top to bottom: each step adds exactly one capability, shows the smallest real artifact that unlocks it, gives the command to run it, and links to the deep reference.
 
 If you only read one thing first, read the mental model. Everything else is a specialisation of it.
 
@@ -28,10 +28,9 @@ Every artifact is a YAML/JSON file starting with `apiVersion: swarmkit/v1` and a
 | `Archetype` | A reusable agent template — model/prompt/skills/IAM/executor defaults a topology node instantiates. | [archetypes](../reference/archetypes.md) |
 | `Skill` | A capability, decision, coordination, or persistence unit — the only capability-extension primitive. | [skills](../reference/skills.md) |
 | `Funnel` | A reusable per-artifact quality gate: `validate → judge → review → approve`, referenced by id from a node or stage. | [funnel](../reference/funnel.md) |
-| `StageGraph` | A whole pipeline as data — ordered bounded stages a controller sequences as a saga. | [stage-graph](../reference/stage-graph.md) |
-| `Contract` | An integration contract between apps — makes a StageGraph stage's `locks` a checked, pickable vocabulary. | [contract](../reference/contract.md) |
+| `Contract` | An integration contract between apps — makes the lock ids your sequencer holds a checked, pickable vocabulary. | [contract](../reference/contract.md) |
 | `RoleRegistry` | Named roles → member identities + the scopes they confer — how approval rules resolve to real people. | [role-registry](../reference/role-registry.md) |
-| `Trigger` | An external event source (webhook/schedule) that starts a topology or emits a pipeline event. | [trigger](../reference/trigger.md) |
+| `Trigger` | An external event source (webhook/schedule) that starts a topology or delivers a signed event. | [trigger](../reference/trigger.md) |
 | `ExecutorAdapter` | A declarative adapter (`adapter.yaml`) that runs a coding harness as a node — data, not per-harness Python. | [executor-adapter](../reference/executor-adapter.md) |
 | `ApprovalPolicy` | **Embedded config** (no `kind`) inside a gate's `approve:` — the multi-party rules, quorum, four-eyes floor. | [approval-policy](../reference/approval-policy.md) |
 
@@ -160,13 +159,13 @@ Agents get tools by connecting to **MCP servers** (stdio or Streamable HTTP), co
 
 ## Step 5 — governance and decision skills
 
-Governance is not a prompt suggestion — it is structural. All policy/identity/audit flow through the `GovernanceProvider` interface; the audit log is append-only from the executive's perspective; and a set of scopes reserved for human identity (`skills:activate`, `topologies:modify`, `iam:modify`, and the pipeline scopes below) can **never** be granted to an agent, regardless of prompt. **Decision skills** run mandatory evaluations at workspace/topology boundaries with a bounded retry loop.
+Governance is not a prompt suggestion — it is structural. All policy/identity/audit flow through the `GovernanceProvider` interface; the audit log is append-only from the executive's perspective; and a set of scopes reserved for human identity (`skills:activate`, `mcp_servers:deploy`, `topologies:modify`, `iam:modify`, `approvals:resolve`) can **never** be granted to an agent, regardless of prompt. **Decision skills** run mandatory evaluations at workspace/topology boundaries with a bounded retry loop.
 
 → [Governance provider](../design-notes/governance-provider-interface.md) · [Structured output governance](../design-notes/structured-output-governance.md) · [Tutorial 7: Governance & Safety](../tutorials/07-governance.md)
 
 ## Step 6 — a quality gate with a Funnel
 
-A **Funnel** chains four optional layers into one reusable gate, referenced by id from a node or a pipeline stage. Present layers always run in the fixed order `validate → judge → review → approve`; the automated layers *filter and drive a bounded retry loop but never decide* — the only exit is human `approve`. On retry exhaustion it escalates to a human with the last critique attached; it never silently advances.
+A **Funnel** chains four optional layers into one reusable gate, referenced by id from an agent node. Present layers always run in the fixed order `validate → judge → review → approve`; the automated layers *filter and drive a bounded retry loop but never decide* — the only exit is human `approve`. On retry exhaustion it escalates to a human with the last critique attached; it never silently advances.
 
 ```yaml
 apiVersion: swarmkit/v1
@@ -235,44 +234,42 @@ provenance: { authored_by: human, version: 0.1.0 }
 
 → [Executor adapter reference](../reference/executor-adapter.md) · [Executor abstraction](../design-notes/executor-abstraction.md) · [Authoring a harness adapter](https://github.com/delivstat/swarmkit/blob/main/docs/guides/authoring-harness-adapters.md)
 
-## Step 8 — a pipeline as data
+## Step 8 — sequence the runs from your application
 
-A single topology run is bounded — minutes, one team, one concern. A real delivery pipeline spans weeks, many teams, external events (Jira, CI, SAST), and human gates. That is a **StageGraph**: an ordered set of bounded `stages[]` that a **controller** sequences as a **saga**.
+A single topology run is bounded — minutes, one team, one concern. Real delivery work spans weeks,
+many teams, external events (Jira, CI, SAST), and human gates.
 
-Each stage kicks a topology run; the runtime only ever runs the bounded stages. The **controller owns the durable state** — current stage, held locks, pending gate, attempt counts — reacts to events with dedup + reconciliation, manages contract locks, unwinds on cancel, and drives the runtime through a small, **domain-neutral** contract keyed on an opaque `correlation_id` (never a business id). The reference controller lives in the [SDLC example](https://github.com/delivstat/swarmkit/tree/main/examples/sdlc-pipeline), not in the runtime — a different pipeline is new data, not new controller code.
+**That sequencing is yours, not SwarmKit's.** SwarmKit shipped a `StageGraph` + saga controller
+until runtime 1.189.0 and then removed them: what an event means, when to retry, which calendar
+applies and when to give up are application decisions, and hosting them here was turning a swarm
+framework into a workflow engine. See
+[Extracting the pipeline](../design-notes/extracting-the-pipeline.md).
 
-```yaml
-apiVersion: swarmkit/v1
-kind: StageGraph
-metadata: { id: sdlc-full, name: SDLC full-lifecycle pipeline }
-stages:
-  - id: intake
-    topology: oms-intake
-    when: [requirement.created]            # entry event(s) — NOTE: `when`, not `on:`
-    success: design.kickoff                # signal emitted on clean completion → next stage's `when`
-  - id: design
-    topology: consolidated-design
-    when: [design.kickoff]
-    locks: [oms-inventory, oms-web]         # integration contracts, all-or-none, held through approval
-    gate: consolidated-design-approval      # a Funnel id; the run parks on it
-    success: design.approved
-    release_locks_on: design.approved
-    compensation: oms-compensate-design     # unwind topology if the requirement cancels
-  - id: build
-    topology: oms-build-harness
-    when: [design.approved]
-    success: build.ready-in-qa              # EXTERNAL event (CI) — the controller waits, never fabricates
-  # … sit → pt → security-review → deploy → support-handover
-loops:                                      # cross-stage edges: the defect cycle
-  - { when: defect.raised, to: build }
-  - { when: defect.fixed,  to: sit }
-provenance: { authored_by: human, version: 1.0.0 }
+What you get instead is a small, honest HTTP contract:
+
+```python
+# your orchestrator — a script, a Temporal workflow, an Airflow DAG, whatever you already run
+job = http.post("/run/consolidated-design", {
+    "input": brief,
+    "correlation_id": "WMS-35",          # "same ticket" — groups every run of the flow
+    "labels": {"app": "oms"},            # opaque to SwarmKit; reaches jobs AND audit_events
+})["job_id"]
+
+# a gated run parks instead of holding a process open
+while http.get(f"/jobs/{job}")["status"] == "deferred":
+    gate = http.get(f"/gates/{job}:designer")          # policy already applied — quorum, four-eyes
+    if gate["status"] == "approved":
+        http.post(f"/jobs/{job}/resume")               # a resumed run can park again, identically
+    else:
+        sleep(POLL_SECONDS)                            # a gate waits on a person
 ```
 
-!!! warning "`when`, not `on:`"
-    A bare `on:` key is coerced to the boolean `true` by YAML 1.1 parsers. The schema uses `when` for both a stage's entry events and a loop's trigger. Always use `when`.
+Three fields carry the thread: `correlation_id` ("same ticket"), `labels` (your model, opaque to
+SwarmKit), and `parent_job_id` ("this run replaces that attempt" — what makes cost across retries
+answerable). `GET /artifacts/{ref}` fetches what a gate is about.
 
-A stage's `locks` reference **Contract** artifacts — making a lock id a checked, pickable vocabulary instead of a free-form string a typo could silently fork:
+The locks your sequencer holds reference **Contract** artifacts — making a lock id a checked,
+pickable vocabulary instead of a free-form string a typo could silently fork:
 
 ```yaml
 apiVersion: swarmkit/v1
@@ -282,11 +279,15 @@ parties: [oms, web]                         # >= 2 app ids — an interface *bet
 provenance: { authored_by: human, version: 1.0.0 }
 ```
 
-→ [StageGraph reference](../reference/stage-graph.md) · [Contract reference](../reference/contract.md) · [Pipeline controller](../design-notes/pipeline-controller.md) · [Orchestration provider seam](../design-notes/orchestration-provider-seam.md) · [Tutorial 16: Pipelines & Contracts](../tutorials/16-pipelines.md)
+Read [`examples/pipeline-orchestrator/`](https://github.com/delivstat/swarmkit/tree/main/examples/pipeline-orchestrator):
+a reference application that drives a multi-stage flow with **no `swarmkit_runtime` import anywhere
+in it**. That is the proof the boundary is real rather than claimed.
+
+→ [Driving SwarmKit from your application](../reference/orchestrator-integration.md) · [Contract reference](../reference/contract.md) · [Reading a gate, approving without a saga](../design-notes/gate-state-and-deferring-approval.md) · [Tutorial 16: Sequencing & Contracts](../tutorials/16-pipelines.md)
 
 ## Step 9 — multi-party human approval
 
-A pipeline's gates resolve to real people through a **RoleRegistry**. A gate's `approve` rules name roles; the registry maps roles to member identities and the scopes they confer; scopes reserved for human identity can never be held by an agent.
+A gate resolves to real people through a **RoleRegistry**. A gate's `approve` rules name roles; the registry maps roles to member identities and the scopes they confer; scopes reserved for human identity can never be held by an agent.
 
 ```yaml
 apiVersion: swarmkit/v1
@@ -305,7 +306,7 @@ The **ApprovalPolicy** (the `approve:` block — embedded config, not a standalo
 
 ## Step 10 — triggering
 
-Pipelines advance on the outside world. A **Trigger** is an external event source that either starts a topology or emits an event onto a running pipeline. A signed CI webhook that pushes a stage forward:
+Delivery work advances on the outside world. A **Trigger** is an external event source that starts a topology or delivers a signed event your application acts on. A signed CI webhook:
 
 ```yaml
 apiVersion: swarmkit/v1
@@ -313,33 +314,33 @@ kind: Trigger
 metadata: { id: ci-build-ready, name: CI build-ready webhook }
 type: webhook
 targets:
-  - pipeline: oms-pipeline
-    emit: build.ready-in-qa
+  - pipeline: oms-delivery                 # the event STREAM your application listens on
+    emit: build.ready-in-qa                # the event name — SwarmKit routes it, you interpret it
     correlation_id: $.correlation_id       # opaque handle extracted from the JSON body
 config:
   auth: { method: hmac, credentials_ref: CI_WEBHOOK_SECRET }
 ```
 
-The `swarmkit serve` HTTP front door receives it: the receiver validates the HMAC, extracts the opaque `correlation_id`, and emits the event onto the pipeline ingress. Emitting a pipeline event is a **reserved, human/authorized-only authority** — `pipeline:advance` and `pipeline:skip` are in the reserved scope set and gated by the policy engine, audited, and deny with 403 otherwise. No agent can advance a pipeline by talking.
+The `swarmkit serve` HTTP front door receives it: the receiver validates the HMAC, extracts the opaque `correlation_id`, and hands the event to your listener (`POST /events/signal`). What the event *means* is your application's call — that judgement left with the sequencer. A trigger whose `credentials_ref` names an absent environment variable **refuses to start**, because accepting unsigned requests is a fail-open indistinguishable from working.
 
-→ [Trigger reference](../reference/trigger.md) · [Pipeline triggering](../design-notes/pipeline-triggering.md) · [Serve mode](../reference/serve.md) · [Tutorial 12: Triggers & Canary](../tutorials/12-triggers-canary.md)
+→ [Trigger reference](../reference/trigger.md) · [Serve mode](../reference/serve.md) · [Tutorial 12: Triggers & Canary](../tutorials/12-triggers-canary.md)
 
 ## Step 11 — serve, observe, evolve
 
 Ship it behind the server, watch it, and let it tell you how to grow:
 
-- **Serve.** `swarmkit serve` exposes topologies as async jobs with SSE streaming, an MCP endpoint, pluggable auth (API key / JWT-JWKS), webhook triggers, and canary version routing with auto-promotion. Install with the extras to get the server and the hosted web UI: `uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` — then `swarmkit serve` hosts the portal (dashboard, chat, topology + pipeline canvas) at its own origin; without `[ui]` it runs headless (API only). → [Serve mode](../reference/serve.md) · [Tutorial 11: Serve & HTTP API](../tutorials/11-serve-api.md)
+- **Serve.** `swarmkit serve` exposes topologies as async jobs with SSE streaming, an MCP endpoint, pluggable auth (API key / JWT-JWKS), webhook triggers, and canary version routing with auto-promotion. Install with the extras to get the server and the hosted web UI: `uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` — then `swarmkit serve` hosts the portal (dashboard, chat, topology canvas) at its own origin; without `[ui]` it runs headless (API only). → [Serve mode](../reference/serve.md) · [Tutorial 11: Serve & HTTP API](../tutorials/11-serve-api.md)
 - **Observe.** Every run is a trace of agent-step spans with token counts. `swarmkit trace <run>`, `swarmkit status`, `swarmkit logs`, `swarmkit why <run>` (LLM post-mortem), `swarmkit ask`. OpenTelemetry export is built in. → [Telemetry](../reference/telemetry.md) · [Human interaction model](../design-notes/human-interaction-model.md)
 - **Remember.** Workspace memory lets agents carry insight across conversations (local JSON or a GBrain backend). → [Workspace memory](../reference/workspace-memory.md) · [Tutorial 9: Conversations & Memory](../tutorials/09-conversations-memory.md)
 - **Grow.** The runtime records capability gaps (`swarmkit gaps`); you author the missing skill through conversation (`swarmkit edit`), test it, and publish — human-approved at every step. → [Skill authoring](../design-notes/topology-skill-authoring.md) · [Tutorial 13: Authoring & Review](../tutorials/13-authoring-review.md)
 
-## The worked example — the SDLC pipeline
+## The worked example — the SDLC workspace
 
-Everything above is assembled, end to end, in [`examples/sdlc-pipeline`](https://github.com/delivstat/swarmkit/tree/main/examples/sdlc-pipeline): a complete software-delivery lifecycle — **intake → design → build → sit → pt → security-review → deploy → support-handover** — carrying three multi-party human gates, integration-contract locks held through approval, per-stage compensations, a cross-stage defect loop, a harness build/review node, webhook triggering, and the reference saga controller (with a Temporal adapter for production). It is the reference for how the pieces fit.
+Everything above is assembled, end to end, in [`examples/sdlc-pipeline`](https://github.com/delivstat/swarmkit/tree/main/examples/sdlc-pipeline): a complete software-delivery lifecycle — **intake → design → build → sit → pt → security-review → deploy → support-handover** — carrying three multi-party human gates, integration contracts, a harness build/review node and IAM-scoped agents. Its sequencing half left with the bundled pipeline in 1.189.0; the artifacts, the gates and the per-stage demos remain. It is the reference for how the pieces fit.
 
 - **Watch it.** The [captioned video walkthrough](../sdlc-example/index.html) tours every artifact and runs a stage end to end.
-- **Run it.** `just demo-sdlc` drives one requirement through all eight stages + three gates deterministically via the reference controller; `just demo-sdlc-stage-run` runs a single gated stage.
-- **Read it.** The [SDLC pipeline example design note](https://github.com/delivstat/swarmkit/blob/main/design/details/sdlc-pipeline-example.md) is the build-order narrative (slices 1–9) and the automation map (which stages are agent-run vs. human-gated).
+- **Run it.** `just demo-sdlc-stage-run` runs a single gated stage end to end; `just demo-consolidated-design`, `just demo-harness-build` and `just demo-sit-pt` each exercise one capability deterministically (no keys, no server).
+- **Read it.** The [SDLC example design note](https://github.com/delivstat/swarmkit/blob/main/design/details/sdlc-pipeline-example.md) is the build-order narrative (slices 1–9) and the automation map (which stages are agent-run vs. human-gated).
 
 ## Validate everything
 
@@ -356,7 +357,7 @@ The resolver rejects a lock that names no contract, an approval rule whose scope
 
 ## Reference index
 
-- **Artifacts:** [topology](../reference/topology.md) · [workspace](../reference/workspace.md) · [archetypes](../reference/archetypes.md) · [skills](../reference/skills.md) · [funnel](../reference/funnel.md) · [stage-graph](../reference/stage-graph.md) · [contract](../reference/contract.md) · [role-registry](../reference/role-registry.md) · [trigger](../reference/trigger.md) · [executor-adapter](../reference/executor-adapter.md) · [approval-policy](../reference/approval-policy.md)
-- **Runtime seams:** [governance provider](../design-notes/governance-provider-interface.md) · [model provider](../design-notes/model-provider-abstraction.md) · [executor abstraction](../design-notes/executor-abstraction.md) · [orchestration provider seam](../design-notes/orchestration-provider-seam.md)
+- **Artifacts:** [topology](../reference/topology.md) · [workspace](../reference/workspace.md) · [archetypes](../reference/archetypes.md) · [skills](../reference/skills.md) · [funnel](../reference/funnel.md) · [contract](../reference/contract.md) · [role-registry](../reference/role-registry.md) · [trigger](../reference/trigger.md) · [executor-adapter](../reference/executor-adapter.md) · [approval-policy](../reference/approval-policy.md)
+- **Runtime seams:** [governance provider](../design-notes/governance-provider-interface.md) · [model provider](../design-notes/model-provider-abstraction.md) · [executor abstraction](../design-notes/executor-abstraction.md) · [extracting the pipeline](../design-notes/extracting-the-pipeline.md)
 - **Operate:** [CLI commands](../reference/cli.md) · [serve](../reference/serve.md) · [telemetry](../reference/telemetry.md) · [notifications](../reference/notifications.md) · [env config](../reference/env-config.md)
 - **Learn by doing:** the [16-level tutorial ladder](../tutorials/index.md) walks the same arc one runnable step at a time.

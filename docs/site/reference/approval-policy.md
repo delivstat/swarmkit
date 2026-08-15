@@ -85,7 +85,7 @@ Role-tasks serialize as `kind: "role_task"` carrying `gate_id`, `role`, `scope`,
 acting in. Narrow the queue with `GET /review?kind=role_task&gate_id=<id>`, or
 `swarmkit review list --kind role_task --gate <id>`.
 
-`GET /pipelines/gate-status/{correlation_id}/{gate}` returns the aggregate plus per-role `items`.
+`GET /gates/{gate_id}` returns the aggregate plus per-role `items` (the gate id is `<run_id>:<agent_id>` — split on the last colon).
 Its `status` is evaluated through the **approval engine** whenever the gate's policy is reachable
 from the workspace (`quorum_evaluated: true`) — so the report matches the decision the runtime
 gates on. When the policy cannot be located (an externally-driven gate, or a renamed agent) it

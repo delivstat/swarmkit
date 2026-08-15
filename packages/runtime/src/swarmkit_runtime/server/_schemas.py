@@ -16,6 +16,11 @@ class RunRequest(BaseModel):
     correlation_id: str | None = None
     #: Arbitrary grouping, opaque to the runtime — it carries the caller's model, not ours.
     labels: dict[str, str] = Field(default_factory=dict)
+    #: The job this run supersedes. A rejected artifact is redone by running AGAIN, which writes a
+    #: new job; `correlation_id` cannot express that, because it already means "same ticket" and
+    #: holds different units of work as well as retries. The column and the read path shipped in
+    #: 1.189.0 with no way for a caller to set it, which made the chain unwritable over HTTP.
+    parent_job_id: str | None = None
 
 
 class CreateConversationRequest(BaseModel):

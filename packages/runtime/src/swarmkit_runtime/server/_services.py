@@ -99,6 +99,7 @@ class JobService:
         max_steps: int,
         correlation_id: str | None = None,
         labels: dict[str, str] | None = None,
+        parent_job_id: str | None = None,
     ) -> Job:
         """Resolve, gate on capacity, create + persist the job, and start it in the background."""
         resolved_name, selected_version = self.resolve_topology(rt, canary, topology_name)
@@ -108,7 +109,13 @@ class JobService:
         job.version = selected_version
         if store:
             store.create_job(
-                job.id, resolved_name, user_input, correlation_id, "serve", labels=labels
+                job.id,
+                resolved_name,
+                user_input,
+                correlation_id,
+                "serve",
+                labels=labels,
+                parent_job_id=parent_job_id,
             )
             if selected_version:
                 store.update_job(job.id, version=selected_version)

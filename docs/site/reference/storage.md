@@ -12,17 +12,16 @@ that service resolves the configuration once, at startup, and reports what it ch
 
 Before 1.130.0 six components resolved storage independently and four ignored the configuration
 entirely — three had a SQLite path hardcoded. A workspace declaring Postgres for everything ran its
-pipeline sagas, its audit trail and its governed memory into a file on one machine. `swarmkit
+run history, its audit trail and its governed memory into a file on one machine. `swarmkit
 validate` passed, runs succeeded, and the only symptom was that `swarmkit serve` showed nothing.
 
-## The seven stores
+## The six stores
 
 | Store | Holds | Follows |
 |---|---|---|
 | `runtime` | jobs, conversations, usage, serve access | the config you write |
 | `audit` | the append-only audit trail | `storage.audit`, else `storage.runtime` |
-| `artifacts` | pipeline stage outputs | `storage.artifacts`, else `storage.runtime` |
-| `saga` | pipeline state + the durable event queue | `storage.runtime` |
+| `artifacts` | saved run outputs, fetched by ref | `storage.artifacts`, else `storage.runtime` |
 | `memory` | governed memory + its change log | `storage.runtime` |
 | `fleet` | enrollment tokens, fleet memberships | `storage.runtime` (design 19 Q4) |
 | `checkpoints` | LangGraph run state | **only** `storage.checkpoints` |
@@ -106,7 +105,6 @@ storage for /srv/swarm:
   checkpoints  sqlite    workspace-local  (default)
   artifacts    postgres  postgresql://swarm:***@db:5432/swarmkit  (env)
   memory       postgres  postgresql://swarm:***@db:5432/swarmkit  (env)
-  saga         postgres  postgresql://swarm:***@db:5432/swarmkit  (env)
   fleet        postgres  postgresql://swarm:***@db:5432/swarmkit  (env)
 ```
 
@@ -128,8 +126,9 @@ Refusing to fall back to sqlite: the run would write to a different database tha
 configured.
 ```
 
-Falling back would write the run somewhere other than where you configured, and split `serve` from
-the `orchestrator` with neither process warning. A failed start is the cheaper failure.
+Falling back would write the run somewhere other than where you configured, and split `serve`
+from anything else reading the same store with neither process warning. A failed start is the
+cheaper failure.
 
 ### Except for checkpoints
 
@@ -149,7 +148,7 @@ Two reasons this one is different. The rule above protects **records** — an au
 governed-memory write landing in the wrong database loses data silently. Checkpoints are
 disposable run state; the cost here is resumability from another host, which surfaces at resume,
 on the run it affects. And this is a **missing optional dependency**, not a wrong config: taking
-down serve, the orchestrator and every trigger over one is disproportionate to a store whose
+down serve and every trigger over one is disproportionate to a store whose
 contents can be thrown away.
 
 !!! warning "Upgrading from before 1.130.0"
@@ -212,7 +211,6 @@ swarmkit storage migrate .              # move it
 ```
 Migrating 468 row(s) from /srv/swarm/.swarmkit:
   store.sqlite   jobs                                18 -> postgresql://swarm:***@db:5432/swarmkit
-  store.sqlite   pipeline_saga                       11 -> postgresql://swarm:***@db:5432/swarmkit
   audit.sqlite   audit_events                       412 -> postgresql://swarm:***@db:5432/swarmkit
   ...
 Done: 468 row(s) copied, 0 already present.
@@ -251,9 +249,11 @@ Leaving them in place is how a split brain starts.
 
 ### 6. Restart everything that touches the store
 
-`swarmkit serve`, `swarmkit orchestrator`, and any process manager unit. **They must all see the
-same environment.** An orchestrator started without `SWARMKIT_STORE_URL` polls a different database
-than the serve that enqueued the work: no stage ever runs, and neither process warns.
+`swarmkit serve`, any `swarmkit run` invocation, and any process manager unit. **They must all
+see the same environment.** A process started without `SWARMKIT_STORE_URL` reads and writes a
+different database than the one you migrated into: runs land where nobody is looking, and nothing
+warns. If your application sequences runs, it keeps its own state in its own store — check that one
+too.
 
 ### Optionally: Postgres checkpoints too
 
@@ -279,6 +279,6 @@ SQLite files were never modified, so this is a move-back, not a restore.
 
 - [Workspace environment configuration](env-config.md) — `workspace.env.yaml`, `${...}` references,
   and marking properties as secret.
-- [Orchestrator integration](orchestrator-integration.md) — why serve and the orchestrator must
-  resolve the same store.
+- [Driving SwarmKit from your application](orchestrator-integration.md) — the HTTP contract, and
+  where your sequencer's own state belongs.
 - [CLI reference](cli.md) — `swarmkit storage`, `swarmkit system`.

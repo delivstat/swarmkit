@@ -85,6 +85,18 @@ def run(  # noqa: PLR0912
             ),
         ),
     ] = False,
+    supersedes: Annotated[
+        str | None,
+        typer.Option(
+            "--supersedes",
+            help=(
+                "The job id this run replaces — a redo after a rejected artifact. Written to "
+                "jobs.parent_job_id, which makes 'what did this artifact really cost' answerable "
+                "across attempts. Different from --correlation-id, which groups a ticket's runs "
+                "including work that is not a retry."
+            ),
+        ),
+    ] = None,
     label: Annotated[
         list[str] | None,
         typer.Option(
@@ -196,6 +208,7 @@ def run(  # noqa: PLR0912
                 correlation_id=correlation_id,
                 labels=run_labels,
                 save_artifact=save_artifact,
+                supersedes=supersedes,
             )
         else:
             result = _execute_run(
@@ -206,6 +219,7 @@ def run(  # noqa: PLR0912
                 correlation_id=correlation_id,
                 labels=run_labels,
                 save_artifact=save_artifact,
+                supersedes=supersedes,
             )
 
     if result.output:
@@ -320,6 +334,7 @@ def _execute_run(
     correlation_id: str | None = None,
     labels: dict[str, str] | None = None,
     save_artifact: bool = False,
+    supersedes: str | None = None,
 ) -> RunResult:
     """Execute a topology run with HITL and interrupt handling."""
     from uuid import uuid4  # noqa: PLC0415
@@ -336,7 +351,13 @@ def _execute_run(
     if store is not None:
         try:
             store.create_job(
-                thread_id, topology_name, user_input, correlation_id, "cli", labels=labels
+                thread_id,
+                topology_name,
+                user_input,
+                correlation_id,
+                "cli",
+                labels=labels,
+                parent_job_id=supersedes,
             )
         except Exception as exc:
             _stderr(f"note: this run will not appear in history: {exc}")

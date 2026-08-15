@@ -5,10 +5,10 @@
 Define agents, skills, and governance in a topology file. SwarmKit compiles it to LangGraph and runs it.
 
 !!! tip "Watch it in action"
-    **[SDLC pipeline: a video walkthrough →](sdlc-example/)** — a guided tour of a real delivery pipeline (topologies, archetypes, skills, funnels, the StageGraph, and contracts), each shown running in the composer.
+    **[SDLC example: a video walkthrough →](sdlc-example/)** — a guided tour of a real delivery workspace (topologies, archetypes, skills, funnels, and contracts), each shown running in the composer. Recorded before sequencing moved out of SwarmKit in 1.189.0, so its stage-graph sections are historical; everything else is current.
 
 !!! abstract "Building a swarm? Start with the playbook"
-    **[Building swarms — the complete playbook →](guides/building-swarms.md)** takes you from one agent to a governed multi-app pipeline, one runnable artifact at a time. For LLMs and coding agents, there's a compact machine-readable index at **[`/llms.txt`](llms.txt)** and the full corpus inlined into one file at **[`/llms-full.txt`](llms-full.txt)**.
+    **[Building swarms — the complete playbook →](guides/building-swarms.md)** takes you from one agent to a governed multi-app delivery flow, one runnable artifact at a time. For LLMs and coding agents, there's a compact machine-readable index at **[`/llms.txt`](llms.txt)** and the full corpus inlined into one file at **[`/llms-full.txt`](llms-full.txt)**.
 
 ---
 
@@ -224,7 +224,7 @@ See the [Implementation Plan](architecture/implementation-plan.md) for the full 
 
 ### Phase 3-4 — Ecosystem + production readiness
 
-> This roadmap is the original phased plan. Development is well past it — the runtime is at **1.98.0**, and features that shipped after M11 (first-class [Funnels](reference/funnel.md), [StageGraph pipelines](reference/stage-graph.md), integration [Contracts](reference/contract.md), multi-party approval, and [executor harnesses](reference/executor-adapter.md)) aren't in this table. See the [implementation plan](architecture/implementation-plan.md) for current status.
+> This roadmap is the original phased plan. Development is well past it — the runtime is at **1.192.0**, and features that shipped after M11 (first-class [Funnels](reference/funnel.md), integration [Contracts](reference/contract.md), multi-party approval, defer-and-resume on a human gate, [skill prerequisites](design-notes/skill-prerequisites.md), and [executor harnesses](reference/executor-adapter.md)) aren't in this table. See the [implementation plan](architecture/implementation-plan.md) for current status.
 
 | # | Milestone | Status |
 |---|---|---|
