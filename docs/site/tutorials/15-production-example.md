@@ -3,7 +3,7 @@
 A complete workspace that combines every feature from Levels 1-14 into a production-ready content review platform.
 
 !!! tip "See a real delivery pipeline, end to end"
-    The workspace below is a teaching example. For a **video walkthrough of a real delivery pipeline** — first-class [Funnels](../reference/funnel.md), a [StageGraph](../reference/stage-graph.md) sequenced by a durable saga controller, and integration [Contracts](../reference/contract.md), each shown running in the composer — see the **[SDLC pipeline walkthrough →](../sdlc-example/)** (source: `examples/sdlc-pipeline`).
+    The workspace below is a teaching example. For a **video walkthrough of a real delivery workspace** — first-class [Funnels](../reference/funnel.md), multi-party approval and integration [Contracts](../reference/contract.md), each shown running in the composer — see the **[SDLC walkthrough →](../sdlc-example/)** (source: `examples/sdlc-pipeline`). It was recorded while SwarmKit still bundled a sequencer; the artifact tour is current, the stage-graph sections are historical.
 
 ## What you'll build
 

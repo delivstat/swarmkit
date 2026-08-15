@@ -1,17 +1,25 @@
 ---
 title: Integration-contract registry
-description: Make the integration contracts a pipeline locks on first-class artifacts, so lock ids are a checked, pickable vocabulary (not free strings) and the contention overlay is exact.
-tags: [schema, pipeline, contracts, locking]
-status: proposed
+description: Make the integration contracts a delivery flow locks on first-class artifacts, so lock ids are a checked, pickable vocabulary (not free strings) and the contention view is exact.
+tags: [schema, contracts, locking]
+status: implemented
 ---
 
 # Integration-contract registry
 
+!!! note "The registry stayed; the lock manager left"
+    This note was written while SwarmKit still bundled a pipeline sequencer, so it describes the
+    `StageGraph` lock ref-check. The stage graph was removed in runtime 1.189.0
+    ([Extracting the pipeline](extracting-the-pipeline.md)) and that ref-check went with it. The
+    **registry itself is unchanged and still shipped**: contracts resolve into
+    `ResolvedWorkspace.contracts`, so the sequencer in *your* application can check a lock id
+    against a real artifact. Read the StageGraph passages below as the original motivation.
+
 **Scope:** schema (new `Contract` artifact) + runtime (discovery/resolution + StageGraph lock
 ref-check) + serve + composer + docs.
-**Design references:** [`pipeline-controller.md`](pipeline-controller.md) (integration-contract
+**Design references:** [`extracting-the-pipeline.md`](extracting-the-pipeline.md) (where the lock manager went) · the retired pipeline-controller note (integration-contract
 locking), [`pipeline-editor-canvas.md`](https://github.com/delivstat/swarmkit/blob/main/design/details/pipeline-editor-canvas.md) (this is its "contract-lock
-registry" open question, resolved), [`stage-graph` schema](../reference/stage-graph.md).
+registry" open question, resolved).
 **Status:** proposed.
 
 ## Why

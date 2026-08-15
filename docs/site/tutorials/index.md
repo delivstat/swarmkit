@@ -49,6 +49,6 @@ Working examples for each level are at `examples/tutorials/`.
 
 ## Beyond the tutorials
 
-After Level 16, see the **[SDLC pipeline walkthrough](../sdlc-example/)** — a video tour of a production delivery pipeline that combines the level features with the orchestration primitives: [Funnels](../reference/funnel.md), [StageGraphs](../reference/stage-graph.md), and [Contracts](../reference/contract.md).
+After Level 16, see the **[SDLC walkthrough](../sdlc-example/)** — a video tour of a production delivery workspace that combines the level features with the governance primitives: [Funnels](../reference/funnel.md), multi-party [approval](../reference/approval-policy.md), and [Contracts](../reference/contract.md). (Recorded before sequencing moved out of SwarmKit in 1.189.0; the artifact tour is current, the stage-graph sections are historical.)
 
 Start with [Level 1: Hello World](01-hello-world.md).

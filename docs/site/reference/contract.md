@@ -1,12 +1,12 @@
 # Contract
 
-A **contract** is a first-class SwarmKit artifact (`kind: Contract`) that names an **integration contract**: the agreed interface between two (or more) applications, identified by id. It exists so a [StageGraph](stage-graph.md) stage's `locks` reference **real** contracts instead of free-form strings — a checked, pickable vocabulary rather than opaque lock names.
+A **contract** is a first-class SwarmKit artifact (`kind: Contract`) that names an **integration contract**: the agreed interface between two (or more) applications, identified by id. It exists so the locks your sequencer holds reference **real** contracts instead of free-form strings — a checked, pickable vocabulary rather than opaque lock names.
 
-Why the registry exists, the StageGraph lock ref-check, and the non-goals are specified in the design note: [integration-contract registry](https://github.com/delivstat/swarmkit/blob/main/design/details/contract-registry.md) (`design/details/contract-registry.md`). This page is the artifact reference.
+Why the registry exists, the lock ref-check, and the non-goals are specified in the design note: [integration-contract registry](https://github.com/delivstat/swarmkit/blob/main/design/details/contract-registry.md) (`design/details/contract-registry.md`). This page is the artifact reference.
 
 ## What a contract is for
 
-A pipeline serialises requirements on the **integration contracts** they share. A stage's `locks: [oms-web, oms-inventory]` mean "hold the OMS↔Web and OMS↔Inventory interfaces while I change them, so no concurrent requirement commits a conflicting version." Those locks are what keep two requirements that both touch the same app-pair interface from racing.
+A delivery flow serialises work on the **integration contracts** it shares. `locks: [oms-web, oms-inventory]` mean "hold the OMS↔Web and OMS↔Inventory interfaces while I change them, so no concurrent requirement commits a conflicting version." Those locks are what keep two pieces of work that both touch the same app-pair interface from racing.
 
 Before contracts were artifacts, lock ids were **free-form strings**: nothing checked them, so a typo (`oms-web` vs `oms_web`) silently became a *different* lock — and two requirements that should serialise did not. The composer could only offer a free-text chip, and the contention overlay ("which stages fight over the same contract") was approximate. The contract itself — the agreed interface between two apps — had no home.
 
@@ -16,19 +16,19 @@ Making each integration contract a first-class artifact turns lock ids into a **
 
 A lock **is** an integration contract; the free-string form was the placeholder. A stage acquires its `locks` **all-or-none, in a fixed global order**, *before* its run starts (deadlock avoidance), and releases them on the signal named by `release_locks_on` — for example, hold a contract through design approval, then release on `design.approved`. Unrelated requirements whose stages lock **disjoint** contracts still run in parallel; only stages that hold the **same** contract id serialise.
 
-A contract is **not executed**. The controller / orchestrator (the reference controller, or a Temporal adapter) is still the lock manager; the registry only makes the vocabulary real. A contract's `parties` let the manager — and the pipeline board — group locks by the app-pair they bind, which is what makes the contention overlay exact and labelable.
+A contract is **not executed**. **Your application is the lock manager** — SwarmKit stopped sequencing anything in 1.189.0 (see [Extracting the pipeline](../design-notes/extracting-the-pipeline.md)); the registry only makes the vocabulary real. A contract's `parties` let that manager group locks by the app-pair they bind, which is what makes a contention view exact and labelable.
 
 ## Referenced by locks
 
-A contract is a standalone artifact, like a skill or a funnel. It lives in a `contracts/` directory in the workspace and is referenced **by id** from a StageGraph stage's `locks`. Defining it once and referencing it by id is what lets many stages (across many pipelines) hold the same real interface, and lets the composer `ref`-validate the locks against the workspace before publish.
+A contract is a standalone artifact, like a skill or a funnel. It lives in a `contracts/` directory in the workspace and is referenced **by id** by whatever holds the lock. Defining it once and referencing it by id is what lets many pieces of work hold the same real interface, and lets the composer `ref`-validate lock names against the workspace before publish.
 
-The runtime **ref-checks each lock against the contract registry**: contracts are discovered into `ResolvedWorkspace.contracts` (id → resolved contract, like funnels/roles/stage-graphs), and a StageGraph lock naming a contract that does not exist is a `stage-graph.unknown-contract` resolution error — consistent with how `topology` and `gate` references are checked. (`release_locks_on` is unchanged; it is an event, not a contract.)
+Contracts are discovered into `ResolvedWorkspace.contracts` (id → resolved contract, like funnels and roles), so a sequencer can resolve a lock name to a real artifact — and reject one that names nothing — instead of trusting a string. The ref-check that ran against a `StageGraph`'s `locks` went with the stage graph itself; the registry it checked against did not.
 
 ## Contract fields
 
 | Field | Required | What it does |
 |---|---|---|
-| `parties` | yes | The applications this contract binds — **at least two**. This is what makes it a contract (an interface *between* apps), and it drives the pipeline's contention / ownership display. App ids are free strings; apps are **not** artifacts. |
+| `parties` | yes | The applications this contract binds — **at least two**. This is what makes it a contract (an interface *between* apps), and it drives the contention / ownership display. App ids are free strings; apps are **not** artifacts. |
 | `interface` | no | A pointer to where the interface itself lives (an API / event schema). **Not interpreted by core** — documentation plus a handle for reviewers. |
 
 Core does not parse or diff the `interface` spec — that is a contract-testing / SIT concern, not this registry's. The registry governs **identity + locking**, not interface compatibility.
@@ -86,21 +86,22 @@ provenance:
   version: 1.0.0
 ```
 
-A [StageGraph](stage-graph.md) then locks on these by id:
+Your sequencer then holds them by id. The shape is **yours** — SwarmKit no longer defines one — but
+the ids are checkable against the workspace, which is the whole point of the registry:
 
-```yaml
-  - id: design
-    topology: sdlc-design
-    when: [design.kickoff]
-    locks: [oms-web, oms-inventory]      # Contract references — ref-checked at resolution
-    release_locks_on: design.approved
+```python
+# your orchestrator, your dataclass
+Stage(id="design", topology="sdlc-design", locks=("oms-web", "oms-inventory"))
 ```
+
+`ResolvedWorkspace.contracts` is how you check a lock name before you take it, so a typo fails where
+you can see it rather than silently becoming a different lock that serialises nothing.
 
 ## Authoring a contract
 
-The conversational authoring path treats a contract like any other artifact: the schema drafter calls `get_schema("contract")` for the exact shape, and `query-swarmkit-docs` surfaces this reference and the design note. The authoring swarm writes the artifact into the workspace `contracts/` directory via `write_workspace_file`. When authoring, remember: `parties` needs **at least two** app ids (a contract is an interface *between* apps); the `id` is what a stage's `locks` reference, so it must match the lock the pipeline expects; and `interface` is optional and documentation-only — core never parses it.
+The conversational authoring path treats a contract like any other artifact: the schema drafter calls `get_schema("contract")` for the exact shape, and `query-swarmkit-docs` surfaces this reference and the design note. The authoring swarm writes the artifact into the workspace `contracts/` directory via `write_workspace_file`. When authoring, remember: `parties` needs **at least two** app ids (a contract is an interface *between* apps); the `id` is what a lock references, so it must match the lock your sequencer expects; and `interface` is optional and documentation-only — core never parses it.
 
 ## See also
 
-- [Integration-contract registry design note](https://github.com/delivstat/swarmkit/blob/main/design/details/contract-registry.md) — why lock ids become a checked vocabulary, the StageGraph lock ref-check, and the non-goals (no interface-content validation, no app artifacts, no new lock manager).
-- [StageGraph](stage-graph.md) — the pipeline whose stage `locks` reference contracts by id.
+- [Integration-contract registry design note](https://github.com/delivstat/swarmkit/blob/main/design/details/contract-registry.md) — why lock ids become a checked vocabulary and the non-goals (no interface-content validation, no app artifacts, no new lock manager).
+- [Driving SwarmKit from your application](orchestrator-integration.md) — where the lock manager lives now.

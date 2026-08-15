@@ -84,6 +84,7 @@ class _FakeStore:
         self.created: list[Any] = []
         self.correlations: list[str | None] = []
         self.labels: list[dict[str, str]] = []
+        self.parents: list[str | None] = []
         self.updated: list[Any] = []
 
     def create_job(
@@ -94,6 +95,9 @@ class _FakeStore:
         correlation_id: str | None = None,
         source: str | None = None,
         labels: dict[str, str] | None = None,
+        # Completed rather than absorbed by **kwargs: a double that silently swallows a new
+        # argument is how a field the caller passes stops reaching the store with every test green.
+        parent_job_id: str | None = None,
     ) -> None:
         # Correlation and labels recorded, so a test can assert the HTTP surface passes them —
         # `RunRequest` could not carry either until now, so a run started over the API was
@@ -101,6 +105,7 @@ class _FakeStore:
         self.created.append((job_id, topology, user_input))
         self.correlations.append(correlation_id)
         self.labels.append(dict(labels or {}))
+        self.parents.append(parent_job_id)
 
     def update_job(self, job_id: str, **kw: Any) -> None:
         self.updated.append((job_id, kw))
@@ -236,3 +241,28 @@ def test_detail_projections(artifacts: ArtifactService) -> None:
     assert detail["id"] == "hello" and detail["resolved"]["id"]
     with pytest.raises(NotFoundError):
         artifacts.topology_detail(rt, "ghost")
+
+
+@pytest.mark.asyncio
+async def test_start_records_the_chain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`parent_job_id` reaches the store. The column, the store argument and the merged read all
+    shipped without a way for any caller to set the field, so every chain in the database was NULL —
+    the mirror image of a field nothing can read."""
+    monkeypatch.setattr(_services, "_start_job", lambda *a, **k: None)
+    store = _FakeStore()
+
+    await JobService(JobStore()).start(
+        rt=_FakeRT({"hello": object()}),  # type: ignore[arg-type]
+        canary=None,
+        store=store,  # type: ignore[arg-type]
+        cfg=ServerCfg(),
+        semaphore=None,
+        topology_name="hello",
+        user_input="redo it",
+        max_steps=7,
+        correlation_id="WMS-35",
+        parent_job_id="job-1",
+    )
+
+    assert store.parents == ["job-1"]
+    assert store.correlations == ["WMS-35"], "and the two are separate facts"

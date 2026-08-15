@@ -210,3 +210,45 @@ async def test_adopt_survives_a_row_missing_optional_fields() -> None:
 
     assert job.id == "job-1"
     assert job.events == []
+
+
+# ---- and a caller can actually write it ----------------------------------------------------------
+
+
+def test_the_chain_is_writable_over_http() -> None:
+    """The column, the store argument and the merged read all shipped in 1.189.0 — and no caller
+    could set the field, so every `parent_job_id` in the database was NULL. A chain nothing can
+    write is the same defect as a field nothing can read, from the other end."""
+    schemas = (
+        Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_schemas.py"
+    ).read_text()
+    routes = (
+        Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_routes_jobs.py"
+    ).read_text()
+    services = (
+        Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_services.py"
+    ).read_text()
+
+    assert "parent_job_id: str | None = None" in schemas
+    assert "parent_job_id=body.parent_job_id" in routes
+    assert "parent_job_id=parent_job_id" in services
+
+
+def test_the_chain_is_writable_from_the_cli() -> None:
+    """`--supersedes`, not `--correlation-id`: a correlation groups a ticket's runs including work
+    that is not a retry, so it cannot also mean "replaces that attempt"."""
+    src = (Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/cli/_cmd_run.py").read_text()
+
+    assert '"--supersedes"' in src
+    assert "parent_job_id=supersedes" in src
+
+
+def test_the_cli_threads_it_to_the_writer() -> None:
+    """The flag reaches the `create_job` call, which lives in a different function from the option
+    that declares it — an option parsed and never passed is the shape this file exists to catch."""
+    src = (Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/cli/_cmd_run.py").read_text()
+    executor = src[src.index("def _execute_run(") :]
+
+    assert "supersedes: str | None = None," in executor
+    assert "parent_job_id=supersedes," in executor
+    assert src.count("supersedes=supersedes,") == 2, "both call sites, plan and no-plan"

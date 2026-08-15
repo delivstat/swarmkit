@@ -112,11 +112,6 @@ demo-retry-envelope:
 release-check:
     uv run python scripts/check_publishable.py
 
-# Demo orchestrator event recovery (orchestrator-event-recovery.md): a transient failure retried, a
-# deterministic one dead-lettered, and a killed worker's claim reclaimed.
-demo-orchestrator-recovery:
-    uv run python packages/runtime/demos/orchestrator_recovery.py
-
 # Demo the jobs history page (jobs-history-ui.md): what /jobs and /jobs/history each return, and
 # why a running job must not be printed by both.
 demo-jobs-history:
@@ -218,14 +213,6 @@ demo-cited-change:
 demo-slice-check:
     uv run swarmkit slice-check --diff examples/sdlc-pipeline/fixtures/change.diff --max-diff-lines 400 --max-files 20
 
-# Demo the FULL SDLC lifecycle (slice 9, the capstone): the reference controller drives one
-# requirement through the ENTIRE pipeline — intake -> design -> build -> sit -> pt ->
-# security-review -> deploy -> support-handover -> done — carrying the two multi-party gates, the
-# final release sign-off (eng-manager + cio), the contract locks, and the defect loop. Prints the
-# full correlated saga timeline. Deterministic (scripted run_stage seam, mock rigs, no keys/server).
-demo-sdlc:
-    uv run python examples/sdlc-pipeline/demo_full_sdlc.py
-
 # Demo the one-app (OMS) bounded stage run (slice 4): intake -> design -> judge -> approval, with
 # IAM scoping + the gate funnel + the agent-determination-only shape.
 demo-sdlc-stage-run:
@@ -246,37 +233,12 @@ demo-consolidated-design:
 demo-harness-build:
     uv run python examples/sdlc-pipeline/demo_harness_build.py
 
-# Demo the controller-driven defect loop (slice 8) — the centerpiece: the reference controller
-# sequences the sdlc-sit-pt stage-graph and a defect found in SIT re-kicks build (defect.raised) and
-# its fix re-triggers SIT (defect.fixed); the re-run passes and the saga proceeds through PT + the
-# pre-release security gate to done. Deterministic (scripted run_stage seam, mock rigs, no server).
-demo-defect-loop:
-    uv run python examples/sdlc-pipeline/demo_defect_loop.py
-
 # Demo cross-app SIT + PT against mock rigs + the pre-release security review (slice 8): the sit-qa
 # e2e flows across oms/web/mobile, the pt-engineer's perf test judged by pt-analysis, and the
 # security-review-approval funnel — the security-consultant harness review (HIGH finding routes back)
 # then the infosec-lead sign-off. Deterministic, faked seams (no keys, no network, no server).
 demo-sit-pt:
     uv run python examples/sdlc-pipeline/demo_sit_pt.py
-
-# Demo the OMS pipeline driven by the Temporal orchestrator (orchestration-provider-seam.md).
-# The orchestrator group (temporalio) is pulled in on demand by `uv run --group orchestrator` —
-# no separate sync, and (this is a virtual uv workspace) no pruning of the workspace members.
-demo-pipeline-temporal:
-    uv run --group orchestrator python examples/sdlc-pipeline/demo_pipeline_temporal.py
-
-# Demo the SDLC pipeline controller (slice 5): a saga sequenced across intake -> design (gate) ->
-# build -> sit over a scripted run_stage seam — event dedup, dropped-event reconciliation,
-# per-contract lock serialisation, and cancellation with reverse-order compensation.
-demo-pipeline-controller:
-    uv run python examples/sdlc-pipeline/demo_pipeline_controller.py
-
-# Demo the webhook -> pipeline ingress path (37c, pipeline-triggering.md): a signed CI webhook
-# emits build.ready-in-qa on the ingress front door and the reference saga advances build -> sit;
-# an unauthorised skip is denied (403) and audited. In-process, no live server, no model calls.
-demo-pipeline-trigger:
-    uv run python examples/sdlc-pipeline/demo_pipeline_trigger.py
 
 # Demo the published fleet-enrollment protocol schemas (register/join + InstanceState, design 19):
 # validate every committed protocol fixture + show the cross-file $ref enforcing nested state.

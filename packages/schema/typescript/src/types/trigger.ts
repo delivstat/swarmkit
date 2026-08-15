@@ -25,7 +25,8 @@ export interface SwarmKitTrigger {
     provider_id?: string;
     /**
      * What this trigger fires, in parallel. Each item is either a topology id (fires that
-     * topology) or a pipeline-event target (signals a StageGraph).
+     * topology) or an event target (delivers a correlated EventSignal to whatever the host
+     * application registered).
      */
     targets: Target[];
     /**
@@ -81,11 +82,14 @@ export interface SwarmKitTrigge {
      */
     correlation_id?: string;
     /**
-     * The pipeline event to signal (matched against stages' `when`), e.g. build.ready-in-qa.
+     * The event name to deliver, e.g. build.ready-in-qa. What it means is the receiving
+     * application's decision — the runtime routes it and does not interpret it.
      */
     emit: string;
     /**
-     * The StageGraph id to signal.
+     * The event stream this signal belongs to — an opaque name the host application listens on.
+     * Named `pipeline` for compatibility with triggers authored before SwarmKit stopped
+     * sequencing (runtime 1.189.0); the runtime resolves it against no artifact.
      */
     pipeline: string;
 }

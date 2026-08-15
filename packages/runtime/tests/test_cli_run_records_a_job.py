@@ -30,6 +30,7 @@ class _Store:
         self.created: list[tuple[str, str, str, str]] = []
         self.correlations: list[str | None] = []
         self.labels: list[dict[str, str]] = []
+        self.parents: list[str | None] = []
         self.updates: list[dict[str, Any]] = []
 
     def create_job(
@@ -40,10 +41,14 @@ class _Store:
         correlation_id: str | None = None,
         source: str | None = None,
         labels: dict[str, str] | None = None,
+        # Completed rather than absorbed by **kwargs: a double that silently swallows a new
+        # argument is how a field the caller passes stops reaching the store with every test green.
+        parent_job_id: str | None = None,
     ) -> None:
         self.created.append((job_id, topology, user_input, source or ""))
         self.correlations.append(correlation_id)
         self.labels.append(dict(labels or {}))
+        self.parents.append(parent_job_id)
 
     def update_job(self, job_id: str, **fields: Any) -> None:
         self.updates.append({"job_id": job_id, **fields})

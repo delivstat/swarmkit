@@ -34,7 +34,7 @@ nav:
     - "Validating a topology's output": guides/validating-topology-output.md
     - "Memory and decision-skill bindings": guides/memory-and-decision-skills.md
   - Examples:
-    - "SDLC pipeline (video walkthrough)": sdlc-example/index.html
+    - "SDLC example (video walkthrough)": sdlc-example/index.html
   - Tutorials:
     - Overview: tutorials/index.md
     - "Level 1: Hello World": tutorials/01-hello-world.md
@@ -52,7 +52,7 @@ nav:
     - "Level 13: Authoring & Review": tutorials/13-authoring-review.md
     - "Level 14: Packaging": tutorials/14-packaging.md
     - "Level 15: Production Example": tutorials/15-production-example.md
-    - "Level 16: Pipelines & Contracts": tutorials/16-pipelines.md
+    - "Level 16: Sequencing & Contracts": tutorials/16-pipelines.md
   - Architecture:
     - Design overview: architecture/design-overview.md
     - Implementation plan: architecture/implementation-plan.md
@@ -69,11 +69,13 @@ nav:
       - Structured output: design-notes/structured-output-governance.md
       - Executor abstraction: design-notes/executor-abstraction.md
       - Multi-party approval: design-notes/multi-party-approval.md
-    - Pipelines & orchestration:
+    - Gates & delivery:
       - Gate funnel: design-notes/gate-funnel.md
-      - Pipeline controller: design-notes/pipeline-controller.md
-      - Orchestration provider seam: design-notes/orchestration-provider-seam.md
-      - Pipeline triggering: design-notes/pipeline-triggering.md
+      - Reading a gate, approving without a saga: design-notes/gate-state-and-deferring-approval.md
+      - Extracting the pipeline: design-notes/extracting-the-pipeline.md
+      - Finishing the orchestration seam (historical): design-notes/finishing-the-orchestration-seam.md
+      - Funnel verification strength: design-notes/funnel-verification-check.md
+      - Skill prerequisites: design-notes/skill-prerequisites.md
       - Contract registry: design-notes/contract-registry.md
     - Observability (M6-M7):
       - OpenTelemetry observability: design-notes/opentelemetry-observability.md
@@ -98,7 +100,7 @@ nav:
     - Workspace memory: reference/workspace-memory.md
     - Governed memory: reference/governed-memory.md
     - Storage (SQLite → Postgres): reference/storage.md
-    - Orchestrator integration: reference/orchestrator-integration.md
+    - Driving SwarmKit from your app: reference/orchestrator-integration.md
     - Environment configuration: reference/env-config.md
     - Telemetry configuration: reference/telemetry.md
     - Intent drift detection: reference/intent-drift.md
@@ -110,7 +112,6 @@ nav:
     - Trigger artifact: reference/trigger.md
     - Executor adapter artifact: reference/executor-adapter.md
     - Funnel artifact: reference/funnel.md
-    - StageGraph artifact: reference/stage-graph.md
     - Contract artifact: reference/contract.md
     - Role registry artifact: reference/role-registry.md
     - Approval policy artifact: reference/approval-policy.md

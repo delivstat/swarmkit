@@ -25,7 +25,7 @@
         { "$ref": "#/$defs/identifier" },
         { "$ref": "#/$defs/pipeline_target" }
       ] },
-      "description": "What this trigger fires, in parallel. Each item is either a topology id (fires that topology) or a pipeline-event target (signals a StageGraph)."
+      "description": "What this trigger fires, in parallel. Each item is either a topology id (fires that topology) or an event target (delivers a correlated EventSignal to whatever the host application registered)."
     },
     "provider_id": {
       "$ref": "#/$defs/identifier",
@@ -71,8 +71,8 @@
       "additionalProperties": false,
       "required": ["pipeline", "emit"],
       "properties": {
-        "pipeline": { "$ref": "#/$defs/identifier", "description": "The StageGraph id to signal." },
-        "emit": { "type": "string", "minLength": 1, "description": "The pipeline event to signal (matched against stages' `when`), e.g. build.ready-in-qa." },
+        "pipeline": { "$ref": "#/$defs/identifier", "description": "The event stream this signal belongs to — an opaque name the host application listens on. Named `pipeline` for compatibility with triggers authored before SwarmKit stopped sequencing (runtime 1.189.0); the runtime resolves it against no artifact." },
+        "emit": { "type": "string", "minLength": 1, "description": "The event name to deliver, e.g. build.ready-in-qa. What it means is the receiving application's decision — the runtime routes it and does not interpret it." },
         "correlation_id": { "type": "string", "minLength": 1, "description": "How to derive the opaque correlation id from the incoming payload (e.g. a JSONPath like $.body.correlation_id). Domain-neutral — the runtime models no business instance." }
       }
     },

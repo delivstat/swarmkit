@@ -35,11 +35,13 @@ class PipelineTarget(BaseModel):
         populate_by_name=True,
     )
     pipeline: str = Field(
-        ..., description="The StageGraph id to signal.", pattern="^[a-z][a-z0-9-]*$"
+        ...,
+        description="The event stream this signal belongs to — an opaque name the host application listens on. Named `pipeline` for compatibility with triggers authored before SwarmKit stopped sequencing (runtime 1.189.0); the runtime resolves it against no artifact.",
+        pattern="^[a-z][a-z0-9-]*$",
     )
     emit: str = Field(
         ...,
-        description="The pipeline event to signal (matched against stages' `when`), e.g. build.ready-in-qa.",
+        description="The event name to deliver, e.g. build.ready-in-qa. What it means is the receiving application's decision — the runtime routes it and does not interpret it.",
         min_length=1,
     )
     correlation_id: str | None = Field(
@@ -114,7 +116,7 @@ class SwarmKitTrigger(BaseModel):
     )
     targets: list[Identifier | PipelineTarget] = Field(
         ...,
-        description="What this trigger fires, in parallel. Each item is either a topology id (fires that topology) or a pipeline-event target (signals a StageGraph).",
+        description="What this trigger fires, in parallel. Each item is either a topology id (fires that topology) or an event target (delivers a correlated EventSignal to whatever the host application registered).",
         min_length=1,
     )
     provider_id: str | None = Field(
