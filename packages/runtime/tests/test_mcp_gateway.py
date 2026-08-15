@@ -64,10 +64,10 @@ def test_build_gateway_tools_filters_dedups_and_pulls_schema() -> None:
     mgr = _Mgr()
     tools = build_gateway_tools(
         [
-            ("fs", "read", "Read a file"),
-            ("fs", "read", "dup"),  # deduped
-            ("", "x", "no server"),  # dropped
-            ("search", "web", ""),  # empty description → synthesized
+            ("fs", "read", "Read a file", "read-file"),
+            ("fs", "read", "dup", "read-file"),  # deduped
+            ("", "x", "no server", "x"),  # dropped
+            ("search", "web", "", "search-web"),  # empty description → synthesized
         ],
         mgr,
     )

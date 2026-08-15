@@ -292,6 +292,11 @@ class ArtifactService:
                 "source_archetype": agent.source_archetype,
                 "model": dict(agent.model) if agent.model else None,
                 "skills": [s.id for s in agent.skills],
+                # Ordering rules over those skills (design/details/skill-prerequisites.md). A
+                # user-authored field that only YAML could show would be an incomplete schema
+                # change — and this one changes what the agent is ALLOWED to do, which is exactly
+                # what a reader of the topology needs to see.
+                "requires": {k: list(v) for k, v in dict(agent.requires).items()},
                 # Funnel gate reference (by id) — lets the composer light the "gated" badge
                 # on server-loaded topologies (design/details/gate-funnel.md).
                 "funnel": agent.funnel.id if getattr(agent, "funnel", None) else None,

@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from swarmkit_runtime import prerequisites
+from swarmkit_runtime._run_scope import current_run_id
 from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.mcp._client import MCPClientManager
 from swarmkit_runtime.mcp._governed import check_mcp_permission
@@ -18,9 +20,20 @@ from swarmkit_runtime.model_providers import (
     Message,
 )
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
+from swarmkit_runtime.prerequisites import Requires
 from swarmkit_runtime.skills import ResolvedSkill, impl_get
 
 SkillResult = str | tuple[str, list[ContentBlock]]
+
+#: How a refused call is marked in the text the agent receives. One constant, read by
+#: :func:`is_refusal`, so the producer and the audit log's reader cannot drift — a denial recorded
+#: as `policy_decision="allow"` would make a working gate indistinguishable from one never reached.
+DENIED_MARK = "] DENIED: "
+
+
+def is_refusal(result: str) -> bool:
+    """Whether a skill result is a governance/prerequisite refusal rather than an answer."""
+    return result.startswith("[skill:") and DENIED_MARK in result.split("\n", 1)[0]
 
 
 async def execute_skill(
@@ -32,11 +45,15 @@ async def execute_skill(
     mcp_manager: MCPClientManager | None = None,
     governance: GovernanceProvider | None = None,
     agent_id: str = "",
+    requires: Requires | None = None,
 ) -> SkillResult:
     """Execute a skill and return the result.
 
     Returns either a plain string or a ``(text, image_blocks)`` tuple
     when the MCP tool response includes image content.
+
+    ``requires`` is the agent's prerequisite map (skill-prerequisites.md); it reaches the same
+    permission seam the harness gateway uses, so an ordering rule holds on both executors.
     """
     impl = skill.raw.implementation
     impl_type = impl_get(impl, "type")
@@ -56,6 +73,7 @@ async def execute_skill(
             mcp_manager=mcp_manager,
             governance=governance,
             agent_id=agent_id,
+            requires=requires,
         )
 
     if impl_type == "composed":
@@ -106,6 +124,7 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
     mcp_manager: MCPClientManager | None,
     governance: GovernanceProvider | None = None,
     agent_id: str = "",
+    requires: Requires | None = None,
 ) -> SkillResult:
     """Execute an ``mcp_tool`` skill by calling the MCP server.
 
@@ -129,9 +148,11 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
         server_id=server_id,
         tool_name=tool_name,
         scopes=scopes,
+        skill_id=skill.id,
+        requires=requires,
     )
     if not allowed:
-        return f"[skill:{skill.id}] DENIED: {reason}"
+        return f"[skill:{skill.id}]{DENIED_MARK}{reason}"
 
     if mcp_manager is None:
         return (
@@ -196,6 +217,12 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
         cached = mcp_manager.get_cached_result(server_id, tool_name, arguments)
         if cached is not None:
             mcp_manager._cache_hits += 1
+            # A cache hit satisfies the prerequisite: the criterion is whether the content reached
+            # this agent's context, and it did. Gating on a live round-trip would make the rule
+            # depend on cache state, which no reader of the topology can see.
+            prerequisites.note_satisfied(
+                run_id=current_run_id(), agent_id=agent_id, skill_id=skill.id
+            )
             if _os.environ.get("SWARMKIT_VERBOSE"):
                 import sys as _sys  # noqa: PLC0415
 
@@ -246,6 +273,11 @@ async def _execute_mcp_tool(  # noqa: PLR0911, PLR0912, PLR0915
 
     result = tool_response.data
     metadata = tool_response.metadata
+
+    # Reached only by a call that returned without raising. A server that flagged its own result as
+    # an error taught the agent nothing, so it unlocks nothing — the same rule the gateway applies.
+    if not getattr(result, "isError", False):
+        prerequisites.note_satisfied(run_id=current_run_id(), agent_id=agent_id, skill_id=skill.id)
 
     text_parts: list[str] = []
     image_blocks: list[ContentBlock] = []

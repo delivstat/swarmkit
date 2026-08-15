@@ -232,6 +232,11 @@ def _resolve_agent(
     )
     errors.extend(skill_errors)
 
+    requires, requires_errors = _resolve_requires(
+        raw_agent, agent_id, skills_resolved, parent_path, artifact_path
+    )
+    errors.extend(requires_errors)
+
     # Children.
     children_raw = raw_agent.get("children") or []
     resolved_children: list[ResolvedAgent] = []
@@ -265,6 +270,7 @@ def _resolve_agent(
             prompt=prompt,
             skills=skills_resolved,
             iam=iam,
+            requires=requires,
             output_schema=output_schema,
             output_schema_disabled=output_schema_disabled,
             funnel=funnel,
@@ -282,6 +288,137 @@ def _resolve_agent(
 
 
 # ---- merge helpers -----------------------------------------------------
+
+
+def _resolve_requires(
+    raw_agent: Mapping[str, Any],
+    agent_id: str,
+    skills: Sequence[ResolvedSkill],
+    parent_path: Sequence[str | int],
+    artifact_path: Path,
+) -> tuple[Mapping[str, tuple[str, ...]], list[ResolutionError]]:
+    """Resolve the agent's ``requires:`` block against its own resolved skills.
+
+    Two checks, and they are the reviewable half of the feature
+    (design/details/skill-prerequisites.md):
+
+    * **Both sides must be skills this agent holds.** A rule naming a skill the agent was never
+      granted guards nothing, and reads as though it does.
+    * **A cycle is a resolution error.** ``a requires b`` and ``b requires a`` permanently blocks
+      both, and the agent can never recover — unchecked, this feature can render an agent unable to
+      act with no error anywhere.
+    """
+    raw = raw_agent.get("requires")
+    if not raw:
+        return {}, []
+    errors: list[ResolutionError] = []
+    if not isinstance(raw, Mapping):
+        errors.append(
+            ResolutionError(
+                code="agent.bad-requires",
+                message=(
+                    f"Agent {agent_id!r} has a `requires` that is not a mapping of "
+                    "{skill: [prerequisite, ...]}."
+                ),
+                artifact_path=artifact_path,
+                yaml_pointer=_pointer_with(parent_path, "requires"),
+                suggestion=(
+                    "Write `requires:` as a map from a guarded skill id to its prerequisites."
+                ),
+            )
+        )
+        return {}, errors
+
+    held = {skill.id for skill in skills}
+    resolved: dict[str, tuple[str, ...]] = {}
+    for guarded, prerequisites in raw.items():
+        guarded_id = str(guarded)
+        names = [str(p) for p in (prerequisites or [])]
+        unheld = [n for n in [guarded_id, *names] if n not in held]
+        if unheld:
+            errors.append(
+                ResolutionError(
+                    code="agent.requires-unknown-skill",
+                    message=(
+                        f"Agent {agent_id!r} declares `requires` over "
+                        f"{', '.join(repr(u) for u in dict.fromkeys(unheld))}, which "
+                        f"{'is' if len(set(unheld)) == 1 else 'are'} not among its skills."
+                    ),
+                    artifact_path=artifact_path,
+                    yaml_pointer=_pointer_with(parent_path, "requires"),
+                    suggestion=(
+                        "A prerequisite rule can only order skills the agent holds. Grant the "
+                        "skill under `skills:` / `skills_additional:`, or drop the rule."
+                    ),
+                )
+            )
+            continue
+        if guarded_id in names:
+            errors.append(
+                ResolutionError(
+                    code="agent.requires-cycle",
+                    message=(
+                        f"Agent {agent_id!r} declares that {guarded_id!r} requires itself, so it "
+                        "can never be called."
+                    ),
+                    artifact_path=artifact_path,
+                    yaml_pointer=_pointer_with(parent_path, "requires"),
+                    suggestion="Remove the self-reference.",
+                )
+            )
+            continue
+        resolved[guarded_id] = tuple(dict.fromkeys(names))
+
+    cycle = _requires_cycle(resolved)
+    if cycle is not None:
+        errors.append(
+            ResolutionError(
+                code="agent.requires-cycle",
+                message=(
+                    f"Agent {agent_id!r} has a cycle in `requires`: "
+                    f"{' -> '.join(cycle)}. Every skill on it is permanently blocked."
+                ),
+                artifact_path=artifact_path,
+                yaml_pointer=_pointer_with(parent_path, "requires"),
+                suggestion=(
+                    "Break the cycle — one of these skills has to be callable without the others."
+                ),
+            )
+        )
+        return {}, errors
+    return resolved, errors
+
+
+def _requires_cycle(requires: Mapping[str, Sequence[str]]) -> list[str] | None:
+    """The first cycle in the prerequisite graph as a readable path, or None.
+
+    Iterative depth-first search: a workspace can nest these arbitrarily, and a recursive walk
+    would trade one unrecoverable failure for another.
+    """
+    colour: dict[str, int] = {}  # 0 = on the stack, 1 = finished
+    for start in requires:
+        if colour.get(start) == 1:
+            continue
+        stack: list[tuple[str, int]] = [(start, 0)]
+        path: list[str] = []
+        while stack:
+            node, index = stack.pop()
+            if index == 0:
+                if colour.get(node) == 1:
+                    continue
+                if colour.get(node) == 0:
+                    return [*path[path.index(node) :], node] if node in path else [node, node]
+                colour[node] = 0
+                path.append(node)
+            nexts = list(requires.get(node, ()))
+            if index < len(nexts):
+                stack.append((node, index + 1))
+                stack.append((nexts[index], 0))
+                continue
+            colour[node] = 1
+            if path and path[-1] == node:
+                path.pop()
+    return None
 
 
 def _resolve_funnel(

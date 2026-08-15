@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import Enum, StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, constr
 
 
 class Identifier(RootModel[str]):
@@ -367,6 +367,12 @@ class Agent(BaseModel):
     )
     skills_additional: list[Identifier] | None = Field(
         None, description="Skills merged onto the archetype defaults (design §6.6)."
+    )
+    requires: dict[constr(pattern=r"^[a-z][a-z0-9-]*$"), list[Identifier]] | None = (
+        Field(
+            None,
+            description="Ordering rules over this agent's skills: {guarded_skill: [prerequisite, ...]}. The guarded skill is refused until every prerequisite has returned successfully for this (run, agent), and the refusal names what to call first. Both sides must be skills this agent holds; a cycle is a resolution error.",
+        )
     )
     iam: Iam | None = None
     output_schema: dict[str, Any] | OutputSchema | None = None

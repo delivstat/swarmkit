@@ -16,6 +16,15 @@ from swarmkit_runtime.governance import AuditEvent, PolicyDecision
 from swarmkit_runtime.mcp import MCPCallDenied, check_mcp_permission, governed_mcp_call
 
 
+class _Resp:
+    """The real `call_tool` returns a `ToolResponse`; the double returned a bare string, which is
+    how a governed-call change that reads the response could pass here and fail in a run."""
+
+    def __init__(self, *, is_error: bool = False) -> None:
+        self.data = type("D", (), {"text": "OK", "isError": is_error})()
+        self.metadata = type("M", (), {"source": "fs", "duration_ms": 1})()
+
+
 class _Gov:
     def __init__(self, allowed: bool) -> None:
         self._allowed = allowed
@@ -38,9 +47,9 @@ class _Mgr:
 
     async def call_tool(
         self, server_id: str, tool_name: str, arguments: dict[str, Any] | None = None
-    ) -> str:
+    ) -> _Resp:
         self.calls.append((server_id, tool_name, arguments))
-        return "OK"
+        return _Resp()
 
 
 # --- check_mcp_permission -----------------------------------------------------------------------
@@ -92,7 +101,7 @@ async def test_governed_call_invokes_tool_on_allow() -> None:
     resp = await governed_mcp_call(
         mgr, _Gov(allowed=True), agent_id="a", server_id="fs", tool_name="read", arguments={"x": 1}
     )
-    assert resp == "OK"
+    assert getattr(resp.data, "text", None) == "OK"
     assert mgr.calls == [("fs", "read", {"x": 1})]
 
 
@@ -104,3 +113,29 @@ async def test_governed_call_raises_on_deny_and_never_calls() -> None:
             mgr, _Gov(allowed=False), agent_id="a", server_id="fs", tool_name="write"
         )
     assert mgr.calls == []  # refused before the server is ever touched
+
+
+@pytest.mark.asyncio
+async def test_an_unmet_prerequisite_denies_before_the_policy_call() -> None:
+    """The second reason to deny (skill-prerequisites.md). Checked before `evaluate_action`,
+    because an ordering refusal is not a policy question and evaluating a call that is about to be
+    refused would put a misleading allow in the record."""
+    from swarmkit_runtime import prerequisites  # noqa: PLC0415
+
+    mgr, gov = _Mgr("cautious"), _Gov(allowed=True)
+
+    with pytest.raises(MCPCallDenied, match="list-conventions"):
+        await governed_mcp_call(
+            mgr,
+            gov,
+            agent_id="a",
+            server_id="fs",
+            tool_name="read",
+            skill_id="read-file",
+            requires={"read-file": ("list-conventions",)},
+            run_id="run-governed",
+        )
+
+    assert mgr.calls == []
+    assert gov.actions == [], "the policy engine was never asked"
+    prerequisites.forget_run("run-governed")

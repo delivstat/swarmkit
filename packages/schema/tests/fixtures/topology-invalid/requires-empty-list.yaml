@@ -1,0 +1,15 @@
+# A `requires` entry must name at least one prerequisite. An empty list is a rule that guards
+# nothing, and reads at a glance as though it does — so the schema rejects it rather than letting
+# a workspace carry an ordering rule that is silently inert.
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: broken-requires
+  version: 0.1.0
+agents:
+  root:
+    id: coordinator
+    role: root
+    skills: [get-build-convention]
+    requires:
+      get-build-convention: []

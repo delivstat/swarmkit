@@ -76,6 +76,13 @@ class ResolvedAgent:
     prompt: Mapping[str, Any] | None
     skills: tuple[ResolvedSkill, ...]
     iam: Mapping[str, Any] | None
+    #: Ordering rules over this agent's own skills — ``{guarded: (prerequisite, ...)}``
+    #: (design/details/skill-prerequisites.md). Enforced at the MCP permission seam, so a guarded
+    #: skill is refused with an actionable message until every prerequisite has returned
+    #: successfully for this ``(run, agent)``. Both sides are validated against the resolved skill
+    #: set, and a cycle is a resolution error — an agent that can never recover is worse than one
+    #: with no rule at all.
+    requires: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     output_schema: Mapping[str, Any] | None = None
     output_schema_disabled: bool = False
     # Optional per-artifact quality gate on this agent's output (design/details/gate-funnel.md).
