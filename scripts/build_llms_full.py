@@ -84,6 +84,7 @@ MANIFEST: list[tuple[str, list[str]]] = [
             "docs/site/design-notes/gate-state-and-deferring-approval.md",
             "docs/site/design-notes/extracting-the-pipeline.md",
             "docs/site/design-notes/skill-prerequisites.md",
+            "docs/site/design-notes/stopping-a-run.md",
             "docs/site/design-notes/funnel-verification-check.md",
             "docs/site/design-notes/multi-party-approval.md",
             "docs/site/design-notes/contract-registry.md",

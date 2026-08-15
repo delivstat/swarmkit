@@ -385,7 +385,21 @@ def _execute_run(
         _stderr(f"  Resume with: swarmkit run {workspace_path} {topology_name} --resume")
         raise typer.Exit(0) from None
     except Exception as exc:
-        from swarmkit_runtime.review._hitl import HITLDeferredError  # noqa: PLC0415
+        from swarmkit_runtime.review._hitl import (  # noqa: PLC0415
+            HITLDeferredError,
+            RunStoppedError,
+        )
+
+        if isinstance(exc, RunStoppedError):
+            # `stopped`, not `deferred`: deferred means "waiting on a human decision that will
+            # arrive", and counting a stop among those makes "how many runs are blocked on
+            # approvals" quietly wrong. Not `failed` either — nothing went wrong.
+            _finish_job(store, thread_id, "stopped", error="stopped by request")
+            _stderr("\n⏹ Stopped by request. State checkpointed.")
+            _stderr(
+                f"  Resume with: swarmkit run {workspace_path} {topology_name} --resume {thread_id}"
+            )
+            raise typer.Exit(0) from None
 
         if isinstance(exc, HITLDeferredError):
             _finish_job(store, thread_id, "deferred", error=f"awaiting review: {exc.reason}")

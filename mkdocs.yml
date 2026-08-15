@@ -76,6 +76,7 @@ nav:
       - Finishing the orchestration seam (historical): design-notes/finishing-the-orchestration-seam.md
       - Funnel verification strength: design-notes/funnel-verification-check.md
       - Skill prerequisites: design-notes/skill-prerequisites.md
+      - Stopping a run: design-notes/stopping-a-run.md
       - Contract registry: design-notes/contract-registry.md
     - Observability (M6-M7):
       - OpenTelemetry observability: design-notes/opentelemetry-observability.md

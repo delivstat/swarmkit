@@ -28,6 +28,11 @@ from swarmkit_runtime._run_scope import (
     set_current_labels,
     set_current_run_id,
 )
+from swarmkit_runtime._stop_requests import (
+    reset_stop_checker,
+    set_stop_checker,
+    store_backed_checker,
+)
 from swarmkit_runtime.audit import AuditProvider, SqlAuditProvider, audit_provider_for_path
 from swarmkit_runtime.governance import (
     DecisionSkillBinding,
@@ -869,9 +874,17 @@ class WorkspaceRuntime:
         await self._ensure_checkpointer()
         graph = self.compile(topology_name)
         topology = self._workspace.topologies[topology_name]
+        # A resume CLEARS the stop request before it starts. Without this a stopped run resumes and
+        # immediately stops again on the stale flag, which reads as a resume that does not work.
+        self._clear_stop_request(thread_id)
         # Same scope as `run`, keyed by the thread: a resume's events must be attributable to the
-        # resumed run and not to whatever else this process has done since.
-        _resume_scope_token = (set_current_run_id(thread_id), set_current_labels(None))
+        # resumed run and not to whatever else this process has done since. It installs a stop
+        # checker too — a resumed run must be stoppable exactly like a first one.
+        _resume_scope_token = (
+            set_current_run_id(thread_id),
+            set_current_labels(None),
+            set_stop_checker(self._stop_checker(thread_id)),
+        )
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
 
@@ -994,7 +1007,40 @@ class WorkspaceRuntime:
         )
 
         set_active_trace(trace)
-        return (set_current_run_id(trace.run_id), set_current_labels(labels))
+        # Nodes ask `stop_requested()`; the runtime is what knows where the store is and which run
+        # this is, so it installs the checker here rather than threading a database through the
+        # compiler (design/details/stopping-a-run.md).
+        return (
+            set_current_run_id(trace.run_id),
+            set_current_labels(labels),
+            set_stop_checker(self._stop_checker(trace.run_id)),
+        )
+
+    def _clear_stop_request(self, run_id: str) -> None:
+        """Drop a satisfied stop request. Best-effort: a store that will not open must not stop a
+        resume from happening."""
+        try:
+            from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+
+            storage_for_workspace(self._workspace_root).store().update_job(
+                run_id, clear_stop_request=True
+            )
+        except Exception:
+            return
+
+    def _stop_checker(self, run_id: str) -> Any:
+        """Read `jobs.stop_requested_at` for this run, or None when there is no store to read.
+
+        Best-effort in the same direction the job record is: a store that will not open costs the
+        run its stoppability, never the run itself.
+        """
+        try:
+            from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
+
+            store = storage_for_workspace(self._workspace_root).store()
+        except Exception:
+            return None
+        return store_backed_checker(store, run_id)
 
     async def _end_run(self, token: Any, topology_name: str, run_id: str) -> list[RunEvent]:
         """Leave a run and persist only the events it emitted.
@@ -1002,7 +1048,7 @@ class WorkspaceRuntime:
         The filter is the fix: the provider's log is cumulative and never cleared, so an unfiltered
         drain re-persisted every earlier run's events under this run's id.
         """
-        run_token, label_token = token
+        run_token, label_token, stop_token = token
         # Captured BEFORE the reset: `_persist_events_to_audit` builds fresh AuditEvents, and once
         # the scope is gone their `labels` default to empty — the run's grouping would reach `jobs`
         # and silently not reach `audit_events`, which is half a feature and the worse half.
@@ -1010,6 +1056,7 @@ class WorkspaceRuntime:
         # The prerequisite ledger is keyed by (run, agent) and nothing else drops it, so a
         # long-lived `swarmkit serve` would keep one entry per agent of every run it ever ran.
         prerequisites.forget_run(run_id)
+        reset_stop_checker(stop_token)
         reset_current_run_id(run_token)
         reset_current_labels(label_token)
         events = _extract_events(self._governance, run_id=run_id)

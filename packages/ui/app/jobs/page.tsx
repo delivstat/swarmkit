@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+
+import { Button } from "@/components/ui/button";
 
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
@@ -58,6 +60,59 @@ function JobIdLink({ id }: { id: string }) {
 	);
 }
 
+/**
+ * Ask a run to stop (design/details/stopping-a-run.md).
+ *
+ * The wording matters more than the button. A stop is cooperative — it lands at the next agent
+ * boundary and a call in flight finishes first — so the UI says "stopping…" rather than reporting
+ * the job dead. An operator who believes a run has stopped and starts a replacement gets two runs
+ * writing the same artifacts, which is worse than waiting.
+ */
+function StopButton({ id, onDone }: { id: string; onDone?: () => void }) {
+	const [state, setState] = useState<"idle" | "asking" | "asked" | "error">(
+		"idle",
+	);
+	const [detail, setDetail] = useState("");
+
+	if (state === "asked") {
+		return (
+			<span
+				className="text-xs text-muted-foreground"
+				title="It stops between agents; a call in flight finishes first. The run keeps what it has already done and can be resumed."
+			>
+				stopping…
+			</span>
+		);
+	}
+
+	return (
+		<span className="flex items-center justify-end gap-2">
+			{state === "error" && (
+				<span className="text-xs text-destructive">{detail}</span>
+			)}
+			<Button
+				type="button"
+				size="sm"
+				variant="outline"
+				disabled={state === "asking"}
+				onClick={async () => {
+					setState("asking");
+					try {
+						await api.stopJob(id);
+						setState("asked");
+						onDone?.();
+					} catch (err) {
+						setDetail(err instanceof Error ? err.message : "stop failed");
+						setState("error");
+					}
+				}}
+			>
+				{state === "asking" ? "…" : "Stop"}
+			</Button>
+		</span>
+	);
+}
+
 export default function JobsPage() {
 	const fetchLive = useCallback(() => api.jobs(), []);
 	const fetchHistory = useCallback(() => api.jobsHistory(), []);
@@ -99,6 +154,7 @@ export default function JobsPage() {
 									<th className="px-4 py-2 text-left font-medium">Version</th>
 									<th className="px-4 py-2 text-left font-medium">Status</th>
 									<th className="px-4 py-2 text-left font-medium">Started</th>
+									<th className="px-4 py-2 text-right font-medium">Stop</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -116,6 +172,9 @@ export default function JobsPage() {
 											<StatusBadge status={job.status} />
 										</Cell>
 										<Cell muted>{formatWhen(job.created_at)}</Cell>
+										<Cell>
+											<StopButton id={job.job_id} onDone={live.refetch} />
+										</Cell>
 									</tr>
 								))}
 							</tbody>

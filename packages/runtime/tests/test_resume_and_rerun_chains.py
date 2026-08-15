@@ -166,15 +166,21 @@ def test_resume_shares_the_run_machinery() -> None:
     assert "rt.resume(job.topology, job.id, max_steps=max_steps)" in src
 
 
-def test_only_a_deferred_job_resumes() -> None:
+def test_only_a_parked_job_resumes() -> None:
     """A completed run has nothing to continue and a running one is already going — starting a
-    second execution against one checkpoint would interleave two runs on it."""
+    second execution against one checkpoint would interleave two runs on it.
+
+    `deferred` and `stopped` both resume (1.193.0): both are parked mid-flight with their state on
+    the checkpoint, and only the reason differs — a gate awaiting a human, or a human who asked the
+    run to stop.
+    """
     src = (
         Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_routes_jobs.py"
     ).read_text()
     handler = src[src.index('@app.post("/jobs/{job_id}/resume")') :][:1800]
 
-    assert 'found.status != "deferred"' in handler
+    assert '_RESUMABLE = frozenset({"deferred", "stopped"})' in src
+    assert "found.status not in _RESUMABLE" in handler
     assert "status_code=409" in handler
 
 

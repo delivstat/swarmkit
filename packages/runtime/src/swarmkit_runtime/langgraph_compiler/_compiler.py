@@ -14,6 +14,8 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from swarmkit_runtime._run_scope import current_run_id
+from swarmkit_runtime._stop_requests import stop_requested
 from swarmkit_runtime.governance import AuditEvent, DecisionSkillBinding, GovernanceProvider
 from swarmkit_runtime.model_providers import MockModelProvider
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
@@ -239,6 +241,16 @@ def _build_agent_node(  # noqa: PLR0915
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0911, PLR0912, PLR0915
         agent_id = agent.id
+
+        # Did a human ask this run to stop? Checked HERE — before the node does any work, after the
+        # previous super-step checkpointed its result — because that is what makes "stop without
+        # losing what you already paid for" true rather than aspirational. A stop is therefore
+        # cooperative: a run inside a long harness session stops when that call returns.
+        if stop_requested():
+            from swarmkit_runtime.review._hitl import RunStoppedError  # noqa: PLC0415
+
+            raise RunStoppedError(current_run_id() or "", agent_id)
+
         _start = datetime.now(tz=UTC)
         await governance.record_event(
             AuditEvent(
@@ -1048,8 +1060,6 @@ def _enforces_gate(funnel_id: str) -> bool:
     (It also stood down for a pipeline stage, which opened its own gate. The bundled sequencer is
     gone, so a funnel's approve layer is now the only gate there is.)
     """
-    from swarmkit_runtime._run_scope import current_run_id  # noqa: PLC0415
-
     if current_run_id() is None:
         _logger.warning(
             "funnel %r declares an `approve` layer but this run has no run id, so its gate could "
@@ -1072,8 +1082,6 @@ def _in_node_gate_id(agent_id: str) -> str:
     one ticket), and a gate keyed on it would let approvals cast against a PREVIOUS artifact satisfy
     a new one — the hazard `open_gate` documents. A re-run gets a fresh gate, structurally.
     """
-    from swarmkit_runtime._run_scope import current_run_id  # noqa: PLC0415
-
     return f"{current_run_id() or 'run'}:{agent_id}"
 
 

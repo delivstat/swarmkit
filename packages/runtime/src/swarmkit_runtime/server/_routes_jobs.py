@@ -82,6 +82,10 @@ def _app_state_run_deps(
 #: rather than the remainder of one nobody stored.
 _DEFAULT_RESUME_STEPS = 50
 
+#: Statuses a run can be resumed from. Both are "parked mid-flight with state on the checkpoint";
+#: only the reason differs — a gate awaiting a human, or a human who asked it to stop.
+_RESUMABLE = frozenset({"deferred", "stopped"})
+
 
 def _durable_job(request: Request, job_id: str) -> Any:
     """The job as the durable store has it, or None."""
@@ -256,21 +260,22 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
         run over HTTP and saw it park had no way back in, and `swarmkit run --resume` needs the
         workspace on the same machine.
 
-        Only a `deferred` job resumes. A completed one has nothing to continue and a running one is
-        already going — replying 409 rather than quietly starting a second execution against the
-        same thread, which would interleave two runs on one checkpoint.
+        A `deferred` or `stopped` job resumes — both are runs parked mid-flight with their state on
+        the checkpoint, and the only difference is why. A completed one has nothing to continue and
+        a running one is already going — replying 409 rather than quietly starting a second
+        execution against the same thread, which would interleave two runs on one checkpoint.
         """
         live = await job_store.get(job_id)
         row = _durable_job(request, job_id)
         found = _resolve_job(live, row)
         if found is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
-        if found.status != "deferred":
+        if found.status not in _RESUMABLE:
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"Job '{job_id}' is {found.status!r}, not 'deferred' — only a run parked on a "
-                    f"gate can be resumed"
+                    f"Job '{job_id}' is {found.status!r}, not one of {sorted(_RESUMABLE)} — only a "
+                    f"run parked mid-flight can be resumed"
                 ),
             )
 
@@ -287,6 +292,48 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
             max_steps=_DEFAULT_RESUME_STEPS,
         )
         return _to_response(job)
+
+    @app.post("/jobs/{job_id}/stop")
+    async def stop_job(job_id: str, request: Request) -> dict[str, Any]:
+        """Ask a running job to stop at its next agent boundary.
+
+        Writes the same durable flag `swarmkit stop` writes — one mechanism, two front doors. It is
+        not a kill: the run stops between agents, keeping everything it has already done, and
+        resumes from the checkpoint via `POST /jobs/{id}/resume`.
+        """
+        from swarmkit_runtime.stop import (  # noqa: PLC0415
+            record_stop_requested,
+            request_stop,
+        )
+
+        _, store, _, _ = _app_state_run_deps(request)
+        if store is None:
+            raise HTTPException(
+                status_code=503,
+                detail="no durable store: a stop request has nowhere to be recorded",
+            )
+        outcome = request_stop(store, job_id)
+        if outcome is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        if not outcome.requested:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Job '{job_id}' is {outcome.status!r} — there is nothing to stop",
+            )
+        rt = _get_runtime(request)
+        identity = getattr(getattr(request.state, "identity", None), "client_id", "") or "anonymous"
+        await record_stop_requested(
+            rt.workspace_root,
+            outcome,
+            requested_by=identity,
+            topology_id=getattr(store.get_job(job_id), "topology", "") or "",
+        )
+        return {
+            "job_id": job_id,
+            "stop_requested_at": outcome.requested_at,
+            "already_requested": outcome.already_requested,
+            "detail": "stops at the next agent boundary; a call in flight finishes first",
+        }
 
     @app.get("/jobs/{job_id}/diff")
     async def get_job_diff(job_id: str, request: Request) -> dict[str, Any]:

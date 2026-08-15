@@ -72,7 +72,7 @@ SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=deepseek/deepseek-chat \
 | `swarmkit debug ... --span-id <id>` | Retrieve prompt/response for a specific OTel span |
 | `swarmkit debug ... --run-id <id>` | All prompts for a run |
 | `swarmkit debug ... --agent <name> -n 5` | Last N prompts for an agent |
-| `swarmkit stop <run-id> <workspace>` | Gracefully stop a running topology (planned — persistent mode) |
+| `swarmkit stop <run-id> <workspace>` | Ask a run to stop at its next agent boundary. Cooperative, not a kill: a call in flight finishes first, the run keeps everything it has already done, and it resumes with `swarmkit run … --resume <run-id>`. Works across processes — it writes a durable flag, so it can stop a run `swarmkit serve` started. Stopping a finished run is a no-op, not an error. |
 
 ### Data sources
 
