@@ -66,7 +66,7 @@ services:
     build:
       context: .
       args:
-        SWARMKIT_VERSION: "1.55.0"
+        SWARMKIT_VERSION: "1.193.0"
     network_mode: host
     restart: unless-stopped
     volumes:
@@ -182,17 +182,21 @@ services:
       - HA_URL=http://localhost:8123
       - HA_TOKEN=${HA_TOKEN:-}
       - SWARMKIT_URL=http://localhost:8321
-      # OpenTelemetry trace export to the LOCAL FLEET's OTLP collector.
+      # OpenTelemetry export to the LOCAL FLEET's OTLP collector — OFF by default.
+      #
       # `network_mode: host` (above) puts this container on the host network, so
-      # `localhost:4318` reaches the collector running next to the fleet panel/UI
-      # — same localhost convention the rest of this file uses (Frigate, Ollama, HA).
-      # The runtime auto-derives service.name from the workspace ("Minder — …
-      # (minder)"), so traces are self-labelled in Jaeger with no extra config.
-      # Failure is graceful by design: spans go through a BatchSpanProcessor on a
-      # background thread, so if the collector / fleet UI is down the run does NOT
-      # fail or slow — batches just retry then drop off the hot path. Set
-      # MINDER_OTEL=none to turn export off entirely (zero overhead).
-      - SWARMKIT_OTEL_EXPORTER=${MINDER_OTEL:-otlp}
+      # `localhost:4318` reaches a collector running next to the fleet panel/UI, and the runtime
+      # auto-derives service.name from the workspace ("Minder — … (minder)") so traces are
+      # self-labelled in Jaeger with no extra config. Turn it on with MINDER_OTEL=otlp when that
+      # collector is actually up.
+      #
+      # It defaulted to `otlp`, and export failure IS graceful for the run — spans batch on a
+      # background thread and never block. What it is not is quiet: with no collector listening,
+      # the appliance logged an OTLP connection ERROR every ~20 seconds indefinitely. Measured on
+      # a 5-day-old container, ~95% of `docker logs` was retry noise and the actual behaviour of
+      # the product was unreadable underneath it. A default that only works when a second stack is
+      # running is the wrong way round for an appliance that mostly runs alone.
+      - SWARMKIT_OTEL_EXPORTER=${MINDER_OTEL:-none}
       - SWARMKIT_OTEL_ENDPOINT=${MINDER_OTEL_ENDPOINT:-http://localhost:4318/v1/traces}
     depends_on:
       - homeassistant
