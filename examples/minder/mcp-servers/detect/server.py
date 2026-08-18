@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 import detector
+
 # The MCP SDK renamed this between 1.x and 2.0: `mcp.server.fastmcp.FastMCP` became
 # `mcp.server.mcpserver.MCPServer`. Importing only the old path made this server die AT IMPORT on
 # SDK 2.0, which the runtime can only report as "Connection closed" — a subprocess that dies while

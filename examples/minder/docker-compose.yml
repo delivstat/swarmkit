@@ -1,3 +1,13 @@
+# The compose PROJECT name, pinned rather than inferred from the directory.
+#
+# Compose derives it from the folder name, and the project name prefixes every volume
+# (`minder_minder-data`, `minder_ha-config`, `minder_frigate-media`). So a tree cloned into a
+# directory called anything else gets NEW, EMPTY volumes: the Home Assistant config and Minder's
+# data are still on disk with nothing looking at them, which presents as a wiped appliance. This
+# matters the moment Minder moves to its own repo
+# (design/details/extracting-the-products.md).
+name: minder
+
 services:
   # Home Assistant — hidden integration layer for smart device control
   homeassistant:

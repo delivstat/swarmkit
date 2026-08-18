@@ -63,12 +63,34 @@ is the difference between one variable and two.
 
 So:
 
-1. **Bump and verify Minder in place.** `SWARMKIT_VERSION` in `docker-compose.yml` + the `Dockerfile`
-   ARG → 1.193.0. Validate the workspace, build the image, run the stack, exercise the router and
-   one vision path. Merge that on its own.
+1. ~~**Bump and verify Minder in place.**~~ **Done** — 1.55.0 → 1.193.0, live. It was worth doing
+   first for exactly the reason argued here: the bump pulled `mcp` 2.0.0 (`swarmkit-runtime`
+   declares `mcp>=1.0`, so a breaking major is in range), 2.0 removed `mcp.server.fastmcp`, and all
+   six of Minder's stdio servers died at import. Diagnosed against the runtime source in minutes.
+   In a fresh repo on the day the layout changed, the same failure would have had two candidate
+   causes and a bisect with nowhere to go.
 2. **Extract Minder** with history.
 3. **Extract Vedanta** from the design branch, not from `main`.
 4. **Clean up** the SwarmKit tree in one PR.
+
+## The live appliance is launched from the directory this plan deletes
+
+`examples/minder` is not only source — it is the **compose working directory of a running
+production stack** (four containers, `network_mode: host`, uptime measured in days, restart policy
+`unless-stopped`). Two consequences the first draft of this note missed:
+
+**The volume names are derived from the directory name, and that is a data-loss trap.** Compose
+takes its project name from the folder (`minder`), and the project name prefixes the volumes:
+`minder_minder-data`, `minder_ha-config`, `minder_frigate-media`. Clone the tree into a repo called
+anything else — `minder-app`, `swarmkit-minder` — and `docker compose up` creates **new, empty**
+volumes: the Home Assistant configuration and Minder's data are still on disk but nothing is looking
+at them, which presents as a wiped appliance. The fix is one line and only works if you know to write
+it: set `name: minder` explicitly at the top of `docker-compose.yml`, so the project name stops
+depending on where the directory happens to sit. **Do that before the move, not after.**
+
+**`network_mode: host` means the appliance shares the host's port space.** Anything testing a new
+version on the same machine must bind a port the live stack does not use — Minder's serve is on
+8321 — or it will fight the running system rather than run beside it.
 
 ## Preserving history
 
@@ -141,6 +163,19 @@ Not a framework. The minimum that makes each releasable:
 
 Minder additionally carries `docker-compose.yml`, a Dockerfile, six MCP servers and a webapp — it is
 already shaped like a repo. That is the strongest evidence it should be one.
+
+## What the bump already taught this plan
+
+- **`mcp>=1.0` in the runtime lets a breaking major in.** The framework survives it (there is a
+  compat shim in `mcp/_sdk_compat.py`); its *consumers* do not, and they find out at import time in
+  production. Worth deciding separately whether the runtime should pin `mcp<3` — noted here because
+  the extraction is what made a consumer's exposure visible.
+- **`/health` is not evidence the product works.** After the bump serve answered ok, registered all
+  9 topologies as MCP tools and started the trigger scheduler, while every camera event failed —
+  none of those checks touch a stdio server. Any post-extraction smoke test has to exercise the
+  event path, not the port.
+- **Minder's own tests run nowhere.** Six test files, no CI. The new repo gets CI on day one, and
+  that is a gain from extraction rather than a cost of it.
 
 ## Test plan
 
