@@ -35,6 +35,11 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(message)s",
     level=logging.INFO,
 )
+# httpx logs every request URL at INFO, and the Telegram bot token is IN the URL
+# (`api.telegram.org/bot<token>/getUpdates`). At one poll per 10s that wrote the bot token into
+# `docker logs` thousands of times a day, where anyone with docker access could read it. WARNING
+# keeps real HTTP failures visible and drops the successful-poll line that carried the secret.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("minder")
 
 API_URL = os.environ.get("MINDER_API_URL", "http://localhost:80")

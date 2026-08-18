@@ -24,6 +24,9 @@ import discord
 import httpx
 
 logging.basicConfig(format="%(asctime)s [%(name)s] %(message)s", level=logging.INFO)
+# See bot.py: httpx logs request URLs at INFO, and a bot token travels in the URL. WARNING keeps
+# failures and drops the line that carried the secret.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("minder-discord")
 
 API_URL = os.environ.get("MINDER_API_URL", "http://localhost:80")
