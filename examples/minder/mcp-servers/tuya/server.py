@@ -16,7 +16,14 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Literal
 
-from mcp.server.fastmcp import FastMCP
+# The MCP SDK renamed this between 1.x and 2.0: `mcp.server.fastmcp.FastMCP` became
+# `mcp.server.mcpserver.MCPServer`. Importing only the old path made this server die AT IMPORT on
+# SDK 2.0, which the runtime can only report as "Connection closed" — a subprocess that dies while
+# importing looks identical to one that hung up. Both paths, newest first.
+try:  # SDK 2.0
+    from mcp.server.mcpserver import MCPServer as FastMCP
+except ImportError:  # SDK 1.x
+    from mcp.server.fastmcp import FastMCP
 
 sys.path.insert(0, "/app/mcp-servers")
 import contextlib
