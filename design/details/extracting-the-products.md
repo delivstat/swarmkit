@@ -1,6 +1,7 @@
 # Extracting Minder and Vedanta Advisor into their own repos
 
-**Status:** proposed — design only.
+**Status:** Minder extracted — `delivstat/minder` (private), 88 commits and all 17 branches, live
+and verified. Vedanta remains.
 
 Minder and Vedanta Advisor are **products built with SwarmKit**, not examples of it. They live under
 `examples/` because that is where they started, and the cost of that has stopped being theoretical:
@@ -69,7 +70,9 @@ So:
    six of Minder's stdio servers died at import. Diagnosed against the runtime source in minutes.
    In a fresh repo on the day the layout changed, the same failure would have had two candidate
    causes and a bisect with nowhere to go.
-2. **Extract Minder** with history.
+2. ~~**Extract Minder** with history.~~ **Done.** `git subtree split` carried 87 commits and each
+   branch's own history. The appliance now runs from `~/minder` on the same five volumes — the
+   pinned compose project name is what made that a non-event rather than a restore.
 3. **Extract Vedanta** from the design branch, not from `main`.
 4. **Clean up** the SwarmKit tree in one PR.
 
@@ -174,7 +177,7 @@ already shaped like a repo. That is the strongest evidence it should be one.
   9 topologies as MCP tools and started the trigger scheduler, while every camera event failed —
   none of those checks touch a stdio server. Any post-extraction smoke test has to exercise the
   event path, not the port.
-- **Minder's own tests run nowhere.** Six test files, no CI. The new repo gets CI on day one, and
+- **Minder's own tests ran nowhere.** It was worse than the six files this note first counted: **26 test modules, 139 tests**, of which 22 modules could not even be COLLECTED (they import siblings directly, having been written to run one at a time from their own folder). The first run as a suite found **7 genuine failures**. None of that was visible while the tree sat in a repo whose `testpaths` excluded `examples/`. The new repo gets CI on day one, and
   that is a gain from extraction rather than a cost of it.
 
 ## Test plan
