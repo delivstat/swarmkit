@@ -750,3 +750,60 @@ def test_google_options_become_config_fields() -> None:
     config = _to_google_config(_opts_req({"top_p": 0.8, "top_k": 40}))
     assert config.top_p == 0.8
     assert config.top_k == 40
+
+
+def test_ollama_think_lands_at_payload_root_not_in_options() -> None:
+    # ``think`` is a top-level field of Ollama's /api/chat payload, not a member of its ``options``
+    # object. Nested, it is silently ignored — the agent reasons anyway and burns its token budget
+    # doing it, while the author sees a setting the schema accepted and every other provider dropped
+    # for being Ollama-specific.
+    payload = _to_ollama_payload(_opts_req({"think": False}))
+    assert payload["think"] is False
+    assert "think" not in payload.get("options", {})
+
+
+def test_ollama_keep_alive_lands_at_payload_root() -> None:
+    payload = _to_ollama_payload(_opts_req({"keep_alive": "30m"}))
+    assert payload["keep_alive"] == "30m"
+    assert "keep_alive" not in payload.get("options", {})
+
+
+def test_ollama_hoisting_leaves_the_other_options_alone() -> None:
+    payload = _to_ollama_payload(_opts_req({"think": False, "num_ctx": 8192, "top_k": 20}))
+    assert payload["think"] is False
+    assert payload["options"] == {"num_ctx": 8192, "top_k": 20}
+
+
+def test_ollama_hoisting_the_only_option_omits_the_options_object() -> None:
+    # Popping the last key must not leave an empty ``options`` behind.
+    payload = _to_ollama_payload(_opts_req({"think": False}))
+    assert "options" not in payload
+
+
+def test_ollama_explicit_think_overrides_the_gemma_default() -> None:
+    # The default exists because Gemma's thinking breaks Ollama's tool-call parser, which makes it a
+    # good default and a bad law: an author who wants reasoning from a Gemma agent must be able to
+    # say so.
+    payload = _to_ollama_payload(
+        CompletionRequest(
+            model="gemma4:e2b",
+            messages=(Message(role="user", content="hi"),),
+            options={"think": True},
+        )
+    )
+    assert payload["think"] is True
+
+
+def test_ollama_gemma_still_defaults_to_no_thinking() -> None:
+    payload = _to_ollama_payload(
+        CompletionRequest(model="gemma4:e2b", messages=(Message(role="user", content="hi"),))
+    )
+    assert payload["think"] is False
+
+
+def test_ollama_think_is_untouched_for_other_families() -> None:
+    # Nothing is assumed about a model that was not configured — only Gemma gets a default.
+    payload = _to_ollama_payload(
+        CompletionRequest(model="qwen3.5:2b", messages=(Message(role="user", content="hi"),))
+    )
+    assert "think" not in payload
