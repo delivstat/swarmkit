@@ -9,11 +9,13 @@ it. The setting was honoured by nobody.
 Run: uv run python packages/runtime/demos/ollama_think_option.py
 """
 
+from typing import Any
+
 from swarmkit_runtime.model_providers._ollama import _to_ollama_payload
 from swarmkit_runtime.model_providers._types import CompletionRequest, Message
 
 
-def payload(model: str, options: dict | None = None) -> dict:
+def payload(model: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
     return _to_ollama_payload(
         CompletionRequest(
             model=model,
@@ -24,7 +26,7 @@ def payload(model: str, options: dict | None = None) -> dict:
     )
 
 
-def show(title: str, p: dict) -> None:
+def show(title: str, p: dict[str, Any]) -> None:
     print(f"\n  {title}")
     print(f"    payload.think    = {p.get('think', '<absent>')}")
     print(f"    payload.options  = {p.get('options', {})}")
