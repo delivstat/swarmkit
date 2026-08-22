@@ -89,6 +89,10 @@ _demo-schema artifact:
     @pnpm --silent --filter @swarmkit/schema exec node scripts/demo-schema.mjs {{artifact}}
 
 # Per-artifact demos (valid + invalid fixtures in both Python and TS).
+# Demo: `think` set on an agent reaches Ollama at the payload root, where it is read.
+demo-ollama-think:
+    uv run python packages/runtime/demos/ollama_think_option.py
+
 demo-topology-schema:   (_demo-schema "topology")
 demo-skill-schema:      (_demo-schema "skill")
 demo-archetype-schema:  (_demo-schema "archetype")

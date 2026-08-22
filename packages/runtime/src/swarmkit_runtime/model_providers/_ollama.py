@@ -28,6 +28,13 @@ _DEFAULT_BASE_URL = "http://localhost:11434"
 # and expect role="tool_responses" instead of role="tool".
 _THINKING_MODEL_FAMILIES = ("gemma",)
 
+# Ollama keys that live at the ROOT of the /api/chat payload rather than inside its ``options``
+# object. They arrive through ``model.options`` like every other provider-native knob — that is the
+# only passthrough an archetype has — so they must be lifted back out before the call. Left nested,
+# Ollama silently ignores them: ``options.think`` is not a field it reads, so the agent reasons
+# anyway and the author sees a setting that is accepted everywhere and honoured nowhere.
+_OLLAMA_TOP_LEVEL_OPTIONS = ("think", "keep_alive")
+
 
 def _is_thinking_model(model: str) -> bool:
     """Check if a model belongs to a family that uses thinking tokens."""
@@ -120,8 +127,6 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
     # large system prompt + tool schemas can exceed.
     if request.options:
         options.update(request.options)
-    if options:
-        payload["options"] = options
 
     # Gemma models use <think> blocks that interfere with Ollama's tool-call
     # parser — the parser fails to piece together tool-call JSON across
@@ -129,6 +134,17 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
     # calls directly, which Ollama can parse reliably.
     if is_gemma:
         payload["think"] = False
+
+    # Lift the root-level keys out of ``options`` (see _OLLAMA_TOP_LEVEL_OPTIONS). This runs AFTER
+    # the Gemma default so an explicit setting wins: the default is there because Gemma's thinking
+    # breaks tool-call parsing, which makes it a good default and a bad law — a Gemma planner that
+    # wants reasoning and emits no tool calls should be able to ask for it.
+    for key in _OLLAMA_TOP_LEVEL_OPTIONS:
+        if key in options:
+            payload[key] = options.pop(key)
+
+    if options:
+        payload["options"] = options
 
     if request.response_format is not None:
         rf_type = request.response_format.get("type", "")
