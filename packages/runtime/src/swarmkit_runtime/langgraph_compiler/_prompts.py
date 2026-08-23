@@ -166,11 +166,21 @@ def _structured_output_instruction(
     So when tools are on the table the schema describes the FINAL answer and says so. With no tools
     there is nothing to defer, and the original wording stands.
 
-    ``grammar_enforced`` says the provider is constraining decoding to the schema itself, so the
-    shape is guaranteed and describing it again in prose buys nothing. It is not free: on a router
-    topology measured for this change the pasted schema DOUBLED the system prompt (2538 -> 5112
-    chars), pushing the agent's actual instructions into the second half of its own prompt. When the
-    grammar holds, say when the format applies and let the grammar say what it is.
+    ``grammar_enforced`` exists but is **not used by the compiler**, and the measurement behind that
+    is worth keeping. Constrained decoding looked like it made the pasted schema redundant — the
+    shape is guaranteed, and pasting it doubled one router's system prompt (2538 -> 5112 chars).
+    Skipping the paste did shorten prompts and cut latency 27%. It also dropped that router's
+    `query` intent from 55% to 29%.
+
+    The reason is that a JSON Schema carries two things and the grammar carries one. GBNF constrains
+    SHAPE; `description` is dropped on the way in. Those descriptions — "For query/snapshot: person,
+    vehicle, animal, or open for an open-ended scene question" — are what teach a small model which
+    intent it is looking at, and nothing else conveys them. Guaranteeing the shape of an answer does
+    not help a model that no longer knows which answer to give.
+
+    So the compiler always describes the schema. The parameter stays for a caller that has a schema
+    with no descriptions worth carrying, and for the record of why the obvious optimisation is not
+    one.
     """
     if not effective_schema:
         return ""
@@ -323,22 +333,7 @@ def _build_system_prompt(
         names = ", ".join(f"`{t.name}`" for t in skill_tools)
         parts.append(f"Skills available: {names}")
 
-    # Whether the schema needs describing depends on whether the provider will enforce it. Resolved
-    # by provider id because the prompt is built before any provider instance is in hand; anything
-    # unknown answers False, which keeps the prose.
-    grammar_enforced = False
-    if effective_schema:
-        from swarmkit_runtime.model_providers._registry import (  # noqa: PLC0415
-            provider_enforces_response_schema,
-        )
-
-        grammar_enforced = provider_enforces_response_schema(
-            str((agent.model or {}).get("provider") or "")
-        )
-
-    schema_block = _structured_output_instruction(
-        effective_schema, bool(tools), grammar_enforced=grammar_enforced
-    )
+    schema_block = _structured_output_instruction(effective_schema, bool(tools))
     if schema_block:
         parts.append(schema_block)
 
