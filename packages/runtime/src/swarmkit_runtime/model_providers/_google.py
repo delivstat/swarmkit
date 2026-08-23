@@ -32,6 +32,9 @@ class GoogleModelProvider:
 
     provider_id: str = "google"
 
+    #: Gemini constrains generation to ``response_schema``.
+    enforces_response_schema: bool = True
+
     def __init__(self, *, api_key: str | None = None, **kwargs: Any) -> None:
         self._client = genai.Client(api_key=api_key, **kwargs)
 

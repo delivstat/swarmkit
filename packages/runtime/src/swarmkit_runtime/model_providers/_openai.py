@@ -52,6 +52,9 @@ class OpenAIModelProvider:
 
     provider_id: str = "openai"
 
+    #: OpenAI Structured Outputs constrains generation to the json_schema.
+    enforces_response_schema: bool = True
+
     def __init__(self, *, api_key: str | None = None, **kwargs: Any) -> None:
         self._client = openai.AsyncOpenAI(api_key=api_key, **kwargs)
 

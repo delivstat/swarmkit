@@ -47,6 +47,9 @@ class OllamaModelProvider:
 
     provider_id: str = "ollama"
 
+    #: Ollama compiles ``format`` into a decoding grammar.
+    enforces_response_schema: bool = True
+
     def __init__(self, *, base_url: str = _DEFAULT_BASE_URL) -> None:
         self._base_url = base_url.rstrip("/")
         self._client = httpx.AsyncClient(base_url=self._base_url, timeout=300.0)
