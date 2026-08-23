@@ -32,6 +32,9 @@ class MockModelProvider:
 
     provider_id: str = "mock"
 
+    #: The mock returns canned text; nothing constrains it.
+    enforces_response_schema: bool = False
+
     def __init__(
         self,
         *,

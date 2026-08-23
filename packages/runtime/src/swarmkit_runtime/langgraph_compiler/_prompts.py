@@ -76,6 +76,9 @@ def _build_completion_request(
         system=system_prompt,
         tools=tuple(tools) if tools else None,
         temperature=model_cfg.get("temperature"),
+        # `max_tokens` is a documented field on both the topology and archetype schemas, validated
+        # on load — and until now read by nobody, so an author who capped a node got no cap.
+        max_tokens=model_cfg.get("max_tokens"),
         response_format=response_format,
         options=options,
     )
@@ -150,8 +153,10 @@ def _looks_incomplete(text: str) -> bool:
     return len(lower) < 500 and any(m in lower for m in _INCOMPLETE_MARKERS)
 
 
-def _structured_output_instruction(effective_schema: Any, has_tools: bool) -> str:
-    """The prompt half of structured output — and it has to say WHEN.
+def _structured_output_instruction(
+    effective_schema: Any, has_tools: bool, *, grammar_enforced: bool = False
+) -> str:
+    """The prompt half of structured output — and it has to say WHEN, and WHETHER.
 
     "Return ONLY the JSON object. No markdown, no explanation" on a turn that also offers tools
     tells a compliant model not to call them: the same suppression the grammar used to impose
@@ -160,28 +165,41 @@ def _structured_output_instruction(effective_schema: Any, has_tools: bool) -> st
 
     So when tools are on the table the schema describes the FINAL answer and says so. With no tools
     there is nothing to defer, and the original wording stands.
+
+    ``grammar_enforced`` says the provider is constraining decoding to the schema itself, so the
+    shape is guaranteed and describing it again in prose buys nothing. It is not free: on a router
+    topology measured for this change the pasted schema DOUBLED the system prompt (2538 -> 5112
+    chars), pushing the agent's actual instructions into the second half of its own prompt. When the
+    grammar holds, say when the format applies and let the grammar say what it is.
     """
     if not effective_schema:
         return ""
     import json as _json  # noqa: PLC0415
 
+    if grammar_enforced:
+        # The tool-bearing turn still needs the WHEN — the grammar cannot express "final answer
+        # only" — but never the schema body.
+        if has_tools:
+            return (
+                "\n\nSTRUCTURED OUTPUT: your FINAL answer must match the required schema. Use your "
+                "tools first — call them as many times as the task needs. The format applies only "
+                "to the final answer, not to the turns where you are calling tools."
+            )
+        return ""
+
     schema_json = _json.dumps(effective_schema, indent=2)
-    tail = (
-        "Every finding must have a 'fact' and 'source' field. If you found nothing relevant, "
-        'return {"findings": [], "not_found": ["<what you searched for>"]}.'
-    )
     if has_tools:
         return (
             "\n\nSTRUCTURED OUTPUT: your FINAL answer must be valid JSON matching this schema:\n"
             f"```json\n{schema_json}\n```\n"
             "Use your tools first — call them as many times as the task needs. This format applies "
             "only to the final answer you give once the research is done, not to the turns where "
-            f"you are calling tools. {tail}"
+            "you are calling tools."
         )
     return (
         "\n\nSTRUCTURED OUTPUT: You MUST respond with valid JSON matching this schema:\n"
         f"```json\n{schema_json}\n```\n"
-        f"Return ONLY the JSON object. No markdown, no explanation, no preamble. {tail}"
+        "Return ONLY the JSON object. No markdown, no explanation, no preamble."
     )
 
 
@@ -305,7 +323,22 @@ def _build_system_prompt(
         names = ", ".join(f"`{t.name}`" for t in skill_tools)
         parts.append(f"Skills available: {names}")
 
-    schema_block = _structured_output_instruction(effective_schema, bool(tools))
+    # Whether the schema needs describing depends on whether the provider will enforce it. Resolved
+    # by provider id because the prompt is built before any provider instance is in hand; anything
+    # unknown answers False, which keeps the prose.
+    grammar_enforced = False
+    if effective_schema:
+        from swarmkit_runtime.model_providers._registry import (  # noqa: PLC0415
+            provider_enforces_response_schema,
+        )
+
+        grammar_enforced = provider_enforces_response_schema(
+            str((agent.model or {}).get("provider") or "")
+        )
+
+    schema_block = _structured_output_instruction(
+        effective_schema, bool(tools), grammar_enforced=grammar_enforced
+    )
     if schema_block:
         parts.append(schema_block)
 

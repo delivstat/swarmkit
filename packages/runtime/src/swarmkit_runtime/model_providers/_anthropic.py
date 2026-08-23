@@ -30,6 +30,10 @@ class AnthropicModelProvider:
 
     provider_id: str = "anthropic"
 
+    #: Anthropic has no schema-constrained decoding — it does not read ``response_format``
+    #: at all, so the schema must stay in the prompt or nothing carries it.
+    enforces_response_schema: bool = False
+
     def __init__(self, *, api_key: str | None = None, **kwargs: Any) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key, **kwargs)
 

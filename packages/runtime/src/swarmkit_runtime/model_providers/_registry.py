@@ -60,3 +60,35 @@ class ProviderRegistry:
 
     def __len__(self) -> int:
         return len(self._providers)
+
+
+def provider_enforces_response_schema(provider_id: str) -> bool:
+    """Whether ``provider_id`` constrains decoding to the response schema.
+
+    Deliberately NOT part of ``ModelProviderProtocol``: it is an optional capability, and requiring
+    every provider to declare it would break third-party ones — and every existing test double —
+    for a field most of them have no opinion about. Providers opt in with a class attribute; silence
+    means no.
+
+    Read from the provider classes rather than a second table, so the answer cannot drift from the
+    declaration. Resolved by id because the compiler builds the system prompt before any provider
+    instance is in hand, and it needs to know whether to paste the schema into the prompt.
+
+    Unknown or unimportable providers answer **False** — the conservative direction. A provider
+    that does not constrain decoding needs the schema in its prompt, so guessing "enforced" would
+    silently remove the only thing carrying the shape.
+    """
+    try:
+        from . import _anthropic, _google, _mock, _ollama, _openai, _openai_compat  # noqa: PLC0415
+    except Exception:  # pragma: no cover - import-time provider deps are optional
+        return False
+
+    for module in (_ollama, _openai, _openai_compat, _google, _anthropic, _mock):
+        for obj in vars(module).values():
+            if (
+                isinstance(obj, type)
+                and getattr(obj, "provider_id", None) == provider_id
+                and hasattr(obj, "enforces_response_schema")
+            ):
+                return bool(obj.enforces_response_schema)
+    return False
