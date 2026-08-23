@@ -23,7 +23,7 @@ The wording belonged to one research topology and was appended to **every** agen
 
 Removed. Nothing schema-specific belongs in a function that runs for all schemas.
 
-## 2. The schema pasted in, next to the grammar enforcing it
+## 2. The schema pasted in, next to the grammar enforcing it — tried, measured, REVERTED
 
 The router's system prompt arrived at **5112 characters against the topology's 2538**. The compiler
 pastes the full JSON schema into the prompt *and* passes it as the provider's constraint —
@@ -42,13 +42,30 @@ Now conditional on whether the provider constrains decoding:
 The tool-bearing turn keeps a short line saying the format applies to the final answer, because a
 grammar cannot express *when*. Everything else the grammar already says.
 
-**The default is "does not enforce"** and unknown providers get the prose. A provider that needs the
-schema in its prompt and does not get it produces garbage; a provider that gets it redundantly only
-wastes tokens. The failure modes are not symmetric, so the default follows the worse one.
+**This one was wrong, and the measurement says so.** Shipped in 1.195.0 and reverted immediately
+after, on the same router topology that found the defects:
 
-`provider_enforces_response_schema` is deliberately **not** on `ModelProviderProtocol`: making it
-mandatory would break third-party providers, and every existing test double, over a capability most
-have no opinion about.
+| | raw | guarded | `query` raw | p50 |
+| --- | --- | --- | --- | --- |
+| schema pasted | 62.2% | **89.7%** | 55% | 2.2s |
+| paste skipped | **66.0%** | 84.6% | **29%** | **1.64s** |
+
+Skipping it shortened prompts and cut latency 27%, and it dropped the `query` intent from 55% to 29%.
+
+The premise was that constrained decoding makes the description redundant. It does not, because a
+JSON Schema carries two things and the grammar carries one: **GBNF constrains shape and drops
+`description`**. Those descriptions — *"For query/snapshot: person, vehicle, animal, or open for an
+open-ended scene question"* — are the only thing telling a small model which intent it is looking at.
+Guaranteeing the shape of an answer does not help a model that no longer knows which answer to give.
+
+So the compiler always describes the schema. `provider_enforces_response_schema` and the
+`grammar_enforced` parameter remain, unused by the compiler, for a caller whose schema has no
+descriptions worth carrying — and as the record of why the obvious optimisation is not one.
+
+It also corrects the framing this investigation started from. The 3.2-point "SwarmKit path gap" was
+the pasted schema, confirmed in both directions — but the direct benchmark was not a *better*
+configuration, only one that happened to omit the descriptions too. On the number that matters,
+SwarmKit's configuration was **5 points ahead** the whole time.
 
 ## 3. `max_tokens` reached nobody
 

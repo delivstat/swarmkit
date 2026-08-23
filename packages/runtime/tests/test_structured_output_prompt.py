@@ -18,6 +18,7 @@ from typing import Any
 
 from swarmkit_runtime.langgraph_compiler._prompts import (
     _build_completion_request,
+    _build_system_prompt,
     _structured_output_instruction,
 )
 from swarmkit_runtime.model_providers import Message
@@ -35,6 +36,8 @@ class _Agent:
     output_schema: dict[str, Any] | None = None
     output_schema_disabled: bool = False
     skills: list[Any] = field(default_factory=list)
+    prompt: dict[str, Any] = field(default_factory=lambda: {"system": "You route messages."})
+    children: list[Any] = field(default_factory=list)
 
 
 # ---- no other agent's schema in your prompt ----------------------------------------------------
@@ -52,9 +55,19 @@ def test_no_foreign_schema_instructions_leak_in() -> None:
 # ---- say it once ------------------------------------------------------------------------------
 
 
-def test_an_enforced_schema_is_not_also_pasted_into_the_prompt() -> None:
-    """When the provider constrains decoding, the shape is guaranteed; repeating it in prose only
-    crowds out the agent's own instructions."""
+def test_the_compiler_always_describes_the_schema() -> None:
+    """Skipping the paste when the provider constrains decoding was tried and reverted: it cut
+    latency 27% and dropped a router's `query` intent from 55% to 29%. GBNF constrains shape and
+    drops `description`, and those descriptions are what tell a small model which intent it is
+    looking at. This pins the behaviour the measurement chose."""
+    agent = _Agent(model={"provider": "ollama", "name": "m"}, output_schema=SCHEMA)
+    prompt = _build_system_prompt(agent, [])  # type: ignore[arg-type]
+    assert prompt and "kind" in prompt
+
+
+def test_the_grammar_enforced_flag_still_suppresses_when_asked_directly() -> None:
+    """Kept for a caller whose schema has no descriptions worth carrying — not used by the
+    compiler."""
     assert _structured_output_instruction(SCHEMA, False, grammar_enforced=True) == ""
 
 
