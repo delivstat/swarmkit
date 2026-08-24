@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SDLC pipeline — a SwarmKit video walkthrough</title>
-  <meta name="description" content="A guided, video walkthrough of the SwarmKit SDLC delivery pipeline example: topologies, archetypes, skills, funnels, the pipeline StageGraph, and contracts.">
+  <meta name="description" content="A guided, video walkthrough of the SwarmKit SDLC delivery example: topologies, archetypes, skills, funnels and contracts. Recorded before 1.189.0, when sequencing moved out of the framework and into the application.">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -36,6 +36,19 @@
     <div class="eyebrow">SwarmKit · guided walkthrough</div>
     <h1>One requirement, from intake to shipped.</h1>
     <p class="lede">A video tour of the OMS delivery pipeline example — every screen and every artifact, shown running in the composer.</p>
+
+    <div class="notice" style="border:1px solid var(--rule,#d0d0d8); border-left:4px solid #c9752b; border-radius:6px; padding:0.9rem 1.1rem; margin:1.25rem 0; font-size:0.95rem; line-height:1.55">
+      <strong>Recorded before SwarmKit 1.189.0 — sequencing is no longer built in.</strong>
+      The <code>StageGraph</code> artifact, the <code>swarmkit&nbsp;pipeline</code> and
+      <code>swarmkit&nbsp;orchestrator</code> commands, and the <code>/pipelines</code> composer page
+      shown in chapter 05 were <strong>removed in 1.189.0</strong>. Sequencing belongs to the
+      application, not the framework.
+      <br><br>
+      Everything else here is current: topologies, archetypes, skills, funnels, contracts and the
+      governed runs are all still first-class. Only the way stages are <em>chained</em> changed —
+      what the composer used to draw, an application now does over the public HTTP API in about
+      <a href="https://github.com/delivstat/swarmkit/tree/main/examples/pipeline-orchestrator">270 lines</a>.
+    </div>
 
     <div class="player">
       <video controls preload="none" playsinline poster="assets/img/pipelines-01-canvas.png">
@@ -69,7 +82,7 @@
       <div class="pillar"><div class="pt">Governance is structural</div><div class="pd">The only exit from a design gate is a human approval — enforced by the compiler, not suggested by a prompt.</div></div>
     </div>
     <h3>Base runtime, or just this example?</h3>
-    <p>A fair question while reading this: which of these are SwarmKit, and which are the demo? The <strong>artifact kinds are all part of the runtime + schema base</strong> — including <code>Funnel</code>, <code>StageGraph</code>, and <code>Contract</code>. Each has a canonical JSON Schema, a resolver in the runtime, a <code>swarmkit&nbsp;serve</code> endpoint, and an auto-generated composer form. This example only authors <em>instances</em> of them.</p>
+    <p>A fair question while reading this: which of these are SwarmKit, and which are the demo? The <strong>artifact kinds are all part of the runtime + schema base</strong> — including <code>Funnel</code> and <code>Contract</code>. Each has a canonical JSON Schema, a resolver in the runtime, a <code>swarmkit&nbsp;serve</code> endpoint, and an auto-generated composer form. (<code>StageGraph</code> was one of them when this was recorded; it was removed in 1.189.0 along with the rest of the bundled pipeline.) This example only authors <em>instances</em> of them.</p>
     <div class="basecols">
       <div class="basecol base">
         <div class="bh">First-class in the runtime + schema</div>
@@ -77,7 +90,7 @@
           <li><strong>Topology · Archetype · Skill</strong> — the core mental model.</li>
           <li><strong>RoleRegistry · ApprovalPolicy</strong> — human identity + approval rules.</li>
           <li><strong>Funnel</strong> — the reusable quality gate.</li>
-          <li><strong>StageGraph</strong> — the pipeline-as-data spec.</li>
+          <li><strong>StageGraph</strong> — the pipeline-as-data spec. <em>Removed in 1.189.0; sequencing is the application's.</em></li>
           <li><strong>Contract</strong> — the lock vocabulary. <em>Not custom to this example.</em></li>
           <li><strong>Trigger · ExecutorAdapter</strong> — ingress + executor kinds.</li>
         </ul>
@@ -86,7 +99,7 @@
         <div class="bh">Authored for this example</div>
         <ul class="clean">
           <li>The <strong>instances</strong> — the OMS topologies, <code>oms-pipeline</code>, <code>oms-design-gate</code>, and the two contracts.</li>
-          <li>The <strong>pipeline controller</strong> (<code>examples/sdlc-pipeline/controller/</code>) and the <strong>Temporal orchestrator</strong> — application code that implements the runtime's <code>OrchestrationProvider</code> seam. SwarmKit provides the StageGraph spec, the governed stage runs, and the correlated audit; the durable saga substrate is the app's.</li>
+          <li>The <strong>pipeline controller</strong> (<code>examples/sdlc-pipeline/controller/</code>) and the <strong>Temporal orchestrator</strong> — application code that implemented the runtime's <code>OrchestrationProvider</code> seam, itself removed in 1.189.0. SwarmKit provided the StageGraph spec and the stage-run seam when this was recorded. Since 1.189.0 it provides the governed runs and the correlated audit, and the application owns the sequencing and the durable substrate both.</li>
         </ul>
       </div>
     </div>
@@ -204,6 +217,15 @@
   <div class="wrap">
     <div class="chapter"><span class="n">05</span> Pipelines <span class="rule"></span></div>
     <h2>The delivery pipeline as a StageGraph</h2>
+
+    <p style="border-left:3px solid #c9752b; padding-left:0.9rem; margin:0.9rem 0; font-size:0.94rem">
+      <strong>This chapter is historical.</strong> The StageGraph artifact and the canvas below were
+      removed in 1.189.0. The reasoning is worth keeping — stages, the events between them, gates
+      that block a stage, and locks on a contract are all still how you would model delivery — but
+      SwarmKit no longer stores or runs the graph. An application drives the same sequence over
+      <code>POST /runs</code> and the events API; see
+      <a href="https://github.com/delivstat/swarmkit/tree/main/examples/pipeline-orchestrator">examples/pipeline-orchestrator</a>.
+    </p>
     <p class="achieves">Achieves: the whole intake→design→build→sit journey authored as one data file, sequenced by a durable saga that handles gates, contract locks, external events, defect loops, and cancellation.</p>
     <p>A <strong>StageGraph</strong> wires stages by the events that enter and leave them. The <code>design</code> stage holds two contract locks and blocks on a gate; <code>build</code>'s success is a genuinely external event — a CI webhook. The editor draws it on a canvas: hover a stage or an edge for a <strong>×</strong> to remove it, drop topologies from the palette, and configure each stage through a form generated from the schema — where <code>topology</code>, <code>gate</code>, and <code>locks</code> are pickers over real workspace values, not free text.</p>
 
