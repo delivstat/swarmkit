@@ -1,7 +1,9 @@
 # Extracting Minder and Vedanta Advisor into their own repos
 
-**Status:** Minder extracted — `delivstat/minder` (private), 88 commits and all 17 branches, live
-and verified. Vedanta remains.
+**Status:** Both extracted. Minder — `delivstat/minder` (private), 88 commits and all 17 branches,
+live and verified. Vedanta — `delivstat/vedanta-advisor` (private), and open question 2 below is now
+answered by measurement: the work was already there. What remained in SwarmKit was nine tracked
+entries, eight of them broken, and this note's own instruction to delete them.
 
 Minder and Vedanta Advisor are **products built with SwarmKit**, not examples of it. They live under
 `examples/` because that is where they started, and the cost of that has stopped being theoretical:
@@ -117,6 +119,23 @@ bad moment to preserve everything by default.
 
 ## Vedanta is a different job, and pretending otherwise loses the work
 
+> **Resolved, and not the way this section assumed.** The plan below was written expecting to move
+> 92 unmerged commits out of `design/vedanta-advisor`. Measured against the product repo before
+> acting, **56 of the 59 files on that branch were already in `delivstat/vedanta-advisor`** — 49
+> byte-identical and 6 strict supersets, with zero lines present on the branch and absent from the
+> product. The work migrated by some other route in June. So the merge strategy this section calls
+> for was never needed, and running it would have re-applied superseded content over a tree that had
+> moved on: the branch caps tool calls at 2, production had already settled on 4 with better rules
+> around it.
+>
+> The three files that never crossed are all superseded or historical — the original design note
+> (replaced by the production one), one dated sample run, and `ingest-alt-sources.py`, whose texts
+> (Brahma Sutras, Ashtavakra) the product's wisdomlib scraper already covers from a different source.
+>
+> The lesson is the one the note asked for in open question 2 and then wrote a plan around anyway:
+> **look inside the target repo first.** A migration plan built on the source alone describes work
+> that may not exist.
+
 `main` carries **9 files**: one archetype and eight dataset pointers. The real workspace — 14 skills,
 4 topologies, 5 archetypes, gates, scripts, sample outputs — is on `design/vedanta-advisor`, **92
 commits** unmerged.
@@ -206,8 +225,9 @@ the compose file. That is the proof the seam is real rather than claimed, in the
 1. **Public or private?** Minder is a product with a business behind it; SwarmKit is open source.
    Extracting it *to a private repo* is a decision about the product, not about layering, and it
    should be made deliberately rather than inherited from where the code happens to sit today.
-2. **What is already in `delivstat/vedanta-advisor`?** The merge strategy for 92 commits of unrelated
-   history depends entirely on the answer, and this note cannot see inside it.
+2. ~~**What is already in `delivstat/vedanta-advisor`?**~~ **Answered: effectively all of it.** 56 of
+   the 59 branch files are present, 49 identical and 6 supersets; nothing on the branch is missing
+   from production. No merge was needed. See the note at the head of "Vedanta is a different job".
 3. **Do the Minder branches survive the move?** 17 branches, ≤3 commits each, 4–8 weeks old. Carrying
    all of them costs nothing mechanically and preserves 17 open decisions nobody has revisited.
 4. **Does SwarmKit want a `swarmkit-examples` repo** for `sterling-oms` and `rynko-content` too, or
