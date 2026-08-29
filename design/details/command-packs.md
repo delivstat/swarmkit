@@ -55,6 +55,8 @@ it is being renamed to what it always was.
 command_packs:
   - id: json-tools
     permission: cautious                      # same four tiers as mcp_servers
+    timeout: 30s                              # pack default; built-in default if omitted
+    max_output: 10MB
     requires:
       - { binary: jq, version: '>=1.7' }      # checked at workspace load, not at run time
     commands:
@@ -67,6 +69,8 @@ command_packs:
         effects: write
     permission_overrides:
       edit-in-place: strict
+    timeout_overrides:
+      big-report: 5m
 ```
 
 ### Skill implementation
@@ -110,6 +114,32 @@ Making `provider` the container id instead would read more literally, but leaves
 makes a pack id colliding with a server id harmless rather than a validator's problem.
 
 `mcp:call:*` is **removed**, not deprecated. See the migration command below.
+
+### Secrets and bounds
+
+```yaml
+command_packs:
+  - id: github
+    credentials_ref: gh-token
+    env: { GH_TOKEN: '{credential.gh-token}' }   # secrets reach a command HERE
+    commands:
+      - id: list-prs
+        argv: [gh, pr, list, '--repo', '{repo}'] # …and never here
+```
+
+**A credential may be substituted into `env`, never into `argv`** — `{credential.*}` appearing in an
+argv template is a schema error. Three things follow from that one rule, and none of them has to be
+remembered afterwards: a secret cannot be placed by a model, cannot land in an audit line that
+records the command that ran, and cannot be read out of `ps` by anything else on the box.
+
+The cost is real and accepted: CLIs that only take a credential as a flag need a wrapper. Buying the
+guarantee back later would mean auditing every place a command line is logged, which is the kind of
+retrofit that is never finished.
+
+**Bounds mirror the tier shape** — `timeout` and `max_output` on the pack, `timeout_overrides` per
+command. Ships with a conservative built-in default so an undeclared pack is still bounded; a command
+with no ceiling is a command that can take a run down with it, and unbounded-by-default is not a
+decision anyone makes deliberately.
 
 ## Four decisions this note is making
 
@@ -255,9 +285,5 @@ to see rather than be told.
 
 ## Open questions
 
-1. **Timeouts and output limits.** A command that hangs or emits a gigabyte needs a bound. Probably
-   per-pack with a per-command override, mirroring the tier shape — but the numbers need measuring
-   rather than guessing.
-2. **Working directory and environment.** `mcp_server` has `cwd` and `env` with `${VAR}` expansion,
-   plus `credentials_ref`. Packs presumably want the same, which also raises whether a command may
-   receive a secret at all, or only the pack's declared configuration.
+1. **The actual numbers** for the built-in timeout and output ceiling. The shape is decided; the
+   values want measuring against real packs rather than picking a round number that looks sensible.
