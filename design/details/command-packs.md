@@ -43,9 +43,12 @@ decision = await governance.evaluate_action(
 And `get_permission` resolves `permission_overrides[tool] or server.permission` — a config lookup.
 No protocol, no tool annotations, no round trip.
 
-So what a command pack reuses is a **two-level (container, member) tier lookup plus a governance
-action string**. Pack is the container, command the member. The tier machinery is not being mirrored;
-it is being renamed to what it always was.
+So what a command pack reuses is a **two-level (container, member) tier lookup**, plus the scopes the
+skill already declares. Pack is the container, command the member. The tier machinery is not being
+mirrored; it is being renamed to what it always was.
+
+Note the two inputs to `evaluate_action` do different jobs, and the next section separates them:
+`scopes_required` is what authorizes, `action` is what labels.
 
 ## API shape
 
@@ -88,32 +91,58 @@ a substituted value is never re-parsed into arguments. This is the same rule the
 already enforces (`launch.command` is argv, `$defs/template` is value-only), and it is the injection
 boundary: a `{filter}` of `; rm -rf /` is an inert string.
 
-### Governance
+### Governance — scopes authorize, actions label
 
-The action namespace is **generalised, not extended**:
+These are two different things and the distinction is easy to lose.
+
+**Scopes are the gate.** OIDC-style `noun:verb`, declared per skill in `iam.required_scopes`, and
+the only authorization test the runtime performs:
+
+```python
+granted = scopes_required & allowed_scopes
+denied  = scopes_required - allowed_scopes
+if denied: → deny
+```
+
+Real values in `reference/skills/`: `workspace:read`, `workspace:write`, `knowledge:read`,
+`repo:read`, `tests:execute`. **A command skill declares these exactly like any other skill.** That
+is the whole governance integration — the pack contributes a permission tier, the skill contributes
+scopes, and nothing new is needed.
+
+**The action string is a label, not a rule.** `mcp:call:{server}:{tool}` is passed alongside the
+scopes and is used for three things: a substring scan under the `readonly` tier, the human-readable
+`reason`, and the audit event. Nothing pattern-matches it — a search of `reference/`, `examples/`,
+`docs/` and `packages/` finds no policy artifact written against it, only prose describing the
+convention and two tests asserting the emitted string.
+
+So commands take a sibling namespace and `mcp:call:` is left alone:
 
 ```
-tool:call:{provider}:{name}
-
-  tool:call:mcp:filesystem:read_file
-  tool:call:command:json-tools:query
+mcp:call:{server}:{tool}          unchanged
+command:call:{pack}:{command}     new
 ```
 
-`provider` is the *kind* — `mcp` or `command` — and `name` is the qualified
-`{container}:{member}`. This is the shape that keeps the rule class we just broke expressible:
+An earlier draft of this note proposed generalising both to `tool:call:{provider}:{name}`, on the
+theory that a rule written `mcp:call:*` would silently stop covering everything. **That theory was
+wrong** — no such rules exist, because actions are not matchable. The rename would have bought
+consistency at the cost of audit-history continuity, which is a bad trade for a string nothing reads.
 
-| rule | means |
-| --- | --- |
-| `tool:call:*` | every tool call, of any kind |
-| `tool:call:mcp:*` | all MCP calls |
-| `tool:call:mcp:filesystem:*` | one server |
-| `tool:call:command:*` | all commands |
+### Structure goes in the payload, not the string
 
-Making `provider` the container id instead would read more literally, but leaves no way to write
-"all MCP calls" at all — and that is precisely the rule that stopped meaning what it said. It also
-makes a pack id colliding with a server id harmless rather than a validator's problem.
+What the generalisation was actually reaching for is better served by structure. `AuditEvent.payload`
+is already `dict[str, object]`, so this needs no schema change:
 
-`mcp:call:*` is **removed**, not deprecated. See the migration command below.
+```yaml
+action:  command:call:json-tools:query
+payload:
+  provider:  command        # mcp | command
+  container: json-tools     # server or pack id
+  member:    query
+  effects:   read
+```
+
+If action-matching policies ever arrive, they match fields rather than parsing a colon-joined string,
+and every question about how to segment that string dissolves. The string stays a display format.
 
 ### Secrets and bounds
 
@@ -149,7 +178,17 @@ For MCP, a permission tier is a hint laid over an opaque tool — the runtime ca
 `foo` writes. For a command, nothing is inferrable either: `curl` POSTs, `jq` and `sed` both take
 `-i`. But the pack author *knows*, so they must say. An undeclared `effects` is `write`.
 
-This makes `permission: readonly` genuinely enforceable for commands, which it never was for MCP.
+This makes `permission: readonly` genuinely enforceable, and it replaces a heuristic rather than
+adding a field. Today the `readonly` tier decides write-ness by substring-scanning the action string:
+
+```python
+_write_signals = ("create","delete","update","write","modify","edit","insert","drop","push","send")
+if any(sig in action.lower() for sig in _write_signals): → deny
+```
+
+So `truncate_table` and `purge_cache` pass `readonly` today — neither substring appears — while
+`send_query` is denied though it only reads. Commands pass `effects` through the decision `context`
+and are never sniffed. The MCP side has the same bug and is worth fixing independently of this note.
 
 ### 2. Argv only — never a shell, and never a generic `bash` skill
 
@@ -197,43 +236,6 @@ skills: [pack:json-tools, server:filesystem, some-individual-skill]
 
 Bigger change, better resting state, one mental model.
 
-## Migration — `swarmkit policy check`
-
-Generalising the namespace breaks every existing policy rule. That is the intended failure: the
-alternative was `mcp:call:*` quietly covering less than it did the day before, and silent policy
-weakening is the failure class `docs/notes/schema-change-discipline.md` exists for.
-
-Breaking loudly is only acceptable with a one-shot repair, so the CLI ships with the change:
-
-```
-$ swarmkit policy check
-✗ 7 rules use the removed `mcp:call:` namespace
-
-  exact — unambiguous, rewritten as-is:
-    workspace.yaml:41   mcp:call:filesystem:read_file
-    workspace.yaml:44   mcp:call:filesystem:write_file
-    iam/analyst.yaml:12 mcp:call:brain-search:query
-    ... 3 more
-
-  wildcard — literal meaning preserved, INTENT UNKNOWABLE:
-    workspace.yaml:38   mcp:call:*  →  tool:call:mcp:*
-
-$ swarmkit policy check --fix
-✓ 7 rules rewritten across 3 files
-⚠ 1 wildcard rule now covers MCP only. If it was meant to cover
-  every tool call, change it to `tool:call:*`.
-```
-
-The rewrite is a pure prefix swap — `mcp:call:` → `tool:call:mcp:` — which is **mechanically exact
-for a specific rule** and merely *literal* for a wildcard. No tool can know whether an author who
-wrote `mcp:call:*` meant "all MCP calls" or "all tool calls", because until now those were the same
-sentence. So `--fix` migrates the whole workspace in one pass, and reports the wildcards separately
-rather than pretending they were unambiguous. Reporting them is the entire point: those are the rules
-whose meaning the migration changes.
-
-Scope is every artifact in the workspace that can carry an action string — `workspace.yaml`, IAM
-policy files, archetypes and topologies — not just the file the user happened to think of.
-
 ## Bundled packs
 
 Packs ship bundled, as the four harness adapters do. An earlier draft worried that a bundled pack is
@@ -263,9 +265,8 @@ Bundling only saves everyone writing the same `jq` pack by hand.
   denied command returns the standard `DENIED_MARK` refusal, identical in shape to an MCP denial.
 - **Integration** — a pack gaining a `read` command leaves existing grants valid; gaining a `write`
   command fails workspace load, naming every agent that holds the pack.
-- **Migration** — `policy check --fix` over a fixture workspace with rules spread across
-  `workspace.yaml`, an IAM file and an archetype rewrites all of them; specific rules map exactly,
-  the wildcard is reported not silently reinterpreted; a second run is a no-op.
+- **Unit** — the audit payload carries `provider`, `container`, `member` and `effects` as fields, for
+  both an MCP call and a command call, so a query never parses the action string.
 - **Test data** — a pack fixture under `packages/schema/tests/fixtures/`, plus an invalid one
   (shell metacharacters in `argv`, missing `requires`).
 
@@ -275,9 +276,6 @@ Bundling only saves everyone writing the same `jq` pack by hand.
 one agent holds `pack:json-tools` read commands and the other holds the `strict` write command.
 Terminal transcript showing: a read command running unattended, a write command stopping at a
 governance decision, and a `readonly` pack refusing the write with the reason printed.
-
-The demo also runs `swarmkit policy check --fix` against a workspace carrying old-namespace rules,
-since the migration is the part every existing user meets first.
 
 The transcript must include the injection case — a filter parameter containing `; rm -rf /` running
 harmlessly and producing an ordinary `jq` error — because that is the claim a reviewer will most want
