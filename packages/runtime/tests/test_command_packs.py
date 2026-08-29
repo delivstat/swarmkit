@@ -238,8 +238,11 @@ class FakeGovernance:
 
 
 def gate(
-    p: CommandPackConfig | None, s: CommandSpecConfig | None, gov: object = None, **kw: object
-):
+    p: CommandPackConfig | None,
+    s: CommandSpecConfig | None,
+    gov: object = None,
+    **kw: object,
+) -> tuple[bool, str]:
     return asyncio.run(
         check_command_permission(
             p,

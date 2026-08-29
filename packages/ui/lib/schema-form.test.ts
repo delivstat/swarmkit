@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import archetypeSchema from "../../schema/schemas/archetype.schema.json";
 import skillSchema from "../../schema/schemas/skill.schema.json";
 import topologySchema from "../../schema/schemas/topology.schema.json";
+import workspaceSchema from "../../schema/schemas/workspace.schema.json";
 import {
 	type JsonSchema,
 	arrayRefType,
@@ -164,6 +165,7 @@ describe("variants", () => {
 const skill = skillSchema as unknown as JsonSchema;
 const archetype = archetypeSchema as unknown as JsonSchema;
 const topology = topologySchema as unknown as JsonSchema;
+const workspace = workspaceSchema as unknown as JsonSchema;
 
 function field(root: JsonSchema, schema: JsonSchema, name: string): JsonSchema {
 	const f = objectFields(root, schema).find((x) => x.name === name);
@@ -176,10 +178,39 @@ describe("real schemas — the reported form fields", () => {
 		const impl = field(skill, skill, "implementation");
 		expect(fieldKind(impl)).toBe("oneof");
 		expect((variants(skill, impl) ?? []).map((v) => v.label).sort()).toEqual([
+			"command",
 			"composed",
 			"llm_prompt",
 			"mcp_tool",
 		]);
+	});
+
+	it("skill.implementation `command` variant reports its editable fields", () => {
+		// Schema-change-discipline step 6: regenerated types are not sufficient — a field a user
+		// can only set by hand-editing YAML is an incomplete schema change.
+		const impl = field(skill, skill, "implementation");
+		const command = (variants(skill, impl) ?? []).find(
+			(v) => v.label === "command",
+		);
+		if (!command)
+			throw new Error("skill.implementation has no `command` variant");
+		const fields = objectFields(skill, command.schema).map((f) => f.name);
+		expect(fields).toContain("pack");
+		expect(fields).toContain("command");
+	});
+
+	it("workspace.command_packs is treated exactly as its sibling mcp_servers", () => {
+		// Schema-change-discipline step 6. The assertion is *parity*, not richness: workspace
+		// arrays-of-$ref currently report `array` with no resolvable item type, so neither pack
+		// nor server is composer-editable today. That is a pre-existing limitation of the
+		// workspace surface rather than something command_packs introduces — and this test is
+		// what will notice if one of the two is ever fixed and the other left behind.
+		const servers = field(workspace, workspace, "mcp_servers");
+		const packs = field(workspace, workspace, "command_packs");
+		expect(fieldKind(packs)).toBe(fieldKind(servers));
+		expect(arrayRefType(workspace, packs)).toBe(
+			arrayRefType(workspace, servers),
+		);
 	});
 
 	it("1.1 archetype.executor.config is a map (was blank)", () => {
