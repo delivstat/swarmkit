@@ -85,6 +85,7 @@ def compile_topology(
     provider_registry: ProviderRegistry | None = None,
     governance: GovernanceProvider,
     mcp_manager: Any = None,
+    command_packs: Any = None,
     checkpointer: Any = None,
     workspace_root: Any = None,
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
@@ -131,6 +132,7 @@ def compile_topology(
             governance,
             agents,
             mcp_manager,
+            command_packs,
             provider_registry,
             workspace_root=workspace_root,
             decision_skill_bindings=_bindings,
@@ -220,6 +222,7 @@ def _build_agent_node(  # noqa: PLR0915
     governance: GovernanceProvider,
     all_agents: dict[str, ResolvedAgent],
     mcp_manager: Any = None,
+    command_packs: Any = None,
     provider_registry: ProviderRegistry | None = None,
     workspace_root: Any = None,
     decision_skill_bindings: list[DecisionSkillBinding] | None = None,
@@ -333,6 +336,7 @@ def _build_agent_node(  # noqa: PLR0915
                 workspace_root=workspace_root,
                 model_provider=model_provider,
                 mcp_manager=mcp_manager,
+                command_packs=command_packs,
             )
 
         # ---- already-delegated fast path (resume scenarios) ------------
@@ -367,6 +371,7 @@ def _build_agent_node(  # noqa: PLR0915
                         governance,
                         all_agents or {},
                         mcp_manager,
+                        command_packs,
                         provider_registry,
                         workspace_root=workspace_root,
                         decision_skill_bindings=_ds_bindings,
@@ -465,6 +470,7 @@ def _build_agent_node(  # noqa: PLR0915
             system_prompt,
             model_provider,
             mcp_manager,
+            command_packs,
             governance,
             _verbose,
             state=state,
@@ -722,6 +728,7 @@ async def _run_harness_with_gates(
     workspace_root: Any = None,
     model_provider: Any = None,
     mcp_manager: Any = None,
+    command_packs: Any = None,
 ) -> dict[str, Any]:
     """Run a harness node and apply its ``post_output`` decision skills.
 

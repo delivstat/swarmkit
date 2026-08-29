@@ -1,16 +1,20 @@
 """Skill execution for the compiler's agentic tool-use loop.
 
-Supports ``llm_prompt``, ``mcp_tool``, and ``composed`` skills.
-See ``design/details/decision-skills.md`` and ``design/details/mcp-client.md``.
+Supports ``llm_prompt``, ``mcp_tool``, ``command``, and ``composed`` skills.
+See ``design/details/decision-skills.md``, ``design/details/mcp-client.md`` and
+``design/details/command-packs.md``.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from swarmkit_runtime import prerequisites
 from swarmkit_runtime._run_scope import current_run_id
+from swarmkit_runtime.commands._config import CommandPackConfig
+from swarmkit_runtime.commands._governed import check_command_permission
+from swarmkit_runtime.commands._runner import CommandExecutionError, run_command
 from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.mcp._client import MCPClientManager
 from swarmkit_runtime.mcp._governed import check_mcp_permission
@@ -22,6 +26,9 @@ from swarmkit_runtime.model_providers import (
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.prerequisites import Requires
 from swarmkit_runtime.skills import ResolvedSkill, impl_get
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 SkillResult = str | tuple[str, list[ContentBlock]]
 
@@ -43,9 +50,11 @@ async def execute_skill(
     model_provider: ModelProviderProtocol,
     model_name: str,
     mcp_manager: MCPClientManager | None = None,
+    command_packs: Mapping[str, CommandPackConfig] | None = None,
     governance: GovernanceProvider | None = None,
     agent_id: str = "",
     requires: Requires | None = None,
+    workspace_root: str = "",
 ) -> SkillResult:
     """Execute a skill and return the result.
 
@@ -76,6 +85,17 @@ async def execute_skill(
             requires=requires,
         )
 
+    if impl_type == "command":
+        return await _execute_command(
+            skill,
+            input_text=input_text,
+            command_packs=command_packs,
+            governance=governance,
+            agent_id=agent_id,
+            requires=requires,
+            workspace_root=workspace_root,
+        )
+
     if impl_type == "composed":
         return await _execute_composed(
             skill,
@@ -86,6 +106,79 @@ async def execute_skill(
         )
 
     return f"[skill:{skill.id}] Unknown implementation type: {impl_type}"
+
+
+async def _execute_command(
+    skill: ResolvedSkill,
+    *,
+    input_text: str,
+    command_packs: Mapping[str, CommandPackConfig] | None,
+    governance: GovernanceProvider | None = None,
+    agent_id: str = "",
+    requires: Requires | None = None,
+    workspace_root: str = "",
+) -> SkillResult:
+    """Execute a ``command`` skill by running a command from a workspace pack.
+
+    Governed through :func:`check_command_permission`, which is the command-side sibling of
+    ``check_mcp_permission`` — the tier comes from the pack, the authorization from this skill's
+    ``iam.required_scopes``.
+    """
+    impl = skill.raw.implementation
+    pack_id = str(impl_get(impl, "pack"))
+    command_id = str(impl_get(impl, "command"))
+
+    packs = command_packs or {}
+    pack = packs.get(pack_id)
+    spec = pack.commands.get(command_id) if pack is not None else None
+
+    iam = getattr(skill.raw, "iam", None)
+    scopes: frozenset[str] = frozenset()
+    if iam and isinstance(iam, dict):
+        scopes = frozenset(iam.get("required_scopes", []))
+    elif iam is not None:
+        scopes = frozenset(getattr(iam, "required_scopes", None) or [])
+
+    allowed, reason = await check_command_permission(
+        pack,
+        spec,
+        governance,
+        agent_id=agent_id,
+        pack_id=pack_id,
+        command_id=command_id,
+        scopes=scopes,
+        skill_id=skill.id,
+        requires=requires,
+    )
+    if not allowed:
+        return f"[skill:{skill.id}]{DENIED_MARK}{reason}"
+
+    assert pack is not None and spec is not None
+
+    try:
+        arguments = json.loads(input_text) if input_text.strip().startswith("{") else {}
+    except (json.JSONDecodeError, TypeError):
+        arguments = {}
+    # A single unnamed input fills a single placeholder; anything more must be named, because
+    # guessing which of several arguments a bare string meant is how the wrong file gets edited.
+    if not arguments and len(spec.placeholders) == 1:
+        arguments = {next(iter(spec.placeholders)): input_text.strip()}
+
+    try:
+        result = await run_command(
+            pack,
+            spec,
+            arguments=arguments,
+            workspace_root=workspace_root,
+        )
+    except CommandExecutionError as exc:
+        return f"[skill:{skill.id}] {exc}"
+
+    if spec.parse == "json":
+        return json.dumps(result.parsed)
+    if spec.parse == "lines":
+        return "\n".join(result.parsed)
+    return result.stdout
 
 
 async def _execute_llm_prompt(

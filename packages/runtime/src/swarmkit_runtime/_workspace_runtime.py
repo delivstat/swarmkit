@@ -34,6 +34,11 @@ from swarmkit_runtime._stop_requests import (
     store_backed_checker,
 )
 from swarmkit_runtime.audit import AuditProvider, SqlAuditProvider, audit_provider_for_path
+from swarmkit_runtime.commands import (
+    CommandPackConfig,
+    check_requirements,
+    parse_command_packs,
+)
 from swarmkit_runtime.governance import (
     DecisionSkillBinding,
     DecisionSkillResult,
@@ -231,6 +236,31 @@ class MissingMCPServerError(Exception):
         super().__init__("\n".join(lines))
 
 
+class UnrunnableCommandPackError(Exception):
+    """A command pack declares a binary that is missing or the wrong version.
+
+    Raised at workspace load rather than at call time. A topology that only runs where a binary
+    happens to be installed is weaker portable data than one that does not, and the failure should
+    name the binary rather than arrive as an exec error four steps into a run.
+    """
+
+    def __init__(self, problems: list[str]) -> None:
+        self.problems = problems
+        super().__init__("\n".join(problems))
+
+
+class MissingCommandPackError(Exception):
+    """A skill targets a command pack or command the workspace doesn't declare."""
+
+    def __init__(self, missing: list[tuple[str, str]]) -> None:
+        self.missing = missing
+        lines = [
+            f"skill '{sid}' targets {what} but the workspace declares no such thing"
+            for sid, what in missing
+        ]
+        super().__init__("\n".join(lines))
+
+
 class WorkspaceRuntime:
     """The backend that both CLI and HTTP server call into.
 
@@ -247,6 +277,7 @@ class WorkspaceRuntime:
         provider_registry: ProviderRegistry,
         governance: GovernanceProvider,
         mcp_manager: MCPClientManager | None,
+        command_packs: dict[str, CommandPackConfig] | None = None,
         audit_provider: AuditProvider | None = None,
     ) -> None:
         self._workspace = workspace
@@ -254,6 +285,7 @@ class WorkspaceRuntime:
         self._provider_registry = provider_registry
         self._governance = governance
         self._mcp_manager = mcp_manager
+        self._command_packs = command_packs or {}
         self._memory_store = self._create_memory_store()
         self._governed_memory_store = self._create_governed_memory_store()
         # The service, not a path: `audit_provider_for_path` never saw the workspace config, so a
@@ -367,6 +399,14 @@ class WorkspaceRuntime:
 
         missing = find_missing_mcp_servers(workspace, mcp_configs)
 
+        command_packs = parse_command_packs(getattr(workspace.raw, "command_packs", None))
+        missing_commands = find_missing_command_packs(workspace, command_packs)
+        if missing_commands:
+            raise MissingCommandPackError(missing_commands)
+        unrunnable = check_requirements(command_packs)
+        if unrunnable:
+            raise UnrunnableCommandPackError(unrunnable)
+
         decision_skills = {
             sid: skill
             for sid, skill in workspace.skills.items()
@@ -397,6 +437,7 @@ class WorkspaceRuntime:
             provider_registry=registry,
             governance=governance,
             mcp_manager=mcp_manager,
+            command_packs=command_packs,
         )
 
     async def _compiled(self, topology_name: str) -> Any:
@@ -451,6 +492,7 @@ class WorkspaceRuntime:
             provider_registry=self._provider_registry,
             governance=self._governance,
             mcp_manager=self._mcp_manager,
+            command_packs=self._command_packs,
             checkpointer=self._get_checkpointer(),
             workspace_root=self._workspace_root,
             decision_skill_bindings=decision_bindings,
@@ -568,6 +610,7 @@ class WorkspaceRuntime:
             provider_registry=self._provider_registry,
             governance=self._governance,
             mcp_manager=self._mcp_manager,
+            command_packs=self._command_packs,
             checkpointer=None,
             workspace_root=self._workspace_root,
             decision_skill_bindings=self._resolve_decision_bindings(topology_name),
@@ -1392,6 +1435,30 @@ def resolve_authoring_provider(
         "No model provider available. Set SWARMKIT_PROVIDER "
         "and the corresponding API key (e.g. GROQ_API_KEY)."
     )
+
+
+def find_missing_command_packs(
+    workspace: ResolvedWorkspace,
+    packs: dict[str, CommandPackConfig],
+) -> list[tuple[str, str]]:
+    """Return ``(skill_id, description)`` pairs whose command target is unresolvable.
+
+    Checks the command as well as the pack. A skill naming a pack that exists but a command that
+    does not would otherwise resolve at load and fail only when an agent first reached for it.
+    """
+    missing: list[tuple[str, str]] = []
+    for skill_id, skill in workspace.skills.items():
+        impl = skill.raw.implementation
+        if impl_get(impl, "type") != "command":
+            continue
+        pack_id = str(impl_get(impl, "pack"))
+        command_id = str(impl_get(impl, "command"))
+        pack = packs.get(pack_id)
+        if pack is None:
+            missing.append((skill_id, f"command pack '{pack_id}'"))
+        elif command_id not in pack.commands:
+            missing.append((skill_id, f"command '{command_id}' in pack '{pack_id}'"))
+    return missing
 
 
 def find_missing_mcp_servers(

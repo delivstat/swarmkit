@@ -1,0 +1,52 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: command-packs
+  name: Command Packs
+  description: |
+    Local commands as a skill implementation type — the sibling of mcp_servers for
+    capabilities that already exist as binaries. See design/details/command-packs.md.
+governance:
+  provider: mock
+  policy_language: yaml
+
+command_packs:
+  # Read-only pack. Every command declares effects: read, so `permission: readonly`
+  # is enforceable against a fact rather than against a guess about the name.
+  - id: json-tools
+    description: Query JSON with jq.
+    requires:
+      - { binary: jq, version: '>=1.6' }
+    permission: readonly
+    timeout_seconds: 10
+    max_output_bytes: 1048576
+    commands:
+      - id: query
+        description: Run a jq filter over a file.
+        # argv, not a shell. `{filter}` is filled with the *value* of the argument and
+        # stays exactly one argv entry, so `; rm -rf /` is a jq filter that fails to
+        # parse rather than a command that runs.
+        argv: [jq, '-r', '{filter}', '{file}']
+        effects: read
+
+      - id: keys
+        description: List the top-level keys of a JSON file.
+        argv: [jq, '-r', 'keys[]', '{file}']
+        effects: read
+        output: { parse: lines }
+
+  # Same binary, but this pack can write — so the tier differs and the write command
+  # is pulled up to `strict`, which requires an explicit approval rather than the
+  # cautious default.
+  - id: json-editing
+    description: Rewrite JSON files in place.
+    requires:
+      - { binary: jq, version: '>=1.6' }
+    permission: cautious
+    permission_overrides:
+      rewrite: strict
+    commands:
+      - id: rewrite
+        description: Apply a jq filter to a file in place.
+        argv: [jq, '--in-place', '{filter}', '{file}']
+        effects: write

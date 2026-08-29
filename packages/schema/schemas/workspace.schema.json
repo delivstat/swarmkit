@@ -50,6 +50,13 @@
         "$ref": "#/$defs/mcp_server"
       }
     },
+    "command_packs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/command_pack"
+      },
+      "description": "Local command packs \u2014 the sibling of `mcp_servers` for capabilities that already exist as binaries and would otherwise need a wrapper server written for them."
+    },
     "storage": {
       "$ref": "#/$defs/storage"
     },
@@ -978,6 +985,160 @@
           "minimum": 1,
           "default": 60,
           "description": "Evaluation window in minutes. Only runs within this window count toward promotion criteria."
+        }
+      }
+    },
+    "command_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "argv"
+      ],
+      "description": "A single command in a pack. `argv` is executed directly \u2014 there is no shell, so a substituted value can never become an argument or an operator.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "description": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "description": "argv, executed with no shell. `{name}` placeholders are filled from the skill's declared inputs and are always passed as exactly one argument, never re-parsed. `{credential.*}` is rejected here \u2014 secrets reach a command through the pack's `env` only, so they cannot be model-placed, cannot appear in an audit line, and cannot be read from `ps`.",
+          "items": {
+            "type": "string",
+            "not": {
+              "pattern": "\\{credential\\."
+            }
+          }
+        },
+        "effects": {
+          "enum": [
+            "read",
+            "write"
+          ],
+          "default": "write",
+          "description": "Whether this command changes anything. Not inferrable from the binary \u2014 `curl` POSTs and `jq` takes `-i` \u2014 so the pack author declares it. Undeclared means `write`, so an unclassified command fails closed. `permission: readonly` denies every `write` command."
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "parse": {
+              "enum": [
+                "text",
+                "json",
+                "lines"
+              ],
+              "default": "text"
+            }
+          }
+        }
+      }
+    },
+    "binary_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binary"
+      ],
+      "description": "A binary this pack needs, checked at workspace load rather than at run time. A topology that only runs where a binary happens to exist is less portable data than one that does not, and the failure should name the binary rather than surface as an exec error mid-run.",
+      "properties": {
+        "binary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "description": "Constraint such as '>=1.7', compared against the binary's --version output. An unparseable version is a load error, not a silent pass."
+        }
+      }
+    },
+    "command_pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "commands"
+      ],
+      "description": "A named set of local commands exposed to skills through `implementation.type: command`. Governed exactly as an mcp_server is \u2014 the pack carries the permission tier, the skill carries `iam.required_scopes`.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "description": {
+          "type": "string"
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/command_spec"
+          }
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/binary_requirement"
+          }
+        },
+        "permission": {
+          "enum": [
+            "open",
+            "cautious",
+            "strict",
+            "readonly"
+          ],
+          "default": "cautious",
+          "description": "Governance permission tier for this pack's commands, matching mcp_server. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: every command declaring `effects: write` is denied."
+        },
+        "permission_overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "open",
+              "cautious",
+              "strict",
+              "readonly"
+            ]
+          },
+          "description": "Per-command tier overrides. Keys are command ids."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Pack default. A command with no ceiling can take a run down with it, so an omitted value means the built-in default, never unbounded."
+        },
+        "timeout_overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "Per-command timeout overrides in seconds. Keys are command ids."
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10485760,
+          "description": "Combined stdout+stderr ceiling. Exceeding it fails the call rather than truncating, since a truncated result read as complete is the worse outcome."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory. Supports ${VAR} expansion. Defaults to workspace root."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment for every command in the pack. Supports ${VAR} expansion and `{credential.<ref>}` resolved against `credentials_ref`. This is the only place a secret may reach a command."
+        },
+        "credentials_ref": {
+          "type": "string"
         }
       }
     }

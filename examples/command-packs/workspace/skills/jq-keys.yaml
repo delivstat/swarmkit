@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: jq-keys
+  name: JQ Keys
+  description: Lists the top-level keys of a JSON file.
+category: capability
+inputs:
+  type: object
+  properties:
+    file: { type: string }
+  required: [file]
+implementation:
+  type: command
+  pack: json-tools
+  command: keys
+iam:
+  required_scopes: [workspace:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,9 @@
+# A pack with no commands exposes nothing; the empty case is a mistake, not a configuration.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: empty-pack
+  name: Empty Pack
+command_packs:
+  - id: json-tools
+    commands: []

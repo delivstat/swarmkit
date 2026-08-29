@@ -94,6 +94,16 @@ class Implementation3(BaseModel):
     strategy: Strategy | None = None
 
 
+class Implementation4(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    type: Literal["command"]
+    pack: str = Field(..., min_length=1)
+    command: str = Field(..., min_length=1)
+
+
 class Iam(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -220,7 +230,9 @@ class SwarmKitSkill(BaseModel):
         None,
         description="JSON Schema defining the skill's output shape. Passed to providers for structured generation (Tier 0) and used for deterministic validation (Tier 1). See design/details/structured-output-governance.md.",
     )
-    implementation: Implementation1 | Implementation2 | Implementation3
+    implementation: (
+        Implementation1 | Implementation2 | Implementation3 | Implementation4
+    )
     iam: Iam | None = None
     constraints: Constraints | None = None
     audit: Audit | None = None

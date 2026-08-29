@@ -330,6 +330,15 @@ demo-knowledge-pack:
     @echo "── pack head (broken workspace overlay) ──"
     @uv run swarmkit knowledge-pack examples/hello-swarm/workspace-broken | head -60
 
+# Command packs — local commands as a skill implementation type. Demonstrates the
+# five claims that matter, against the real runtime: a command runs; a hostile
+# argument value stays one argv entry and executes nothing; readonly denies a
+# declared write whatever it is called; the output ceiling fails instead of
+# truncating; and a missing binary is caught at load with its name.
+# Needs nothing installed — every command it runs is python3.
+demo-command-packs:
+    @uv run python examples/command-packs/demo.py
+
 # M3 exit demo — run the hello-swarm topology end-to-end. Uses whichever
 # model provider env vars are set (SWARMKIT_PROVIDER + SWARMKIT_MODEL,
 # or falls back to the agent's declared provider). The supervisor

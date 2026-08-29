@@ -1,0 +1,36 @@
+# A `command` skill: the pack supplies the permission tier, this skill's iam.required_scopes
+# supplies the authorization. See design/details/command-packs.md.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: jq-query
+  name: JQ Query
+  description: |
+    Runs a jq filter over a workspace file and returns the result as text.
+category: capability
+inputs:
+  type: object
+  properties:
+    filter:
+      type: string
+      description: A jq filter expression.
+    file:
+      type: string
+      description: Path to the JSON file to read.
+  required: [filter, file]
+outputs:
+  type: object
+  properties:
+    result:
+      type: string
+  required: [result]
+implementation:
+  type: command
+  pack: json-tools
+  command: query
+iam:
+  required_scopes: [workspace:read]
+provenance:
+  authored_by: human
+  authored_date: "2026-08-29"
+  version: 1.0.0

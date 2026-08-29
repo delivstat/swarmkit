@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: analyst
+  name: JSON Analyst
+  description: Reads JSON files. Holds only read commands.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+  prompt:
+    system: |
+      You answer questions about JSON files using the jq skills you hold.
+      You can read; you cannot modify anything.
+  skills:
+    - jq-query
+    - jq-keys
+provenance:
+  authored_by: human
+  version: 1.0.0
