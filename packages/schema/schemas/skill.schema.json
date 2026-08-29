@@ -160,6 +160,17 @@
               "enum": ["parallel-consensus", "sequential", "custom"]
             }
           }
+        },
+        {
+          "$comment": "Invoke a command from a workspace `command_packs` entry. Governed like an mcp_tool: the pack supplies the permission tier, this skill's `iam.required_scopes` supplies the authorization.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "pack", "command"],
+          "properties": {
+            "type": { "const": "command" },
+            "pack": { "type": "string", "minLength": 1 },
+            "command": { "type": "string", "minLength": 1 }
+          }
         }
       ]
     },

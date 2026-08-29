@@ -7,7 +7,12 @@
  * See design §9.3 and design/details/workspace-schema-v1.md.
  */
 export interface SwarmKitWorkspace {
-    apiVersion:           APIVersion;
+    apiVersion: APIVersion;
+    /**
+     * Local command packs — the sibling of `mcp_servers` for capabilities that already exist as
+     * binaries and would otherwise need a wrapper server written for them.
+     */
+    command_packs?:       CommandPackElement[];
     context_compression?: ContextCompression;
     credentials?:         { [key: string]: CredentialValue };
     governance?:          Governance;
@@ -25,6 +30,116 @@ export interface SwarmKitWorkspace {
 }
 
 export type APIVersion = "swarmkit/v1";
+
+/**
+ * A named set of local commands exposed to skills through `implementation.type: command`.
+ * Governed exactly as an mcp_server is — the pack carries the permission tier, the skill
+ * carries `iam.required_scopes`.
+ */
+export interface CommandPackElement {
+    commands:         CommandElement[];
+    credentials_ref?: string;
+    /**
+     * Working directory. Supports ${VAR} expansion. Defaults to workspace root.
+     */
+    cwd?:         string;
+    description?: string;
+    /**
+     * Environment for every command in the pack. Supports ${VAR} expansion and
+     * `{credential.<ref>}` resolved against `credentials_ref`. This is the only place a secret
+     * may reach a command.
+     */
+    env?: { [key: string]: string };
+    id:   string;
+    /**
+     * Combined stdout+stderr ceiling. Exceeding it fails the call rather than truncating, since
+     * a truncated result read as complete is the worse outcome.
+     */
+    max_output_bytes?: number;
+    /**
+     * Governance permission tier for this pack's commands, matching mcp_server. open: skip
+     * governance checks. cautious (default): reads auto-approved, writes go through governance.
+     * strict: all calls require explicit approval. readonly: every command declaring `effects:
+     * write` is denied.
+     */
+    permission?: Permission;
+    /**
+     * Per-command tier overrides. Keys are command ids.
+     */
+    permission_overrides?: { [key: string]: Permission };
+    requires?:             RequireElement[];
+    /**
+     * Per-command timeout overrides in seconds. Keys are command ids.
+     */
+    timeout_overrides?: { [key: string]: number };
+    /**
+     * Pack default. A command with no ceiling can take a run down with it, so an omitted value
+     * means the built-in default, never unbounded.
+     */
+    timeout_seconds?: number;
+}
+
+/**
+ * A single command in a pack. `argv` is executed directly — there is no shell, so a
+ * substituted value can never become an argument or an operator.
+ */
+export interface CommandElement {
+    /**
+     * argv, executed with no shell. `{name}` placeholders are filled from the skill's declared
+     * inputs and are always passed as exactly one argument, never re-parsed. `{credential.*}`
+     * is rejected here — secrets reach a command through the pack's `env` only, so they cannot
+     * be model-placed, cannot appear in an audit line, and cannot be read from `ps`.
+     */
+    argv:         string[];
+    description?: string;
+    /**
+     * Whether this command changes anything. Not inferrable from the binary — `curl` POSTs and
+     * `jq` takes `-i` — so the pack author declares it. Undeclared means `write`, so an
+     * unclassified command fails closed. `permission: readonly` denies every `write` command.
+     */
+    effects?: Effects;
+    id:       string;
+    output?:  Output;
+}
+
+/**
+ * Whether this command changes anything. Not inferrable from the binary — `curl` POSTs and
+ * `jq` takes `-i` — so the pack author declares it. Undeclared means `write`, so an
+ * unclassified command fails closed. `permission: readonly` denies every `write` command.
+ */
+export type Effects = "read" | "write";
+
+export interface Output {
+    parse?: Parse;
+}
+
+export type Parse = "text" | "json" | "lines";
+
+/**
+ * Governance permission tier for this pack's commands, matching mcp_server. open: skip
+ * governance checks. cautious (default): reads auto-approved, writes go through governance.
+ * strict: all calls require explicit approval. readonly: every command declaring `effects:
+ * write` is denied.
+ *
+ * Governance permission tier for this server's tools. open: skip governance checks.
+ * cautious (default): reads auto-approved, writes go through governance. strict: all calls
+ * require explicit approval. readonly: write operations denied.
+ */
+export type Permission = "open" | "cautious" | "strict" | "readonly";
+
+/**
+ * A binary this pack needs, checked at workspace load rather than at run time. A topology
+ * that only runs where a binary happens to exist is less portable data than one that does
+ * not, and the failure should name the binary rather than surface as an exec error mid-run.
+ */
+export interface RequireElement {
+    binary: string;
+    /**
+     * Constraint such as '>=1.7', compared against the binary's --version output. An
+     * unparseable version is a load error, not a silent pass.
+     */
+    version?: string;
+}
 
 /**
  * Opt-in read-side compression of bulk tool/MCP output before it re-enters an agent's
@@ -238,13 +353,6 @@ export interface MCPServerElement {
     sandboxed?: boolean;
     transport:  Transport;
 }
-
-/**
- * Governance permission tier for this server's tools. open: skip governance checks.
- * cautious (default): reads auto-approved, writes go through governance. strict: all calls
- * require explicit approval. readonly: write operations denied.
- */
-export type Permission = "open" | "cautious" | "strict" | "readonly";
 
 export type Transport = "stdio" | "http";
 

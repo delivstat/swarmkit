@@ -42,6 +42,7 @@ async def execute_task_batch(  # noqa: PLR0915
     governance: Any,
     all_agents: dict[str, ResolvedAgent],
     mcp_manager: Any,
+    command_packs: Any,
     provider_registry: ProviderRegistry | None,
     workspace_root: Path | None = None,
     decision_skill_bindings: list[Any] | None = None,
@@ -86,6 +87,7 @@ async def execute_task_batch(  # noqa: PLR0915
                     agent_id,
                     model_provider,
                     mcp_manager,
+                    command_packs,
                     governance,
                 )
             else:
@@ -97,6 +99,7 @@ async def execute_task_batch(  # noqa: PLR0915
                     governance,
                     all_agents,
                     mcp_manager,
+                    command_packs,
                     provider_registry,
                 )
             result_path = _save_result(
@@ -230,6 +233,7 @@ async def _execute_child_task(
     governance: Any,
     all_agents: dict[str, ResolvedAgent],
     mcp_manager: Any,
+    command_packs: Any,
     provider_registry: ProviderRegistry | None,
 ) -> str:
     """Execute a task by running a child agent."""
@@ -252,6 +256,7 @@ async def _execute_child_task(
         governance,
         all_agents,
         mcp_manager,
+        command_packs,
         provider_registry,
     )
 
@@ -360,6 +365,7 @@ async def _execute_self_task(
     agent_id: str,
     model_provider: ModelProviderProtocol,
     mcp_manager: Any,
+    command_packs: Any,
     governance: Any,
 ) -> str:
     """Execute a self-task — the coordinator does this work itself."""
@@ -414,6 +420,7 @@ async def _execute_self_task(
         model_provider,
         model_name,
         mcp_manager,
+        command_packs,
         governance,
     )
     if tool_results is not None:
@@ -427,6 +434,7 @@ async def _execute_self_task(
             system_prompt,
             model_provider,
             mcp_manager,
+            command_packs,
             governance,
             tool_results,
             verbose,

@@ -1,0 +1,6 @@
+{
+  "service": "checkout",
+  "version": "2.4.1",
+  "replicas": 3,
+  "regions": ["uk", "de", "jp"]
+}

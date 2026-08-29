@@ -412,6 +412,7 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
     model_provider: ModelProviderProtocol,
     model_name: str,
     mcp_manager: Any = None,
+    command_packs: Any = None,
     governance: GovernanceProvider | None = None,
 ) -> list[ToolCallResult] | None:
     """Execute all skill tool calls in the response (up to max per turn).
@@ -505,6 +506,7 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
             model_provider=model_provider,
             model_name=os.environ.get("SWARMKIT_MODEL") or model_name,
             mcp_manager=mcp_manager,
+            command_packs=command_packs,
             governance=governance,
             agent_id=agent.id,
             requires=agent.requires,
@@ -611,6 +613,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
     system_prompt: str | None,
     model_provider: ModelProviderProtocol,
     mcp_manager: Any,
+    command_packs: Any,
     governance: GovernanceProvider,
     tool_results: list[ToolCallResult],
     verbose: str,
@@ -685,6 +688,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
             _loop_provider,
             _loop_model,
             mcp_manager,
+            command_packs,
             governance,
         )
 

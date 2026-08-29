@@ -94,11 +94,13 @@ export interface Implementation {
     prompt?:    string;
     composes?:  string[];
     strategy?:  Strategy;
+    command?:   string;
+    pack?:      string;
 }
 
 export type Strategy = "parallel-consensus" | "sequential" | "custom";
 
-export type Type = "mcp_tool" | "llm_prompt" | "composed";
+export type Type = "mcp_tool" | "llm_prompt" | "composed" | "command";
 
 export type Kind = "Skill";
 

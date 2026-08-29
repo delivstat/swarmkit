@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: jq-query
+  name: JQ Query
+  description: Runs a jq filter over a JSON file and returns the result.
+category: capability
+inputs:
+  type: object
+  properties:
+    filter: { type: string, description: A jq filter expression. }
+    file: { type: string, description: Path to the JSON file. }
+  required: [filter, file]
+implementation:
+  type: command
+  pack: json-tools
+  command: query
+iam:
+  required_scopes: [workspace:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

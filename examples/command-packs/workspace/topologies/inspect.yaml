@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: inspect
+  version: 0.1.0
+agents:
+  root:
+    id: root
+    role: root
+    model:
+      provider: anthropic
+      name: claude-opus-4-7
+    prompt:
+      system: |
+        Delegate JSON questions to the analyst, and modification requests to
+        the editor.
+    children:
+      - id: analyst
+        role: worker
+        archetype: analyst
+      - id: editor
+        role: worker
+        archetype: editor

@@ -69,6 +69,13 @@ SHAPE_ONLY_INVALID: set[tuple[str, str]] = {
     # empty prerequisite list is caught by `validate()` and not by the generated model. The sibling
     # fixture `requires-not-a-list.yaml` is rejected by both.
     ("topology-invalid", "requires-empty-list.yaml"),
+    # `not: {pattern: ...}` is a negation, which the pydantic codegen does not translate — so a
+    # credential placed in a command's argv is rejected by `validate()` and accepted by the
+    # generated model. That gap is why `parse_command_packs` re-checks it at construction: the
+    # schema stops it being written, the parser stops it being built any other way. A secret in
+    # argv would be model-placeable, land in the audit line recording what ran, and be readable
+    # from `ps` — one layer of defence is not enough for that.
+    ("workspace-invalid", "command-pack-credential-in-argv.yaml"),
 }
 
 

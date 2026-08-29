@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: jq-rewrite
+  name: JQ Rewrite
+  description: Rewrites a JSON file in place through a jq filter.
+category: capability
+inputs:
+  type: object
+  properties:
+    filter: { type: string }
+    file: { type: string }
+  required: [filter, file]
+implementation:
+  type: command
+  pack: json-editing
+  command: rewrite
+iam:
+  required_scopes: [workspace:write]
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,46 @@
+# Command packs — local commands as the sibling of mcp_servers.
+# See design/details/command-packs.md.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: command-packs-demo
+  name: Command Packs Demo
+governance:
+  provider: mock
+  policy_language: yaml
+command_packs:
+  - id: json-tools
+    description: Query and reshape JSON with jq.
+    requires:
+      - { binary: jq, version: '>=1.6' }
+    permission: cautious
+    timeout_seconds: 30
+    max_output_bytes: 10485760
+    timeout_overrides:
+      big-report: 300
+    permission_overrides:
+      edit-in-place: strict
+    commands:
+      - id: query
+        description: Run a jq filter over a file and print the result.
+        argv: [jq, '-r', '{filter}', '{file}']
+        effects: read
+        output: { parse: text }
+      - id: big-report
+        argv: [jq, '-r', '{filter}', '{file}']
+        effects: read
+      - id: edit-in-place
+        description: Rewrite a file through a jq filter.
+        argv: [jq, '-r', '--in-place', '{filter}', '{file}']
+        effects: write
+  - id: github
+    description: A pack whose commands need a credential — which reaches them via env, never argv.
+    credentials_ref: gh-token
+    env:
+      GH_TOKEN: '{credential.gh-token}'
+    permission: readonly
+    commands:
+      - id: list-prs
+        argv: [gh, pr, list, '--repo', '{repo}']
+        effects: read
+        output: { parse: json }

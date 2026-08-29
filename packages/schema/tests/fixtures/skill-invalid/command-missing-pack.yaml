@@ -1,0 +1,15 @@
+# `command` requires both pack and command — naming only one resolves to nothing.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: broken-command
+  name: Broken Command
+  description: Missing the pack reference.
+category: capability
+implementation:
+  type: command
+  command: query
+provenance:
+  authored_by: human
+  authored_date: "2026-08-29"
+  version: 1.0.0

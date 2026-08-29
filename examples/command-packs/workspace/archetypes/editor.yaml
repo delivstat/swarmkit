@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: editor
+  name: JSON Editor
+  description: Holds the write command, which is gated at `strict`.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+  prompt:
+    system: |
+      You modify JSON files on request. The rewrite skill is gated — a human
+      approves each call.
+  skills:
+    - jq-query
+    - jq-rewrite
+provenance:
+  authored_by: human
+  version: 1.0.0

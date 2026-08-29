@@ -628,6 +628,124 @@ class PromoteCriteria(BaseModel):
     )
 
 
+class Effects(Enum):
+    """
+    Whether this command changes anything. Not inferrable from the binary — `curl` POSTs and `jq` takes `-i` — so the pack author declares it. Undeclared means `write`, so an unclassified command fails closed. `permission: readonly` denies every `write` command.
+    """
+
+    read = "read"
+    write = "write"
+
+
+class Parse(Enum):
+    text = "text"
+    json = "json"
+    lines = "lines"
+
+
+class Output(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    parse: Parse | None = "text"
+
+
+class CommandSpec(BaseModel):
+    """
+    A single command in a pack. `argv` is executed directly — there is no shell, so a substituted value can never become an argument or an operator.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
+    description: str | None = None
+    argv: list[str] = Field(
+        ...,
+        description="argv, executed with no shell. `{name}` placeholders are filled from the skill's declared inputs and are always passed as exactly one argument, never re-parsed. `{credential.*}` is rejected here — secrets reach a command through the pack's `env` only, so they cannot be model-placed, cannot appear in an audit line, and cannot be read from `ps`.",
+        min_length=1,
+    )
+    effects: Effects | None = Field(
+        "write",
+        description="Whether this command changes anything. Not inferrable from the binary — `curl` POSTs and `jq` takes `-i` — so the pack author declares it. Undeclared means `write`, so an unclassified command fails closed. `permission: readonly` denies every `write` command.",
+    )
+    output: Output | None = None
+
+
+class BinaryRequirement(BaseModel):
+    """
+    A binary this pack needs, checked at workspace load rather than at run time. A topology that only runs where a binary happens to exist is less portable data than one that does not, and the failure should name the binary rather than surface as an exec error mid-run.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    binary: str = Field(..., min_length=1)
+    version: str | None = Field(
+        None,
+        description="Constraint such as '>=1.7', compared against the binary's --version output. An unparseable version is a load error, not a silent pass.",
+    )
+
+
+class Permission1(Enum):
+    """
+    Governance permission tier for this pack's commands, matching mcp_server. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: every command declaring `effects: write` is denied.
+    """
+
+    open = "open"
+    cautious = "cautious"
+    strict = "strict"
+    readonly = "readonly"
+
+
+class CommandPack(BaseModel):
+    """
+    A named set of local commands exposed to skills through `implementation.type: command`. Governed exactly as an mcp_server is — the pack carries the permission tier, the skill carries `iam.required_scopes`.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
+    description: str | None = None
+    commands: list[CommandSpec] = Field(..., min_length=1)
+    requires: list[BinaryRequirement] | None = None
+    permission: Permission1 | None = Field(
+        "cautious",
+        description="Governance permission tier for this pack's commands, matching mcp_server. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: every command declaring `effects: write` is denied.",
+    )
+    permission_overrides: dict[str, PermissionOverrides] | None = Field(
+        None, description="Per-command tier overrides. Keys are command ids."
+    )
+    timeout_seconds: int | None = Field(
+        30,
+        description="Pack default. A command with no ceiling can take a run down with it, so an omitted value means the built-in default, never unbounded.",
+        ge=1,
+    )
+    timeout_overrides: dict[str, int] | None = Field(
+        None,
+        description="Per-command timeout overrides in seconds. Keys are command ids.",
+    )
+    max_output_bytes: int | None = Field(
+        10485760,
+        description="Combined stdout+stderr ceiling. Exceeding it fails the call rather than truncating, since a truncated result read as complete is the worse outcome.",
+        ge=1,
+    )
+    cwd: str | None = Field(
+        None,
+        description="Working directory. Supports ${VAR} expansion. Defaults to workspace root.",
+    )
+    env: dict[str, str] | None = Field(
+        None,
+        description="Environment for every command in the pack. Supports ${VAR} expansion and `{credential.<ref>}` resolved against `credentials_ref`. This is the only place a secret may reach a command.",
+    )
+    credentials_ref: str | None = None
+
+
 class Governance(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -832,6 +950,10 @@ class SwarmKitWorkspace(BaseModel):
     model_providers: list[ModelProviderRegistration] | None = None
     credentials: dict[str, CredentialRef] | None = None
     mcp_servers: list[McpServer] | None = None
+    command_packs: list[CommandPack] | None = Field(
+        None,
+        description="Local command packs — the sibling of `mcp_servers` for capabilities that already exist as binaries and would otherwise need a wrapper server written for them.",
+    )
     storage: Storage | None = None
     context_compression: ContextCompression | None = None
     planning: Planning | None = None
