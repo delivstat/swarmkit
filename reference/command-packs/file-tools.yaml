@@ -1,0 +1,63 @@
+# Reference command pack — file inspection with coreutils.
+#
+# This is the pack that runs on a bare machine. `json-tools` needs jq and `text-tools` needs
+# ripgrep; everything here is coreutils, present on any Linux or macOS host, so a fresh
+# `pip install swarmkit-runtime` can grant this pack and have it work.
+#
+# Copy the `command_pack:` block below into your workspace's `command_packs:` list, then grant it
+# with `pack:file-tools`. Declaring a pack is not granting it. See
+# design/details/command-packs.md.
+#
+# SCOPE: these commands read whatever the runtime process can read. `cwd` sets the working
+# directory but an absolute path escapes it — a command pack has no path sandbox. Grant this to
+# agents you would let read the filesystem, and see the README section "What a pack does not
+# confine".
+apiVersion: swarmkit/v1
+kind: CommandPackReference
+metadata:
+  id: file-tools
+  name: File tools
+  description: Read and inspect files with coreutils. Read-only, no dependencies.
+
+command_pack:
+  id: file-tools
+  description: Read and inspect files. Needs nothing installed beyond coreutils.
+  requires:
+    - { binary: cat }
+    - { binary: head }
+    - { binary: tail }
+    - { binary: wc }
+    - { binary: find }
+  permission: readonly
+  timeout_seconds: 30
+  # Smaller than the default, because `read-file` against something unexpected is the likeliest
+  # way to produce a wall of output nobody asked for. Exceeding it fails rather than truncating.
+  max_output_bytes: 1048576
+  commands:
+    - id: read-file
+      description: Print the whole contents of a file.
+      argv: [cat, '{path}']
+      effects: read
+
+    - id: head
+      description: Print the first N lines of a file.
+      argv: [head, '-n', '{lines}', '{path}']
+      effects: read
+      output: { parse: lines }
+
+    - id: tail
+      description: Print the last N lines of a file — the end of a log, usually.
+      argv: [tail, '-n', '{lines}', '{path}']
+      effects: read
+      output: { parse: lines }
+
+    - id: count-lines
+      description: Count the lines in a file.
+      argv: [wc, '-l', '{path}']
+      effects: read
+
+    - id: list-files
+      description: List every file under a directory, recursively.
+      argv: [find, '{path}', '-type', 'f']
+      effects: read
+      output: { parse: lines }

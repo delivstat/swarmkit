@@ -249,7 +249,7 @@ skills:
 
 `pack:` carries **reads only**. Adding a read command flows through to everyone holding the pack; adding a write reaches nobody, so a pack can never silently widen an agent that already holds it. `server:` makes no equivalent promise, because an MCP tool has no declared effect to filter on. A bulk grant matching nothing is a resolution error listing what is available — an agent silently granted no tools is indistinguishable from one whose model chose not to use them.
 
-Bundled packs to copy: `reference/command-packs/` (`json-tools`, `text-tools`). Declaring a pack is not granting it — the grant is the audit step. Design: `design/details/command-packs.md`. Demo: `just demo-command-packs`.
+Bundled packs to copy: `reference/command-packs/` — `file-tools` (coreutils only, so it runs on a bare machine), `json-tools` (jq), `text-tools` (ripgrep). Declaring a pack is not granting it — the grant is the audit step. Design: `design/details/command-packs.md`. Demo: `just demo-command-packs`.
 
 ## `permission: readonly` needs declared `effects` (BREAKING, 1.199.0)
 

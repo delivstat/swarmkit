@@ -268,6 +268,13 @@ Bundling only saves everyone writing the same `jq` pack by hand.
   wrapper server written for them.
 - Composition between commands. Two commands piped together is a `composed` skill, or it is a
   harness executor node — both already exist.
+- **Path confinement.** `cwd` sets the working directory and an absolute path escapes it; a command
+  reads and writes whatever the runtime process can. Confining paths means understanding each
+  binary's argument grammar — `cat` takes a path, `find` takes a root, `curl` takes neither — and a
+  pack that half-confines is worse than one that states it does not. What bounds a pack is the
+  grant (a pack is inert until a topology asks for it), the tier, and the skill's
+  `iam.required_scopes`. Real filesystem confinement is a container, which is the same answer
+  SwarmKit gives for harness executors.
 
 ## Test plan
 

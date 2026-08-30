@@ -91,7 +91,7 @@ MISNAMED_WRITE = CommandPackConfig(
 )
 
 
-async def main() -> int:  # noqa: PLR0915
+async def main() -> int:  # noqa: PLR0911, PLR0915
     # ---- 1 ------------------------------------------------------------------
     head(1, "A command runs")
     spec = READ_PACK.commands["echo"]
@@ -169,6 +169,19 @@ async def main() -> int:  # noqa: PLR0915
         ok("the workspace beside this demo would refuse to load, naming the binary")
     else:
         ok("jq is present and satisfies >=1.6 — the example workspace loads here")
+
+    # The other half of the same check: a pack whose binaries ARE present passes silently.
+    core = CommandPackConfig(
+        pack_id="file-tools",
+        requires=tuple(BinaryRequirement(binary=b) for b in ("cat", "head", "wc", "find")),
+        commands={
+            "read": CommandSpecConfig(command_id="read", argv=("cat", "{path}"), effects="read")
+        },
+    )
+    if check_requirements({"file-tools": core}):
+        bad("coreutils should be present wherever this runs")
+        return 1
+    ok("reference/command-packs/file-tools.yaml needs only coreutils, so it loads anywhere")
 
     # ---- 6 ------------------------------------------------------------------
     head(6, "A pack grant expands to reads, and never to a write")
