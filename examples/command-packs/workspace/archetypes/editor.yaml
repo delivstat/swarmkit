@@ -14,8 +14,8 @@ defaults:
       You modify JSON files on request. The rewrite skill is gated — a human
       approves each call.
   skills:
-    - jq-query
-    - jq-rewrite
+    - pack:json-tools              # the reads, in bulk
+    - json-editing-rewrite         # the write, named explicitly — bulk grants never carry one
 provenance:
   authored_by: human
   version: 1.0.0

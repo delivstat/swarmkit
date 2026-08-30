@@ -21,6 +21,10 @@ class Identifier(RootModel[str]):
     )
 
 
+class SkillGrant(RootModel[str]):
+    root: str = Field(..., pattern="^(pack:|server:)?[a-z][a-z0-9-]*$")
+
+
 class Metadata(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -361,11 +365,11 @@ class Agent(BaseModel):
     )
     model: Model | None = None
     prompt: Prompt | None = None
-    skills: list[Identifier] | None = Field(
+    skills: list[SkillGrant] | None = Field(
         None,
         description="Skill IDs (design §6.1). Replaces the archetype's skill list when present.",
     )
-    skills_additional: list[Identifier] | None = Field(
+    skills_additional: list[SkillGrant] | None = Field(
         None, description="Skills merged onto the archetype defaults (design §6.6)."
     )
     requires: dict[constr(pattern=r"^[a-z][a-z0-9-]*$"), list[Identifier]] | None = (

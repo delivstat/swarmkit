@@ -13,6 +13,7 @@ Five claims, each shown rather than asserted:
   4. Bounds fail loudly. Over the output ceiling is an error, never a partial result
      that reads as complete.
   5. `requires` is checked at load and names the missing binary.
+  6. A `pack:` grant expands to the pack's reads — and never to a write.
 
 Every command here runs `python3`, so the demo needs nothing installed. The example
 workspace beside it uses `jq`, which is the realistic case — and claim 5 shows what
@@ -89,7 +90,7 @@ MISNAMED_WRITE = CommandPackConfig(
 )
 
 
-async def main() -> int:
+async def main() -> int:  # noqa: PLR0915
     # ---- 1 ------------------------------------------------------------------
     head(1, "A command runs")
     spec = READ_PACK.commands["echo"]
@@ -168,7 +169,21 @@ async def main() -> int:
     else:
         ok("jq is present and satisfies >=1.6 — the example workspace loads here")
 
-    print(f"\n{GREEN}{BOLD}All five claims demonstrated.{OFF}")
+    # ---- 6 ------------------------------------------------------------------
+    head(6, "A pack grant expands to reads, and never to a write")
+    from swarmkit_runtime.resolver import resolve_workspace  # noqa: PLC0415
+
+    ws = resolve_workspace(HERE / "workspace")
+    agents = {a.id: [s.id for s in a.skills] for a in ws.topologies["inspect"].root.children}
+    shown("analyst holds  pack:json-tools", repr(agents["analyst"]))
+    shown("editor holds   + json-editing-rewrite", repr(agents["editor"]))
+    if "json-editing-rewrite" in agents["analyst"]:
+        bad("a write command reached an agent that only asked for the pack")
+        return 1
+    ok("the write is absent from the analyst — a bulk grant cannot carry one")
+    ok("adding a read to the pack would reach both agents; adding a write would reach neither")
+
+    print(f"\n{GREEN}{BOLD}All six claims demonstrated.{OFF}")
     print(f"{DIM}Example workspace: {HERE / 'workspace'}{OFF}\n")
     return 0
 

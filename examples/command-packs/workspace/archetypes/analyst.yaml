@@ -14,8 +14,9 @@ defaults:
       You answer questions about JSON files using the jq skills you hold.
       You can read; you cannot modify anything.
   skills:
-    - jq-query
-    - jq-keys
+    # One entry, every read command in the pack. A read command added to the pack later
+    # flows through; a write command never does — see the editor.
+    - pack:json-tools
 provenance:
   authored_by: human
   version: 1.0.0

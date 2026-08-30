@@ -19,7 +19,7 @@ from swarmkit_schema.models import SwarmKitTopology
 from swarmkit_runtime.archetypes import ResolvedArchetype
 from swarmkit_runtime.errors import ResolutionError, yaml_pointer
 from swarmkit_runtime.executors import ResolvedExecutor
-from swarmkit_runtime.skills import ResolvedSkill
+from swarmkit_runtime.skills import ResolvedSkill, impl_get
 from swarmkit_runtime.workspace import DiscoveredArtifact
 
 from ._output_schema_ref import OutputSchemaError, resolve_output_schema
@@ -594,15 +594,134 @@ def _merge_and_resolve_skills(
 
     resolved: list[ResolvedSkill] = []
     errors: list[ResolutionError] = []
+    seen: set[str] = set()
     for index, entry in enumerate(entries):
+        if isinstance(entry, str) and (entry.startswith(("pack:", "server:"))):
+            expanded, expand_errors = _expand_bulk_grant(
+                entry, skills, agent_id, parent_path, index, artifact_path
+            )
+            errors.extend(expand_errors)
+            for skill in expanded:
+                if skill.id not in seen:
+                    seen.add(skill.id)
+                    resolved.append(skill)
+            continue
         skill_or_error = _resolve_skill_entry(
             entry, skills, agent_id, parent_path, index, artifact_path
         )
         if isinstance(skill_or_error, ResolutionError):
             errors.append(skill_or_error)
-        else:
+        elif skill_or_error.id not in seen:
+            seen.add(skill_or_error.id)
             resolved.append(skill_or_error)
     return tuple(resolved), errors
+
+
+def _expand_bulk_grant(
+    entry: str,
+    skills: Mapping[str, ResolvedSkill],
+    agent_id: str,
+    parent_path: Sequence[str | int],
+    index: int,
+    artifact_path: Path,
+) -> tuple[list[ResolvedSkill], list[ResolutionError]]:
+    """Expand ``pack:<id>`` or ``server:<id>`` into the skills it grants.
+
+    **A `pack:` grant carries the pack's read commands only.** Anything declaring
+    ``effects: write`` must be named individually, so adding a write command to a pack can never
+    silently widen what an agent already holds — the failure mode of every bulk grant. Adding a
+    *read* command does flow through, which is the ergonomics the bulk form exists for.
+
+    ``server:<id>`` grants every skill targeting that MCP server. It resolves against the declared
+    skills rather than the server's live tool list, because the tool list requires a connection and
+    a grant that changes when a server restarts is not a grant.
+    """
+    kind, _, target = entry.partition(":")
+    if not target:
+        return [], [
+            ResolutionError(
+                code="agent.bad-skill-entry",
+                message=(
+                    f"Agent {agent_id!r} has a bulk grant {entry!r} with no name after the colon."
+                ),
+                artifact_path=artifact_path,
+                yaml_pointer=_pointer_with(parent_path, "skills", index),
+                suggestion=f"Write {kind}:<id>, e.g. {kind}:my-{kind}.",
+            )
+        ]
+
+    if kind == "pack":
+        matches = [s for s in skills.values() if s.pack_origin and s.pack_origin[0] == target]
+        if not matches:
+            return [], [
+                _unknown_bulk(
+                    entry,
+                    "command pack",
+                    target,
+                    skills,
+                    agent_id,
+                    parent_path,
+                    index,
+                    artifact_path,
+                )
+            ]
+        reads = [s for s in matches if s.pack_origin and s.pack_origin[2] == "read"]
+        return sorted(reads, key=lambda s: s.id), []
+
+    matches = [
+        s
+        for s in skills.values()
+        if impl_get(s.raw.implementation, "type") == "mcp_tool"
+        and str(impl_get(s.raw.implementation, "server")) == target
+    ]
+    if not matches:
+        return [], [
+            _unknown_bulk(
+                entry, "MCP server", target, skills, agent_id, parent_path, index, artifact_path
+            )
+        ]
+    return sorted(matches, key=lambda s: s.id), []
+
+
+def _unknown_bulk(
+    entry: str,
+    label: str,
+    target: str,
+    skills: Mapping[str, ResolvedSkill],
+    agent_id: str,
+    parent_path: Sequence[str | int],
+    index: int,
+    artifact_path: Path,
+) -> ResolutionError:
+    """A bulk grant matching nothing is an error, not an empty set.
+
+    An agent silently granted no tools looks identical to one whose model chose not to use them,
+    and the difference only shows up as a confusing run transcript much later.
+    """
+    if entry.startswith("pack:"):
+        known = sorted({s.pack_origin[0] for s in skills.values() if s.pack_origin})
+    else:
+        known = sorted(
+            {
+                str(impl_get(s.raw.implementation, "server"))
+                for s in skills.values()
+                if impl_get(s.raw.implementation, "type") == "mcp_tool"
+            }
+        )
+    return ResolutionError(
+        code="agent.unknown-bulk-grant",
+        message=(
+            f"Agent {agent_id!r} grants {entry!r}, but no {label} {target!r} contributes any "
+            f"skill in this workspace."
+        ),
+        artifact_path=artifact_path,
+        yaml_pointer=_pointer_with(parent_path, "skills", index),
+        suggestion=(
+            f"Available: {', '.join(known) or 'none'}."
+            if known
+            else f"This workspace declares no {label}."
+        ),
+    )
 
 
 def _archetype_skill_entries(archetype: ResolvedArchetype | None) -> list[Any]:

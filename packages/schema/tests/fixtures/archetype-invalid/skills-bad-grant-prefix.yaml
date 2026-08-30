@@ -1,0 +1,15 @@
+# Only `pack:` and `server:` are grant prefixes; anything else is a malformed skill id.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: bad-grant
+  name: Bad Grant
+  description: Uses a prefix that is not a recognised bulk grant.
+role: worker
+defaults:
+  skills:
+    - cluster:everything
+provenance:
+  authored_by: human
+  authored_date: "2026-08-30"
+  version: 1.0.0

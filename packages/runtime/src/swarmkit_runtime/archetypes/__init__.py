@@ -161,6 +161,11 @@ def _check_skill_refs(
         if _is_abstract_skill(entry):
             continue
         skill_id = _identifier_str(entry)
+        if skill_id.startswith(("pack:", "server:")):
+            # A bulk grant expands against the *agent's* resolved registry, so it is checked when
+            # the topology resolves rather than here — an archetype is reusable across workspaces
+            # and the pack it names may be declared in only some of them.
+            continue
         if skill_id not in skill_registry:
             errors.append(
                 ResolutionError(

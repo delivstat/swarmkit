@@ -26,6 +26,8 @@ from swarmkit_schema import SchemaName, validate
 from swarmkit_schema.models import SwarmKitWorkspace
 
 from swarmkit_runtime.archetypes import build_archetype_registry
+from swarmkit_runtime.commands._config import parse_command_packs
+from swarmkit_runtime.commands._synthesis import synthesize_pack_skills
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors, yaml_pointer
 from swarmkit_runtime.skills import build_skill_registry
 from swarmkit_runtime.workspace import (
@@ -391,6 +393,21 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     errors: list[ResolutionError] = []
     skills, skill_errors = build_skill_registry(artifacts)
     errors.extend(skill_errors)
+
+    # Command-pack commands become ordinary skills here, before anything downstream looks at the
+    # registry. Doing it at the registry rather than at each consumer is what keeps the tool
+    # builder, `requires:` validation and the archetype merge from needing to know packs exist.
+    ws_artifact = next((a for a in artifacts if a.kind == "workspace"), None)
+    if ws_artifact is not None:
+        packs = parse_command_packs(
+            SwarmKitWorkspace.model_validate(dict(ws_artifact.raw)).command_packs
+        )
+        pack_skills, pack_errors = synthesize_pack_skills(
+            packs, skills, workspace_path=ws_artifact.path
+        )
+        errors.extend(pack_errors)
+        skills = {**skills, **pack_skills}
+
     archetypes, arch_errors = build_archetype_registry(artifacts, skills)
     errors.extend(arch_errors)
     # Funnels resolve before topologies so a node's `funnel: <id>` reference can be verified.

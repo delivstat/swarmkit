@@ -204,25 +204,32 @@ visible in `executors/`: `_sandbox.py`, `_egress.py`, `_approval.py`, `_budget.p
 A shell skill would need all of that again, for a capability that already exists one layer up. A
 declarative argv skill needs none of it.
 
-### 3. A pack grant is live for reads and frozen for writes
+### 3. A pack grant carries the pack's read commands only
 
 Granting a set rather than a list is the point of packs, and it creates a widening problem that is
-the mirror image of the wildcard one: an agent granted `pack:json-tools` gains whatever is added to
-that pack later, silently.
+the mirror image of the wildcard one: an agent granted `pack:json-tools` would gain whatever is
+added to that pack later, silently.
 
-Split on the axis that matters, reusing the `effects` field decision 1 already requires:
-
-```
-pack gains { id: format, effects: read }
-  → flows into every existing grant, logged
-
-pack gains { id: publish, effects: write }
-  → workspace load fails, naming each agent that holds
-    the pack, until the grant is re-confirmed
+```yaml
+skills:
+  - pack:json-tools         # every READ command, now and later
+  - json-editing-rewrite    # a write, named — bulk grants never carry one
 ```
 
-A new read command interrupting nobody is worth the convenience; a new effectful command arriving
-unannounced in five agents' capability sets is not.
+A read command added to the pack flows through to everyone holding it, which is the ergonomics the
+bulk form exists for. A write command never does.
+
+> **Amended during implementation.** This note originally said a pack gaining a write command should
+> **fail workspace load** until every holding agent re-confirmed. That needs a stored list of
+> acknowledged commands living somewhere, which is state in what is meant to be a declarative
+> artifact — and topology-as-data is the first invariant in `CLAUDE.md`. Excluding writes from the
+> bulk form gets the same safety property with no stored state and no load-time failure: the grant
+> means exactly what it says on the line, every time it is read. The rejected version is recorded
+> because "it fails loudly" sounded like the safer answer and was the more complicated one.
+
+`server:<id>` deliberately makes no equivalent promise. An MCP tool has no declared effect to filter
+on — that is [#825](https://github.com/delivstat/swarmkit/issues/825) — so a server grant carries
+everything targeting that server. The asymmetry is honest; pretending otherwise would be worse.
 
 ### 4. Grants take packs *and* servers, not just skills
 
@@ -235,6 +242,16 @@ skills: [pack:json-tools, server:filesystem, some-individual-skill]
 ```
 
 Bigger change, better resting state, one mental model.
+
+**Implementation note.** A pack command becomes an ordinary skill at registry-build time, with the
+id `<pack>-<command>`. That is what keeps the tool builder, `requires:` validation, the archetype
+merge and the UI from each needing to know packs exist — a command *is* a skill from the moment the
+registry is built. A synthetic id colliding with a hand-authored skill is a resolution error naming
+both, rather than one shadowing the other.
+
+A bulk grant matching nothing is also an error, not an empty set: an agent silently granted no tools
+is indistinguishable from one whose model chose not to use them, and that only surfaces later as a
+puzzling transcript.
 
 ## Bundled packs
 
