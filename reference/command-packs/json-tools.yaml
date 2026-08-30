@@ -1,0 +1,45 @@
+# Reference command pack — jq.
+#
+# Copy the entry below into your workspace's `command_packs:` list. It is available to any
+# topology that grants it and to none that does not: declaring a pack is not granting it, and the
+# grant is the audit step. See design/details/command-packs.md.
+#
+# Every command here declares `effects: read`, so the pack can be `readonly` and have that mean
+# something enforceable.
+apiVersion: swarmkit/v1
+kind: CommandPackReference
+metadata:
+  id: json-tools
+  name: JSON tools
+  description: Query and inspect JSON files with jq. Read-only.
+
+command_pack:
+  id: json-tools
+  description: Query and inspect JSON with jq.
+  requires:
+    - { binary: jq, version: '>=1.6' }
+  permission: readonly
+  timeout_seconds: 30
+  max_output_bytes: 10485760
+  commands:
+    - id: query
+      description: Run a jq filter over a file and print the result.
+      argv: [jq, '-r', '{filter}', '{file}']
+      effects: read
+
+    - id: query-json
+      description: Run a jq filter and return structured JSON rather than text.
+      argv: [jq, '{filter}', '{file}']
+      effects: read
+      output: { parse: json }
+
+    - id: keys
+      description: List the top-level keys of a JSON file.
+      argv: [jq, '-r', 'keys[]', '{file}']
+      effects: read
+      output: { parse: lines }
+
+    - id: validate
+      description: Exit non-zero if the file is not valid JSON.
+      argv: [jq, 'empty', '{file}']
+      effects: read
