@@ -8,6 +8,32 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## August 2026
 
+- **v1.199.0** (2026-08-30) — command packs: local commands as a skill implementation type
+- **v1.196.0** (2026-08-23) — supersedes 1.195.0: the schema stays in the prompt, since the grammar does not carry descriptions
+- **v1.195.0** (2026-08-23) — structured-output prompts stop carrying another agent's schema, and max_tokens reaches the provider
+- **v1.194.0** (2026-08-22) — an agent can set Ollama's think via model.options, instead of a model-family guess
+- **v1.193.0** (2026-08-15) — swarmkit stop: ask a run to stop at its next agent boundary, keep its work, resume it later
+- **v1.192.0** (2026-08-15) — docs rewritten around the pipeline removal, plus the run-supersedes chain a caller can finally write
+- **v1.191.0** (2026-08-15) — a topology can declare that one skill must be called before another, enforced at the MCP permission seam on both executors
+- **v1.190.0** (2026-08-14) — swarmkit validate reports which topology roots produce an output nothing checks, and --require-verified gates CI on it
+- **v1.189.0** (2026-08-14) — the bundled pipeline is removed; sequencing belongs to the application
+- **v1.188.0** (2026-08-14) — the bundled pipeline orchestrator is deprecated; sequencing moves to the application
+- **v1.187.0** (2026-08-14) — a reference pipeline orchestrator outside the runtime, and correlation on the HTTP run path
+- **v1.186.0** (2026-08-13) — resume a parked run over HTTP, record what a re-run supersedes
+- **v1.185.0** (2026-08-13) — a field the durable row can answer is never reported absent
+- **v1.184.0** (2026-08-13) — a gate names the run that produced it, and artifacts are fetchable over HTTP
+- **v1.183.0** (2026-08-13) — a harness agent's diff survives the run and can be read back
+- **v1.182.0** (2026-08-13) — a funnel's approve layer parks the run on a human, and resuming does not re-draft
+- **v1.181.0** (2026-08-13) — read a gate's state with its approval policy applied
+- **v1.180.0** (2026-08-10) — an escalated artifact says it was escalated, where the reviewer is looking
+- **v1.179.0** (2026-08-10) — a correlated one-shot run can save and fetch its output
+- **v1.178.0** (2026-08-10) — judge.rubric is read at last, and the reachability report names every binding
+- **v1.177.0** (2026-08-10) — a harness run records which tools it called, with what and to what effect
+- **v1.176.0** (2026-08-10) — correlate and label a one-shot run; audit events belong to the run that emitted them
+- **v1.174.0** (2026-08-09) — a saga blocked by reconciliation can actually be released: the remedy bug 24's fix printed now works
+- **v1.173.0** (2026-08-08) — report configuration no code path can reach: a wiring ledger plus an inert-binding report, after five bugs of the same anatomy
+- **v1.172.0** (2026-08-08) — a bound funnel actually runs its layers: validate and judge were inert on every run serve or the CLI ever made
+- **v1.171.0** (2026-08-07) — reconciliation no longer drives past a human gate: a stranded stage that declares one is refused rather than absorbed
 - **v1.170.0** (2026-08-07) — a decision skill actually fires
 - **v1.169.0** (2026-08-07) — advisory means advisory, and the memory that was unreachable is documented
 - **v1.168.0** (2026-08-07) — curated facts reach the agent, tool calls open, and the workspace reloads
