@@ -1,0 +1,25 @@
+# Bulk grants: `pack:<id>` carries a command pack's read commands; `server:<id>` carries every
+# skill targeting that MCP server. A write command is always named individually.
+# See design/details/command-packs.md.
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: json-editor
+  name: JSON Editor
+  description: Holds a pack's reads in bulk, and one write by name.
+role: worker
+defaults:
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+  prompt:
+    system: |
+      You inspect and edit JSON files.
+  skills:
+    - pack:json-tools
+    - server:filesystem
+    - json-editing-rewrite
+provenance:
+  authored_by: human
+  authored_date: "2026-08-30"
+  version: 1.0.0

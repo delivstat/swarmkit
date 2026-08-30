@@ -83,12 +83,14 @@ def test_resolved_tree_merges_archetype_with_agent_overrides() -> None:
     reviewer, independent = root.children
     assert isinstance(reviewer, ResolvedAgent)
     assert reviewer.source_archetype == "code-review-worker"
-    # skills_additional appended: archetype's two + one extra.
+    # skills_additional appended, and a skill already granted by the archetype is held ONCE.
+    # This used to resolve to ["github-repo-read", "code-quality-review", "github-repo-read"],
+    # which produced two identical ToolSpecs — a name collision every provider rejects. An agent
+    # holds a set of skills; naming one twice is not a request for two of it.
     reviewer_skill_ids = [s.id for s in reviewer.skills]
     assert reviewer_skill_ids == [
         "github-repo-read",
         "code-quality-review",
-        "github-repo-read",
     ]
     # Independent worker has no archetype; model declared inline.
     assert independent.source_archetype is None

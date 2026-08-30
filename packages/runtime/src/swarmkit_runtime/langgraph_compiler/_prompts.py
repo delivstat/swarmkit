@@ -600,7 +600,7 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
     return messages
 
 
-def _build_tools(
+def _build_tools(  # noqa: PLR0912
     agent: ResolvedAgent,
     mcp_manager: Any = None,
     planning_config: Any = None,
@@ -630,11 +630,17 @@ def _build_tools(
     tools: list[ToolSpec] = []
 
     if not _phase1 and (not _has_synthesizer or _is_single_agent):
-        _executable_types = {"llm_prompt", "mcp_tool"}
+        _executable_types = {"llm_prompt", "mcp_tool", "command"}
+        _emitted: set[str] = set()
         for skill in agent.skills:
             impl = skill.raw.implementation
             impl_type = impl.get("type") if isinstance(impl, dict) else getattr(impl, "type", None)
-            if impl_type in _executable_types:
+            if impl_type in _executable_types and skill.id not in _emitted:
+                # A skill reachable twice — via a `pack:` grant and by name, or via both an
+                # archetype default and `skills_additional` — must still produce ONE tool.
+                # Providers reject duplicate tool names outright, so this is a hard error rather
+                # than cosmetic duplication.
+                _emitted.add(skill.id)
                 desc = getattr(skill, "description", "") or skill.id
                 input_schema: dict[str, Any] = {}
                 if impl_type == "mcp_tool" and mcp_manager is not None:
@@ -647,6 +653,14 @@ def _build_tools(
                         impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
                     )
                     input_schema = mcp_manager.get_tool_input_schema(server_id, tool_name)
+                elif impl_type == "command":
+                    # The synthetic skill carries one required string per argv placeholder, so the
+                    # model learns the arguments from the tool schema rather than by failing a call.
+                    raw_inputs = getattr(skill.raw, "inputs", None)
+                    if isinstance(raw_inputs, dict):
+                        input_schema = raw_inputs
+                    elif raw_inputs is not None and hasattr(raw_inputs, "model_dump"):
+                        input_schema = raw_inputs.model_dump(exclude_none=True)
                 tools.append(ToolSpec(name=skill.id, description=desc, input_schema=input_schema))
 
     _use_task_plan = len(agent.children) >= 2 and not _has_dag_deps(agent)

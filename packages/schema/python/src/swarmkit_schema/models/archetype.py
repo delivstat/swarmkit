@@ -24,10 +24,6 @@ class Role(Enum):
     worker = "worker"
 
 
-class Identifier(RootModel[str]):
-    root: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
-
-
 class Metadata(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -106,6 +102,10 @@ class Prompt(BaseModel):
     persona: str | None = None
 
 
+class SkillGrant(RootModel[str]):
+    root: str = Field(..., pattern="^(pack:|server:)?[a-z][a-z0-9-]*$")
+
+
 class Category(Enum):
     capability = "capability"
     decision = "decision"
@@ -168,7 +168,7 @@ class Defaults(BaseModel):
     )
     model: Model | None = None
     prompt: Prompt | None = None
-    skills: list[Identifier | SkillEntry1] | None = None
+    skills: list[SkillGrant | SkillEntry1] | None = None
     iam: Iam | None = None
     output_schema: dict[str, Any] | OutputSchema | None = None
 

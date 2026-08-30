@@ -44,6 +44,10 @@ class ResolvedSkill:
     raw: SwarmKitSkill
     source_path: Path
     resolved_composes: tuple[ResolvedSkill, ...] = field(default_factory=tuple)
+    #: For a skill synthesized from a command pack: ``(pack_id, command_id, effects)``. ``None``
+    #: for every hand-authored skill. Carried so a `pack:` grant can expand to the pack's read
+    #: commands without the resolver needing the pack configs threaded into it.
+    pack_origin: tuple[str, str, str] | None = None
 
 
 def build_skill_registry(

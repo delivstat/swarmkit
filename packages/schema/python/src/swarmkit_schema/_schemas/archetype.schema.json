@@ -126,10 +126,15 @@
         "persona": { "type": "string" }
       }
     },
+    "skill_grant": {
+          "$comment": "A skill id, or a bulk grant: `pack:<id>` for a command pack's READ commands, or `server:<id>` for every skill targeting that MCP server. A pack grant deliberately excludes write commands \u2014 adding one to a pack must never silently widen an agent that already holds the pack, so a write is always named individually. See design/details/command-packs.md.",
+          "type": "string",
+          "pattern": "^(pack:|server:)?[a-z][a-z0-9-]*$"
+    },
     "skill_entry": {
       "$comment": "Concrete skill ID (string) or abstract-skill placeholder (§6.6 edge case).",
       "oneOf": [
-        { "$ref": "#/$defs/identifier" },
+        { "$ref": "#/$defs/skill_grant" },
         {
           "type": "object",
           "additionalProperties": false,
