@@ -3013,7 +3013,7 @@ requires-dist = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.198.0"
+version = "1.199.0"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -3117,7 +3117,7 @@ dev = [{ name = "pytest-xdist", specifier = ">=3.8.0" }]
 
 [[package]]
 name = "swarmkit-schema"
-version = "1.32.0"
+version = "1.33.0"
 source = { editable = "packages/schema/python" }
 dependencies = [
     { name = "jsonschema" },

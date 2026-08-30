@@ -251,15 +251,57 @@ async def test_readonly_denies_write_action() -> None:
 
 
 @pytest.mark.asyncio
-async def test_readonly_allows_read_action() -> None:
+async def test_readonly_allows_a_declared_read() -> None:
     gov = MockGovernanceProvider(allow_all=True)
     decision = await gov.evaluate_action(
         agent_id="worker-1",
         action="mcp:call:github:get_pr",
         scopes_required=frozenset(),
-        context={"server_permission": "readonly"},
+        context={"server_permission": "readonly", "effects": "read"},
     )
     assert decision.allowed is True
+
+
+@pytest.mark.asyncio
+async def test_readonly_denies_an_undeclared_tool_rather_than_guessing() -> None:
+    """Behaviour change (#825). This used to be allowed because 'get_pr' has no write-signal
+    substring in it — the same rule that denied `get_dataset` on 'set' and let `truncate_table`
+    through. Unknown is now denied, with a reason naming the fix."""
+    gov = MockGovernanceProvider(allow_all=True)
+    decision = await gov.evaluate_action(
+        agent_id="worker-1",
+        action="mcp:call:github:get_pr",
+        scopes_required=frozenset(),
+        context={"server_permission": "readonly", "effects": "unknown"},
+    )
+    assert decision.allowed is False
+    assert "effects:" in decision.reason
+
+
+@pytest.mark.asyncio
+async def test_readonly_is_decided_by_declaration_not_by_the_name() -> None:
+    """Both directions of the old heuristic's failure, in one test."""
+    gov = MockGovernanceProvider(allow_all=True)
+
+    # Reads whose names contain "set"/"add"/"post" were denied. They are allowed now.
+    for innocent in ("get_dataset", "read_asset", "list_addresses", "get_post"):
+        decision = await gov.evaluate_action(
+            agent_id="w",
+            action=f"mcp:call:s:{innocent}",
+            scopes_required=frozenset(),
+            context={"server_permission": "readonly", "effects": "read"},
+        )
+        assert decision.allowed is True, f"{innocent} reads and must be allowed"
+
+    # Destructive names matching no signal were allowed. They are denied now.
+    for destructive in ("truncate_table", "purge_cache", "revoke_token", "wipe_db"):
+        decision = await gov.evaluate_action(
+            agent_id="w",
+            action=f"mcp:call:s:{destructive}",
+            scopes_required=frozenset(),
+            context={"server_permission": "readonly", "effects": "write"},
+        )
+        assert decision.allowed is False, f"{destructive} writes and must be denied"
 
 
 @pytest.mark.asyncio

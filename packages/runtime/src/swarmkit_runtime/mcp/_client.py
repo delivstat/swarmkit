@@ -39,7 +39,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolResult
 from swarmkit_schema.models.workspace import McpServer
 
-from swarmkit_runtime.mcp._sdk_compat import tool_input_schema
+from swarmkit_runtime.mcp._sdk_compat import tool_input_schema, tool_read_only_hint
 
 PermissionTier = Literal["open", "cautious", "strict", "readonly"]
 
@@ -63,6 +63,9 @@ class MCPServerConfig:
     sandbox_image: str = ""
     permission: PermissionTier = "cautious"
     permission_overrides: dict[str, PermissionTier] = field(default_factory=dict)
+    #: ``{tool_name: "read"|"write"}`` declared by the workspace. Authoritative over the server's
+    #: own annotation, because it is the half the operator controls.
+    effects: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -157,6 +160,8 @@ class MCPClientManager:
         self._workspace_root = workspace_root
         self._sessions: dict[str, ClientSession] = {}
         self._tool_schemas: dict[str, dict[str, dict[str, Any]]] = {}
+        #: ``{server: {tool: readOnlyHint}}`` from the server's own annotations, when it sends any.
+        self._tool_read_only: dict[str, dict[str, bool]] = {}
         self._stderr_tails: dict[str, _StderrTail] = {}
         self._stack = AsyncExitStack()
         self._tool_cache: dict[str, str] = {}
@@ -400,6 +405,35 @@ class MCPClientManager:
         session = await self.get_session(server_id)
         result = await session.list_tools()
         self._tool_schemas[server_id] = {t.name: tool_input_schema(t) for t in result.tools}
+        hints = {t.name: hint for t in result.tools if (hint := tool_read_only_hint(t)) is not None}
+        self._tool_read_only[server_id] = hints
+
+    def get_effects(self, server_id: str, tool_name: str) -> str:
+        """Whether a tool reads or writes: ``"read"``, ``"write"`` or ``"unknown"``.
+
+        Resolution order, and the reason for it:
+
+        1. **The workspace\'s declared ``effects``** wins. It is the only source the person
+           configuring the server controls, and the only one that cannot change under them when a
+           server is upgraded.
+        2. **The server\'s ``readOnlyHint`` annotation**, when it sends one. Useful and free, but
+           it is the server describing itself.
+        3. **``"unknown"``** otherwise — never a guess. This replaced a substring scan of the tool
+           name for ``create|delete|set|add|…`` (issue #825), which denied ``get_dataset`` and
+           ``read_asset`` on ``set``, denied ``list_addresses`` on ``add``, and let
+           ``truncate_table``, ``purge_cache`` and ``revoke_token`` straight through. The
+           vocabulary of destructive verbs is unbounded, so a longer list moves the failure rather
+           than removing it.
+        """
+        cfg = self._configs.get(server_id)
+        if cfg is not None:
+            declared = cfg.effects.get(tool_name)
+            if declared is not None:
+                return declared
+        hint = self._tool_read_only.get(server_id, {}).get(tool_name)
+        if hint is not None:
+            return "read" if hint else "write"
+        return "unknown"
 
     def get_tool_input_schema(self, server_id: str, tool_name: str) -> dict[str, Any]:
         """Return the cached ``inputSchema`` for a tool, or an empty schema.
@@ -597,6 +631,10 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
             sandbox_image=server.sandbox_image or "",
             permission=permission,
             permission_overrides=overrides,
+            effects={
+                k: ("read" if getattr(v, "value", v) == "read" else "write")
+                for k, v in (getattr(server, "effects", None) or {}).items()
+            },
         )
     return configs
 

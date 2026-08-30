@@ -72,13 +72,24 @@ async def check_mcp_permission(
     permission = (
         mcp_manager.get_permission(server_id, tool_name) if mcp_manager is not None else "cautious"
     )
+    # Optional on the manager rather than required: only the `readonly` tier consults it, and
+    # "unknown" is the fail-closed answer anyway, so a manager that cannot report effects degrades
+    # to denying under readonly rather than to erroring on every governed call.
+    _get_effects = getattr(mcp_manager, "get_effects", None)
+    effects = _get_effects(server_id, tool_name) if _get_effects is not None else "unknown"
     if permission == "open" or governance is None:
         return True, ""
     decision = await governance.evaluate_action(
         agent_id=agent_id,
         action=f"mcp:call:{server_id}:{tool_name}",
         scopes_required=scopes,
-        context={"server_permission": permission},
+        context={
+            "server_permission": permission,
+            "effects": effects,
+            "provider": "mcp",
+            "container": server_id,
+            "member": tool_name,
+        },
     )
     record_governance_decision(decision="allow" if decision.allowed else "deny", scope="mcp:call")
     return decision.allowed, decision.reason

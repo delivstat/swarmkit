@@ -14,6 +14,7 @@ Five claims, each shown rather than asserted:
      that reads as complete.
   5. `requires` is checked at load and names the missing binary.
   6. A `pack:` grant expands to the pack's reads — and never to a write.
+  7. MCP tools resolve their effect the same way now (#825), instead of by name.
 
 Every command here runs `python3`, so the demo needs nothing installed. The example
 workspace beside it uses `jq`, which is the realistic case — and claim 5 shows what
@@ -183,7 +184,47 @@ async def main() -> int:  # noqa: PLR0915
     ok("the write is absent from the analyst — a bulk grant cannot carry one")
     ok("adding a read to the pack would reach both agents; adding a write would reach neither")
 
-    print(f"\n{GREEN}{BOLD}All six claims demonstrated.{OFF}")
+    # ---- 7 ------------------------------------------------------------------
+    head(7, "MCP effects are declared too, not sniffed from the tool name")
+    from swarmkit_runtime.mcp._client import MCPClientManager, MCPServerConfig  # noqa: PLC0415
+
+    OLD_SIGNALS = [
+        "create",
+        "delete",
+        "update",
+        "write",
+        "put",
+        "post",
+        "set",
+        "add",
+        "remove",
+        "modify",
+        "edit",
+        "insert",
+        "drop",
+        "push",
+        "send",
+    ]
+    mgr = MCPClientManager(
+        {
+            "warehouse": MCPServerConfig(
+                server_id="warehouse",
+                permission="readonly",
+                effects={"get_dataset": "read", "truncate_table": "write"},
+            )
+        }
+    )
+    for name in ("get_dataset", "truncate_table"):
+        guess = "write" if any(sig in name for sig in OLD_SIGNALS) else "read"
+        actual = mgr.get_effects("warehouse", name)
+        verdict = "AGREED" if guess == actual else "WAS WRONG"
+        shown(f"{name:16}", f"name-scan said {guess:5} | declared {actual:5} | {verdict}")
+    ok("get_dataset was denied under readonly for containing 'set'")
+    ok("truncate_table was allowed for matching nothing")
+    shown("undeclared tool", mgr.get_effects("warehouse", "mystery_tool"))
+    ok("unknown, so readonly denies it and says which field to add — never a guess")
+
+    print(f"\n{GREEN}{BOLD}All seven claims demonstrated.{OFF}")
     print(f"{DIM}Example workspace: {HERE / 'workspace'}{OFF}\n")
     return 0
 

@@ -27,13 +27,17 @@ class _Resp:
 
 
 class _Mgr:
-    def __init__(self, permission: str = "cautious") -> None:
+    def __init__(self, permission: str = "cautious", effects: str = "unknown") -> None:
         self._perm = permission
+        self._effects = effects
         self._schemas = {("fs", "read"): {"type": "object", "properties": {"path": {}}}}
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def get_permission(self, server_id: str, tool_name: str) -> str:
         return self._perm
+
+    def get_effects(self, server_id: str, tool_name: str) -> str:
+        return self._effects
 
     def get_tool_input_schema(self, server_id: str, tool_name: str) -> dict[str, Any]:
         return self._schemas.get((server_id, tool_name), {})

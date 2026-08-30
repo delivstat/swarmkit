@@ -38,12 +38,16 @@ class _Gov:
 
 
 class _Mgr:
-    def __init__(self, permission: str = "cautious") -> None:
+    def __init__(self, permission: str = "cautious", effects: str = "unknown") -> None:
         self._perm = permission
+        self._effects = effects
         self.calls: list[tuple[str, str, dict[str, Any] | None]] = []
 
     def get_permission(self, server_id: str, tool_name: str) -> str:
         return self._perm
+
+    def get_effects(self, server_id: str, tool_name: str) -> str:
+        return self._effects
 
     async def call_tool(
         self, server_id: str, tool_name: str, arguments: dict[str, Any] | None = None

@@ -168,6 +168,11 @@ class PermissionOverrides(Enum):
     readonly = "readonly"
 
 
+class Effects(Enum):
+    read = "read"
+    write = "write"
+
+
 class McpServer(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -202,6 +207,10 @@ class McpServer(BaseModel):
     permission_overrides: dict[str, PermissionOverrides] | None = Field(
         None,
         description="Per-tool permission overrides. Keys are MCP tool names, values are permission tiers that override the server default.",
+    )
+    effects: dict[str, Effects] | None = Field(
+        None,
+        description="Whether each tool reads or writes, keyed by MCP tool name. Consulted by `permission: readonly`, which allows a tool only when it is known to read. Declared here wins over the server's own `readOnlyHint` annotation, because this is the half the operator controls; a tool with neither is `unknown` and is denied under readonly rather than guessed at. Until 1.199.0 write-ness was inferred by substring-scanning the tool name, which denied `get_dataset` and `read_asset` on 'set' and let `truncate_table` and `purge_cache` through.",
     )
 
 
@@ -628,7 +637,7 @@ class PromoteCriteria(BaseModel):
     )
 
 
-class Effects(Enum):
+class Effects1(Enum):
     """
     Whether this command changes anything. Not inferrable from the binary — `curl` POSTs and `jq` takes `-i` — so the pack author declares it. Undeclared means `write`, so an unclassified command fails closed. `permission: readonly` denies every `write` command.
     """
@@ -667,7 +676,7 @@ class CommandSpec(BaseModel):
         description="argv, executed with no shell. `{name}` placeholders are filled from the skill's declared inputs and are always passed as exactly one argument, never re-parsed. `{credential.*}` is rejected here — secrets reach a command through the pack's `env` only, so they cannot be model-placed, cannot appear in an audit line, and cannot be read from `ps`.",
         min_length=1,
     )
-    effects: Effects | None = Field(
+    effects: Effects1 | None = Field(
         "write",
         description="Whether this command changes anything. Not inferrable from the binary — `curl` POSTs and `jq` takes `-i` — so the pack author declares it. Undeclared means `write`, so an unclassified command fails closed. `permission: readonly` denies every `write` command.",
     )
