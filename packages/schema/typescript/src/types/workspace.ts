@@ -321,6 +321,16 @@ export interface MCPServerElement {
      */
     cwd?: string;
     /**
+     * Whether each tool reads or writes, keyed by MCP tool name. Consulted by `permission:
+     * readonly`, which allows a tool only when it is known to read. Declared here wins over the
+     * server's own `readOnlyHint` annotation, because this is the half the operator controls; a
+     * tool with neither is `unknown` and is denied under readonly rather than guessed at. Until
+     * 1.199.0 write-ness was inferred by substring-scanning the tool name, which denied
+     * `get_dataset` and `read_asset` on 'set' and let `truncate_table` and `purge_cache`
+     * through.
+     */
+    effects?: { [key: string]: Effects };
+    /**
      * Required when transport=http.
      */
     endpoint?: string;

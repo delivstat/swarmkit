@@ -1,0 +1,21 @@
+# `permission: readonly` is only enforceable against a declared effect. Until 1.199.0 write-ness
+# was guessed by substring-scanning the tool name, which denied `get_dataset` on 'set' and let
+# `truncate_table` through. See design/details/command-packs.md and issue #825.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: declared-effects
+  name: Declared Effects
+mcp_servers:
+  - id: warehouse
+    transport: stdio
+    command: ["uv", "run", "warehouse_server.py"]
+    permission: readonly
+    effects:
+      # Reads whose names the old heuristic rejected.
+      get_dataset: read
+      read_asset: read
+      list_addresses: read
+      # Writes whose names it let through.
+      truncate_table: write
+      purge_cache: write

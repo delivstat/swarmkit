@@ -20,3 +20,4 @@ Cross-cutting practical notes — the "things that don't belong anywhere else bu
 One note per file. Filename is the slug (`schema-change-discipline.md`, `authorship-convention.md`, etc.). Each note states: what the rule is, why it exists, and the concrete checklist / commands that enforce it.
 
 Keep them short. If a note grows past one page, it's probably a design decision and belongs in `design/`.
+- [`mcp-effects-migration.md`](mcp-effects-migration.md) — `permission: readonly` needs declared `effects` from 1.199.0; the old name-scan denied `get_dataset` and allowed `truncate_table`.

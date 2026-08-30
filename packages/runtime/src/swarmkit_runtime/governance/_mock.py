@@ -102,28 +102,28 @@ class MockGovernanceProvider(GovernanceProvider):
             return None
 
         if tier == "readonly":
-            _write_signals = (
-                "create",
-                "delete",
-                "update",
-                "write",
-                "put",
-                "post",
-                "set",
-                "add",
-                "remove",
-                "modify",
-                "edit",
-                "insert",
-                "drop",
-                "push",
-                "send",
-            )
-            action_lower = action.lower()
-            if any(sig in action_lower for sig in _write_signals):
+            # The effect is resolved by the caller (declared `effects`, else the server's
+            # readOnlyHint, else unknown) and passed in context. It is never inferred from the
+            # tool name here: that scan denied `get_dataset` and `read_asset` on "set",
+            # `list_addresses` on "add", and let `truncate_table`, `purge_cache` and
+            # `revoke_token` through untouched (#825). The vocabulary of destructive verbs is
+            # unbounded, so a longer list moves the failure rather than removing it.
+            effects = context.get("effects")
+            if effects != "read":
+                detail = (
+                    "declares effects: write"
+                    if effects == "write"
+                    else (
+                        "has no declared effect and the server sends no readOnlyHint, so it "
+                        "cannot be shown to be read-only"
+                    )
+                )
                 return PolicyDecision(
                     allowed=False,
-                    reason=f"mock: server permission 'readonly' denies write action '{action}'",
+                    reason=(
+                        f"mock: server permission 'readonly' denies '{action}' — it {detail}. "
+                        f"Declare it under the server's `effects:` map to allow it."
+                    ),
                     tier=1,
                 )
 

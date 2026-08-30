@@ -38,6 +38,7 @@ __all__ = [
     "mcp_server_class",
     "tool_input_schema",
     "tool_output_schema",
+    "tool_read_only_hint",
 ]
 
 _MISSING = object()
@@ -112,3 +113,17 @@ def build_low_level_server(
     server.list_tools()(list_tools)
     server.call_tool()(call_tool)
     return server
+
+
+def tool_read_only_hint(tool: Any) -> bool | None:
+    """The tool's ``readOnlyHint`` annotation, or ``None`` when the server supplies none.
+
+    A *hint*, in the protocol's own words — the server's claim about its own tool, not something
+    the workspace author controls. So a declared `effects` entry always wins over it; this is only
+    consulted when the workspace has not said.
+    """
+    annotations = _read(tool, "annotations")
+    if annotations is None:
+        return None
+    hint = _read(annotations, "read_only_hint", "readOnlyHint")
+    return bool(hint) if hint is not None else None
