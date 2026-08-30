@@ -63,6 +63,19 @@ def _published(name: str) -> set[str]:
         raise
 
 
+#: Suffixes whose content never reaches a built artifact. A test beside the source it tests lives
+#: inside a package directory but is excluded from the wheel and from the Next.js production build,
+#: so counting it as a change makes the guard demand a version bump that would publish a
+#: byte-identical release. The guard exists to stop a real change being silently skipped; a false
+#: alarm that costs a permanent PyPI version is the opposite failure.
+_NOT_SHIPPED = (".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx", "_test.py")
+
+
+def _ships(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    return not (name.startswith("test_") or path.endswith(_NOT_SHIPPED))
+
+
 def _changed_since(tag: str, paths: list[str]) -> list[str]:
     out = subprocess.run(
         ["git", "diff", "--name-only", f"{tag}..HEAD", "--", *paths],
@@ -71,7 +84,7 @@ def _changed_since(tag: str, paths: list[str]) -> list[str]:
         text=True,
         check=False,
     )
-    return [line for line in out.stdout.splitlines() if line.strip()]
+    return [line for line in out.stdout.splitlines() if line.strip() and _ships(line)]
 
 
 def _last_tag() -> str:
