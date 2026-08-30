@@ -35,14 +35,37 @@ tighten a timeout, that is the intended use.
 
 ## What is in here
 
-| pack | binary | tier | what it gives you |
+| pack | needs | tier | what it gives you |
 | --- | --- | --- | --- |
-| [`json-tools`](json-tools.yaml) | `jq` | `readonly` | query, structured query, keys, validate |
-| [`text-tools`](text-tools.yaml) | `rg` | `readonly` | search, files-matching, count-matches |
+| [`file-tools`](file-tools.yaml) | **nothing** — coreutils | `readonly` | read-file, head, tail, count-lines, list-files |
+| [`json-tools`](json-tools.yaml) | `jq >=1.6` | `readonly` | query, query-json, keys, validate |
+| [`text-tools`](text-tools.yaml) | `rg` (ripgrep) | `readonly` | search, files-matching, count-matches |
+
+**Start with `file-tools`** if you just want to see a pack work. It is the only one that runs on a
+bare machine — `jq` and `rg` are worth installing, but neither ships with an OS, and a reference
+artifact that needs `apt` first is a poor on-ramp.
 
 Both are read-only throughout, so `permission: readonly` is enforceable rather than aspirational —
 every command declares `effects: read`, and an undeclared command would default to `write` and be
 denied.
+
+## What a pack does not confine
+
+Worth knowing before granting `file-tools`, and true of every pack: **a command pack has no path
+sandbox.** `cwd` sets the working directory, and an absolute path escapes it. `read-file` will read
+anything the runtime process can read.
+
+That is a deliberate boundary rather than an oversight — confining paths means understanding each
+binary's argument grammar, and a pack that half-confines is worse than one that says it does not.
+What bounds a pack instead:
+
+- **The grant.** A pack is inert until a topology asks for it, so the question is which agents hold
+  it, not what the binary could theoretically do.
+- **The permission tier**, which is enforceable because every command declares `effects`.
+- **`iam.required_scopes` on the skill**, which is what actually authorizes the call.
+
+If you need real filesystem confinement, run the workspace in a container — the same answer
+SwarmKit gives for harness executors.
 
 ## Writing your own
 
