@@ -1,0 +1,43 @@
+# Reference command pack — the read-only text utilities every workspace ends up wanting.
+#
+# Copy the entry below into your workspace's `command_packs:` list. Declaring it does not grant
+# it; a topology still has to ask. See design/details/command-packs.md.
+#
+# `rg` (ripgrep) is preferred over `grep` for one reason worth stating: it respects .gitignore, so
+# a search does not silently return thousands of hits from node_modules and bury the real one.
+apiVersion: swarmkit/v1
+kind: CommandPackReference
+metadata:
+  id: text-tools
+  name: Text tools
+  description: Search and inspect text files. Read-only.
+
+command_pack:
+  id: text-tools
+  description: Search and inspect files with ripgrep.
+  requires:
+    - { binary: rg }
+  permission: readonly
+  timeout_seconds: 60
+  # Deliberately smaller than the default. A search across a large tree can return far more than
+  # anyone can read, and the ceiling failing is more useful than a truncated result that looks
+  # complete.
+  max_output_bytes: 2097152
+  commands:
+    - id: search
+      description: Search for a pattern under a path. Returns matching lines with file and line number.
+      argv: [rg, '--line-number', '--no-heading', '--color=never', '{pattern}', '{path}']
+      effects: read
+      output: { parse: lines }
+
+    - id: files-matching
+      description: List only the files containing a pattern, not the matching lines.
+      argv: [rg, '--files-with-matches', '--color=never', '{pattern}', '{path}']
+      effects: read
+      output: { parse: lines }
+
+    - id: count-matches
+      description: Count matches per file.
+      argv: [rg, '--count-matches', '--color=never', '{pattern}', '{path}']
+      effects: read
+      output: { parse: lines }
