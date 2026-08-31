@@ -15,6 +15,15 @@ That has bitten twice:
   releases, so `server.auth.config.identity`, `client_id`, `scope`, `storage.artifacts` and the
   declarative adapters' `*_map` tables were all unreachable by anyone who installed SwarmKit — the
   runtime shipped adapters that its own published schema rejected.
+- `swarmkit-webui` (NOT caught, shipped, reported by a user): 0.14.0 was cut 2026-08-07 and the
+  bundled pipeline was removed from the runtime a week later. Six commits changed the UI and the
+  version never moved, so the published bundle still shipped a Pipelines section navigating to an
+  API that no longer exists — a whole dead area of the portal, and no version to upgrade to.
+
+**Both misses have one cause: the baseline was the last tag.** A version frozen across several
+releases stops looking changed the moment its change falls out of that one-tag window, which is
+precisely the situation this is meant to catch. The baseline is now the commit that last SET the
+version — so a package is compared against its own release point, however long ago that was.
 
 A rule you have to remember is not a rule. This is the executable version.
 """
@@ -32,18 +41,36 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 #: (pypi name, pyproject path, the source dirs whose content ends up in that package)
+#:
+#: The pyproject is itself watched content: dependencies, extras and entry points ship in the wheel
+#: metadata, so tightening a version floor is a change users need and the old list could not see.
+#: Its own version line is not a false positive — the baseline is the commit that SET the version,
+#: and `git diff <commit>..HEAD` excludes that commit, so only LATER edits count.
 PACKAGES = [
-    ("swarmkit-runtime", "packages/runtime/pyproject.toml", ["packages/runtime/src"]),
-    ("swarmkit-schema", "packages/schema/python/pyproject.toml", ["packages/schema/schemas"]),
+    (
+        "swarmkit-runtime",
+        "packages/runtime/pyproject.toml",
+        ["packages/runtime/src", "packages/runtime/pyproject.toml"],
+    ),
+    (
+        "swarmkit-schema",
+        "packages/schema/python/pyproject.toml",
+        ["packages/schema/schemas", "packages/schema/python/pyproject.toml"],
+    ),
     (
         "swarmkit-webui",
         "packages/webui/pyproject.toml",
-        ["packages/ui/app", "packages/ui/lib", "packages/ui/components"],
+        [
+            "packages/ui/app",
+            "packages/ui/lib",
+            "packages/ui/components",
+            "packages/webui/pyproject.toml",
+        ],
     ),
     (
         "swarmkit-control-plane",
         "packages/control-plane/pyproject.toml",
-        ["packages/control-plane/src"],
+        ["packages/control-plane/src", "packages/control-plane/pyproject.toml"],
     ),
 ]
 
@@ -87,6 +114,28 @@ def _changed_since(tag: str, paths: list[str]) -> list[str]:
     return [line for line in out.stdout.splitlines() if line.strip() and _ships(line)]
 
 
+def _version_set_at(pyproject: str) -> str | None:
+    """The commit that last changed the ``version`` line in this pyproject.
+
+    This, not the last tag, is the package's own release point. Comparing against the last tag asks
+    "did this change recently?", which a version frozen for five releases always answers no to. The
+    question that matters is "has anything shipped in this package changed since the version
+    currently on PyPI was set?"
+    """
+    out = subprocess.run(
+        ["git", "log", "-1", "--format=%H", "-L", "/^version = /,+1:" + pyproject],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    head = out.stdout.strip().splitlines()
+    if out.returncode == 0 and head:
+        return head[0].strip()
+    # `git log -L` needs a matching line; a pyproject without one is a packaging error, not ours.
+    return None
+
+
 def _last_tag() -> str:
     out = subprocess.run(
         ["git", "describe", "--tags", "--abbrev=0", "--match", "v1.*"],
@@ -99,20 +148,21 @@ def _last_tag() -> str:
 
 
 def main() -> int:
-    tag = _last_tag()
-    print(f"comparing against {tag}\n")
+    print(f"last tag {_last_tag()}; each package compared against its own version commit\n")
     problems: list[str] = []
     for name, pyproject, sources in PACKAGES:
         version = _local_version(pyproject)
-        changed = _changed_since(tag, sources)
+        baseline = _version_set_at(pyproject) or _last_tag()
+        changed = _changed_since(baseline, sources)
         already = version in _published(name)
         state = "would SKIP (already on PyPI)" if already else "would publish"
         mark = " "
         if changed and already:
             mark = "!"
             problems.append(
-                f"{name}: {len(changed)} file(s) changed since {tag} but version {version} is "
-                f"already published — the change will not reach anyone. Bump {pyproject}."
+                f"{name}: {len(changed)} file(s) changed since version {version} was set "
+                f"({baseline[:9]}) and {version} is already published — the change will not reach "
+                f"anyone. Bump {pyproject}.\n      first few: " + ", ".join(changed[:4])
             )
         print(f" {mark} {name:<24} {version:<10} {len(changed):>3} changed   {state}")
 

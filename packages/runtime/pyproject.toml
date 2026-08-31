@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.199.0"
+version = "1.200.0"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -85,7 +85,12 @@ serve = [
 # The web portal: `pip install "swarmkit-runtime[ui]"` adds the static SPA that `swarmkit serve`
 # hosts at its own origin (serve-hosted-webui.md). Absent ⇒ serve runs headless (API only).
 ui = [
-    "swarmkit-webui>=0.1.0",
+    # Floored, not open. The portal is a separately-versioned bundle built against THIS runtime's
+    # HTTP API, so `>=0.1.0` let a UI predating a breaking change resolve cleanly: 0.14.0 was cut
+    # before the bundled pipeline was removed and kept shipping a Pipelines section navigating to
+    # endpoints that no longer existed. A floor turns that into a resolution error the installer
+    # reports, instead of a dead area of the UI the operator has to diagnose.
+    "swarmkit-webui>=0.15.0",
 ]
 # `storage.checkpoints.backend: postgres`. The LangGraph checkpointer is a separate package from
 # the driver the rest of the stores use, which is why this is an extra and why checkpoints is the
