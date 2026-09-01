@@ -119,6 +119,9 @@ Every feature, big or small, follows this lifecycle. No exceptions.
 
 This applies to this CLAUDE.md change too — these rules arrived via `feat/workflow-rules-and-plan`.
 
+The human-facing version, with setup and the verify-like-CI commands, is
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Keep the two in step: this file is the one agents read.
+
 ## Commit and PR style
 
 Conventional-ish: `type(scope): subject`. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `design`. Scopes are package names (`runtime`, `schema`, `ui`) or areas (`topology`, `skills`, `governance`, `cli`).
@@ -142,34 +145,21 @@ Examples:
 
 ## Release checklist
 
-When cutting a release:
+**Full runbook: [`RELEASING.md`](RELEASING.md).** Follow it in order — several steps only work in
+that order. The short version:
 
-1. **Bump versions** for every package whose content changed — not just the runtime. `just
-   release-check` fails the release when a changed package's version is already on PyPI, because
-   `publish_if_new` would silently skip it. Versions live in `packages/runtime/pyproject.toml`,
-   `packages/schema/python/pyproject.toml`, `packages/webui/pyproject.toml` and
-   `packages/control-plane/pyproject.toml`.
+1. Bump every package whose content changed (four version files, four independent rates).
+2. Commit the bump, then `just release-check` — it reads committed history, so running it before
+   the commit sees nothing.
+3. `uv build --all-packages`, and look inside the wheel rather than trusting the workflow.
+4. Tag with a message written as a changelog entry — `just changelog` reads it verbatim, so it is
+   permanent.
+5. Push the tag; that triggers PyPI and Docker.
+6. Regenerate the changelog *after* the push, in a follow-up docs PR.
 
-   **It has caught this three times and missed it twice, and both misses shipped:**
-   `swarmkit-schema` froze at 1.23.0 across six releases, so a published runtime rejected artifacts
-   its own schema had been extended to accept; and `swarmkit-webui` froze at 0.14.0 for three weeks,
-   so the published portal kept a Pipelines section calling an API removed in 1.189.0 — found by a
-   user, not by CI. Both misses had one cause: the guard compared each package against the **last
-   tag**, and a version frozen across several releases stops looking changed. It now compares
-   against the commit that last *set* the version, and watches each package's own `pyproject.toml`
-   because dependencies and extras ship in the wheel metadata. See
-   `docs/notes/release-version-discipline.md`.
-2. **Commit** the version bump. The guard reads committed history, so it cannot see a working-tree
-   edit — run it after the commit, not before.
-3. **Build** all four packages: `uv build --all-packages` — verify each succeeds, and check the
-   wheel actually carries what you think it does (`zipfile` over the `.whl` beats trusting the
-   workflow).
-4. **Tag**: `git tag -a v1.x.y -m "SwarmKit v1.x.y — summary"`.
-5. **Push**: `git push origin v1.x.y` — triggers PyPI publish + Docker build via GitHub Actions.
-6. **Regenerate the changelog**: `just changelog` reads the annotated tags and rewrites
-   `docs/site/releases/changelog.md`. It only sees tags that exist, so this runs *after* the push,
-   in a follow-up docs PR. The document claimed to be tag-generated for months while being
-   hand-maintained, and drifted 33 versions behind — the tag subject is the summary, so write it
-   like one.
+PyPI never allows re-uploading a version. Always bump before tagging.
 
-PyPI does not allow re-uploading the same version. If the tag is pushed before the version bump, the publish fails and requires deleting the tag, bumping, and re-tagging. Always bump first.
+**Why the guard matters:** it has caught this three times and missed it twice, and both misses
+shipped — a published runtime rejecting artifacts its own schema accepted, and a published portal
+navigating to an API removed a week earlier. See
+[`docs/notes/release-version-discipline.md`](docs/notes/release-version-discipline.md).

@@ -466,7 +466,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and build
 git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
 just install          # uv sync + pnpm install
-just test             # 2,600+ tests across Python + TypeScript
+just test             # ~2,850 tests across Python + TypeScript
 just lint             # ruff + biome
 just typecheck        # mypy + tsc
 ```
@@ -477,10 +477,13 @@ just typecheck        # mypy + tsc
 swarmkit/
 ├── design/              # Authoritative architecture (v0.6) + 30+ design notes
 ├── packages/
-│   ├── runtime/         # Python: CLI, LangGraph compiler, governance, MCP
+│   ├── runtime/         # Python: CLI, LangGraph compiler, governance, MCP, HTTP server
 │   ├── schema/          # JSON Schemas + Python & TypeScript validators
-│   └── ui/              # Next.js (v1.1 — extends CLI, doesn't replace it)
-├── reference/           # 3 topologies, 16 archetypes, 27 skills
+│   ├── ui/              # Next.js: the workspace portal (extends the CLI, doesn't replace it)
+│   ├── webui/           # ships the built portal — `swarmkit serve` hosts it same-origin
+│   ├── control-plane/   # the self-hostable fleet control plane
+│   └── control-plane-ui/ # the fleet panel
+├── reference/           # 3 topologies, 16 archetypes, 27 skills, 4 command packs
 ├── examples/            # hello-swarm, sterling-oms, rynko-content
 ├── docs/                # User-facing docs + discipline notes
 └── llms.txt             # LLM-queryable index (llmstxt.org)
@@ -497,11 +500,13 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.192.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.200.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 
-Every change goes through a PR. See [`CLAUDE.md`](./CLAUDE.md) for the feature delivery workflow, invariants, and style guide.
+Every change goes through a PR. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for setup, the feature
+delivery workflow and how to verify the way CI does; [`RELEASING.md`](./RELEASING.md) for the release
+runbook; and [`CLAUDE.md`](./CLAUDE.md) for the full invariant list.
 
 ## License
 
