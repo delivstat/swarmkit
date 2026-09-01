@@ -1,26 +1,37 @@
 # SDLC pipeline example
 
-The SDLC pipeline example (design/details/sdlc-pipeline-example.md) — **now the complete SDLC
-pipeline**. It models an end-to-end software-delivery lifecycle for a multi-app D2C retailer,
-composed entirely as data in one SwarmKit workspace, with an agent doing the first-pass toil at
-every step and humans owning every gate. One requirement threads the **whole lifecycle** —
-intake → design → build → sit → pt → security-review → deploy → support-handover → done —
-sequenced by the reference controller as a saga, correlated end to end into one audit trail.
+> **The sequencing half of this example was removed in 1.189.0**, along with the bundled pipeline
+> layer it depended on: `kind: StageGraph`, the saga controller, `swarmkit orchestrator`,
+> `swarmkit pipeline` and `POST /pipelines/*`. Sequencing belongs to the calling application, and
+> `examples/pipeline-orchestrator/` is the reference application that shows it — it imports no
+> runtime module.
+>
+> **What remains here is the governed half, and it still runs**: the archetype and skill library,
+> the bounded stage run, the consolidated design with a harness review, the harness build and its
+> code-review gate, and the SIT/PT slice. Those are the demos listed below. Sections describing
+> `sdlc-full`, the saga controller, the defect loop or a Temporal adapter are **history** — kept
+> because the governance model they exercise is unchanged, but they no longer have a command.
 
-**Start here:**
+It models a software-delivery lifecycle for a multi-app D2C retailer, composed as data in one
+SwarmKit workspace, with an agent doing the first-pass toil at every step and humans owning every
+gate.
+
+**Start here — these run today:**
 
 ```
-just demo-sdlc      # the capstone: one requirement through the ENTIRE lifecycle to a shipped,
-                    # handed-over change — three human gates, contract locks, one saga timeline
+just demo-sdlc-stage-run     # the one-app (OMS) bounded stage run: intake → design → judge → approval
+just demo-consolidated-design # design across all three apps, with the architect-reviewer harness review
+just demo-harness-build      # the harness build + code-review gate
+just demo-repo-audit         # the recurring expert-persona repo audit (5 lenses, read-only)
+just demo-comprehension      # comprehension-debt telemetry from the audit log
 ```
 
-The example was built as a program of slices (design build order): slice 2 the reusable
-**archetype + skill library**; slice 4 the **one-app (OMS) bounded stage run**; slice 5 the
-**controller + stage-graph**; slice 6 the **consolidated design across all three apps** with the
-**architect-reviewer harness review**; slice 7 the **harness build + code-review gate**; slice 8
-the **cross-app SIT / PT + pre-release security review + defect loop**; and slice 9 (the capstone)
-the **deploy package + support handover**, stitching every stage into the full `sdlc-full`
-pipeline behind `just demo-sdlc`.
+The example was built as a program of slices: slice 2 the reusable **archetype + skill library**;
+slice 4 the **one-app (OMS) bounded stage run**; slice 6 the **consolidated design across all three
+apps** with the **architect-reviewer harness review**; slice 7 the **harness build + code-review
+gate**; slice 8 the **cross-app SIT / PT + pre-release security review**. Slices 5 and 9 — the
+controller, the stage graph and the full-lifecycle capstone — were the sequencing half, and went
+with it.
 
 ## Archetypes (`workspace/archetypes/`)
 
@@ -94,7 +105,7 @@ multi-party approval, retry re-runs the architect). IAM scopes are per app, so a
 cannot reach a Web resource.
 
 ```
-just demo-sdlc      # intake → design → judge → approval, a bounded retry, and an IAM-scope denial
+just demo-sdlc-stage-run   # intake → design → judge → approval, a bounded retry, and an IAM-scope denial
 ```
 
 ## The consolidated design (slice 6)
@@ -134,7 +145,7 @@ just demo-consolidated-design   # 3 app designs → consolidation → 4-layer fu
 ## The pipeline controller (slice 5)
 
 The pipeline as data + the saga that runs it. `pipelines/oms-pipeline.yaml` is a
-`kind: StageGraph` — intake → design (gated + contract-locked) → build → sit, with a
+`kind: StageGraph` (**removed in 1.189.0**) — intake → design (gated + contract-locked) → build → sit, with a
 defect loop. The **controller** (`controller/`) is a self-contained, runtime-free service
 that sequences a requirement across those stages over an injectable `run_stage` seam:
 
@@ -149,7 +160,7 @@ split: the app owns weeks-long logic + state, SwarmKit does bounded determinatio
 Design: [`pipeline-controller.md`](../../design/details/pipeline-controller.md).
 
 ```
-just demo-pipeline-controller   # one requirement through the pipeline + duplicate/dropped/contended/cancelled scenarios
+# (removed in 1.189.0) demo-pipeline-controller — the saga controller went with the bundled pipeline
 ```
 
 ## Orchestration: the pluggable sequencing seam
@@ -166,7 +177,7 @@ saga substrate is delegated. Two adapters implement `OrchestrationProvider`:
   data — one workflow runs any pipeline.
 
 ```
-just demo-pipeline-temporal      # the OMS pipeline on Temporal (in-process test env, no server)
+# (removed in 1.189.0) demo-pipeline-temporal — the Temporal adapter went with the bundled pipeline
 # `just` uses `uv run --group orchestrator`, which pulls temporalio in on demand. To run the
 # tests directly, sync the group — but this is a *virtual* uv workspace, so you must keep the
 # workspace members (fastapi, swarmkit_runtime) with `--all-packages`, else the sync prunes them:
@@ -230,7 +241,7 @@ demo drives the **reference controller** over a scripted `run_stage` seam (no ke
 server) and prints the correlated saga timeline showing the loop.
 
 ```
-just demo-defect-loop   # build → sit → defect.raised → build → sit → defect.fixed → … → done
+# (removed in 1.189.0) demo-defect-loop — the defect loop was sequenced by the saga controller
 just demo-sit-pt        # SIT (mock rig) → PT (mock rig, pt-analysis) → security review (harness + infosec sign-off)
 ```
 
@@ -246,7 +257,7 @@ The finale stitches every stage into one pipeline. Two new stages complete the l
   **runbook / handover** (what changed, how to operate it, known issues, rollback) and sets up
   prod monitoring. Ungated and terminal: completing it finishes the saga.
 
-`pipelines/sdlc-full.yaml` is the full-lifecycle `kind: StageGraph` — the eight stages in order,
+`pipelines/sdlc-full.yaml` was the full-lifecycle `kind: StageGraph` (**removed in 1.189.0**) — the eight stages in order,
 **intake → design → build → sit → pt → security-review → deploy → support-handover → done** —
 carrying the two multi-party gates (design, security), the final release gate (deploy), the
 integration-contract locks held through design approval, the per-stage compensations, and the
@@ -261,7 +272,7 @@ the mock QA / perf rigs (`build.ready-in-qa` / `sit.passed` / `pt.passed`) arriv
 keys, no network, no server.
 
 ```
-just demo-sdlc            # the full lifecycle: intake → … → deploy → support-handover → done
+# (removed in 1.189.0) demo-sdlc — the full-lifecycle capstone was sequenced by the saga controller
 just demo-sdlc-stage-run  # the slice-4 one-app bounded stage run (intake → design → judge → approval)
 ```
 

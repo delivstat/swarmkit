@@ -13,7 +13,7 @@ SwarmKit's design doc §7 already declares "Ergonomics determine adoption." This
 
 **Every feature has a usability story.** If a feature would cause a user to reach for the docs, the CLI, a forum post, or an LLM to figure out what to do, the feature is not done. Remove the friction with the minimum intervention that works — good errors beat new subcommands, good defaults beat required flags, a conversational path beats YAML editing where the target user is non-technical.
 
-"Minimum intervention" is the important clause. Over-tooling is a failure mode too. A `swarmkit doctor` that duplicates `just schema-codegen-check` adds friction by adding surface.
+"Minimum intervention" is the important clause. Over-tooling is a failure mode too. A hypothetical `swarmkit doctor` that duplicates `just schema-codegen-check` adds friction by adding surface.
 
 ## Per-PR checklist
 
@@ -30,7 +30,7 @@ Purely-internal refactors and library-level work are exempt. The checklist targe
 
 - **Docs as tooling.** "The user will read the docs" is a deferral, not a solution. Works for developers and architects; fails silently for analysts and first-time users. Don't ship a feature that requires reading the design doc to use.
 - **Error messages that are correct but useless.** `ValidationError: '#/agents/root/role' value not in enum` is correct; `Agent 'root' has role 'supervisor' which is not allowed. Roots must use 'root'; leaders and workers are enforced by archetype` is useful. Errors are documentation consumed at the exact moment a user needs it.
-- **New subcommand for every new feature.** Subcommands are surface area. Prefer extending an existing command, improving its output, or generating the artifact automatically over adding `swarmkit new-thing`.
+- **New subcommand for every new feature.** Subcommands are surface area. Prefer extending an existing command, improving its output, or generating the artifact automatically over inventing a `swarmkit new-thing`.
 - **Required flags for config that has a sensible default.** `--input` on `swarmkit run` should accept stdin, a file, or nothing (interactive). Not "required: true."
 - **Failure modes that blame the user.** "Invalid configuration" or "unexpected error" throw the problem back. Say what happened, why, and what to try.
 

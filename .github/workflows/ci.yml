@@ -40,6 +40,11 @@ jobs:
       - name: Format check (ruff)
         run: uv run ruff format --check .
 
+      # Docs drift silently: nothing fails, and the first person to notice is a user who followed
+      # an instruction that stopped being true. This checks the claims a machine can check.
+      - name: Docs match the repo
+        run: uv run python scripts/check_docs.py
+
       # mypy re-analysed ~440 files from scratch on every run (29s of a ~135s job) because
       # nothing carried .mypy_cache between runs. Keyed on the lockfile + Python version, since
       # a dependency or interpreter change is what actually invalidates the analysis.

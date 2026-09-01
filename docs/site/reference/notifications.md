@@ -9,7 +9,7 @@ Runtime fires event (HITL request, error, skill gap)
     │
     ├─→ NotificationStore (SQLite) — persisted, queryable
     │       ↕
-    │   CLI: swarmkit notifications --last 10
+    │   CLI: swarmkit notifications --last 10   (planned — see below)
     │   Web UI: GET /notifications?status=pending
     │
     └─→ External providers (best-effort delivery)
