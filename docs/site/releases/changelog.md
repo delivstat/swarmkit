@@ -6,6 +6,11 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 <!-- BEGIN GENERATED: tags -->
 
+## September 2026
+
+- **v1.201.0** (2026-09-02) — a harness is visible while it runs, on both chat surfaces
+- **v1.200.0** (2026-09-01) — publish the web portal, and fix the guard that let it freeze
+
 ## August 2026
 
 - **v1.199.0** (2026-08-30) — command packs: local commands as a skill implementation type
