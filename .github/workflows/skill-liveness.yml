@@ -1,0 +1,70 @@
+# Are the skills we ship still backed by the tools they name?
+#
+# Nightly, not per-PR. A third-party server having an outage must never block a merge — that is how
+# a check gets disabled, and a disabled check is indistinguishable from no check. The catalogue's
+# claim is "verified on a date", so a daily answer is the product; a per-commit answer is noise.
+#
+# See design/details/skill-catalogue.md.
+name: skill liveness
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+  pull_request:
+    # Only when the thing being checked, or the check itself, changes.
+    paths:
+      - "reference/skills/**"
+      - "reference/workspace.yaml"
+      - "scripts/check_skill_liveness.py"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  liveness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install
+        run: uv sync --all-packages
+
+      - name: Check every MCP-backed skill against its server
+        id: check
+        run: |
+          set +e
+          uv run python scripts/check_skill_liveness.py reference | tee liveness.txt
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the result as a machine-readable badge source
+        run: uv run python scripts/check_skill_liveness.py reference --json > liveness.json || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skill-liveness
+          path: |
+            liveness.txt
+            liveness.json
+
+      # A broken entry becomes an issue rather than a silent red run. The issue is the interface to
+      # whoever fixes it — a person, or the Skill Authoring Swarm, for which a broken entry is a
+      # well-specified task with a machine-checkable acceptance test: this very check.
+      - name: File an issue for a broken skill
+        if: steps.check.outputs.status != '0' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BODY=$(cat liveness.txt)
+          gh issue create \
+            --title "skill liveness: a shipped skill names a tool its server no longer has" \
+            --label "skill-liveness" \
+            --body "$(printf 'The nightly liveness check found a skill whose backing tool is gone.\n\n```\n%s\n```\n\nThe acceptance test for a fix is this check passing:\n\n    uv run python scripts/check_skill_liveness.py reference\n\nSee `design/details/skill-catalogue.md`.\n' "$BODY")"
+
+      - name: Fail the run when something is broken
+        if: steps.check.outputs.status != '0'
+        run: exit 1

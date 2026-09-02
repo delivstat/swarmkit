@@ -122,6 +122,12 @@ release-check:
 docs-check:
     uv run python scripts/check_docs.py
 
+# Ask each MCP-backed skill's server whether the tool it names still exists. Three states:
+# verified, broken, and unverifiable (needs a credential this environment does not have — reported
+# honestly rather than passed silently). Only `broken` fails. See design/details/skill-catalogue.md.
+skill-liveness workspace="reference":
+    uv run python scripts/check_skill_liveness.py {{workspace}}
+
 # Demo the jobs history page (jobs-history-ui.md): what /jobs and /jobs/history each return, and
 # why a running job must not be printed by both.
 demo-jobs-history:
