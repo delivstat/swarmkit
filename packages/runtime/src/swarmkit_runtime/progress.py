@@ -71,12 +71,37 @@ def emit_progress(event: ProgressEvent) -> None:
     the run it is observing.
     """
     sink = _sink_var.get()
-    if sink is None:
-        return
+    if sink is not None:
+        try:
+            sink(event)
+        except Exception:
+            logger.debug("progress sink raised; dropping the event", exc_info=True)
+
+    # Also reach the listener bus in `_helpers`, which is what serve's conversation SSE and any
+    # other `progress_listener` subscriber read. These were two separate buses: a model agent
+    # published to `_helpers` and a harness published here, so the portal's chat showed live
+    # progress for a model node and NOTHING for a harness — the exact blackout this module was
+    # written to remove, still present on the surface most people watch.
+    #
+    # `summary`, never `detail`. That is the same rule serve already applies: a harness message can
+    # quote a file and a file can quote a credential, so a shared record gets the bounded first
+    # line while a local terminal may opt into the full text through the sink above.
     try:
-        sink(event)
-    except Exception:
-        logger.debug("progress sink raised; dropping the event", exc_info=True)
+        from swarmkit_runtime.langgraph_compiler._helpers import (  # noqa: PLC0415
+            _progress_listeners_var,
+        )
+
+        listeners = _progress_listeners_var.get()
+    except Exception:  # pragma: no cover — import cycle or partial init must not fail a run
+        return
+    if not listeners:
+        return
+    line = f"[{event.agent_id}] {event.summary}".strip()
+    for listener in listeners:
+        try:
+            listener(line)
+        except Exception:
+            logger.debug("progress listener raised; dropping the event", exc_info=True)
 
 
 def summarize(text: str, limit: int = SUMMARY_CHARS) -> str:
