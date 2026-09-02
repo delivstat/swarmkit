@@ -203,6 +203,7 @@ class Provenance(BaseModel):
     authored_by: AuthoredBy
     authored_date: date | None = None
     version: str = Field(..., pattern="^\\d+\\.\\d+\\.\\d+$")
+    requires_runtime: str | None = Field(None, pattern="^>=\\d+\\.\\d+\\.\\d+$")
     registry: str | None = None
     vendor: str | None = None
 

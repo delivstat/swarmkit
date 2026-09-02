@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
+from swarmkit_runtime._versions import component_versions
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.persistence import Store
 
@@ -19,7 +20,6 @@ from ._helpers import (
     _instance_state_manifest,
 )
 from ._services import ArtifactService
-from ._versions import component_versions
 
 
 class ArtifactRef(BaseModel):

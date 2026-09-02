@@ -1,0 +1,28 @@
+# A skill that needs a runtime new enough to run it. The `command` backing arrived in 1.197.0, so
+# this skill is meaningless to an older runtime — and without the floor it would resolve cleanly
+# there and fail at call time. See design/details/skill-catalogue.md.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: jq-query
+  name: JQ Query
+  description: Runs a jq filter over a JSON file and returns the result.
+category: capability
+inputs:
+  type: object
+  properties:
+    filter: { type: string }
+    file: { type: string }
+  required: [filter, file]
+implementation:
+  type: command
+  pack: json-tools
+  command: query
+iam:
+  required_scopes: [workspace:read]
+provenance:
+  authored_by: imported_from_registry
+  authored_date: "2026-09-02"
+  version: 1.0.0
+  requires_runtime: ">=1.197.0"
+  registry: swarmkit-skills

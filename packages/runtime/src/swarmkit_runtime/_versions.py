@@ -1,5 +1,9 @@
 """Component versions, read from installed package metadata.
 
+Lives at the package root rather than under ``server/`` because it is not a server concern: the
+resolver reads it to check a skill's ``provenance.requires_runtime`` floor, and that happens on
+every workspace load, `serve` or not.
+
 `swarmkit serve` is the runtime hosting a *separately versioned* portal, so "what version is this"
 has two answers. Reporting one of them — or worse, a hardcoded literal — is how the UI ended up
 displaying `v1.2.58` long after the runtime had reached 1.129.0.

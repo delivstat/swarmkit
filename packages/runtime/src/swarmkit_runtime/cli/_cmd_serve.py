@@ -188,7 +188,7 @@ def serve(
     # Say what is actually running. `swarmkit serve` is the runtime hosting a SEPARATELY versioned
     # portal, so one version number cannot answer "what am I running" — and until now the runtime's
     # was not printed at all.
-    from swarmkit_runtime.server._versions import runtime_version, webui_version  # noqa: PLC0415
+    from swarmkit_runtime._versions import runtime_version, webui_version  # noqa: PLC0415
 
     portal = webui_version()
     typer.echo(

@@ -1,0 +1,16 @@
+# `requires_runtime` is a floor, not a range or a pin: an upper bound would make every runtime
+# release able to orphan a skill, and a pin would make the catalogue unusable within a week.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: bad-floor
+  name: Bad Floor
+  description: Declares a version range where a floor is required.
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: Summarise this.
+provenance:
+  authored_by: human
+  version: 1.0.0
+  requires_runtime: ">=1.197.0,<2.0.0"

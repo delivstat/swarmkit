@@ -30,6 +30,7 @@ from swarmkit_runtime.commands._config import parse_command_packs
 from swarmkit_runtime.commands._synthesis import synthesize_pack_skills
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors, yaml_pointer
 from swarmkit_runtime.skills import build_skill_registry
+from swarmkit_runtime.skills._runtime_floor import unmet_floors
 from swarmkit_runtime.workspace import (
     ArtifactKind,
     ArtifactKindMismatchError,
@@ -393,6 +394,10 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     errors: list[ResolutionError] = []
     skills, skill_errors = build_skill_registry(artifacts)
     errors.extend(skill_errors)
+    # A skill can declare the runtime it needs. Checked here rather than at call time: a floor that
+    # refuses at load costs one clear message naming both versions, while the absence of one costs
+    # a debugging session against an error that names nothing.
+    errors.extend(unmet_floors(skills))
 
     # Command-pack commands become ordinary skills here, before anything downstream looks at the
     # registry. Doing it at the registry rather than at each consumer is what keeps the tool

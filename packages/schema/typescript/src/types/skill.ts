@@ -111,11 +111,12 @@ export interface Metadata {
 }
 
 export interface Provenance {
-    authored_by:    AuthoredBy;
-    authored_date?: Date;
-    registry?:      string;
-    vendor?:        string;
-    version:        string;
+    authored_by:       AuthoredBy;
+    authored_date?:    Date;
+    registry?:         string;
+    requires_runtime?: string;
+    vendor?:           string;
+    version:           string;
 }
 
 export type AuthoredBy = "human" | "authored_by_swarm" | "derived_from_template" | "imported_from_registry" | "vendor_published";
