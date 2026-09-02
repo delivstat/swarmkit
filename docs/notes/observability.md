@@ -7,7 +7,7 @@ status: active
 
 # Observability discipline
 
-SwarmKit's user-facing promise for a running swarm is that every decision is inspectable — via `swarmkit logs`, `swarmkit events`, `swarmkit review`, `swarmkit why`, and `swarmkit ask`. That promise only holds if every runtime path emits structured audit events. This note is the per-PR reminder.
+SwarmKit's user-facing promise for a running swarm is that every decision is inspectable — via `swarmkit logs`, `swarmkit trace`, `swarmkit review`, `swarmkit why`, and `swarmkit ask`. That promise only holds if every runtime path emits structured audit events. This note is the per-PR reminder.
 
 ## The rule
 

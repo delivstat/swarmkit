@@ -23,7 +23,7 @@ Required top-level: `apiVersion`, `kind`, `metadata`, `type`, `targets`.
 | `cron` | schedule tick | `{ expression: <5/6-field cron>, timezone?: <IANA zone> }` |
 | `webhook` | HTTP POST to an endpoint | `{ path, auth?: {...} }` |
 | `file_watch` | filesystem change | `{ root, pattern, events: [...] }` |
-| `manual` | `swarmkit trigger fire <id>` / UI "Run now" | none required |
+| `manual` | `POST /run/{topology}` (or the portal's "Run now") | none required |
 | `plugin` | a registered `TriggerProvider` | `provider_id` + arbitrary config |
 
 ### Webhook `auth`

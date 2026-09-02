@@ -191,7 +191,7 @@ swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit
 swarmkit author skill my-workspace/ --thorough
 ```
 
-**16 archetypes** and **20 skills** included under [`reference/`](https://github.com/delivstat/swarmkit/tree/main/reference/).
+**16 archetypes** and **27 skills** included under [`reference/`](https://github.com/delivstat/swarmkit/tree/main/reference/).
 
 ## Real-world example
 

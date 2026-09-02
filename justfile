@@ -116,6 +116,12 @@ demo-retry-envelope:
 release-check:
     uv run python scripts/check_publishable.py
 
+# Check the docs against the repo they describe: link targets, `just` targets, CLI commands,
+# version numbers, reference-library counts, and any current-state doc still describing a removed
+# feature. Design notes and dated posts are excluded — they are history, not claims about today.
+docs-check:
+    uv run python scripts/check_docs.py
+
 # Demo the jobs history page (jobs-history-ui.md): what /jobs and /jobs/history each return, and
 # why a running job must not be printed by both.
 demo-jobs-history:
@@ -190,12 +196,6 @@ demo-governed-memory-search:
 # the same store + JSON as the serve /memory endpoints (one service seam).
 demo-governed-memory-cli:
     uv run python packages/runtime/demos/governed_memory_cli.py
-
-# Demo gate coverage (gate-coverage-and-comprehension-debt.md, slice 1): the narrowest verified
-# edge of the full SDLC pipeline — every stage classified passthrough | human(+pre-filters), the
-# weakest edge named. Read-only, no keys/server. `--require human` (added) exits 1 on any passthrough.
-demo-gates:
-    uv run swarmkit gates examples/sdlc-pipeline/workspace --pipeline sdlc-full
 
 # Demo the recurring expert-persona repo audit (slice 6): a cron Trigger fires a read-only
 # expert-reviewer panel (5 lenses). Prints the schedule → panel wiring; no model calls, no server.
