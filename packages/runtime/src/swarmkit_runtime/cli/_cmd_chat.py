@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -182,6 +184,31 @@ def _build_chat_session() -> Any:
     )
 
 
+@contextlib.contextmanager
+def _turn_progress() -> Iterator[None]:
+    """Print a harness's own output while the turn is in flight, then unsubscribe.
+
+    Scoped to the turn rather than the session so a sink can never outlive the run that owns it —
+    the same reason the sink is a ContextVar rather than a module global.
+    """
+    from swarmkit_runtime.progress import ProgressEvent, set_progress_sink  # noqa: PLC0415
+
+    def _show(event: ProgressEvent) -> None:
+        body = (event.detail or event.summary or "").strip()
+        if not body:
+            return
+        if event.kind == "message":
+            typer.echo(f"\n  {body}", err=True)
+        else:
+            typer.echo(f"  [{event.agent_id}] {event.summary}", err=True)
+
+    set_progress_sink(_show)
+    try:
+        yield
+    finally:
+        set_progress_sink(None)
+
+
 def _conversation_loop(conv: Any, manager: Any) -> None:
     """Interactive REPL for a conversation.
 
@@ -244,7 +271,17 @@ async def _async_conversation_loop(conv: Any, manager: Any) -> None:  # noqa: PL
                 continue
 
             try:
-                result = await manager.send(conv, user_input)
+                # Live progress for the turn. `swarmkit run` gates this behind `--verbose` to keep
+                # stdout parseable for scripts; chat has no such contract — it is interactive by
+                # definition, and a person watching a blank prompt through a multi-minute harness
+                # run cannot tell it from a hang. That is the exact failure
+                # `harness-progress-stream.md` exists to fix, and chat was the surface it missed.
+                #
+                # `detail` rather than `summary`, on the same reasoning `run --verbose` uses: a
+                # local terminal already holds the workspace and its credentials, so it is a
+                # different blast radius from a shared job record that serve publishes to.
+                with _turn_progress():
+                    result = await manager.send(conv, user_input)
             except Exception as exc:
                 _stderr(f"error: {exc}")
                 continue
