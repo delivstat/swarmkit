@@ -15,7 +15,7 @@ import re
 from importlib.metadata import version
 from pathlib import Path
 
-from swarmkit_runtime.server._versions import component_versions, runtime_version, webui_version
+from swarmkit_runtime._versions import component_versions, runtime_version, webui_version
 
 REPO = Path(__file__).resolve().parents[3]
 

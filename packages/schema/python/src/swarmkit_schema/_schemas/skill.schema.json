@@ -237,6 +237,11 @@
         },
         "authored_date": { "type": "string", "format": "date" },
         "version": { "$ref": "#/$defs/semver" },
+        "requires_runtime": {
+          "$comment": "The minimum swarmkit-runtime this skill needs. A catalogue skill outgrows the runtime that installed it: `command` backing needs >=1.197.0, `requires:` ordering >=1.193.0, declared `effects` under a readonly MCP server >=1.199.0. Without a floor it resolves cleanly into an older workspace and fails at run time naming nothing useful — the swarmkit-webui failure exactly. Checked at workspace load; absent means no constraint.",
+          "type": "string",
+          "pattern": "^>=\\d+\\.\\d+\\.\\d+$"
+        },
         "registry": { "type": "string" },
         "vendor": { "type": "string" }
       }
