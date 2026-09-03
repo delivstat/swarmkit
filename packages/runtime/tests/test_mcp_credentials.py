@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+import yaml
 from swarmkit_runtime.mcp._client import MCPServerConfig, parse_mcp_servers
 from swarmkit_runtime.mcp._credentials import (
     CredentialError,
@@ -25,6 +26,7 @@ from swarmkit_runtime.mcp._credentials import (
     resolve_headers,
     substitute,
 )
+from swarmkit_schema.models.workspace import SwarmKitWorkspace
 
 CREDS = {"api-token": {"source": "env", "config": {"env": "DEMO_TOKEN"}}}
 
@@ -161,3 +163,62 @@ class TestTheDefaultConfigIsUnchanged:
             )
             == {}
         )
+
+
+class TestTheRealWorkspacePath:
+    """Through `SwarmKitWorkspace`, not a hand-built dict.
+
+    The tests above build `{"source": "env"}` as a **string**, which is what a person writes in
+    YAML — but pydantic parses it to `<Source.env: 'env'>`, and `resolve_secret_ref` compares
+    against strings. So every credential failed with `unknown source 'Source.env'` while the unit
+    tests passed, because they had already made the assumption the code got wrong.
+
+    A test that builds its own input can only confirm what its author believed. This one starts
+    from YAML.
+    """
+
+    WORKSPACE = """
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: { id: t, name: t }
+credentials:
+  remote-token:
+    source: env
+    config: { env: DEMO_TOKEN }
+mcp_servers:
+  - id: remote
+    transport: http
+    endpoint: https://mcp.example.com/mcp
+    credentials_ref: credentials:remote-token
+"""
+
+    def _credentials(self) -> tuple[dict[str, Any], Any]:
+        ws = SwarmKitWorkspace.model_validate(yaml.safe_load(self.WORKSPACE))
+        return {
+            k: (v if isinstance(v, dict) else v.model_dump(mode="json", exclude_none=True))
+            for k, v in dict(ws.credentials or {}).items()
+        }, ws
+
+    def test_a_yaml_declared_credential_reaches_the_server(self) -> None:
+        creds, ws = self._credentials()
+        cfg = parse_mcp_servers(ws.mcp_servers, creds)["remote"]
+        headers = resolve_headers(
+            credentials_ref=cfg.credentials_ref, headers=cfg.headers, credentials=cfg.credentials
+        )
+        assert headers == {"Authorization": "Bearer sk-live-xyz"}
+
+    def test_the_source_survives_as_a_string(self) -> None:
+        """The specific regression: `model_dump()` keeps the enum, `mode="json"` does not."""
+        creds, _ = self._credentials()
+        assert creds["remote-token"]["source"] == "env"
+        assert not str(creds["remote-token"]["source"]).startswith("Source.")
+
+    def test_this_is_the_cli_only_path(self) -> None:
+        """No portal involved: a token exported in a shell, named by a YAML credential entry,
+        reaching a remote MCP server. The browser flow adds to this; it is not a prerequisite."""
+        creds, ws = self._credentials()
+        cfg = parse_mcp_servers(ws.mcp_servers, creds)["remote"]
+        assert cfg.endpoint.startswith("https://")
+        assert resolve_headers(
+            credentials_ref=cfg.credentials_ref, headers=cfg.headers, credentials=cfg.credentials
+        )["Authorization"].endswith("sk-live-xyz")
