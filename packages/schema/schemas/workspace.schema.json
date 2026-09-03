@@ -306,14 +306,22 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Environment variables passed to a stdio server. Values support ${VAR} expansion from the runtime process environment. Use `credentials_ref` for secrets; `env` is for configuration."
+          "description": "Environment variables passed to a stdio server. Values support ${VAR} expansion from the runtime process environment, and {credential.<ref>} which resolves through the workspace `credentials` block (the same substitution command packs use). Prefer {credential.\u2026} over ${VAR} for secrets: it keeps the secret out of the runtime's own environment, so it cannot leak into an unrelated subprocess."
         },
         "cwd": {
           "type": "string",
           "description": "Working directory for stdio servers. Supports ${VAR} expansion. Defaults to workspace root."
         },
         "credentials_ref": {
-          "type": "string"
+          "type": "string",
+          "description": "A key_ref resolved through the workspace `credentials` block \u2014 'credentials:<name>', 'env:VAR' or 'file:/path'. For transport=http the resolved secret is sent as `Authorization: Bearer <secret>`, which is what OAuth-protected remote MCP servers expect. For stdio it is available to `env` values as {credential.<this-ref>}. Until 1.204.0 this field was parsed and read by nothing, while `env`'s own description told authors to use it for secrets \u2014 so a server configured exactly as documented connected with no credentials at all."
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Extra HTTP headers for transport=http. Values support ${VAR} and {credential.<ref>}. For a server whose scheme is not bearer \u2014 an API key in a custom header, say \u2014 set it here instead of `credentials_ref`. An explicit Authorization header wins over the one derived from `credentials_ref`."
         },
         "sandboxed": {
           "type": "boolean",

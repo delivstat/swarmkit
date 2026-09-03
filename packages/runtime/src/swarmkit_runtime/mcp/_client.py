@@ -39,6 +39,7 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.types import CallToolResult
 from swarmkit_schema.models.workspace import McpServer
 
+from swarmkit_runtime.mcp._credentials import resolve_env, resolve_headers
 from swarmkit_runtime.mcp._sdk_compat import tool_input_schema, tool_read_only_hint
 
 PermissionTier = Literal["open", "cautious", "strict", "readonly"]
@@ -63,6 +64,16 @@ class MCPServerConfig:
     sandbox_image: str = ""
     permission: PermissionTier = "cautious"
     permission_overrides: dict[str, PermissionTier] = field(default_factory=dict)
+    #: A key_ref resolved through the workspace ``credentials`` block. For ``http`` it becomes an
+    #: ``Authorization: Bearer`` header; for ``stdio`` it is reachable from ``env`` as
+    #: ``{credential.<ref>}``. It was in the schema and dropped here at parse time, so the value an
+    #: author set never existed by the time anything could have used it.
+    credentials_ref: str = ""
+    #: Extra HTTP headers for ``transport=http``; values support ``${VAR}`` and ``{credential.…}``.
+    headers: dict[str, str] = field(default_factory=dict)
+    #: The workspace ``credentials`` block, so a ``credentials_ref`` can be resolved at connect
+    #: time rather than at parse time — a secret read early is a secret held longer.
+    credentials: dict[str, Any] = field(default_factory=dict)
     #: ``{tool_name: "read"|"write"}`` declared by the workspace. Authoritative over the server's
     #: own annotation, because it is the half the operator controls.
     effects: dict[str, str] = field(default_factory=dict)
@@ -259,7 +270,7 @@ class MCPClientManager:
             resolved_cmd = [_expand_var(part) for part in config.command]
             cmd = resolved_cmd[0]
             args = resolved_cmd[1:]
-            env = _resolve_env(config.env)
+            env = resolve_env(config.env, config.credentials) or _resolve_env(config.env)
 
         cwd: str | None
         if config.cwd:
@@ -288,7 +299,17 @@ class MCPClientManager:
                 f"MCP server '{config.server_id}' has transport=http but no endpoint. "
                 f"Add an `endpoint: <url>` to its workspace.yaml entry."
             )
-        transport = await self._stack.enter_async_context(sse_client(url=config.endpoint))
+        # The declared credentials, actually sent. This was `sse_client(url=...)` with no headers
+        # at all, while the schema told authors to put their token in `credentials_ref` — so a
+        # remote server configured exactly as documented was called anonymously.
+        headers = resolve_headers(
+            credentials_ref=config.credentials_ref,
+            headers=config.headers,
+            credentials=config.credentials,
+        )
+        transport = await self._stack.enter_async_context(
+            sse_client(url=config.endpoint, headers=headers or None)
+        )
         session = await self._stack.enter_async_context(ClientSession(*transport))
         await session.initialize()
         return session
@@ -603,7 +624,9 @@ def _extract_permission_overrides(raw: object) -> dict[str, PermissionTier]:
     return result
 
 
-def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerConfig]:
+def parse_mcp_servers(
+    servers: list[McpServer] | None, credentials: dict[str, Any] | None = None
+) -> dict[str, MCPServerConfig]:
     """Convert the workspace's typed ``mcp_servers`` list into client configs.
 
     Accepts the value of ``SwarmKitWorkspace.mcp_servers`` (or ``None``).
@@ -631,6 +654,11 @@ def parse_mcp_servers(servers: list[McpServer] | None) -> dict[str, MCPServerCon
             sandbox_image=server.sandbox_image or "",
             permission=permission,
             permission_overrides=overrides,
+            credentials_ref=getattr(server, "credentials_ref", "") or "",
+            headers=dict(getattr(server, "headers", None) or {}),
+            # Carried, not resolved: the secret is read when the server is started, so a workspace
+            # that loads a hundred servers and starts two holds two secrets, not a hundred.
+            credentials=dict(credentials or {}),
             effects={
                 k: ("read" if getattr(v, "value", v) == "read" else "write")
                 for k, v in (getattr(server, "effects", None) or {}).items()
