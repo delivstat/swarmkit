@@ -127,6 +127,60 @@ An access token expires; a refresh token is a standing grant. Three rules:
   supports it. A deletion that leaves a live grant on someone else's server is not a deletion, which
   is the same standard `face_store.delete_person` is held to.
 
+## The CLI is not the fallback — it is the common case
+
+An earlier draft of this note was portal-first and listed the device authorization grant as a
+non-goal, on the reasoning that *"it exists for input-constrained devices, and a portal is a
+browser."* **That was wrong**, and it contradicts SwarmKit's own position that the CLI is the
+on-ramp and the portal extends it.
+
+The constrained case is not an input-constrained *device*. It is a **browser-less host**, which is
+the normal place to run a server-side runtime: a VPS, an appliance, a CI job, a container. `gh auth
+login` and `aws sso login` both solve exactly this, and they solve it with a device grant.
+
+Three CLI paths, in descending order of how often they are what someone wants:
+
+**1. A token you already have — works today, no new feature.** Most "OAuth" servers accept a
+long-lived personal token, and `credentials` has always had `env:` and `file:` sources. Since
+1.204.0 they reach the server:
+
+```yaml
+credentials:
+  linear: { source: env, config: { env: LINEAR_TOKEN } }
+mcp_servers:
+  - id: linear
+    transport: http
+    endpoint: https://mcp.linear.app/mcp
+    credentials_ref: credentials:linear
+```
+
+```bash
+export LINEAR_TOKEN=lin_api_…
+swarmkit run ./workspace my-topology
+```
+
+No portal, no flow, no browser. This should be the documented default, and the note previously did
+not mention it at all.
+
+**2. A device grant, for a real OAuth login with no local browser.**
+
+```
+$ swarmkit auth login linear
+  open https://linear.app/device and enter  WDJB-MJHT
+  waiting…                                  ✓ authorised as srijith@delivstat.com
+  stored as credentials:linear (expires in 8h, refresh token stored)
+```
+
+The browser can be on a phone, or a laptop, while the runtime is on a box in a rack. That is the
+whole point of the grant, and it is why it belongs here rather than being excluded.
+
+**3. Paste a token obtained elsewhere.** `swarmkit auth set linear --stdin`, for a provider with no
+device grant. Deliberately last: it works, and it encourages pasting secrets into shell history if
+offered first.
+
+Everything after this section — refresh, parking, per-owner storage, audit — is **identical for all
+four paths**, portal included. The flow that obtained a token is not a property of the token.
+
 ## The portal flow
 
 ```
@@ -151,8 +205,8 @@ Step 6 shows a diff and asks, because `workspace.yaml` is hand-authored. Same ru
 
 - **Being an identity provider.** SwarmKit is an OAuth *client*. Its own inbound auth (JWT/JWKS,
   API keys) is a separate concern and stays separate.
-- **Storing a user's password, ever.** Authorization-code with PKCE only. No device-code flow in v1
-  either — it exists for input-constrained devices, and a portal is a browser.
+- **Storing a user's password, ever.** Authorization-code with PKCE in the browser; device
+  authorization grant on the CLI. Never a password.
 - **Sharing one token across owners.** An unattended credential is designated explicitly; it is
   never the accidental result of one person logging in.
 - **Silent re-consent.** If a provider needs a human, a human is asked. The run parks.
