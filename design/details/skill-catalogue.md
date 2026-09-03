@@ -13,6 +13,10 @@ status: draft
 [What this changes](#what-this-changes-about-skill-registrymd)
 **Status:** draft
 
+**Companion:** [`skill-catalogue-seed.md`](skill-catalogue-seed.md) decides *what goes in it* —
+the first hundred servers, triangulated across six sources and ordered by what the liveness check
+can actually verify.
+
 ## Goal
 
 Make the common case — *"I want this MCP server as a skill"* — a one-line command instead of forty
