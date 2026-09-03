@@ -147,6 +147,22 @@ mcp_servers:
 
 Sandboxed execution available: `sandboxed: true` runs MCP servers in Docker with `--network=none` and read-only mounts.
 
+**Or take one already wired.** [**swarmkit-skills**](https://github.com/delivstat/swarmkit-skills)
+is a catalogue of MCP servers with the config already worked out — the `mcp_servers` block, the
+permission tier, an `effects` map per tool so `readonly` is enforceable, and `iam.required_scopes`
+that are neither too broad nor missing. Copy a bundle and grant it:
+
+```yaml
+skills:
+  - pack:git          # every READ skill in the bundle, now and later
+  - fs-write-file     # a write, named — bulk grants never carry one
+```
+
+**Each entry is started and asked, nightly.** A curated list nobody re-checks becomes an
+awesome-list, and those rot in months: a server renames a tool and the entry keeps claiming it
+works. So every bundle carries the date its server last answered — and an entry needing a credential
+public CI cannot supply says `unverifiable` rather than passing silently.
+
 ### Governance built in
 
 Every tool call goes through `evaluate_action` before execution. IAM scopes per agent. Hash-chained audit trail via Microsoft AGT. Mock provider for dev, AGT for production:
@@ -488,6 +504,10 @@ swarmkit/
 ├── docs/                # User-facing docs + discipline notes
 └── llms.txt             # LLM-queryable index (llmstxt.org)
 ```
+
+**Sibling repo:** [`delivstat/swarmkit-skills`](https://github.com/delivstat/swarmkit-skills) — the
+skill catalogue, versioned separately so a broken third-party entry does not need a runtime release
+to fix.
 
 ## For LLMs
 

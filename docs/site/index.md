@@ -193,6 +193,30 @@ swarmkit author skill my-workspace/ --thorough
 
 **16 archetypes** and **27 skills** included under [`reference/`](https://github.com/delivstat/swarmkit/tree/main/reference/).
 
+### Or take a skill already wired
+
+[**swarmkit-skills**](https://github.com/delivstat/swarmkit-skills) is a separate catalogue of MCP
+servers with the configuration already worked out — the `mcp_servers` block, the permission tier, an
+`effects` map per tool so `readonly` is enforceable, and scopes that are neither too broad nor
+missing. That wiring is the part nobody publishes and everyone rediscovers.
+
+Entries are **bundles**: one server plus the skills that use it, because that is how a server is
+actually adopted.
+
+```yaml
+skills:
+  - pack:git          # every READ skill in the bundle, now and later
+  - fs-write-file     # a write, named — bulk grants never carry one
+```
+
+**Every entry is started and asked, nightly**, so it carries the date its server last answered
+rather than a promise. An entry needing a credential public CI cannot supply reports `unverifiable`
+instead of passing silently — roughly three in five of the most-wanted MCP servers need somebody's
+account, and a green tick meaning *we did not look* would be worth less than no tick.
+
+It is versioned separately from the runtime, so a broken third-party entry does not need a runtime
+release to fix.
+
 ## Real-world example
 
 The [`examples/sterling-oms/`](https://github.com/delivstat/swarmkit/tree/main/examples/sterling-oms/) workspace demonstrates reasoning over 1,000+ API javadocs with multiple MCP servers (ChromaDB vector search, FTS5 keyword search, CDT config server) — a production-grade setup for enterprise domain knowledge.

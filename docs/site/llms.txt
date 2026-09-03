@@ -194,6 +194,14 @@ skills:
 
 Bundled packs to copy: `reference/command-packs/` — `file-tools` (coreutils only, so it runs on a bare machine), `json-tools` (jq), `text-tools` (ripgrep). Declaring a pack is not granting it — the grant is the audit step. Design: `design/details/command-packs.md`. Demo: `just demo-command-packs`.
 
+## Skill catalogue (`swarmkit-skills`, separate repo)
+
+<https://github.com/delivstat/swarmkit-skills> — MCP servers with the wiring already worked out: the `mcp_servers` block, the `permission` tier, an `effects` map per tool so `readonly` is enforceable, and `iam.required_scopes`. Organised as **bundles** — one server plus the skills that use it — because that is how a server is actually adopted, and it matches command packs.
+
+**Each entry is started and asked, nightly.** A job launches every server and checks that the tool each skill names still exists, so an entry carries the date it last answered rather than a promise. Three states: `verified` (the server started and the tools were present, on that date), `broken` (a tool is gone — the entry stays visible, marked, with an issue filed), and `unverifiable` (needs a credential public CI cannot supply — reported honestly, because a green tick meaning "we did not look" is worth less than no tick). Only `broken` fails a run; failing on `unverifiable` would make every credentialed entry permanently red and teach everyone to ignore the check.
+
+Copy a bundle's `mcp_servers` entry and its skill files, then grant them. A `pack:` grant carries the bundle's READ skills — now and later — while a write is always named individually, so a bundle can never silently widen an agent that already holds it. Every skill declares `provenance.requires_runtime`, so one that outgrows your runtime is refused at workspace load naming both versions rather than failing mid-run. Design: `design/details/skill-catalogue.md` and `skill-catalogue-seed.md`.
+
 ## `permission: readonly` needs declared `effects` (BREAKING, 1.199.0)
 
 `readonly` used to decide write-ness by substring-scanning the **tool name** for `create|delete|update|write|put|post|set|add|remove|modify|edit|insert|drop|push|send`. It failed in both directions at once: `get_dataset` and `read_asset` matched **set**, `list_addresses` matched **add**, `get_post` matched **post** — ordinary reads, denied; while `truncate_table`, `purge_cache`, `revoke_token` and `wipe_db` matched nothing and were allowed. A longer word list was never the fix — the vocabulary of destructive verbs is unbounded and per-server.
