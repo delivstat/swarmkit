@@ -394,7 +394,15 @@ class WorkspaceRuntime:
 
         governance = build_governance(workspace, ws_root)
 
-        mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None))
+        raw_credentials = getattr(workspace.raw, "credentials", None) or {}
+        if hasattr(raw_credentials, "items"):
+            credentials = {
+                k: (v if isinstance(v, dict) else v.model_dump(exclude_none=True))
+                for k, v in dict(raw_credentials).items()
+            }
+        else:
+            credentials = {}
+        mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None), credentials)
         mcp_manager = MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
 
         missing = find_missing_mcp_servers(workspace, mcp_configs)

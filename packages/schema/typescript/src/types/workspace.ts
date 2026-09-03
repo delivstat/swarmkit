@@ -313,7 +313,16 @@ export interface MCPServerElement {
     /**
      * Required when transport=stdio.
      */
-    command?:         string[];
+    command?: string[];
+    /**
+     * A key_ref resolved through the workspace `credentials` block — 'credentials:<name>',
+     * 'env:VAR' or 'file:/path'. For transport=http the resolved secret is sent as
+     * `Authorization: Bearer <secret>`, which is what OAuth-protected remote MCP servers
+     * expect. For stdio it is available to `env` values as {credential.<this-ref>}. Until
+     * 1.204.0 this field was parsed and read by nothing, while `env`'s own description told
+     * authors to use it for secrets — so a server configured exactly as documented connected
+     * with no credentials at all.
+     */
     credentials_ref?: string;
     /**
      * Working directory for stdio servers. Supports ${VAR} expansion. Defaults to workspace
@@ -336,11 +345,20 @@ export interface MCPServerElement {
     endpoint?: string;
     /**
      * Environment variables passed to a stdio server. Values support ${VAR} expansion from the
-     * runtime process environment. Use `credentials_ref` for secrets; `env` is for
-     * configuration.
+     * runtime process environment, and {credential.<ref>} which resolves through the workspace
+     * `credentials` block (the same substitution command packs use). Prefer {credential.…} over
+     * ${VAR} for secrets: it keeps the secret out of the runtime's own environment, so it
+     * cannot leak into an unrelated subprocess.
      */
     env?: { [key: string]: string };
-    id:   string;
+    /**
+     * Extra HTTP headers for transport=http. Values support ${VAR} and {credential.<ref>}. For
+     * a server whose scheme is not bearer — an API key in a custom header, say — set it here
+     * instead of `credentials_ref`. An explicit Authorization header wins over the one derived
+     * from `credentials_ref`.
+     */
+    headers?: { [key: string]: string };
+    id:       string;
     /**
      * Governance permission tier for this server's tools. open: skip governance checks.
      * cautious (default): reads auto-approved, writes go through governance. strict: all calls
