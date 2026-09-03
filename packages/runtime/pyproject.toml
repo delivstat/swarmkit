@@ -72,8 +72,14 @@ dependencies = [
     "opentelemetry-sdk>=1.20",
     "opentelemetry-exporter-otlp-proto-http>=1.20",
 
-    # Schema package (workspace sibling)
-    "swarmkit-schema",
+    # Schema package (workspace sibling). FLOORED, for the same reason the `ui` extra is: the
+    # runtime validates every artifact against whatever schema resolves, so an unfloored dependency
+    # lets a runtime that supports a field pair with a schema that rejects it. `pip install -U
+    # swarmkit-runtime` upgrades dependencies only-if-needed, so with no floor it is not needed —
+    # 1.205.0 landed beside schema 1.33.0 and refused a skill declaring `provenance.requires_runtime`
+    # with "additional properties are not allowed", naming a field the runtime's own docs describe.
+    # Raise this whenever the runtime starts reading a newly-added schema field.
+    "swarmkit-schema>=1.35.0",
 ]
 
 [project.optional-dependencies]
