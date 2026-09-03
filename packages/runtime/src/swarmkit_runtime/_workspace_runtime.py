@@ -397,7 +397,11 @@ class WorkspaceRuntime:
         raw_credentials = getattr(workspace.raw, "credentials", None) or {}
         if hasattr(raw_credentials, "items"):
             credentials = {
-                k: (v if isinstance(v, dict) else v.model_dump(exclude_none=True))
+                # mode="json" so `source` arrives as "env" rather than <Source.env: 'env'>.
+                # `resolve_secret_ref` compares it against strings, so a plain model_dump made
+                # every credential fail with "unknown source 'Source.env'" — and the unit tests
+                # missed it because they built the dict by hand with the string already in it.
+                k: (v if isinstance(v, dict) else v.model_dump(mode="json", exclude_none=True))
                 for k, v in dict(raw_credentials).items()
             }
         else:
