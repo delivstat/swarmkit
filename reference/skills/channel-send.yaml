@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: channel-send
+  name: Channel Send
+  description: >
+    Post a message to a configured channel — Telegram, Discord, Slack or a webhook. Use it to tell
+    a human something they need to know without waiting for them. When you need an answer back,
+    use channel-ask instead.
+category: capability
+implementation:
+  type: mcp_tool
+  server: channels
+  tool: channel_send
+iam:
+  required_scopes: [workspace:write]
+provenance:
+  authored_by: human
+  version: 1.0.0
+  requires_runtime: '>=1.206.0'

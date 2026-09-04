@@ -345,6 +345,12 @@ demo-knowledge-pack:
 demo-command-packs:
     @uv run python examples/command-packs/demo.py
 
+# Channel skills — a swarm asks a human and waits for the answer. Runs against a real
+# Telegram bot when TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID are set, and falls back to the
+# terminal channel otherwise so it demos with no bot at all.
+demo-channels:
+    @uv run python examples/channels/demo.py
+
 # M3 exit demo — run the hello-swarm topology end-to-end. Uses whichever
 # model provider env vars are set (SWARMKIT_PROVIDER + SWARMKIT_MODEL,
 # or falls back to the agent's declared provider). The supervisor

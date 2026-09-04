@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: channel-ask
+  name: Channel Ask
+  description: >
+    Ask a human a question on a channel and wait for their reply, up to a bounded timeout. Returns
+    answered: false when nobody replies in time — a normal outcome to report, not a failure to
+    retry. The answer is information only: a chat message is not an identity assertion, so it
+    cannot approve anything or resolve a governance gate.
+category: capability
+implementation:
+  type: mcp_tool
+  server: channels
+  tool: channel_ask
+iam:
+  required_scopes: [workspace:write]
+provenance:
+  authored_by: human
+  version: 1.0.0
+  requires_runtime: '>=1.206.0'

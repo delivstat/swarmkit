@@ -762,6 +762,42 @@ class CommandPack(BaseModel):
     credentials_ref: str | None = None
 
 
+class Provider3(Enum):
+    """
+    Which transport carries this channel. Only `telegram` supports inbound replies (Bot API getUpdates); the others are send-only and `channel_replies` reports `unsupported` on them rather than returning an empty list.
+    """
+
+    telegram = "telegram"
+    discord = "discord"
+    slack = "slack"
+    webhook = "webhook"
+    terminal = "terminal"
+
+
+class Channel(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    provider: Provider3 = Field(
+        ...,
+        description="Which transport carries this channel. Only `telegram` supports inbound replies (Bot API getUpdates); the others are send-only and `channel_replies` reports `unsupported` on them rather than returning an empty list.",
+    )
+    credentials_ref: str = Field(
+        ...,
+        description="Names an entry in the workspace `credentials` block that resolves to the bot token or webhook URL. A literal token here would be a secret in a file people commit.",
+        pattern="^[a-z][a-z0-9-]*$",
+    )
+    config: dict[str, Any] | None = Field(
+        None,
+        description="Provider-specific destination — e.g. `chat_id` for telegram, `channel` for slack. Validated by the runtime per provider.",
+    )
+    inbound: bool | None = Field(
+        False,
+        description="Poll this channel for replies. Telegram only. `getUpdates` is single-consumer — two pollers on one token steal each other's updates and the loser silently sees nothing — so the runtime refuses a second poller for a token already being polled.",
+    )
+
+
 class Governance(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -969,6 +1005,10 @@ class SwarmKitWorkspace(BaseModel):
     command_packs: list[CommandPack] | None = Field(
         None,
         description="Local command packs — the sibling of `mcp_servers` for capabilities that already exist as binaries and would otherwise need a wrapper server written for them.",
+    )
+    channels: dict[str, Channel] | None = Field(
+        None,
+        description="Named channels a swarm can reach a human on, exposed to agents as the `channels` skills. Without this block the notification transports exist but nothing can address them.",
     )
     storage: Storage | None = None
     context_compression: ContextCompression | None = None

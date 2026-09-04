@@ -57,6 +57,13 @@
       },
       "description": "Local command packs \u2014 the sibling of `mcp_servers` for capabilities that already exist as binaries and would otherwise need a wrapper server written for them."
     },
+    "channels": {
+      "type": "object",
+      "description": "Named channels a swarm can reach a human on, exposed to agents as the `channels` skills. Without this block the notification transports exist but nothing can address them.",
+      "additionalProperties": {
+        "$ref": "#/$defs/channel"
+      }
+    },
     "storage": {
       "$ref": "#/$defs/storage"
     },
@@ -1159,6 +1166,63 @@
           "type": "string"
         }
       }
+    },
+    "channel": {
+      "$comment": "A named destination a swarm can reach a human on. Named rather than global so a topology can route an infrastructure question to ops and a release question to engineering without a second workspace. The transports are the notification providers; this block is what makes them reachable. Tokens are never literal: `credentials_ref` names an entry in `credentials`. See design/details/channel-skills.md.",
+      "type": "object",
+      "required": [
+        "provider",
+        "credentials_ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "enum": [
+            "telegram",
+            "discord",
+            "slack",
+            "webhook",
+            "terminal"
+          ],
+          "description": "Which transport carries this channel. Only `telegram` supports inbound replies (Bot API getUpdates); the others are send-only and `channel_replies` reports `unsupported` on them rather than returning an empty list."
+        },
+        "credentials_ref": {
+          "$ref": "#/$defs/identifier",
+          "description": "Names an entry in the workspace `credentials` block that resolves to the bot token or webhook URL. A literal token here would be a secret in a file people commit."
+        },
+        "config": {
+          "type": "object",
+          "description": "Provider-specific destination \u2014 e.g. `chat_id` for telegram, `channel` for slack. Validated by the runtime per provider.",
+          "additionalProperties": true
+        },
+        "inbound": {
+          "type": "boolean",
+          "default": false,
+          "description": "Poll this channel for replies. Telegram only. `getUpdates` is single-consumer \u2014 two pollers on one token steal each other's updates and the loser silently sees nothing \u2014 so the runtime refuses a second poller for a token already being polled."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "inbound": {
+                "const": true
+              }
+            },
+            "required": [
+              "inbound"
+            ]
+          },
+          "then": {
+            "properties": {
+              "provider": {
+                "const": "telegram"
+              }
+            },
+            "$comment": "Inbound on discord/slack would need a held-open gateway socket or Socket Mode. Refused at validation rather than accepted and silently ignored."
+          }
+        }
+      ]
     }
   }
 }

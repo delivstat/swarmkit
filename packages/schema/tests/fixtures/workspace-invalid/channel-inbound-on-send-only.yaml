@@ -1,0 +1,21 @@
+# Inbound on Discord needs a gateway WebSocket held open, which the runtime does not do. Refused at
+# validation rather than accepted and silently ignored — a channel that claims to be listening and
+# is not is worse than one that never claimed it.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: bad-inbound
+  name: Bad Inbound
+governance:
+  provider: mock
+  policy_language: yaml
+credentials:
+  discord-webhook:
+    source: env
+    config:
+      env: DISCORD_WEBHOOK_URL
+channels:
+  eng-discord:
+    provider: discord
+    credentials_ref: discord-webhook
+    inbound: true
