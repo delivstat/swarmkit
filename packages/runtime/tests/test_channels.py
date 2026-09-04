@@ -101,6 +101,29 @@ def test_inbound_on_a_send_only_provider_is_refused(
         load_channels(tmp_path)
 
 
+def test_env_var_in_config_is_expanded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`chat_id: "${TELEGRAM_CHAT_ID}"` must reach Telegram as the id, not as the literal string.
+
+    Unexpanded, the API answers "chat not found" — an error naming the platform rather than the
+    variable nobody set. A destination is not a secret, so `${VAR}` is the ordinary way to write
+    it and it has to work.
+    """
+    monkeypatch.setenv("TEST_TG_TOKEN", "bot-token-123")
+    monkeypatch.setenv("MY_CHAT", "-100777")
+    doc = {
+        **WS,
+        "channels": {
+            "ops": {
+                "provider": "telegram",
+                "credentials_ref": "tg",
+                "config": {"chat_id": "${MY_CHAT}"},
+            }
+        },
+    }
+    (tmp_path / "workspace.yaml").write_text(yaml.safe_dump(doc))
+    assert load_channels(tmp_path)["ops"].config["chat_id"] == "-100777"
+
+
 # ---- the tools ----------------------------------------------------------------------------
 
 

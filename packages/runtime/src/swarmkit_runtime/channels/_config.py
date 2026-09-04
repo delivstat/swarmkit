@@ -78,6 +78,24 @@ def _resolve_secret(ref: str, credentials: dict[str, Any], channel_id: str) -> s
         raise ChannelConfigError(f"channel {channel_id!r}: {exc}") from exc
 
 
+def _substitute_config(
+    config: dict[str, Any], credentials: dict[str, Any], channel_id: str
+) -> dict[str, Any]:
+    """Expand ``${VAR}`` and ``{credential.<ref>}`` in a channel's destination config."""
+    from swarmkit_runtime.mcp._credentials import CredentialError, substitute  # noqa: PLC0415
+
+    out: dict[str, Any] = {}
+    for key, value in config.items():
+        if not isinstance(value, str):
+            out[key] = value
+            continue
+        try:
+            out[key] = substitute(value, credentials)
+        except CredentialError as exc:
+            raise ChannelConfigError(f"channel {channel_id!r}: config.{key}: {exc}") from exc
+    return out
+
+
 def load_channels(workspace_path: Path) -> dict[str, Channel]:
     """Build every channel declared in a workspace. Raises rather than skipping a broken one.
 
@@ -104,7 +122,12 @@ def load_channels(workspace_path: Path) -> dict[str, Channel]:
             )
             raise ChannelConfigError(msg)
 
-        config = dict(raw.get("config") or {})
+        # `config` values get the same substitution as credentials_ref. Without this a
+        # `chat_id: "${TELEGRAM_CHAT_ID}"` reaches Telegram as the literal string, and the API
+        # answers "chat not found" — an error naming the platform rather than the unexpanded
+        # variable. The value is a destination, not a secret, so `${VAR}` is the ordinary way to
+        # write it and it has to work.
+        config = _substitute_config(raw.get("config") or {}, credentials, channel_id)
         secret = ""
         if provider_type != "terminal":
             secret = _resolve_secret(raw["credentials_ref"], credentials, channel_id)
