@@ -25,6 +25,17 @@ mcp_servers:
   - id: gate-validator
     transport: stdio
     command: ["uv", "run", "python", "-m", "swarmkit_runtime.gate_validator"]
+  # Reaching a human on the channel they already use. `permission: cautious` because sending is a
+  # write: it puts a message in front of somebody. See design/details/channel-skills.md.
+  - id: channels
+    transport: stdio
+    command: ["uv", "run", "python", "-m", "swarmkit_runtime.channels"]
+    permission: cautious
+    effects:
+      channel_send: write
+      channel_ask: write
+      channel_replies: read
+      channels_list: read
 storage:
   checkpoints:
     backend: sqlite

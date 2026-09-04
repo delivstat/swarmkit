@@ -76,6 +76,13 @@ SHAPE_ONLY_INVALID: set[tuple[str, str]] = {
     # argv would be model-placeable, land in the audit line recording what ran, and be readable
     # from `ps` — one layer of defence is not enough for that.
     ("workspace-invalid", "command-pack-credential-in-argv.yaml"),
+    # `if-then` across two sibling properties (inbound=true implies provider=telegram) is not
+    # translated by the pydantic codegen, so a channel that claims to listen on a send-only
+    # transport is rejected by `validate()` and accepted by the generated model. That gap is why
+    # `load_channels` re-checks it at construction: the schema stops it being written, the loader
+    # stops it being built any other way. A channel that says it is listening and is not is worse
+    # than one that never claimed it — the swarm asks a question nobody will ever be able to answer.
+    ("workspace-invalid", "channel-inbound-on-send-only.yaml"),
 }
 
 

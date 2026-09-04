@@ -1,0 +1,34 @@
+# Named channels a swarm can reach a human on. The transports already existed as notification
+# providers; this block is what makes them addressable.
+# See design/details/channel-skills.md.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: channels-demo
+  name: Channels Demo
+governance:
+  provider: mock
+  policy_language: yaml
+credentials:
+  telegram-bot-token:
+    source: env
+    config:
+      env: TELEGRAM_BOT_TOKEN
+  discord-webhook:
+    source: env
+    config:
+      env: DISCORD_WEBHOOK_URL
+channels:
+  # Inbound: the only channel a human can answer on. Telegram's getUpdates long-polls over
+  # outbound HTTPS, so it needs no public URL and works behind NAT.
+  ops-telegram:
+    provider: telegram
+    credentials_ref: telegram-bot-token
+    inbound: true
+    config:
+      chat_id: '-1001234567890'
+  # Send-only. `channel_replies` reports `unsupported` here rather than an empty list, because
+  # empty would read as "nobody answered".
+  eng-discord:
+    provider: discord
+    credentials_ref: discord-webhook

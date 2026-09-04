@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.205.0"
+version = "1.206.0"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -79,7 +79,7 @@ dependencies = [
     # 1.205.0 landed beside schema 1.33.0 and refused a skill declaring `provenance.requires_runtime`
     # with "additional properties are not allowed", naming a field the runtime's own docs describe.
     # Raise this whenever the runtime starts reading a newly-added schema field.
-    "swarmkit-schema>=1.35.0",
+    "swarmkit-schema>=1.36.0",
 ]
 
 [project.optional-dependencies]

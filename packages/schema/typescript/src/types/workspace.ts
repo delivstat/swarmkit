@@ -9,6 +9,11 @@
 export interface SwarmKitWorkspace {
     apiVersion: APIVersion;
     /**
+     * Named channels a swarm can reach a human on, exposed to agents as the `channels` skills.
+     * Without this block the notification transports exist but nothing can address them.
+     */
+    channels?: { [key: string]: ChannelValue };
+    /**
      * Local command packs — the sibling of `mcp_servers` for capabilities that already exist as
      * binaries and would otherwise need a wrapper server written for them.
      */
@@ -30,6 +35,38 @@ export interface SwarmKitWorkspace {
 }
 
 export type APIVersion = "swarmkit/v1";
+
+export interface ChannelValue {
+    /**
+     * Provider-specific destination — e.g. `chat_id` for telegram, `channel` for slack.
+     * Validated by the runtime per provider.
+     */
+    config?: { [key: string]: any };
+    /**
+     * Names an entry in the workspace `credentials` block that resolves to the bot token or
+     * webhook URL. A literal token here would be a secret in a file people commit.
+     */
+    credentials_ref: string;
+    /**
+     * Poll this channel for replies. Telegram only. `getUpdates` is single-consumer — two
+     * pollers on one token steal each other's updates and the loser silently sees nothing — so
+     * the runtime refuses a second poller for a token already being polled.
+     */
+    inbound?: boolean;
+    /**
+     * Which transport carries this channel. Only `telegram` supports inbound replies (Bot API
+     * getUpdates); the others are send-only and `channel_replies` reports `unsupported` on them
+     * rather than returning an empty list.
+     */
+    provider: ChannelProvider;
+}
+
+/**
+ * Which transport carries this channel. Only `telegram` supports inbound replies (Bot API
+ * getUpdates); the others are send-only and `channel_replies` reports `unsupported` on them
+ * rather than returning an empty list.
+ */
+export type ChannelProvider = "telegram" | "discord" | "slack" | "webhook" | "terminal";
 
 /**
  * A named set of local commands exposed to skills through `implementation.type: command`.
