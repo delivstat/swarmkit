@@ -230,10 +230,22 @@ export interface CredentialValue {
      * Required when source=plugin. Names the registered SecretsProvider.
      */
     provider_id?: string;
-    source:       Source;
+    /**
+     * Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's
+     * token store: the value is obtained by logging in once from the portal or CLI, and
+     * refreshed automatically at the point of use — see design/details/mcp-oauth.md and
+     * credential-service.md.
+     */
+    source: Source;
 }
 
-export type Source = "env" | "file" | "hashicorp-vault" | "aws-secrets-manager" | "gcp-secret-manager" | "azure-key-vault" | "plugin";
+/**
+ * Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's
+ * token store: the value is obtained by logging in once from the portal or CLI, and
+ * refreshed automatically at the point of use — see design/details/mcp-oauth.md and
+ * credential-service.md.
+ */
+export type Source = "env" | "file" | "oauth" | "hashicorp-vault" | "aws-secrets-manager" | "gcp-secret-manager" | "azure-key-vault" | "plugin";
 
 export interface Governance {
     config?: { [key: string]: any };

@@ -166,6 +166,7 @@ class MCPClientManager:
         servers: dict[str, MCPServerConfig] | None = None,
         *,
         workspace_root: Path | None = None,
+        credential_service: Any = None,
     ) -> None:
         self._configs = servers or {}
         self._workspace_root = workspace_root
@@ -178,6 +179,11 @@ class MCPClientManager:
         self._tool_cache: dict[str, str] = {}
         self._cache_hits = 0
         self._cache_misses = 0
+        #: Resolves credential refs, refreshing OAuth tokens at the point of use. Optional so a
+        #: manager built for a test or a workspace with no credentials needs no service.
+        self._credential_service: Any = credential_service
+        #: What secret each open session was opened with, so a changed one can be detected.
+        self._session_credentials: dict[str, str] = {}
 
     @property
     def configs(self) -> dict[str, MCPServerConfig]:
@@ -235,10 +241,51 @@ class MCPClientManager:
                 )
                 self._configs.pop(server_id, None)
 
+    async def _resolved_credential(self, server_id: str) -> str | None:
+        """The secret this server should present right now, or None when it needs none.
+
+        Goes through :class:`CredentialService`, so an `oauth` credential is refreshed at the point
+        of use — the single behaviour every entry point inherits rather than remembering.
+        """
+        config = self._configs.get(server_id)
+        if config is None or not config.credentials_ref or self._credential_service is None:
+            return None
+        resolved: str = await self._credential_service.resolve(config.credentials_ref)
+        return resolved
+
+    async def _credential_changed(self, server_id: str) -> bool:
+        """Would this server now present a different secret than its open session carries?"""
+        config = self._configs.get(server_id)
+        if config is None or config.transport != "http" or self._credential_service is None:
+            return False
+        if not config.credentials_ref:
+            return False
+        try:
+            current = await self._resolved_credential(server_id)
+        except Exception:
+            return False
+        return current is not None and current != self._session_credentials.get(server_id)
+
+    async def _drop_session(self, server_id: str) -> None:
+        """Forget a session so the next call reopens it. The exit stack closes the transport."""
+        self._sessions.pop(server_id, None)
+        self._session_credentials.pop(server_id, None)
+
     async def get_session(self, server_id: str) -> ClientSession:
-        """Get or start a session for the given server."""
+        """Get or start a session for the given server.
+
+        For an HTTP server the credential is resolved *here*, on every call, rather than once when
+        the session opened. A session under `swarmkit serve` can outlive many token lifetimes, and
+        a header bound at connect time pins whatever was valid at startup — the refresh would
+        update the store and change nothing on the wire (credential-service.md).
+        """
         if server_id in self._sessions:
-            return self._sessions[server_id]
+            if await self._credential_changed(server_id):
+                # The SDK gives no way to alter an open sse_client's headers, so the session is
+                # reopened with the fresh one. Reconnecting is cheap next to a 401 mid-run.
+                await self._drop_session(server_id)
+            else:
+                return self._sessions[server_id]
 
         config = self._configs.get(server_id)
         if config is None:
@@ -307,6 +354,13 @@ class MCPClientManager:
             headers=config.headers,
             credentials=config.credentials,
         )
+        # An `oauth` credential is not in the workspace credentials block — it lives in the token
+        # store, and resolving it may refresh it first. Resolved here so the header carries a token
+        # that is valid *now*, and recorded so a later change is detectable.
+        resolved = await self._resolved_credential(config.server_id)
+        if resolved:
+            headers["Authorization"] = f"Bearer {resolved}"
+            self._session_credentials[config.server_id] = resolved
         transport = await self._stack.enter_async_context(
             sse_client(url=config.endpoint, headers=headers or None)
         )

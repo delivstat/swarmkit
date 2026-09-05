@@ -243,12 +243,14 @@
           "enum": [
             "env",
             "file",
+            "oauth",
             "hashicorp-vault",
             "aws-secrets-manager",
             "gcp-secret-manager",
             "azure-key-vault",
             "plugin"
-          ]
+          ],
+          "description": "Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's token store: the value is obtained by logging in once from the portal or CLI, and refreshed automatically at the point of use \u2014 see design/details/mcp-oauth.md and credential-service.md."
         },
         "provider_id": {
           "$ref": "#/$defs/identifier",
@@ -275,6 +277,24 @@
           "then": {
             "required": [
               "provider_id"
+            ]
+          }
+        },
+        {
+          "$comment": "An oauth credential names the server it was obtained for. The token itself is never here: it lives encrypted in the runtime's own store, keyed by (credential, owner).",
+          "if": {
+            "properties": {
+              "source": {
+                "const": "oauth"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "config"
             ]
           }
         }

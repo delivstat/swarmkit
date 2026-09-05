@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import httpx
 import pytest
-from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
-from swarmkit_runtime.mcp._client import MCPServerConfig
 from swarmkit_runtime.oauth import (
     KEY_ENV,
     ConsentRequired,
@@ -219,69 +217,3 @@ def test_expiry_is_measured_against_now(store: TokenStore) -> None:
     assert 3500 < remaining.seconds_remaining <= 3600
     assert remaining.expires_at is not None
     assert remaining.expires_at > time.time()
-
-
-# ---- the wiring ------------------------------------------------------------------------------
-# Testing the module in isolation proves refresh works; it does not prove the runtime calls it.
-# That gap is exactly how the notification providers shipped complete and unreachable.
-
-
-@pytest.mark.asyncio
-async def test_the_runtime_refreshes_before_starting_servers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`_refresh_oauth_for` runs against the servers a topology needs, before they start."""
-    monkeypatch.delenv(KEY_ENV, raising=False)
-    store = TokenStore(tmp_path)
-    _save(store, expires_in=60)
-    store.close()
-
-    runtime = WorkspaceRuntime.__new__(WorkspaceRuntime)
-    runtime._workspace_root = tmp_path
-
-    class _Manager:
-        configs: ClassVar[dict[str, MCPServerConfig]] = {
-            "linear": MCPServerConfig(
-                server_id="linear",
-                transport="http",
-                endpoint="https://x",
-                credentials_ref="linear",
-            ),
-            "git": MCPServerConfig(server_id="git", transport="stdio", command=["true"]),
-        }
-
-    runtime._mcp_manager = _Manager()  # type: ignore[assignment]
-
-    seen: dict[str, Any] = {}
-
-    async def _fake_refresh(store_: Any, ids: set[str], **kw: Any) -> list[Any]:
-        seen["ids"] = ids
-        return []
-
-    monkeypatch.setattr("swarmkit_runtime.oauth._refresh.refresh_for_run", _fake_refresh)
-    await runtime._refresh_oauth_for({"linear", "git"})
-
-    # Only the server that names a credential; `git` has none to refresh.
-    assert seen["ids"] == {"linear"}
-
-
-@pytest.mark.asyncio
-async def test_a_workspace_with_no_oauth_servers_does_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The common case. It must not construct a store or touch the network."""
-    runtime = WorkspaceRuntime.__new__(WorkspaceRuntime)
-    runtime._workspace_root = tmp_path
-
-    class _Manager:
-        configs: ClassVar[dict[str, MCPServerConfig]] = {
-            "git": MCPServerConfig(server_id="git", transport="stdio", command=["true"])
-        }
-
-    runtime._mcp_manager = _Manager()  # type: ignore[assignment]
-
-    def _explode(*_: Any, **__: Any) -> None:
-        raise AssertionError("must not build a token store when nothing uses OAuth")
-
-    monkeypatch.setattr("swarmkit_runtime.oauth.TokenStore", _explode)
-    await runtime._refresh_oauth_for({"git"})

@@ -39,6 +39,7 @@ from swarmkit_runtime.commands import (
     check_requirements,
     parse_command_packs,
 )
+from swarmkit_runtime.credentials import CredentialService
 from swarmkit_runtime.governance import (
     DecisionSkillBinding,
     DecisionSkillResult,
@@ -407,7 +408,17 @@ class WorkspaceRuntime:
         else:
             credentials = {}
         mcp_configs = parse_mcp_servers(getattr(workspace.raw, "mcp_servers", None), credentials)
-        mcp_manager = MCPClientManager(mcp_configs, workspace_root=ws_root) if mcp_configs else None
+        # One service, every entry point (credential-service.md). The manager resolves through it
+        # at the point of use, so `run`, `chat`, `serve` and `mcp-serve` all get refreshed OAuth
+        # tokens without any of them containing a line of OAuth-specific code.
+        credential_service = CredentialService(ws_root, credentials)
+        mcp_manager = (
+            MCPClientManager(
+                mcp_configs, workspace_root=ws_root, credential_service=credential_service
+            )
+            if mcp_configs
+            else None
+        )
 
         missing = find_missing_mcp_servers(workspace, mcp_configs)
 
@@ -750,39 +761,6 @@ class WorkspaceRuntime:
             await self._mcp_manager.close_all()
             self._session_active = False
 
-    async def _refresh_oauth_for(self, server_ids: set[str]) -> None:
-        """Refresh any OAuth credential these servers use that would expire inside this run.
-
-        Silent when it works, logged either way. With no OAuth store — the common case, since most
-        workspaces have no remote servers — this returns after one set comprehension.
-        """
-        if self._mcp_manager is None or not server_ids:
-            return
-        credential_ids = {
-            str(cfg.credentials_ref)
-            for sid, cfg in self._mcp_manager.configs.items()
-            if sid in server_ids and cfg.credentials_ref
-        }
-        if not credential_ids:
-            return
-
-        from swarmkit_runtime.oauth import TokenStore  # noqa: PLC0415
-        from swarmkit_runtime.oauth._refresh import refresh_for_run  # noqa: PLC0415
-
-        store = TokenStore(self._workspace_root)
-        try:
-            for outcome in await refresh_for_run(store, credential_ids):
-                if outcome.refreshed:
-                    # Every refresh is in the record (mcp-oauth.md), and the record contains
-                    # neither token.
-                    logger.info(
-                        "oauth.refreshed credential=%s owner=%s",
-                        outcome.credential_id,
-                        outcome.owner,
-                    )
-        finally:
-            store.close()
-
     async def run(
         self,
         topology_name: str,
@@ -831,11 +809,6 @@ class WorkspaceRuntime:
         owns_mcp = not self._session_active
         if owns_mcp and self._mcp_manager is not None:
             required = collect_required_servers(topology)
-            # Before the servers start, not after a 401 mid-run: a run that would fail at
-            # minute eight because a token expired at minute three should be dealt with at
-            # minute zero (mcp-oauth.md). ConsentRequired propagates deliberately — the run
-            # cannot succeed, and the useful moment to say so is now, naming the credential.
-            await self._refresh_oauth_for(required)
             await self._mcp_manager.start_required(required)
         try:
             initial_task_plan: dict = previous_plan if previous_plan else {}  # type: ignore[type-arg]
@@ -984,11 +957,6 @@ class WorkspaceRuntime:
         owns_mcp = not self._session_active
         if owns_mcp and self._mcp_manager is not None:
             required = collect_required_servers(topology)
-            # Before the servers start, not after a 401 mid-run: a run that would fail at
-            # minute eight because a token expired at minute three should be dealt with at
-            # minute zero (mcp-oauth.md). ConsentRequired propagates deliberately — the run
-            # cannot succeed, and the useful moment to say so is now, naming the credential.
-            await self._refresh_oauth_for(required)
             await self._mcp_manager.start_required(required)
         try:
             result = await graph.ainvoke(
