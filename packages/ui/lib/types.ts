@@ -627,3 +627,28 @@ export interface ConfigSaveResult {
 	entry: string;
 	errors?: { code: string; message: string }[];
 }
+
+// ---- OAuth (Connections) --------------------------------------------------------------------
+// Metadata only — no route returns a token, so no type here can carry one.
+
+export interface OAuthCredential {
+	credential_id: string;
+	owner: string;
+	provider: string;
+	endpoint: string;
+	scopes: string[];
+	expires_at: number | null;
+	seconds_remaining: number | null;
+	expired: boolean;
+	has_refresh_token: boolean;
+	refreshed_at: number | null;
+}
+
+export interface OAuthProbe {
+	supported: boolean;
+	detail?: string;
+	issuer?: string;
+	authorization_endpoint?: string;
+	scopes_supported?: string[];
+	supports_registration?: boolean;
+}

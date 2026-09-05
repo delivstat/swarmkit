@@ -14,6 +14,7 @@ import type {
 	ChannelEntry,
 	CredentialEntry,
 	McpServerEntry,
+	OAuthCredential,
 	WorkspaceConfig,
 } from "./types";
 
@@ -179,4 +180,67 @@ export function needsAttention(rows: ConnectionRow[]): ConnectionRow[] {
 	return rows
 		.filter((r) => r.status === "needs-credential" || r.status === "unresolved")
 		.sort((a, b) => rank[a.status] - rank[b.status]);
+}
+
+/**
+ * How a stored OAuth token should read on the page.
+ *
+ * The distinction that matters is between *expired* and *cannot be renewed*. An expired access
+ * token with a refresh token behind it is not a problem — the runtime renews it before the next
+ * run without anybody being asked. Showing that as "expired, log in again" would train people to
+ * re-authorise constantly for no reason, which is exactly how a real expiry gets ignored.
+ */
+export type TokenHealth = "connected" | "renewable" | "needs-login" | "absent";
+
+export interface TokenView {
+	health: TokenHealth;
+	label: string;
+	detail: string;
+}
+
+const DAY_S = 86_400;
+
+export function tokenView(credential: OAuthCredential | null): TokenView {
+	if (!credential) {
+		return {
+			health: "absent",
+			label: "Not connected",
+			detail: "No token stored. Connect to log in to this provider.",
+		};
+	}
+	if (!credential.expired) {
+		const days =
+			credential.seconds_remaining === null
+				? null
+				: Math.floor(credential.seconds_remaining / DAY_S);
+		return {
+			health: "connected",
+			label: "Connected",
+			detail:
+				days === null
+					? `Connected as ${credential.owner}. No expiry reported.`
+					: `Connected as ${credential.owner}. Access token valid for ${
+							days > 0 ? `${days}d` : "under a day"
+						}.`,
+		};
+	}
+	if (credential.has_refresh_token) {
+		return {
+			health: "renewable",
+			label: "Renews automatically",
+			detail:
+				"The access token has expired and will be renewed before the next run. No action needed.",
+		};
+	}
+	return {
+		health: "needs-login",
+		label: "Log in again",
+		detail:
+			"The access token has expired and there is no refresh token, so it cannot be renewed.",
+	};
+}
+
+/** Servers that could hold an OAuth token: remote ones. A local process has nothing to log in to. */
+export function oauthCapable(servers: McpServerEntry[]): McpServerEntry[] {
+	return servers.filter((s) => s.transport === "http" || !!s.endpoint);
 }

@@ -154,6 +154,36 @@ async def _authorization_server_metadata(
     raise LookupError(msg)
 
 
+async def register_client(
+    metadata: dict[str, Any], *, redirect_uri: str, client: httpx.AsyncClient
+) -> str:
+    """Obtain a client_id, registering dynamically when the provider supports it (RFC 7591).
+
+    Most MCP authorization servers expect this: there is no developer portal where somebody
+    pre-registers SwarmKit, so the client registers itself at first use. Returns "" when the
+    provider advertises no registration endpoint — the caller then needs a configured client_id,
+    and saying so is more useful than sending an empty one and being refused at the redirect.
+    """
+    endpoint = metadata.get("registration_endpoint")
+    if not endpoint:
+        return ""
+    resp = await client.post(
+        str(endpoint),
+        json={
+            "client_name": "SwarmKit",
+            "redirect_uris": [redirect_uri],
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+            "token_endpoint_auth_method": "none",
+        },
+        headers={"Accept": "application/json"},
+    )
+    if resp.status_code >= 400:
+        msg = f"Dynamic client registration failed ({resp.status_code}): {resp.text[:200]}"
+        raise PermissionError(msg)
+    return str(resp.json().get("client_id", ""))
+
+
 def authorization_url(
     metadata: dict[str, Any],
     *,
