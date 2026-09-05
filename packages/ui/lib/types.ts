@@ -583,3 +583,47 @@ export interface Whoami {
 	scopes: string[];
 	mode: string;
 }
+
+// ---- workspace configuration (Connections) -------------------------------------------------
+// The infrastructure half of workspace.yaml. A credential is never returned with its value — see
+// packages/runtime/.../_workspace_config.py.
+
+export interface CredentialEntry {
+	id: string;
+	source: string;
+	config: Record<string, string>;
+	/** Whether it produces a value right now. An env var nobody exported looks identical to a
+	 * working credential in every other view. */
+	resolves: boolean;
+}
+
+export interface McpServerEntry {
+	id: string;
+	transport?: string;
+	command?: string[];
+	endpoint?: string;
+	permission?: string;
+	credentials_ref?: string;
+	effects?: Record<string, string>;
+	[key: string]: unknown;
+}
+
+export interface ChannelEntry {
+	id: string;
+	provider: string;
+	credentials_ref?: string;
+	inbound?: boolean;
+	config?: Record<string, string>;
+}
+
+export interface WorkspaceConfig {
+	credentials: CredentialEntry[];
+	mcp_servers: McpServerEntry[];
+	channels: ChannelEntry[];
+}
+
+export interface ConfigSaveResult {
+	saved: boolean;
+	entry: string;
+	errors?: { code: string; message: string }[];
+}
