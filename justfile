@@ -351,6 +351,11 @@ demo-command-packs:
 demo-channels:
     @uv run python examples/channels/demo.py
 
+# A token that expires mid-session is refreshed at the point of use, so every entry point —
+# run, chat, serve, mcp-serve — gets a live credential without asking for one.
+demo-oauth-refresh:
+    @uv run python examples/oauth-refresh/demo.py
+
 # M3 exit demo — run the hello-swarm topology end-to-end. Uses whichever
 # model provider env vars are set (SWARMKIT_PROVIDER + SWARMKIT_MODEL,
 # or falls back to the agent's declared provider). The supervisor

@@ -119,8 +119,13 @@ class ModelProviderRegistration(BaseModel):
 
 
 class Source(Enum):
+    """
+    Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's token store: the value is obtained by logging in once from the portal or CLI, and refreshed automatically at the point of use — see design/details/mcp-oauth.md and credential-service.md.
+    """
+
     env = "env"
     file = "file"
+    oauth = "oauth"
     hashicorp_vault = "hashicorp-vault"
     aws_secrets_manager = "aws-secrets-manager"
     gcp_secret_manager = "gcp-secret-manager"
@@ -133,7 +138,10 @@ class CredentialRef(BaseModel):
         extra="forbid",
         populate_by_name=True,
     )
-    source: Source
+    source: Source = Field(
+        ...,
+        description="Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's token store: the value is obtained by logging in once from the portal or CLI, and refreshed automatically at the point of use — see design/details/mcp-oauth.md and credential-service.md.",
+    )
     provider_id: str | None = Field(
         None,
         description="Required when source=plugin. Names the registered SecretsProvider.",
