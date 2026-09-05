@@ -3,6 +3,7 @@ import type {
 	AuditEvent,
 	CanaryStatus,
 	Comprehension,
+	ConfigSaveResult,
 	ConversationDetail,
 	ConversationListItem,
 	DecisionOutcome,
@@ -32,6 +33,7 @@ import type {
 	UsageSummary,
 	ValidateResponse,
 	Whoami,
+	WorkspaceConfig,
 } from "./types";
 
 import { getAccessToken, handleUnauthorized } from "./token-store";
@@ -67,7 +69,7 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function send<T>(
-	method: "POST" | "PUT",
+	method: "POST" | "PUT" | "DELETE",
 	path: string,
 	body?: unknown,
 ): Promise<T> {
@@ -87,6 +89,7 @@ async function send<T>(
 const post = <T>(path: string, body?: unknown) => send<T>("POST", path, body);
 // Artifact writes are PUT /api/<kind>/<id> — a POST to those routes 405s (silent save failure).
 const put = <T>(path: string, body?: unknown) => send<T>("PUT", path, body);
+const del = <T>(path: string) => send<T>("DELETE", path);
 
 export const api = {
 	health: () => get<HealthResponse>("/health"),
@@ -257,6 +260,14 @@ export const api = {
 			`/api/archetypes/${id}`,
 			{ yaml },
 		),
+	workspaceConfig: () => get<WorkspaceConfig>("/api/workspace/config"),
+	saveConfigEntry: (
+		section: string,
+		id: string,
+		value: Record<string, unknown>,
+	) => put<ConfigSaveResult>(`/api/workspace/config/${section}/${id}`, value),
+	deleteConfigEntry: (section: string, id: string) =>
+		del<ConfigSaveResult>(`/api/workspace/config/${section}/${id}`),
 	funnelYaml: (id: string) => get<{ yaml: string }>(`/api/funnels/${id}/yaml`),
 	saveFunnel: (id: string, yaml: string) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(

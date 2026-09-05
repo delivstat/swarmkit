@@ -16,6 +16,7 @@ import {
 	PanelLeftClose,
 	PanelLeftOpen,
 	PenTool,
+	Plug,
 	Puzzle,
 	RefreshCw,
 	ScrollText,
@@ -52,6 +53,7 @@ const NAV = [
 	{ href: "/memory", label: "Memory", icon: BrainCircuit },
 	{ href: "/canary", label: "Canary", icon: ListChecks },
 	{ href: "/triggers", label: "Triggers", icon: Timer },
+	{ href: "/connections", label: "Connections", icon: Plug },
 	{ href: "/system", label: "System", icon: Database },
 ] as const;
 

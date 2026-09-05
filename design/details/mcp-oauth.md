@@ -310,11 +310,18 @@ happens on the day it stops.
    rather than queue — a queue of parked nightly runs is a pile nobody drains.
 4. **Fleet.** A token obtained on one instance is not available on another. Out of scope here, and
    the control plane is where it would belong.
-5. **Which owner does a given run use?** Credentials are per-owner (above) and the connection is
-   per-server, so the remaining variable is neither: it is *whose* token a particular run presents.
-   That is a property of the run, not of any artifact — an interactive run can use the identity of
-   whoever started it, while a scheduled one has no human and must use a credential explicitly
-   designated for unattended use. Likely home: the trigger for scheduled runs, and the resolved
-   caller identity for interactive ones. This is usually what people mean when they ask whether
-   OAuth is per-topology, and it is worth answering before the Connections page ships, because the
-   page has to show which owner a connection belongs to.
+5. ~~**Which owner does a given run use?**~~ **Resolved: one owner per connection, fixed at
+   setup.** There is nothing to decide at run time. The login happens once and yields a refresh
+   token; the runtime exchanges it for an access token before each run, headless. Every run through
+   a connection uses that connection's credential, whoever or whatever started it — the owner is a
+   fact recorded at setup, not a decision made per run.
+
+   What made this look open was a second, fancier idea: *an interactive run acts as whoever started
+   it.* That is a multi-tenant concern, it is the only thing that would force a per-run identity
+   choice, and it is **out of scope until the fleet needs it**. Anyone who genuinely needs two
+   identities against one service adds a second connection — which is the same answer as every
+   other isolation question here.
+
+   The one human moment that does not go away is the refresh token dying — revoked, long idle,
+   password changed, scopes altered upstream. That is how OAuth works everywhere and no design
+   removes it; it parks the run as a review item and resumes, per the section above.
