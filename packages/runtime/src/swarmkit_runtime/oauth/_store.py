@@ -167,6 +167,20 @@ class TokenStore:
         ).fetchall()
         return [self._to_metadata(r) for r in rows]
 
+    def provider_config(self, credential_id: str, owner: str) -> dict[str, Any]:
+        """The provider details recorded at login — token endpoint, client id, revocation.
+
+        Not a secret, and needed by the refresh loop, so it gets a real accessor rather than
+        another module reaching into this one's connection.
+        """
+        import json  # noqa: PLC0415
+
+        row = self._row(credential_id, owner)
+        if row is None:
+            return {}
+        parsed: dict[str, Any] = json.loads(row[8] or "{}")
+        return parsed
+
     def access_token(self, credential_id: str, owner: str) -> str | None:
         """Plaintext access token, for the MCP client. Not exposed over HTTP."""
         row = self._row(credential_id, owner)
