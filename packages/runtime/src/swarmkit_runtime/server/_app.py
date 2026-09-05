@@ -22,6 +22,7 @@ from swarmkit_runtime.auth import AuthError, AuthProvider, NoneAuthProvider
 from swarmkit_runtime.auth import AuthRequest as AuthReq
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
+from swarmkit_runtime.oauth import PendingLogins, TokenStore
 from swarmkit_runtime.persistence import storage_for_workspace
 from swarmkit_runtime.telemetry import configure_telemetry, load_telemetry_config
 
@@ -41,6 +42,7 @@ from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
 from ._routes_memory import _register_memory_routes
+from ._routes_oauth import OAuthService, _register_oauth_routes
 from ._routes_review import _register_review_routes
 from ._services import ArtifactService
 from ._webui import mount_webui
@@ -372,6 +374,10 @@ def create_app(  # noqa: PLR0915
     _register_conversation_routes(app, workspace_path)
     _register_crud_routes(app, ArtifactService(workspace_path))
     _register_config_routes(app, WorkspaceConfigService(workspace_path))
+    _register_oauth_routes(
+        app,
+        OAuthService(store=TokenStore(workspace_path), pending=PendingLogins()),
+    )
     _register_review_routes(app, workspace_path)
     _register_fleet_routes(app)
     _register_memory_routes(app)

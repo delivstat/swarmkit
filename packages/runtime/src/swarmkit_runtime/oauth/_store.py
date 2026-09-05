@@ -79,7 +79,10 @@ class TokenStore:
         self._path = workspace_path / ".swarmkit" / "state" / "oauth.db"
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._box = box or SecretBox.for_workspace(workspace_path)
-        self._conn = wal_connection(self._path)
+        # Serve answers requests on a thread pool, so the store outlives the thread that opened
+        # it. Same choice the audit and telemetry stores make; writes are short and serialised by
+        # SQLite's own locking.
+        self._conn = wal_connection(self._path, check_same_thread=False)
         bootstrap(self._conn, _CREATE_TABLE)
 
     # ---- writing ---------------------------------------------------------------------

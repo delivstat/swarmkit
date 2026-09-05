@@ -22,9 +22,11 @@ import {
 	INBOUND_CAPABLE,
 	connectionRows,
 	needsAttention,
+	oauthCapable,
+	tokenView,
 	usersOf,
 } from "@/lib/connections";
-import type { WorkspaceConfig } from "@/lib/types";
+import type { OAuthCredential, WorkspaceConfig } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS: Record<ConnectionStatus, { label: string; className: string }> = {
@@ -275,15 +277,173 @@ function ChannelDialog({
 	);
 }
 
+const TOKEN_TONE: Record<string, string> = {
+	connected: "text-success",
+	renewable: "text-muted-foreground",
+	"needs-login": "text-warning",
+	absent: "text-muted-foreground",
+};
+
+/**
+ * The Connect button, and what a stored token looks like.
+ *
+ * A connection binds to the `mcp_servers` entry, not to a skill, archetype or topology
+ * (`design/details/mcp-oauth.md`) — so this is a row per remote server, and every topology whose
+ * agents hold skills bound to that server uses the same login.
+ */
+function RemoteServers({
+	config,
+	tokens,
+	onChanged,
+}: {
+	config: WorkspaceConfig;
+	tokens: OAuthCredential[];
+	onChanged: () => void;
+}) {
+	const [busy, setBusy] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const remote = oauthCapable(config.mcp_servers);
+
+	async function connect(serverId: string, endpoint: string) {
+		setBusy(serverId);
+		setError(null);
+		try {
+			// Probe first, so a server that cannot register a client says so before a window opens
+			// rather than after the person has been bounced to a provider.
+			const probe = await api.oauthProbe(endpoint);
+			if (!probe.supported) {
+				setError(probe.detail ?? "This server does not advertise OAuth.");
+				return;
+			}
+			const { authorization_url } = await api.oauthLogin(serverId, endpoint);
+			const popup = window.open(
+				authorization_url,
+				"swarmkit-oauth",
+				"width=520,height=700",
+			);
+			if (!popup) {
+				setError(
+					"The login window was blocked. Allow pop-ups for this site and retry.",
+				);
+				return;
+			}
+			// The callback page posts back when it lands, so the table refreshes without polling.
+			const onMessage = (event: MessageEvent) => {
+				if (event.data?.swarmkitOAuth !== undefined) {
+					window.removeEventListener("message", onMessage);
+					onChanged();
+				}
+			};
+			window.addEventListener("message", onMessage);
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	async function disconnect(serverId: string) {
+		setBusy(serverId);
+		try {
+			const result = await api.oauthDisconnect(serverId);
+			if (!result.deleted) setError(result.detail ?? "Nothing to disconnect.");
+			onChanged();
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	if (remote.length === 0) return null;
+
+	return (
+		<>
+			<h3 className="mb-2 mt-6 text-lg font-semibold">Remote servers</h3>
+			<p className="mb-2 text-sm text-muted-foreground">
+				Logging in stores a token for this server. Every topology whose agents
+				hold skills bound to it uses that same connection — add a second server
+				entry if you need a second identity.
+			</p>
+			{error && <p className="mb-2 text-sm text-destructive">{error}</p>}
+			<div className="overflow-hidden rounded-lg border">
+				<table className="w-full text-sm">
+					<thead>
+						<tr className="bg-muted text-muted-foreground">
+							<th className="px-4 py-2 text-left font-medium">Server</th>
+							<th className="px-4 py-2 text-left font-medium">Endpoint</th>
+							<th className="px-4 py-2 text-left font-medium">Token</th>
+							<th className="px-4 py-2 text-left font-medium">Scopes</th>
+							<th className="px-4 py-2" />
+						</tr>
+					</thead>
+					<tbody>
+						{remote.map((server) => {
+							const token =
+								tokens.find((t) => t.credential_id === server.id) ?? null;
+							const view = tokenView(token);
+							return (
+								<tr key={server.id} className="border-t">
+									<td className="px-4 py-2 font-mono">{server.id}</td>
+									<td
+										className="max-w-xs truncate px-4 py-2 font-mono text-xs text-muted-foreground"
+										title={server.endpoint}
+									>
+										{server.endpoint}
+									</td>
+									<td className={cn("px-4 py-2", TOKEN_TONE[view.health])}>
+										<span title={view.detail}>{view.label}</span>
+									</td>
+									<td className="px-4 py-2 text-xs text-muted-foreground">
+										{token?.scopes.length ? token.scopes.join(" ") : "—"}
+									</td>
+									<td className="px-4 py-2 text-right">
+										{token ? (
+											<Button
+												variant="ghost"
+												size="sm"
+												disabled={busy === server.id}
+												onClick={() => void disconnect(server.id)}
+											>
+												Disconnect
+											</Button>
+										) : (
+											<Button
+												size="sm"
+												disabled={busy === server.id || !server.endpoint}
+												onClick={() =>
+													void connect(server.id, server.endpoint ?? "")
+												}
+											>
+												{busy === server.id ? "Opening…" : "Connect"}
+											</Button>
+										)}
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
+		</>
+	);
+}
+
 export default function ConnectionsPage() {
 	const [config, setConfig] = useState<WorkspaceConfig | null>(null);
+	const [tokens, setTokens] = useState<OAuthCredential[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [dialog, setDialog] = useState<"credential" | "channel" | null>(null);
 
 	const load = useCallback(async () => {
 		try {
-			setConfig(await api.workspaceConfig());
+			const [cfg, oauth] = await Promise.all([
+				api.workspaceConfig(),
+				api.oauthCredentials().catch(() => ({ credentials: [] })),
+			]);
+			setConfig(cfg);
+			setTokens(oauth.credentials);
 			setError(null);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
@@ -407,6 +567,14 @@ export default function ConnectionsPage() {
 						</tbody>
 					</table>
 				</div>
+			)}
+
+			{config && (
+				<RemoteServers
+					config={config}
+					tokens={tokens}
+					onChanged={() => void load()}
+				/>
 			)}
 
 			{config && config.credentials.length > 0 && (

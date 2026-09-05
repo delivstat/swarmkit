@@ -13,6 +13,7 @@ from swarmkit_runtime.oauth._pkce import (
     exchange_code,
     generate_verifier,
     refresh_token,
+    register_client,
 )
 from swarmkit_runtime.oauth._secret_box import KEY_ENV, SecretBox, SecretBoxError
 from swarmkit_runtime.oauth._store import EXPIRY_SKEW_S, TokenMetadata, TokenStore
@@ -32,4 +33,5 @@ __all__ = [
     "exchange_code",
     "generate_verifier",
     "refresh_token",
+    "register_client",
 ]

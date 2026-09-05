@@ -16,6 +16,8 @@ import type {
 	MemoryChange,
 	MemoryItem,
 	MemoryQuarantineItem,
+	OAuthCredential,
+	OAuthProbe,
 	PersistedJob,
 	ReviewGate,
 	SagaDetail,
@@ -261,6 +263,19 @@ export const api = {
 			{ yaml },
 		),
 	workspaceConfig: () => get<WorkspaceConfig>("/api/workspace/config"),
+	oauthCredentials: () =>
+		get<{ credentials: OAuthCredential[] }>("/api/oauth/credentials"),
+	oauthProbe: (endpoint: string) =>
+		get<OAuthProbe>(`/auth/mcp/probe?endpoint=${encodeURIComponent(endpoint)}`),
+	oauthLogin: (credentialId: string, endpoint: string) =>
+		post<{ authorization_url: string; state: string }>("/api/oauth/login", {
+			credential_id: credentialId,
+			endpoint,
+		}),
+	oauthDisconnect: (credentialId: string) =>
+		del<{ deleted: boolean; revoked_upstream?: boolean; detail?: string }>(
+			`/api/oauth/credentials/${credentialId}`,
+		),
 	saveConfigEntry: (
 		section: string,
 		id: string,

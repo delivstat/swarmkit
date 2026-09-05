@@ -4,7 +4,9 @@ import {
 	channelRow,
 	connectionRows,
 	needsAttention,
+	oauthCapable,
 	serverRow,
+	tokenView,
 	usersOf,
 } from "./connections";
 import type { CredentialEntry, WorkspaceConfig } from "./types";
@@ -171,5 +173,73 @@ describe("needsAttention", () => {
 		};
 		const rows = needsAttention(connectionRows(config));
 		expect(rows.map((r) => r.id)).toEqual(["dangling", "broken"]);
+	});
+});
+
+describe("tokenView", () => {
+	const base = {
+		credential_id: "linear",
+		owner: "srijith@delivstat.com",
+		provider: "https://auth.linear.app",
+		endpoint: "https://mcp.linear.app/mcp",
+		scopes: ["read"],
+		has_refresh_token: true,
+		refreshed_at: null,
+	};
+
+	it("reports no token as not connected", () => {
+		expect(tokenView(null).health).toBe("absent");
+	});
+
+	it("shows a live token as connected, naming the owner", () => {
+		const view = tokenView({
+			...base,
+			expires_at: 1,
+			seconds_remaining: 3 * 86_400,
+			expired: false,
+		});
+		expect(view.health).toBe("connected");
+		expect(view.detail).toContain("srijith@delivstat.com");
+		expect(view.detail).toContain("3d");
+	});
+
+	it("does not cry wolf when an expired token can be renewed", () => {
+		// The distinction that matters. Showing "expired, log in again" for a token the runtime
+		// renews on its own trains people to re-authorise for nothing — which is how a real
+		// expiry gets ignored.
+		const view = tokenView({
+			...base,
+			expires_at: 1,
+			seconds_remaining: -10,
+			expired: true,
+			has_refresh_token: true,
+		});
+		expect(view.health).toBe("renewable");
+		expect(view.detail).toMatch(/No action needed/);
+	});
+
+	it("asks for a login only when there is no refresh token", () => {
+		const view = tokenView({
+			...base,
+			expires_at: 1,
+			seconds_remaining: -10,
+			expired: true,
+			has_refresh_token: false,
+		});
+		expect(view.health).toBe("needs-login");
+	});
+});
+
+describe("oauthCapable", () => {
+	it("keeps remote servers only — a local process has nothing to log in to", () => {
+		const servers = oauthCapable([
+			{ id: "git", transport: "stdio", command: ["uvx", "x"] },
+			{
+				id: "linear",
+				transport: "http",
+				endpoint: "https://mcp.linear.app/mcp",
+			},
+		]);
+		expect(servers.map((s) => s.id)).toEqual(["linear"]);
 	});
 });
