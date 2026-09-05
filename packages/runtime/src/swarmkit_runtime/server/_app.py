@@ -33,6 +33,7 @@ from ._config import (
 from ._helpers import _membership_authenticates, _record_serve_access, _required_action
 from ._jobs import JobStore
 from ._mcp import _boot_mcp, _mcp_available, _mount_mcp, _start_scheduler
+from ._routes_config import _register_config_routes
 from ._routes_conversations import _register_conversation_routes
 from ._routes_crud import _register_crud_routes
 from ._routes_events import _register_event_routes
@@ -43,6 +44,7 @@ from ._routes_memory import _register_memory_routes
 from ._routes_review import _register_review_routes
 from ._services import ArtifactService
 from ._webui import mount_webui
+from ._workspace_config import WorkspaceConfigService
 
 logger = logging.getLogger("swarmkit.server")
 
@@ -369,6 +371,7 @@ def create_app(  # noqa: PLR0915
     _register_job_routes(app, job_store)
     _register_conversation_routes(app, workspace_path)
     _register_crud_routes(app, ArtifactService(workspace_path))
+    _register_config_routes(app, WorkspaceConfigService(workspace_path))
     _register_review_routes(app, workspace_path)
     _register_fleet_routes(app)
     _register_memory_routes(app)

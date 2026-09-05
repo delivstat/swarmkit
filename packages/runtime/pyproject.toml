@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.206.1"
+version = "1.207.0"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,10 @@ dependencies = [
     # Core
     "pydantic>=2.8",
     "pyyaml>=6.0",
+    # Round-trip YAML. `workspace.yaml` is hand-edited and committed, so a write from the portal
+    # must not reformat it or drop the comments explaining why a server is `cautious`. pyyaml
+    # cannot preserve either — it parses to plain dicts and re-emits canonical YAML.
+    "ruamel.yaml>=0.18",
     "typer>=0.12",           # CLI — `swarmkit` entrypoint
     "rich>=13.7",            # terminal rendering for authoring chat
     "prompt-toolkit>=3.0",   # interactive chat UX (history, completion, cursor)
