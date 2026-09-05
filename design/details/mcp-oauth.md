@@ -60,6 +60,71 @@ credentials:
 The token itself is never in `workspace.yaml` — the entry is a reference, exactly like the others.
 The bytes live in the runtime's own encrypted store beside the audit and run state.
 
+## What the connection binds to: the server, not the skill, archetype or topology
+
+The question this note originally skipped, and the first one anybody asks: if a skill is used by
+three archetypes across five topologies, whose login does it use? Is the token per-skill,
+per-archetype, or per-topology?
+
+**None of them. It binds to the `mcp_servers` entry.** The isolation people are reaching for comes
+from having more than one named connection, not from a new binding level.
+
+### Why not on the artifacts
+
+**Artifacts stay portable — that is invariant #1 and #7, not a preference.** Skills, archetypes and
+topologies are portable open data any conformant runtime can run. Put a token, or even a token
+*reference*, on a skill and that artifact stops being portable: exporting it either carries a
+credential or produces something that will not run. This is already the design rather than an
+oversight — `skill.schema.json` has no credential field at all, and neither does archetype or
+topology. Credentials live in the workspace precisely so everything above them travels.
+
+**A token is not an authorization boundary; scopes are.** Binding a token to an archetype in order
+to stop a different archetype reaching Linear builds a second access-control system the policy
+engine cannot see. *May this agent write to Linear?* would then have two answers in two places, and
+the invisible one would win. `iam.required_scopes` authorizes and the action string is only a label
+(§8.5); a per-archetype token would quietly become the real gate, outside governance and outside
+the audit log.
+
+**Refresh multiplies.** Refresh happens before a run (below), so one connection is one refresh loop.
+Per-topology binding gives N tokens to keep alive, N ways to be expired when a schedule fires at
+3am, and N consent prompts with nobody awake to answer them.
+
+**The provider already scoped the grant.** Scopes are approved at the remote service. A per-topology
+token is no finer-grained than that grant unless it comes from a separate login with different
+scopes — which is a *connection* distinction, not a topology one.
+
+### Where the isolation actually comes from
+
+```yaml
+mcp_servers:
+  - id: linear-prod
+    credentials_ref: linear-prod-oauth
+  - id: linear-sandbox
+    credentials_ref: linear-sandbox-oauth
+```
+
+| the isolation wanted | how it is expressed |
+| --- | --- |
+| per-skill | the skill's `implementation.server` names its own connection |
+| per-archetype | grant that archetype only skills bound to that connection |
+| per-topology | the same, through which agents the topology instantiates |
+
+All three, in the mechanism that already exists, with governance still able to see the whole
+picture. It is the same move as `channels:` being named rather than one global destination
+(`channel-skills.md`): the distinction is real, and it belongs on the connection.
+
+**If it must be enforced rather than conventional** — *agents in this topology may only use the
+sandbox connection* — that is a contract or a policy rule over server ids, not a token binding.
+Authorization stays in one place.
+
+### What the UI does with this
+
+The OAuth surface is a **Connections** page: one row per `mcp_servers` entry that needs auth, with
+Connect, the owner, the granted scopes, the expiry and Reconnect. Skill, archetype and topology
+pages show *which connection a skill resolves to*, read-only, so the blast radius of granting it is
+visible before it is granted. There is no token control on those three pages: someone who wants a
+different token adds a connection and points a skill at it.
+
 ## Refresh: before a run, not during one
 
 Here is the part worth arguing about.
@@ -245,3 +310,11 @@ happens on the day it stops.
    rather than queue — a queue of parked nightly runs is a pile nobody drains.
 4. **Fleet.** A token obtained on one instance is not available on another. Out of scope here, and
    the control plane is where it would belong.
+5. **Which owner does a given run use?** Credentials are per-owner (above) and the connection is
+   per-server, so the remaining variable is neither: it is *whose* token a particular run presents.
+   That is a property of the run, not of any artifact — an interactive run can use the identity of
+   whoever started it, while a scheduled one has no human and must use a credential explicitly
+   designated for unattended use. Likely home: the trigger for scheduled runs, and the resolved
+   caller identity for interactive ones. This is usually what people mean when they ask whether
+   OAuth is per-topology, and it is worth answering before the Connections page ships, because the
+   page has to show which owner a connection belongs to.
