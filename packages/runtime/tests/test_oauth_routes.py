@@ -23,7 +23,7 @@ from swarmkit_runtime.server._routes_oauth import OAuthService, _register_oauth_
 _REAL_ASYNC_CLIENT = httpx.AsyncClient
 
 ENDPOINT = "https://mcp.example/mcp"
-AUTH_META = {
+AUTH_META: dict[str, Any] = {
     "issuer": "https://auth.example",
     "authorization_endpoint": "https://auth.example/authorize",
     "token_endpoint": "https://auth.example/token",
@@ -67,10 +67,10 @@ def provider(request: httpx.Request) -> httpx.Response:
         "https://auth.example/.well-known/oauth-authorization-server": httpx.Response(
             200, json=AUTH_META
         ),
-        AUTH_META["registration_endpoint"]: httpx.Response(
+        str(AUTH_META["registration_endpoint"]): httpx.Response(
             201, json={"client_id": "registered-client"}
         ),
-        AUTH_META["revocation_endpoint"]: httpx.Response(200),
+        str(AUTH_META["revocation_endpoint"]): httpx.Response(200),
     }
     return static.get(url, httpx.Response(404))
 
