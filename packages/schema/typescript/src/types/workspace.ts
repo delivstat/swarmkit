@@ -24,7 +24,12 @@ export interface SwarmKitWorkspace {
      * Push what happened to an application. The durable read is `GET /events`; these sinks save
      * it polling.
      */
-    events?:          EventElement[];
+    events?: EventElement[];
+    /**
+     * How the runtime behaves when a gate is satisfied. See
+     * design/details/extracting-the-channels.md.
+     */
+    gates?:           Gates;
     governance?:      Governance;
     identity?:        Identity;
     kind:             Kind;
@@ -277,6 +282,21 @@ export interface EventElement {
  * webhook POSTs JSON; stdout prints it (development).
  */
 export type Sink = "webhook" | "stdout";
+
+/**
+ * How the runtime behaves when a gate is satisfied. See
+ * design/details/extracting-the-channels.md.
+ */
+export interface Gates {
+    /**
+     * Continue the run as soon as its gate is resolved. On by default: otherwise every
+     * application writes the same resume call, and the one that forgets leaves a run parked
+     * after its gate is satisfied — a stall with no visible cause, because everything looks
+     * resolved. Turn it off to batch or delay resumption; `POST /jobs/{id}/resume` still works
+     * either way.
+     */
+    auto_resume?: boolean;
+}
 
 export interface Governance {
     config?: { [key: string]: any };

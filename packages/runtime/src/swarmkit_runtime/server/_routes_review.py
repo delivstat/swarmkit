@@ -14,6 +14,7 @@ a request-body field (design/details/pipeline-gate-approval-ui.md).
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -53,6 +54,8 @@ class ResolveRequest(BaseModel):
     #: `changes-requested` without one is allowed but unhelpful — the surfaces nudge for it.
     comment: str = ""
 
+
+logger = logging.getLogger("swarmkit.review")
 
 _OUTCOME_TO_STATUS: dict[str, Literal["approved", "rejected", "changes-requested"]] = {
     "approve": "approved",
@@ -110,6 +113,7 @@ async def _resolve_role_task(
     *,
     runtime: Any,
     signal: Any,
+    resume: Any,
     queue: FileReviewQueue,
     item: ReviewItem,
     outcome: Literal["approve", "changes-requested", "reject"],
@@ -180,7 +184,7 @@ async def _resolve_role_task(
     # the `gate` event the controller already waits on. This is what makes
     # `swarmkit pipeline advance` revert to break-glass rather than the only way out
     # (design/details/pipeline-gate-convergence.md).
-    await _resume_if_gate_resolved(runtime, signal, queue, item, actor)
+    await _resume_if_gate_resolved(runtime, signal, resume, queue, item, actor)
 
     result: dict[str, Any] = reread(item.id)
     return result
@@ -189,6 +193,7 @@ async def _resolve_role_task(
 async def _resume_if_gate_resolved(
     runtime: Any,
     signal: Any,
+    resume: Any,
     queue: FileReviewQueue,
     item: ReviewItem,
     actor: str,
@@ -201,7 +206,7 @@ async def _resume_if_gate_resolved(
     """
     gate_id = str(item.output.get("gate_id", ""))
     funnel_id = str(item.output.get("funnel_id", ""))
-    if not gate_id or not funnel_id or signal is None:
+    if not gate_id or not funnel_id:
         return
 
     funnel = runtime.workspace.funnels.get(funnel_id)
@@ -236,7 +241,8 @@ async def _resume_if_gate_resolved(
                 },
             )
         )
-        await signal(correlation_id, json.dumps({"kind": "rework", "stage": stage}))
+        if signal is not None:
+            await signal(correlation_id, json.dumps({"kind": "rework", "stage": stage}))
         return
     if ev.status is not GateStatus.APPROVED and ev.status is not GateStatus.REJECTED:
         return
@@ -254,14 +260,81 @@ async def _resume_if_gate_resolved(
                 "gate_id": gate_id,
                 "status": ev.status.value,
                 "approvers": sorted(ev.distinct_approvers),
-                "resumed": True,
+                "run_id": correlation_id,
             },
         )
     )
-    await signal(
-        correlation_id,
-        json.dumps({"kind": "gate", "approved": approved, "stage": stage}),
-    )
+    if signal is not None:
+        await signal(
+            correlation_id,
+            json.dumps({"kind": "gate", "approved": approved, "stage": stage}),
+        )
+    await _resume_parked_job(resume, correlation_id)
+
+
+def _resume_from_state(request: Request) -> Any:
+    """A callable that continues a parked run, built from app state.
+
+    Returns None when the workspace has no job machinery — a CLI-driven workspace resolves gates
+    through the same queue and has no job to resume, and that is not an error.
+    """
+    store = getattr(request.app.state, "job_store", None)
+    if store is None:
+        return None
+    runtime = getattr(request.app.state, "runtime", None)
+    gates = getattr(getattr(runtime, "workspace", None), "raw", None)
+    cfg = getattr(gates, "gates", None) if gates is not None else None
+    if cfg is not None and getattr(cfg, "auto_resume", True) is False:
+        # Opted out: the application batches or delays resumption itself. The explicit endpoint is
+        # unchanged, and the gate still resolves — only the continuation waits.
+        return None
+
+    async def _resume(run_id: str) -> None:
+        # Imported here, not copied: a second constant would drift from the endpoint it must
+        # behave identically to.
+        from swarmkit_runtime.server._routes_jobs import _DEFAULT_RESUME_STEPS  # noqa: PLC0415
+        from swarmkit_runtime.server._services import JobService  # noqa: PLC0415
+
+        durable = getattr(request.app.state, "store", None)
+        row = durable.get_job(run_id) if durable is not None else None
+        await JobService(store).resume(
+            rt=_get_runtime(request),
+            store=durable,
+            cfg=getattr(request.app.state, "server_config", None),
+            semaphore=getattr(request.app.state, "job_semaphore", None),
+            canary=getattr(request.app.state, "canary_router", None),
+            job_id=run_id,
+            durable=row,
+            # The same budget the explicit endpoint uses. Auto-resume must behave identically to
+            # the manual call it replaces, or an application would get different runs depending on
+            # which path continued them.
+            max_steps=_DEFAULT_RESUME_STEPS,
+        )
+
+    return _resume
+
+
+async def _resume_parked_job(resume: Any, run_id: str) -> None:
+    """Continue the run this gate was holding.
+
+    The path this replaces went through `app.state.pipeline_signal`, which nothing has set since
+    the bundled sequencer left in 1.189.0 — so a satisfied gate recorded its approval and the run
+    stayed `deferred` forever, a stall with no visible cause because everything *looked* resolved.
+
+    Resuming here rather than making every application call `POST /jobs/{id}/resume` is the
+    decision in `extracting-the-channels.md`: the one integrator who forgets leaves a run parked
+    after its gate is satisfied, and that is not a failure anybody can see.
+
+    Best-effort by construction. A resume that cannot happen — no job store, an already-running
+    job, a workspace driving runs some other way — leaves the approval recorded and the explicit
+    endpoint available. The gate resolving must never depend on the resume succeeding.
+    """
+    if not run_id or resume is None:
+        return
+    try:
+        await resume(run_id)
+    except Exception:
+        logger.warning("gate for run %r resolved but the run did not resume", run_id, exc_info=True)
 
 
 def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
@@ -373,6 +446,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
         return await _resolve_role_task(
             runtime=_get_runtime(request),
             signal=getattr(request.app.state, "pipeline_signal", None),
+            resume=_resume_from_state(request),
             queue=queue,
             item=_find(queue, item_id),
             outcome=body.outcome,

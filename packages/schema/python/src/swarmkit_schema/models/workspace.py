@@ -13,6 +13,21 @@ from typing import Any, Literal
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 
+class Gates(BaseModel):
+    """
+    How the runtime behaves when a gate is satisfied. See design/details/extracting-the-channels.md.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    auto_resume: bool | None = Field(
+        True,
+        description="Continue the run as soon as its gate is resolved. On by default: otherwise every application writes the same resume call, and the one that forgets leaves a run parked after its gate is satisfied — a stall with no visible cause, because everything looks resolved. Turn it off to batch or delay resumption; `POST /jobs/{id}/resume` still works either way.",
+    )
+
+
 class Metadata(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1050,6 +1065,10 @@ class SwarmKitWorkspace(BaseModel):
     events: list[EventSink] | None = Field(
         None,
         description="Push what happened to an application. The durable read is `GET /events`; these sinks save it polling.",
+    )
+    gates: Gates | None = Field(
+        None,
+        description="How the runtime behaves when a gate is satisfied. See design/details/extracting-the-channels.md.",
     )
     storage: Storage | None = None
     context_compression: ContextCompression | None = None
