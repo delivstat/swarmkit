@@ -38,6 +38,7 @@ from ._routes_config import _register_config_routes
 from ._routes_conversations import _register_conversation_routes
 from ._routes_crud import _register_crud_routes
 from ._routes_events import _register_event_routes
+from ._routes_events_stream import _register_event_stream_routes
 from ._routes_fleet import _register_fleet_routes
 from ._routes_introspection import _register_introspection_routes
 from ._routes_jobs import _register_job_routes
@@ -374,6 +375,7 @@ def create_app(  # noqa: PLR0915
     _register_conversation_routes(app, workspace_path)
     _register_crud_routes(app, ArtifactService(workspace_path))
     _register_config_routes(app, WorkspaceConfigService(workspace_path))
+    _register_event_stream_routes(app)
     _register_oauth_routes(
         app,
         OAuthService(store=TokenStore(workspace_path), pending=PendingLogins()),
