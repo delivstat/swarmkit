@@ -1,0 +1,7 @@
+# A webhook sink with nowhere to post is a sink that silently delivers nothing.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: {id: bad-events, name: Bad Events}
+governance: {provider: mock, policy_language: yaml}
+events:
+  - sink: webhook

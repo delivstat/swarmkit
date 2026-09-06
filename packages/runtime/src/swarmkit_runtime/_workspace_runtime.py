@@ -280,6 +280,7 @@ class WorkspaceRuntime:
         mcp_manager: MCPClientManager | None,
         command_packs: dict[str, CommandPackConfig] | None = None,
         audit_provider: AuditProvider | None = None,
+        credential_service: Any = None,
     ) -> None:
         self._workspace = workspace
         self._workspace_root = workspace_root
@@ -287,12 +288,49 @@ class WorkspaceRuntime:
         self._governance = governance
         self._mcp_manager = mcp_manager
         self._command_packs = command_packs or {}
+        #: The one credential resolver (credential-service.md). Held here rather than reached for
+        #: through the MCP manager: a workspace with no MCP servers has no manager, and event-sink
+        #: auth silently resolved to nothing — which is most workspaces that would use events.
+        self._credential_service = credential_service
         self._memory_store = self._create_memory_store()
         self._governed_memory_store = self._create_governed_memory_store()
         # The service, not a path: `audit_provider_for_path` never saw the workspace config, so a
         # `storage.audit.backend: postgres` workspace wrote its trail to a local file (bug 01).
         self._audit_provider = audit_provider or self._storage().audit_provider()
+        # Attach the workspace's event sinks to the provider, because `record` is the one path
+        # every event already takes. Nothing else in the runtime needs to know sinks exist.
+        self._attach_event_sinks()
         self._session_active = False
+
+    def _attach_event_sinks(self) -> None:
+        """Build `events:` sinks and hand them to the audit provider.
+
+        A sink that cannot be built is logged and skipped rather than failing the workspace: a
+        typo'd webhook URL should not stop a swarm running, since the durable read is what an
+        application ultimately reconciles from.
+        """
+        declared = getattr(self._workspace.raw, "events", None) or []
+        if not declared or not hasattr(self._audit_provider, "_sinks"):
+            return
+        from swarmkit_runtime.events import build_sink  # noqa: PLC0415
+
+        built: list[tuple[Any, list[str]]] = []
+        for entry in declared:
+            spec = entry if isinstance(entry, dict) else entry.model_dump(mode="json")
+            token = ""
+            ref = spec.get("credentials_ref")
+            # The manager already holds the one CredentialService; building a second here would be
+            # the third resolver credential-service.md exists to prevent.
+            if ref and self._credential_service is not None:
+                try:
+                    token = self._credential_service.resolve_sync(str(ref))
+                except Exception as exc:
+                    logger.warning("event sink credential %r did not resolve: %s", ref, exc)
+            try:
+                built.append((build_sink(spec, token), [str(t) for t in spec.get("types") or []]))
+            except ValueError as exc:
+                logger.warning("event sink skipped: %s", exc)
+        self._audit_provider._sinks = built
 
     def _storage(self) -> Any:
         """The workspace's storage service — the single place that decides where data lives."""
@@ -461,6 +499,7 @@ class WorkspaceRuntime:
             governance=governance,
             mcp_manager=mcp_manager,
             command_packs=command_packs,
+            credential_service=credential_service,
         )
 
     async def _compiled(self, topology_name: str) -> Any:

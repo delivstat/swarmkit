@@ -20,18 +20,23 @@ export interface SwarmKitWorkspace {
     command_packs?:       CommandPackElement[];
     context_compression?: ContextCompression;
     credentials?:         { [key: string]: CredentialValue };
-    governance?:          Governance;
-    identity?:            Identity;
-    kind:                 Kind;
-    mcp_servers?:         MCPServerElement[];
-    metadata:             Metadata;
-    model_providers?:     ModelProviderElement[];
-    organisation?:        Organisation;
-    planning?:            Planning;
-    server?:              Server;
-    storage?:             Storage;
-    synthesis?:           Synthesis;
-    team?:                Organisation;
+    /**
+     * Push what happened to an application. The durable read is `GET /events`; these sinks save
+     * it polling.
+     */
+    events?:          EventElement[];
+    governance?:      Governance;
+    identity?:        Identity;
+    kind:             Kind;
+    mcp_servers?:     MCPServerElement[];
+    metadata:         Metadata;
+    model_providers?: ModelProviderElement[];
+    organisation?:    Organisation;
+    planning?:        Planning;
+    server?:          Server;
+    storage?:         Storage;
+    synthesis?:       Synthesis;
+    team?:            Organisation;
 }
 
 export type APIVersion = "swarmkit/v1";
@@ -246,6 +251,32 @@ export interface CredentialValue {
  * credential-service.md.
  */
 export type Source = "env" | "file" | "oauth" | "hashicorp-vault" | "aws-secrets-manager" | "gcp-secret-manager" | "azure-key-vault" | "plugin";
+
+export interface EventElement {
+    /**
+     * Resolves to a bearer token sent with each POST, so the receiving application can tell a
+     * real event from anything else that can reach its endpoint.
+     */
+    credentials_ref?: string;
+    /**
+     * webhook POSTs JSON; stdout prints it (development).
+     */
+    sink: Sink;
+    /**
+     * Event types to deliver. Omitted means all — which is the right default for a reconciling
+     * consumer and the wrong one for a chatty webhook.
+     */
+    types?: string[];
+    /**
+     * Required for `webhook`.
+     */
+    url?: string;
+}
+
+/**
+ * webhook POSTs JSON; stdout prints it (development).
+ */
+export type Sink = "webhook" | "stdout";
 
 export interface Governance {
     config?: { [key: string]: any };

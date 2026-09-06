@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import Enum, StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 
 class Metadata(BaseModel):
@@ -806,6 +806,35 @@ class Channel(BaseModel):
     )
 
 
+class Sink(Enum):
+    """
+    webhook POSTs JSON; stdout prints it (development).
+    """
+
+    webhook = "webhook"
+    stdout = "stdout"
+
+
+class EventSink(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    sink: Sink = Field(
+        ..., description="webhook POSTs JSON; stdout prints it (development)."
+    )
+    url: AnyUrl | None = Field(None, description="Required for `webhook`.")
+    credentials_ref: str | None = Field(
+        None,
+        description="Resolves to a bearer token sent with each POST, so the receiving application can tell a real event from anything else that can reach its endpoint.",
+        pattern="^[a-z][a-z0-9-]*$",
+    )
+    types: list[str] | None = Field(
+        None,
+        description="Event types to deliver. Omitted means all — which is the right default for a reconciling consumer and the wrong one for a chatty webhook.",
+    )
+
+
 class Governance(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1017,6 +1046,10 @@ class SwarmKitWorkspace(BaseModel):
     channels: dict[str, Channel] | None = Field(
         None,
         description="Named channels a swarm can reach a human on, exposed to agents as the `channels` skills. Without this block the notification transports exist but nothing can address them.",
+    )
+    events: list[EventSink] | None = Field(
+        None,
+        description="Push what happened to an application. The durable read is `GET /events`; these sinks save it polling.",
     )
     storage: Storage | None = None
     context_compression: ContextCompression | None = None

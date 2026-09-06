@@ -64,6 +64,13 @@
         "$ref": "#/$defs/channel"
       }
     },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event_sink"
+      },
+      "description": "Push what happened to an application. The durable read is `GET /events`; these sinks save it polling."
+    },
     "storage": {
       "$ref": "#/$defs/storage"
     },
@@ -1240,6 +1247,58 @@
               }
             },
             "$comment": "Inbound on discord/slack would need a held-open gateway socket or Socket Mode. Refused at validation rather than accepted and silently ignored."
+          }
+        }
+      ]
+    },
+    "event_sink": {
+      "$comment": "Where the runtime pushes what happened. The application decides what to do about it \u2014 which channel, which human, what wording. See design/details/extracting-the-channels.md. Delivery is BEST-EFFORT: a sink is a latency optimisation over `GET /events?after=<cursor>`, which is the durable source of truth an application reconciles from.",
+      "type": "object",
+      "required": [
+        "sink"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sink": {
+          "enum": [
+            "webhook",
+            "stdout"
+          ],
+          "description": "webhook POSTs JSON; stdout prints it (development)."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Required for `webhook`."
+        },
+        "credentials_ref": {
+          "$ref": "#/$defs/identifier",
+          "description": "Resolves to a bearer token sent with each POST, so the receiving application can tell a real event from anything else that can reach its endpoint."
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Event types to deliver. Omitted means all \u2014 which is the right default for a reconciling consumer and the wrong one for a chatty webhook."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "sink": {
+                "const": "webhook"
+              }
+            },
+            "required": [
+              "sink"
+            ]
+          },
+          "then": {
+            "required": [
+              "url"
+            ]
           }
         }
       ]
