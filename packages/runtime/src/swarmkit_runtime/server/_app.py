@@ -371,6 +371,9 @@ def create_app(  # noqa: PLR0915
     # Routes
     _register_introspection_routes(app)
     _register_event_routes(app)
+    # On app.state so the review routes can resume a run whose gate was just satisfied, without
+    # importing the job routes (extracting-the-channels.md: a resolved gate resumes its run).
+    app.state.job_store = job_store
     _register_job_routes(app, job_store)
     _register_conversation_routes(app, workspace_path)
     _register_crud_routes(app, ArtifactService(workspace_path))

@@ -71,6 +71,18 @@
       },
       "description": "Push what happened to an application. The durable read is `GET /events`; these sinks save it polling."
     },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the runtime behaves when a gate is satisfied. See design/details/extracting-the-channels.md.",
+      "properties": {
+        "auto_resume": {
+          "type": "boolean",
+          "default": true,
+          "description": "Continue the run as soon as its gate is resolved. On by default: otherwise every application writes the same resume call, and the one that forgets leaves a run parked after its gate is satisfied \u2014 a stall with no visible cause, because everything looks resolved. Turn it off to batch or delay resumption; `POST /jobs/{id}/resume` still works either way."
+        }
+      }
+    },
     "storage": {
       "$ref": "#/$defs/storage"
     },
