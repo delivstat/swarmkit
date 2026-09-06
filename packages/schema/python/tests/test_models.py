@@ -83,6 +83,10 @@ SHAPE_ONLY_INVALID: set[tuple[str, str]] = {
     # stops it being built any other way. A channel that says it is listening and is not is worse
     # than one that never claimed it — the swarm asks a question nobody will ever be able to answer.
     ("workspace-invalid", "channel-inbound-on-send-only.yaml"),
+    # Same `if-then` shape: a webhook sink requires a url, which the pydantic codegen does not
+    # translate. `build_sink` re-checks it at construction and refuses, so a sink with nowhere to
+    # post never silently delivers nothing.
+    ("workspace-invalid", "event-webhook-without-url.yaml"),
 }
 
 

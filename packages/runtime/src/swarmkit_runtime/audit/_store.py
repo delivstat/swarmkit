@@ -33,9 +33,18 @@ class SqlAuditProvider(AuditProvider):
 
     provider_id = "sql"
 
-    def __init__(self, engine: Engine, retention_days: int = 365) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        retention_days: int = 365,
+        sinks: list[tuple[Any, list[str]]] | None = None,
+    ) -> None:
         self._engine = engine
         self._retention_days = retention_days
+        #: `(sink, types)` pairs. Empty types means every event. Attached here rather than at the
+        #: call sites because `record` is the one path every event already takes — the same
+        #: reasoning that put credential refresh at resolution rather than at run start.
+        self._sinks: list[tuple[Any, list[str]]] = sinks or []
         create_all_idempotent(audit_metadata, engine)
         self._migrate()
 
@@ -89,7 +98,38 @@ class SqlAuditProvider(AuditProvider):
             with self._engine.begin() as conn:
                 conn.execute(insert(audit_events).values(**values))
         except IntegrityError:
-            pass  # duplicate event_id (PK) — append-only dedup, never raise (per the ABC)
+            # duplicate event_id (PK) — append-only dedup, never raise (per the ABC). Also do not
+            # push: a duplicate insert means somebody already heard about this one.
+            return
+        await self._push(event)
+
+    async def _push(self, event: AuditEvent) -> None:
+        """Tell the application, after the log has it.
+
+        Persist-then-push, in that order and never the reverse: the durable log is what an
+        application reconciles from, so an event that was announced and not stored would be one a
+        consumer could never recover — the opposite of the guarantee this seam offers.
+
+        Delivery is best-effort by design (extracting-the-channels.md). A sink that fails is logged;
+        the event stays readable at `GET /events?after=<cursor>` forever.
+        """
+        if not self._sinks:
+            return
+        from swarmkit_runtime.events import encode_cursor, fan_out  # noqa: PLC0415
+
+        payload = {
+            "cursor": encode_cursor(event.timestamp.isoformat(), str(event.event_id)),
+            "event_id": str(event.event_id),
+            "event_type": event.event_type,
+            "timestamp": event.timestamp.isoformat(),
+            "run_id": event.run_id,
+            "topology_id": event.topology_id,
+            "agent_id": event.agent_id,
+            "payload": event.payload or {},
+            "labels": event.labels or {},
+        }
+        wanted = [s for s, types in self._sinks if not types or event.event_type in types]
+        await fan_out(wanted, payload)
 
     async def query(
         self,

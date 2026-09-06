@@ -1,0 +1,16 @@
+# Push what happened to the application; it decides how anyone hears about it.
+# See design/details/extracting-the-channels.md.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: {id: events-demo, name: Events Demo}
+governance: {provider: mock, policy_language: yaml}
+credentials:
+  app-signing-key:
+    source: env
+    config: {env: APP_WEBHOOK_TOKEN}
+events:
+  - sink: webhook
+    url: https://my-app.internal/swarmkit/events
+    credentials_ref: app-signing-key
+    types: [funnel.gate_opened, hitl.requested, run.ended]
+  - sink: stdout
