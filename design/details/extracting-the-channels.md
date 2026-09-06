@@ -79,8 +79,11 @@ events:
 ```
 
 The vocabulary already exists and already flows into the audit provider — `run.started`,
-`run.ended`, `hitl.requested`, `hitl.resolved` — with `run.paused` and `run.resumed` to add. This is
-a sink, not a new subsystem.
+`run.ended`, `hitl.requested`, `hitl.resolved` — with `run.paused` and `run.resumed` to add.
+
+**But there is no `/events` route.** The events reach the audit store and nothing exposes them over
+HTTP; `GET /events` returns 404 today. So the durable-pull half of the delivery contract below is
+*build*, not wiring, and it is the reason this sequences before the deletion rather than with it.
 
 ## Delivery: best-effort push, durable pull
 
@@ -112,19 +115,69 @@ The contract stated for callers:
 - The portal remains the reliable human path. A gate is visible there whether or not any push
   succeeded.
 
-## Asking a human is a skill, not an event
+## Asking a human needs nothing new — it is a gate
 
-`channel_ask` is the one piece that is genuinely not an event: an agent deciding mid-run that it
-needs an answer, and blocking on one, is a *capability the agent invokes*.
+`channel_ask` is not replaced by an MCP tool either. It is **deleted**, because the runtime already
+has this primitive and has had it since the decision-skills work:
 
-It survives without any runtime transport. The application exposes an `ask_human` MCP tool; the
-agent holds a skill bound to it; SwarmKit governs the call like any other. The runtime keeps its
-half — the skill grant, the effects declaration, the gate — and owns no chat client. That is
-strictly better than what exists now, because the application already knows who to ask and on which
-channel.
+```python
+ReviewItem.answer      # "For §6.3 input requests: the operator's textual answer"
+ReviewItem.resolved_by # "The authenticated resolver"
+ReviewItem.comment     # "What the human said. Relayed to the agent, recorded on the audit."
+```
 
-This is also the answer to *"how does my app get a reply back?"* — through the same MCP tool call,
-synchronously, which the shipped `channel_ask` had to invent long-polling to achieve.
+`channel_ask` reimplemented that with **worse durability** — blocking in-process on a long poll
+rather than checkpointing — and **worse identity**, a `chat_id` rather than an authenticated
+`resolved_by`. An earlier draft of this note proposed replacing it with an `ask_human` MCP tool,
+which is the same mistake once more: a synchronous tool call holds a session open while a human is
+at lunch, which `mcp-oauth.md` already rejected for the analogous consent case.
+
+**The runtime's role is to surface the ask, park, and accept a resolution. How it is resolved is
+never its business.**
+
+### Verified, not assumed
+
+Driven end to end over HTTP against `swarmkit serve`, which is what an application would do:
+
+```
+POST /run/ask                    job 621f8a…, status: running
+                                 status: deferred        ← parks; nothing resident
+GET  /review                     mpa-621f8a…:root-0-operator
+                                 reason: "role 'operator' must approve 'workspace:approve'"
+                                 question · options · free_text_allowed · gate_id · run_id
+GET  /gates/621f8a…:root         outstanding: ["operator (workspace:approve)"]
+POST /review/{item}/resolve      status: approved, resolved_by: anonymous
+GET  /gates/…                    resolved: true, distinct_approvers: ["anonymous"]
+POST /jobs/{id}/resume           completed
+```
+
+Four things that run-through found, each of which this note would have got wrong from reading the
+code alone:
+
+**A gate silently degrades to advisory when no `RoleRegistry` defines its roles.** The first run
+completed with no gate at all. The guard is deliberate — a gate nobody can satisfy would strand
+every run — but an application seeing no gate cannot tell "not gated" from "misconfigured". The
+event vocabulary needs to distinguish them.
+
+**Two endpoints look like approve and one silently does not count.** `/review/{id}/approve` marks
+the item approved and leaves `resolved_by` empty, so the gate stays `pending` with no
+`distinct_approvers` and the run re-defers. `/review/{id}/resolve` is the multi-party one that
+resolves as the authenticated caller. Any application integrator will hit this; the first attempt
+here did.
+
+**`outcome` is `"approve"` while the resulting status is `"approved"`.** Small, and it costs a round
+trip to discover.
+
+**A resolved gate does not resume its run.** An explicit `POST /jobs/{id}/resume` is required.
+
+### Decision: a resolved gate resumes its run
+
+Automatic, with an opt-out. Otherwise every application writes the same resume call, and the one
+that forgets leaves a run parked after its gate has been satisfied — a stall with no visible cause,
+because everything *looks* resolved.
+
+The opt-out exists for an application that wants to batch or delay resumption, and it is a
+workspace-level setting rather than a per-call flag, so the behaviour is legible in one place.
 
 ## The reference application
 
@@ -136,6 +189,17 @@ So: `examples/event-consumer/` — a small service that receives the webhook, re
 cursor on startup, and sends a Telegram message when a gate opens. It imports `httpx` and nothing
 from `swarmkit_runtime`. The Telegram code that leaves the runtime lands there, where it is a
 hundred lines of somebody's application rather than a supported surface.
+
+## Order: events first, then the deletion
+
+Deleting channels before `/events` exists would leave a window where nothing can observe a gate
+except polling `/review`. So:
+
+1. **`GET /events?after=<seq>` and the `events:` sink**, with `run.paused` / `run.resumed` added to
+   the vocabulary and gate events carrying enough to render a question.
+2. **Auto-resume on gate resolution**, with the opt-out.
+3. **`examples/event-consumer/`**, proving the loop against a running serve.
+4. **The deletion** — all 1,600 lines, once nothing needs them.
 
 ## What this does not change
 
