@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Engine, delete, func, insert, select
+from sqlalchemy import Engine, and_, delete, func, insert, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 
@@ -117,6 +117,43 @@ class SqlAuditProvider(AuditProvider):
             rows = conn.execute(stmt).mappings().all()
         for row in rows:
             yield _row_to_event(row)
+
+    async def since_cursor(
+        self,
+        *,
+        after: tuple[str, str] | None = None,
+        event_types: list[str] | None = None,
+        run_id: str | None = None,
+        limit: int = 100,
+    ) -> list[Any]:
+        """Events in log order, from a position. The durable half of the event seam.
+
+        Ordered ASCENDING, unlike :meth:`query` — a consumer replays forward from where it stopped,
+        while a human reading recent history wants newest first. Two orderings, two methods, rather
+        than a flag whose wrong value silently gives an application its history backwards.
+
+        The position is ``(timestamp, event_id)``: the timestamp orders and the id breaks ties. Both
+        columns are already indexed, so this needs no schema change to an append-only table.
+        """
+        stmt = select(audit_events)
+        if after is not None:
+            ts, eid = after
+            stmt = stmt.where(
+                or_(
+                    audit_events.c.timestamp > ts,
+                    and_(audit_events.c.timestamp == ts, audit_events.c.event_id > eid),
+                )
+            )
+        if event_types:
+            stmt = stmt.where(audit_events.c.event_type.in_(event_types))
+        if run_id:
+            stmt = stmt.where(audit_events.c.run_id == run_id)
+        stmt = stmt.order_by(audit_events.c.timestamp.asc(), audit_events.c.event_id.asc()).limit(
+            limit
+        )
+        with self._engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
+        return [_row_to_event(row) for row in rows]
 
     async def count(
         self,
