@@ -33,6 +33,33 @@ def _sibling_requirements(pyproject: Path) -> list[str]:
     return [r for r in reqs if re.match(r"^swarmkit[-_]", r.strip(), re.IGNORECASE)]
 
 
+def test_the_ui_extra_floors_the_portal_that_matches_this_runtime() -> None:
+    """The `[ui]` floor must be at least the portal version in this tree.
+
+    A floor that merely *exists* is not enough, and that is what the test below checks. This one
+    checks it is *current*: the portal is a separately-versioned bundle built against THIS
+    runtime's HTTP API, so a stale floor lets an older portal resolve cleanly and fail in a
+    browser instead of at install time — which is the entire reason the floor is here.
+
+    It happened. Runtime 1.216.0 removed `channels` from the workspace-config API while the floor
+    still said `>=0.15.0`, so `swarmkit-runtime[ui]==1.216.2` installed portal 0.17.0 and the
+    Connections page threw on load.
+    """
+    runtime = tomllib.loads((REPO / "packages/runtime/pyproject.toml").read_text())
+    ui_extra = runtime["project"]["optional-dependencies"]["ui"]
+    floor = next(r for r in ui_extra if r.startswith("swarmkit-webui"))
+    declared = tuple(int(p) for p in floor.split(">=")[1].strip().strip('"').split("."))
+
+    portal = tomllib.loads((REPO / "packages/webui/pyproject.toml").read_text())
+    current = tuple(int(p) for p in portal["project"]["version"].split("."))
+
+    assert declared >= current, (
+        f"the [ui] extra floors swarmkit-webui at {floor!r}, but this tree ships "
+        f"{portal['project']['version']}. Raise the floor: an older portal built against a "
+        f"changed API resolves cleanly and fails in a browser."
+    )
+
+
 @pytest.mark.parametrize("package", PACKAGES)
 def test_sibling_dependencies_declare_a_floor(package: str) -> None:
     pyproject = REPO / "packages" / package / "pyproject.toml"
