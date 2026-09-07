@@ -39,6 +39,125 @@ def _store(workspace: Path) -> GovernedMemoryStore:
     return store
 
 
+#: A `contradict` left the trusted memory untouched. Exiting 0 would tell a seeding script the
+#: fact landed when it did not — the defect shape this codebase spends its time removing.
+_EXIT_CONTRADICT = 3
+
+
+def _warn_if_nothing_reads(workspace: Path) -> None:
+    """Warn when no agent binds `memory-reader` at pre_input.
+
+    Seeding before wiring is a legitimate order of work, so this does not refuse. But a store
+    filling with facts that reach no run is the silent chain this whole feature exists to break:
+    the store is None, or the agent lacks the grant, or the model never emits — and every one of
+    those looks identical to "nothing to remember".
+    """
+    try:
+        rt = WorkspaceRuntime.from_workspace_path(workspace)
+        bindings = rt.reachability()
+    except Exception:
+        return
+    declared = str(getattr(bindings, "unreached", "")) + str(rt._workspace.raw)
+    if "memory-reader" not in declared:
+        _stderr(
+            "warning: no agent binds `memory-reader` at pre_input, so nothing will read this yet. "
+            "The fact is stored; wire a reader to use it."
+        )
+
+
+def _report(outcome: object, key: str) -> int:
+    """Print the op — never a bare 'added'. Returns the exit code."""
+    op = str(getattr(outcome, "op", "?"))
+    if op == "contradict":
+        _stderr(f"contradict  {key} — NOT written; quarantined for review")
+        _stderr("  the trusted memory is unchanged. Resolve with: swarmkit memory resolve <id>")
+        return _EXIT_CONTRADICT
+    typer.echo(f"{op:<10} {key}")
+    return 0
+
+
+@memory_app.command()
+def add(
+    subject: Annotated[str, typer.Argument(help="What the fact is about.")] = "",
+    attribute: Annotated[str, typer.Argument(help="Which property of it.")] = "",
+    value: Annotated[str, typer.Argument(help="The fact itself.")] = "",
+    workspace: _PathArg = Path("."),
+    memory_type: Annotated[
+        str, typer.Option("--type", help="semantic | profile | procedural | episodic | working")
+    ] = "semantic",
+    confidence: Annotated[float, typer.Option("--confidence", min=0.0, max=1.0)] = 1.0,
+    source: Annotated[
+        str, typer.Option("--source", help="Who asserted this. Defaults to the OS user.")
+    ] = "",
+    from_file: Annotated[
+        Path | None,
+        typer.Option("--from-file", help="Bulk: {'memories': [...]}, the agent's own shape."),
+    ] = None,
+) -> None:
+    """Write a fact into governed memory, through the same path an agent writes through.
+
+    The point is not to insert a row: `write()` reconciles the candidate against current memory and
+    reports `new` / `update` / `reinforce` / `refine` / `contradict`. A human add inherits all of
+    it, contradiction handling included.
+    """
+    import getpass  # noqa: PLC0415
+
+    from swarmkit_runtime.governed_memory import MemoryCandidate  # noqa: PLC0415
+
+    if from_file is not None and (subject or attribute or value):
+        _stderr("error: --from-file and positional arguments are mutually exclusive")
+        raise typer.Exit(_EXIT_USAGE)
+    if from_file is None and not (subject and attribute and value):
+        _stderr("error: subject, attribute and value are all required (or use --from-file)")
+        raise typer.Exit(_EXIT_USAGE)
+
+    who = source or getpass.getuser()
+    store = _store(workspace)
+    _warn_if_nothing_reads(workspace)
+
+    if from_file is not None:
+        try:
+            payload = json.loads(from_file.read_text())
+            raw = payload["memories"]
+            candidates = [
+                MemoryCandidate(
+                    subject=str(m["subject"]),
+                    attribute=str(m["attribute"]),
+                    value=str(m["value"]),
+                    type=m.get("type", "semantic"),
+                    confidence=float(m.get("confidence", 1.0)),
+                    source=str(m.get("source") or who),
+                )
+                for m in raw
+            ]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            # Parsed in full before writing anything: a malformed file must not leave half an
+            # estate seeded, with no way to tell which half.
+            _stderr(f"error: {from_file} is not a valid memories file: {exc}")
+            raise typer.Exit(_EXIT_USAGE) from exc
+
+        worst = 0
+        counts: dict[str, int] = {}
+        for candidate in candidates:
+            outcome = store.write(candidate)
+            counts[outcome.op] = counts.get(outcome.op, 0) + 1
+            worst = max(worst, _report(outcome, f"{candidate.subject}/{candidate.attribute}"))
+        typer.echo("  " + ", ".join(f"{n} {op}" for op, n in sorted(counts.items())))
+        raise typer.Exit(worst)
+
+    outcome = store.write(
+        MemoryCandidate(
+            subject=subject,
+            attribute=attribute,
+            value=value,
+            type=memory_type,  # type: ignore[arg-type]
+            confidence=confidence,
+            source=who,
+        )
+    )
+    raise typer.Exit(_report(outcome, f"{subject}/{attribute}"))
+
+
 @memory_app.command()
 def search(
     query: Annotated[str, typer.Argument(help="Relevance query. Empty lists all, ranked.")] = "",
