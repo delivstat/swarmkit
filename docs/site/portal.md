@@ -8,13 +8,17 @@ driving a real `swarmkit serve` — so they go stale when someone forgets to run
 than silently. The workspace is [`examples/showcase/`](https://github.com/delivstat/swarmkit/tree/main/examples/showcase),
 which runs with no API keys and no network.
 
-<video controls preload="none" poster="img/portal/canvas.png" style="width:100%;border-radius:8px">
+<video controls preload="metadata" poster="img/portal/canvas.png" style="width:100%;border-radius:8px">
+  <source src="img/portal/portal-tour.mp4" type="video/mp4">
   <source src="img/portal/portal-tour.webm" type="video/webm">
   <track kind="captions" srclang="en" label="English" src="img/portal/portal-tour.vtt" default>
+  <a href="img/portal/portal-tour.mp4">Download the tour (MP4)</a>
 </video>
 
-*Captions are burned in as well as tracked — this loops on a page and in a deck, where a caption
-file is not loaded and the video has to explain itself with the sound off.*
+*H.264 first: Playwright records VP8/WebM, which Safari does not play — a browser that showed the
+webm as broken picks the MP4 instead. Captions are burned into the frames as well as tracked,
+because this loops on a page and in a deck where a caption file is not loaded and the video has to
+explain itself with the sound off.*
 
 ## The swarm as a graph
 
@@ -65,6 +69,16 @@ swarmkit serve examples/showcase/workspace --port 8140 &
 curl -X POST localhost:8140/run/release -d '{"input":"…"}'   # so the gate screens have content
 node scripts/media/capture.mjs --serve http://127.0.0.1:8140 --out docs/site/img/portal
 ```
+
+Playwright records **VP8/WebM**, which Safari does not play, so the recording is transcoded before
+publishing — the script prints the command:
+
+```bash
+ffmpeg -i tour.webm -c:v libx264 -profile:v high -pix_fmt yuv420p \
+       -preset slow -crf 26 -movflags +faststart -an tour.mp4
+```
+
+The MP4 is also a third of the size. List it **first** in the `<video>` element.
 
 The script refuses to photograph a 404 — the first run of it saved the portal's own not-found page
 as `connections.png`, because the serve was hosting a build from before that page existed.
