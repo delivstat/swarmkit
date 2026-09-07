@@ -44,12 +44,11 @@ mcp_servers:
     permission: readonly
     effects:
       git_status: read
-channels:
-  ops:
-    provider: telegram
+events:
+  # An event sink, which is what replaced the channel block in 1.216.0.
+  - sink: webhook
+    url: https://my-app.internal/swarmkit/events
     credentials_ref: telegram-bot-token
-    config:
-      chat_id: '-100999'
 """
 
 
@@ -82,10 +81,10 @@ def test_read_says_whether_a_credential_actually_resolves(
     assert svc.read()["credentials"][0]["resolves"] is False
 
 
-def test_read_lists_servers_and_channels(svc: WorkspaceConfigService) -> None:
+def test_read_lists_servers_and_event_sinks(svc: WorkspaceConfigService) -> None:
     out = svc.read()
     assert [s["id"] for s in out["mcp_servers"]] == ["git"]
-    assert out["channels"][0]["id"] == "ops"
+    assert out["events"][0]["sink"] == "webhook"
 
 
 # ---- the property that protects the user's file ----------------------------------------------
@@ -95,9 +94,9 @@ def test_saving_preserves_comments_and_untouched_formatting(svc: WorkspaceConfig
     """The diff after a form save should be the field that changed, not the whole file."""
     before = (svc.workspace_path / "workspace.yaml").read_text()
     result = svc.upsert(
-        "channels",
-        "eng",
-        {"provider": "discord", "credentials_ref": "telegram-bot-token"},
+        "credentials",
+        "another",
+        {"source": "env", "config": {"env": "ANOTHER_TOKEN"}},
     )
     assert result["saved"] is True
     after = (svc.workspace_path / "workspace.yaml").read_text()
@@ -122,7 +121,7 @@ def test_upsert_replaces_a_list_entry_by_id(svc: WorkspaceConfigService) -> None
 def test_a_write_that_would_not_load_is_rolled_back(svc: WorkspaceConfigService) -> None:
     """A half-written workspace left behind by a rejected form is worse than a rejected form."""
     original = (svc.workspace_path / "workspace.yaml").read_text()
-    result = svc.upsert("channels", "bad", {"provider": "discord", "inbound": True})
+    result = svc.upsert("credentials", "bad", {"source": "not-a-real-source", "config": {}})
     assert result["saved"] is False
     assert result["errors"]
     assert (svc.workspace_path / "workspace.yaml").read_text() == original
@@ -143,7 +142,7 @@ def test_deleting_a_referenced_credential_is_refused_with_the_users_named(
 ) -> None:
     """Deleting it would leave a workspace that resolves until something tries to authenticate —
     the failure would surface in a run, far from the click that caused it."""
-    with pytest.raises(ConfigError, match="channels/ops"):
+    with pytest.raises(ConfigError, match="events/0"):
         svc.delete("credentials", "telegram-bot-token")
 
 
@@ -159,9 +158,9 @@ def test_deleting_something_absent_is_a_not_found(svc: WorkspaceConfigService) -
 
 
 def test_the_result_still_parses_as_yaml(svc: WorkspaceConfigService) -> None:
-    svc.upsert("channels", "eng", {"provider": "slack", "credentials_ref": "telegram-bot-token"})
+    svc.upsert("credentials", "extra", {"source": "env", "config": {"env": "EXTRA"}})
     doc = yaml.safe_load((svc.workspace_path / "workspace.yaml").read_text())
-    assert set(doc["channels"]) == {"ops", "eng"}
+    assert set(doc["credentials"]) == {"telegram-bot-token", "extra"}
 
 
 # ---- the HTTP surface -------------------------------------------------------------------------
@@ -184,16 +183,16 @@ def test_get_config_endpoint_redacts(client) -> None:  # type: ignore[no-untyped
 
 def test_put_then_delete_round_trip(client) -> None:  # type: ignore[no-untyped-def]
     put = client.put(
-        "/api/workspace/config/channels/eng",
-        json={"provider": "discord", "credentials_ref": "telegram-bot-token"},
+        "/api/workspace/config/credentials/eng",
+        json={"source": "env", "config": {"env": "ENG_TOKEN"}},
     )
     assert put.json()["saved"] is True
-    assert {c["id"] for c in client.get("/api/workspace/config").json()["channels"]} == {
-        "ops",
+    assert {c["id"] for c in client.get("/api/workspace/config").json()["credentials"]} == {
+        "telegram-bot-token",
         "eng",
     }
 
-    gone = client.delete("/api/workspace/config/channels/eng")
+    gone = client.delete("/api/workspace/config/credentials/eng")
     assert gone.json()["saved"] is True
 
 

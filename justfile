@@ -345,12 +345,6 @@ demo-knowledge-pack:
 demo-command-packs:
     @uv run python examples/command-packs/demo.py
 
-# Channel skills — a swarm asks a human and waits for the answer. Runs against a real
-# Telegram bot when TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID are set, and falls back to the
-# terminal channel otherwise so it demos with no bot at all.
-demo-channels:
-    @uv run python examples/channels/demo.py
-
 # A token that expires mid-session is refreshed at the point of use, so every entry point —
 # run, chat, serve, mcp-serve — gets a live credential without asking for one.
 demo-oauth-refresh:

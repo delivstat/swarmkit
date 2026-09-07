@@ -1,10 +1,20 @@
 ---
 title: Channel skills — letting a swarm talk to a human where they are
 description: Agent-initiated messaging and inbound replies over Telegram/Discord/Slack, as skills over a first-party MCP server. Includes the finding that the existing notification providers are wired to nothing.
-status: draft
+status: superseded
 ---
 
 # Channel skills
+
+> **Superseded, and removed in 1.216.0.** Communication left the runtime — see
+> [`extracting-the-channels.md`](extracting-the-channels.md). This note is kept because its
+> *finding* outlived its feature: the notification providers had shipped complete, tested and
+> unreachable, and that discovery is what eventually argued the whole capability out of the
+> runtime. The design below describes code that no longer exists.
+>
+> What replaced it: an application receives events (`GET /events`, `events:` sinks) and does its
+> own messaging. An agent that needs a person opens a **gate** — which the runtime already had,
+> and which `channel_ask` was a worse duplicate of.
 
 ## The finding this starts from
 
