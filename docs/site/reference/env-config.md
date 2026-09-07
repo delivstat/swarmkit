@@ -65,11 +65,10 @@ mcp_servers:
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: ${github.token}
 
-notifications:
-  - provider: slack
-    config:
-      webhook_url: ${notifications.slack.webhook_url}
-      channel: ${notifications.slack.channel}
+events:
+  - sink: webhook
+    url: ${app.events_url}
+    credentials_ref: app-token
 ```
 
 `workspace.env.yaml` provides the actual values:
@@ -81,10 +80,8 @@ notifications:
 github:
   token: ${GITHUB_TOKEN}
 
-notifications:
-  slack:
-    webhook_url: ${SLACK_WEBHOOK_URL}
-    channel: "#swarmkit-dev"
+app:
+  events_url: ${APP_EVENTS_URL}
 ```
 
 ## Resolution order
@@ -111,7 +108,7 @@ Each environment can have its own env file with different credentials, endpoints
 
 ## Two-phase interpolation
 
-1. **Phase 1:** Load env file → flatten nested YAML to dotted paths (`notifications.slack.channel` → `#swarmkit-dev`)
+1. **Phase 1:** Load env file → flatten nested YAML to dotted paths (`app.events_url` → `https://…`)
 2. **Phase 2:** Resolve `${ENV_VAR}` in property values from OS environment (`${GITHUB_TOKEN}` → actual token)
 3. **Phase 3:** Replace `${property.path}` references in workspace.yaml with resolved values
 

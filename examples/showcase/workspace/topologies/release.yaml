@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: release
+  version: 1.0.0
+# Topology-as-data: this file IS the swarm. The runtime interprets it — nothing is generated,
+# nothing is compiled to Python, and any conformant runtime can run it (invariant #1).
+agents:
+  root:
+    id: release-coordinator
+    role: root
+    archetype: release-coordinator
+    # The gate. A run reaching here parks until a release-manager decides.
+    funnel: release-approval
+    children:
+      - id: risk-analyst
+        role: worker
+        archetype: analyst

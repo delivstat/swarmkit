@@ -355,6 +355,11 @@ demo-oauth-refresh:
 demo-event-consumer:
     @uv run python examples/event-consumer/consumer.py --serve http://127.0.0.1:8000 --port 9000
 
+# The customer-facing demo: a swarm defined as data, parking on a human gate, resumed by their
+# decision, with a durable record of who approved what. No API keys, no network.
+demo-showcase:
+    @uv run python examples/showcase/demo.py
+
 # M3 exit demo — run the hello-swarm topology end-to-end. Uses whichever
 # model provider env vars are set (SWARMKIT_PROVIDER + SWARMKIT_MODEL,
 # or falls back to the agent's declared provider). The supervisor
