@@ -119,6 +119,12 @@ release-check:
 # Check the docs against the repo they describe: link targets, `just` targets, CLI commands,
 # version numbers, reference-library counts, and any current-state doc still describing a removed
 # feature. Design notes and dated posts are excluded — they are history, not claims about today.
+# Build the docs and check every asset the built pages reference actually exists. Catches the
+# class check-docs cannot: paths that only break once MkDocs has rewritten the markdown around them.
+site-assets-check:
+    @uvx --from mkdocs-material mkdocs build -q -d /tmp/swarmkit-site
+    @uv run python scripts/check_site_assets.py /tmp/swarmkit-site
+
 docs-check:
     uv run python scripts/check_docs.py
 

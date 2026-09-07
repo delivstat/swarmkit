@@ -8,11 +8,11 @@ driving a real `swarmkit serve` — so they go stale when someone forgets to run
 than silently. The workspace is [`examples/showcase/`](https://github.com/delivstat/swarmkit/tree/main/examples/showcase),
 which runs with no API keys and no network.
 
-<video controls preload="none" playsinline muted poster="img/portal/canvas.png" style="width:100%;border-radius:8px">
-  <source src="img/portal/portal-tour.mp4" type="video/mp4">
-  <source src="img/portal/portal-tour.webm" type="video/webm">
-  <track kind="captions" srclang="en" label="English" src="img/portal/portal-tour.vtt">
-  <a href="img/portal/portal-tour.mp4">Download the tour (MP4)</a>
+<video controls preload="none" playsinline muted poster="../img/portal/canvas.png" style="width:100%;border-radius:8px">
+  <source src="../img/portal/portal-tour.mp4" type="video/mp4">
+  <source src="../img/portal/portal-tour.webm" type="video/webm">
+  <track kind="captions" srclang="en" label="English" src="../img/portal/portal-tour.vtt">
+  <a href="../img/portal/portal-tour.mp4">Download the tour (MP4)</a>
 </video>
 
 *H.264 first, `playsinline` for iOS, captions burned into the frames as well as tracked — the
