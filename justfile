@@ -356,6 +356,11 @@ demo-channels:
 demo-oauth-refresh:
     @uv run python examples/oauth-refresh/demo.py
 
+# An application receiving SwarmKit events and deciding who to tell. Reconciles from a cursor on
+# startup, so a push it missed while down is recovered rather than lost.
+demo-event-consumer:
+    @uv run python examples/event-consumer/consumer.py --serve http://127.0.0.1:8000 --port 9000
+
 # M3 exit demo — run the hello-swarm topology end-to-end. Uses whichever
 # model provider env vars are set (SWARMKIT_PROVIDER + SWARMKIT_MODEL,
 # or falls back to the agent's declared provider). The supervisor
