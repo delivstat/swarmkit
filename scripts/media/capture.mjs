@@ -176,12 +176,16 @@ async function main() {
 
 	for (const [name, path, why, tab] of PAGES) {
 		await stage.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
+		// Caption as early as the DOM allows, not after settling: a navigation wipes the overlay,
+		// and captioning afterwards left ~2s of every screen — about a third of the video —
+		// running silent while the page loaded.
+		await caption(stage, CAPTIONS[name] ?? why);
 		await settle(stage);
 		if (tab) {
 			await stage.getByRole("button", { name: tab, exact: true }).click().catch(() => {});
 			await stage.waitForTimeout(1200);
+			await caption(stage, CAPTIONS[name] ?? why); // a tab click can re-render the body
 		}
-		await caption(stage, CAPTIONS[name] ?? why);
 		const start = elapsed;
 		await stage.waitForTimeout(HOLD_MS);
 		elapsed += HOLD_MS;
@@ -192,6 +196,12 @@ async function main() {
 
 	writeFileSync(join(VIDEO, "tour.vtt"), toVtt(cues));
 	console.log(`\n  video + captions written under ${VIDEO}`);
+	console.log(
+		"  NOTE: Playwright records VP8/WebM, which Safari does not play. Transcode to H.264:\n" +
+			"    ffmpeg -i tour.webm -c:v libx264 -profile:v high -pix_fmt yuv420p \\\n" +
+			"           -preset slow -crf 26 -movflags +faststart -an tour.mp4\n" +
+			"  and list the mp4 FIRST in the <video> element.",
+	);
 }
 
 await main();
