@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: analyst
+  name: Release Analyst
+  description: >
+    Reads the change and states the risk. A worker: it gathers and reports, it does not decide —
+    the deciding is the human gate's job.
+role: worker
+defaults:
+  model: {provider: mock, name: mock, temperature: 0.1}
+  prompt:
+    system: >
+      You assess a proposed release. Report what changed and what could go wrong, in three bullets.
+      Quote identifiers exactly. If you do not know something, say so rather than filling the gap.
+  iam:
+    base_scope: [workspace:read]
+provenance: {authored_by: human, version: 1.0.0}

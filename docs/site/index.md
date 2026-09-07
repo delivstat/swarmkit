@@ -161,7 +161,7 @@ Auto-detected from environment variables. Mix providers within a single topology
 
 ### Observability (M6 — shipped)
 
-Every run records structured audit events to SQLite. OpenTelemetry traces, metrics, governance circuit breakers, notifications, and a local prompt ring buffer are built in.
+Every run records structured audit events to SQLite. OpenTelemetry traces, metrics, governance circuit breakers, an event seam your application taps (`GET /events`, webhook sinks), and a local prompt ring buffer are built in.
 
 ```bash
 swarmkit status my-swarm/                      # recent runs from audit store
@@ -242,7 +242,7 @@ See the [Implementation Plan](architecture/implementation-plan.md) for the full 
 
 | # | Milestone | Status |
 |---|---|---|
-| M6 | Observability: AuditProvider, OTel traces + metrics, ring buffer, circuit breakers, notifications, CLI rewrite, audit redaction | Done |
+| M6 | Observability: AuditProvider, OTel traces + metrics, ring buffer, circuit breakers, notifications, CLI rewrite, audit redaction | Done (notifications superseded by the event seam in 1.216.0) |
 | M6.5 | Workspace env configuration: `workspace.env.yaml` + `SWARMKIT_ENV` switching | Done |
 | M7 | Intent drift detection: IntentObserver, schema extension, compiler wiring, authoring integration | Done |
 

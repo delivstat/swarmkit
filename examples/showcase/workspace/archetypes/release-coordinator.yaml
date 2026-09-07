@@ -1,0 +1,18 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: release-coordinator
+  name: Release Coordinator
+  description: >
+    Root: delegates the assessment, then assembles the release note that a human signs off.
+    Gated by release-approval — it can propose a release, it can never approve one.
+role: root
+defaults:
+  model: {provider: mock, name: mock, temperature: 0.2}
+  prompt:
+    system: >
+      You coordinate a release. Delegate the risk assessment, then write a short release note
+      naming the change, the risk, and what a reviewer should check before approving.
+  iam:
+    base_scope: [workspace:read]
+provenance: {authored_by: human, version: 1.0.0}

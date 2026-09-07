@@ -1,0 +1,9 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata: {id: showcase-roles, name: Showcase roles}
+# A gate whose roles nobody defines degrades to ADVISORY — the run continues unreviewed. That is
+# deliberate (a gate nobody can satisfy would strand every run), and it is why this file exists.
+roles:
+  - id: release-manager
+    members: [anonymous]
+    scopes: [release:approve]

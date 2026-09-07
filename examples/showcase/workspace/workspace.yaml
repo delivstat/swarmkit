@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: showcase
+  name: SwarmKit Showcase
+  description: >
+    A complete SwarmKit story in one workspace: a swarm does real work, pauses for a named human,
+    an application hears about it and resolves it, and the audit trail says who decided what.
+
+    Runs with no API keys and no network — the mock model provider answers deterministically — so
+    it is safe to demo on a laptop with the wifi off.
+
+governance:
+  provider: mock
+  policy_language: yaml
+
+# The event seam. An application taps these; the runtime ships no chat integration of its own.
+# See design/details/extracting-the-channels.md.
+events:
+  - sink: stdout
