@@ -5,6 +5,8 @@
 Define agents, skills, and governance in a topology file. SwarmKit compiles it to LangGraph and runs it.
 
 !!! tip "Watch it in action"
+    **[The portal →](portal.md)** — screenshots and a tour, generated from the version in the tree.
+
     **[SDLC example: a video walkthrough →](sdlc-example/)** — a guided tour of a real delivery workspace (topologies, archetypes, skills, funnels, and contracts), each shown running in the composer. Recorded before sequencing moved out of SwarmKit in 1.189.0, so its stage-graph sections are historical; everything else is current.
 
 !!! abstract "Building a swarm? Start with the playbook"

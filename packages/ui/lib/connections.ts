@@ -1,8 +1,8 @@
 /**
  * Connections — what the portal needs to know about a workspace's servers, credentials and
- * channels in order to show them as something a person can set up.
+ * event sinks in order to show them as something a person can set up.
  *
- * The logic here is the part worth testing: which credential a server or channel uses, whether
+ * The logic here is the part worth testing: which credential a server or sink uses, whether
  * that credential actually resolves, and what a row should therefore say. The page is a rendering
  * of these answers.
  *
@@ -11,15 +11,12 @@
  */
 
 import type {
-	ChannelEntry,
 	CredentialEntry,
+	EventSinkEntry,
 	McpServerEntry,
 	OAuthCredential,
 	WorkspaceConfig,
 } from "./types";
-
-/** Providers a human can answer on. Mirrors `INBOUND_CAPABLE` in the runtime. */
-export const INBOUND_CAPABLE = ["telegram"];
 
 export type ConnectionStatus =
 	| "ready"
@@ -29,8 +26,8 @@ export type ConnectionStatus =
 
 export interface ConnectionRow {
 	id: string;
-	kind: "server" | "channel";
-	/** stdio command, http url, or the channel's provider — what this actually talks to. */
+	kind: "server" | "event sink";
+	/** stdio command, http endpoint, or a sink's URL — what this actually talks to. */
 	target: string;
 	credentialId: string | null;
 	credentialSource: string | null;
@@ -38,7 +35,6 @@ export interface ConnectionRow {
 	/** One sentence a person can act on. Never "error". */
 	detail: string;
 	permission?: string;
-	inbound?: boolean;
 }
 
 function credentialOf(
@@ -118,39 +114,43 @@ export function serverRow(
 	};
 }
 
-export function channelRow(
-	channel: ChannelEntry,
+/**
+ * An event sink as a connection row.
+ *
+ * Sinks are a plain list with no ids, so the index is the name — which is also how the runtime
+ * reports what a credential is used by when it refuses a delete.
+ */
+export function sinkRow(
+	sink: EventSinkEntry,
+	index: number,
 	credentials: CredentialEntry[],
 ): ConnectionRow {
-	const credential = credentialOf(channel.credentials_ref, credentials);
-	// `terminal` prints to the serve process's stdout; there is nothing to authenticate.
-	const needs = channel.provider !== "terminal";
+	const credential = credentialOf(sink.credentials_ref, credentials);
 	const { status, detail } = statusFor(
-		needs,
+		sink.sink === "webhook",
 		credential,
-		channel.credentials_ref,
+		sink.credentials_ref,
 	);
 	return {
-		id: channel.id,
-		kind: "channel",
-		target: channel.provider,
-		credentialId: credential?.id ?? channel.credentials_ref ?? null,
+		id: `events[${index}]`,
+		kind: "event sink",
+		target: sink.url ?? sink.sink,
+		credentialId: credential?.id ?? sink.credentials_ref ?? null,
 		credentialSource: credential?.source ?? null,
 		status,
 		detail,
-		inbound: !!channel.inbound && INBOUND_CAPABLE.includes(channel.provider),
 	};
 }
 
 export function connectionRows(config: WorkspaceConfig): ConnectionRow[] {
 	return [
 		...config.mcp_servers.map((s) => serverRow(s, config.credentials)),
-		...config.channels.map((c) => channelRow(c, config.credentials)),
+		...(config.events ?? []).map((e, i) => sinkRow(e, i, config.credentials)),
 	];
 }
 
 /**
- * Which servers and channels a credential is used by.
+ * Which servers and sinks a credential is used by.
  *
  * Shown before a delete, because the runtime refuses to remove a referenced credential and the
  * person should see why before they click rather than after.
@@ -163,9 +163,10 @@ export function usersOf(
 		...config.mcp_servers
 			.filter((s) => s.credentials_ref === credentialId)
 			.map((s) => `server "${s.id}"`),
-		...config.channels
-			.filter((c) => c.credentials_ref === credentialId)
-			.map((c) => `channel "${c.id}"`),
+		...(config.events ?? [])
+			.map((e, i) => [e, i] as const)
+			.filter(([e]) => e.credentials_ref === credentialId)
+			.map(([, i]) => `event sink ${i}`),
 	];
 }
 
