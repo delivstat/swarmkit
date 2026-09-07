@@ -105,7 +105,7 @@ nav:
     - Environment configuration: reference/env-config.md
     - Telemetry configuration: reference/telemetry.md
     - Intent drift detection: reference/intent-drift.md
-    - Notifications: reference/notifications.md
+    - Events: reference/events.md
     - Topology artifact: reference/topology.md
     - Workspace artifact: reference/workspace.md
     - Skills catalogue: reference/skills.md

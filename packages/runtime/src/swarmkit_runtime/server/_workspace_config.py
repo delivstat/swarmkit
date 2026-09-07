@@ -1,9 +1,9 @@
 """Reading and writing the infrastructure half of `workspace.yaml` from the portal.
 
 The portal has always edited *artifacts* — topologies, skills, archetypes, funnels, contracts — and
-never *infrastructure*. So `mcp_servers`, `credentials` and `channels` have only ever been settable
-by hand-editing YAML and exporting environment variables, which is the whole of why connecting a
-Telegram bot is a four-step document rather than a form. `docs/notes/schema-change-discipline.md`
+never *infrastructure*. So `mcp_servers` and `credentials` have only ever been settable by
+hand-editing YAML and exporting environment variables, which is the whole of why connecting a
+remote MCP server was a document rather than a form. `docs/notes/schema-change-discipline.md`
 already says a user-authored field settable only by hand-editing YAML is an incomplete schema
 change; this is the service layer that lets the portal keep that promise.
 
@@ -36,9 +36,11 @@ from swarmkit_runtime.server._services import NotFoundError, ServiceError
 #: Blocks the portal may edit. Deliberately not `governance`, `storage` or `identity`: those change
 #: how the runtime is *governed*, and a form is the wrong instrument for a decision that wants a
 #: review. Artifacts have their own CRUD; this is the infrastructure beneath them.
-EDITABLE = ("credentials", "mcp_servers", "channels")
+EDITABLE = ("credentials", "mcp_servers", "events")
 
 #: Sections whose entries are keyed by an `id` field inside a list, rather than by mapping key.
+#: `events` is a plain list with no ids, so it is read-only here — an event sink is edited in the
+#: file, not through a form, until there is a UI that needs it.
 _LIST_KEYED = {"mcp_servers"}
 
 
@@ -87,10 +89,7 @@ class WorkspaceConfigService:
                 for cid, entry in credentials.items()
             ],
             "mcp_servers": [dict(s) for s in (doc.get("mcp_servers") or [])],
-            "channels": [
-                {"id": cid, **dict(entry or {})}
-                for cid, entry in (doc.get("channels") or {}).items()
-            ],
+            "events": [dict(e) for e in (doc.get("events") or [])],
         }
 
     def _resolves(self, credential_id: str, credentials: dict[str, Any]) -> bool:
@@ -163,9 +162,9 @@ class WorkspaceConfigService:
             if s.get("credentials_ref") == entry_id
         ]
         users += [
-            f"channels/{cid}"
-            for cid, c in (doc.get("channels") or {}).items()
-            if (c or {}).get("credentials_ref") == entry_id
+            f"events/{i}"
+            for i, e in enumerate(doc.get("events") or [])
+            if (e or {}).get("credentials_ref") == entry_id
         ]
         if users:
             msg = (

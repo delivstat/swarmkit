@@ -359,5 +359,5 @@ The resolver rejects a lock that names no contract, an approval rule whose scope
 
 - **Artifacts:** [topology](../reference/topology.md) · [workspace](../reference/workspace.md) · [archetypes](../reference/archetypes.md) · [skills](../reference/skills.md) · [funnel](../reference/funnel.md) · [contract](../reference/contract.md) · [role-registry](../reference/role-registry.md) · [trigger](../reference/trigger.md) · [executor-adapter](../reference/executor-adapter.md) · [approval-policy](../reference/approval-policy.md)
 - **Runtime seams:** [governance provider](../design-notes/governance-provider-interface.md) · [model provider](../design-notes/model-provider-abstraction.md) · [executor abstraction](../design-notes/executor-abstraction.md) · [extracting the pipeline](../design-notes/extracting-the-pipeline.md)
-- **Operate:** [CLI commands](../reference/cli.md) · [serve](../reference/serve.md) · [telemetry](../reference/telemetry.md) · [notifications](../reference/notifications.md) · [env config](../reference/env-config.md)
+- **Operate:** [CLI commands](../reference/cli.md) · [serve](../reference/serve.md) · [telemetry](../reference/telemetry.md) · [events](../reference/events.md) · [env config](../reference/env-config.md)
 - **Learn by doing:** the [16-level tutorial ladder](../tutorials/index.md) walks the same arc one runnable step at a time.
