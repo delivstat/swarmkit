@@ -8,17 +8,15 @@ driving a real `swarmkit serve` — so they go stale when someone forgets to run
 than silently. The workspace is [`examples/showcase/`](https://github.com/delivstat/swarmkit/tree/main/examples/showcase),
 which runs with no API keys and no network.
 
-<video controls preload="metadata" poster="img/portal/canvas.png" style="width:100%;border-radius:8px">
+<video controls preload="none" playsinline muted poster="img/portal/canvas.png" style="width:100%;border-radius:8px">
   <source src="img/portal/portal-tour.mp4" type="video/mp4">
   <source src="img/portal/portal-tour.webm" type="video/webm">
-  <track kind="captions" srclang="en" label="English" src="img/portal/portal-tour.vtt" default>
+  <track kind="captions" srclang="en" label="English" src="img/portal/portal-tour.vtt">
   <a href="img/portal/portal-tour.mp4">Download the tour (MP4)</a>
 </video>
 
-*H.264 first: Playwright records VP8/WebM, which Safari does not play — a browser that showed the
-webm as broken picks the MP4 instead. Captions are burned into the frames as well as tracked,
-because this loops on a page and in a deck where a caption file is not loaded and the video has to
-explain itself with the sound off.*
+*H.264 first, `playsinline` for iOS, captions burned into the frames as well as tracked — the
+player matches the SDLC walkthrough's, which is the configuration known to work on a phone.*
 
 ## The swarm as a graph
 
@@ -74,11 +72,14 @@ Playwright records **VP8/WebM**, which Safari does not play, so the recording is
 publishing — the script prints the command:
 
 ```bash
-ffmpeg -i tour.webm -c:v libx264 -profile:v high -pix_fmt yuv420p \
+ffmpeg -i tour.webm -vf scale=1280:800 \
+       -c:v libx264 -profile:v high -level:v 4.0 -pix_fmt yuv420p \
        -preset slow -crf 26 -movflags +faststart -an tour.mp4
 ```
 
-The MP4 is also a third of the size. List it **first** in the `<video>` element.
+`scale` and `-level` are not decoration: they match the SDLC walkthrough's files, which play on
+phones this page's first attempt did not. The MP4 is also a quarter of the WebM's size — list it
+**first** in the `<video>` element, and keep `playsinline`, or iOS will not play it inline.
 
 The script refuses to photograph a 404 — the first run of it saved the portal's own not-found page
 as `connections.png`, because the serve was hosting a build from before that page existed.
