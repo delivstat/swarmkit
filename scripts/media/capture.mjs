@@ -12,7 +12,7 @@
  * inbox screenshot teaches nothing and looks like a broken product.
  */
 import { chromium } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const args = Object.fromEntries(
@@ -49,6 +49,60 @@ const PAGES = [
 	["connections", "/connections", "servers, credentials and what resolves"],
 	["audit", "/audit", "the append-only trail"],
 ];
+
+/** How long each screen holds. Long enough to read the caption, short enough to keep moving. */
+const HOLD_MS = 3200;
+
+/**
+ * What each screen is *for*, in a sentence a viewer can read in three seconds.
+ *
+ * Deliberately claims rather than labels: "Gates" tells nobody anything, while "a run parked on a
+ * human decision" is the thing worth understanding.
+ */
+const CAPTIONS = {
+	dashboard: "A swarm is a workspace: topologies, skills, runs — all of it data.",
+	topologies: "Topologies are YAML files the runtime interprets. Nothing is generated.",
+	composer: "Every agent's model, skills and children — read back from the file.",
+	canvas: "The same file, as a graph. GATED means a human must approve before it proceeds.",
+	gates: "A run paused for a person. It is checkpointed — nothing is held open.",
+	jobs: "Every run, with status and cost.",
+	skills: "Skills are the only way an agent gains a capability.",
+	archetypes: "Archetypes are reusable agents — model, prompt, scopes.",
+	connections: "What the workspace can reach, and whether each credential resolves right now.",
+	audit: "Append-only. No agent has an update or delete path, ever.",
+};
+
+/** Draw the caption over the page. Removed and redrawn per screen so it never stacks. */
+async function caption(page, text) {
+	await page.evaluate((line) => {
+		document.getElementById("swarmkit-caption")?.remove();
+		const el = document.createElement("div");
+		el.id = "swarmkit-caption";
+		el.textContent = line;
+		el.style.cssText = [
+			"position:fixed", "left:50%", "bottom:40px", "transform:translateX(-50%)",
+			"max-width:min(1100px,86vw)", "padding:14px 26px", "z-index:2147483647",
+			"background:rgba(10,10,12,.92)", "color:#f4f4f5", "border:1px solid rgba(255,255,255,.14)",
+			"border-radius:10px", "font:500 20px/1.45 system-ui,sans-serif", "text-align:center",
+			"box-shadow:0 8px 30px rgba(0,0,0,.55)", "pointer-events:none",
+		].join(";");
+		document.body.appendChild(el);
+	}, text);
+}
+
+const stamp = (ms) => {
+	const t = Math.max(0, ms);
+	const h = String(Math.floor(t / 3600000)).padStart(2, "0");
+	const m = String(Math.floor(t / 60000) % 60).padStart(2, "0");
+	const s = String(Math.floor(t / 1000) % 60).padStart(2, "0");
+	return `${h}:${m}:${s}.${String(t % 1000).padStart(3, "0")}`;
+};
+
+/** WebVTT, for a player that loads a track rather than relying on the burned-in text. */
+const toVtt = (cues) =>
+	`WEBVTT\n\n${cues
+		.map(([a, b, text], i) => `${i + 1}\n${stamp(a)} --> ${stamp(b)}\n${text}\n`)
+		.join("\n")}`;
 
 async function settle(page) {
 	// The portal polls; a screenshot taken mid-fetch catches a spinner. Wait for the network to
@@ -106,25 +160,38 @@ async function main() {
 	await shots.close();
 
 	// --- video -------------------------------------------------------------------------
-	// One continuous pass over the same pages, paced for a viewer rather than a test.
+	// One continuous pass, paced for a viewer rather than a test, with a caption burned in.
+	//
+	// Burned in rather than a sidecar track: this loops on a docs page and in a deck, where a
+	// caption file is not loaded and the video has to explain itself with the sound off. A .vtt is
+	// written alongside anyway, for a player that wants one.
 	const filmed = await browser.newContext({
 		viewport: VIEWPORT,
 		colorScheme: "dark",
 		recordVideo: { dir: VIDEO, size: VIEWPORT },
 	});
 	const stage = await filmed.newPage();
-	for (const [, path, , tab] of PAGES) {
+	const cues = [];
+	let elapsed = 0;
+
+	for (const [name, path, why, tab] of PAGES) {
 		await stage.goto(`${BASE}${path}`, { waitUntil: "domcontentloaded" });
 		await settle(stage);
 		if (tab) {
 			await stage.getByRole("button", { name: tab, exact: true }).click().catch(() => {});
 			await stage.waitForTimeout(1200);
 		}
-		await stage.waitForTimeout(1800);
+		await caption(stage, CAPTIONS[name] ?? why);
+		const start = elapsed;
+		await stage.waitForTimeout(HOLD_MS);
+		elapsed += HOLD_MS;
+		cues.push([start, elapsed, CAPTIONS[name] ?? why]);
 	}
 	await filmed.close(); // the video is only written on close
 	await browser.close();
-	console.log(`\n  video written under ${VIDEO}`);
+
+	writeFileSync(join(VIDEO, "tour.vtt"), toVtt(cues));
+	console.log(`\n  video + captions written under ${VIDEO}`);
 }
 
 await main();

@@ -10,7 +10,11 @@ which runs with no API keys and no network.
 
 <video controls preload="none" poster="img/portal/canvas.png" style="width:100%;border-radius:8px">
   <source src="img/portal/portal-tour.webm" type="video/webm">
+  <track kind="captions" srclang="en" label="English" src="img/portal/portal-tour.vtt" default>
 </video>
+
+*Captions are burned in as well as tracked — this loops on a page and in a deck, where a caption
+file is not loaded and the video has to explain itself with the sound off.*
 
 ## The swarm as a graph
 
