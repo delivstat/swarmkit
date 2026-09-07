@@ -7,7 +7,7 @@ the failure is introduced by the build: MkDocs rewrites markdown paths (`![](img
 hand-written `<video><source src="img/…">` on that page resolves to `/portal/img/…` — a 404 that
 looks exactly like a codec problem, and cost two wrong fixes before it was found.
 
-    mkdocs build && python scripts/check_site_assets.py site
+    mkdocs build && python scripts/check_site_assets.py
 """
 
 from __future__ import annotations
@@ -23,8 +23,23 @@ _REF = re.compile(r'(?:src|poster|href)\s*=\s*"([^"]+)"', re.I)
 _MEDIA = {".mp4", ".webm", ".vtt", ".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp"}
 
 
+def _default_site_dir() -> Path:
+    """Where mkdocs.yml says the build lands.
+
+    Hardcoding "site" was wrong — this project sets `site_dir: _site`, and the check failed the
+    docs deploy on its first run by looking in the wrong place. A checker that assumes where its
+    input lives is a checker that reports on nothing.
+    """
+    config = Path("mkdocs.yml")
+    if config.exists():
+        for line in config.read_text().splitlines():
+            if line.startswith("site_dir:"):
+                return Path(line.split(":", 1)[1].strip())
+    return Path("site")
+
+
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else "site")
+    root = Path(sys.argv[1]) if len(sys.argv) > 1 else _default_site_dir()
     if not root.is_dir():
         print(f"no built site at {root} — run `mkdocs build` first")
         return 1
