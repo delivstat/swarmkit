@@ -1,6 +1,14 @@
 # Putting a fact into governed memory
 
-**Status:** proposed — design only.
+**Status:** implemented in 1.217.0 — `swarmkit memory add`, `POST /memory`, and `memory.written`
+on every write.
+
+Two premises moved between the design and the build, and both are worth recording. `governed-memory`
+resolves as a workspace skill rather than needing an explicit declaration in every case, so the
+refusal fires less often than the note assumed — it still fires, and is tested. And the audit had to
+be wired as well as written: the first cut added the governance handle to the store and did not pass
+it from `_create_governed_memory_store`, so it audited nothing. That is the orphan shape this
+codebase keeps producing, caught here by checking rather than by assuming.
 
 ## Goal
 

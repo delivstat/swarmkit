@@ -61,10 +61,15 @@ class GovernedMemoryStore:
         reconciler: Reconciler | None = None,
         decay: DecayConfig | None = None,
         embedder: Embedder | None = None,
+        governance: Any = None,
     ) -> None:
         self._engine = engine
         self._clock = clock or (lambda: datetime.now(tz=UTC))
         self._reconciler = reconciler
+        #: Audits every write. Held HERE rather than at the CLI boundary so the agent hook is
+        #: covered by the same line — governed memory feeds agent prompts, so a fact entering it
+        #: changes what every later run believes, and "from whom" must be answerable.
+        self._governance = governance
         self._decay = decay
         self._embedder = embedder
         create_all_idempotent(metadata, engine)
@@ -78,6 +83,7 @@ class GovernedMemoryStore:
         reconciler: Reconciler | None = None,
         decay: DecayConfig | None = None,
         embedder: Embedder | None = None,
+        governance: Any = None,
     ) -> GovernedMemoryStore:
         """The governed-memory store on the workspace's CONFIGURED backend.
 
@@ -93,11 +99,41 @@ class GovernedMemoryStore:
             reconciler=reconciler,
             decay=decay,
             embedder=embedder,
+            governance=governance,
         )
 
     @property
     def engine(self) -> Engine:
         return self._engine
+
+    def _audit(self, outcome: WriteOutcome, candidate: MemoryCandidate) -> None:
+        """Record `memory.written`. Best-effort: an audit backend that is down must not lose a
+        fact somebody took the trouble to assert."""
+        if self._governance is None:
+            return
+        import asyncio  # noqa: PLC0415
+        from datetime import datetime as _dt  # noqa: PLC0415
+
+        from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+        event = AuditEvent(
+            event_type="memory.written",
+            agent_id=candidate.source or "unknown",
+            timestamp=_dt.now(tz=UTC),
+            payload={
+                "op": outcome.op,
+                "key": f"{candidate.subject}/{candidate.attribute}",
+                "source": candidate.source,
+                "confidence": candidate.confidence,
+                "memory_type": candidate.type,
+            },
+        )
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(self._governance.record_event(event))
+            return
+        loop.create_task(self._governance.record_event(event))  # noqa: RUF006
 
     # ── write path ────────────────────────────────────────────────────────────────────────────
     def write(self, candidate: MemoryCandidate) -> WriteOutcome:
@@ -112,11 +148,15 @@ class GovernedMemoryStore:
             decision = reconcile(candidate, current)
             now = self._clock().isoformat()
             if decision.op == "new":
-                return self._apply_new(conn, candidate, now)
-            assert current is not None
-            if decision.op == "reinforce":
-                return self._apply_reinforce(conn, current, now)
-            return self._apply_update(conn, current, candidate, now, reason="changed value")
+                outcome = self._apply_new(conn, candidate, now)
+            elif decision.op == "reinforce":
+                assert current is not None
+                outcome = self._apply_reinforce(conn, current, now)
+            else:
+                assert current is not None
+                outcome = self._apply_update(conn, current, candidate, now, reason="changed value")
+        self._audit(outcome, candidate)
+        return outcome
 
     async def awrite(self, candidate: MemoryCandidate) -> WriteOutcome:
         """Govern a candidate through the deterministic reconcile *and*, on a changed value, the
@@ -138,32 +178,40 @@ class GovernedMemoryStore:
         with self._engine.begin() as conn:
             live = self._get_locked(conn, candidate.key)  # re-read under the write txn
             if live is None:  # raced away — treat as a fresh write
-                return self._apply_new(conn, candidate, self._clock().isoformat())
-            now = self._clock().isoformat()
-            if verdict.op == "contradict":
-                return self._apply_contradict(conn, live, candidate, now, verdict.reasoning)
-            if verdict.op == "refine":
-                merged = (
-                    verdict.merged_value if verdict.merged_value is not None else candidate.value
-                )
-                return self._apply_update(
-                    conn,
-                    live,
-                    candidate,
-                    now,
-                    op="refine",
-                    value=merged,
-                    reason=verdict.reasoning or "refined into existing memory",
-                    decided_by="skill",
-                )
-            return self._apply_update(
-                conn,
-                live,
-                candidate,
-                now,
-                reason=verdict.reasoning or "changed value",
-                decided_by="skill",
-            )
+                outcome = self._apply_new(conn, candidate, self._clock().isoformat())
+            else:
+                now = self._clock().isoformat()
+                if verdict.op == "contradict":
+                    outcome = self._apply_contradict(conn, live, candidate, now, verdict.reasoning)
+                elif verdict.op == "refine":
+                    merged = (
+                        verdict.merged_value
+                        if verdict.merged_value is not None
+                        else candidate.value
+                    )
+                    outcome = self._apply_update(
+                        conn,
+                        live,
+                        candidate,
+                        now,
+                        op="refine",
+                        value=merged,
+                        reason=verdict.reasoning or "refined into existing memory",
+                        decided_by="skill",
+                    )
+                else:
+                    outcome = self._apply_update(
+                        conn,
+                        live,
+                        candidate,
+                        now,
+                        reason=verdict.reasoning or "changed value",
+                        decided_by="skill",
+                    )
+        # One audit line per write, whichever branch decided it — including `contradict`, where
+        # nothing changed but somebody asserted something worth recording.
+        self._audit(outcome, candidate)
+        return outcome
 
     # ── reads ─────────────────────────────────────────────────────────────────────────────────
     def get(self, subject: str, attribute: str) -> Memory | None:

@@ -30,6 +30,18 @@ class ResolveQuarantineRequest(BaseModel):
     accept: bool
 
 
+class MemoryWrite(BaseModel):
+    """A fact somebody asserts. `source` defaults to the authenticated caller — "who asserted
+    this" is the question asked later, so it is never left null."""
+
+    subject: str
+    attribute: str
+    value: str
+    type: str = "semantic"
+    confidence: float = 1.0
+    source: str = ""
+
+
 def _store(request: Request) -> Any:
     store = _get_runtime(request).governed_memory
     if store is None:
@@ -44,6 +56,37 @@ def _register_memory_routes(app: FastAPI) -> None:
     ) -> dict[str, Any]:
         hits = _store(request).search(query, types=[type] if type else None, limit=limit)
         return {"memories": [memory_to_dict(m) for m in hits]}
+
+    @app.post("/memory")
+    def add_memory(request: Request, body: MemoryWrite) -> dict[str, Any]:
+        """Write a fact through the same governed path an agent writes through.
+
+        Same fields, same reconcile and same response as `swarmkit memory add`, so an application
+        owning its own sequencing records what a resolution established without shelling out — and
+        the two surfaces cannot diverge the way the run surfaces once did.
+
+        A `contradict` is **200 with `op: contradict`**, not an error: the request was valid and
+        the store did exactly what it should. `changed` is what a caller branches on.
+        """
+        from swarmkit_runtime.governed_memory import MemoryCandidate  # noqa: PLC0415
+
+        identity = getattr(request.state, "identity", None)
+        source = body.source or getattr(identity, "client_id", "") or "api"
+        outcome = _store(request).write(
+            MemoryCandidate(
+                subject=body.subject,
+                attribute=body.attribute,
+                value=body.value,
+                type=body.type,  # type: ignore[arg-type]
+                confidence=body.confidence,
+                source=source,
+            )
+        )
+        return {
+            "op": outcome.op,
+            "key": f"{body.subject}/{body.attribute}",
+            "changed": bool(getattr(outcome, "changed", outcome.op != "contradict")),
+        }
 
     @app.get("/memory/item")
     def get_memory(

@@ -385,7 +385,11 @@ class WorkspaceRuntime:
                 skill_id="memory-reconcile",
                 agent_id="governed-memory",
             )
-        return GovernedMemoryStore.for_workspace(self._workspace_root, reconciler=reconciler)
+        # Governance passed, not merely accepted: a store built without it audits nothing, which
+        # is the shape of every orphan this codebase has turned up.
+        return GovernedMemoryStore.for_workspace(
+            self._workspace_root, reconciler=reconciler, governance=self._governance
+        )
 
     @property
     def governed_memory(self) -> Any:
