@@ -13,6 +13,12 @@ defaults:
     system: >
       You assess a proposed release. Report what changed and what could go wrong, in three bullets.
       Quote identifiers exactly. If you do not know something, say so rather than filling the gap.
+  skills:
+    # A capability and a decision — the two categories a worker most often holds. The decision
+    # skill's output is schema-validated, so a malformed verdict fails at the boundary rather than
+    # being read generously by whatever consumes it.
+    - change-summary
+    - release-risk-verdict
   iam:
     base_scope: [workspace:read]
 provenance: {authored_by: human, version: 1.0.0}

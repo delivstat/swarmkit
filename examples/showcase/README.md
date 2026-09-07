@@ -44,12 +44,26 @@ gated node, which a consumer has to handle and a demo should not pretend away.
 workspace/
 ├── workspace.yaml      mock governance, one stdout event sink
 ├── topologies/         release: coordinator -> risk-analyst, gated
-├── archetypes/         the two agents, with their scopes
+├── archetypes/         the two agents, with their scopes and skills
+├── skills/             what those agents can actually do
 ├── funnels/            release-approval — the human gate
 └── roles/              who may confer release:approve
 ```
 
-Four files and about sixty lines. That is the whole swarm — which is itself part of the pitch.
+About a hundred lines. That is the whole swarm — which is itself part of the pitch.
+
+**The skills are not decoration.** A demo for a framework whose first claim is *skills are the only
+extension primitive* showed agents holding none, which undercut the pitch in the one screenshot
+most likely to be looked at. There are now three, and they carry the distinction worth explaining:
+
+| skill | category | why it is here |
+| --- | --- | --- |
+| `change-summary` | capability | produces a description; decides nothing |
+| `release-risk-verdict` | **decision** | its output is schema-validated before anything reads it, and low confidence routes to the human gate rather than resolving itself |
+| `release-note` | capability | writes what the approver signs off on |
+
+The decision skill is the one to point at: a malformed verdict fails at the boundary rather than
+being read generously by whatever consumes it.
 
 ## Against a serve you already have
 

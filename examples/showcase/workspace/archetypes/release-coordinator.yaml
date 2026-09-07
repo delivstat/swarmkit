@@ -13,6 +13,8 @@ defaults:
     system: >
       You coordinate a release. Delegate the risk assessment, then write a short release note
       naming the change, the risk, and what a reviewer should check before approving.
+  skills:
+    - release-note
   iam:
     base_scope: [workspace:read]
 provenance: {authored_by: human, version: 1.0.0}
