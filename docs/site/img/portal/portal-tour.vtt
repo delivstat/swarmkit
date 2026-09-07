@@ -1,0 +1,41 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:03.200
+A swarm is a workspace: topologies, skills, runs — all of it data.
+
+2
+00:00:03.200 --> 00:00:06.400
+Topologies are YAML files the runtime interprets. Nothing is generated.
+
+3
+00:00:06.400 --> 00:00:09.600
+Every agent's model, skills and children — read back from the file.
+
+4
+00:00:09.600 --> 00:00:12.800
+The same file, as a graph. GATED means a human must approve before it proceeds.
+
+5
+00:00:12.800 --> 00:00:16.000
+A run paused for a person. It is checkpointed — nothing is held open.
+
+6
+00:00:16.000 --> 00:00:19.200
+Every run, with status and cost.
+
+7
+00:00:19.200 --> 00:00:22.400
+Skills are the only way an agent gains a capability.
+
+8
+00:00:22.400 --> 00:00:25.600
+Archetypes are reusable agents — model, prompt, scopes.
+
+9
+00:00:25.600 --> 00:00:28.800
+What the workspace can reach, and whether each credential resolves right now.
+
+10
+00:00:28.800 --> 00:00:32.000
+Append-only. No agent has an update or delete path, ever.
