@@ -608,18 +608,18 @@ export interface McpServerEntry {
 	[key: string]: unknown;
 }
 
-export interface ChannelEntry {
-	id: string;
-	provider: string;
+export interface EventSinkEntry {
+	sink: string;
+	url?: string;
 	credentials_ref?: string;
-	inbound?: boolean;
-	config?: Record<string, string>;
+	types?: string[];
 }
 
 export interface WorkspaceConfig {
 	credentials: CredentialEntry[];
 	mcp_servers: McpServerEntry[];
-	channels: ChannelEntry[];
+	/** Where the runtime pushes what happened. Replaced `channels` in 1.216.0. */
+	events: EventSinkEntry[];
 }
 
 export interface ConfigSaveResult {

@@ -19,7 +19,6 @@ import { api } from "@/lib/api";
 import {
 	type ConnectionRow,
 	type ConnectionStatus,
-	INBOUND_CAPABLE,
 	connectionRows,
 	needsAttention,
 	oauthCapable,
@@ -118,157 +117,6 @@ function CredentialDialog({
 						Cancel
 					</Button>
 					<Button onClick={save} disabled={!id || !envVar || saving}>
-						{saving ? "Saving…" : "Save"}
-					</Button>
-				</DialogFooter>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-/** Add a channel — the form that replaces four steps of YAML and two environment variables. */
-function ChannelDialog({
-	credentials,
-	onClose,
-	onSaved,
-}: {
-	credentials: string[];
-	onClose: () => void;
-	onSaved: () => void;
-}) {
-	const [id, setId] = useState("");
-	const [provider, setProvider] = useState("telegram");
-	const [credentialsRef, setCredentialsRef] = useState(credentials[0] ?? "");
-	const [chatId, setChatId] = useState("");
-	const [inbound, setInbound] = useState(true);
-	const [saving, setSaving] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-
-	const canReceive = INBOUND_CAPABLE.includes(provider);
-
-	async function save() {
-		setSaving(true);
-		setError(null);
-		try {
-			const value: Record<string, unknown> = {
-				provider,
-				credentials_ref: credentialsRef,
-			};
-			if (canReceive && inbound) value.inbound = true;
-			if (provider === "telegram" && chatId) value.config = { chat_id: chatId };
-			const result = await api.saveConfigEntry("channels", id, value);
-			if (!result.saved) {
-				setError(
-					result.errors?.map((e) => e.message).join("; ") ?? "Save failed",
-				);
-				return;
-			}
-			onSaved();
-			onClose();
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e));
-		} finally {
-			setSaving(false);
-		}
-	}
-
-	return (
-		<Dialog open onOpenChange={onClose}>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>Add channel</DialogTitle>
-				</DialogHeader>
-				<div className="space-y-4">
-					<div>
-						<Label htmlFor="ch-id">Name</Label>
-						<Input
-							id="ch-id"
-							value={id}
-							onChange={(e) => setId(e.target.value)}
-							placeholder="ops"
-						/>
-					</div>
-					<div>
-						<Label htmlFor="ch-provider">Provider</Label>
-						<select
-							id="ch-provider"
-							className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-							value={provider}
-							onChange={(e) => setProvider(e.target.value)}
-						>
-							{["telegram", "discord", "slack", "webhook", "terminal"].map(
-								(p) => (
-									<option key={p} value={p}>
-										{p}
-									</option>
-								),
-							)}
-						</select>
-					</div>
-					{provider !== "terminal" && (
-						<div>
-							<Label htmlFor="ch-cred">Credential</Label>
-							<select
-								id="ch-cred"
-								className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-								value={credentialsRef}
-								onChange={(e) => setCredentialsRef(e.target.value)}
-							>
-								{credentials.map((c) => (
-									<option key={c} value={c}>
-										{c}
-									</option>
-								))}
-							</select>
-						</div>
-					)}
-					{provider === "telegram" && (
-						<div>
-							<Label htmlFor="ch-chat">Chat ID</Label>
-							<Input
-								id="ch-chat"
-								value={chatId}
-								onChange={(e) => setChatId(e.target.value)}
-								placeholder="-1001234567890"
-							/>
-							<p className="mt-1 text-xs text-muted-foreground">
-								Message your bot once, then read it from <code>getUpdates</code>
-								. Group ids are negative.
-							</p>
-						</div>
-					)}
-					<label
-						className={cn(
-							"flex items-center gap-2 text-sm",
-							!canReceive && "text-muted-foreground",
-						)}
-					>
-						<input
-							type="checkbox"
-							checked={canReceive && inbound}
-							disabled={!canReceive}
-							onChange={(e) => setInbound(e.target.checked)}
-						/>
-						Receive replies
-						{!canReceive && (
-							<span className="text-xs">
-								— only Telegram can. Discord and Slack would need a gateway
-								socket.
-							</span>
-						)}
-					</label>
-					{error && <p className="text-sm text-destructive">{error}</p>}
-				</div>
-				<DialogFooter>
-					<Button variant="ghost" onClick={onClose}>
-						Cancel
-					</Button>
-					<Button
-						onClick={save}
-						disabled={
-							!id || saving || (provider !== "terminal" && !credentialsRef)
-						}
-					>
 						{saving ? "Saving…" : "Save"}
 					</Button>
 				</DialogFooter>
@@ -434,7 +282,7 @@ export default function ConnectionsPage() {
 	const [tokens, setTokens] = useState<OAuthCredential[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
-	const [dialog, setDialog] = useState<"credential" | "channel" | null>(null);
+	const [dialog, setDialog] = useState<"credential" | null>(null);
 
 	const load = useCallback(async () => {
 		try {
@@ -480,16 +328,13 @@ export default function ConnectionsPage() {
 				<div>
 					<h2 className="text-xl font-bold">Connections</h2>
 					<p className="text-sm text-muted-foreground">
-						The servers and channels this workspace talks to, and the
+						The servers and event sinks this workspace talks to, and the
 						credentials they use.
 					</p>
 				</div>
 				<div className="flex gap-2">
 					<Button variant="outline" onClick={() => setDialog("credential")}>
 						<Plus className="mr-1 h-4 w-4" /> Credential
-					</Button>
-					<Button onClick={() => setDialog("channel")}>
-						<Plus className="mr-1 h-4 w-4" /> Channel
 					</Button>
 				</div>
 			</div>
@@ -521,7 +366,7 @@ export default function ConnectionsPage() {
 			{config && rows.length === 0 && (
 				<Card>
 					<p className="text-sm text-muted-foreground">
-						No servers or channels configured yet.
+						No servers or event sinks configured yet.
 					</p>
 				</Card>
 			)}
@@ -542,14 +387,7 @@ export default function ConnectionsPage() {
 							{rows.map((r) => (
 								<tr key={`${r.kind}-${r.id}`} className="border-t">
 									<td className="px-4 py-2 font-mono">{r.id}</td>
-									<td className="px-4 py-2">
-										{r.kind}
-										{r.inbound && (
-											<Badge variant="outline" className="ml-2">
-												two-way
-											</Badge>
-										)}
-									</td>
+									<td className="px-4 py-2">{r.kind}</td>
 									<td
 										className="max-w-xs truncate px-4 py-2 font-mono text-xs text-muted-foreground"
 										title={r.target}
@@ -645,13 +483,6 @@ export default function ConnectionsPage() {
 
 			{dialog === "credential" && (
 				<CredentialDialog
-					onClose={() => setDialog(null)}
-					onSaved={() => void load()}
-				/>
-			)}
-			{dialog === "channel" && (
-				<ChannelDialog
-					credentials={(config?.credentials ?? []).map((c) => c.id)}
 					onClose={() => setDialog(null)}
 					onSaved={() => void load()}
 				/>

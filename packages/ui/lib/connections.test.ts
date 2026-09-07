@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	channelRow,
 	connectionRows,
 	needsAttention,
 	oauthCapable,
 	serverRow,
+	sinkRow,
 	tokenView,
 	usersOf,
 } from "./connections";
@@ -104,37 +104,19 @@ describe("serverRow", () => {
 	});
 });
 
-describe("channelRow", () => {
-	it("marks inbound only where the provider can actually receive", () => {
-		expect(
-			channelRow(
-				{
-					id: "ops",
-					provider: "telegram",
-					credentials_ref: "tg",
-					inbound: true,
-				},
-				[RESOLVING],
-			).inbound,
-		).toBe(true);
-		// Discord cannot receive here; claiming otherwise would promise replies that never come.
-		expect(
-			channelRow(
-				{
-					id: "eng",
-					provider: "discord",
-					credentials_ref: "tg",
-					inbound: true,
-				},
-				[RESOLVING],
-			).inbound,
-		).toBe(false);
+describe("sinkRow", () => {
+	it("flags a webhook sink whose credential does not resolve", () => {
+		const row = sinkRow(
+			{ sink: "webhook", url: "https://app/events", credentials_ref: "linear" },
+			0,
+			[BROKEN],
+		);
+		expect(row.status).toBe("unresolved");
+		expect(row.id).toBe("events[0]");
 	});
 
-	it("does not ask for a credential on the terminal channel", () => {
-		expect(channelRow({ id: "console", provider: "terminal" }, []).status).toBe(
-			"no-auth",
-		);
+	it("does not ask for a credential on a stdout sink", () => {
+		expect(sinkRow({ sink: "stdout" }, 1, []).status).toBe("no-auth");
 	});
 });
 
@@ -143,9 +125,9 @@ describe("usersOf", () => {
 		const config: WorkspaceConfig = {
 			credentials: [RESOLVING],
 			mcp_servers: [{ id: "srv", credentials_ref: "tg" }],
-			channels: [{ id: "ops", provider: "telegram", credentials_ref: "tg" }],
+			events: [{ sink: "webhook", url: "https://app", credentials_ref: "tg" }],
 		};
-		expect(usersOf("tg", config)).toEqual(['server "srv"', 'channel "ops"']);
+		expect(usersOf("tg", config)).toEqual(['server "srv"', "event sink 0"]);
 		expect(usersOf("other", config)).toEqual([]);
 	});
 });
@@ -169,7 +151,7 @@ describe("needsAttention", () => {
 					credentials_ref: "gone",
 				},
 			],
-			channels: [],
+			events: [],
 		};
 		const rows = needsAttention(connectionRows(config));
 		expect(rows.map((r) => r.id)).toEqual(["dangling", "broken"]);

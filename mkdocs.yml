@@ -25,6 +25,7 @@ theme:
 
 nav:
   - Home: index.md
+  - The portal: portal.md
   - Getting started:
     - Installation: getting-started/install.md
     - Hello Swarm: getting-started/hello-swarm.md
