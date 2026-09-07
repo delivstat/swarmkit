@@ -30,7 +30,7 @@ jobs:
       # Every asset the BUILT pages reference must exist. check_docs.py validates the markdown
       # source and cannot see this: MkDocs rewrites markdown paths and leaves raw HTML attributes
       # alone, so a hand-written <video src="img/…"> on a page served at /portal/ 404s.
-      - run: python scripts/check_site_assets.py site
+      - run: python scripts/check_site_assets.py _site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
