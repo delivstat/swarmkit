@@ -95,10 +95,10 @@ different one, and the two do not substitute for each other:
 
 **Both generalise past images together.** The Options section above was written when this note was
 image-only, so it names the skill `view-image` and its return type `ImageContent`. With attachments
-typed (§"Any type the target supports") the skill is `view-file`, returning the MCP content type
-matching the bytes, and it is subject to the same capability refusal as B — an agent that calls it
-on a PDF against an Ollama-backed node is told so, rather than handed content the model will never
-see. One media path, two entry points; not two mechanisms with separate type handling.
+typed (§"Any type") the skill is `view-file`, returning the MCP content type matching the bytes,
+and its result goes through the same provider mapping as B's — including the same `else: raise` when
+a provider has no shape for it. One media path, two entry points; not two mechanisms with separate
+type handling.
 
 ### The caller that makes B not-optional
 
@@ -120,42 +120,63 @@ Generalised, B's caller is anything holding bytes before a run: a webhook with a
 trigger firing on a new file, an application calling `POST /run/{topology}` on a user's screenshot.
 None of them want an agent to go and find what they are already carrying.
 
-## Any type the target supports — which is a capability matrix, not a flag
+## Any type: one verb, and no capability table
 
-Generalising past images is not a rename. Two things in the tree are image-shaped and have to stop
-being so, and one thing does not exist at all and has to.
+The caller's surface is **one thing**: attach a file. No `--pdf`, no `--audio`, no declaring what
+the bytes are, and **no pre-flight check against a list of what the target supports**. Attach it,
+and if the target cannot handle it, the failure comes back from the target.
 
-**`ContentBlock` hardcodes it.** `type` is `Literal["text", "tool_use", "tool_result", "image"]`,
-with dedicated `image_data` / `image_media_type` fields. A media block should carry `media_type` and
-`data` generically, with `type: "media"` (or per-kind `document` / `audio` / `video`, if the
-provider mappings read better that way). The existing image fields stay as deprecated aliases so no
-provider breaks on the same commit.
+That is deliberately less machinery than an earlier draft of this section proposed, and the reasons
+the capability table was wrong are worth keeping written down:
 
-**Nothing declares what a target accepts.** `ModelProvider` has no capability surface at all — no
-`accepts`, no `supports_*`. That is fine while image is the only type and every vision model takes
-one; it is unworkable the moment a caller can attach a PDF, because the support is genuinely
-uneven:
+- **Support is model-granular, not provider-granular.** Anthropic takes PDFs on some models; OpenAI
+  takes audio only on audio-capable ones. A table keyed by provider is simply incorrect, and one
+  keyed by model goes stale every time a vendor ships.
+- **A false refusal is worse than a provider error, because we own it.** A vendor adds a type, our
+  table still says no, and the user is blocked by SwarmKit rather than by the model.
+- The provider's own error is usually clearer than anything synthesised from a table.
 
-| Target | Accepts (roughly, today) |
-| --- | --- |
-| Anthropic | image, PDF natively as a document block |
-| Google | image, PDF, **audio**, **video** — the broadest |
-| OpenAI | image; audio on audio-capable models; PDF via file inputs |
-| **Ollama** | **image only** — the local path, and the narrowest |
-| **any harness** | **anything** — it has a filesystem and a `Read` tool (`context_files`, 1.158.0) |
+### But the runtime still has to know the type — that part is not optional
 
-So **each `ModelProvider` declares the media types it accepts, and the runtime refuses at the
-boundary naming the provider, the model and the type.** A PDF attached to a run whose entry node is
-`qwen2.5vl:3b` on Ollama must fail with *"ollama/qwen2.5vl:3b accepts image/\*; got application/pdf"*
-— not crash inside a provider, and above all **not be silently dropped**. Silent drop is the
-founding sin of this note: an agent that answers confidently about a document it never received is
-the exact failure the first paragraph describes.
+Not policy: **wire format**. Three of the four providers need a different shape per type, so
+something has to choose one before serialising.
 
-**This qualifies the title, and the qualification is honest.** Parity of *mechanism* holds for
-images: both executors take them the same way. For other types parity is of **outcome where the
-capability exists**, plus a named refusal where it does not — because a harness can read a PDF and
-Ollama cannot, and no amount of plumbing changes that. Claiming otherwise would be the silent-drop
-failure with extra steps.
+| Provider | Image today | A PDF would need |
+| --- | --- | --- |
+| **Ollama** | `entry["images"] = [...]` — a top-level array on the message | **nothing exists.** There is no field to put it in |
+| **Anthropic** | `{"type": "image", "source": {...}}` | `{"type": "document", ...}` — a *different block type* |
+| **OpenAI** | `{"type": "image_url", "image_url": {...}}` | `input_audio` for audio, Files API for documents |
+| **Google** | `Part(inline_data=Blob(mime_type=..., data=...))` | **nothing** — one uniform shape, `mime_type` is a field |
+
+So the media type is **sniffed from the file's content** at attach time — not taken from a flag
+name, an extension, or the caller's word for it — and each provider maps it to its own shape. Only
+Google is genuinely "just attach" as-is.
+
+### The one rule that survives: a provider never drops what it cannot map
+
+`_ollama.py` builds `entry["images"]` from image blocks. Handed a PDF it has nowhere to put it, and
+the tempting `if block.type == "image"` filter would send the message **without** the attachment —
+an agent answering confidently about a document it never received, which is the failure in this
+note's first paragraph.
+
+So every adapter's mapping ends in `else: raise`, naming the provider and the media type. That is
+one line per adapter, not a matrix: nothing to maintain, nothing to go stale, and no way to
+accidentally widen or narrow what is accepted. From the caller's side it is indistinguishable from
+"the model rejected it" — the error simply arrives a layer earlier, because for Ollama the bytes
+would never have reached a model to be rejected.
+
+**This is what the title's "same way on both" can honestly claim.** Both executors take an
+attachment by the same verb. Whether a given target can *do* anything with a given type is between
+the caller and that target — a harness reads a PDF, Ollama does not, and no plumbing changes that.
+What the framework guarantees is that the answer is never silence.
+
+### `ContentBlock` has to stop being image-shaped
+
+`type` is `Literal["text", "tool_use", "tool_result", "image"]`, with dedicated `image_data` /
+`image_media_type` fields. A media block should carry `media_type` and `data` generically, with
+`type: "media"` (or per-kind `document` / `audio` / `video`, if the provider mappings read better
+that way). The existing image fields stay as deprecated aliases so no provider breaks on the same
+commit.
 
 **Three routes per type, chosen deliberately, and we already own the third.** For any given media
 type an attachment can reach a model as a native block, reach a harness as a file, or be
@@ -205,10 +226,12 @@ into the worktree and named. If that is not in scope for the first cut, the note
 **The audit record says what was attached** — path, media type and size on the run record, never the
 bytes. Same rule as C's `skill.executed`.
 
-**A text-only model given an attachment fails loudly.** The original bug was an API error from
-passing an image to a supervisor. With attachments no longer broadcast the case is rarer, but a
-caller can still attach to a topology whose entry node is text-only. Refuse at the boundary, naming
-the model, rather than surfacing a provider error.
+**A text-only model given an attachment fails loudly — and the provider's error is the right one.**
+The original bug was an API error from passing an image to a supervisor. With attachments no longer
+broadcast the case is rarer, but a caller can still attach to a topology whose entry node is
+text-only. That error is allowed to surface as the provider raised it: it is accurate, it is
+model-specific in a way nothing here can be, and it is not silence. No pre-flight check against a
+list of which models take pictures — see §"Any type" for why that list would be wrong.
 
 ## What C has to get right
 
@@ -245,21 +268,24 @@ oversized file is refused with its size; the audit record carries the path and t
 not the bytes; and the same skill on the same file produces the same content through a model node
 and through the gateway — the parity assertion this gap exists for.
 
-**Capability refusal — the one that keeps the whole generalisation honest.** A PDF attached to an
-Ollama-backed entry node is refused naming the provider, the model and the media type; the run does
-not start, nothing reaches the provider, and **nothing is dropped**. Asserted per provider against
-its declared `accepts`, including the inverse: a type a provider *does* declare is not refused.
-A provider whose declaration is missing is treated as image-only rather than as unrestricted — an
-undeclared capability is a "no", so adding a provider cannot accidentally widen what is accepted.
+**Never dropped — the assertion that keeps the generalisation honest.** For **every** provider, a
+media block whose type that provider has no shape for **raises**, naming the provider and the media
+type. The load-bearing case is Ollama with a PDF: assert the request is not sent with the attachment
+quietly filtered out. Written as a loop over the provider adapters, so a provider added later fails
+this test until it decides what it does with an unmappable type — the one way to keep it from being
+forgotten.
+
+**Type comes from content.** A PNG named `.pdf` maps as an image; a text file named `.png` does not
+become a corrupt image block. Sniffed once at attach time and carried on the block, so B and C
+cannot disagree about what a file is.
 
 **B.** An attached image reaches the entry node's first user message; the same path through `--attach`,
 the HTTP body and the Python entry point produces an identical request. **Attachments do not appear
 in any downstream node's messages** — the assertion that stops the reverted design coming back, and
 the one that matters most, since the failure it prevents is an API error at a supervisor. The
 resolution and refusal cases are asserted against the *same* helper as C, so the two cannot drift.
-A topology whose entry node is a text-only model refuses an attachment at the boundary, naming the
-model, rather than emitting a provider error. The audit record carries path, media type and size.
-A run with no attachments is byte-identical to today.
+The audit record carries path, media type and size. A run with no attachments is byte-identical to
+today.
 
 **Together.** One run where the caller attaches a photo *and* the agent calls `view-file` on a
 second file, asserting both arrive and are distinguishable in the audit record.
@@ -282,10 +308,11 @@ unobservable for another release. C is independent and can land first or alongsi
    route exists and is the honest mechanism, but materialising an attachment into a worktree is more
    than a `ContentBlock`. Model-only first is defensible; leaving it unstated is not, since this
    note's whole title is about parity.
-3. ~~Attachments beyond images?~~ **Resolved: yes — any type the target declares it accepts.** See
-   §"Any type the target supports". What remains open underneath it is narrower:
+3. ~~Attachments beyond images?~~ **Resolved: yes — one `attach` verb, any type, no capability
+   table.** See §"Any type". What remains open underneath it is narrower:
    **(a)** whether the generalised block is one `type: "media"` or per-kind `document` / `audio` /
    `video`, which is a question about which shape the provider mappings read better in;
-   **(b)** which types ship in the first cut. Image is done; PDF is the obvious second (Anthropic and
-   Google both take it natively, and MarkItDown covers the rest); audio and video are Google-only
-   today and can wait for a caller, exactly as B did.
+   **(b)** which provider mappings ship in the first cut. Image is done everywhere; PDF is the
+   obvious second (Anthropic's `document` block, Google's `inline_data`); audio and video are
+   Google-shaped today. An unmapped type is not a gap to close before shipping — it raises, by the
+   rule above, which is a working outcome rather than a missing feature.
