@@ -273,19 +273,52 @@ uses C, which is what C is for.
 
 **Declared on the call, resolved by the runtime.** `swarmkit run --attach <path>` (repeatable),
 `attachments: [...]` in the `POST /run/{topology}` body, and the equivalent argument on the Python
-entry point. No new schema field on topology, archetype or trigger — this is a property of an
-invocation, not of an artifact.
+entry point. `RunRequest` in `server/_schemas.py` is a plain pydantic model, so this is a field on
+the **invocation** — no new field on the topology, archetype or trigger schemas, because an
+attachment is a property of a call, not of an artifact.
 
-The flag is `--attach`, not `--image`, and the type is **sniffed from content** rather than taken
-from the flag name or the extension. Reviving `--image` would bake the first case into the surface
-and force `--pdf`, `--audio`, `--video` behind it; and a flag that names a type invites trusting the
-caller's claim about bytes we are about to send to a provider. (`--image` may stay as a deprecated
-alias — it shipped once in M8 and someone may have scripted it.)
+```jsonc
+{
+  "input": "What changed at the gate?",
+  "attachments": [
+    { "path": "snapshots/gate-1732.jpg" },                        // step 1
+    { "data": "<base64>", "name": "q3.pdf", "handling": "native" } // step 3+
+  ]
+}
+```
+
+| Field | | |
+| --- | --- | --- |
+| `path` | workspace-relative | **exactly one of** `path` / `data` |
+| `data` | base64 | for a caller holding bytes rather than a file |
+| `name` | optional | display/filename — real caller metadata, since some providers want one. Derived from `path` when absent. **Not** a type claim |
+| `handling` | `preprocess` (default) \| `native` | intent, not content. **Arrives in step 3** — step 1 has no use for it, because an image is never preprocessed |
+
+**There is no `type` field, deliberately.** The media type is sniffed from the bytes, carried on the
+resolved attachment and written to the audit record — but never accepted from the caller. Taking it
+as input invites a claim about bytes we are about to forward to a third party, and the flag-name
+version of the same mistake (`--image`, then `--pdf`, `--audio`, `--video`) bakes the first case into
+the surface forever. Hence one `--attach`. (`--image` may survive as a deprecated alias; it shipped
+once in M8 and may be scripted somewhere.)
+
+**No `stream`, and no `url`.** Both are tempting and both are wrong here.
+
+An attachment must be **re-readable**: the tool loop re-sends the whole message history each turn, a
+shape-3 adapter reads the bytes before uploading, and a retry re-sends everything. A stream is
+single-consumption, so accepting one means the runtime buffers it anyway — hiding the memory cost
+rather than avoiding it, and turning a clear boundary error into "stream already consumed" on turn
+two. It also buys nothing at the wire, since every provider wants base64 in a JSON body, which is
+buffered by construction. A caller holding a stream materialises it, which at least puts the
+buffering where someone can see it.
+
+A `url` source would have the runtime fetch a caller-supplied address server-side — the same
+exfiltration class this note rejects Option A for, and worth naming explicitly because OpenRouter
+*does* accept URLs for PDFs, so passing one through will look like a free feature to somebody later.
 
 **The same safety rules as C, because it is the same act.** Workspace-relative; `..`, absolute paths
-and symlinks out refused rather than resolved; a stated size ceiling refused with its size; non-images
-refused **by content, not extension**. A caller-supplied path is no more trustworthy than a
-model-supplied one, and the checks should be the same code.
+and symlinks out refused rather than resolved; a stated size ceiling refused with its size; content
+that does not match what it claims to be refused **by bytes, not extension**. A caller-supplied path
+is no more trustworthy than a model-supplied one, and the checks should be the same code.
 
 **Harness parity, or say plainly that it is model-only.** This note exists because images should
 reach an agent identically on both executors. For a model node an attachment is a `ContentBlock`.
@@ -361,7 +394,16 @@ reviewed.
 
 **Type comes from content.** A PNG named `.pdf` maps as an image; a text file named `.png` does not
 become a corrupt image block. Sniffed once at attach time and carried on the block, so B and C
-cannot disagree about what a file is.
+cannot disagree about what a file is. A request that supplies a `type` is rejected as an unknown
+field rather than honoured — the field does not exist, and pydantic should say so.
+
+**`path` XOR `data`, and neither `stream` nor `url`.** Both-or-neither is a 422 naming the
+attachment. A `url` source is rejected with a message pointing at the reason rather than a schema
+error, since the next person to want it will assume it was an oversight.
+
+**An attachment survives a multi-turn loop.** Two turns of tool calls with an attachment present:
+the bytes are still in the request on turn two, from the same in-memory attachment, without
+re-reading the file. This is the assertion that would have caught a stream sneaking in.
 
 **B.** An attached image reaches the entry node's first user message; the same path through `--attach`,
 the HTTP body and the Python entry point produces an identical request. **Attachments do not appear
