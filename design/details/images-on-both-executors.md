@@ -1,10 +1,17 @@
-# Images reach an agent the same way on both executors
+# Attachments reach an agent the same way on both executors
 
 **Status:** proposed — design only
+*(Filename unchanged — this began as an images note and generalised. Links are by path.)*
 
 ## Goal
 
-Make "look at this image" work, and work identically whichever executor runs the node.
+Make "look at this" work, and work identically whichever executor runs the node — for **any media
+type the target can actually accept**, not images alone.
+
+Images are the first case and the one that motivated the note, but nothing in the mechanism is
+image-shaped. A PDF, an audio clip and a video are the same problem: bytes a caller or an agent has,
+which have to reach a model or a harness in the form that target understands, or be refused by name
+if they cannot.
 
 ## Where it stands
 
@@ -29,7 +36,7 @@ it work.
 
 The other five parity gaps were plumbing: a field computed and dropped, a code path that skipped a
 check. Each was fixed by grepping for a name and counting its readers. There is nothing to un-drop
-here. Something has to decide *which* bytes become an image, and that decision does not exist yet.
+here. Something has to decide *which* bytes become an attachment, and that decision does not exist yet.
 
 ## Options
 
@@ -83,8 +90,15 @@ different one, and the two do not substitute for each other:
 
 | | The caller | Who decides what to look at |
 | --- | --- | --- |
-| **C** — `view-image` skill | an agent, mid-run | the model, from a path it names |
+| **C** — `view-file` skill | an agent, mid-run | the model, from a path it names |
 | **B** — `attachments:` on the run | code, before the run starts | the caller, which already holds the bytes |
+
+**Both generalise past images together.** The Options section above was written when this note was
+image-only, so it names the skill `view-image` and its return type `ImageContent`. With attachments
+typed (§"Any type the target supports") the skill is `view-file`, returning the MCP content type
+matching the bytes, and it is subject to the same capability refusal as B — an agent that calls it
+on a PDF against an Ollama-backed node is told so, rather than handed content the model will never
+see. One media path, two entry points; not two mechanisms with separate type handling.
 
 ### The caller that makes B not-optional
 
@@ -106,6 +120,55 @@ Generalised, B's caller is anything holding bytes before a run: a webhook with a
 trigger firing on a new file, an application calling `POST /run/{topology}` on a user's screenshot.
 None of them want an agent to go and find what they are already carrying.
 
+## Any type the target supports — which is a capability matrix, not a flag
+
+Generalising past images is not a rename. Two things in the tree are image-shaped and have to stop
+being so, and one thing does not exist at all and has to.
+
+**`ContentBlock` hardcodes it.** `type` is `Literal["text", "tool_use", "tool_result", "image"]`,
+with dedicated `image_data` / `image_media_type` fields. A media block should carry `media_type` and
+`data` generically, with `type: "media"` (or per-kind `document` / `audio` / `video`, if the
+provider mappings read better that way). The existing image fields stay as deprecated aliases so no
+provider breaks on the same commit.
+
+**Nothing declares what a target accepts.** `ModelProvider` has no capability surface at all — no
+`accepts`, no `supports_*`. That is fine while image is the only type and every vision model takes
+one; it is unworkable the moment a caller can attach a PDF, because the support is genuinely
+uneven:
+
+| Target | Accepts (roughly, today) |
+| --- | --- |
+| Anthropic | image, PDF natively as a document block |
+| Google | image, PDF, **audio**, **video** — the broadest |
+| OpenAI | image; audio on audio-capable models; PDF via file inputs |
+| **Ollama** | **image only** — the local path, and the narrowest |
+| **any harness** | **anything** — it has a filesystem and a `Read` tool (`context_files`, 1.158.0) |
+
+So **each `ModelProvider` declares the media types it accepts, and the runtime refuses at the
+boundary naming the provider, the model and the type.** A PDF attached to a run whose entry node is
+`qwen2.5vl:3b` on Ollama must fail with *"ollama/qwen2.5vl:3b accepts image/\*; got application/pdf"*
+— not crash inside a provider, and above all **not be silently dropped**. Silent drop is the
+founding sin of this note: an agent that answers confidently about a document it never received is
+the exact failure the first paragraph describes.
+
+**This qualifies the title, and the qualification is honest.** Parity of *mechanism* holds for
+images: both executors take them the same way. For other types parity is of **outcome where the
+capability exists**, plus a named refusal where it does not — because a harness can read a PDF and
+Ollama cannot, and no amount of plumbing changes that. Claiming otherwise would be the silent-drop
+failure with extra steps.
+
+**Three routes per type, chosen deliberately, and we already own the third.** For any given media
+type an attachment can reach a model as a native block, reach a harness as a file, or be
+**converted to text first** — and `docs_reader` already integrates MarkItDown for exactly that.
+Documents in particular have a good text answer, so the decision per type is a real one and not
+automatically "add a native block". Native where the provider is genuinely better at the raw bytes
+(a scanned page, a chart); MarkItDown where the text is the content.
+
+**Named because it is a real unlock, not just tidiness:** Google accepts **video** natively, and
+Minder already produces clips with ffmpeg. "What happened in this clip" becomes answerable on a
+cloud tier and stays impossible on the local one — an honest capability split the matrix above makes
+visible up front, rather than a mystery at runtime.
+
 ## What B has to get right
 
 B has shipped once and been reverted, so this section is mostly *not repeating that*.
@@ -117,10 +180,16 @@ attachment is an argument to *one* invocation, not ambient run state every node 
 in the entry node's first user message and nowhere else; a node that wants an image it was not given
 uses C, which is what C is for.
 
-**Declared on the call, resolved by the runtime.** `swarmkit run --image <path>` (repeatable),
+**Declared on the call, resolved by the runtime.** `swarmkit run --attach <path>` (repeatable),
 `attachments: [...]` in the `POST /run/{topology}` body, and the equivalent argument on the Python
 entry point. No new schema field on topology, archetype or trigger — this is a property of an
 invocation, not of an artifact.
+
+The flag is `--attach`, not `--image`, and the type is **sniffed from content** rather than taken
+from the flag name or the extension. Reviving `--image` would bake the first case into the surface
+and force `--pdf`, `--audio`, `--video` behind it; and a flag that names a type invites trusting the
+caller's claim about bytes we are about to send to a provider. (`--image` may stay as a deprecated
+alias — it shipped once in M8 and someone may have scripted it.)
 
 **The same safety rules as C, because it is the same act.** Workspace-relative; `..`, absolute paths
 and symlinks out refused rather than resolved; a stated size ceiling refused with its size; non-images
@@ -158,20 +227,32 @@ the model, rather than surfacing a provider error.
 
 ## Non-goals
 
-- Not OCR, not description, not any interpretation. The skill delivers pixels; the model looks.
-- Not a general file-read skill. Images have a content type both executors can carry; arbitrary
-  files do not, and the honest way to hand a harness a file is `context_files` (1.158.0).
-- Does not change how tool-returned images work. That path is correct and stays.
+- Not OCR, not description, not any interpretation. The mechanism delivers bytes; the model looks.
+  Conversion-to-text is MarkItDown's job and stays there.
+- **Not a general file-read capability.** The types a target *declares* it accepts are reachable;
+  everything else is refused by name. "Any type the model or harness supports" is a matrix, not a
+  licence to hand any file to anything — and for a harness the existing route is `context_files`
+  (1.158.0), not a new one.
+- Not a new transport for large payloads. The size ceiling applies per attachment regardless of
+  type, and a 400 MB video is refused with its size like anything else.
+- Does not change how tool-returned content works. That path is correct and stays.
 
 ## Test plan
 
-**C.** A path resolves and returns image content; `..`, absolute paths and symlinks out are refused;
-a non-image is refused by content; an oversized file is refused with its size; the audit record
-carries the path and the media type and not the bytes; and the same skill on the same file produces
-the same content through a model node and through the gateway — the parity assertion this gap
-exists for.
+**C.** A path resolves and returns media content; `..`, absolute paths and symlinks out are refused;
+a file whose bytes do not match its declared type is refused **by content, not extension**; an
+oversized file is refused with its size; the audit record carries the path and the media type and
+not the bytes; and the same skill on the same file produces the same content through a model node
+and through the gateway — the parity assertion this gap exists for.
 
-**B.** An attached image reaches the entry node's first user message; the same path through `--image`,
+**Capability refusal — the one that keeps the whole generalisation honest.** A PDF attached to an
+Ollama-backed entry node is refused naming the provider, the model and the media type; the run does
+not start, nothing reaches the provider, and **nothing is dropped**. Asserted per provider against
+its declared `accepts`, including the inverse: a type a provider *does* declare is not refused.
+A provider whose declaration is missing is treated as image-only rather than as unrestricted — an
+undeclared capability is a "no", so adding a provider cannot accidentally widen what is accepted.
+
+**B.** An attached image reaches the entry node's first user message; the same path through `--attach`,
 the HTTP body and the Python entry point produces an identical request. **Attachments do not appear
 in any downstream node's messages** — the assertion that stops the reverted design coming back, and
 the one that matters most, since the failure it prevents is an API error at a supervisor. The
@@ -180,7 +261,7 @@ A topology whose entry node is a text-only model refuses an attachment at the bo
 model, rather than emitting a provider error. The audit record carries path, media type and size.
 A run with no attachments is byte-identical to today.
 
-**Together.** One run where the caller attaches a photo *and* the agent calls `view-image` on a
+**Together.** One run where the caller attaches a photo *and* the agent calls `view-file` on a
 second file, asserting both arrive and are distinguishable in the audit record.
 
 ## Sequencing
@@ -192,7 +273,7 @@ unobservable for another release. C is independent and can land first or alongsi
 
 ## Open questions for review
 
-1. Whether `view-image` ships as a **built-in** skill (available to grant in any workspace) or as a
+1. Whether `view-file` ships as a **built-in** skill (available to grant in any workspace) or as a
    **reference** skill in `reference/skills/` that a workspace copies. Built-in makes the common case
    work with no setup; reference keeps the runtime's built-in surface small. I lean built-in, on the
    grounds that "look at this image" is not a workspace-specific capability — but it is a surface
@@ -201,7 +282,10 @@ unobservable for another release. C is independent and can land first or alongsi
    route exists and is the honest mechanism, but materialising an attachment into a worktree is more
    than a `ContentBlock`. Model-only first is defensible; leaving it unstated is not, since this
    note's whole title is about parity.
-3. **Attachments beyond images?** A PDF or a CSV attached to a run is the obvious next request, and
-   `context_files` already covers the harness side of it. Deliberately out of scope here — images
-   have a content type both executors carry, arbitrary files do not — but the field name
-   `attachments:` invites the question and should be chosen knowing that.
+3. ~~Attachments beyond images?~~ **Resolved: yes — any type the target declares it accepts.** See
+   §"Any type the target supports". What remains open underneath it is narrower:
+   **(a)** whether the generalised block is one `type: "media"` or per-kind `document` / `audio` /
+   `video`, which is a question about which shape the provider mappings read better in;
+   **(b)** which types ship in the first cut. Image is done; PDF is the obvious second (Anthropic and
+   Google both take it natively, and MarkItDown covers the rest); audio and video are Google-only
+   today and can wait for a caller, exactly as B did.
