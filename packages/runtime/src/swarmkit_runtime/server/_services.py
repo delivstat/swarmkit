@@ -21,6 +21,7 @@ from typing import Any
 import yaml
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
+from swarmkit_runtime.attachments import AttachmentError, resolve_all
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.persistence import Store
@@ -53,6 +54,17 @@ class NotFoundError(ServiceError):
 
 class BusyError(ServiceError):
     status = 429
+
+
+class InvalidRequestError(ServiceError):
+    """The request was well-formed but its contents cannot be accepted.
+
+    422 rather than 400 because the body parsed and validated as a shape — an attachment path that
+    does not exist or escapes the workspace is a semantic refusal, and telling the two apart is the
+    difference between "fix your JSON" and "fix your path".
+    """
+
+    status = 422
 
 
 class JobService:
@@ -100,9 +112,27 @@ class JobService:
         correlation_id: str | None = None,
         labels: dict[str, str] | None = None,
         parent_job_id: str | None = None,
+        attachments: list[Any] | None = None,
     ) -> Job:
-        """Resolve, gate on capacity, create + persist the job, and start it in the background."""
+        """Resolve, gate on capacity, create + persist the job, and start it in the background.
+
+        *attachments* are the caller's declared files, resolved here so a bad one is a 422 on the
+        request rather than a job that fails a moment later.
+        """
         resolved_name, selected_version = self.resolve_topology(rt, canary, topology_name)
+        # Resolved HERE rather than inside the background run, so a path that does not exist or
+        # escapes the workspace is a 4xx on this request. Left to the job, the caller would get a
+        # job id and have to poll to discover the file was never readable — which is the shape of
+        # error people stop checking for. `WorkspaceRuntime.run` passes resolved attachments
+        # through untouched, so nothing is read twice.
+        # Short-circuited when there is nothing to resolve, so the overwhelmingly common path never
+        # reaches for a workspace root it has no use for.
+        resolved_attachments: list[Any] = []
+        if attachments:
+            try:
+                resolved_attachments = resolve_all(attachments, rt.workspace_root)
+            except AttachmentError as exc:
+                raise InvalidRequestError(str(exc)) from exc
         if semaphore is not None and semaphore.locked():
             raise BusyError("Max concurrent jobs reached. Try again later.")
         job = await self._jobs.create(resolved_name, user_input)
@@ -129,6 +159,7 @@ class JobService:
             canary_router=canary,
             store=store,
             labels=labels,
+            attachments=resolved_attachments,
         )
         return job
 

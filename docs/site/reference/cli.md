@@ -8,6 +8,7 @@
 | `swarmkit validate <workspace> --tree` | Print resolved agent tree with skills, archetypes, MCP servers |
 | `swarmkit run <workspace> <topology>` | Execute a topology one-shot |
 | `swarmkit run ... --input "..."` | Provide input inline |
+| `swarmkit run ... --attach <path>` | Put a file in front of the entry agent; repeatable, workspace-relative. The media type is read from the file's content, not its name — hence one `--attach` rather than `--image`/`--pdf`. Images only today; a bad path or an uncarryable type fails before the run starts, and every attachment is audited by name, type, size and SHA-256, never by content |
 | `swarmkit run ... --verbose` | Run with per-agent execution summary (tools called, timing, denials) |
 | `swarmkit run ... --dry-run` | Show resolved agents + skills without executing (no LLM/MCP calls) |
 | `swarmkit serve <workspace>` | Start the HTTP server |

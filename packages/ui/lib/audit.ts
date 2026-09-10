@@ -78,6 +78,48 @@ export function formatDuration(ms: number | null | undefined): string | null {
 	return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
+type AttachmentRecord = {
+	name?: string;
+	media_type?: string;
+	size?: number;
+};
+
+/** Bytes as a person reads them. Rounded hard — this is a table cell, not a storage report. */
+function formatBytes(size: number): string {
+	if (size < 1024) return `${size} B`;
+	if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+	return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * What the caller put in front of the model, on one line.
+ *
+ * Without this the row renders as `run.attachments | runtime | - | -` — an event that exists
+ * precisely so somebody can see what the model was shown, showing nothing. The digest is in the
+ * expanded payload rather than here: it is what makes the reference checkable, not what makes the
+ * row readable.
+ */
+function summarizeAttachments(event: AuditEvent): string {
+	const records =
+		(event.payload?.attachments as AttachmentRecord[] | undefined) ?? [];
+	if (records.length === 0) return "no attachments";
+
+	const describe = (a: AttachmentRecord) => {
+		const detail = [
+			a.media_type,
+			a.size !== undefined ? formatBytes(a.size) : null,
+		]
+			.filter(Boolean)
+			.join(", ");
+		return detail
+			? `${a.name ?? "attachment"} (${detail})`
+			: (a.name ?? "attachment");
+	};
+
+	if (records.length === 1) return describe(records[0] as AttachmentRecord);
+	return `${records.length} attachments: ${records.map((a) => a.name ?? "attachment").join(", ")}`;
+}
+
 /**
  * The one-line summary shown on the row itself, so the table is readable without expanding
  * anything.
@@ -98,6 +140,9 @@ export function summarize(event: AuditEvent): string {
 	}
 	if (event.error && Object.keys(event.error).length > 0) {
 		return Object.values(event.error).join(": ");
+	}
+	if (event.event_type === "run.attachments") {
+		return summarizeAttachments(event);
 	}
 	const inputs =
 		event.inputs ??

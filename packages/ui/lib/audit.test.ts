@@ -203,3 +203,70 @@ describe("truncate", () => {
 		expect(out).not.toContain("wor…");
 	});
 });
+
+describe("summarize — run.attachments", () => {
+	/**
+	 * The event exists so somebody can see what the model was shown. Rendered by the generic path
+	 * it produced an empty cell: `run.attachments | runtime | - | -`, which is the event failing at
+	 * the one job it has.
+	 */
+	function attachmentEvent(records: unknown[]): AuditEvent {
+		return event({
+			event_type: "run.attachments",
+			agent_id: "runtime",
+			skill_id: null,
+			payload: { count: records.length, attachments: records },
+		});
+	}
+
+	it("names a single attachment with its type and size", () => {
+		const s = summarize(
+			attachmentEvent([
+				{
+					name: "gate.png",
+					media_type: "image/png",
+					size: 2048,
+					sha256: "a".repeat(64),
+				},
+			]),
+		);
+		expect(s).toBe("gate.png (image/png, 2 KB)");
+	});
+
+	it("counts and names several", () => {
+		const s = summarize(
+			attachmentEvent([
+				{ name: "a.png", media_type: "image/png", size: 10 },
+				{ name: "b.jpg", media_type: "image/jpeg", size: 20 },
+			]),
+		);
+		expect(s).toBe("2 attachments: a.png, b.jpg");
+	});
+
+	it("scales bytes to something a person reads", () => {
+		expect(summarize(attachmentEvent([{ name: "s", size: 512 }]))).toContain(
+			"512 B",
+		);
+		expect(
+			summarize(attachmentEvent([{ name: "m", size: 3 * 1024 * 1024 }])),
+		).toContain("3.0 MB");
+	});
+
+	it("never shows the bytes — the digest is in the disclosure, the content is nowhere", () => {
+		const s = summarize(
+			attachmentEvent([
+				{
+					name: "gate.png",
+					media_type: "image/png",
+					size: 2048,
+					sha256: "f".repeat(64),
+				},
+			]),
+		);
+		expect(s).not.toContain("f".repeat(64));
+	});
+
+	it("says so rather than rendering blank when the payload is empty", () => {
+		expect(summarize(attachmentEvent([]))).toBe("no attachments");
+	});
+});

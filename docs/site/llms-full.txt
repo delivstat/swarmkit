@@ -490,9 +490,11 @@ Memory-writer extracts structured insights (topic, context, key_points, tags) vi
 - [Intent drift detection](https://github.com/delivstat/swarmkit/blob/main/design/details/intent-drift-detection.md): optional per-agent intent monitoring via embedding similarity. Log/warn/nudge strategies.
 - [Market analysis and risk mitigations](https://github.com/delivstat/swarmkit/blob/main/design/details/market-analysis-and-risk-mitigations.md): competitive landscape (Prefect, LangSmith, CrewAI, AgentField), canary deployments, governance circuit breakers.
 
-## Images (there is exactly one channel)
+## Images (two channels, for two callers)
 
-A run's input is a plain **string** — `swarmkit run --input` takes a `str`, and no schema (topology, archetype, trigger) has an image, attachment or media field. A path in the prompt is text; base64 in the prompt is tokens. **The only route to a model is an MCP tool returning `ImageContent`**, which `langgraph_compiler/_skill_executor.py` converts to a `ContentBlock(type="image", …)` and the provider maps to its native image part (`image_url` data-URL for OpenAI and anything subclassing it, incl. OpenRouter; `source.base64` for Anthropic). `docs-reader`'s `view_image` is the bundled tool that does this. Harness executors read image files from disk directly instead.
+**A caller holding the file attaches it to the run**: `swarmkit run … --attach <path>`, or `attachments: [{"path": …}]` / `[{"data": <base64>}]` on `POST /run/{topology}`. It reaches the **entry agent's first message and no downstream node** — one model call, no tool round-trip. The media type is read from the bytes, so there is one `--attach` and no `--image`/`--pdf`; sending a `type` field is a 422, and `url`/`stream` sources are refused (the runtime does not fetch caller-supplied addresses, and an attachment is re-read on every turn of a tool loop). A bad path or an uncarryable type fails the CALL, not the run; images only today (`image/png|jpeg|gif|webp`), 20 MB ceiling (`SWARMKIT_ATTACHMENT_MAX_BYTES`). Every attachment is audited as a `run.attachments` event carrying name, media type, size, SHA-256 and source path — never the bytes.
+
+**An agent deciding mid-run what to look at still needs a skill.** A path in the prompt is text; base64 in the prompt is tokens. **That route is an MCP tool returning `ImageContent`**, which `langgraph_compiler/_skill_executor.py` converts to a `ContentBlock(type="image", …)` and the provider maps to its native image part (`image_url` data-URL for OpenAI and anything subclassing it, incl. OpenRouter; `source.base64` for Anthropic). `docs-reader`'s `view_image` is the bundled tool that does this. Harness executors read image files from disk directly instead.
 
 The failure mode is silent: a path that does not resolve makes the tool report "not found", and the model then describes the image from surrounding prose anyway — fluently and wrongly. Pass **absolute** paths, rewrite relative refs inside any document the agent reads, and instruct the agent to report a failed path rather than describe the image. Since 1.129.2 the paths must also sit under the docs-reader `--workspace` root, which now confines rather than merely resolves.
 
@@ -2217,6 +2219,7 @@ still says pending.
 | `swarmkit validate <workspace> --tree` | Print resolved agent tree with skills, archetypes, MCP servers |
 | `swarmkit run <workspace> <topology>` | Execute a topology one-shot |
 | `swarmkit run ... --input "..."` | Provide input inline |
+| `swarmkit run ... --attach <path>` | Put a file in front of the entry agent; repeatable, workspace-relative. The media type is read from the file's content, not its name — hence one `--attach` rather than `--image`/`--pdf`. Images only today; a bad path or an uncarryable type fails before the run starts, and every attachment is audited by name, type, size and SHA-256, never by content |
 | `swarmkit run ... --verbose` | Run with per-agent execution summary (tools called, timing, denials) |
 | `swarmkit run ... --dry-run` | Show resolved agents + skills without executing (no LLM/MCP calls) |
 | `swarmkit serve <workspace>` | Start the HTTP server |
@@ -2441,6 +2444,48 @@ swarmkit serve ./workspace --host 0.0.0.0 --port 8000
 | `POST` | `/run` | Submit a topology run (async) |
 | `GET` | `/jobs/{id}` | Poll job status |
 | `GET` | `/jobs/history` | List persisted jobs (survives restart) |
+
+#### Attachments
+
+A caller that already holds a file — a snapshot, an uploaded photo — passes it beside the input
+instead of making an agent go and fetch it:
+
+```json
+POST /run/describe-scene
+{
+  "input": "What is at the gate?",
+  "attachments": [
+    { "path": "snapshots/gate-1732.jpg" }
+  ]
+}
+```
+
+| Field | | |
+|---|---|---|
+| `path` | workspace-relative | **exactly one of** `path` / `data` |
+| `data` | base64 | for a caller holding bytes rather than a file |
+| `name` | optional | display/filename; derived from `path` when absent |
+| `handling` | `preprocess` (default) or `native` | intent for non-image types; inert today |
+
+**There is no `type` field.** The media type is read from the file's content — sending one is a
+422, because a caller's claim about bytes that are about to be forwarded to a model is not evidence.
+`url` and `stream` sources are refused for the same reason and a related one: the runtime does not
+fetch caller-supplied addresses, and an attachment is re-read on every turn of a tool loop, so it
+has to be re-readable.
+
+Attachments reach the **entry agent's first message and no downstream node**. An agent that wants a
+file it was not handed asks for one through a skill.
+
+A bad path is a **422 on this request**, not a job that fails a moment later — so a job id means the
+file was readable. Only images are carried today (`image/png`, `image/jpeg`, `image/gif`,
+`image/webp`); anything else is refused by name. Per-attachment ceiling is 20 MB
+(`SWARMKIT_ATTACHMENT_MAX_BYTES`).
+
+Every attachment is written to the audit log as a `run.attachments` event carrying name, media type,
+size, SHA-256 and source path — **never the bytes**. The digest is what makes the reference
+checkable later; storing content would put arbitrary material into a log meant to stay readable.
+
+The CLI equivalent is `swarmkit run <ws> <topology> --attach <path>` (repeatable).
 
 ### Conversations
 

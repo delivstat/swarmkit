@@ -150,10 +150,30 @@ export const api = {
 		return get<AuditEvent[]>(`/audit${qs ? `?${qs}` : ""}`);
 	},
 
-	run: (topology: string, input: string, maxSteps = 10) =>
+	/**
+	 * Start a run.
+	 *
+	 * `attachments` puts files in front of the entry agent — `{path}` workspace-relative, or
+	 * `{data}` base64. There is deliberately no type field: the server reads the media type from
+	 * the bytes, and sending one is a 422. A bad path is refused on this request rather than
+	 * becoming a job that fails, so a job id here means the file was readable.
+	 * See `design/details/images-on-both-executors.md`.
+	 */
+	run: (
+		topology: string,
+		input: string,
+		maxSteps = 10,
+		attachments: Array<{
+			path?: string;
+			data?: string;
+			name?: string;
+			handling?: "preprocess" | "native";
+		}> = [],
+	) =>
 		post<JobResponse>(`/run/${topology}`, {
 			input,
 			max_steps: maxSteps,
+			...(attachments.length > 0 ? { attachments } : {}),
 		}),
 
 	canaryPromote: (topology: string, version: string) =>

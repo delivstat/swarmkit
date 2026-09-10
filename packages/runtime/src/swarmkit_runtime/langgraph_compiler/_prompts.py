@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import json as _json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 
+from swarmkit_runtime.attachments import RENDERABLE_MEDIA_TYPES, AttachmentError
 from swarmkit_runtime.model_providers import CompletionRequest, Message, ToolSpec
+from swarmkit_runtime.model_providers._types import ContentBlock
 from swarmkit_runtime.resolver import ResolvedAgent
 
 from ._run_context import run_state_dir
@@ -597,7 +599,66 @@ def _build_prompt_messages(  # noqa: PLR0912, PLR0915
                     break
             messages.append(Message(role="user", content=str(last_human or task)))
 
+    _apply_attachments(agent, state, messages)
     return messages
+
+
+def _apply_attachments(
+    agent: ResolvedAgent,
+    state: SwarmState,
+    messages: list[Message],
+) -> None:
+    """Put the caller's attachments into the ENTRY agent's first user message, and nowhere else.
+
+    ``design/details/images-on-both-executors.md``. The scope is the whole point. M8 shipped this
+    as state broadcast to every node, which handed images to text-only supervisors and errored
+    there; narrowing it to leaf agents (`c408804a`) was a patch on the wrong axis, and the lot was
+    reverted. An attachment is an argument to *one* invocation — the run the caller started — so it
+    reaches the agent that receives the caller's input and no one downstream. An agent that wants a
+    file it was not handed asks for one through a skill, which is governed and audited like any
+    other capability.
+
+    A type no message block can carry raises here rather than being dropped, naming the type: an
+    agent answering confidently about a document it never received is the failure this whole design
+    exists to prevent, and silence is the one outcome that must not be possible.
+    """
+    attachments = state.get("attachments") or []
+    if not attachments or agent.role != "root":
+        return
+
+    first_user = next((m for m in messages if m.role == "user"), None)
+    if first_user is None:
+        return
+
+    blocks: list[ContentBlock] = [ContentBlock(type="text", text=_as_text(first_user.content))]
+    for att in attachments:
+        if att.media_type not in RENDERABLE_MEDIA_TYPES:
+            raise AttachmentError(
+                f"attachment {att.name!r} is {att.media_type}, which cannot yet be put in a "
+                f"message. Only images are carried today; documents and audio are sequenced "
+                f"behind preprocessing (design/details/images-on-both-executors.md)."
+            )
+        blocks.append(
+            ContentBlock(
+                type="image",
+                image_data=att.b64,
+                image_media_type=att.media_type,
+            )
+        )
+
+    messages[messages.index(first_user)] = Message(role="user", content=blocks)
+
+
+def _as_text(content: str | Sequence[ContentBlock]) -> str:
+    """The text of a message however it is currently carried.
+
+    Called on a message this module built moments ago, so in practice always a plain string — but
+    typed defensively because ``Message.content`` is a union and a silent empty prompt beside an
+    image would be a hard failure to spot.
+    """
+    if isinstance(content, str):
+        return content
+    return "".join(b.text or "" for b in content if b.type == "text")
 
 
 def _build_tools(  # noqa: PLR0912
