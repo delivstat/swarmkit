@@ -152,6 +152,34 @@ So the media type is **sniffed from the file's content** at attach time — not 
 name, an extension, or the caller's word for it — and each provider maps it to its own shape. Only
 Google is genuinely "just attach" as-is.
 
+### Mapping is not always a pure function — some providers need a round-trip first
+
+The table above makes it look as though every adapter turns a block into JSON and sends it. Two
+providers do not, and designing as if they did would leave a real capability unreachable:
+
+| Shape | Who | What the model ends up seeing |
+| --- | --- | --- |
+| **1. Inline content block** | Anthropic `document`, Google `inline_data`, every image path | the raw bytes |
+| **2. Router block, parsed server-side** | OpenRouter `{"type":"file"}` + its `file-parser` plugin | bytes or extracted text, per engine |
+| **3. Out-of-band upload → id → extract → inject** | **Moonshot (Kimi), OpenAI Files** | **text** |
+| **4. Converted client-side before it is ever an attachment** | MarkItDown, Whisper | text |
+
+**Shape 3 is the one that breaks the model.** Moonshot's Kimi does take PDFs — via
+`POST /v1/files` with `purpose="file-extract"`, then fetching the extracted content by id and
+putting *that* in `messages`. (The same purpose covers image and video understanding, so it is
+effectively a conversion service rather than a document feature.) OpenAI's Files API has the same
+shape.
+
+That is a **separate API call before the chat call**, plus file lifecycle — upload, reuse across
+turns rather than re-uploading per message, and eventually delete. An adapter doing this holds
+state. So "one line per adapter" is true of shapes 1 and 2 and not of 3, and an adapter interface
+that assumes `block → dict` has no room for it.
+
+The consequence for the interface is small but has to be deliberate: **mapping happens inside the
+provider's async request path, not in a pure serialiser**, so an adapter is free to make calls of
+its own before composing the request. Nothing about the caller's surface changes — still one
+`attach` verb — and shapes 1, 2 and 4 pay nothing for shape 3 existing.
+
 ### The one rule that survives: a provider never drops what it cannot map
 
 `_ollama.py` builds `entry["images"]` from image blocks. Handed a PDF it has nowhere to put it, and
@@ -159,11 +187,14 @@ the tempting `if block.type == "image"` filter would send the message **without*
 an agent answering confidently about a document it never received, which is the failure in this
 note's first paragraph.
 
-So every adapter's mapping ends in `else: raise`, naming the provider and the media type. That is
-one line per adapter, not a matrix: nothing to maintain, nothing to go stale, and no way to
-accidentally widen or narrow what is accepted. From the caller's side it is indistinguishable from
-"the model rejected it" — the error simply arrives a layer earlier, because for Ollama the bytes
-would never have reached a model to be rejected.
+So every adapter's mapping ends in `else: raise`, naming the provider and the media type: nothing to
+maintain, nothing to go stale, and no way to accidentally widen or narrow what is accepted. From the
+caller's side it is indistinguishable from "the model rejected it" — the error simply arrives a
+layer earlier, because for Ollama the bytes would never have reached a model to be rejected.
+
+The rule is about the **fallthrough**, not about the size of the mapping: a shape-3 adapter may run
+an upload and an extraction before it composes a request, and still ends in the same `raise` for a
+type it has no route for.
 
 **This is what the title's "same way on both" can honestly claim.** Both executors take an
 attachment by the same verb. Whether a given target can *do* anything with a given type is between
@@ -274,6 +305,11 @@ type. The load-bearing case is Ollama with a PDF: assert the request is not sent
 quietly filtered out. Written as a loop over the provider adapters, so a provider added later fails
 this test until it decides what it does with an unmappable type — the one way to keep it from being
 forgotten.
+
+**A shape-3 adapter uploads once, not per message.** With a file attached and a multi-turn tool loop
+running, the upload happens once and the returned id is reused; asserted by counting calls against a
+stubbed Files endpoint. Getting this wrong is not a correctness bug that shows up in a test — it is
+a bill, which is why it is asserted rather than reviewed.
 
 **Type comes from content.** A PNG named `.pdf` maps as an image; a text file named `.png` does not
 become a corrupt image block. Sniffed once at attach time and carried on the block, so B and C
