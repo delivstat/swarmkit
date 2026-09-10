@@ -120,6 +120,45 @@ Generalised, B's caller is anything holding bytes before a run: a webhook with a
 trigger firing on a new file, an application calling `POST /run/{topology}` on a user's screenshot.
 None of them want an agent to go and find what they are already carrying.
 
+## Scope: images now, everything else by preprocessing
+
+Two decisions taken together, because the sections that follow are long enough to obscure how small
+the actual first cut is.
+
+**Images ship first, alone, and they need none of this machinery.** All four adapters already
+implement image blocks — `_ollama.py:107`, `_anthropic.py:127`, `_openai.py:158`, `_google.py:118`.
+There is no divergence to reconcile, no capability question, no adapter state. B for images is
+wiring an attachment into a `ContentBlock(type="image")` that already exists and already works on
+every provider. That is the whole of what the first caller (Minder's alert path) needs, and it is
+the whole of what should land before it.
+
+**Everything else is normalised at the SwarmKit end, not mapped per provider.** The four shapes
+catalogued below are real and they are a lot of work — the correct response is to not do most of it.
+Preprocess an attachment into the two things *every* provider already takes, text and images:
+
+| Attached | Preprocessed to | Reaches |
+| --- | --- | --- |
+| image | image, untouched | all four adapters, today |
+| PDF, docx, xlsx | text — **MarkItDown, already in `docs_reader`** | everything, Ollama included |
+| audio | text — Whisper, local-capable on CPU | everything |
+| video | frames + transcript | everything |
+
+One code path, no per-provider divergence, no capability question, and it is already the house
+style rather than a new idea. Native passthrough — Anthropic's `document`, OpenRouter's
+`file-parser`, Moonshot's Files API — becomes an **opt-in for the cases where fidelity genuinely
+beats text**: scanned pages, charts, layout-heavy documents. Those cases are real, and they are not
+the common one.
+
+**Sniffing and explicitness answer different questions, so both.** The media *type* is sniffed from
+the bytes, because a caller should not be trusted about what it is sending to a provider. The
+*handling* is declared — `preprocess` (default) or `native` — because that is an intent, not a claim
+about content, and it is the knob that decides whether a PDF becomes text or goes native.
+
+**Latency, since it is the reason any of this matters for a local-model caller.** Preprocessing cost
+lands on PDFs and audio. An image is passed through untouched, so an attached JPEG to a local VLM
+costs nothing beyond the run itself — which is noise against a 60–70 s CPU pass. The preprocessing
+route does not tax the path that needs to be fast.
+
 ## Any type: one verb, and no capability table
 
 The caller's surface is **one thing**: attach a file. No `--pdf`, no `--audio`, no declaring what
@@ -306,10 +345,19 @@ quietly filtered out. Written as a loop over the provider adapters, so a provide
 this test until it decides what it does with an unmappable type — the one way to keep it from being
 forgotten.
 
-**A shape-3 adapter uploads once, not per message.** With a file attached and a multi-turn tool loop
-running, the upload happens once and the returned id is reused; asserted by counting calls against a
-stubbed Files endpoint. Getting this wrong is not a correctness bug that shows up in a test — it is
-a bill, which is why it is asserted rather than reviewed.
+**Preprocessing produces the same request on every provider.** A PDF attached with the default
+handling reaches all four adapters as identical text; the same file with `native` reaches only the
+adapters that have a shape for it, and raises on the rest. This is the assertion that the
+preprocessing route actually removes the divergence rather than adding a fifth shape to it.
+
+**An image is never preprocessed.** Asserted, because it is the latency-sensitive path: the bytes
+attached are the bytes sent, and no conversion, re-encode or resize sits between them.
+
+**A shape-3 adapter uploads once, not per message.** *(Only when native handling ships.)* With a
+file attached and a multi-turn tool loop running, the upload happens once and the returned id is
+reused; asserted by counting calls against a stubbed Files endpoint. Getting this wrong is not a
+correctness bug that shows up in a test — it is a bill, which is why it is asserted rather than
+reviewed.
 
 **Type comes from content.** A PNG named `.pdf` maps as an image; a text file named `.png` does not
 become a corrupt image block. Sniffed once at attach time and carried on the block, so B and C
@@ -328,10 +376,23 @@ second file, asserting both arrive and are distinguishable in the audit record.
 
 ## Sequencing
 
-**B and C ship before the caller that needs them changes.** Minder's move onto topology runs
-(`~/minder`, `design/inference-backends.md`, Phase 0b) is blocked on B; doing it in the other order
-means either building a two-pass workaround that gets deleted, or leaving the vision path
-unobservable for another release. C is independent and can land first or alongside.
+Deliberately staged so the blocking piece is the small one.
+
+1. **B, images only.** `--attach` / `attachments:` into the existing `ContentBlock(type="image")`.
+   No new provider code — every adapter already handles it. This is the whole of what unblocks
+   Minder's Phase 0b, and it should not wait behind anything below.
+2. **C, `view-file`.** Independent of B; can land alongside or after.
+3. **Preprocessing.** MarkItDown for documents (already vendored in `docs_reader`), Whisper for
+   audio. One conversion path, no per-provider work. Ships when a caller attaches something that is
+   not an image.
+4. **Native passthrough, per provider, opt-in.** Shapes 1–3 below. Only for the cases where fidelity
+   beats text — a scanned page, a chart, a layout-heavy document — and only for providers where
+   someone has asked. Explicitly **not** a completeness exercise: an unmapped type raises, which is
+   a working outcome.
+
+**Step 1 blocks Minder; steps 3 and 4 block nothing.** Reading this note as one deliverable is the
+mistake it is arranged to prevent — the provider divergence catalogued below is real, and almost
+none of it is on the critical path.
 
 ## Open questions for review
 
