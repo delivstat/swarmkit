@@ -100,7 +100,7 @@ ui = [
     # before the bundled pipeline was removed and kept shipping a Pipelines section navigating to
     # endpoints that no longer existed. A floor turns that into a resolution error the installer
     # reports, instead of a dead area of the UI the operator has to diagnose.
-    "swarmkit-webui>=0.18.0",
+    "swarmkit-webui>=0.19.0",
 ]
 # `storage.checkpoints.backend: postgres`. The LangGraph checkpointer is a separate package from
 # the driver the rest of the stores use, which is why this is an extra and why checkpoints is the
