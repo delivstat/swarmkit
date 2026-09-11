@@ -2,12 +2,44 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class AttachmentSpec(BaseModel):
+    """A file the caller is putting in front of the run.
+
+    ``design/details/images-on-both-executors.md``. Exactly one of ``path`` (workspace-relative) or
+    ``data`` (base64). There is deliberately **no type field**: the media type is read from the
+    bytes, because accepting a caller's claim about content that is about to be forwarded to a
+    third-party model is not a claim worth honouring. ``extra="forbid"`` makes that a 422 naming
+    the field rather than a silently ignored key — including ``url``, which is refused on purpose:
+    having the runtime fetch a caller-supplied address is the same exfiltration primitive the
+    design rejected for prompt-scraped paths.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str | None = None
+    data: str | None = None
+    #: Display/filename only. Some providers want one on the wire; it is metadata, not a type claim.
+    #: Derived from ``path`` when absent.
+    name: str | None = None
+    #: ``preprocess`` (default) converts to something every provider takes; ``native`` passes the
+    #: bytes through to providers that have a shape for them. Only images are carried today, and
+    #: an image is never preprocessed, so this is inert until document/audio support lands.
+    handling: Literal["preprocess", "native"] = "preprocess"
 
 
 class RunRequest(BaseModel):
     input: str
     max_steps: int = 10
+    #: Files put in front of the entry agent. Resolved and validated before the run starts, so a
+    #: bad path is a 4xx on this call rather than a failed job. They reach the root agent's first
+    #: message and no downstream node — an agent that wants a file it was not handed asks for one
+    #: through a skill.
+    attachments: list[AttachmentSpec] = Field(default_factory=list)
     #: Group this run with others — a ticket, a requirement, a pipeline run. The CLI has had this
     #: since 1.176.0 and the HTTP surface did not, so a run started over the API could not be
     #: correlated at all: `jobs.correlation_id` was NULL and the whole chain

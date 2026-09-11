@@ -4,21 +4,44 @@ How images actually reach an agent in SwarmKit, and the one trap that makes them
 arrive. Written up after a design agent spent three runs describing UI screens it had never seen —
 convincingly.
 
-Verified against runtime 1.129.2.
+Verified against runtime 1.129.2; the attachment channel below was added later.
 
-## There is exactly one channel
+## Two channels, for two different callers
 
-A run's input is a **plain string**. `swarmkit run --input` takes a `str`, and no schema —
-topology, archetype or trigger — has any image, attachment or media field. (`executor-adapter` has
-an `image`, but that is the *container* image for a sandboxed harness, not a picture.)
+**If you already have the file, attach it to the run.** A caller that holds the bytes — a snapshot
+poller, a webhook with an upload, a script — passes them beside the input:
 
-So neither of the two obvious approaches works:
+```bash
+swarmkit run ./workspace describe-scene --input "What is at the gate?" --attach snapshots/gate.jpg
+```
+
+```json
+POST /run/describe-scene
+{ "input": "What is at the gate?", "attachments": [{ "path": "snapshots/gate.jpg" }] }
+```
+
+The file reaches the **entry agent's first message** — one model call, no tool round-trip. The media
+type is read from the content, so there is one `--attach` and no `--image`/`--pdf`; a bad path fails
+the call rather than the run; images only, for now. See `reference/serve.md` for the full field
+list.
+
+**If an *agent* needs to decide mid-run what to look at, it needs a skill.** That is the rest of
+this guide, and it is still the only route in that case — because the runtime cannot know in advance
+what the model will want to see.
+
+## An image in the prompt is still just text
+
+A run's input is a **plain string**, and no schema — topology, archetype or trigger — has an image
+or media field. (`executor-adapter` has an `image`, but that is the *container* image for a
+sandboxed harness, not a picture.) So for anything not passed as an attachment, neither of the two
+obvious approaches works:
 
 - **A path in the prompt** is just text. The model reads the characters; nothing loads.
 - **Base64 in the prompt** is tokens. It is never interpreted as an image, because the provider
   only builds an image part from a *tool result* — never from the input string.
 
-The only route is **an MCP tool that returns an `ImageContent` block**:
+For an agent choosing what to look at, the route is **an MCP tool that returns an `ImageContent`
+block**:
 
 ```
 your tool (e.g. docs-reader view_image)

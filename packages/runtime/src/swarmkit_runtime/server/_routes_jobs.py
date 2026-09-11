@@ -213,6 +213,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
                 correlation_id=body.correlation_id,
                 labels=body.labels,
                 parent_job_id=body.parent_job_id,
+                attachments=[a.model_dump() for a in body.attachments],
             )
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

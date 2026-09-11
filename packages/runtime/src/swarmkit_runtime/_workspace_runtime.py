@@ -804,7 +804,7 @@ class WorkspaceRuntime:
             await self._mcp_manager.close_all()
             self._session_active = False
 
-    async def run(
+    async def run(  # noqa: PLR0915
         self,
         topology_name: str,
         user_input: str,
@@ -813,6 +813,7 @@ class WorkspaceRuntime:
         thread_id: str | None = None,
         previous_plan: dict | None = None,  # type: ignore[type-arg]
         labels: dict[str, str] | None = None,
+        attachments: list[Any] | None = None,
     ) -> RunResult:
         """Execute a topology end-to-end and return the result.
 
@@ -824,15 +825,28 @@ class WorkspaceRuntime:
         thread_id is used to resume a deferred run later.
         Pass ``previous_plan`` to seed the run with a task plan from
         a previous crashed run.
+
+        Pass ``attachments`` — declared as ``{"path": ...}`` or ``{"data": ...}`` mappings — to put
+        files in front of the entry agent. They are resolved and validated *before* the graph is
+        built, so a bad path fails the call rather than a node three steps in, and they reach the
+        root agent's first message and nowhere else
+        (``design/details/images-on-both-executors.md``).
         """
         from uuid import uuid4  # noqa: PLC0415
 
+        from swarmkit_runtime.attachments import resolve_all  # noqa: PLC0415
         from swarmkit_runtime.compression import (  # noqa: PLC0415
             build_policy,
             set_active_policy,
         )
         from swarmkit_runtime.langgraph_compiler._run_context import run_context  # noqa: PLC0415
         from swarmkit_runtime.trace import RunTrace  # noqa: PLC0415
+
+        # Resolved before anything else starts — before the graph is compiled and before a run id
+        # exists. A missing file or a path escaping the workspace should fail the CALL, not appear
+        # as a failed run halfway through with MCP servers already started and an audit trail
+        # implying work was attempted.
+        resolved_attachments: list[Any] = resolve_all(attachments, self._workspace_root)
 
         graph = await self._compiled(topology_name)
         topology = self._workspace.topologies[topology_name]
@@ -841,6 +855,7 @@ class WorkspaceRuntime:
         trace = RunTrace()
         trace.start(run_thread, topology_name)
         _run_scope_token = self._begin_run(trace, labels)
+        await self._audit_attachments(resolved_attachments, topology_name, run_thread, labels)
         # Opt-in read-side context compression for this run. Resolved from the workspace
         # `context_compression:` block (default backend + per-surface overrides), with env
         # vars overriding the default per deployment. Off unless configured.
@@ -890,6 +905,7 @@ class WorkspaceRuntime:
                         "task_plan": initial_task_plan,
                         "current_agent": "",
                         "output": "",
+                        "attachments": resolved_attachments,
                     },
                     config={
                         "recursion_limit": effective_limit,
@@ -1222,6 +1238,50 @@ class WorkspaceRuntime:
             )
             await self._audit_provider.record(audit_event)
 
+    async def _audit_attachments(
+        self,
+        attachments: list[Any],
+        topology_name: str,
+        run_id: str,
+        labels: dict[str, str] | None,
+    ) -> None:
+        """Record what the caller put in front of the model — metadata, never the bytes.
+
+        Routing a call through the runtime is for being able to answer *why did it say that*, and
+        an answer that omits what the model was shown is not one. So the run record carries the
+        name, media type, size, digest and source path of every attachment.
+
+        It does **not** carry the content. Bytes in an audit row put arbitrary material into a log
+        meant to stay readable and grow it without bound on an appliance attaching an image per
+        event; the digest is what makes the reference checkable instead — a reader can confirm the
+        file on disk is still the one the model saw. Copying attachments into a content-addressed
+        store is a real want with a retention policy attached, and is deliberately not decided here.
+
+        A no-op when nothing was attached — a "zero files" event on every run in the system would be
+        noise in the log this exists to keep readable.
+        """
+        if not attachments:
+            return
+
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+        await self._audit_provider.record(
+            AuditEvent(
+                event_type="run.attachments",
+                agent_id="runtime",
+                timestamp=datetime.now(tz=UTC),
+                topology_id=topology_name,
+                run_id=run_id,
+                labels=dict(labels or {}),
+                payload={
+                    "count": len(attachments),
+                    "attachments": [a.audit_record() for a in attachments],
+                },
+            )
+        )
+
     def _get_workspace_audit_level(self) -> str | None:
         """Read workspace-level audit.level from storage config."""
         storage = getattr(self._workspace.raw, "storage", None)
@@ -1303,6 +1363,11 @@ class WorkspaceRuntime:
 
     @property
     def workspace_root(self) -> Path:
+        """The directory every workspace-relative path resolves against.
+
+        Also what the server layer checks a caller's attachments against before starting a job, so
+        that containment is decided by the same root the run would use.
+        """
         return self._workspace_root
 
     @property

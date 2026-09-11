@@ -19,6 +19,7 @@ from swarmkit_runtime._workspace_runtime import (
     RunResult,
     WorkspaceRuntime,
 )
+from swarmkit_runtime.attachments import AttachmentError
 from swarmkit_runtime.errors import ResolutionErrors
 from swarmkit_runtime.persistence import usage_fields
 from swarmkit_runtime.progress import ProgressEvent, set_progress_sink
@@ -112,6 +113,17 @@ def run(  # noqa: PLR0912
         str | None,
         typer.Option(
             "--input", "-i", help="User input to send to the swarm. Reads from stdin if omitted."
+        ),
+    ] = None,
+    attach: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--attach",
+            help=(
+                "Put a file in front of the entry agent; repeatable. Workspace-relative. The type "
+                "is read from the file's content, not its name — hence one --attach rather than "
+                "--image/--pdf/--audio. Only images are carried today."
+            ),
         ),
     ] = None,
     verbose: Annotated[
@@ -209,6 +221,7 @@ def run(  # noqa: PLR0912
                 labels=run_labels,
                 save_artifact=save_artifact,
                 supersedes=supersedes,
+                attach=attach,
             )
         else:
             result = _execute_run(
@@ -220,6 +233,7 @@ def run(  # noqa: PLR0912
                 labels=run_labels,
                 save_artifact=save_artifact,
                 supersedes=supersedes,
+                attach=attach,
             )
 
     if result.output:
@@ -335,6 +349,7 @@ def _execute_run(
     labels: dict[str, str] | None = None,
     save_artifact: bool = False,
     supersedes: str | None = None,
+    attach: list[str] | None = None,
 ) -> RunResult:
     """Execute a topology run with HITL and interrupt handling."""
     from uuid import uuid4  # noqa: PLC0415
@@ -371,8 +386,15 @@ def _execute_run(
                 labels=labels,
                 thread_id=thread_id,
                 previous_plan=previous_plan,
+                attachments=[{"path": a} for a in (attach or [])],
             )
         )
+    except AttachmentError as exc:
+        # A usage error, not a run failure: nothing was executed and nothing was billed, so it
+        # exits like a bad flag rather than leaving a "failed" row implying work was attempted.
+        _finish_job(store, thread_id, "failed", error=str(exc))
+        _stderr(f"error: {exc}")
+        raise typer.Exit(_EXIT_USAGE) from exc
     except KeyError as exc:
         _finish_job(store, thread_id, "failed", error=str(exc).strip("'\""))
         _stderr(str(exc).strip("'\""))

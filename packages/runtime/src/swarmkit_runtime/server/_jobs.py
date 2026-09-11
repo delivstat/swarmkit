@@ -128,6 +128,7 @@ async def execute_job(
     store: Store | None = None,
     resume: bool = False,
     labels: dict[str, str] | None = None,
+    attachments: list[Any] | None = None,
 ) -> None:
     """Run topology in background, updating job state.
 
@@ -162,6 +163,10 @@ async def execute_job(
                     job.input,
                     max_steps=max_steps,
                     labels=labels,
+                    # Only on a fresh run: a resumed run continues from a checkpoint whose entry
+                    # message was already built, so re-attaching would either duplicate the file or
+                    # silently do nothing depending on where it parked.
+                    attachments=attachments,
                     # Key the run (and thus its persisted trace, .swarmkit/traces/<run-id>.json) by
                     # the job id, so GET /observability/runs/{job_id}/trace resolves it directly —
                     # no separate job→run_id mapping. run_id == job_id == thread_id for serve runs.
@@ -237,6 +242,7 @@ def _start_job(
     store: Store | None = None,
     resume: bool = False,
     labels: dict[str, str] | None = None,
+    attachments: list[Any] | None = None,
 ) -> None:
     """Create a background task for a job and track it."""
     task = asyncio.create_task(
@@ -250,6 +256,7 @@ def _start_job(
             store=store,
             resume=resume,
             labels=labels,
+            attachments=attachments,
         )
     )
     job_store.track_task(task)

@@ -18,6 +18,48 @@ swarmkit serve ./workspace --host 0.0.0.0 --port 8000
 | `GET` | `/jobs/{id}` | Poll job status |
 | `GET` | `/jobs/history` | List persisted jobs (survives restart) |
 
+#### Attachments
+
+A caller that already holds a file — a snapshot, an uploaded photo — passes it beside the input
+instead of making an agent go and fetch it:
+
+```json
+POST /run/describe-scene
+{
+  "input": "What is at the gate?",
+  "attachments": [
+    { "path": "snapshots/gate-1732.jpg" }
+  ]
+}
+```
+
+| Field | | |
+|---|---|---|
+| `path` | workspace-relative | **exactly one of** `path` / `data` |
+| `data` | base64 | for a caller holding bytes rather than a file |
+| `name` | optional | display/filename; derived from `path` when absent |
+| `handling` | `preprocess` (default) or `native` | intent for non-image types; inert today |
+
+**There is no `type` field.** The media type is read from the file's content — sending one is a
+422, because a caller's claim about bytes that are about to be forwarded to a model is not evidence.
+`url` and `stream` sources are refused for the same reason and a related one: the runtime does not
+fetch caller-supplied addresses, and an attachment is re-read on every turn of a tool loop, so it
+has to be re-readable.
+
+Attachments reach the **entry agent's first message and no downstream node**. An agent that wants a
+file it was not handed asks for one through a skill.
+
+A bad path is a **422 on this request**, not a job that fails a moment later — so a job id means the
+file was readable. Only images are carried today (`image/png`, `image/jpeg`, `image/gif`,
+`image/webp`); anything else is refused by name. Per-attachment ceiling is 20 MB
+(`SWARMKIT_ATTACHMENT_MAX_BYTES`).
+
+Every attachment is written to the audit log as a `run.attachments` event carrying name, media type,
+size, SHA-256 and source path — **never the bytes**. The digest is what makes the reference
+checkable later; storing content would put arbitrary material into a log meant to stay readable.
+
+The CLI equivalent is `swarmkit run <ws> <topology> --attach <path>` (repeatable).
+
 ### Conversations
 
 | Method | Path | Description |

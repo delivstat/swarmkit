@@ -6,7 +6,7 @@ See ``design/details/langgraph-compiler.md`` §State schema.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph import add_messages
@@ -20,6 +20,17 @@ def _merge_dicts(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
 
 def _last_write_wins(left: str, right: str) -> str:
     return right
+
+
+def _keep_seeded(left: list[Any], right: list[Any]) -> list[Any]:
+    """Reducer for values seeded once by the caller and never produced by a node.
+
+    Right-wins like ``_last_write_wins``, but tolerates the empty update LangGraph hands back from
+    a node that did not touch the key — without this, a node returning a partial state dict would
+    blank the caller's attachments halfway through a run, and the symptom would be an agent
+    answering about a file that was there a moment ago.
+    """
+    return right if right else left
 
 
 #: Default synthesis/output roles — auto-wired to depend on research tasks so they run last.
@@ -92,3 +103,15 @@ class SwarmState(TypedDict):
     #: product was unrecoverable while the run reported success. Keyed by agent, not a single
     #: last-write-wins string: two harness agents in one run would otherwise lose one's work.
     diffs: Annotated[dict[str, str], _merge_dicts]
+    #: Files the CALLER attached to this run — never something a node produces, which is why it is
+    #: seeded once and last-write-wins rather than merged. Read only by the entry agent's prompt
+    #: builder: the M8 version of this key was broadcast to every node, so an image reached
+    #: text-only supervisors and errored there (`43ed71e3` reverted it whole). A node that wants a
+    #: file it was not handed asks for one through a skill.
+    #: See ``design/details/images-on-both-executors.md``.
+    #:
+    #: ``NotRequired`` is load-bearing, not laziness. The sub-states built for child agents
+    #: (``_dag``, ``_delegation``, ``_task_executor``) construct a fresh ``SwarmState`` each, and a
+    #: required key would force every one of them to name attachments — inviting exactly the
+    #: propagation this design removed. Absent means "not for you", which is the common case.
+    attachments: NotRequired[Annotated[list[Any], _keep_seeded]]
