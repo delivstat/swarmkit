@@ -1,19 +1,19 @@
-"""OllamaModelProvider — local inference via Ollama's HTTP API.
+"""OllamaModelProvider — the ``ollama`` family; Ollama's native ``/api/chat`` over ``httpx``.
 
-Uses ``httpx`` only (already a core dependency). No dedicated SDK.
-Defaults to ``http://localhost:11434``; override via constructor
-or ``extra.base_url`` on the request. Ollama exposes an
-OpenAI-compatible ``/v1/chat/completions`` endpoint.
+Uses ``httpx`` only (already a core dependency). No dedicated SDK. Defaults to
+``http://localhost:11434``; a provider YAML with ``extends: ollama`` points it anywhere that speaks
+the same API — rkllama on a Rockchip NPU, for one.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 import httpx
 
+from ._family import FamilyBase
 from ._types import (
     CompletionRequest,
     CompletionResponse,
@@ -33,6 +33,7 @@ _THINKING_MODEL_FAMILIES = ("gemma",)
 # only passthrough an archetype has — so they must be lifted back out before the call. Left nested,
 # Ollama silently ignores them: ``options.think`` is not a field it reads, so the agent reasons
 # anyway and the author sees a setting that is accepted everywhere and honoured nowhere.
+# The default; a provider YAML overrides it with ``options.lift_to_root``.
 _OLLAMA_TOP_LEVEL_OPTIONS = ("think", "keep_alive")
 
 
@@ -42,22 +43,53 @@ def _is_thinking_model(model: str) -> bool:
     return any(family in model_lower for family in _THINKING_MODEL_FAMILIES)
 
 
-class OllamaModelProvider:
-    """ModelProvider for local Ollama models."""
+class OllamaModelProvider(FamilyBase):
+    """ModelProvider for local Ollama models, and for any server speaking Ollama's API."""
 
     provider_id: str = "ollama"
 
     #: Ollama compiles ``format`` into a decoding grammar.
     enforces_response_schema: bool = True
 
-    def __init__(self, *, base_url: str = _DEFAULT_BASE_URL) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(base_url=self._base_url, timeout=300.0)
+    def __init__(
+        self,
+        *,
+        base_url: str | None = _DEFAULT_BASE_URL,
+        api_key: str | None = None,
+        provider_id: str | None = None,
+        auth: Any = None,
+        headers: Mapping[str, str] | None = None,
+        extra_body: Mapping[str, Any] | None = None,
+        lift_to_root: tuple[str, ...] | None = None,
+        model_pattern: str | None = None,
+        accept_any_model: bool = False,
+        capabilities: Mapping[str, bool] | None = None,
+    ) -> None:
+        self._configure(
+            provider_id=provider_id,
+            model_pattern=model_pattern,
+            accept_any_model=accept_any_model,
+            capabilities=capabilities,
+            default_pattern=None,
+            default_accept_any=True,
+            headers=headers,
+        )
+        self._lift = tuple(lift_to_root) if lift_to_root is not None else _OLLAMA_TOP_LEVEL_OPTIONS
+        self._extra_body: dict[str, Any] = dict(extra_body or {})
+        request_headers = dict(self.extra_headers)
+        if auth is not None and auth.api_key_env is not None and api_key:
+            # Ollama itself has no auth; a fronting proxy or a compatible server may.
+            request_headers[auth.header] = f"{auth.scheme} {api_key}".strip()
+        self._base_url = (base_url or _DEFAULT_BASE_URL).rstrip("/")
+        self._client = httpx.AsyncClient(
+            base_url=self._base_url, timeout=300.0, headers=request_headers or None
+        )
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         from ._types import with_retry  # noqa: PLC0415
 
-        payload = _to_ollama_payload(request)
+        self._check(request)
+        payload = self._payload(request)
         payload["stream"] = False
 
         async def _call() -> CompletionResponse:
@@ -69,7 +101,9 @@ class OllamaModelProvider:
         return result
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:
-        payload = _to_ollama_payload(request)
+        self._check(request)
+        self._check_stream()
+        payload = self._payload(request)
         payload["stream"] = True
         async with self._client.stream("POST", "/api/chat", json=payload) as resp:
             resp.raise_for_status()
@@ -81,8 +115,12 @@ class OllamaModelProvider:
                 if msg.get("content"):
                     yield ContentBlock(type="text", text=msg["content"])
 
-    def supports(self, model: str) -> bool:
-        return True
+    def _payload(self, request: CompletionRequest) -> dict[str, Any]:
+        payload = _to_ollama_payload(
+            request, lift_to_root=self._lift, structured_output=self._structured_output
+        )
+        payload.update(self._extra_body)
+        return payload
 
     def tokenize(self, text: str, model: str) -> int | None:
         return None
@@ -112,7 +150,12 @@ def _build_messages(request: CompletionRequest, *, remap_tool_role: bool) -> lis
     return messages
 
 
-def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
+def _to_ollama_payload(
+    request: CompletionRequest,
+    *,
+    lift_to_root: tuple[str, ...] = _OLLAMA_TOP_LEVEL_OPTIONS,
+    structured_output: bool = True,
+) -> dict[str, Any]:
     is_gemma = _is_thinking_model(request.model)
     # Gemma expects "tool_responses" instead of "tool" for tool results.
     # Without this mapping, Gemma loops indefinitely re-calling the same tool.
@@ -142,14 +185,14 @@ def _to_ollama_payload(request: CompletionRequest) -> dict[str, Any]:
     # the Gemma default so an explicit setting wins: the default is there because Gemma's thinking
     # breaks tool-call parsing, which makes it a good default and a bad law — a Gemma planner that
     # wants reasoning and emits no tool calls should be able to ask for it.
-    for key in _OLLAMA_TOP_LEVEL_OPTIONS:
+    for key in lift_to_root:
         if key in options:
             payload[key] = options.pop(key)
 
     if options:
         payload["options"] = options
 
-    if request.response_format is not None:
+    if request.response_format is not None and structured_output:
         rf_type = request.response_format.get("type", "")
         if rf_type == "json_schema":
             # Ollama structured outputs: pass the JSON schema as ``format`` so

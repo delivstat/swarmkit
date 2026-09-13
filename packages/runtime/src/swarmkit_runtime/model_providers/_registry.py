@@ -9,6 +9,7 @@ See ``design/details/model-provider-abstraction.md``.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -62,7 +63,9 @@ class ProviderRegistry:
         return len(self._providers)
 
 
-def provider_enforces_response_schema(provider_id: str) -> bool:
+def provider_enforces_response_schema(
+    provider_id: str, workspace_root: Path | str | None = None
+) -> bool:
     """Whether ``provider_id`` constrains decoding to the response schema.
 
     Deliberately NOT part of ``ModelProviderProtocol``: it is an optional capability, and requiring
@@ -70,25 +73,38 @@ def provider_enforces_response_schema(provider_id: str) -> bool:
     for a field most of them have no opinion about. Providers opt in with a class attribute; silence
     means no.
 
-    Read from the provider classes rather than a second table, so the answer cannot drift from the
-    declaration. Resolved by id because the compiler builds the system prompt before any provider
-    instance is in hand, and it needs to know whether to paste the schema into the prompt.
+    Read from the family classes and the provider YAMLs rather than a second table, so the answer
+    cannot drift from the declaration. Resolved by id because the compiler builds the system
+    prompt before any provider instance is in hand, and it needs to know whether to paste the
+    schema into the prompt.
 
     Unknown or unimportable providers answer **False** — the conservative direction. A provider
     that does not constrain decoding needs the schema in its prompt, so guessing "enforced" would
     silently remove the only thing carrying the shape.
     """
-    try:
-        from . import _anthropic, _google, _mock, _ollama, _openai, _openai_compat  # noqa: PLC0415
-    except Exception:  # pragma: no cover - import-time provider deps are optional
-        return False
+    from ._declarative import (  # noqa: PLC0415
+        FAMILIES,
+        ProviderSpecError,
+        enforces_response_schema,
+        load_provider_specs,
+        resolve_chain,
+    )
 
-    for module in (_ollama, _openai, _openai_compat, _google, _anthropic, _mock):
-        for obj in vars(module).values():
-            if (
-                isinstance(obj, type)
-                and getattr(obj, "provider_id", None) == provider_id
-                and hasattr(obj, "enforces_response_schema")
-            ):
-                return bool(obj.enforces_response_schema)
+    if provider_id == "mock":
+        return False
+    # Declared providers — bundled, or the workspace's when a root is given — answer through
+    # their family, narrowed by the YAML's ``capabilities.structured_output``.
+    try:
+        specs = load_provider_specs(workspace_root)
+        if provider_id in specs:
+            return enforces_response_schema(resolve_chain(provider_id, specs))
+    except ProviderSpecError:
+        return False
+    if provider_id in FAMILIES:
+        try:
+            from ._declarative import family_class  # noqa: PLC0415
+
+            return bool(family_class(provider_id).enforces_response_schema)
+        except Exception:  # pragma: no cover - the family's SDK is an optional extra
+            return False
     return False

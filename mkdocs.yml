@@ -113,6 +113,7 @@ nav:
     - Archetypes catalogue: reference/archetypes.md
     - Trigger artifact: reference/trigger.md
     - Executor adapter artifact: reference/executor-adapter.md
+    - Model provider artifact: reference/model-provider.md
     - Funnel artifact: reference/funnel.md
     - Contract artifact: reference/contract.md
     - Role registry artifact: reference/role-registry.md

@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: ollama
+  name: Ollama
+  description: Local models over Ollama's native /api/chat. No auth; registers whenever loaded.
+spec:
+  extends: ollama
+  base_url: ${OLLAMA_BASE_URL:-http://localhost:11434}
+provenance:
+  authored_by: human
+  version: 1.0.0

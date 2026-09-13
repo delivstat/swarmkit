@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: lemonade
+  name: Lemonade
+  description: AMD Ryzen AI NPU/iGPU inference via Lemonade Server, OpenAI-compatible. Local, no auth.
+spec:
+  extends: openai-compatible
+  base_url: ${LEMONADE_URL:-http://localhost:8000/api/v1}
+  models:
+    accept_any: true
+provenance:
+  authored_by: human
+  version: 1.0.0

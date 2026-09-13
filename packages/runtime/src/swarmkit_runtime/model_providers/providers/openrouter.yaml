@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: openrouter
+  name: OpenRouter
+  description: Aggregator over the OpenAI-compatible API; the catalogue is unbounded and the server validates model names.
+spec:
+  extends: openai-compatible
+  base_url: https://openrouter.ai/api/v1
+  auth:
+    api_key_env: OPENROUTER_API_KEY
+  models:
+    accept_any: true
+  # Per-call cost (USD) comes back on usage.cost only when asked. The base OpenAI API rejects
+  # this flag, which is why it is declared here and not defaulted in the family.
+  extra_body:
+    usage:
+      include: true
+provenance:
+  authored_by: human
+  version: 1.0.0

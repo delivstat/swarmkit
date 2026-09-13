@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: vertex
+  name: Vertex AI
+  description: Google Vertex AI needs service-account OAuth, which the DSL does not express.
+spec:
+  extends: google
+  requires: code
+provenance:
+  authored_by: human
+  version: 0.1.0

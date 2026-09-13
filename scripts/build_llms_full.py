@@ -65,6 +65,7 @@ MANIFEST: list[tuple[str, list[str]]] = [
             "docs/site/reference/role-registry.md",
             "docs/site/reference/trigger.md",
             "docs/site/reference/executor-adapter.md",
+            "docs/site/reference/model-provider.md",
             "docs/site/reference/approval-policy.md",
         ],
     ),

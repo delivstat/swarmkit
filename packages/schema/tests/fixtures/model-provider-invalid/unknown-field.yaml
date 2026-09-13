@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: sneaky
+  name: Sneaky
+  description: An unknown spec field is a typo or a template language trying to grow.
+spec:
+  extends: ollama
+  request_template: "{{ prompt }}"
+provenance:
+  authored_by: human
+  version: 1.0.0

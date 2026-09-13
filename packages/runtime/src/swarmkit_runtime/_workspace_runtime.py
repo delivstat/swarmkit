@@ -433,7 +433,7 @@ class WorkspaceRuntime:
         workspace = resolve_workspace(ws_root)
 
         registry = ProviderRegistry()
-        register_available_providers(registry)
+        register_available_providers(registry, ws_root)
 
         governance = build_governance(workspace, ws_root)
 
@@ -1457,37 +1457,31 @@ def _extract_events(governance: GovernanceProvider, *, run_id: str | None = None
 # ---- helpers (public — used by CLI and tests) ----------------------------
 
 
-def register_available_providers(registry: ProviderRegistry) -> None:
-    """Register all model providers whose credentials are in the environment.
+def register_available_providers(
+    registry: ProviderRegistry, workspace_root: Path | str | None = None
+) -> None:
+    """Register every declared provider that is READY — its ``auth.api_key_env`` is set, or it
+    declares no auth (a local runtime, which registers unconditionally).
 
-    Providers whose SDK dependencies are missing are silently skipped.
+    The providers are the bundled ``model_providers/providers/*.yaml`` plus the workspace's own
+    ``providers/`` when a root is given. There is no list here to keep in step: adding a provider
+    is adding a file. A family whose SDK is not installed is skipped silently, as before; a YAML
+    that cannot be loaded is not — it names its file and what is wrong with it.
     """
+    from swarmkit_runtime.model_providers import (  # noqa: PLC0415
+        build_provider,
+        load_provider_specs,
+        resolve_chain,
+    )
+
     registry.register(MockModelProvider())
-
-    _conditional = [
-        ("ANTHROPIC_API_KEY", "AnthropicModelProvider"),
-        ("GOOGLE_API_KEY", "GoogleModelProvider"),
-        ("OPENAI_API_KEY", "OpenAIModelProvider"),
-        ("OPENROUTER_API_KEY", "OpenRouterModelProvider"),
-        ("GROQ_API_KEY", "GroqModelProvider"),
-        ("TOGETHER_API_KEY", "TogetherModelProvider"),
-    ]
-    for env_var, cls_name in _conditional:
-        if os.environ.get(env_var):
-            try:
-                from swarmkit_runtime import model_providers  # noqa: PLC0415
-
-                cls = getattr(model_providers, cls_name)
-                registry.register(cls())
-            except (ImportError, ModuleNotFoundError, AttributeError):
-                pass
-
-    try:
-        from swarmkit_runtime import model_providers  # noqa: PLC0415
-
-        registry.register(model_providers.OllamaModelProvider())
-    except (ImportError, ModuleNotFoundError, AttributeError):
-        pass
+    specs = load_provider_specs(workspace_root)
+    for pid in specs:
+        resolved = resolve_chain(pid, specs)
+        if not resolved.ready:
+            continue
+        with contextlib.suppress(ImportError, ModuleNotFoundError):
+            registry.register(build_provider(resolved))
 
 
 def build_governance(workspace: ResolvedWorkspace, ws_root: Path) -> GovernanceProvider:

@@ -1,0 +1,15 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: rkllama
+  name: rkllama — Rockchip NPU
+  description: Ollama-API server for RK3588/RK3576 NPUs, running pre-converted .rkllm models. Local, no auth.
+spec:
+  extends: ollama
+  base_url: ${RKLLAMA_HOST:-http://localhost:8080}
+  capabilities:
+    # rkllm's tool-call parsing is partial; a half-parsed tool call is an agent that loops.
+    tools: false
+provenance:
+  authored_by: human
+  version: 1.0.0

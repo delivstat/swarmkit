@@ -93,6 +93,10 @@ _demo-schema artifact:
 demo-ollama-think:
     uv run python packages/runtime/demos/ollama_think_option.py
 
+# Demo: a model provider is a YAML file — add one, inherit from it, and watch the ceiling refuse.
+demo-providers:
+    uv run python packages/runtime/demos/declarative_providers.py
+
 demo-topology-schema:   (_demo-schema "topology")
 demo-skill-schema:      (_demo-schema "skill")
 demo-archetype-schema:  (_demo-schema "archetype")
@@ -100,11 +104,12 @@ demo-workspace-schema:  (_demo-schema "workspace")
 demo-trigger-schema:    (_demo-schema "trigger")
 demo-role-registry-schema: (_demo-schema "role-registry")
 demo-approval-policy-schema: (_demo-schema "approval-policy")
+demo-model-provider-schema: (_demo-schema "model-provider")
 
 # Aggregate: run every per-artifact demo. Exit criterion for Milestone 0 —
 # all core schemas exercised in both Python and TypeScript against committed
 # valid + invalid fixtures.
-demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema
+demo-schema: demo-topology-schema demo-skill-schema demo-archetype-schema demo-workspace-schema demo-trigger-schema demo-role-registry-schema demo-approval-policy-schema demo-model-provider-schema
 
 # Demo the retry envelope (retry-envelope-attribution.md): what a retried harness run receives,
 # before and after — the version an agent refused as prompt injection, and the attributed one.
