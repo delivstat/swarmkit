@@ -21,13 +21,13 @@ import archetypeSchema from "../../schemas/archetype.schema.json" with {
 import contractSchema from "../../schemas/contract.schema.json" with {
 	type: "json",
 };
-import modelProviderSchema from "../../schemas/model-provider.schema.json" with {
-	type: "json",
-};
 import executorAdapterSchema from "../../schemas/executor-adapter.schema.json" with {
 	type: "json",
 };
 import funnelSchema from "../../schemas/funnel.schema.json" with {
+	type: "json",
+};
+import modelProviderSchema from "../../schemas/model-provider.schema.json" with {
 	type: "json",
 };
 import credentialSchema from "../../schemas/protocol/credential.schema.json" with {
