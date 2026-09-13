@@ -163,7 +163,7 @@ provenance:
 Create a simple ingestion script:
 
 ```python
-# scripts/ingest.py
+# my-workspace/ingest.py — a script you create; not part of the SwarmKit repo
 """Ingest documents into ChromaDB."""
 import chromadb
 import os
@@ -188,7 +188,7 @@ print(f"Total documents: {collection.count()}")
 ```bash
 mkdir -p knowledge/docs
 echo "The Bhagavad Gita teaches about dharma and duty." > knowledge/docs/sample.txt
-uv run scripts/ingest.py
+uv run ingest.py
 ```
 
 ### 5. GBrain for knowledge graphs

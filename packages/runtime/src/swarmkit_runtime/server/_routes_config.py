@@ -28,10 +28,13 @@ def _reload(request: Request, service: WorkspaceConfigService) -> None:
 
 
 def _register_config_routes(app: FastAPI, service: WorkspaceConfigService) -> None:
-    """Read and write `credentials`, `mcp_servers` and `channels`."""
+    """Read and write `credentials` and `mcp_servers` — workspace.yaml's infrastructure half."""
 
     @app.get("/api/workspace/config")
     async def get_config() -> dict[str, Any]:
+        """The editable infrastructure sections of workspace.yaml — credentials and MCP servers —
+        with secrets masked.
+        """
         try:
             return service.read()
         except ServiceError as exc:
@@ -39,6 +42,9 @@ def _register_config_routes(app: FastAPI, service: WorkspaceConfigService) -> No
 
     @app.put("/api/workspace/config/{section}/{entry_id}")
     async def put_entry(section: str, entry_id: str, request: Request) -> dict[str, Any]:
+        """Create or replace one entry in a workspace.yaml section (`credentials` or `mcp_servers`);
+        the workspace reloads when the file changed.
+        """
         body = await request.json()
         try:
             result = service.upsert(section, entry_id, body)
@@ -50,6 +56,9 @@ def _register_config_routes(app: FastAPI, service: WorkspaceConfigService) -> No
 
     @app.delete("/api/workspace/config/{section}/{entry_id}")
     async def delete_entry(section: str, entry_id: str, request: Request) -> dict[str, Any]:
+        """Remove one entry from a workspace.yaml section; the workspace reloads if the file
+        changed.
+        """
         try:
             result = service.delete(section, entry_id)
         except ServiceError as exc:

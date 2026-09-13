@@ -12,7 +12,7 @@
   <a href="https://pypi.org/project/swarmkit-runtime/"><img src="https://img.shields.io/pypi/v/swarmkit-runtime.svg" alt="PyPI" /></a>
   <a href="https://github.com/delivstat/swarmkit/actions"><img src="https://img.shields.io/github/actions/workflow/status/delivstat/swarmkit/ci.yml?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+" />
-  <img src="https://img.shields.io/badge/tests-2100+-green.svg" alt="2100+ tests" />
+  <img src="https://img.shields.io/badge/tests-3900+-green.svg" alt="3900+ tests" />
 </p>
 
 <!-- TODO: Record the demo GIF with: vhs scripts/demo.tape -->
@@ -347,7 +347,7 @@ See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmk
 
 ### Skills & Tools
 11. **Four skill categories** — capability, decision, coordination, persistence
-12. **Three implementation types** — `mcp_tool`, `llm_prompt`, `composed`
+12. **Four implementation types** — `mcp_tool`, `llm_prompt`, `composed`, and `command` (a local binary from a workspace command pack)
 13. **7,000+ MCP tools** — wire any MCP server via YAML config
 14. **Custom MCP servers** — build your own in Python/Node with stdio transport
 15. **MCP permission tiers** — open, cautious, strict, readonly per server/tool
@@ -356,101 +356,109 @@ See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmk
 18. **Multimodal support** — image content blocks, document reader, MarkItDown
 19. **Composed skills** — parallel-consensus, sequential, or custom composition
 20. **Skill gap detection** — auto-detect missing skills, surface after threshold
+21. **Attachments** — `swarmkit run --attach <path>` / `attachments:` on `POST /run/{topology}` put a file in front of the entry agent in one model call; media type read from content; audited by name, type, size and hash, never bytes
+22. **Skill runtime floor** — `provenance.requires_runtime` on a skill refuses to load into a runtime older than it needs, naming the version, instead of failing mid-run
 
 ### Governance & Safety
-21. **IAM scopes** — per-agent permission model (`repo:read`, `skills:activate`)
-22. **Decision skill gates** — validation at `pre_input` / `post_output` / `checkpoint` / `pre_synthesis`; a gate can be a deterministic MCP tool (validator, linter, test run), not only an LLM judge ([guide](https://delivstat.github.io/swarmkit/guides/validating-topology-output/))
-23. **Policy evaluation tiers** — deterministic, single LLM judge, panel
-24. **Circuit breakers** — max steps, max cost, max tokens per run
-25. **Trust levels** — tiered access control for agents
-26. **Audit trail** — append-only structured events (SQLite/Postgres)
-27. **Audit redaction** — JSON pointer paths to redact sensitive fields
-28. **Human-in-the-loop** — review queues with approve/reject workflow
-29. **Gate validators** — drop-in JSON Schema files in `gates/` directory
-30. **Output validation** — structured output enforcement with auto-correction
+23. **IAM scopes** — per-agent permission model (`repo:read`, `skills:activate`)
+24. **Decision skill gates** — validation at `pre_input` / `post_output` / `checkpoint` / `pre_synthesis`; a gate can be a deterministic MCP tool (validator, linter, test run), not only an LLM judge ([guide](https://delivstat.github.io/swarmkit/guides/validating-topology-output/))
+25. **Policy evaluation tiers** — deterministic, single LLM judge, panel
+26. **Circuit breakers** — max steps, max cost, max tokens per run
+27. **Trust levels** — tiered access control for agents
+28. **Audit trail** — append-only structured events (SQLite/Postgres)
+29. **Audit redaction** — JSON pointer paths to redact sensitive fields
+30. **Human-in-the-loop** — review queues with approve/reject workflow
+31. **Gate validators** — drop-in JSON Schema files in `gates/` directory
+32. **Output validation** — structured output enforcement with auto-correction
 
 ### Observability & Debugging
-31. **OpenTelemetry** — traces, metrics, spans to any OTel backend
-32. **Intent drift detection** — cosine similarity tracking, nudge/warn/log actions
-33. **Run tracing** — agent call graph, tool calls, token counts per agent/model
-34. **Prompt ring buffer** — local SQLite cache of all prompts/responses
-35. **CLI debugging** — `logs`, `trace`, `why`, `ask`, `debug`, `status` commands
-36. **Notification plugins** — configurable alerts on run events
-37. **Tool call recording** — every MCP call tracked with arguments, result size, duration
+33. **OpenTelemetry** — traces, metrics, spans to any OTel backend
+34. **Intent drift detection** — cosine similarity tracking, nudge/warn/log actions
+35. **Run tracing** — agent call graph, tool calls, token counts per agent/model
+36. **Prompt ring buffer** — local SQLite cache of all prompts/responses
+37. **CLI debugging** — `logs`, `trace`, `why`, `ask`, `debug`, `status` commands
+38. **Events** — `GET /events?after=<cursor>` is the durable log an application reconciles from; `events:` sinks (webhook, stdout) push the same events best-effort; a resolved gate resumes its run without the application asking
+39. **Tool call recording** — every MCP call tracked with arguments, result size, duration
 
 ### Memory & Knowledge
-38. **Workspace memory** — agents remember across conversations (MemoryStore or GBrain)
-39. **Memory gates** — pre_input context injection, post_output insight extraction
-40. **GBrain integration** — hybrid vector + keyword search, graph relationships
-41. **Knowledge MCP server** — workspace docs, schema queries, file I/O
-42. **Document reader** — PDF, DOCX, Excel, CSV, SVG, draw.io parsing
+40. **Workspace memory** — agents remember across conversations (MemoryStore or GBrain)
+41. **Memory gates** — pre_input context injection, post_output insight extraction
+42. **GBrain integration** — hybrid vector + keyword search, graph relationships
+43. **Knowledge MCP server** — workspace docs, schema queries, file I/O
+44. **Document reader** — PDF, DOCX, Excel, CSV, SVG, draw.io parsing
+45. **Write a fact by hand** — `swarmkit memory add` and `POST /memory` write through the same governed path an agent writes through (reconcile, quarantine on contradiction)
 
 ### Conversations & Authoring
-43. **Multi-turn chat** — `swarmkit chat` with persistent history
-44. **Conversation persistence** — saved to disk, resume by ID
-45. **Conversational authoring** — `swarmkit init/author/edit` create artifacts via conversation
-46. **Thorough mode** — multi-agent authoring swarm for complex artifacts
+46. **Multi-turn chat** — `swarmkit chat` with persistent history
+47. **Conversation persistence** — saved to disk, resume by ID
+48. **Conversational authoring** — `swarmkit init/author/edit` create artifacts via conversation
+49. **Thorough mode** — multi-agent authoring swarm for complex artifacts
 
 ### HTTP Server & Deployment
-47. **Persistent serve mode** — `swarmkit serve` with async job execution
-48. **SSE streaming** — real-time progress events during execution
-49. **REST API** — CRUD endpoints for topologies, skills, archetypes
-50. **Auth providers** — None, API key, JWT (JWKS auto-discovery)
-51. **Canary deployments** — weighted traffic splitting, auto-promotion by metrics
-52. **Cron triggers** — scheduled topology execution
-53. **Webhook triggers** — HMAC-SHA256 signature validation
-54. **MCP endpoint** — expose topologies as MCP tools for AI assistants
-55. **Concurrent job limiting** — semaphore-based with configurable max
-56. **One storage service** — every store (runtime, audit, artifacts, saga, memory, fleet, checkpoints) resolves from one config; `swarmkit storage status` shows where data lives and which setting decided it
-57. **SQLite → Postgres migration** — `swarmkit storage migrate` copies existing rows, idempotent, never deletes the source ([runbook](https://delivstat.github.io/swarmkit/reference/storage/))
-58. **System page** — versions, storage, `workspace.env.yaml` properties and environment in the web UI, with secrets masked by declaration
+50. **Persistent serve mode** — `swarmkit serve` with async job execution
+51. **SSE streaming** — real-time progress events during execution
+52. **REST API** — CRUD endpoints for topologies, skills, archetypes
+53. **Auth providers** — None, API key, JWT (JWKS auto-discovery)
+54. **Canary deployments** — weighted traffic splitting, auto-promotion by metrics
+55. **Cron triggers** — scheduled topology execution
+56. **Webhook triggers** — HMAC-SHA256 signature validation
+57. **MCP endpoint** — expose topologies as MCP tools for AI assistants
+58. **Concurrent job limiting** — semaphore-based with configurable max
+59. **One storage service** — every store (runtime, audit, artifacts, memory, fleet, checkpoints) resolves from one config; `swarmkit storage status` shows where data lives and which setting decided it
+60. **SQLite → Postgres migration** — `swarmkit storage migrate` copies existing rows, idempotent, never deletes the source ([runbook](https://delivstat.github.io/swarmkit/reference/storage/))
+61. **System page** — versions, storage, `workspace.env.yaml` properties and environment in the web UI, with secrets masked by declaration
+62. **Remote MCP servers with OAuth** — log in from the portal's Connections page (PKCE, discovery, dynamic client registration); tokens stored encrypted per owner; refreshed *before* a run that would outlive them, never during one
+63. **One credential service** — every entry point (CLI, serve, MCP client) resolves `credentials` through the same service, so a declared credential reaches the server it was declared for
+64. **Portal edits infrastructure** — credentials, MCP servers and event sinks in `workspace.yaml` are editable from the portal; the workspace reloads when the file changes
+65. **Generated HTTP reference** — every endpoint, from the server's own OpenAPI document ([HTTP API](https://delivstat.github.io/swarmkit/reference/http-api/))
 
 ### Packaging & Distribution
-59. **Expertise packages** — bundle workspaces for distribution
-60. **`swarmkit mcp-serve`** — expose workspaces to Claude Desktop, Cursor, Claude Code
-61. **`swarmkit install/publish`** — install from directory, tarball, or URL
+66. **Expertise packages** — bundle workspaces for distribution
+67. **`swarmkit mcp-serve`** — expose workspaces to Claude Desktop, Cursor, Claude Code
+68. **`swarmkit install/publish`** — install from directory, tarball, or URL
 
 ### Model Providers
-62. **Declarative providers** — 12 bundled (Anthropic, OpenAI, Google, OpenRouter, Groq, Together, Ollama + 5 edge runtimes); any OpenAI/Ollama-compatible endpoint as YAML
-63. **Auto-detection** — providers activated from environment variables
-64. **Per-agent provider** — mix providers within a single topology
-65. **Prompt caching** — automatic prefix caching (99% savings on DeepSeek)
+69. **Declarative providers** — 12 bundled (Anthropic, OpenAI, Google, OpenRouter, Groq, Together, Ollama + 5 edge runtimes); any OpenAI/Ollama-compatible endpoint as YAML
+70. **Auto-detection** — providers activated from environment variables
+71. **Per-agent provider** — mix providers within a single topology
+72. **Prompt caching** — automatic prefix caching (99% savings on DeepSeek)
+73. **`swarmkit providers list|show`** — every declared provider, its family, its source and whether its key is set
 
 ### Developer Experience
-66. **`swarmkit validate --tree`** — visual agent tree with skills, archetypes, MCP servers
-67. **`swarmkit run --dry-run`** — show resolved agents without executing
-68. **`swarmkit run --verbose`** — per-agent execution detail
-69. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` → `swarmkit serve` hosts the portal at its own origin)
-70. **JSON & TypeScript schemas** — validators in both languages
-71. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
-72. **16 archetypes + 27 skills** — production-ready out of the box
+74. **`swarmkit validate --tree`** — visual agent tree with skills, archetypes, MCP servers
+75. **`swarmkit run --dry-run`** — show resolved agents without executing
+76. **`swarmkit run --verbose`** — per-agent execution detail
+77. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` → `swarmkit serve` hosts the portal at its own origin)
+78. **JSON & TypeScript schemas** — validators in both languages
+79. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
+80. **16 archetypes + 27 skills** — production-ready out of the box
 
 ### Harness executors
-73. **Harness as a node** — run Claude Code / opencode / any subprocess emitting JSONL as an agent
-74. **Declarative adapters** — `adapter.yaml`, no per-harness Python; bundled library for the big harnesses
-75. **Worktree isolation** — ephemeral git worktree per run by default; produces a diff, never integrates
-76. **Relay approvals** — mid-run out-of-grant permissions pause to a human inbox and resume (`swarmkit review`)
-77. **Trust accrual** — repeated approvals propose an allowlist changeset (`swarmkit trust list|apply|clear`)
-78. **Opt-in container sandbox** — resource limits + enforced egress (`deny`/`allowlist`); off by default, disable switch always wins
-79. **No-local-install `build`** — provision the harness into a cached image; bring only your API key
+81. **Harness as a node** — run Claude Code / opencode / any subprocess emitting JSONL as an agent
+82. **Declarative adapters** — `adapter.yaml`, no per-harness Python; bundled library for the big harnesses
+83. **Worktree isolation** — ephemeral git worktree per run by default; produces a diff, never integrates
+84. **Relay approvals** — mid-run out-of-grant permissions pause to a human inbox and resume (`swarmkit review`)
+85. **Trust accrual** — repeated approvals propose an allowlist changeset (`swarmkit trust list|apply|clear`)
+86. **Opt-in container sandbox** — resource limits + enforced egress (`deny`/`allowlist`); off by default, disable switch always wins
+87. **No-local-install `build`** — provision the harness into a cached image; bring only your API key
 
 ### Delivery, gates & ordering
-80. **Correlated runs** — `--correlation-id` / `--label k=v` / `--supersedes <job-id>` on `swarmkit run` and on `POST /run/{topology}`; the thread reaches `jobs`, `audit_events` and the artifact store
-81. **Defer and resume** — a gated run checkpoints and parks as `deferred`; `POST /jobs/{id}/resume` or `swarmkit run --resume` continues it, with no process held open
-82. **Gate state with the policy applied** — `GET /gates/{gate_id}` answers "is this resolved" using the approval engine itself, plus `GET /artifacts/{ref}` for the artifact under review
-83. **Funnels** — reusable multi-layer quality gates (`kind: Funnel`: validate → judge → review → approve) with a single, compiler-enforced human exit
-84. **Multi-party approval** — quorum / `min_distinct_approvers` / `exclude_author`, roles resolved via `kind: RoleRegistry`; approval scopes un-grantable to agents
-85. **Integration contracts** — `kind: Contract` makes lock ids a checked, pickable vocabulary; the contention view is exact
-86. **Skill prerequisites** — `requires:` on an agent refuses a guarded skill until its prerequisite has run, with an actionable refusal; validated at resolution (unknown skill, cycle) and enforced on both executors
-87. **Reachability + verification reports** — `swarmkit validate --require` (config nothing reads) and `--require-verified` (roots whose output nothing checks), also on `GET /workspace/reachability|verification`
-88. **Webhook ingress** — a signed `Trigger` delivers an event with an opaque `correlation_id`; a trigger whose secret is missing refuses to start rather than failing open
-89. **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` across every artifact YAML, with or without an env file
+88. **Correlated runs** — `--correlation-id` / `--label k=v` / `--supersedes <job-id>` on `swarmkit run` and on `POST /run/{topology}`; the thread reaches `jobs`, `audit_events` and the artifact store
+89. **Defer and resume** — a gated run checkpoints and parks as `deferred`; `POST /jobs/{id}/resume` or `swarmkit run --resume` continues it, with no process held open
+90. **Gate state with the policy applied** — `GET /gates/{gate_id}` answers "is this resolved" using the approval engine itself, plus `GET /artifacts/{ref}` for the artifact under review
+91. **Funnels** — reusable multi-layer quality gates (`kind: Funnel`: validate → judge → review → approve) with a single, compiler-enforced human exit
+92. **Multi-party approval** — quorum / `min_distinct_approvers` / `exclude_author`, roles resolved via `kind: RoleRegistry`; approval scopes un-grantable to agents
+93. **Integration contracts** — `kind: Contract` makes lock ids a checked, pickable vocabulary; the contention view is exact
+94. **Skill prerequisites** — `requires:` on an agent refuses a guarded skill until its prerequisite has run, with an actionable refusal; validated at resolution (unknown skill, cycle) and enforced on both executors
+95. **Reachability + verification reports** — `swarmkit validate --require` (config nothing reads) and `--require-verified` (roots whose output nothing checks), also on `GET /workspace/reachability|verification`
+96. **Webhook ingress** — a signed `Trigger` delivers an event with an opaque `correlation_id`; a trigger whose secret is missing refuses to start rather than failing open
+97. **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` across every artifact YAML, with or without an env file
 
 ### Fleet & evaluation
-90. **Fleet control plane** — a standalone `swarmkit-control-plane` + panel UI aggregating many `swarmkit serve` instances (SQLite/Postgres); an independent app + client over the serve contract, never a runtime dependency
-91. **Federated run graph** — one run rendered over its agents across instances, from a federated per-run trace endpoint
-92. **Fleet-wide harness cockpit** — resolve harness relay/input gates across the whole fleet from one panel
-93. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
+98. **Fleet control plane** — a standalone `swarmkit-control-plane` + panel UI aggregating many `swarmkit serve` instances (SQLite/Postgres); an independent app + client over the serve contract, never a runtime dependency
+99. **Federated run graph** — one run rendered over its agents across instances, from a federated per-run trace endpoint
+100. **Fleet-wide harness cockpit** — resolve harness relay/input gates across the whole fleet from one panel
+101. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
 
 ## Reference topologies
 
@@ -485,7 +493,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and build
 git clone git@github.com:delivstat/swarmkit.git && cd swarmkit
 just install          # uv sync + pnpm install
-just test             # ~2,850 tests across Python + TypeScript
+just test             # ~4,000 tests across Python + TypeScript
 just lint             # ruff + biome
 just typecheck        # mypy + tsc
 ```
@@ -523,7 +531,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.219.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.219.1. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 

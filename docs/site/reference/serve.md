@@ -10,13 +10,19 @@ swarmkit serve ./workspace --host 0.0.0.0 --port 8000
 
 ## Endpoints
 
+The complete list — every route, generated from the server's OpenAPI document — is the [HTTP API](http-api.md) reference. Below are the ones a caller integrates with and what they take.
+
 ### Jobs
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/run` | Submit a topology run (async) |
-| `GET` | `/jobs/{id}` | Poll job status |
-| `GET` | `/jobs/history` | List persisted jobs (survives restart) |
+| `POST` | `/run/{topology}` | Submit a topology run (async); returns a job id. Body: `input`, optional `attachments`, `correlation_id`, `labels`, `supersedes` |
+| `GET` | `/jobs/{id}` | Poll job status (in-memory, then the durable store) |
+| `GET` | `/jobs/{id}/stream` | The job's events as server-sent events |
+| `GET` | `/jobs/{id}/diff` | The unified diff a harness run produced, per agent |
+| `POST` | `/jobs/{id}/resume` | Continue a run parked on a human gate (`deferred`) |
+| `POST` | `/jobs/{id}/stop` | Ask a running job to stop at its next agent boundary |
+| `GET` | `/jobs/history` | Every recorded run, newest first (survives restart) |
 
 #### Attachments
 
@@ -76,7 +82,7 @@ The CLI equivalent is `swarmkit run <ws> <topology> --attach <path>` (repeatable
 | `GET` | `/api/topologies` | List topologies |
 | `GET` | `/api/topologies/{id}` | Get topology details |
 | `GET` | `/api/topologies/{id}/yaml` | Get raw YAML |
-| `PUT` | `/api/topologies/{id}/yaml` | Update YAML |
+| `PUT` | `/api/topologies/{id}` | Replace the YAML (validated before it is written) |
 | `POST` | `/api/topologies` | Create new topology |
 | `DELETE` | `/api/topologies/{id}` | Delete topology |
 

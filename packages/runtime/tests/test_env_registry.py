@@ -7,6 +7,7 @@ read-scope HTTP endpoint from a process whose environment holds every API key it
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -117,3 +118,18 @@ def test_an_empty_secrets_list_cannot_unmask_an_api_key(tmp_path: Path) -> None:
     )
     rows = {r["name"]: r for r in workspace_properties(tmp_path)}
     assert rows["openai.api_key"]["value"] == "set"
+
+
+def test_every_variable_the_runtime_reads_is_registered() -> None:
+    """The registry is what /system reports and what the docs are generated from. A variable the
+    code reads and the registry does not know is invisible configuration — the failure the
+    registry exists to end. Six had accumulated before this test."""
+    src = Path(__file__).resolve().parents[1] / "src" / "swarmkit_runtime"
+    read: set[str] = set()
+    for py in src.rglob("*.py"):
+        text = py.read_text()
+        read.update(re.findall(r'os\.(?:environ\.get|getenv)\("(SWARMKIT_[A-Z_]+)"', text))
+        # ...and the ones read through a module constant (`KEY_ENV = "SWARMKIT_OAUTH_KEY"`).
+        read.update(re.findall(r'^[A-Z_]+_ENV\s*=\s*"(SWARMKIT_[A-Z_]+)"', text, re.M))
+    registered = {e.name for e in REGISTRY}
+    assert read <= registered, sorted(read - registered)

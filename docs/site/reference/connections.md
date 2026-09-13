@@ -1,0 +1,98 @@
+# Connections: credentials, remote MCP servers and OAuth
+
+How a swarm reaches a service that needs a secret — and, for remote MCP servers that speak OAuth,
+how a person logs in once from the portal and runs keep working afterwards. The design is in
+[credential-service.md](https://github.com/delivstat/swarmkit/blob/main/design/details/credential-service.md)
+and [mcp-oauth.md](https://github.com/delivstat/swarmkit/blob/main/design/details/mcp-oauth.md).
+
+## One credential service, every entry point
+
+A `credentials` entry in `workspace.yaml` is a **reference**, never a literal:
+
+```yaml
+credentials:
+  github:
+    source: env
+    config: { env: GITHUB_TOKEN }
+  linear:
+    source: oauth
+    config: { endpoint: https://mcp.linear.app/mcp }
+
+mcp_servers:
+  - id: linear
+    transport: http
+    endpoint: https://mcp.linear.app/mcp
+    credentials_ref: linear
+```
+
+Every entry point — `swarmkit run`, `swarmkit serve`, the MCP client, a command pack's environment
+— resolves a reference through the **same `CredentialService`**, at the point of use. That is the
+whole reason it is a service: before it, each entry point assembled its own resolution and a
+credential declared in YAML could fail to reach the server it was declared for.
+
+| `source` | Resolves to | Notes |
+|---|---|---|
+| `env` | the named environment variable | `config.env` |
+| `file` | the file's contents | `config.path` |
+| `oauth` | a token from the runtime's encrypted store | obtained by logging in from the portal; refreshed automatically — below |
+| `hashicorp-vault`, `aws-secrets-manager`, `gcp-secret-manager`, `azure-key-vault`, `plugin` | — | accepted by the schema, **refused at resolution** with a message naming the missing `SecretsProvider`. Declaring one does not make it work. |
+
+A resolved secret reaches an MCP server as `Authorization: Bearer <token>` on an `http` transport, or
+through `env`/`headers` templates (`{credential.<ref>}`) where the server wants it somewhere else.
+Values are never written to the audit log or returned over HTTP.
+
+## Logging in to a remote MCP server
+
+For a server that speaks OAuth (the MCP authorization spec), the portal's **Connections** page does
+the flow:
+
+1. Add the server (`transport: http`, its endpoint) and a credential with `source: oauth` — from the
+   Connections page or by editing `workspace.yaml`; the portal writes the same file
+   (`PUT /api/workspace/config/{section}/{entry_id}`).
+2. `GET /auth/mcp/probe?endpoint=…` asks the server whether it speaks OAuth and where its
+   authorization server is.
+3. **Connect** (`POST /api/oauth/login`) discovers the provider's metadata, registers SwarmKit as a
+   client dynamically when the provider allows it (otherwise pass a `client_id` you registered), and
+   opens the provider's login page in a popup with a PKCE challenge.
+4. The provider sends the browser back to `GET /auth/mcp/callback`; the runtime exchanges the code
+   for tokens and stores them.
+
+What is stored, and where: tokens live in `.swarmkit/state/oauth.db`, **encrypted** with a key from
+`SWARMKIT_OAUTH_KEY` or, when that is unset, one generated into `.swarmkit/oauth.key` on first use
+(back it up: losing it means logging in again). `GET /api/oauth/credentials` lists **metadata only**
+— provider, owner, expiry, scopes, whether a refresh token exists. **No endpoint returns a token.**
+
+## Whose token it is
+
+A token obtained in a browser belongs to **the person who logged in** — the authenticated identity
+`serve` already resolves (`GET /whoami`). Tokens are keyed by `(credential, owner)`, so one person's
+GitHub access does not silently become the workspace's. A credential resolved with no owner named
+uses the token when exactly one owner has logged in for it; with several, `config.owner` must say
+which.
+
+## Refresh happens before a run, not during one
+
+A run that would fail at minute eight because a token expired at minute three should have been
+dealt with at minute zero. At run start the runtime refreshes every OAuth credential the topology
+may use whose access token would expire inside the run's window — `SWARMKIT_OAUTH_RUN_WINDOW_S`,
+900 s by default — silently, in one round trip, before the run makes many.
+
+A refresh the provider refuses is **`ConsentRequired`**: the refresh token was revoked, expired or
+its scope changed, and only a person in a browser can fix it. It is not retried; the run fails
+naming the credential and the owner. The runtime can also tell which refresh tokens are nearing
+their own end (`swarmkit_runtime.oauth.expiring_soon`: a week out, and a day out) — detection exists;
+**nothing announces it yet**, so a scheduled run whose refresh token has lapsed fails with
+`ConsentRequired` at its start, and someone logs in again.
+
+## Forgetting a token
+
+`DELETE /api/oauth/credentials/{credential_id}` removes the stored token for the caller as its owner
+and revokes it upstream where the provider supports revocation. The store is keyed by credential id
+and owner, independently of `workspace.yaml`: edit the entry and the token stays; delete the token
+and the entry stays.
+
+## See also
+
+- [Workspace artifact](workspace.md) — the `credentials` and `mcp_servers` fields.
+- [HTTP API](http-api.md) — every `/api/oauth/*` and `/auth/mcp/*` route.
+- [Environment variables](cli.md#environment-variables) — `SWARMKIT_OAUTH_KEY`, `SWARMKIT_OAUTH_RUN_WINDOW_S`.

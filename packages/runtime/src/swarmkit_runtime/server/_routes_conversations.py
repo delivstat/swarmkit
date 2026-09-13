@@ -30,6 +30,7 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
     async def create_conversation(
         body: CreateConversationRequest, request: Request
     ) -> dict[str, str]:
+        """Start a conversation with a topology; returns its id."""
         from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
 
         rt = _get_runtime(request)
@@ -41,6 +42,7 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
     async def list_conversations_endpoint(
         request: Request,
     ) -> list[dict[str, str]]:
+        """Every conversation on this instance, newest first."""
         from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
 
         rt = _get_runtime(request)
@@ -49,6 +51,7 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
 
     @app.get("/conversations/{conversation_id}")
     async def get_conversation(conversation_id: str, request: Request) -> dict[str, Any]:
+        """One conversation's full message history."""
         from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
 
         rt = _get_runtime(request)
@@ -78,6 +81,7 @@ def _register_conversation_routes(app: FastAPI, workspace_path: Path) -> None:  
     async def send_message(
         conversation_id: str, body: SendMessageRequest, request: Request
     ) -> StreamingResponse:
+        """Send a message into a conversation; the reply streams back as server-sent events."""
         from swarmkit_runtime._conversation import ConversationManager  # noqa: PLC0415
 
         rt = _get_runtime(request)

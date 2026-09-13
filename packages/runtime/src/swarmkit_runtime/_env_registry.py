@@ -73,6 +73,21 @@ REGISTRY: tuple[EnvVar, ...] = (
     EnvVar("SWARMKIT_MAX_TOOLS", "Run limits", "Tools exposed to one agent."),
     EnvVar("SWARMKIT_MAX_RESULT_CHARS", "Run limits", "Truncation ceiling for a tool result."),
     EnvVar("SWARMKIT_MAX_DELEGATIONS_PER_CHILD", "Run limits", "Delegation fan-out cap per child."),
+    EnvVar("SWARMKIT_MAX_PER_TOOL", "Run limits", "Calls to one search/write tool per turn (8)."),
+    EnvVar(
+        "SWARMKIT_MAX_PER_READ_TOOL", "Run limits", "Calls to one read-only tool per turn (50)."
+    ),
+    EnvVar(
+        "SWARMKIT_READ_TOOL_PREFIXES",
+        "Run limits",
+        "Comma-separated name prefixes that mark a tool read-only (read-, get-, list-, ...).",
+    ),
+    EnvVar("SWARMKIT_READ_TOOLS", "Run limits", "Comma-separated tool names treated as read-only."),
+    EnvVar(
+        "SWARMKIT_ATTACHMENT_MAX_BYTES",
+        "Run limits",
+        "Ceiling per run attachment before the upload (20 MiB).",
+    ),
     EnvVar("SWARMKIT_AGENT_RETRIES", "Run limits", "Retries for a failing agent node."),
     EnvVar("SWARMKIT_HISTORY_TURNS", "Run limits", "Conversation turns replayed into context."),
     EnvVar(
@@ -87,6 +102,17 @@ REGISTRY: tuple[EnvVar, ...] = (
     ),
     # ---- MCP + sandboxing ----
     EnvVar("SWARMKIT_MCP_TIMEOUT", "MCP + sandbox", "Per-call MCP timeout in seconds."),
+    EnvVar(
+        "SWARMKIT_OAUTH_KEY",
+        "MCP + sandbox",
+        "Key that encrypts stored OAuth tokens. Generated into .swarmkit/oauth.key when unset.",
+        SECRET,
+    ),
+    EnvVar(
+        "SWARMKIT_OAUTH_RUN_WINDOW_S",
+        "MCP + sandbox",
+        "How long a run is assumed to take: an OAuth token expiring within it is refreshed first.",
+    ),
     EnvVar("SWARMKIT_MCP_RETRIES", "MCP + sandbox", "Retries for a failing MCP call."),
     EnvVar("SWARMKIT_CONTAINER_RUNTIME", "MCP + sandbox", "docker | podman for sandboxed servers."),
     EnvVar("SWARMKIT_SANDBOX_IMAGE", "MCP + sandbox", "Image used to sandbox an MCP server."),

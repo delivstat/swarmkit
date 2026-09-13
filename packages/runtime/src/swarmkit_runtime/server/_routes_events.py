@@ -60,6 +60,9 @@ def _register_event_routes(app: FastAPI) -> None:
 
     @app.post("/events/signal")
     async def signal_event(body: PipelineSignalRequest, request: Request) -> PipelineSignalResponse:
+        """Ingress a pipeline event by correlation id — the application telling a run what happened
+        outside it.
+        """
         runtime = _get_runtime(request)
         identity = getattr(request.state, "identity", None)
         actor = getattr(identity, "client_id", None) or "anonymous"

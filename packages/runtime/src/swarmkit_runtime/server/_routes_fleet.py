@@ -99,6 +99,7 @@ def _verify_fleet_identity(
 def _register_fleet_routes(app: FastAPI) -> None:
     @app.post("/fleet/enroll-token")
     async def mint_enroll_token(req: EnrollTokenRequest, request: Request) -> dict[str, Any]:
+        """Mint a one-time fleet enrollment token for a scope (serve:admin)."""
         if req.scope not in SCOPES:
             raise HTTPException(400, f"scope must be one of {SCOPES}")
         scope: Scope = req.scope
@@ -108,6 +109,9 @@ def _register_fleet_routes(app: FastAPI) -> None:
 
     @app.post("/fleet/register")
     async def register(req: RegisterRequest, request: Request) -> dict[str, Any]:
+        """Enroll a fleet with a Bearer enrollment token and its signed identity; the token is
+        consumed.
+        """
         header = request.headers.get("Authorization", "")
         enroll_token = header[7:] if header.startswith("Bearer ") else ""
         if not enroll_token:

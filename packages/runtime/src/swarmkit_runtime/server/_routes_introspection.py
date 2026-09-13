@@ -96,6 +96,7 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.get("/health")
     async def health(request: Request) -> dict[str, str]:
+        """Liveness: the instance is up and its workspace loaded."""
         rt = _get_runtime(request)
         return {
             "status": "ok",
@@ -108,10 +109,12 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.get("/topologies")
     async def list_topologies(request: Request) -> list[str]:
+        """The topologies in this workspace, by id."""
         return sorted(_get_runtime(request).workspace.topologies.keys())
 
     @app.get("/skills")
     async def list_skills(request: Request) -> list[dict[str, str]]:
+        """The skills in this workspace, by id."""
         rt = _get_runtime(request)
         return [
             {"id": sid, "category": getattr(getattr(s.raw, "category", ""), "value", "")}
@@ -120,10 +123,12 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.get("/archetypes")
     async def list_archetypes(request: Request) -> list[str]:
+        """The archetypes in this workspace, by id."""
         return sorted(_get_runtime(request).workspace.archetypes.keys())
 
     @app.get("/funnels")
     async def list_funnels(request: Request) -> list[str]:
+        """The funnels in this workspace, by id."""
         return sorted(_get_runtime(request).workspace.funnels.keys())
 
     @app.get("/comprehension")
@@ -147,10 +152,12 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.get("/contracts")
     async def list_contracts(request: Request) -> list[str]:
+        """The contracts in this workspace, by id."""
         return sorted(_get_runtime(request).workspace.contracts.keys())
 
     @app.get("/validate")
     async def validate_workspace(request: Request) -> dict[str, Any]:
+        """Validate every artifact in the workspace and report what is wrong."""
         rt = _get_runtime(request)
         ws = rt.workspace
         return {
@@ -305,11 +312,13 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.get("/triggers")
     async def list_triggers(request: Request) -> list[dict[str, Any]]:
+        """The triggers configured on this instance (cron, webhook, pipeline events)."""
         trigger_configs: list[dict[str, Any]] = getattr(request.app.state, "trigger_configs", [])
         return trigger_configs
 
     @app.get("/usage")
     async def get_usage(request: Request) -> dict[str, Any]:
+        """Token usage and cost across every run on this instance."""
         s: Store | None = getattr(request.app.state, "store", None)
         if s is None:
             return {"summary": {}, "by_model": []}
@@ -320,6 +329,7 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.get("/usage/{job_id}")
     async def get_job_usage(job_id: str, request: Request) -> dict[str, Any]:
+        """Token usage and cost for one job, per agent."""
         s: Store | None = getattr(request.app.state, "store", None)
         if s is None:
             return {}
@@ -409,6 +419,7 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.get("/canary")
     async def canary_status(request: Request) -> dict[str, Any]:
+        """The canary routes on this instance and their metrics."""
         router: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
         if router is None:
             return {"enabled": False, "routes": []}
@@ -420,6 +431,7 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.post("/canary/{topology_name}/promote")
     async def canary_promote(topology_name: str, request: Request) -> dict[str, Any]:
+        """Make the canary version the default for a topology."""
         router: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
         if router is None:
             raise HTTPException(status_code=404, detail="Canary routing not configured")
@@ -436,6 +448,7 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
 
     @app.post("/canary/{topology_name}/rollback")
     async def canary_rollback(topology_name: str, request: Request) -> dict[str, Any]:
+        """Withdraw a topology's canary and route everything to the stable version."""
         router: CanaryRouter | None = getattr(request.app.state, "canary_router", None)
         if router is None:
             raise HTTPException(status_code=404, detail="Canary routing not configured")

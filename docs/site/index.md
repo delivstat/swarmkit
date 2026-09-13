@@ -147,9 +147,9 @@ governance:
     policies_dir: ./policies
 ```
 
-### 7 model providers
+### Model providers — declared, not coded
 
-Auto-detected from environment variables. Mix providers within a single topology:
+Providers are YAML artifacts (`kind: ModelProvider`) over four wire-format families — `openai-compatible`, `ollama`, `anthropic`, `google`. Twelve ship bundled; a provider registers when it is **ready** (its key is set, or it needs none). Mix providers within a single topology:
 
 | Provider | Env var | Example |
 |---|---|---|
@@ -159,7 +159,10 @@ Auto-detected from environment variables. Mix providers within a single topology
 | OpenRouter | `OPENROUTER_API_KEY` | `meta-llama/llama-3.3-70b-instruct` |
 | Groq | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
 | Together | `TOGETHER_API_KEY` | `meta-llama/llama-3.3-70b` |
-| Ollama | (always available) | `llama3.3` |
+| Ollama | none (`OLLAMA_BASE_URL` to point elsewhere) | `llama3.3` |
+| rkllama · llama-server · openvino-model-server · mlx-lm · lemonade | none — local edge runtimes | any |
+
+Any other OpenAI- or Ollama-compatible endpoint is six lines of YAML in `<workspace>/providers/` — no Python, no release. `swarmkit providers list` shows what is registered and what each is waiting for. See [`docs/site/reference/model-provider.md`](reference/model-provider.md).
 
 ### Observability (M6 — shipped)
 

@@ -14,12 +14,15 @@ Only `apiVersion`, `kind`, and `metadata` (`id` + `name`) are required; everythi
 | `organisation` / `team` | Optional org/team identity (`{ id, name? }`). |
 | `governance` | `provider` (`agt`/`mock`/`custom`), `policy_language` (`yaml`/`rego`/`cedar`), `limits` (circuit breakers: `max_steps_per_agent`, `max_steps_per_run`, `max_cost_per_run_usd`), and `decision_skills[]` inherited by all topologies. |
 | `identity` | Human-identity provider (`builtin`/`auth0`/`okta`/`google`/`azure-ad`/`oidc`). |
-| `model_providers` | Registrations (`class`, `provider_id`, `config`) — plug in a `ModelProvider`. |
-| `credentials` | Named credential **references** (never literals): each `{ source, config }` where `source` is `env`/`file`/`hashicorp-vault`/`aws-secrets-manager`/`gcp-secret-manager`/`azure-key-vault`/`plugin`. |
+| `model_providers` | Python-class registrations (`class`, `provider_id`, `config`) for a custom `ModelProvider`. The usual way to add a provider is a YAML file in `<workspace>/providers/` — see [Model provider](model-provider.md). |
+| `credentials` | Named credential **references** (never literals): each `{ source, config }` where `source` is `env`, `file`, or `oauth` (a token obtained by logging in from the portal, stored encrypted per owner and refreshed before a run — see [Connections](connections.md)). The cloud sources (`hashicorp-vault`, `aws-secrets-manager`, `gcp-secret-manager`, `azure-key-vault`, `plugin`) are accepted by the schema and refused at resolution until a `SecretsProvider` is wired for them. |
 | `mcp_servers` | The MCP registry: `id`, `transport` (`stdio`+`command` or `http`+`endpoint`), `env`, `credentials_ref`, `sandboxed`/`sandbox_image`, and governance `permission` tiers (`open`/`cautious`/`strict`/`readonly`). |
 | `storage` | Backends for `checkpoints`, `audit`, `runtime` (jobs/conversations/usage), and `knowledge_bases` — each `sqlite` or `postgres`. |
 | `context_compression` | Opt-in read-side compression of bulk tool output (`off` default / `columnar` / `headtail` / `plugin`). |
 | `planning` / `synthesis` | Workspace-default planning and synthesis config, overridable per topology. |
+| `events` | Where the runtime pushes what happened: `[{ sink: webhook \| stdout, url, credentials_ref, types }]`. Best-effort; `GET /events?after=<cursor>` is the durable log — see [Events](events.md). |
+| `gates` | `auto_resume` (default `true`): a run continues as soon as its gate is resolved, so an application does not have to call `POST /jobs/{id}/resume` — turn it off to batch or delay. |
+| `command_packs` | Local binaries exposed as `command` skills — the sibling of `mcp_servers` for capabilities that already exist as executables (`design/details/command-packs.md`). |
 | `server` | `swarmkit serve` config: `jobs` (`max_concurrent`, `timeout_seconds`), `mcp.enabled`, `canary` routes, and `auth`. |
 
 ### Serve authentication (`server.auth`)
