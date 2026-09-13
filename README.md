@@ -75,7 +75,7 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 | Audit trail | Hash-chained, append-only | DIY | None | None |
 | Human-in-the-loop | Native approval gates in YAML | Manual interrupt points | None | None |
 | Escape hatch / lock-in | Open YAML topologies + OSS runtime — no proprietary format or platform | N/A | Python classes | Vendor SDK |
-| Model support | 7 providers (Anthropic, OpenAI, Google, Ollama, ...) | Any | Multiple | Claude only |
+| Model support | 12 bundled providers, any OpenAI/Ollama-compatible endpoint as YAML | Any | Multiple | Claude only |
 
 ## Quick start
 
@@ -174,9 +174,9 @@ governance:
     policies_dir: ./policies
 ```
 
-### 7 model providers
+### Model providers — declared, not coded
 
-Auto-detected from environment variables. Mix providers within a single topology:
+Providers are YAML artifacts (`kind: ModelProvider`) over four wire-format families — `openai-compatible`, `ollama`, `anthropic`, `google`. Twelve ship bundled; a provider registers when it is **ready** (its key is set, or it needs none). Mix providers within a single topology:
 
 | Provider | Env var | Example |
 |---|---|---|
@@ -186,7 +186,10 @@ Auto-detected from environment variables. Mix providers within a single topology
 | OpenRouter | `OPENROUTER_API_KEY` | `meta-llama/llama-3.3-70b-instruct` |
 | Groq | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
 | Together | `TOGETHER_API_KEY` | `meta-llama/llama-3.3-70b` |
-| Ollama | (always available) | `llama3.3` |
+| Ollama | none (`OLLAMA_BASE_URL` to point elsewhere) | `llama3.3` |
+| rkllama · llama-server · openvino-model-server · mlx-lm · lemonade | none — local edge runtimes | any |
+
+Any other OpenAI- or Ollama-compatible endpoint is six lines of YAML in `<workspace>/providers/` — no Python, no release. `swarmkit providers list` shows what is registered and what each is waiting for. See [`docs/site/reference/model-provider.md`](./docs/site/reference/model-provider.md).
 
 ### Observability (M6 — shipped)
 
@@ -293,7 +296,7 @@ Agents can delegate to focused sub-agents instead of handling everything with on
 
 ### Multimodal support (M8 — shipped)
 
-Image content blocks across all 7 model providers. MCP tools can return `ImageContent` for vision models. `view_image` tool lets agents see diagrams, screenshots, and architecture drawings. MarkItDown integration for document reading with inline images.
+Image content blocks across every model provider family. MCP tools can return `ImageContent` for vision models. `view_image` tool lets agents see diagrams, screenshots, and architecture drawings. MarkItDown integration for document reading with inline images.
 
 ### MCP permission tiers (M8 — shipped)
 
@@ -408,7 +411,7 @@ See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmk
 61. **`swarmkit install/publish`** — install from directory, tarball, or URL
 
 ### Model Providers
-62. **7 providers** — Anthropic, OpenAI, Google, OpenRouter, Groq, Together, Ollama
+62. **Declarative providers** — 12 bundled (Anthropic, OpenAI, Google, OpenRouter, Groq, Together, Ollama + 5 edge runtimes); any OpenAI/Ollama-compatible endpoint as YAML
 63. **Auto-detection** — providers activated from environment variables
 64. **Per-agent provider** — mix providers within a single topology
 65. **Prompt caching** — automatic prefix caching (99% savings on DeepSeek)
@@ -520,7 +523,7 @@ swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.218.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.219.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 

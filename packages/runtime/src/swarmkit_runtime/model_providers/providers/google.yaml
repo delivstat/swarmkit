@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: google
+  name: Google
+  description: Gemini models over the Google GenAI API (API-key mode; Vertex AI is not this).
+spec:
+  extends: google
+  auth:
+    api_key_env: GOOGLE_API_KEY
+provenance:
+  authored_by: human
+  version: 1.0.0

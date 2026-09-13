@@ -52,8 +52,9 @@ your tool (e.g. docs-reader view_image)
                  └─ model_providers/_anthropic.py → {"type": "image", "source": {"type": "base64", …}}
 ```
 
-Provider coverage follows inheritance: `OpenRouterModelProvider` subclasses
-`OpenAIModelProvider`, so it gets the image part for free. Any OpenAI-compatible provider does.
+Provider coverage follows the family: OpenRouter, Groq and every other provider declared over
+`openai-compatible` gets the image part from `_openai.py` for free. A provider YAML can switch
+it off (`capabilities: {images: false}`) for a server that does not read it.
 
 **Harness executors get there differently** — Claude Code has its own image handling and reads
 files from disk directly — but the MCP route works for both, so it is the portable answer.

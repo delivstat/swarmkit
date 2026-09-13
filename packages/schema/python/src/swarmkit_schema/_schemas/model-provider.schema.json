@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.swarmkit.dev/v1/model-provider.schema.json",
+  "title": "SwarmKit ModelProvider",
+  "description": "A declarative model provider (design/details/declarative-model-providers.md). A provider is DATA: a base URL, an auth shape, a model catalogue, capabilities and request quirks, layered over a wire-format FAMILY that stays code (openai-compatible, anthropic, google, ollama). `extends` names a family or another provider; fields merge one hop at a time. Capabilities may only NARROW what the family offers. Anything past the DSL's ceiling declares `requires: code` and is refused at load rather than half-working.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec",
+    "provenance"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "swarmkit/v1"
+    },
+    "kind": {
+      "const": "ModelProvider"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "spec": {
+      "$ref": "#/$defs/spec"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "lowercase-kebab id; this is the executor `kind` an archetype selects."
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authored_by",
+        "version"
+      ],
+      "properties": {
+        "authored_by": {
+          "enum": [
+            "human",
+            "authored_by_swarm",
+            "derived_from_template",
+            "imported_from_registry",
+            "vendor_published"
+          ]
+        },
+        "authored_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "version": {
+          "$ref": "#/$defs/semver"
+        },
+        "registry": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "extends"
+      ],
+      "properties": {
+        "extends": {
+          "$ref": "#/$defs/identifier",
+          "description": "A wire-format family (openai-compatible, anthropic, google, ollama) or another provider's id. Resolved at load; the chain must end at a family and may not revisit an id."
+        },
+        "base_url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Endpoint. ${VAR:-default} substitution applies."
+        },
+        "auth": {
+          "$ref": "#/$defs/auth"
+        },
+        "models": {
+          "$ref": "#/$defs/models"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "options": {
+          "$ref": "#/$defs/options"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Static extra request headers, e.g. OpenRouter's HTTP-Referer."
+        },
+        "extra_body": {
+          "type": "object",
+          "description": "Fields merged into the request body that the family's base API does not define, e.g. OpenRouter's usage.include. openai-compatible only."
+        },
+        "requires": {
+          "type": "string",
+          "enum": [
+            "code"
+          ],
+          "description": "Declares this provider cannot be expressed declaratively. Load refuses it with the reason — the ceiling fails loudly rather than half-working."
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One shape: a static key in a header. Absent means no auth — a local runtime. OAuth and service accounts are the requires-code case.",
+      "properties": {
+        "api_key_env": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "description": "Environment variable holding the key. The provider registers only when it is set."
+        },
+        "header": {
+          "type": "string",
+          "minLength": 1,
+          "default": "Authorization"
+        },
+        "scheme": {
+          "type": "string",
+          "default": "Bearer",
+          "description": "Prefix before the key; empty string for a bare key (Azure's api-key header)."
+        }
+      }
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "format": "regex",
+          "description": "What supports() accepts. Default comes from the family."
+        },
+        "accept_any": {
+          "type": "boolean",
+          "description": "Aggregators and local servers: the catalogue is unbounded and the server validates."
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "May only NARROW the family. A true the family does not offer is a load-time error.",
+      "properties": {
+        "images": {
+          "type": "boolean"
+        },
+        "tools": {
+          "type": "boolean"
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "structured_output": {
+          "type": "boolean"
+        }
+      }
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lift_to_root": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "description": "Option keys moved from `options` to the payload root — Ollama's think and keep_alive. ollama family only."
+        }
+      }
+    }
+  }
+}

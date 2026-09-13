@@ -11,6 +11,7 @@ from .archetype import SwarmKitArchetype
 from .workspace import SwarmKitWorkspace
 from .trigger import SwarmKitTrigger
 from .executor_adapter import SwarmKitExecutorAdapter
+from .model_provider import SwarmKitModelProvider
 from .role_registry import SwarmKitRoleRegistry
 from .approval_policy import SwarmKitApprovalPolicy
 from .funnel import SwarmKitFunnel
@@ -23,6 +24,7 @@ __all__ = [
     "SwarmKitWorkspace",
     "SwarmKitTrigger",
     "SwarmKitExecutorAdapter",
+    "SwarmKitModelProvider",
     "SwarmKitRoleRegistry",
     "SwarmKitApprovalPolicy",
     "SwarmKitFunnel",

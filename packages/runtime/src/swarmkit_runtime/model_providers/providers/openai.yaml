@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: openai
+  name: OpenAI
+  description: GPT and o-series models over the OpenAI chat-completions API.
+spec:
+  extends: openai-compatible
+  auth:
+    api_key_env: OPENAI_API_KEY
+provenance:
+  authored_by: human
+  version: 1.0.0

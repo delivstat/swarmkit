@@ -25,6 +25,7 @@
    - Role registry — `docs/site/reference/role-registry.md`
    - Trigger — `docs/site/reference/trigger.md`
    - Executor adapter — `docs/site/reference/executor-adapter.md`
+   - Model provider — `docs/site/reference/model-provider.md`
    - Approval policy — `docs/site/reference/approval-policy.md`
 5. **Operate references**
    - CLI commands — `docs/site/reference/cli.md`
@@ -63,7 +64,7 @@ This file is also published on the docs site at <https://delivstat.github.io/swa
 
 **Two tiers.** This `llms.txt` is the compact, link-first map. Its companion **[`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt)** inlines the *full text* of the playbook, all 11 artifact references, and the core design notes into one file — fetch it once and you have the entire corpus, no link-following. Use `llms.txt` to navigate; use `llms-full.txt` when you want everything in context at once.
 
-**Status:** runtime v1.218.0. M0-M10 shipped; fleet control plane + harness executors (M19) + topology canvas (M20) shipped. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. Governance is unchanged and is the point: reusable `Funnel` gates, multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit. A funnel's `approve` layer **defers** the run — it checkpoints, the job goes `deferred`, and `POST /jobs/{id}/resume` (or `swarmkit run --resume`) continues it, so nothing has to stay resident while a human decides. `GET /gates/{gate_id}` answers "is this gate resolved" **with the approval policy applied**, and `GET /artifacts/{ref}` fetches what is being approved. Skills can declare ordering: `requires:` refuses a guarded skill until its prerequisite has actually run. Two read-only reports catch dead configuration before a run — `swarmkit validate --require` (reachability: config no code path can reach) and `--require-verified` (which topology roots produce an output nothing checks). Structured delegation v2 compiler, planner-driven task execution, crash-resilient plans. CLI + HTTP server (`swarmkit serve`) with async jobs, SSE streaming, webhook ingress, MCP endpoint (Streamable HTTP), pluggable auth (API key, JWT/JWKS), canary deployments. **Harness executors** — run Claude Code / opencode / any JSONL subprocess as a node via declarative `adapter.yaml`; worktree isolation, mid-run relay approvals + trust accrual, opt-in container sandbox, per-tool audit of what the harness actually called. 7 model providers, MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, structured inter-agent communication, Postgres backend (one storage service resolves every store), fleet aggregation + panel UI. **10 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace.
+**Status:** runtime v1.219.0. M0-M10 shipped; fleet control plane + harness executors (M19) + topology canvas (M20) shipped. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. Governance is unchanged and is the point: reusable `Funnel` gates, multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit. A funnel's `approve` layer **defers** the run — it checkpoints, the job goes `deferred`, and `POST /jobs/{id}/resume` (or `swarmkit run --resume`) continues it, so nothing has to stay resident while a human decides. `GET /gates/{gate_id}` answers "is this gate resolved" **with the approval policy applied**, and `GET /artifacts/{ref}` fetches what is being approved. Skills can declare ordering: `requires:` refuses a guarded skill until its prerequisite has actually run. Two read-only reports catch dead configuration before a run — `swarmkit validate --require` (reachability: config no code path can reach) and `--require-verified` (which topology roots produce an output nothing checks). Structured delegation v2 compiler, planner-driven task execution, crash-resilient plans. CLI + HTTP server (`swarmkit serve`) with async jobs, SSE streaming, webhook ingress, MCP endpoint (Streamable HTTP), pluggable auth (API key, JWT/JWKS), canary deployments. **Harness executors** — run Claude Code / opencode / any JSONL subprocess as a node via declarative `adapter.yaml`; worktree isolation, mid-run relay approvals + trust accrual, opt-in container sandbox, per-tool audit of what the harness actually called. 12 bundled model providers (declarative YAML over four wire-format families — add an OpenAI- or Ollama-compatible endpoint as a file, no Python), MCP integration with Docker sandboxing, permission tiers, lazy startup, multimodal image support, sub-agent architecture, run trace with token tracking, Knowledge MCP Server, MarkItDown document reader, governance via AGT, OpenTelemetry observability, audit redaction, notifications, circuit breakers, workspace env config, HITL resume, intent drift detection, structured inter-agent communication, Postgres backend (one storage service resolves every store), fleet aggregation + panel UI. **11 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace.
 
 ## Start here
 
@@ -102,7 +103,7 @@ Author & run: `init` (scaffold via conversation), `edit`, `validate` (`--require
 
 ## Schemas
 
-Ten canonical artifact schemas (JSON Schema 2020-12) — nine standalone artifact kinds plus the embedded `approval-policy`. Each has a published reference page under <https://delivstat.github.io/swarmkit/reference/>.
+Eleven canonical artifact schemas (JSON Schema 2020-12) — ten standalone artifact kinds plus the embedded `approval-policy`. Each has a published reference page under <https://delivstat.github.io/swarmkit/reference/>.
 
 - [topology.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/topology.schema.json): a bounded swarm run — [reference](https://delivstat.github.io/swarmkit/reference/topology/).
 - [workspace.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/workspace.schema.json): the root manifest — [reference](https://delivstat.github.io/swarmkit/reference/workspace/).
@@ -113,6 +114,7 @@ Ten canonical artifact schemas (JSON Schema 2020-12) — nine standalone artifac
 - [role-registry.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/role-registry.schema.json): named roles → member identities + the scopes they confer; how approval rules resolve to people; [reference](https://delivstat.github.io/swarmkit/reference/role-registry/).
 - [trigger.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/trigger.schema.json): an external event source that starts a topology or delivers a signed webhook event; [reference](https://delivstat.github.io/swarmkit/reference/trigger/).
 - [executor-adapter.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/executor-adapter.schema.json): a declarative `adapter.yaml` running a coding harness as a node — data, not per-harness Python; [reference](https://delivstat.github.io/swarmkit/reference/executor-adapter/).
+- [model-provider.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/model-provider.schema.json): a declarative model provider — base URL, auth env var, catalogue, narrow-only capabilities, layered over one of four wire-format families (`openai-compatible`, `ollama`, `anthropic`, `google`); a new endpoint is a YAML file, no Python — [reference](https://delivstat.github.io/swarmkit/reference/model-provider/).
 - [approval-policy.schema.json](https://github.com/delivstat/swarmkit/blob/main/packages/schema/schemas/approval-policy.schema.json): **embedded config** (no `kind`) inside a gate's `approve:` — multi-party rules, quorum, four-eyes floor; [reference](https://delivstat.github.io/swarmkit/reference/approval-policy/).
 
 ## Funnel (per-artifact quality gate)
@@ -410,7 +412,8 @@ Per-feature design notes under `design/details/`:
 - [Code Review Swarm](https://github.com/delivstat/swarmkit/blob/main/design/details/topology-code-review.md): agent tree, skill map, HITL gates.
 - [Skill Authoring Swarm](https://github.com/delivstat/swarmkit/blob/main/design/details/topology-skill-authoring.md): multi-agent authoring + edit mode.
 - [Governance provider](https://github.com/delivstat/swarmkit/blob/main/design/details/governance-provider-interface.md): AGT integration, policy evaluation, audit.
-- [Model provider](https://github.com/delivstat/swarmkit/blob/main/design/details/model-provider-abstraction.md): 7 built-in providers, per-agent model selection.
+- [Model provider](https://github.com/delivstat/swarmkit/blob/main/design/details/model-provider-abstraction.md): the `ModelProvider` seam, per-agent model selection.
+- [Declarative model providers](https://github.com/delivstat/swarmkit/blob/main/design/details/declarative-model-providers.md): a provider is YAML over a wire-format family; 12 bundled (`anthropic`, `openai`, `google`, `ollama`, `openrouter`, `groq`, `together`, `rkllama`, `llama-server`, `openvino-model-server`, `mlx-lm`, `lemonade`); `<workspace>/providers/*.yaml` adds or overrides; registration by readiness (key set, or no auth); `swarmkit providers list|show`.
 - [Conversational authoring](https://github.com/delivstat/swarmkit/blob/main/design/details/conversational-authoring.md): swarmkit init/author/edit.
 - [Structured output](https://github.com/delivstat/swarmkit/blob/main/design/details/structured-output-governance.md): schema-constrained generation + auto-correction.
 - [LangGraph compiler](https://github.com/delivstat/swarmkit/blob/main/design/details/langgraph-compiler.md): topology → StateGraph translation, approval gate checkpointing.
@@ -494,7 +497,7 @@ Memory-writer extracts structured insights (topic, context, key_points, tags) vi
 
 **A caller holding the file attaches it to the run**: `swarmkit run … --attach <path>`, or `attachments: [{"path": …}]` / `[{"data": <base64>}]` on `POST /run/{topology}`. It reaches the **entry agent's first message and no downstream node** — one model call, no tool round-trip. The media type is read from the bytes, so there is one `--attach` and no `--image`/`--pdf`; sending a `type` field is a 422, and `url`/`stream` sources are refused (the runtime does not fetch caller-supplied addresses, and an attachment is re-read on every turn of a tool loop). A bad path or an uncarryable type fails the CALL, not the run; images only today (`image/png|jpeg|gif|webp`), 20 MB ceiling (`SWARMKIT_ATTACHMENT_MAX_BYTES`). Every attachment is audited as a `run.attachments` event carrying name, media type, size, SHA-256 and source path — never the bytes.
 
-**An agent deciding mid-run what to look at still needs a skill.** A path in the prompt is text; base64 in the prompt is tokens. **That route is an MCP tool returning `ImageContent`**, which `langgraph_compiler/_skill_executor.py` converts to a `ContentBlock(type="image", …)` and the provider maps to its native image part (`image_url` data-URL for OpenAI and anything subclassing it, incl. OpenRouter; `source.base64` for Anthropic). `docs-reader`'s `view_image` is the bundled tool that does this. Harness executors read image files from disk directly instead.
+**An agent deciding mid-run what to look at still needs a skill.** A path in the prompt is text; base64 in the prompt is tokens. **That route is an MCP tool returning `ImageContent`**, which `langgraph_compiler/_skill_executor.py` converts to a `ContentBlock(type="image", …)` and the provider maps to its native image part (`image_url` data-URL for the `openai-compatible` family, incl. OpenRouter; `source.base64` for Anthropic). `docs-reader`'s `view_image` is the bundled tool that does this. Harness executors read image files from disk directly instead.
 
 The failure mode is silent: a path that does not resolve makes the tool report "not found", and the model then describes the image from surrounding prose anyway — fluently and wrongly. Pass **absolute** paths, rewrite relative refs inside any document the agent reads, and instruct the agent to report a failed path rather than describe the image. Since 1.129.2 the paths must also sit under the docs-reader `--workspace` root, which now confines rather than merely resolves.
 
@@ -2093,6 +2096,132 @@ The `launch` block is the sharpest edge (it is a command line): declarative adap
 - [Archetypes catalogue](archetypes.md) — the `executor` block lives on an archetype.
 
 ══════════════════════════════════════════════════════════════════════════════
+## Source: docs/site/reference/model-provider.md
+## Published: https://delivstat.github.io/swarmkit/reference/model-provider/
+══════════════════════════════════════════════════════════════════════════════
+
+# Model provider
+
+A **model provider** is a first-class SwarmKit artifact (`kind: ModelProvider`) that points the runtime at an LLM endpoint. It is **data**: a base URL, an auth shape, a model catalogue, capabilities and request quirks — layered over a wire-format **family** that stays code. A new OpenAI- or Ollama-compatible endpoint is a YAML file and nothing else; no Python, no runtime release.
+
+The decision — what is data and what is code — is in the [declarative model providers design note](https://github.com/delivstat/swarmkit/blob/main/design/details/declarative-model-providers.md). This page is the artifact reference.
+
+## The four families
+
+There are four wire formats. They are Python, and they are the only Python:
+
+| family | speaks | what extends it |
+|---|---|---|
+| `openai-compatible` | OpenAI chat-completions | OpenAI, OpenRouter, Groq, Together, llama.cpp `llama-server`, OpenVINO Model Server, vLLM, mlx-lm, Lemonade — every OpenAI-compatible server |
+| `ollama` | Ollama's native `/api/chat` | Ollama, rkllama (Rockchip NPU) |
+| `anthropic` | Anthropic Messages | Anthropic |
+| `google` | Google GenAI | Google (API-key mode) |
+
+A provider YAML names one via `extends` and parameterises it. Anything a family cannot express — OAuth token acquisition, a fifth wire format — is a new family, added as code, exactly as an executor past the declarative ceiling becomes a Tier-1 Python executor.
+
+## The artifact
+
+```yaml
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: rkllama
+  name: rkllama — Rockchip NPU
+  description: Ollama-API server for RK3588/RK3576 NPUs, running pre-converted .rkllm models.
+spec:
+  extends: ollama
+  base_url: ${RKLLAMA_HOST:-http://localhost:8080}
+  capabilities:
+    tools: false          # narrows the family; may never widen it
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+Same envelope as every other artifact — `apiVersion`, `kind`, `metadata`, `spec`, `provenance` — so the validator, the portal and the codegen treat it like one.
+
+## `spec` fields
+
+Required: `extends`. `spec` refuses unknown fields — the DSL is deliberately small and a template language cannot grow in by accident.
+
+| Field (`spec.`) | Type | What it does |
+|---|---|---|
+| `extends` | id | **Required.** A family, or another provider's id. Resolved at load: the chain must end at a family and may not revisit an id. `extends: ollama` always means the *family*, never the bundled `ollama.yaml` — families and providers share a namespace and the family wins. |
+| `base_url` | string | Endpoint. `${VAR:-default}` substitution applies, the same resolver as workspace env config. |
+| `auth.api_key_env` | string | Env var holding the key. **Absent means no auth** — a local runtime, which registers unconditionally. |
+| `auth.header` | string | Default `Authorization`. Azure's key mode is `api-key`. `openai-compatible` and `ollama` only. |
+| `auth.scheme` | string | Default `Bearer`; empty string for a bare key. `openai-compatible` and `ollama` only. |
+| `models.pattern` | regex | What `supports()` accepts. Default is the family's own catalogue (`^gpt-…`, `^claude-`, `^gemini-`). |
+| `models.accept_any` | bool | Aggregators and local runtimes: the catalogue is unbounded and the server validates. Ollama's default. |
+| `capabilities.*` | bool | `images`, `tools`, `streaming`, `structured_output`. **Narrow-only** — a `true` the family does not offer is a load-time error. A narrowed capability is enforced: a request carrying tools to a `tools: false` provider is refused before the wire. `structured_output: false` withholds `response_format` and keeps the schema in the prompt. |
+| `options.lift_to_root` | list | Option keys moved from `options` to the payload root. Ollama's default is `[think, keep_alive]`. `ollama` only. |
+| `headers` | map | Static extra request headers (OpenRouter's `HTTP-Referer`, `X-Title`). |
+| `extra_body` | map | Fields merged into every request body that the base API does not define — OpenRouter's `usage: {include: true}` for per-call cost. `openai-compatible` and `ollama` only. |
+| `requires` | `code` | Declares the provider cannot be expressed here. Load **refuses** it with the file and reason, so a YAML past the ceiling fails loudly rather than half-works. |
+
+A field the family would ignore (`extra_body` on `anthropic`, say) is refused at load, not dropped: a declared quirk that never reaches the wire is exactly the half-working provider this artifact exists to prevent.
+
+## Inheritance
+
+`extends` names a family or another provider. Resolution walks the chain to a family, merging each hop's fields over its parent's: `auth`, `models`, `capabilities`, `headers` and `extra_body` merge by key; `base_url` and `lift_to_root` replace. A child overriding `auth.header` keeps its parent's `api_key_env`.
+
+Depth is unbounded; every bundled provider is one hop. A provider three hops from its family is one nobody can read — that is a review norm, not a schema limit.
+
+## Where providers come from
+
+```
+bundled    packages/runtime/src/swarmkit_runtime/model_providers/providers/*.yaml
+workspace  <workspace>/providers/*.yaml           overrides a bundled id
+```
+
+**Registration is by readiness, not by a list.** Every loaded provider registers if its `auth.api_key_env` is set, or if it declares no auth. Adding a provider is adding a file; there is nothing in Python to keep in step.
+
+The bundled library: `anthropic`, `openai`, `google`, `ollama`, `openrouter`, `groq`, `together`, plus the edge runtimes `rkllama`, `llama-server`, `openvino-model-server`, `mlx-lm`, `lemonade`. Each local runtime's `base_url` reads an env var with a default (`RKLLAMA_HOST`, `LLAMA_SERVER_URL`, `OVMS_URL`, `MLX_LM_URL`, `LEMONADE_URL`; Ollama's is `OLLAMA_BASE_URL`).
+
+## Inspecting
+
+```
+$ swarmkit providers list
+  anthropic                anthropic          bundled    needs ANTHROPIC_API_KEY
+  groq                     openai-compatible  bundled    ready (GROQ_API_KEY set)
+  llama-server             openai-compatible  workspace  ready (no auth)
+  rkllama                  ollama             bundled    ready (no auth)
+  …
+
+$ swarmkit providers show rkllama
+id:           rkllama
+chain:        rkllama -> ollama
+base_url:     http://localhost:8080
+auth:         none
+models:       any
+capabilities: images=yes, tools=no, streaming=yes, structured_output=yes
+lift_to_root: think, keep_alive
+```
+
+A workspace YAML declaring `requires: code` stops `list` with its file name and the reason.
+
+## Adding one
+
+Point a workspace at an OpenAI-compatible server SwarmKit has never heard of:
+
+```bash
+mkdir -p workspace/providers
+cat > workspace/providers/vllm.yaml <<'YAML'
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata: { id: vllm, name: vLLM, description: vLLM's OpenAI-compatible server on the GPU box. }
+spec:
+  extends: openai-compatible
+  base_url: ${VLLM_URL:-http://gpu-box:8000/v1}
+  models: { accept_any: true }
+provenance: { authored_by: human, version: 1.0.0 }
+YAML
+swarmkit providers list workspace       # vllm  openai-compatible  workspace  ready (no auth)
+```
+
+Then `provider: vllm` in a topology or archetype, or `SWARMKIT_PROVIDER=vllm` for a run.
+
+══════════════════════════════════════════════════════════════════════════════
 ## Source: docs/site/reference/approval-policy.md
 ## Published: https://delivstat.github.io/swarmkit/reference/approval-policy/
 ══════════════════════════════════════════════════════════════════════════════
@@ -2419,6 +2548,9 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`.
 | `GOOGLE_API_KEY` | Google AI API key |
 | `GROQ_API_KEY` | Groq API key |
 | `TOGETHER_API_KEY` | Together API key |
+| `OLLAMA_BASE_URL`, `RKLLAMA_HOST`, `LLAMA_SERVER_URL`, `OVMS_URL`, `MLX_LM_URL`, `LEMONADE_URL` | Endpoints for the no-auth local runtimes (each has a localhost default) |
+
+A provider with no key set is not registered; `swarmkit providers list` says which. Providers are declarative — see the [model provider reference](model-provider.md).
 
 ══════════════════════════════════════════════════════════════════════════════
 ## Source: docs/site/reference/serve.md

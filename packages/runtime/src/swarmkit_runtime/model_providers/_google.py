@@ -6,12 +6,13 @@ through the ModelProvider interface.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from google import genai
 from google.genai import types as gtypes
 
+from ._family import FamilyBase
 from ._types import (
     NON_NATIVE_OPTIONS,
     CompletionRequest,
@@ -24,25 +25,58 @@ from ._types import (
 # GenerateContentConfig accepts top_k/top_p/seed (unlike the OpenAI chat API); keep top_k.
 _DROP = NON_NATIVE_OPTIONS - frozenset({"top_k"})
 
-_GEMINI_PREFIXES = ("gemini-",)
+_GEMINI_PATTERN = r"^gemini-"
 
 
-class GoogleModelProvider:
-    """ModelProvider for Google's Gemini models via google-genai."""
+class GoogleModelProvider(FamilyBase):
+    """ModelProvider for Google's Gemini models via google-genai — the ``google`` family."""
 
     provider_id: str = "google"
 
     #: Gemini constrains generation to ``response_schema``.
     enforces_response_schema: bool = True
 
-    def __init__(self, *, api_key: str | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        provider_id: str | None = None,
+        base_url: str | None = None,
+        auth: Any = None,
+        headers: Mapping[str, str] | None = None,
+        extra_body: Mapping[str, Any] | None = None,
+        lift_to_root: tuple[str, ...] | None = None,
+        model_pattern: str | None = None,
+        accept_any_model: bool = False,
+        capabilities: Mapping[str, bool] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._configure(
+            provider_id=provider_id,
+            model_pattern=model_pattern,
+            accept_any_model=accept_any_model,
+            capabilities=capabilities,
+            default_pattern=_GEMINI_PATTERN,
+            default_accept_any=False,
+            headers=headers,
+        )
+        # ``auth``, ``extra_body`` and ``lift_to_root`` are accepted for a uniform build call and
+        # refused upstream (`_declarative.FAMILY_FIELDS`): this family owns its wire format.
+        http_options: dict[str, Any] = dict(kwargs.pop("http_options", None) or {})
+        if base_url is not None:
+            http_options.setdefault("base_url", base_url)
+        if self.extra_headers:
+            http_options.setdefault("headers", dict(self.extra_headers))
+        if http_options:
+            kwargs["http_options"] = http_options
         self._client = genai.Client(api_key=api_key, **kwargs)
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         from ._types import with_retry  # noqa: PLC0415
 
+        self._check(request)
         contents = _to_google_contents(request)
-        config = _to_google_config(request)
+        config = _to_google_config(request, structured_output=self._structured_output)
 
         raw = await with_retry(
             lambda: self._client.aio.models.generate_content(
@@ -55,8 +89,10 @@ class GoogleModelProvider:
         return _from_google_response(raw)
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:
+        self._check(request)
+        self._check_stream()
         contents = _to_google_contents(request)
-        config = _to_google_config(request)
+        config = _to_google_config(request, structured_output=self._structured_output)
 
         async for chunk in await self._client.aio.models.generate_content_stream(
             model=request.model,
@@ -65,9 +101,6 @@ class GoogleModelProvider:
         ):
             if chunk.text:
                 yield ContentBlock(type="text", text=chunk.text)
-
-    def supports(self, model: str) -> bool:
-        return any(model.startswith(p) for p in _GEMINI_PREFIXES)
 
     def tokenize(self, text: str, model: str) -> int | None:
         return None
@@ -145,7 +178,7 @@ def _to_google_tools(request: CompletionRequest) -> list[gtypes.Tool]:
 
 
 def _to_google_config(
-    request: CompletionRequest,
+    request: CompletionRequest, *, structured_output: bool = True
 ) -> gtypes.GenerateContentConfig:
     kwargs: dict[str, Any] = {}
     if request.temperature is not None:
@@ -154,7 +187,7 @@ def _to_google_config(
         kwargs["max_output_tokens"] = request.max_tokens
     if request.system:
         kwargs["system_instruction"] = request.system
-    if request.response_format is not None:
+    if request.response_format is not None and structured_output:
         rf_type = request.response_format.get("type", "")
         if rf_type in ("json_object", "json_schema"):
             kwargs["response_mime_type"] = "application/json"

@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: mlx-lm
+  name: mlx-lm
+  description: Apple Silicon inference via mlx_lm.server, OpenAI-compatible. Local, no auth.
+spec:
+  extends: openai-compatible
+  base_url: ${MLX_LM_URL:-http://localhost:8080/v1}
+  models:
+    accept_any: true
+provenance:
+  authored_by: human
+  version: 1.0.0
