@@ -21,6 +21,9 @@ import archetypeSchema from "../../schemas/archetype.schema.json" with {
 import contractSchema from "../../schemas/contract.schema.json" with {
 	type: "json",
 };
+import modelProviderSchema from "../../schemas/model-provider.schema.json" with {
+	type: "json",
+};
 import executorAdapterSchema from "../../schemas/executor-adapter.schema.json" with {
 	type: "json",
 };
@@ -69,6 +72,7 @@ export type SchemaName =
 	| "workspace"
 	| "trigger"
 	| "executor-adapter"
+	| "model-provider"
 	| "role-registry"
 	| "approval-policy"
 	| "funnel"
@@ -81,6 +85,7 @@ const SCHEMAS = {
 	workspace: workspaceSchema,
 	trigger: triggerSchema,
 	"executor-adapter": executorAdapterSchema,
+	"model-provider": modelProviderSchema,
 	"role-registry": roleRegistrySchema,
 	"approval-policy": approvalPolicySchema,
 	funnel: funnelSchema,

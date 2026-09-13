@@ -16,6 +16,7 @@ ALL: tuple[SchemaName, ...] = (
     "workspace",
     "trigger",
     "executor-adapter",
+    "model-provider",
     "role-registry",
     "approval-policy",
     "funnel",
@@ -113,6 +114,17 @@ def test_executor_adapter_valid_fixtures(fixture: Path) -> None:
 def test_executor_adapter_invalid_fixtures_fail(fixture: Path) -> None:
     with pytest.raises(ValidationError):
         validate("executor-adapter", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("model-provider"), ids=lambda p: p.name)
+def test_model_provider_valid_fixtures(fixture: Path) -> None:
+    validate("model-provider", _load_yaml(fixture))
+
+
+@pytest.mark.parametrize("fixture", _fixtures("model-provider-invalid"), ids=lambda p: p.name)
+def test_model_provider_invalid_fixtures_fail(fixture: Path) -> None:
+    with pytest.raises(ValidationError):
+        validate("model-provider", _load_yaml(fixture))
 
 
 @pytest.mark.parametrize("fixture", _fixtures("approval-policy"), ids=lambda p: p.name)

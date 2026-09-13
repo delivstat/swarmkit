@@ -29,6 +29,7 @@ SchemaName = Literal[
     "workspace",
     "trigger",
     "executor-adapter",
+    "model-provider",
     "role-registry",
     "approval-policy",
     "funnel",

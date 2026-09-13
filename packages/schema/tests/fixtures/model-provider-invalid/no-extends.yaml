@@ -1,0 +1,11 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: orphan
+  name: Orphan
+  description: A provider with no family cannot be built.
+spec:
+  base_url: http://localhost:9999
+provenance:
+  authored_by: human
+  version: 1.0.0
