@@ -64,11 +64,18 @@ metadata:
   id: groq
   name: Groq
   description: OpenAI-compatible inference with very fast tokens.
-extends: openai-compatible
-base_url: https://api.groq.com/openai/v1
-auth:
-  api_key_env: GROQ_API_KEY
+spec:
+  extends: openai-compatible
+  base_url: https://api.groq.com/openai/v1
+  auth:
+    api_key_env: GROQ_API_KEY
+provenance:
+  authored_by: human
+  version: 1.0.0
 ```
+
+Same envelope as every other artifact — `apiVersion`, `kind`, `metadata`, `spec`, `provenance` — so the
+validator, the portal and the codegen treat it like one.
 
 That is the whole of `GroqModelProvider`. The rkllm case, which today needs a release:
 
@@ -78,13 +85,18 @@ kind: ModelProvider
 metadata:
   id: rkllama
   name: rkllama — Rockchip NPU
-extends: ollama
-base_url: ${RKLLAMA_HOST:-http://localhost:8080}
-capabilities:
-  tools: false          # narrows the family; may never widen it
+  description: Ollama-API server for RK3588/RK3576 NPUs, running pre-converted .rkllm models.
+spec:
+  extends: ollama
+  base_url: ${RKLLAMA_HOST:-http://localhost:8080}
+  capabilities:
+    tools: false          # narrows the family; may never widen it
+provenance:
+  authored_by: human
+  version: 1.0.0
 ```
 
-### Fields
+### `spec` fields
 
 | field | type | notes |
 | --- | --- | --- |
@@ -159,9 +171,11 @@ Point a workspace at an OpenAI-compatible server it has never heard of, with no 
 cat > workspace/providers/llama-server.yaml <<EOF
 apiVersion: swarmkit/v1
 kind: ModelProvider
-metadata: { id: llama-server, name: llama.cpp }
-extends: openai-compatible
-base_url: \${LLAMA_SERVER_URL:-http://localhost:8081/v1}
+metadata: { id: llama-server, name: llama.cpp, description: llama-server, OpenAI-compatible. }
+spec:
+  extends: openai-compatible
+  base_url: \${LLAMA_SERVER_URL:-http://localhost:8081/v1}
+provenance: { authored_by: human, version: 1.0.0 }
 EOF
 swarmkit run --workspace workspace --provider llama-server --model any "hello"
 ```
