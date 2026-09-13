@@ -619,7 +619,9 @@ def test_openai_response_cost_defaults_to_zero_when_absent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_openrouter_requests_cost_but_base_openai_does_not() -> None:
+async def test_openrouter_requests_cost_but_base_openai_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Only OpenRouter asks for cost (the base OpenAI API rejects the passthrough flag). It is
     # declared in providers/openrouter.yaml as ``extra_body``, not gated on an id in the family.
     from swarmkit_runtime.model_providers import (  # noqa: PLC0415
@@ -639,6 +641,7 @@ async def test_openrouter_requests_cost_but_base_openai_does_not() -> None:
         provider._client.chat.completions.create = fake_create  # type: ignore[attr-defined]
         await provider.complete(CompletionRequest(model="m", messages=()))  # type: ignore[attr-defined]
 
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     specs = load_provider_specs()
     await _capture(build_provider(resolve_chain("openrouter", specs)), "openrouter")
     await _capture(OpenAIModelProvider(api_key="k"), "openai")

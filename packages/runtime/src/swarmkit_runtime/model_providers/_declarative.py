@@ -380,7 +380,11 @@ def family_class(family: str) -> type[Any]:
 
 def build_provider(resolved: ResolvedProvider) -> ModelProviderProtocol:
     """Instantiate the family with the resolved parameters. Raises ``ImportError`` when the
-    family's SDK is not installed — the caller decides whether that is fatal."""
+    family's SDK is not installed — the caller decides whether that is fatal — and
+    :class:`ProviderSpecError` when the provider needs a key that is not set, so the failure
+    names the env var rather than surfacing as the SDK's own credentials error."""
+    if not resolved.ready:
+        raise ProviderSpecError(f"provider '{resolved.id}' needs {resolved.auth.api_key_env} set")
     cls = family_class(resolved.family)
     provider: ModelProviderProtocol = cls(
         api_key=resolved.auth.resolve(),

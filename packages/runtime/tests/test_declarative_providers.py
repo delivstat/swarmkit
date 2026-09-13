@@ -223,6 +223,14 @@ def test_the_aggregators_build_the_same_client_the_deleted_classes_did(
     assert provider.supports("anything/at-all")
 
 
+def test_building_an_unready_provider_names_the_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without this the openai SDK raised its own 'set OPENAI_API_KEY' for an OpenRouter
+    provider — true of the SDK, wrong for the operator."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(ProviderSpecError, match="needs OPENROUTER_API_KEY"):
+        build_provider(resolve_chain("openrouter", load_provider_specs()))
+
+
 def test_the_first_party_providers_keep_their_catalogues(monkeypatch: pytest.MonkeyPatch) -> None:
     for env in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.setenv(env, "k")
