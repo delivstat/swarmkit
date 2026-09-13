@@ -6,11 +6,12 @@ through the ModelProvider interface.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 import anthropic
 
+from ._family import FamilyBase
 from ._types import (
     NON_NATIVE_OPTIONS,
     CompletionRequest,
@@ -20,13 +21,13 @@ from ._types import (
     apply_options,
 )
 
-_CLAUDE_PREFIXES = ("claude-",)
+_CLAUDE_PATTERN = r"^claude-"
 # Anthropic's messages.create accepts top_k (unlike the OpenAI chat API), so keep it.
 _DROP = NON_NATIVE_OPTIONS - frozenset({"top_k"})
 
 
-class AnthropicModelProvider:
-    """ModelProvider for Anthropic's Claude models."""
+class AnthropicModelProvider(FamilyBase):
+    """ModelProvider for Anthropic's Claude models — the ``anthropic`` family."""
 
     provider_id: str = "anthropic"
 
@@ -34,12 +35,42 @@ class AnthropicModelProvider:
     #: at all, so the schema must stay in the prompt or nothing carries it.
     enforces_response_schema: bool = False
 
-    def __init__(self, *, api_key: str | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        provider_id: str | None = None,
+        base_url: str | None = None,
+        auth: Any = None,
+        headers: Mapping[str, str] | None = None,
+        extra_body: Mapping[str, Any] | None = None,
+        lift_to_root: tuple[str, ...] | None = None,
+        model_pattern: str | None = None,
+        accept_any_model: bool = False,
+        capabilities: Mapping[str, bool] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._configure(
+            provider_id=provider_id,
+            model_pattern=model_pattern,
+            accept_any_model=accept_any_model,
+            capabilities=capabilities,
+            default_pattern=_CLAUDE_PATTERN,
+            default_accept_any=False,
+            headers=headers,
+        )
+        # ``auth``, ``extra_body`` and ``lift_to_root`` are accepted for a uniform build call and
+        # refused upstream (`_declarative.FAMILY_FIELDS`): this family owns its wire format.
+        if base_url is not None:
+            kwargs.setdefault("base_url", base_url)
+        if self.extra_headers:
+            kwargs.setdefault("default_headers", dict(self.extra_headers))
         self._client = anthropic.AsyncAnthropic(api_key=api_key, **kwargs)
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         from ._types import with_retry  # noqa: PLC0415
 
+        self._check(request)
         messages = _to_anthropic_messages(request)
         kwargs: dict[str, Any] = {
             "model": request.model,
@@ -70,6 +101,8 @@ class AnthropicModelProvider:
         return _from_anthropic_response(raw)
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:
+        self._check(request)
+        self._check_stream()
         messages = _to_anthropic_messages(request)
         kwargs: dict[str, Any] = {
             "model": request.model,
@@ -85,9 +118,6 @@ class AnthropicModelProvider:
         async with self._client.messages.stream(**kwargs) as stream:
             async for text in stream.text_stream:
                 yield ContentBlock(type="text", text=text)
-
-    def supports(self, model: str) -> bool:
-        return any(model.startswith(p) for p in _CLAUDE_PREFIXES)
 
     def tokenize(self, text: str, model: str) -> int | None:
         return None

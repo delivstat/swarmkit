@@ -1,17 +1,19 @@
-"""OpenAIModelProvider — wraps the ``openai`` SDK.
+"""OpenAIModelProvider — the ``openai-compatible`` family; wraps the ``openai`` SDK.
 
-Also handles Azure OpenAI via ``extra.base_url`` + Azure auth. Only
-this file imports ``openai``.
+Only this file imports ``openai``. Parameterised by a provider YAML (``_declarative.py``): base
+URL, auth header, static headers, ``extra_body`` quirks, the model catalogue. Unparameterised it
+is OpenAI itself, exactly as before.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 import openai
 
+from ._family import FamilyBase
 from ._types import (
     CompletionRequest,
     CompletionResponse,
@@ -20,7 +22,8 @@ from ._types import (
     apply_options,
 )
 
-_OPENAI_PREFIXES = ("gpt-", "o1-", "o3-", "o4-")
+#: OpenAI's own catalogue. A YAML supplies its own ``models.pattern`` or ``accept_any``.
+_OPENAI_PATTERN = r"^(gpt-|o1-|o3-|o4-)"
 
 
 def _dump_tool_args(value: Any) -> str:
@@ -47,27 +50,69 @@ def _parse_tool_args(raw: Any) -> dict[str, Any]:
     return {}
 
 
-class OpenAIModelProvider:
-    """ModelProvider for OpenAI's GPT / o-series models."""
+class OpenAIModelProvider(FamilyBase):
+    """ModelProvider for OpenAI's GPT / o-series models, and for every server that speaks the
+    chat-completions API — which is what a provider YAML with ``extends: openai-compatible``
+    turns this into."""
 
     provider_id: str = "openai"
 
     #: OpenAI Structured Outputs constrains generation to the json_schema.
     enforces_response_schema: bool = True
 
-    def __init__(self, *, api_key: str | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        provider_id: str | None = None,
+        base_url: str | None = None,
+        auth: Any = None,
+        headers: Mapping[str, str] | None = None,
+        extra_body: Mapping[str, Any] | None = None,
+        lift_to_root: tuple[str, ...] | None = None,
+        model_pattern: str | None = None,
+        accept_any_model: bool = False,
+        capabilities: Mapping[str, bool] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self._configure(
+            provider_id=provider_id,
+            model_pattern=model_pattern,
+            accept_any_model=accept_any_model,
+            capabilities=capabilities,
+            default_pattern=_OPENAI_PATTERN,
+            default_accept_any=False,
+            headers=headers,
+        )
+        # A body the base API does not define but this server wants on every call — OpenRouter's
+        # ``usage: {include: true}`` (per-call cost, read back as ``raw.usage.cost``). Declared by
+        # the YAML; the base OpenAI API rejects it, so it is never a default.
+        self._extra_body: dict[str, Any] = dict(extra_body or {})
+        default_headers = dict(self.extra_headers)
+        if auth is not None and auth.api_key_env is None:
+            # No auth — a local runtime. The SDK insists on *some* key (it reads OPENAI_API_KEY
+            # otherwise, and raises when that is unset too), so it gets a placeholder the server
+            # never reads.
+            api_key = api_key or "no-auth"
+        elif auth is not None and not auth.is_bearer:
+            # The key travels in a different header (Azure's ``api-key``). The SDK still sends
+            # its own Authorization: Bearer, with the placeholder.
+            default_headers[auth.header] = f"{auth.scheme} {api_key or ''}".strip()
+            api_key = "in-header"
+        if default_headers:
+            kwargs.setdefault("default_headers", default_headers)
+        if base_url is not None:
+            kwargs.setdefault("base_url", base_url)
         self._client = openai.AsyncOpenAI(api_key=api_key, **kwargs)
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         from ._types import with_retry  # noqa: PLC0415
 
-        kwargs = _to_openai_kwargs(request)
-        if self.provider_id == "openrouter":
-            # OpenRouter returns per-call cost (USD) only when asked — a passthrough body flag the
-            # base OpenAI API doesn't accept, so it's gated to this provider. Read back in
-            # `_from_openai_response` as `raw.usage.cost`.
+        self._check(request)
+        kwargs = _to_openai_kwargs(request, structured_output=self._structured_output)
+        if self._extra_body:
             extra_body = dict(kwargs.get("extra_body") or {})
-            extra_body["usage"] = {"include": True}
+            extra_body.update(self._extra_body)
             kwargs["extra_body"] = extra_body
         raw = await with_retry(
             lambda: self._client.chat.completions.create(**kwargs),
@@ -76,21 +121,22 @@ class OpenAIModelProvider:
         return _from_openai_response(raw)
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ContentBlock]:
-        kwargs = _to_openai_kwargs(request)
+        self._check(request)
+        self._check_stream()
+        kwargs = _to_openai_kwargs(request, structured_output=self._structured_output)
         kwargs["stream"] = True
         async for chunk in await self._client.chat.completions.create(**kwargs):
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta and delta.content:
                 yield ContentBlock(type="text", text=delta.content)
 
-    def supports(self, model: str) -> bool:
-        return any(model.startswith(p) for p in _OPENAI_PREFIXES)
-
     def tokenize(self, text: str, model: str) -> int | None:
         return None
 
 
-def _to_openai_kwargs(request: CompletionRequest) -> dict[str, Any]:
+def _to_openai_kwargs(
+    request: CompletionRequest, *, structured_output: bool = True
+) -> dict[str, Any]:
     messages = _build_openai_messages(request)
     kwargs: dict[str, Any] = {"model": request.model, "messages": messages}
     if request.max_tokens is not None:
@@ -109,7 +155,7 @@ def _to_openai_kwargs(request: CompletionRequest) -> dict[str, Any]:
             }
             for t in request.tools
         ]
-    if request.response_format is not None:
+    if request.response_format is not None and structured_output:
         kwargs["response_format"] = request.response_format
     # Per-model options (top_p, frequency_penalty, seed, ...) minus Ollama-only knobs the
     # OpenAI SDK would reject; runtime ``extra`` applied last (never filtered).

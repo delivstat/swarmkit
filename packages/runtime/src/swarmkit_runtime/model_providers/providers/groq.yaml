@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: groq
+  name: Groq
+  description: OpenAI-compatible inference with very fast tokens; unbounded catalogue.
+spec:
+  extends: openai-compatible
+  base_url: https://api.groq.com/openai/v1
+  auth:
+    api_key_env: GROQ_API_KEY
+  models:
+    accept_any: true
+provenance:
+  authored_by: human
+  version: 1.0.0

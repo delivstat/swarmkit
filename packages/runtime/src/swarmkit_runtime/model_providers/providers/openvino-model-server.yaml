@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: openvino-model-server
+  name: OpenVINO Model Server
+  description: Intel OVMS serving LLMs on CPU, iGPU or NPU over the OpenAI-compatible API. Local, no auth.
+spec:
+  extends: openai-compatible
+  base_url: ${OVMS_URL:-http://localhost:8000/v3}
+  models:
+    accept_any: true
+provenance:
+  authored_by: human
+  version: 1.0.0

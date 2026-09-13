@@ -1,7 +1,9 @@
 """Model provider abstraction — the single seam through which the runtime
 reaches any LLM (Anthropic, OpenAI, Google, Ollama, or custom).
 
-See ``design/details/model-provider-abstraction.md`` for the full spec.
+See ``design/details/model-provider-abstraction.md`` for the full spec, and
+``design/details/declarative-model-providers.md`` for how a provider is declared as YAML over one
+of the four wire-format families (``providers/*.yaml`` here; ``<workspace>/providers/`` overrides).
 
 Non-negotiable invariant: **only this package may import LLM SDKs**
 (``anthropic``, ``google-genai``, ``openai``, Ollama's HTTP client).
@@ -10,6 +12,14 @@ or a ``CompletionRequest`` and never touches a vendor SDK directly.
 Same rule as ``governance/`` for AGT. See root CLAUDE.md invariant #4.
 """
 
+from ._declarative import (
+    ProviderSpec,
+    ProviderSpecError,
+    ResolvedProvider,
+    build_provider,
+    load_provider_specs,
+    resolve_chain,
+)
 from ._mock import MockModelProvider
 from ._registry import ProviderRegistry
 from ._types import (
@@ -28,9 +38,6 @@ _LAZY_PROVIDERS: dict[str, tuple[str, str]] = {
     "GoogleModelProvider": ("._google", "GoogleModelProvider"),
     "OllamaModelProvider": ("._ollama", "OllamaModelProvider"),
     "OpenAIModelProvider": ("._openai", "OpenAIModelProvider"),
-    "GroqModelProvider": ("._openai_compat", "GroqModelProvider"),
-    "OpenRouterModelProvider": ("._openai_compat", "OpenRouterModelProvider"),
-    "TogetherModelProvider": ("._openai_compat", "TogetherModelProvider"),
 }
 
 
@@ -52,16 +59,19 @@ __all__ = [
     "CompletionResponse",
     "ContentBlock",
     "GoogleModelProvider",
-    "GroqModelProvider",
     "Message",
     "MockModelProvider",
     "OllamaModelProvider",
     "OpenAIModelProvider",
-    "OpenRouterModelProvider",
     "ProviderRegistry",
-    "TogetherModelProvider",
+    "ProviderSpec",
+    "ProviderSpecError",
+    "ResolvedProvider",
     "ToolSpec",
     "Usage",
+    "build_provider",
     "image_block",
+    "load_provider_specs",
+    "resolve_chain",
     "with_retry",
 ]

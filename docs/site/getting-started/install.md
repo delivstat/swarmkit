@@ -40,7 +40,7 @@ swarmkit validate examples/hello-swarm/workspace --tree
 
 ## Model providers
 
-SwarmKit auto-detects providers from environment variables:
+Providers are declared as YAML (`kind: ModelProvider`) and register when they are **ready** — their key is in the environment, or they need no key:
 
 | Provider | Env var |
 |---|---|
@@ -50,6 +50,9 @@ SwarmKit auto-detects providers from environment variables:
 | OpenRouter | `OPENROUTER_API_KEY` |
 | Groq | `GROQ_API_KEY` |
 | Together | `TOGETHER_API_KEY` |
-| Ollama | (always available) |
+| Ollama | none — `OLLAMA_BASE_URL` to point elsewhere (default `http://localhost:11434`) |
+| rkllama, llama-server, openvino-model-server, mlx-lm, lemonade | none — local runtimes, each with a `*_URL`/`*_HOST` env var |
+
+`swarmkit providers list` shows every provider and what it is waiting for. Any OpenAI- or Ollama-compatible endpoint is a YAML file in `<workspace>/providers/` — see the [model provider reference](../reference/model-provider.md).
 
 Override per-run: `SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=meta-llama/llama-3.3-70b-instruct swarmkit run ...`

@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: together
+  name: Together AI
+  description: Open models over the OpenAI-compatible API; unbounded catalogue.
+spec:
+  extends: openai-compatible
+  base_url: https://api.together.xyz/v1
+  auth:
+    api_key_env: TOGETHER_API_KEY
+  models:
+    accept_any: true
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: anthropic
+  name: Anthropic
+  description: Claude models over the Anthropic Messages API.
+spec:
+  extends: anthropic
+  auth:
+    api_key_env: ANTHROPIC_API_KEY
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: ModelProvider
+metadata:
+  id: llama-server
+  name: llama.cpp server
+  description: llama.cpp's llama-server, OpenAI-compatible. Any CPU; Vulkan/OpenCL GPUs including Mali. Local, no auth.
+spec:
+  extends: openai-compatible
+  base_url: ${LLAMA_SERVER_URL:-http://localhost:8081/v1}
+  models:
+    accept_any: true
+provenance:
+  authored_by: human
+  version: 1.0.0

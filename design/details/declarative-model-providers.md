@@ -1,6 +1,6 @@
 # Declarative model providers — a provider is data, a wire format is code
 
-**Status:** design + implementation, same PR (implementation pre-approved).
+**Status:** shipped — runtime 1.219.0, schema 1.41.0. Reference page: `docs/site/reference/model-provider.md`.
 **Precedent:** [`executor-declarative-adapters-plan.md`](executor-declarative-adapters-plan.md) — *"a new harness is added as data, with no Python and no runtime release."* This is the same decision, one seam over.
 
 ## Goal
@@ -114,7 +114,13 @@ provenance:
 
 ### Inheritance
 
-`extends` names a family or another provider. Resolution walks the chain to a family, merging each hop's fields over its parent's. `auth`, `capabilities` and `options` merge by key; scalars replace. A chain that does not end at a family, or that revisits an id, is refused at load with the chain printed.
+`extends` names a family or another provider. Resolution walks the chain to a family, merging each hop's fields over its parent's. `auth`, `models`, `capabilities`, `headers` and `extra_body` merge by key; `base_url` and `lift_to_root` replace. A chain that does not end at a family, or that revisits an id, is refused at load with the chain printed.
+
+**Families and providers share one namespace, and the family wins.** Four bundled providers carry their family's name — `anthropic` the provider extends `anthropic` the family. So the first hop is always the provider named, and every `extends` after it resolves to a family before a provider: `rkllama`'s `extends: ollama` is the wire format, never the bundled `ollama.yaml`. (Found by the bundled-library test: a walk that consulted the family table first returned the bare family for `anthropic`, its `auth.api_key_env` was never read, and nothing registered.)
+
+**A field the family would ignore is refused, not dropped.** `extra_body` on `anthropic`, `lift_to_root` on `openai-compatible`, `auth.header` on `google` — each family owns its wire format, and a declared quirk that never reaches the wire is the half-working provider this note exists to prevent. `FAMILY_FIELDS` in `_declarative.py` is the table.
+
+**A narrowed capability is enforced, not decorative.** `tools: false` refuses a request carrying tools before the wire, naming the provider and the field; `images: false` likewise; `streaming: false` refuses `stream()`; `structured_output: false` withholds `response_format` and flips `enforces_response_schema`, so the compiler pastes the schema into the prompt instead.
 
 Depth is unbounded but every bundled provider is one hop. That is a review norm, not a schema limit: a provider three hops from its family is one nobody can read.
 
@@ -129,6 +135,8 @@ workspace  <workspace>/providers/*.yaml           overrides a bundled id
 
 **Registration is by readiness, not by a hardcoded list.** `register_available_providers` today keeps a list of `(ENV_VAR, ClassName)` pairs. It becomes: every loaded provider registers if its `auth.api_key_env` is set, or if it has no auth. The list disappears. A provider without auth — every local runtime — registers unconditionally, which is the current Ollama behaviour, made general.
 
+`swarmkit providers list` shows every provider, its family, its source and whether it is ready — the one question an operator has when `provider: groq` is not registering. `swarmkit providers show <id>` prints the resolved chain.
+
 ## Migration
 
 `openrouter`, `groq` and `together` are rewritten as bundled YAML and their Python subclasses deleted. **Behaviour-identical, asserted**: a test constructs each from YAML and from the deleted class and compares the resulting client configuration. `anthropic`, `openai`, `google` and `ollama` gain a YAML each too, so every provider is described one way — but their families stay as the code they parameterise.
@@ -140,13 +148,16 @@ The provider ids do not change. A workspace saying `provider: groq` works before
 **New**
 - `packages/schema/schemas/model-provider.schema.json` — follows `docs/notes/schema-change-discipline.md`; fixtures under `packages/schema/tests/fixtures/model-provider/`
 - `model_providers/_declarative.py` — `ProviderSpec`, `parse_provider_spec`, `resolve_chain`, `load_provider_specs(workspace_root)`, `build_provider(spec)`
+- `model_providers/_family.py` — `FamilyBase`: the constructor parameters every family accepts, `supports()` from the catalogue, and the capability checks
 - `model_providers/providers/*.yaml` — the bundled library: the existing eight, plus `rkllama`, `openvino-model-server`, `llama-server`, `mlx-lm`, `lemonade`
 - `tests/test_declarative_providers.py`
 
 **Changed**
 - `_openai.py`, `_ollama.py`, `_anthropic.py`, `_google.py` — each becomes a family: accepts `base_url`, `auth`, `headers`, `lift_to_root`, `capabilities`, `models` as constructor parameters. No behaviour change when called with none of them.
 - `_openai_compat.py` — deleted; its three classes are YAML now
-- `_workspace_runtime.register_available_providers` — loads the library and registers by readiness
+- `_workspace_runtime.register_available_providers` — loads the library and registers by readiness; takes the workspace root so workspace providers load
+- `_registry.provider_enforces_response_schema` — answers through the YAML (family, narrowed) rather than a class scan
+- `cli/_cmd_providers.py` — `swarmkit providers list|show`
 - `docs/`, `llms.txt`, `llms-full.txt` — the provider list and how to add one
 
 **Unchanged, deliberately**

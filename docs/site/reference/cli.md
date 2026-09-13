@@ -208,3 +208,6 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`.
 | `GOOGLE_API_KEY` | Google AI API key |
 | `GROQ_API_KEY` | Groq API key |
 | `TOGETHER_API_KEY` | Together API key |
+| `OLLAMA_BASE_URL`, `RKLLAMA_HOST`, `LLAMA_SERVER_URL`, `OVMS_URL`, `MLX_LM_URL`, `LEMONADE_URL` | Endpoints for the no-auth local runtimes (each has a localhost default) |
+
+A provider with no key set is not registered; `swarmkit providers list` says which. Providers are declarative — see the [model provider reference](model-provider.md).
