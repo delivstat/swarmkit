@@ -337,7 +337,7 @@ async def _resume_parked_job(resume: Any, run_id: str) -> None:
         logger.warning("gate for run %r resolved but the run did not resume", run_id, exc_info=True)
 
 
-def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
+def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa: PLR0915
     """GET /review[/all], GET /review/{id}, POST /review/{id}/(approve|reject|answer)."""
 
     def _queue() -> FileReviewQueue:
@@ -371,6 +371,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
 
     @app.get("/review/all")
     async def list_all(kind: str = "", gate_id: str = "") -> list[dict[str, Any]]:
+        """Every review item, pending or not, optionally narrowed to one kind and/or one gate."""
         return _filtered(_queue().list_all(), kind, gate_id)
 
     @app.get("/gates/{gate_id}")
@@ -409,10 +410,12 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
 
     @app.get("/review/{item_id}")
     async def get_item(item_id: str) -> dict[str, Any]:
+        """One review item."""
         return _item_to_dict(_find(_queue(), item_id))
 
     @app.post("/review/{item_id}/approve")
     async def approve(item_id: str, body: CommentRequest | None = None) -> dict[str, Any]:
+        """Approve a pending review item as the authenticated caller."""
         queue = _queue()
         item = _find(queue, item_id)
         queue.resolve(item.id, "approved", (body.comment if body else ""))
@@ -420,6 +423,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
 
     @app.post("/review/{item_id}/reject")
     async def reject(item_id: str, body: CommentRequest | None = None) -> dict[str, Any]:
+        """Reject a pending review item as the authenticated caller."""
         queue = _queue()
         item = _find(queue, item_id)
         queue.resolve(item.id, "rejected", (body.comment if body else ""))
@@ -427,6 +431,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:
 
     @app.post("/review/{item_id}/answer")
     async def answer(item_id: str, body: AnswerRequest) -> dict[str, Any]:
+        """Answer a question a run asked; a bare integer selects one of its options."""
         queue = _queue()
         item = _find(queue, item_id)
         # a bare integer selects an option index; else the text is used verbatim

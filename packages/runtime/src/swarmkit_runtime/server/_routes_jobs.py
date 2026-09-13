@@ -198,6 +198,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
 
     @app.post("/run/{topology_name}")
     async def run_topology(topology_name: str, body: RunRequest, request: Request) -> JobResponse:
+        """Submit a run of a topology; returns a job id to poll, stream or resume."""
         rt = _get_runtime(request)
         canary, store, cfg, semaphore = _app_state_run_deps(request)
         try:
@@ -221,6 +222,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
 
     @app.get("/jobs")
     async def list_jobs() -> list[JobListItem]:
+        """Jobs currently known to this process (in-memory); `/jobs/history` is the durable list."""
         jobs = await job_store.list_all()
         return [
             JobListItem(
@@ -360,6 +362,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
 
     @app.get("/jobs/{job_id}/stream")
     async def stream_job(job_id: str, request: Request) -> StreamingResponse:
+        """A job's events as they happen, as server-sent events."""
         job = await job_store.get(job_id)
         if job is None:
             # A job this process did not start — a CLI run, a pipeline stage, or anything from
@@ -395,6 +398,9 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
     async def webhook_trigger(
         topology_name: str, request: Request
     ) -> JobResponse | PipelineWebhookResponse:
+        """Fire a webhook: an HMAC-signed request starts the named topology, or ingresses a pipeline
+        event when the path names a pipeline trigger.
+        """
         # A webhook path segment resolves to either a pipeline-event trigger (by trigger id) or an
         # ordinary topology webhook (back-compat). Route to the pipeline ingress front door when the
         # trigger targets a pipeline event; otherwise start the named topology as a job.

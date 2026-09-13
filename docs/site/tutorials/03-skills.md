@@ -5,7 +5,7 @@ Give your agents capabilities — tools they can call, decisions they can make, 
 ## What you'll learn
 
 - Four skill categories (capability, decision, coordination, persistence)
-- Three implementation types (mcp_tool, llm_prompt, composed)
+- Four implementation types (mcp_tool, llm_prompt, composed, and command — a local binary from a workspace command pack)
 - Binding skills to archetypes
 - Input/output schemas
 - Retry and failure handling

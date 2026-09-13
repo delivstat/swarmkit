@@ -98,12 +98,14 @@ nav:
   - Reference:
     - CLI commands: reference/cli.md
     - Serve mode: reference/serve.md
+    - HTTP API: reference/http-api.md
     - Dual model support: reference/dual-model.md
     - Workspace memory: reference/workspace-memory.md
     - Governed memory: reference/governed-memory.md
     - Storage (SQLite → Postgres): reference/storage.md
     - Driving SwarmKit from your app: reference/orchestrator-integration.md
     - Environment configuration: reference/env-config.md
+    - Connections (credentials, remote MCP, OAuth): reference/connections.md
     - Telemetry configuration: reference/telemetry.md
     - Intent drift detection: reference/intent-drift.md
     - Events: reference/events.md

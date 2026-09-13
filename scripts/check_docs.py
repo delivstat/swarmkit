@@ -48,6 +48,7 @@ CURRENT_STATE = [
     "docs/site/architecture/*.md",
     "docs/site/reference/*.md",
     "docs/site/sdlc-example/*.md",
+    "docs/site/tutorials/*.md",
     "docs/README.md",
     "docs/migration-guide.md",
     "design/IMPLEMENTATION-PLAN.md",
@@ -65,6 +66,9 @@ REMOVED = {
     "POST /pipelines": "the pipeline HTTP API was removed in 1.189.0",
     "/pipelines/sagas": "the saga API was removed in 1.189.0",
     "swarmkit eject": "eject was dropped before 1.0",
+    "NotificationProvider": "notification providers were removed in 1.216.0; events replace them",
+    "swarmkit channels": "the channels MCP server was removed in 1.216.0",
+    "kind: Channel": "there is no Channel artifact; communication is the application's (1.216.0)",
 }
 
 #: Docs whose SUBJECT is something that was removed or fixed. They must name the thing they are
@@ -389,6 +393,22 @@ def check_justfile_commands() -> list[Issue]:
     return out
 
 
+def check_generated_reference() -> list[Issue]:
+    """The generated inventories (CLI commands, environment variables, HTTP endpoints) match the
+    code they are generated from. Same discipline as schema codegen: an added route without a
+    regenerated reference is drift, and drift fails."""
+    proc = subprocess.run(
+        [sys.executable, str(REPO / "scripts/gen_reference.py"), "--check"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return []
+    detail = " ".join(line.strip() for line in proc.stdout.splitlines() if line.strip())
+    return [Issue("docs/site/reference", "generated", detail or "gen_reference.py --check failed")]
+
+
 CHECKS = (
     check_paths,
     check_just_targets,
@@ -409,6 +429,7 @@ def main() -> int:
         for check in CHECKS:
             issues.extend(check(doc, text))
     issues.extend(check_justfile_commands())
+    issues.extend(check_generated_reference())
 
     print(f"checked {len(docs)} current-state documents\n")
     if not issues:

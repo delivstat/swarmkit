@@ -54,6 +54,7 @@ def _register_memory_routes(app: FastAPI) -> None:
     def search_memory(
         request: Request, query: str = "", type: str | None = None, limit: int = 20
     ) -> dict[str, Any]:
+        """Search governed memory by text, optionally narrowed to one type."""
         hits = _store(request).search(query, types=[type] if type else None, limit=limit)
         return {"memories": [memory_to_dict(m) for m in hits]}
 
@@ -92,6 +93,7 @@ def _register_memory_routes(app: FastAPI) -> None:
     def get_memory(
         request: Request, subject: str, attribute: str, history: bool = False
     ) -> dict[str, Any]:
+        """One memory item by id, with its history."""
         store = _store(request)
         current = store.get(subject, attribute)
         log = store.history(subject, attribute) if history else []
@@ -102,6 +104,7 @@ def _register_memory_routes(app: FastAPI) -> None:
 
     @app.get("/memory/quarantine")
     def list_quarantine(request: Request, status: str = "pending") -> dict[str, Any]:
+        """Memory writes held for a human because they contradict what is stored."""
         items = _store(request).list_quarantine(status=status)
         return {"quarantine": [quarantine_to_dict(q) for q in items]}
 
@@ -109,6 +112,7 @@ def _register_memory_routes(app: FastAPI) -> None:
     def resolve_quarantine(
         request: Request, quarantine_id: int, body: ResolveQuarantineRequest
     ) -> dict[str, Any]:
+        """Resolve a quarantined memory write: accept it, reject it, or keep both."""
         outcome = _store(request).resolve_quarantine(
             quarantine_id, accept=body.accept, resolved_by=body.resolved_by
         )

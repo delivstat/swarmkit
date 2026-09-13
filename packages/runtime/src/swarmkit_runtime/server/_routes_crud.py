@@ -46,13 +46,14 @@ async def _put(
     return result
 
 
-def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
+def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:  # noqa: PLR0915
     """Register CRUD endpoints for topology, skill, and archetype YAML files."""
 
     # ---- Read detail endpoints ----
 
     @app.get("/api/topologies/{topology_id}")
     async def get_topology_detail(topology_id: str, request: Request) -> dict[str, Any]:
+        """One topology, resolved: agents, archetypes and skills expanded."""
         try:
             return service.topology_detail(_get_runtime(request), topology_id)
         except ServiceError as exc:
@@ -60,6 +61,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.get("/api/topologies/{topology_id}/yaml")
     async def get_topology_yaml(topology_id: str) -> dict[str, str]:
+        """A topology's YAML as written on disk."""
         try:
             return {"yaml": service.read_yaml("topology", topology_id)}
         except ServiceError as exc:
@@ -67,6 +69,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.get("/api/skills/{skill_id}/yaml")
     async def get_skill_yaml(skill_id: str) -> dict[str, str]:
+        """A skill's YAML as written on disk."""
         try:
             return {"yaml": service.read_yaml("skill", skill_id)}
         except ServiceError as exc:
@@ -74,6 +77,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.get("/api/archetypes/{archetype_id}/yaml")
     async def get_archetype_yaml(archetype_id: str) -> dict[str, str]:
+        """An archetype's YAML as written on disk."""
         try:
             return {"yaml": service.read_yaml("archetype", archetype_id)}
         except ServiceError as exc:
@@ -81,6 +85,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.get("/api/archetypes/{archetype_id}")
     async def get_archetype_detail(archetype_id: str, request: Request) -> dict[str, Any]:
+        """One archetype, resolved."""
         try:
             return service.archetype_detail(_get_runtime(request), archetype_id)
         except ServiceError as exc:
@@ -88,6 +93,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.get("/api/skills/{skill_id}")
     async def get_skill_detail(skill_id: str, request: Request) -> dict[str, Any]:
+        """One skill, resolved."""
         try:
             return service.skill_detail(_get_runtime(request), skill_id)
         except ServiceError as exc:
@@ -95,6 +101,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.get("/api/funnels/{funnel_id}/yaml")
     async def get_funnel_yaml(funnel_id: str) -> dict[str, str]:
+        """A funnel's YAML as written on disk."""
         try:
             return {"yaml": service.read_yaml("funnel", funnel_id)}
         except ServiceError as exc:
@@ -102,6 +109,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.get("/api/contracts/{contract_id}/yaml")
     async def get_contract_yaml(contract_id: str) -> dict[str, str]:
+        """A contract's YAML as written on disk."""
         try:
             return {"yaml": service.read_yaml("contract", contract_id)}
         except ServiceError as exc:
@@ -111,10 +119,12 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.put("/api/topologies/{topology_id}")
     async def put_topology(topology_id: str, request: Request) -> dict[str, Any]:
+        """Replace a topology's YAML; validated against the schema before it is written."""
         return await _put(request, service, "topology", topology_id, parse_check=True)
 
     @app.post("/api/topologies")
     async def create_topology(request: Request) -> dict[str, Any]:
+        """Create a topology from YAML; validated against the schema before it is written."""
         body = await request.json()
         result, new_rt = service.create_from_yaml("topology", body.get("yaml", ""))
         _install(request, new_rt)
@@ -122,6 +132,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.delete("/api/topologies/{topology_id}")
     async def delete_topology(topology_id: str, request: Request) -> dict[str, Any]:
+        """Delete a topology file from the workspace."""
         try:
             result, new_rt = service.delete("topology", topology_id)
         except ServiceError as exc:
@@ -131,21 +142,26 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:
 
     @app.put("/api/skills/{skill_id}")
     async def put_skill(skill_id: str, request: Request) -> dict[str, Any]:
+        """Replace a skill's YAML; validated before it is written."""
         return await _put(request, service, "skill", skill_id, parse_check=False)
 
     @app.put("/api/archetypes/{archetype_id}")
     async def put_archetype(archetype_id: str, request: Request) -> dict[str, Any]:
+        """Replace an archetype's YAML; validated before it is written."""
         return await _put(request, service, "archetype", archetype_id, parse_check=False)
 
     @app.put("/api/funnels/{funnel_id}")
     async def put_funnel(funnel_id: str, request: Request) -> dict[str, Any]:
+        """Replace a funnel's YAML; validated before it is written."""
         return await _put(request, service, "funnel", funnel_id, parse_check=False)
 
     @app.put("/api/contracts/{contract_id}")
     async def put_contract(contract_id: str, request: Request) -> dict[str, Any]:
+        """Replace a contract's YAML; validated before it is written."""
         return await _put(request, service, "contract", contract_id, parse_check=False)
 
     @app.post("/api/reload")
     async def reload_workspace(request: Request) -> dict[str, Any]:
+        """Re-read the workspace from disk and return its validation report."""
         _install(request, service.reload())
         return service.validate_workspace()
