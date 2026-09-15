@@ -2,7 +2,9 @@
 title: Resolving a parked pipeline's approval gate (identity + surfaces)
 description: A pipeline saga parks on a funnel's multi-party approval gate, but nothing in the product can resolve it — the review items serialize as `kind: "other"`, no client calls `POST /review/{id}/resolve`, and the CLI has no `resolve` verb. This note fixes the identity model first (the resolver is the authenticated caller, not a request-body string), then adds the run-scoped approval surface in `/runs`, the inbox entry in `/gates`, and CLI parity.
 tags: [runtime, serve, ui, cli, governance, pipeline, approval]
-status: in-review
+status: superseded
+superseded_by: gate-state-and-deferring-approval.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
 ---
 
 # Resolving a parked pipeline's approval gate

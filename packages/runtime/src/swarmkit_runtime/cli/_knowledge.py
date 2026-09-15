@@ -27,6 +27,15 @@ _AUTHORITATIVE_DESIGN = (
     "design/IMPLEMENTATION-PLAN.md",
 )
 _NOTES_EXCLUDE = {"README.md", "_template.md"}
+# The user-facing reference, generated where it is an inventory (CLI commands, environment
+# variables, HTTP routes) and hand-written where it is a contract (every artifact kind, storage,
+# events, connections). Without it the pack had no complete list of commands or endpoints — only
+# the prose in llms.txt — which is the first thing an LLM asked to drive SwarmKit needs.
+_REFERENCE_GLOB = "docs/site/reference/*.md"
+#: A design note whose front matter carries one of these is history: it describes something that
+#: was later removed or replaced, and it says by what. It is still shipped — the record of why is
+#: worth reading — but in its own section, after everything current, under a banner.
+_HISTORICAL_STATUSES = {"superseded", "removed", "withdrawn"}
 
 # Workspace-overlay subdirectories scanned in this order.
 _WORKSPACE_SUBDIRS = ("topologies", "archetypes", "skills", "triggers", "schedules")
@@ -70,13 +79,23 @@ def build_pack(
     *,
     workspace: Path | None = None,
     include_fixtures: bool = True,
+    lean: bool = False,
     now: datetime | None = None,
 ) -> str:
     """Assemble the full knowledge-pack markdown document.
 
+    ``lean`` is the pack to paste. The full pack is ~550k tokens, three quarters of it the 140
+    per-feature design notes (the *why*), and fits no context window but the largest. Lean keeps
+    what an LLM needs to *use* SwarmKit — overview, the generated reference, the design doc,
+    guides, cross-cutting notes, schemas — at ~175k tokens, and drops the design notes, the
+    roadmap and the fixtures. Ask the full pack when the question is why something is the way it
+    is.
+
     ``now`` is injectable so tests can pin a timestamp.
     """
-    sections = list(_corpus_sections(repo_root, include_fixtures=include_fixtures))
+    sections = list(
+        _corpus_sections(repo_root, include_fixtures=include_fixtures and not lean, lean=lean)
+    )
     workspace_section = _workspace_section(workspace, repo_root) if workspace else None
 
     total_files = sum(len(s.files) for s in sections)
@@ -89,6 +108,7 @@ def build_pack(
         total_files=total_files,
         total_bytes=total_bytes,
         workspace=workspace,
+        lean=lean,
         now=now or datetime.now(tz=UTC),
     )
 
@@ -105,25 +125,53 @@ def build_pack(
 # ---- section discovery ------------------------------------------------
 
 
-def _corpus_sections(repo_root: Path, *, include_fixtures: bool) -> Iterator[_Section]:
+def _corpus_sections(
+    repo_root: Path, *, include_fixtures: bool, lean: bool = False
+) -> Iterator[_Section]:
     yield _Section(
         heading="Project overview",
         preamble="Top-level orientation files.",
         files=_existing(repo_root, _PROJECT_FILES),
     )
     yield _Section(
-        heading="Authoritative design",
-        preamble="The v0.6 design doc is canon; the plan tracks progress against it.",
-        files=_existing(repo_root, _AUTHORITATIVE_DESIGN),
+        heading="Reference",
+        preamble=(
+            "The user-facing reference. `cli.md` and `http-api.md` are generated from the CLI and "
+            "the server's OpenAPI document — every command and every route, current by "
+            "construction. The rest is the contract for each artifact kind (topology, workspace, "
+            "skills, archetypes, funnel, contract, role registry, trigger, executor adapter, model "
+            "provider), storage, events, connections and telemetry. Prefer these over a design "
+            "note when the two disagree about a name or a flag: the note says why, the reference "
+            "says what shipped."
+        ),
+        files=_discover_glob(repo_root, _REFERENCE_GLOB),
     )
     yield _Section(
-        heading="Per-feature design notes",
+        heading="Authoritative design",
         preamble=(
-            "One per feature, stating goal, non-goals, API, test plan, demo. "
-            "Authoritative contracts for individual features."
+            "The v0.6 design doc is canon for the architecture and its reasons; the plan is the "
+            "roadmap as it was written. Where either disagrees with the reference above, the "
+            "code shipped differently — the bundled pipeline layer (`kind: StageGraph`, the saga "
+            "controller, `swarmkit orchestrator`, `swarmkit pipeline`) the plan calls shipped was "
+            "removed in 1.189.0; see `design/details/extracting-the-pipeline.md`."
         ),
-        files=_discover_glob(repo_root, "design/details/*.md"),
+        files=_existing(repo_root, _AUTHORITATIVE_DESIGN[:1] if lean else _AUTHORITATIVE_DESIGN),
     )
+    if not lean:
+        current, historical = _split_notes(_discover_glob(repo_root, "design/details/*.md"))
+        yield _Section(
+            heading="Per-feature design notes",
+            preamble=(
+                "One per feature, stating goal, non-goals, API, test plan, demo. Authoritative "
+                "for the *why* of individual features; each begins with its status. Notes whose "
+                "subject was later removed are not here — they are in the final section, "
+                "'Historical design notes', with the note that replaced them."
+            ),
+            files=current,
+        )
+        # Deferred to the end, after everything current, so a reader that stops early has only
+        # read things that exist.
+        _pending_historical.append(historical)
     yield _Section(
         heading="Cross-cutting notes",
         preamble="Discipline / gotcha notes that span packages.",
@@ -156,6 +204,70 @@ def _corpus_sections(repo_root: Path, *, include_fixtures: bool) -> Iterator[_Se
             ),
             files=_discover_glob(repo_root, "packages/schema/tests/fixtures/**/*.yaml"),
         )
+    if not lean and _pending_historical:
+        historical = _pending_historical.pop()
+        yield _Section(
+            heading="Historical design notes",
+            preamble=(
+                "**These describe things SwarmKit no longer has.** Each note's front matter says "
+                "`status: superseded` and names the note that replaced it. They are kept because "
+                "the reasoning is part of the record — do not answer a 'how do I' question from "
+                "them. In particular: the bundled pipeline (`kind: StageGraph`, saga controller, "
+                "`swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed "
+                "in 1.189.0, and channel skills were replaced by `GET /events` + `events:` sinks "
+                "in 1.216.0."
+            ),
+            files=historical,
+        )
+
+
+#: Historical notes found while walking the current ones, yielded last. Module-level rather than
+#: threaded through the generator so `_corpus_sections` stays a flat sequence of yields.
+_pending_historical: list[tuple[_File, ...]] = []
+
+
+def _front_matter(text: str) -> dict[str, str]:
+    """The YAML front matter of a note as flat `key: value` strings, or {} when there is none.
+
+    Deliberately not a YAML parse: front matter here is a handful of scalar lines, and pulling a
+    parser into a doc bundler for `status:` would be the heavier dependency.
+    """
+    if not text.startswith("---\n"):
+        return {}
+    end = text.find("\n---", 4)
+    if end < 0:
+        return {}
+    out: dict[str, str] = {}
+    for line in text[4:end].splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key.strip() and not key.startswith(" "):
+            out[key.strip()] = value.strip().strip("'\"")
+    return out
+
+
+def note_status(text: str) -> str:
+    """A note's declared status, lower-cased, or ''. Reads the front matter first and falls back
+    to a `**Status:** …` line, which older notes use."""
+    fm = _front_matter(text)
+    if fm.get("status"):
+        return fm["status"].lower()
+    for line in text.splitlines()[:12]:
+        stripped = line.strip().strip("*").strip()
+        if stripped.lower().startswith("status:"):
+            return stripped.split(":", 1)[1].strip().strip("*").strip().lower()
+    return ""
+
+
+def is_historical(text: str) -> bool:
+    return note_status(text).split()[0] in _HISTORICAL_STATUSES if note_status(text) else False
+
+
+def _split_notes(files: tuple[_File, ...]) -> tuple[tuple[_File, ...], tuple[_File, ...]]:
+    current: list[_File] = []
+    historical: list[_File] = []
+    for f in files:
+        (historical if is_historical(f.read()) else current).append(f)
+    return tuple(current), tuple(historical)
 
 
 def _existing(repo_root: Path, repo_paths: Sequence[str]) -> tuple[_File, ...]:
@@ -218,9 +330,14 @@ _ABOUT_PARAGRAPH = (
     "You are an LLM reading the complete SwarmKit reference material. The user "
     "has pasted this pack to get help with a SwarmKit question. When answering, "
     "cite which file you're drawing from (e.g. 'per "
-    "design/details/topology-schema-v1.md §X') so the user can verify. The "
-    "design doc is canon; per-feature notes under design/details/ refine it. "
-    "Schemas are the source of truth for artifact shape."
+    "design/details/topology-schema-v1.md §X') so the user can verify.\n\n"
+    "How to weigh the sections, when they disagree: **the Reference section says what "
+    "shipped** — `cli.md` and `http-api.md` are generated from the code, and the artifact "
+    "references are the current contracts. **Schemas are the source of truth for artifact "
+    "shape.** The design doc and the per-feature notes say *why*, and a note's first lines "
+    "carry its status; a note in 'Historical design notes' describes something that no longer "
+    "exists and is there only for the record. `llms.txt` is the short, current summary and a "
+    "good place to start."
 )
 
 
@@ -230,14 +347,23 @@ def _render_header(
     total_bytes: int,
     workspace: Path | None,
     now: datetime,
+    lean: bool = False,
 ) -> str:
     ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     overlay = f"workspace overlay: `{workspace}`" if workspace else "no workspace overlay"
     kb = total_bytes / 1024
+    # ~4 bytes per token is the usual English/markdown ratio; a reader deciding whether the pack
+    # fits a context window needs the order of magnitude, not a tokenizer.
+    ktok = total_bytes / 4 / 1000
+    kind = (
+        "lean pack (`--lean`: no per-feature design notes, roadmap or fixtures)"
+        if lean
+        else "full pack (`--lean` for one that fits a context window)"
+    )
     return (
         "# SwarmKit Knowledge Pack\n\n"
-        f"> Generated by `swarmkit knowledge-pack` on {ts}.\n"
-        f"> Contains {total_files} files, ~{kb:.1f} KB. {overlay}."
+        f"> Generated by `swarmkit knowledge-pack` on {ts}. {kind}.\n"
+        f"> Contains {total_files} files, ~{kb:.0f} KB, roughly {ktok:.0f}k tokens. {overlay}."
     )
 
 

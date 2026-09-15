@@ -64,6 +64,16 @@ def knowledge_pack(
             "--fixtures/--no-fixtures", help="Include schema fixtures (valid + invalid examples)."
         ),
     ] = True,
+    lean: Annotated[
+        bool,
+        typer.Option(
+            "--lean",
+            help=(
+                "Skip schema fixtures and historical design notes. The full pack is ~500k tokens; "
+                "the lean one keeps everything needed to use SwarmKit and fits a large context."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Bundle SwarmKit docs + schemas + workspace state into a paste-ready prompt."""
     repo_root = find_repo_root()
@@ -83,6 +93,7 @@ def knowledge_pack(
         repo_root,
         workspace=workspace.resolve() if workspace else None,
         include_fixtures=include_fixtures,
+        lean=lean,
     )
 
     if output is not None:

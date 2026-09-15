@@ -107,7 +107,7 @@ Each topology becomes an MCP tool. External agents can call your swarm topologie
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/webhooks/{trigger_id}` | Fire a webhook trigger |
+| `POST` | `/hooks/{topology_name}` | Fire a webhook trigger: an HMAC-signed request starts the named topology |
 
 Webhook signatures are validated with HMAC-SHA256 when `secret` is configured on the trigger.
 
@@ -137,7 +137,7 @@ Available providers:
 | Provider | Description |
 |----------|-------------|
 | `none` | No authentication (default) |
-| `api_key` | Static API key via `SWARMKIT_API_KEY` env var |
+| `api_key` | Bearer keys declared in `workspace.yaml` — `server.auth.config.keys[]`, each a `key_ref: env:<VAR>` (a reference, never the literal), a `client_id` and a `tier` (`read` / `run` / `admin`) or explicit `scopes`. See the [serve auth guide](https://github.com/delivstat/swarmkit/blob/main/docs/guides/serve-auth.md) |
 | `jwt` | JWT with JWKS auto-discovery |
 
 ## Server configuration

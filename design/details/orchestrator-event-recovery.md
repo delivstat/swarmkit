@@ -1,3 +1,9 @@
+---
+status: superseded
+superseded_by: extracting-the-pipeline.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
+---
+
 # An event survives a failed handler and a killed worker
 
 Status: implemented (runtime 1.145.0). Closes bug 12 in `docs/notes/reported-bugs.md`.

@@ -2,7 +2,9 @@
 title: Orchestration provider seam (delegate pipeline sequencing)
 description: Make pipeline sequencing a pluggable provider seam instead of a hand-rolled saga engine. SwarmKit keeps the StageGraph spec, the governed stage run, and the correlated audit; a durable-workflow engine (Temporal, selected) owns state, timers, signals, locking, and compensation.
 tags: [runtime, pipeline, orchestration, controller, architecture-decision]
-status: partially-implemented
+status: superseded
+superseded_by: extracting-the-pipeline.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
 ---
 
 # Orchestration provider seam

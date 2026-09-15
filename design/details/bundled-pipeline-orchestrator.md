@@ -2,7 +2,9 @@
 title: Bundled durable pipeline orchestrator + dispatch surface
 description: Make the pipeline feature usable out of the box — ship a durable reference saga orchestrator as a separate `swarmkit orchestrator` application (store-mediated, touching neither the runtime core nor serve), durable on the SQLite/Postgres backend, replacing the example's in-memory controller, plus the CLI + serve-UI dispatch surface without which pipelines cannot be driven. Temporal stays the distributed-production swap.
 tags: [runtime, pipeline, orchestration, serve, cli, ui]
-status: implemented
+status: superseded
+superseded_by: extracting-the-pipeline.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
 ---
 
 # Bundled durable pipeline orchestrator + dispatch surface

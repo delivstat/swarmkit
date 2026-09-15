@@ -180,7 +180,7 @@ Providers are YAML artifacts (`kind: ModelProvider`) over four wire-format famil
 
 | Provider | Env var | Example |
 |---|---|---|
-| Anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-4-6` |
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-5` |
 | Google | `GOOGLE_API_KEY` | `gemini-2.5-flash` |
 | OpenAI | `OPENAI_API_KEY` | `gpt-4o` |
 | OpenRouter | `OPENROUTER_API_KEY` | `meta-llama/llama-3.3-70b-instruct` |
@@ -455,10 +455,11 @@ See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmk
 97. **Env-var substitution** — `${VAR}` / `${VAR:-default}` / `$${VAR}` across every artifact YAML, with or without an env file
 
 ### Fleet & evaluation
-98. **Fleet control plane** — a standalone `swarmkit-control-plane` + panel UI aggregating many `swarmkit serve` instances (SQLite/Postgres); an independent app + client over the serve contract, never a runtime dependency
-99. **Federated run graph** — one run rendered over its agents across instances, from a federated per-run trace endpoint
-100. **Fleet-wide harness cockpit** — resolve harness relay/input gates across the whole fleet from one panel
-101. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
+98. **Fleet control plane** — a standalone `swarmkit-control-plane` + panel UI over many `swarmkit serve` instances (SQLite/Postgres); an independent app + client over the serve contract, never a runtime dependency. `deploy/control-plane/` is the self-host bundle (Caddy + panel + UI, one origin); `deploy/fleet/` brings up a whole demo fleet with one `docker compose up`
+99. **Federated runs and traces** — the panel lists runs across instances and fetches a run's per-agent trace from the instance that owns it (`GET /instances/{id}/runs/{run_id}/trace`), so one run reads the same in the fleet as in its own portal
+100. **Harness gates from the panel** — each instance's relay / input-request gates are listed and resolved from the fleet panel; poll-mode (Mode B) instances say so rather than pretending
+101. **Gap mining across the fleet** — capability gaps aggregated by occurrence across instances, with propose → approve → distribute as the human-gated loop
+102. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
 
 ## Reference topologies
 
@@ -480,7 +481,7 @@ swarmkit author skill my-workspace/ --thorough
 
 ## Real-world example
 
-The [`examples/sterling-oms/`](./examples/sterling-oms/) workspace demonstrates enterprise-scale agent orchestration: 6 topologies, 11 archetypes, 70+ skills. A root coordinator delegates to an architect, which delegates to 6 focused workers (jira, config, docs, developer, log-analyst, document-writer). Includes an Atlassian wrapper MCP (structured JQL/CQL), a log analyser MCP (SQLite-indexed, 500MB+ logs, 9 tools), and a document writer with pandoc MCP for DOCX/PDF generation. Per-agent model selection: Kimi K2.5 for reasoning, DeepSeek V4 Flash for workers, DeepSeek Chat V3 for writing.
+The [`examples/sterling-oms/`](./examples/sterling-oms/) workspace demonstrates enterprise-scale agent orchestration: 8 topologies, 12 archetypes, 75 skills. A root coordinator delegates to an architect, which delegates to 6 focused workers (jira, config, docs, developer, log-analyst, document-writer). Includes an Atlassian wrapper MCP (structured JQL/CQL), a log analyser MCP (SQLite-indexed, 500MB+ logs, 9 tools), and a document writer with pandoc MCP for DOCX/PDF generation. Per-agent model selection: Kimi K2.5 for reasoning, DeepSeek V4 Flash for workers, DeepSeek Chat V3 for writing.
 
 ## Install from source
 
@@ -502,7 +503,7 @@ just typecheck        # mypy + tsc
 
 ```
 swarmkit/
-├── design/              # Authoritative architecture (v0.6) + 30+ design notes
+├── design/              # Authoritative architecture (v0.6) + 140 per-feature design notes
 ├── packages/
 │   ├── runtime/         # Python: CLI, LangGraph compiler, governance, MCP, HTTP server
 │   ├── schema/          # JSON Schemas + Python & TypeScript validators
@@ -511,7 +512,7 @@ swarmkit/
 │   ├── control-plane/   # the self-hostable fleet control plane
 │   └── control-plane-ui/ # the fleet panel
 ├── reference/           # 3 topologies, 16 archetypes, 27 skills, 4 command packs
-├── examples/            # hello-swarm, sterling-oms, rynko-content
+├── examples/            # 13 runnable: hello-swarm, sterling-oms, rynko-content, pipeline-orchestrator, sdlc-pipeline, showcase, …
 ├── docs/                # User-facing docs + discipline notes
 └── llms.txt             # LLM-queryable index (llmstxt.org)
 ```
@@ -522,12 +523,15 @@ to fix.
 
 ## For LLMs
 
-SwarmKit docs are designed for LLM consumption. The repo ships [`llms.txt`](./llms.txt) at the root:
+SwarmKit docs are designed for LLM consumption. The repo ships [`llms.txt`](./llms.txt) at the root (the short, current summary) and [`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt) (the whole doc site in one file):
 
 ```bash
-swarmkit knowledge-pack -o pack.md    # bundle everything for any LLM
-swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
+swarmkit knowledge-pack --lean -o pack.md   # ~170k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides
+swarmkit knowledge-pack -o pack.md          # ~550k tokens: the above plus every design note, the roadmap and schema fixtures
+swarmkit knowledge-server                   # live MCP server for Claude Code / Cursor
 ```
+
+The pack orders its sections by trust — the generated reference first, design notes last, and notes about removed features under a separate "historical" banner — so a model that reads only the first half has read only things that exist.
 
 ## Roadmap
 

@@ -267,6 +267,7 @@ See the [Implementation Plan](architecture/implementation-plan.md) for the full 
 SwarmKit docs are designed for LLM consumption. The repo ships [`llms.txt`](https://github.com/delivstat/swarmkit/blob/main/llms.txt) at the root:
 
 ```bash
-swarmkit knowledge-pack -o pack.md    # bundle everything for any LLM
+swarmkit knowledge-pack --lean -o pack.md   # ~170k tokens: what an LLM needs to use SwarmKit
+swarmkit knowledge-pack -o pack.md          # ~550k tokens: plus every design note (the why)
 swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
 ```
