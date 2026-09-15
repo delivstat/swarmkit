@@ -2,7 +2,9 @@
 title: Pipeline triggering & ingress
 description: How real-world events start and advance a pipeline — structured webhooks, an MCP tool, and NL/chat interpreted into a structured event — all delivered to the orchestrator's signal seam, with a governance guardrail for who may start or skip a stage.
 tags: [pipeline, triggers, mcp, ingress, governance]
-status: partially-implemented
+status: superseded
+superseded_by: extracting-the-pipeline.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
 ---
 
 # Pipeline triggering & ingress

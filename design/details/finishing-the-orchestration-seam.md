@@ -1,3 +1,9 @@
+---
+status: superseded
+superseded_by: extracting-the-pipeline.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
+---
+
 # Finishing the orchestration seam
 
 **Status:** partly implemented, partly superseded — kept as the record of how the decision moved.

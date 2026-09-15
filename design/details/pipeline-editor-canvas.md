@@ -2,7 +2,9 @@
 title: Pipeline editor canvas
 description: A visual editor for the StageGraph artifact — drop topologies as stages, wire them with event-based connections (signal / external / loop), configure per-stage gates, locks, and compensation, and save through the approval path.
 tags: [ui, composer, pipeline, stage-graph, authoring]
-status: proposed
+status: superseded
+superseded_by: extracting-the-pipeline.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
 ---
 
 # Pipeline editor canvas

@@ -1,3 +1,9 @@
+---
+status: superseded
+superseded_by: extracting-the-pipeline.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
+---
+
 # Pipeline stage runs are recorded as jobs, linked to their run
 
 **Status:** implemented (runtime 1.152.0, UI 0.31.0)
