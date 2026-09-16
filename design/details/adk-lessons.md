@@ -35,7 +35,7 @@ foreign concept.
    the doing". → roadmap **M18**.
 3. **Agent-as-skill / A2A interop** — model a remote A2A agent / sub-swarm /
    another instance's swarm as a **coordination skill** (keeps "skills are the only
-   extension primitive"); builds on the A2A adapter (`_delegation.py`) + §18. → **M18**.
+   extension primitive"); builds on §18 — there is no A2A code yet; `_delegation.py` is the compiler's internal child delegation (corrected 2026-09-16; see `a2a-interop.md`). → **M18**.
 4. **Uniform interception surface** — SwarmKit *already* intercepts uniformly via
    `GovernanceProvider` + OTel at every model/tool/skill/agent call (more principled
    than ADK's ad-hoc callbacks). Only borrow: route **eval + self-improvement signals**
