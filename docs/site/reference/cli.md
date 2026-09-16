@@ -175,7 +175,7 @@ Redacted fields appear as `[REDACTED]` in all outputs. Summary mode truncates lo
 
 | Command | Description |
 |---|---|
-| `swarmkit knowledge-pack [-o file]` | Bundle corpus for LLM paste (~350KB markdown) |
+| `swarmkit knowledge-pack [--lean] [-o file]` | Bundle the corpus for an LLM: `--lean` (~170k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides) or full (~550k tokens: plus every design note, historical ones last under a banner) |
 | `swarmkit knowledge-server` | Launch Knowledge MCP Server (stdio, for Claude Code / Cursor) |
 
 ## Runtime behaviour

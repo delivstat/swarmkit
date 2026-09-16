@@ -1,3 +1,9 @@
+---
+status: superseded
+superseded_by: extracting-the-pipeline.md
+superseded_note: the bundled pipeline layer was removed in swarmkit-runtime 1.189.0; this note is the record of what it was and why
+---
+
 # Pipeline controller + stage-graph (saga sequencing)
 
 Parent: `design/details/sdlc-pipeline-example.md` (capability 3 of 5). This is the largest of the
