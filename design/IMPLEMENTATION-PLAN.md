@@ -50,7 +50,7 @@ status: active
 | 5 | M15 | Eval harness | ✅ | `swarmkit eval` scores a topology + flips exit code (slices 1–2; slice 3 schema-artifact remaining) |
 | 5 | M16 | Fleet aggregation | ✅ | `packages/control-plane` + panel UI: federated per-run trace, fleet run graph, cross-instance views |
 | 5 | M17 | Self-improvement cockpit | 🟡 | Fleet trace/eval views + harness-gate cockpit ✅; automated gap-mining → propose → distribute remaining |
-| 5 | M18 | Workflow archetypes + interop | ⬜ | Sequential/Parallel/Loop archetypes + A2A-as-coordination-skill (proposed) |
+| 5 | M18 | Workflow archetypes + interop | ⬜ | Sequential/Parallel/Loop archetypes; A2A server + `a2a_agent` skill (`a2a-interop.md`); Agent Spec importer (`agent-spec-import.md`) — all proposed, none started |
 | 5 | M19 | Executor abstraction + harness isolation | ✅ | Harness node (claude-code/opencode) via `adapter.yaml`; relay, trust accrual, container sandbox, MCP gateway |
 | 5 | M20 | Topology canvas | ✅ | React Flow canvas — view + edit (YAML round-trip) + examine-a-run; fleet run-detail port pending |
 | 6 | M21 | Delivery pipelines & orchestration | ✅ | `just demo-sdlc` drives a requirement through the full StageGraph (8 stages, 3 human gates) as a saga |

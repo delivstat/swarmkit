@@ -120,8 +120,9 @@ SwarmKit's own thesis:
    patterns). Reinforces topology-as-data + "LLM does language, code does the doing".
 3. **Agent-as-skill / A2A interop** — model a remote A2A agent, a sub-swarm, or
    *another instance's* swarm as a **coordination skill** (keeps "skills are the only
-   extension primitive"). Builds on the existing A2A adapter (`_delegation.py`) +
-   §18; also enables cross-instance delegation.
+   extension primitive"). Builds on §18 — there is no A2A code yet; `_delegation.py` is the
+   compiler's internal child delegation, not an A2A adapter (corrected 2026-09-16; see
+   `a2a-interop.md`); also enables cross-instance delegation.
 4. **Uniform interception surface** — SwarmKit *already* intercepts uniformly via
    `GovernanceProvider` + OTel spans at every model/tool/skill/agent call (more
    principled than ADK's ad-hoc callbacks). The only borrow: ensure **eval +
