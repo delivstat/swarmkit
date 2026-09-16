@@ -197,6 +197,7 @@ describe("formatting", () => {
 	it("labels every source", () => {
 		expect(sourceLabel("serve")).toBe("API");
 		expect(sourceLabel("pipeline")).toBe("Pipeline");
+		expect(sourceLabel("a2a")).toBe("A2A");
 		expect(sourceLabel(null)).toBe("unattributed");
 	});
 });

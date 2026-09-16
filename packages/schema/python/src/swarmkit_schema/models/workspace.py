@@ -585,6 +585,51 @@ class Mcp(BaseModel):
     )
 
 
+class Identity1(BaseModel):
+    """
+    What the Agent Card says about this instance. Defaults come from the workspace name.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    name: str | None = Field(
+        None,
+        description="Human-readable agent name on the card (default: the workspace name).",
+    )
+    description: str | None = Field(
+        None,
+        description="One paragraph on what this instance does, shown to discovering agents.",
+    )
+    url: str | None = Field(
+        None,
+        description="Public base URL other agents should call (default: derived from the request that fetched the card). Set it behind a proxy.",
+    )
+    organization: str | None = Field(
+        None, description="Provider organization on the card."
+    )
+
+
+class A2a(BaseModel):
+    """
+    A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at /.well-known/agent-card.json with one skill per topology and answers the A2A task API at /a2a — a transport onto the same jobs, gates and audit as POST /run. See design/details/a2a-interop.md.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    enabled: bool | None = Field(
+        False,
+        description="Whether to publish the Agent Card and serve the A2A task API.",
+    )
+    identity: Identity1 | None = Field(
+        None,
+        description="What the Agent Card says about this instance. Defaults come from the workspace name.",
+    )
+
+
 class Provider2(Enum):
     """
     none: open access (default; only safe on loopback). api_key: bearer tokens from a static key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS).
@@ -992,6 +1037,10 @@ class ServerConfig(BaseModel):
     )
     jobs: Jobs | None = None
     mcp: Mcp | None = None
+    a2a: A2a | None = Field(
+        None,
+        description="A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at /.well-known/agent-card.json with one skill per topology and answers the A2A task API at /a2a — a transport onto the same jobs, gates and audit as POST /run. See design/details/a2a-interop.md.",
+    )
     canary: Canary | None = Field(
         None,
         description="Canary deployment configuration. Routes traffic between topology versions by weight with optional auto-promotion. See design/details/canary-deployments.md.",

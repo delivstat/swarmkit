@@ -14,7 +14,7 @@ import type { PersistedJob } from "./types";
 
 /** Where a run came from. `null` for rows written before `source` existed — shown as such rather
  * than guessed at, since a wrong attribution is worse than an honest unknown. */
-export type RunSource = "serve" | "cli" | "pipeline" | "chat" | null;
+export type RunSource = "serve" | "cli" | "pipeline" | "chat" | "a2a" | null;
 
 export interface ActivitySummary {
 	total: number;
@@ -167,6 +167,8 @@ export function sourceLabel(source: RunSource): string {
 			return "Pipeline";
 		case "chat":
 			return "Chat";
+		case "a2a":
+			return "A2A";
 		default:
 			return "unattributed";
 	}

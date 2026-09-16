@@ -128,6 +128,10 @@ def _required_action(method: str, path: str) -> str | None:  # noqa: PLR0911
     """
     if path == "/health":
         return None
+    # The Agent Card is discovery: a remote agent reads it before it holds any credential, and the
+    # card itself says which bearer scheme the task API wants (design/details/a2a-interop.md).
+    if path == "/.well-known/agent-card.json":
+        return None
     # Minting a fleet enrollment token (a join code) is an admin/human action — and this is what
     # makes a `manage`-scope join human-issued (design 19). /fleet/register is auth-exempt at the
     # seam (it authenticates with the one-time enrollment token itself; see the middleware).
@@ -189,6 +193,7 @@ def _build_capabilities(rt: Any) -> dict[str, Any]:
             "auth": _enum_value(getattr(server_raw, "auth", None), "provider", "none"),
             "compression": _enum_value(getattr(raw, "context_compression", None), "backend", "off"),
             "canary": bool(getattr(canary, "routes", None)),
+            "a2a": bool(getattr(getattr(server_raw, "a2a", None), "enabled", False)),
         },
     }
 

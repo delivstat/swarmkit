@@ -1,0 +1,9 @@
+# `server.a2a` rejects keys it does not define — a typo must fail, not silently no-op.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: a2a-workspace
+  name: A2A Workspace
+server:
+  a2a:
+    enable: true

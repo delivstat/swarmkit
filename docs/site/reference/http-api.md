@@ -1,6 +1,6 @@
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 88 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 92 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -68,6 +68,10 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 
 | Method | Path | What it does |
 |---|---|---|
+| `GET` | `/.well-known/agent-card.json` | The instance's Agent Card — public, one skill per topology. |
+| `POST` | `/a2a` | The JSON-RPC endpoint for every topology; the message names its skill. |
+| `POST` | `/a2a/{topology}` | The per-topology JSON-RPC endpoint — the card's per-skill `url`. |
+| `GET` | `/a2a/{topology}/card` | The per-topology card, for a client that should see one skill only. |
 | `GET` | `/archetypes` | The archetypes in this workspace, by id. |
 | `GET` | `/audit` | Append-only audit events, newest-first (read-only; the media pillar exposes no |
 | `GET` | `/capabilities` | What this instance can do — the control plane reads this at enroll/refresh. |
