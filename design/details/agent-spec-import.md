@@ -117,6 +117,11 @@ validate --tree`, then the one-minute "add governance" step — drop a `funnel:`
 `requires:` on a worker — and re-validate. The blog sentence: "an Agent Spec system, imported, then
 given a human gate that the spec has no word for."
 
+## Portal
+
+None in the first cut — this is a CLI command. The composer's "Import…" button calling the same
+`import_document()` is listed below as the follow-up, deliberately out of scope.
+
 ## Open questions
 
 - **Which Agent Spec version to target.** The spec is pre-1.0 and its node vocabulary moves; pin
