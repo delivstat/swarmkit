@@ -80,6 +80,13 @@ SHAPE_ONLY_INVALID: set[tuple[str, str]] = {
     # translate. `build_sink` re-checks it at construction and refuses, so a sink with nowhere to
     # post never silently delivers nothing.
     ("workspace-invalid", "event-webhook-without-url.yaml"),
+    # `oneOf` over `required`/`not required` (exactly one of `topology` / `card_url`) is not
+    # translated by the pydantic codegen either — the generated model has both as optional. The
+    # runtime re-checks it when it loads the workspace (`find_bad_agent_targets`), so a skill
+    # naming both targets, or neither, is refused before any run rather than resolved to whichever
+    # branch the executor read first.
+    ("skill-invalid", "agent-both-targets.yaml"),
+    ("skill-invalid", "agent-no-target.yaml"),
 }
 
 

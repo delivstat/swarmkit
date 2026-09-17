@@ -178,11 +178,34 @@ describe("real schemas — the reported form fields", () => {
 		const impl = field(skill, skill, "implementation");
 		expect(fieldKind(impl)).toBe("oneof");
 		expect((variants(skill, impl) ?? []).map((v) => v.label).sort()).toEqual([
+			"agent",
 			"command",
 			"composed",
 			"llm_prompt",
 			"mcp_tool",
 		]);
+	});
+
+	it("skill.implementation `agent` variant reports its editable fields", () => {
+		// The composer offers the variant with no UI code — the form is schema-driven — but only
+		// if the fields a person needs are visible: the target, the policy, the tier.
+		const impl = field(skill, skill, "implementation");
+		const agent = (variants(skill, impl) ?? []).find(
+			(v) => v.label === "agent",
+		);
+		if (!agent) throw new Error("skill.implementation has no `agent` variant");
+		const fields = objectFields(skill, agent.schema).map((f) => f.name);
+		for (const name of [
+			"topology",
+			"card_url",
+			"skill_id",
+			"credentials_ref",
+			"on_unanswerable",
+			"permission",
+			"effects",
+		]) {
+			expect(fields).toContain(name);
+		}
 	});
 
 	it("skill.implementation `command` variant reports its editable fields", () => {

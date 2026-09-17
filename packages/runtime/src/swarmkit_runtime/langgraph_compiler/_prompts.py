@@ -691,7 +691,7 @@ def _build_tools(  # noqa: PLR0912
     tools: list[ToolSpec] = []
 
     if not _phase1 and (not _has_synthesizer or _is_single_agent):
-        _executable_types = {"llm_prompt", "mcp_tool", "command"}
+        _executable_types = {"llm_prompt", "mcp_tool", "command", "agent"}
         _emitted: set[str] = set()
         for skill in agent.skills:
             impl = skill.raw.implementation
@@ -722,6 +722,12 @@ def _build_tools(  # noqa: PLR0912
                         input_schema = raw_inputs
                     elif raw_inputs is not None and hasattr(raw_inputs, "model_dump"):
                         input_schema = raw_inputs.model_dump(exclude_none=True)
+                elif impl_type == "agent":
+                    from swarmkit_runtime.agent_skill._tool import (  # noqa: PLC0415
+                        agent_tool_schema,
+                    )
+
+                    input_schema = agent_tool_schema(impl)
                 tools.append(ToolSpec(name=skill.id, description=desc, input_schema=input_schema))
 
     _use_task_plan = len(agent.children) >= 2 and not _has_dag_deps(agent)

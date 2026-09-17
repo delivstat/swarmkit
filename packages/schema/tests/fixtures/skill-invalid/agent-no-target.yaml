@@ -1,0 +1,15 @@
+# `agent` with neither `topology` nor `card_url` calls nothing.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: empty-agent
+  name: Empty agent
+  description: Names no target.
+category: capability
+implementation:
+  type: agent
+  on_unanswerable: abort
+provenance:
+  authored_by: human
+  authored_date: "2026-09-17"
+  version: 1.0.0

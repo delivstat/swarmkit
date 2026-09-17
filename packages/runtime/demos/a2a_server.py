@@ -44,8 +44,9 @@ def main() -> None:  # noqa: PLR0915 — a walkthrough, read top to bottom
     os.environ.setdefault("SWARMKIT_PROVIDER", "mock")
     logging.disable(logging.INFO)  # the server's request log would drown the transcript
     ws = Path(tempfile.mkdtemp()) / "workspace"
-    shutil.copytree(REPO / "examples/hello-swarm/workspace", ws)
-    shutil.rmtree(ws / ".swarmkit", ignore_errors=True)  # a fresh store, not the example's history
+    shutil.copytree(
+        REPO / "examples/hello-swarm/workspace", ws, ignore=shutil.ignore_patterns(".swarmkit")
+    )
     manifest = ws / "workspace.yaml"
     manifest.write_text(
         manifest.read_text()

@@ -149,6 +149,11 @@ demo-jobs-history:
 demo-a2a-server:
     uv run python packages/runtime/demos/a2a_server.py
 
+# Demo the `agent` skill (a2a-interop.md slice 3): a topology as a child run, then a remote agent
+# over A2A (a second serve app), and the load-time refusal of a target that does not exist.
+demo-agent-skill:
+    uv run python packages/runtime/demos/agent_skill.py
+
 # Demo output_schema on a harness executor (harness-output-schema.md): markdown against a declared
 # schema, corrected through the harness; and a schema-less worker left alone.
 demo-harness-output-schema:
