@@ -113,7 +113,10 @@ function UsageCard({ jobId }: { jobId: string }) {
 			<CardTitle>Usage &amp; cost</CardTitle>
 			<div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-5">
 				<Stat label="Cost" value={formatUsd(data.total_cost_usd)} />
-				<Stat label="LLM calls" value={String(data.total_calls)} />
+				{/* `total_calls` counts run_usage rows, which are one per MODEL — not per call. The true
+				    call count is in the trace (`swarmkit trace`); labelling this "LLM calls" read 13
+				    calls as 2 on a three-worker run. */}
+				<Stat label="Models" value={String(data.total_calls)} />
 				<Stat label="Input" value={formatTokens(data.total_input_tokens)} />
 				<Stat label="Output" value={formatTokens(data.total_output_tokens)} />
 				<Stat label="Cache" value={formatTokens(data.total_cache_tokens)} />

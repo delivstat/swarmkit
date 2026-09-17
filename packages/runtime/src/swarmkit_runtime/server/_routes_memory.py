@@ -59,7 +59,7 @@ def _register_memory_routes(app: FastAPI) -> None:
         return {"memories": [memory_to_dict(m) for m in hits]}
 
     @app.post("/memory")
-    def add_memory(request: Request, body: MemoryWrite) -> dict[str, Any]:
+    async def add_memory(request: Request, body: MemoryWrite) -> dict[str, Any]:
         """Write a fact through the same governed path an agent writes through.
 
         Same fields, same reconcile and same response as `swarmkit memory add`, so an application
@@ -73,7 +73,8 @@ def _register_memory_routes(app: FastAPI) -> None:
 
         identity = getattr(request.state, "identity", None)
         source = body.source or getattr(identity, "client_id", "") or "api"
-        outcome = _store(request).write(
+        # `awrite`, not `write`: the reconcile skill runs only on this path (see `memory add`).
+        outcome = await _store(request).awrite(
             MemoryCandidate(
                 subject=body.subject,
                 attribute=body.attribute,

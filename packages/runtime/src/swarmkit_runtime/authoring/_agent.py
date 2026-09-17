@@ -37,6 +37,8 @@ def run_authoring_session(
 ) -> None:
     """Run an interactive authoring session in the terminal."""
     workspace_context = ""
+    _session_state["workspace"] = workspace_path.resolve() if workspace_path else None
+    _session_state["write_attempt"] = 0
     if workspace_path and workspace_path.exists():
         workspace_context = _read_workspace(str(workspace_path))
 
@@ -167,7 +169,7 @@ async def _safe_complete(
         raise
 
 
-_session_state = {"write_attempt": 0}
+_session_state: dict[str, Any] = {"write_attempt": 0, "workspace": None}
 
 
 def _handle_tool_call(tc: ContentBlock) -> str:
@@ -183,6 +185,12 @@ def _handle_tool_call(tc: ContentBlock) -> str:
     tool_name = tc.tool_name or ""
 
     if tool_name == "write_files" and isinstance(tool_input, dict):
+        # The files go into THE workspace this session was started for — never into whatever
+        # `base_dir` the model chose. `swarmkit init fresh/` used to write to `.` on one turn and
+        # to `support-swarm/` on the next, and `fresh/` stayed empty.
+        workspace = _session_state.get("workspace")
+        if workspace is not None:
+            tool_input = {**tool_input, "base_dir": str(workspace)}
         files = tool_input.get("files", {})
         if not files:
             return execute_tool(tool_name, tool_input or {})
@@ -346,7 +354,13 @@ def _read_confirm() -> bool:
         _author_session_initialized = True
     try:
         if _author_session is not None:
-            answer = _author_session.prompt("[Y/n] > ").strip().lower()
+            # This confirm is asked from INSIDE the agent's tool call, i.e. under the running
+            # event loop — and prompt_toolkit's `prompt()` starts its own loop with
+            # `asyncio.run`, which raises "cannot be called from a running event loop". Every
+            # authoring session that reached the "write these files?" step crashed there, so
+            # `swarmkit author` and `swarmkit init` could converse but never write. `in_thread`
+            # runs the prompt on its own thread and loop.
+            answer = _author_session.prompt("[Y/n] > ", in_thread=True).strip().lower()
         else:
             answer = input("[Y/n] > ").strip().lower()
         return answer in ("", "y", "yes")

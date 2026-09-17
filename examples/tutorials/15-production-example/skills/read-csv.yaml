@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: read-csv
+  name: Read CSV
+  description: Read a CSV file from the workspace as rows (path relative to the workspace root).
+category: capability
+implementation:
+  type: mcp_tool
+  server: docs-reader
+  tool: read_csv
+provenance:
+  authored_by: human
+  version: 1.0.0

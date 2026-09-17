@@ -161,6 +161,7 @@ export function RunReplayCanvas({
 
 	return (
 		<ReactFlow
+			colorMode="dark"
 			nodes={nodes}
 			edges={edges}
 			onNodesChange={onNodesChange}

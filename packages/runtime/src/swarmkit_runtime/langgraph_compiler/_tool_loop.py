@@ -6,13 +6,16 @@ a final text response or the turn limit is hit.
 
 from __future__ import annotations
 
+import contextlib
+import json
 import logging
 import os
 import sys
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from swarmkit_runtime.compression import maybe_compress_tool_result
-from swarmkit_runtime.governance import GovernanceProvider
+from swarmkit_runtime.governance import AuditEvent, GovernanceProvider
 from swarmkit_runtime.model_providers import CompletionResponse, ContentBlock, Message
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 from swarmkit_runtime.resolver import ResolvedAgent
@@ -21,7 +24,7 @@ from swarmkit_runtime.telemetry import record_governance_decision
 from ._helpers import ToolCallResult, _extract_text, _progress, _truncate_result
 from ._prompts import _build_completion_request, _find_tasks_json, _looks_incomplete
 from ._sentinels import TaskStatus
-from ._skill_executor import is_refusal
+from ._skill_executor import DENIED_MARK, is_refusal
 
 logger = logging.getLogger("swarmkit.compiler")
 
@@ -406,6 +409,51 @@ def _apply_tool_guards(
     return modified, hit_limit
 
 
+async def _record_skill_gap(
+    governance: GovernanceProvider | None, agent_id: str, tool_name: str, tool_input: Any
+) -> None:
+    from swarmkit_runtime._run_scope import current_run_id  # noqa: PLC0415
+    from swarmkit_runtime.agent_skill._context import current_agent_context  # noqa: PLC0415
+    from swarmkit_runtime.gaps import create_skill_gap  # noqa: PLC0415
+
+    from ._run_context import current_gap_log  # noqa: PLC0415
+
+    ctx = current_agent_context()
+    topology_id = str(getattr(ctx, "topology_id", "") or "")
+    preview = (
+        json.dumps(tool_input)[:200] if isinstance(tool_input, dict) else str(tool_input)[:200]
+    )
+    if governance is not None:
+        with contextlib.suppress(Exception):
+            await governance.record_event(
+                AuditEvent(
+                    event_type="skill.gap",
+                    agent_id=agent_id,
+                    timestamp=datetime.now(tz=UTC),
+                    skill_id=tool_name,
+                    payload={
+                        "topology_id": topology_id,
+                        "run_id": current_run_id(),
+                        "input": preview,
+                    },
+                )
+            )
+    log = current_gap_log()
+    if log is not None:
+        with contextlib.suppress(Exception):
+            log.record(
+                create_skill_gap(
+                    skill_id=tool_name,
+                    topology_id=topology_id,
+                    pattern=f"agent {agent_id!r} called a tool it does not hold",
+                    suggested_action=(
+                        f"author a {tool_name!r} skill (swarmkit author skill) and grant it to "
+                        f"{agent_id!r}, or tell the agent in its prompt that it has no such tool"
+                    ),
+                )
+            )
+
+
 async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
     response: CompletionResponse,
     agent: ResolvedAgent,
@@ -485,10 +533,32 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
             continue
         skill = skill_map.get(block.tool_name)
         if skill is None:
+            # A tool the agent does not hold. Dropping the call silently (as this did) left the
+            # provider a tool_use with no tool_result and told nobody. Now: the model gets a
+            # result it can act on, the audit log gets a `skill.gap` event, and the skill gap log
+            # gets the row the growth cycle reads (design §12 — `swarmkit gaps`).
+            results.append(
+                ToolCallResult(
+                    tool_use_id=block.tool_use_id or f"call_{len(results)}",
+                    tool_name=block.tool_name,
+                    result=(
+                        f"Unknown tool {block.tool_name!r}: this agent does not have it. "
+                        f"Available: {sorted(skill_map)}. Answer with what you have."
+                    ),
+                    image_blocks=[],
+                )
+            )
+            await _record_skill_gap(governance, agent.id, block.tool_name, block.tool_input)
             continue
         input_text = ""
         if isinstance(block.tool_input, dict):
-            input_text = json.dumps(block.tool_input)
+            # The default llm_prompt schema is a single `input` string; the prompt should see the
+            # text, not `{"input": "..."}` — the JSON wrapper made "summarize this" summarize a
+            # JSON object. Structured arguments (declared `inputs`) still arrive as JSON.
+            if set(block.tool_input) == {"input"} and isinstance(block.tool_input["input"], str):
+                input_text = block.tool_input["input"]
+            else:
+                input_text = json.dumps(block.tool_input)
         elif isinstance(block.tool_input, str):
             input_text = block.tool_input
         _mcp_args_preview = ""
@@ -550,6 +620,7 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
         # nothing recorded. A false fabrication finding against a model is an expensive kind of
         # wrong.
         if governance is not None:
+            refused = is_refusal(text_result or "")
             await _record_skill_executed(
                 governance,
                 agent_id=agent.id,
@@ -557,7 +628,8 @@ async def _handle_skill_tool_calls(  # noqa: PLR0912, PLR0915
                 arguments=block.tool_input if isinstance(block.tool_input, dict) else {},
                 result=text_result or "",
                 duration_ms=_tc_dur,
-                decision="deny" if is_refusal(text_result or "") else "allow",
+                decision="deny" if refused else "allow",
+                reason=(text_result or "").split(DENIED_MARK, 1)[1][:500] if refused else None,
             )
 
     return results if results else None
@@ -572,6 +644,7 @@ async def _record_skill_executed(
     result: str,
     duration_ms: float | None = None,
     decision: Literal["allow", "deny"] = "allow",
+    reason: str | None = None,
 ) -> None:
     """Emit `skill.executed` for one tool call, in the shape the initial turn already emits.
 
@@ -595,6 +668,7 @@ async def _record_skill_executed(
             timestamp=datetime.now(tz=UTC),
             skill_id=skill_id,
             policy_decision=decision,
+            policy_reason=reason,
             duration_ms=int(duration_ms) if duration_ms is not None else None,
             payload={
                 "inputs": arguments,
@@ -633,6 +707,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
     current_response = response
     current_results = tool_results
     _tool_call_counts: dict[str, int] = {}
+    _nudged = False
     _loop_provider = tool_model_provider or model_provider
     _loop_model = tool_model_name or model_name
     if _loop_model != model_name:
@@ -718,9 +793,12 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
 
         if next_results is None:
             # Model returned text without tool calls. Check if it looks
-            # incomplete (planning language) and nudge it to continue.
+            # incomplete (planning language) and nudge it to continue — once. A model that
+            # answers in text twice has answered; nudging it again bought a third identical
+            # reply per turn until the tool limit forced a synthesis over a finished answer.
             text = _extract_text(current_response)
-            if _turn < _max_tool_turns - 1 and _looks_incomplete(text):
+            if _turn < _max_tool_turns - 1 and not _nudged and _looks_incomplete(text):
+                _nudged = True
                 if verbose:
                     print(
                         "  [nudge: stripping planning text, prompting to use tools]",
@@ -750,8 +828,9 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
                     agent,
                     model_provider,
                     model_name,
-                    mcp_manager,
-                    governance,
+                    mcp_manager=mcp_manager,
+                    command_packs=command_packs,
+                    governance=governance,
                 )
                 if next_results is None:
                     break
@@ -780,7 +859,11 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
             agent.id,
             len(tools),
         )
-    if text and text != "(no response)" and not _looks_incomplete(text) and not _schema_bound:
+    # The model's last text is its answer. It used to be discarded when it "looked incomplete"
+    # and rewritten by a synthesis prompt — which turned "Got it, I'll keep that in mind" into a
+    # "## Analysis" of the tool results. Synthesis is for the two cases where there IS no answer:
+    # the model said nothing, or the answer must be re-issued on a schema-bound turn.
+    if text and text != "(no response)" and not _schema_bound:
         return text
 
     _progress(f"  [{agent.id}] tool limit reached — synthesizing final answer...")

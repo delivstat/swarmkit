@@ -1,6 +1,6 @@
 # Guided tutorials
 
-Learn SwarmKit from zero to production through 22 progressive levels. Levels 1–16 build on one workspace, adding complexity incrementally; levels 17–22 each take one shipped capability — harness executors, funnels, command packs and attachments, agents calling agents, operations, the fleet — and are runnable on the mock provider where the level says so.
+Learn SwarmKit from zero to production through 22 progressive levels. Levels 1–16 build on one workspace, adding complexity incrementally — every transcript in them is a real run, every YAML is validated against the schema and run on the mock provider in CI (`examples/tutorials/`), and every screenshot is the portal on that workspace; levels 17–22 each take one shipped capability — harness executors, funnels, command packs and attachments, agents calling agents, operations, the fleet — and are runnable on the mock provider where the level says so.
 
 ## Prerequisites
 
@@ -29,14 +29,14 @@ export OPENROUTER_API_KEY=your-key-here
 | 6 | [Structured Delegation](06-structured-delegation.md) | Task plans, scopes, two-phase planning, dual model |
 | 7 | [Governance & Safety](07-governance.md) | Decision gates, IAM scopes, circuit breakers, HITL |
 | 8 | [Observability](08-observability.md) | Tracing, drift detection, debugging CLI, OTel |
-| 9 | [Conversations & Memory](09-conversations-memory.md) | `chat`, memory-reader/writer, GBrain integration |
-| 10 | [Knowledge & RAG](10-knowledge-rag.md) | ChromaDB, GBrain, knowledge MCP, document reader |
+| 9 | [Conversations & Memory](09-conversations-memory.md) | `chat`, workspace memory, governed memory (`swarmkit memory`, reconcile, quarantine) |
+| 10 | [Knowledge & RAG](10-knowledge-rag.md) | A search MCP server (FTS5, then ChromaDB), docs-reader, grounding, the knowledge server |
 | 11 | [Serve & HTTP API](11-serve-api.md) | `swarmkit serve`, REST endpoints, SSE, auth |
 | 12 | [Triggers & Canary](12-triggers-canary.md) | Cron, webhooks, canary deployments |
-| 13 | [Authoring & Review](13-authoring-review.md) | `init`, `author`, `edit`, review queues, skill gaps |
+| 13 | [Authoring & Review](13-authoring-review.md) | `init`, `author`, `edit`/`--thorough`, the gap log, the review queue |
 | 14 | [Packaging & Distribution](14-packaging.md) | `mcp-serve`, `publish`, `install`, expertise packages |
-| 15 | [Production Example](15-production-example.md) | Full workspace combining levels 1–14 |
-| 16 | [Sequencing & Contracts](16-pipelines.md) | Correlated runs, defer and resume, gate state, contracts |
+| 15 | [Production Example](15-production-example.md) | A webhook-driven handbook review using levels 1–14, run for real |
+| 16 | [Sequencing & Contracts](16-pipelines.md) | Correlated runs, defer and resume, gate state, resolving over HTTP, contracts, the reference orchestrator |
 | 17 | [Harness executors](17-harness-executors.md) | Claude Code / opencode as a node, adapters, the governed gateway, relay + trust, sandbox |
 | 18 | [Funnels & approval](18-funnels-approval.md) | validate → judge → approve, role registry, quorum, `--require-verified`, `cited-change`, `stop` |
 | 19 | [Command packs & attachments](19-command-packs-attachments.md) | A binary as a skill, `pack:` grants, a file beside the input |

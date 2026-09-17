@@ -7,13 +7,13 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
-class Type(Enum):
+class Type(StrEnum):
     """
     Discriminator; per-type config shape validated at runtime.
     """
@@ -61,7 +61,7 @@ class Metadata(BaseModel):
     description: str | None = None
 
 
-class Method(Enum):
+class Method(StrEnum):
     hmac = "hmac"
     bearer = "bearer"
     api_key = "api_key"

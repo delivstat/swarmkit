@@ -7,12 +7,12 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
-class OnRevision(Enum):
+class OnRevision(StrEnum):
     """
     Default reset_all. What a revision does to prior approvals: reset_all invalidates all; reconfirm_changed keeps approvals whose scope was not affected.
     """
@@ -25,7 +25,7 @@ class Identifier(RootModel[str]):
     root: str = Field(..., pattern="^[a-z][a-z0-9-]*$")
 
 
-class Quorum1(Enum):
+class Quorum1(StrEnum):
     """
     all = every role in the group must approve; any = one role suffices; {k-of: N} = any N distinct role-holders.
     """

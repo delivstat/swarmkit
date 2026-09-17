@@ -156,8 +156,12 @@ async def test_delegation_routes_to_child() -> None:
     )
 
     assert child.id in result["agent_results"]
-    assert result["agent_results"][child.id] == "Worker says: Hey engineers!"
-    assert result["output"] is not None
+    # The child's answer is the child's answer. This used to expect the THIRD mock response here:
+    # the greeter holds a skill, so its text reply was "nudged to use tools" and the retry — the
+    # response scripted for the root's synthesis — was taken as the child's result. The nudge is
+    # now limited to text that names a tool, and the third response reaches the root, as scripted.
+    assert result["agent_results"][child.id] == "Hey engineers!"
+    assert result["output"] == "Worker says: Hey engineers!"
     assert call_count >= 3  # retries may add extra calls
 
 

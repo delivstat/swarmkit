@@ -814,3 +814,18 @@ def test_ollama_think_is_untouched_for_other_families() -> None:
         CompletionRequest(model="qwen3.5:2b", messages=(Message(role="user", content="hi"),))
     )
     assert "think" not in payload
+
+
+def test_openai_compatible_requests_always_carry_a_completion_cap() -> None:
+    """A request with no `max_tokens` used to go out without one, and some OpenAI-compatible
+    upstreams take that as "the whole context window" and refuse it with a 400 — the synthesis
+    step of a five-agent review died that way after every worker had finished."""
+    from swarmkit_runtime.model_providers import CompletionRequest, Message  # noqa: PLC0415
+    from swarmkit_runtime.model_providers._openai import _to_openai_kwargs  # noqa: PLC0415
+
+    bare = CompletionRequest(model="m", messages=(Message(role="user", content="hi"),))
+    assert _to_openai_kwargs(bare)["max_tokens"] == 4096
+    capped = CompletionRequest(
+        model="m", messages=(Message(role="user", content="hi"),), max_tokens=200
+    )
+    assert _to_openai_kwargs(capped)["max_tokens"] == 200

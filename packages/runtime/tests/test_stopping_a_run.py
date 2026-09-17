@@ -201,7 +201,9 @@ def test_the_node_checks_before_it_works() -> None:
     src = (
         Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/langgraph_compiler/_compiler.py"
     ).read_text()
-    node = src[src.index("async def node_fn(") :][:1200]
+    # A window wide enough to hold the entry checks (stop, then the circuit breaker) and the first
+    # audit event.
+    node = src[src.index("async def node_fn(") :][:2000]
 
     assert "if stop_requested():" in node
     assert "raise RunStoppedError" in node

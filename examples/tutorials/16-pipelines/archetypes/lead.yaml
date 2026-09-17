@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: lead
+  name: Team lead
+  description: A middle-tier agent that delegates to its workers and reports up.
+role: leader
+defaults:
+  model:
+    provider: openrouter
+    name: moonshotai/kimi-k2.5
+    temperature: 0.3
+    max_tokens: 2048
+  prompt:
+    system: |
+      You lead a small team. Delegate the task to your workers,
+      combine what they return, and report the result upward.
+provenance:
+  authored_by: human
+  version: 1.0.0

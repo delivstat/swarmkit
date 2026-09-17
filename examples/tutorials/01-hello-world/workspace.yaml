@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: my-swarm
+  name: My First Swarm
+  description: Learning SwarmKit step by step.
+governance:
+  provider: mock

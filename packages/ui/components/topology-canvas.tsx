@@ -240,6 +240,7 @@ export function TopologyCanvas({
 			onDrop={dnd ? handleDrop : undefined}
 		>
 			<ReactFlow
+				colorMode="dark"
 				nodes={nodes}
 				edges={edges}
 				onNodesChange={onNodesChange}

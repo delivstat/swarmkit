@@ -16,9 +16,32 @@ from fastapi import HTTPException, Request
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.fleet import deploy_message, verify_signature
-from swarmkit_runtime.triggers._webhook import validate_webhook_signature
+from swarmkit_runtime.triggers._webhook import default_auth_header, validate_webhook_auth
 
 logger = logging.getLogger("swarmkit.server")
+
+
+def _webhook_secret(request: Request, ref: str) -> str:
+    """The signing secret behind a trigger's `credentials_ref`.
+
+    A `credentials_ref` is a name in the workspace `credentials` block — the same reference an
+    MCP server's `{credential.<name>}` uses — resolved through the credential service. It was read
+    as an environment-variable NAME instead (`os.environ["github-webhook-secret"]`), so a trigger
+    written the documented way was refused with 503 "not set in the environment". A ref that is
+    not a declared credential still falls back to the environment, for the older `secret_ref`
+    spelling.
+    """
+    app = getattr(request, "app", None)
+    runtime = getattr(getattr(app, "state", None), "runtime", None)
+    service = getattr(runtime, "_credential_service", None)
+    if service is not None:
+        try:
+            return str(service.resolve_sync(ref))
+        except Exception:
+            logger.debug(
+                "credentials_ref %r is not a workspace credential; trying the environment", ref
+            )
+    return os.environ.get(ref, "")
 
 
 def _check_webhook_signature(
@@ -42,7 +65,7 @@ def _check_webhook_signature(
         secret_ref = auth.get("credentials_ref") or config.get("secret_ref")
         if not secret_ref:
             continue
-        secret = os.environ.get(secret_ref, "")
+        secret = _webhook_secret(request, str(secret_ref))
         if not secret:
             # FAIL CLOSED. Skipping validation because the secret is missing accepts unsigned
             # requests, and at runtime that is indistinguishable from a correctly configured
@@ -62,9 +85,10 @@ def _check_webhook_signature(
                     "in the environment; refusing to accept unsigned requests"
                 ),
             )
-        header_name = auth.get("header", "X-Hub-Signature-256")
+        method = str(auth.get("method", "hmac"))
+        header_name = auth.get("header", default_auth_header(method))
         sig = request.headers.get(header_name, "")
-        if not validate_webhook_signature(raw_body, sig, secret):
+        if not validate_webhook_auth(method, sig, raw_body, secret):
             logger.warning(
                 "Webhook signature validation failed for topology=%r",
                 topology_name,
@@ -94,7 +118,7 @@ def _check_pipeline_webhook_signature(
     secret_ref = auth.get("credentials_ref") or config.get("secret_ref")
     if not secret_ref:
         return
-    secret = os.environ.get(secret_ref, "")
+    secret = _webhook_secret(request, str(secret_ref))
     if not secret:
         logger.error(
             "Pipeline webhook trigger secret_ref=%r is not present in the environment; "
@@ -109,9 +133,10 @@ def _check_pipeline_webhook_signature(
                 "the environment; refusing to accept unsigned requests"
             ),
         )
-    header_name = auth.get("header", "X-Hub-Signature-256")
+    method = str(auth.get("method", "hmac"))
+    header_name = auth.get("header", default_auth_header(method))
     sig = request.headers.get(header_name, "")
-    if not validate_webhook_signature(raw_body, sig, secret):
+    if not validate_webhook_auth(method, sig, raw_body, secret):
         logger.warning(
             "Webhook signature validation failed for pipeline trigger=%r",
             trigger_config.get("id"),

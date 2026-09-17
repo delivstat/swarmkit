@@ -408,3 +408,52 @@ async def test_memory_post_output_saves(store: MemoryStore) -> None:
     assert result.verdict == "pass"
     assert result.raw.get("memory_saved") is True
     assert store.count() == 1
+
+
+def test_a_rich_memory_is_found_by_a_short_query(store: MemoryStore) -> None:
+    """The score used to be `tf * idf` with tf over the memory's length, so the more a memory
+    knew the less findable it was: "Japan trip" against this entry scored 0.068, under the
+    default 0.1 threshold, and the memory-reader never injected anything for a realistic memory.
+    Coverage of the query's content words is length-independent."""
+    store.add(
+        MemoryEntry(
+            id="m1",
+            topic="Japan trip planning - November weather and packing",
+            context=(
+                "User planning a 2-week trip to Japan (Tokyo, Kyoto, Kanazawa) in November, "
+                "seeking weather expectations and packing advice for autumn travel"
+            ),
+            key_points=[
+                "Destinations: Tokyo, Kyoto, and Kanazawa in November",
+                "Temperature ranges: Tokyo 10-17C, Kyoto 7-16C, Kanazawa 6-14C",
+                "Pack layered clothing, waterproof walking shoes, scarf, gloves, umbrella",
+                "Late November is peak autumn foliage season - book Kyoto early",
+                "Daylight limited: sunset around 4:45-5:15 PM in November",
+            ],
+            tags=["travel", "japan", "november", "weather", "packing", "tokyo", "kyoto"],
+        )
+    )
+    assert store.search("Japan trip")[0][1] == 1.0
+    assert store.search("Remind me — where was I planning to go, and when?", min_score=0.15)
+    assert store.search("how do I cook rice") == []
+
+
+def test_memory_lives_in_the_store_and_a_legacy_file_is_adopted(tmp_path: Path) -> None:
+    """Workspace memory was `.swarmkit/memory.json`, a file the storage service could not move:
+    a workspace configured for Postgres kept its memory on local disk. It is a table on the
+    `memory` store kind now; a file from an earlier version is imported once and renamed."""
+    import json  # noqa: PLC0415
+
+    legacy = tmp_path / ".swarmkit" / "memory.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(json.dumps([{"id": "old-1", "topic": "from the file", "tags": ["legacy"]}]))
+
+    store = MemoryStore(tmp_path)
+    store.add(MemoryEntry(id="new-1", topic="from the store"))
+
+    assert not legacy.exists() and legacy.with_suffix(".json.migrated").exists()
+    assert {e.id for e in store.list_all()} == {"old-1", "new-1"}
+    # Another handle on the same workspace sees the same rows — it is one database, not a file
+    # each process loads.
+    assert MemoryStore(tmp_path).count() == 2
+    assert "store.sqlite" in store.get_status()["store"]

@@ -15,7 +15,7 @@ They are separate stores with different shapes, different write paths, and diffe
 | written by | `governed-memory` skill, `swarmkit memory`, the curation flow | `memory-writer` skill, automatically after a run |
 | reviewed | reconcile-on-write, quarantine on contradiction, human gate | no |
 | decays | yes (confidence by recency) | no |
-| stored in | the configured store (`storage.runtime`) | `.swarmkit/memory.json`, or GBrain |
+| stored in | the configured store (`storage.runtime`) | the same configured store (`workspace_memory` table; was `.swarmkit/memory.json` before 1.227.0), or GBrain |
 | CLI | `swarmkit memory search \| get \| quarantine \| resolve` | — |
 | UI | `/memory` | — |
 

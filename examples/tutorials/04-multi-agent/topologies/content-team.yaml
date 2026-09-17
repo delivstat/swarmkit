@@ -1,0 +1,20 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: content-team
+  version: 0.1.0
+  description: >
+    A coordinator delegates research and writing tasks to
+    specialist agents.
+agents:
+  root:
+    id: coordinator
+    role: root
+    archetype: coordinator
+    children:
+      - id: researcher
+        role: worker
+        archetype: researcher
+      - id: writer
+        role: worker
+        archetype: writer

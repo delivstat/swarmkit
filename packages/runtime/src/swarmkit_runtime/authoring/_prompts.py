@@ -551,9 +551,21 @@ _PROMPTS: dict[AuthoringMode, str] = {
 }
 
 
+#: The CLI as it actually is. The model invented `swarmkit run --topology topologies/x.yaml` and
+#: `swarmkit run support --workspace ./dir` in its closing advice — plausible, and both wrong.
+_CLI_FACTS = """
+When you tell the user how to run what you wrote, use the real commands:
+- `swarmkit run <workspace-dir> <topology-name> --input "..."` runs a topology (the name is
+  metadata.name, not a file path; the workspace dir is the directory holding workspace.yaml).
+- `swarmkit validate <workspace-dir>` validates it; `swarmkit serve <workspace-dir>` hosts it.
+Skills declared as llm_prompt receive the caller's text as the user message; there is no
+{{variable}} templating — do not put {{placeholders}} in prompts.
+"""
+
+
 def get_system_prompt(mode: AuthoringMode, workspace_context: str = "") -> str:
     """Build the system prompt for the given authoring mode."""
-    prompt = _PROMPTS[mode].replace("{core}", _CORE_INSTRUCTIONS)
+    prompt = _PROMPTS[mode].replace("{core}", _CORE_INSTRUCTIONS) + _CLI_FACTS
     if workspace_context:
         prompt += f"\n\nExisting workspace state:\n{workspace_context}"
     return prompt

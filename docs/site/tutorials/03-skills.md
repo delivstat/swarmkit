@@ -1,59 +1,85 @@
 # Level 3: Skills
 
-Give your agents capabilities — tools they can call, decisions they can make, and actions they can take.
+Give your agents capabilities — tools they can call and judgements they can make.
 
 ## What you'll learn
 
-- Four skill categories (capability, decision, coordination, persistence)
-- Four implementation types (mcp_tool, llm_prompt, composed, and command — a local binary from a workspace command pack)
-- Binding skills to archetypes
-- Input/output schemas
-- Retry and failure handling
+- The four skill categories (capability, decision, coordination, persistence)
+- The five implementation backings (`llm_prompt`, `mcp_tool`, `composed`, `command`, `agent`)
+- Binding skills to archetypes, and adding or replacing them in a topology
+- Output schemas, and the one thing a decision skill must return
+- Constraints (timeout, retry, on_failure) and per-skill audit control
+
+The finished workspace is `examples/tutorials/03-skills/`; every command below was run against it.
 
 ## Why skills?
 
-Without skills, agents can only generate text. With skills, they can read files, call APIs, validate outputs, search databases, and coordinate with each other. Skills are SwarmKit's only extension primitive — when you need custom behavior, you write a skill.
+Without skills, agents can only generate text. With skills they can read files, call APIs, judge
+outputs, search databases and delegate. Skills are SwarmKit's **only** extension primitive — when
+you need behaviour, you write a skill, whatever backs it:
+
+| `implementation.type` | What runs | Level |
+|---|---|---|
+| `llm_prompt` | one model call with the skill's prompt as its system prompt | this one |
+| `mcp_tool` | a tool on an MCP server declared in `workspace.yaml` | 5 |
+| `composed` | several skills, with a strategy (e.g. parallel consensus) | 7 |
+| `command` | a local binary from a workspace command pack | 19 |
+| `agent` | another topology, here or on a remote instance | 20 |
 
 ## Build it
 
-### 1. A capability skill (MCP tool)
+### 1. A capability skill (LLM prompt)
 
-Capability skills do things — read data, call APIs, write files. Most use MCP servers:
+Not every skill needs a server. The simplest is a structured prompt:
 
 ```bash
 mkdir skills
 ```
 
 ```yaml
-# skills/read-file.yaml
+# skills/summarize.yaml
 apiVersion: swarmkit/v1
 kind: Skill
 metadata:
-  id: read-file
-  name: Read File
-  description: Read the contents of a file from the workspace.
+  id: summarize
+  name: Summarize
+  description: Summarize text into 3-5 bullet points, one clear sentence each.
 category: capability
 implementation:
-  type: mcp_tool
-  server: filesystem
-  tool: read_file
-input_schema:
-  type: object
-  required: [path]
-  properties:
-    path:
-      type: string
-      description: Path to the file to read.
+  type: llm_prompt
+  prompt: |
+    You summarize. The user message is the text to summarize.
+    Reply with 3-5 bullet points; each bullet is one clear sentence.
+    Do not add commentary before or after the bullets.
+constraints:
+  timeout_seconds: 30
+  retry:
+    attempts: 2
+    backoff: exponential
+  on_failure: fallback
+audit:
+  log_inputs: summary
+  log_outputs: full
 provenance:
   authored_by: human
   version: 1.0.0
 ```
 
-This skill calls the `read_file` tool on a `filesystem` MCP server. We'll configure the MCP server in Level 5 — for now, let's focus on the skill definition.
+How an `llm_prompt` skill runs: the `prompt` becomes the **system prompt** of one model call, and
+whatever the calling agent passed the tool is the **user message**. There is no template
+substitution — write the prompt to address "the user message", as above.
 
-### 2. A decision skill (LLM judge)
+`constraints` says what happens when the call is slow or fails: 30 s timeout, two retries with
+exponential backoff, and then `on_failure: fallback` — the failure reaches the agent as a tool
+error it can act on (`fail` ends the run; `escalate_to_human` files a review item instead).
+`audit` controls what the audit log records per skill: inputs as a summary, outputs in full;
+`redact: ["$.api_key"]` would drop a field from both.
 
-Decision skills evaluate something and return a verdict — pass, fail, or needs-review:
+### 2. A decision skill
+
+Decision skills evaluate something and return a verdict. The schema requires them to declare their
+`outputs`, and the outputs must include `reasoning` — an audit or a review needs the rationale next
+to the verdict, and the schema will not let you leave it out:
 
 ```yaml
 # skills/quality-check.yaml
@@ -63,29 +89,19 @@ metadata:
   id: quality-check
   name: Quality Check
   description: >
-    Evaluates whether a response is clear, accurate, and
-    complete. Returns pass/fail with reasoning.
+    Evaluates whether a response is clear, accurate and complete.
+    Returns a verdict with reasoning.
 category: decision
 implementation:
   type: llm_prompt
   prompt: |
-    Evaluate the following response for quality:
-
-    RESPONSE:
-    {{input}}
-
-    Score on three criteria:
-    1. Clarity — is it easy to understand?
-    2. Accuracy — is the information correct?
-    3. Completeness — does it fully answer the question?
-
-    Return JSON:
-    {
-      "verdict": "pass" or "fail",
-      "reasoning": "why you gave this verdict",
-      "scores": {"clarity": 1-5, "accuracy": 1-5, "completeness": 1-5}
-    }
-output_schema:
+    You judge the quality of a response. The user message is the response.
+    Score clarity, accuracy and completeness from 1 to 5 each, then decide.
+    Reply with JSON only:
+    {"verdict": "pass" | "fail" | "needs-review",
+     "reasoning": "<why>",
+     "scores": {"clarity": 1-5, "accuracy": 1-5, "completeness": 1-5}}
+outputs:
   type: object
   required: [verdict, reasoning]
   properties:
@@ -94,42 +110,33 @@ output_schema:
       enum: [pass, fail, needs-review]
     reasoning:
       type: string
+    scores:
+      type: object
 provenance:
   authored_by: human
   version: 1.0.0
 ```
 
-Decision skills MUST have a `reasoning` field in their output — this is enforced by the schema.
+A decision skill granted to an agent is a tool it can call. Bound under a topology's
+`governance.decision_skills` it becomes a **gate** on the agent's output that the runtime runs for
+it — Level 7.
 
-### 3. An LLM prompt skill
+### 3. An MCP-backed skill
 
-Not all skills call tools — some are just structured LLM prompts:
+The same skill shape with a different backing — a tool on a server:
 
 ```yaml
-# skills/summarize.yaml
-apiVersion: swarmkit/v1
-kind: Skill
-metadata:
-  id: summarize
-  name: Summarize
-  description: Summarize text into bullet points.
-category: capability
 implementation:
-  type: llm_prompt
-  prompt: |
-    Summarize the following text into 3-5 bullet points.
-    Each bullet should be one clear sentence.
-
-    TEXT:
-    {{input}}
-provenance:
-  authored_by: human
-  version: 1.0.0
+  type: mcp_tool
+  server: filesystem     # an `mcp_servers` entry in workspace.yaml
+  tool: read_file
 ```
 
-### 4. Bind skills to an archetype
+A skill naming a server the workspace does not declare **fails the workspace load** — not the first
+run that reaches for it. That is why this one is not in this level's workspace: Level 5 declares
+the server and adds it.
 
-Update your archetype to include skills:
+### 4. Bind skills to an archetype
 
 ```yaml
 # archetypes/friendly-assistant.yaml — updated
@@ -138,100 +145,109 @@ kind: Archetype
 metadata:
   id: friendly-assistant
   name: Friendly Assistant
-  description: A helpful assistant with file reading and summarization.
-role: worker
+  description: >
+    A warm, helpful assistant that answers questions clearly and
+    concisely, and can summarize what it is given.
+role: root
 defaults:
   model:
     provider: openrouter
-    name: meta-llama/llama-3.3-70b-instruct
+    name: moonshotai/kimi-k2.5
     temperature: 0.7
     max_tokens: 2048
   prompt:
     system: |
-      You are a friendly, helpful assistant. You can read files
-      and summarize content. Use your tools when the user asks
-      for something that requires them.
+      You are a friendly, helpful assistant. Answer questions
+      clearly and concisely. When the user gives you a long text,
+      use the summarize tool rather than summarizing it yourself.
   skills:
-    - read-file
     - summarize
 provenance:
   authored_by: human
   version: 1.0.0
 ```
 
-### 5. Add skills directly in a topology
+The prompt tells the model *when* to use the tool. A model that is merely given a tool will often
+answer in prose instead; naming the situation is what makes it reach for the skill.
 
-You can also bind skills at the topology level (overrides or extends the archetype):
+### 5. Add or replace skills in a topology
 
 ```yaml
-# topologies/hello.yaml — with skill override
+# topologies/hello.yaml
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: hello
+  version: 0.3.0
+  description: A single agent using an archetype.
 agents:
   root:
     id: assistant
     role: root
     archetype: friendly-assistant
     skills_additional:
-      - quality-check    # adds to archetype skills
+      - quality-check    # added to the archetype's skills; `skills:` would replace them
 ```
 
-`skills_additional` adds to the archetype's skills. `skills` replaces them entirely.
+`skills_additional` merges onto the archetype's list. `skills` replaces it entirely.
 
-### 6. Skill with retry and failure handling
-
-```yaml
-# skills/fetch-data.yaml
-apiVersion: swarmkit/v1
-kind: Skill
-metadata:
-  id: fetch-data
-  name: Fetch Data
-  description: Fetch data from an external API.
-category: capability
-implementation:
-  type: mcp_tool
-  server: api-client
-  tool: fetch
-constraints:
-  timeout_seconds: 30
-  retry:
-    attempts: 3
-    backoff: exponential
-  on_failure: fallback
-audit:
-  log_inputs: summary
-  log_outputs: full
-  redact: ["$.api_key", "$.password"]
-provenance:
-  authored_by: human
-  version: 1.0.0
-```
-
-This skill retries 3 times with exponential backoff, times out after 30 seconds, and redacts sensitive fields from audit logs.
-
-## Skill categories explained
-
-| Category | Purpose | Example |
-|---|---|---|
-| `capability` | Do something (read, write, compute) | Read file, call API, search database |
-| `decision` | Evaluate and return verdict | Quality check, security scan, code review |
-| `coordination` | Coordinate between agents | Peer handoff, task routing |
-| `persistence` | Record state for later | Audit log write, checkpoint save |
-
-## Validate
+## Validate and run
 
 ```bash
 swarmkit validate . --tree
 ```
 
-You should see skills listed under each agent:
+```
+✓ workspace: my-swarm
+  topologies: 2   (explain, hello)
+  skills:     4   (quality-check, summarize, topology-explain, topology-hello)
+  archetypes: 2   (code-explainer, friendly-assistant)
+  triggers:   0   (—)
+
+topology: hello
+  assistant (role=root, archetype=friendly-assistant)
+    model: openrouter/moonshotai/kimi-k2.5
+    skills: summarize, quality-check
+```
+
+```bash
+SWARMKIT_PROVIDER=mock swarmkit run . hello --input "Summarize this text." --verbose
+```
 
 ```
-Agent tree:
-  assistant (root)
-    archetype: friendly-assistant
-    model: openrouter/meta-llama/llama-3.3-70b-instruct
-    skills: read-file, summarize, quality-check
+--- [assistant] calling moonshotai/kimi-k2.5 ---
+  tools: ['summarize', 'quality-check']
+  input: Summarize this text....
+  tool_calls: []
+  text: ['mock response']
 ```
+
+The `tools:` line is the proof the skills were offered. The mock provider never calls a tool, so
+`tool_calls` is empty; on a real model the same run shows the call and its execution — this is a
+local `qwen3.5:4b` through Ollama:
+
+```
+  tools: ['summarize', 'quality-check']
+  tool_calls: ['summarize']
+  [assistant] calling summarize {}
+  executing: summarize
+```
+
+The portal's Skills page lists every skill with its category — including the two you did not write
+(Level 20) — and **View** opens the file as a form or as YAML to edit in place:
+
+![Skills](../img/tutorials/03-skills.png)
+
+![Editing quality-check as YAML](../img/tutorials/03-skill-editor.png)
+
+## Skill categories
+
+| Category | Purpose | Example |
+|---|---|---|
+| `capability` | Do something (read, write, compute) | Read file, call API, summarize |
+| `decision` | Evaluate and return a verdict with reasoning | Quality check, security scan |
+| `coordination` | Coordinate between agents | Peer handoff, escalate to a human |
+| `persistence` | Record state for later | Governed memory write |
 
 ## Your workspace so far
 
@@ -242,10 +258,8 @@ my-swarm/
 │   ├── friendly-assistant.yaml
 │   └── code-explainer.yaml
 ├── skills/
-│   ├── read-file.yaml
-│   ├── quality-check.yaml
 │   ├── summarize.yaml
-│   └── fetch-data.yaml
+│   └── quality-check.yaml
 └── topologies/
     ├── hello.yaml
     └── explain.yaml

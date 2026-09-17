@@ -17,7 +17,7 @@ from langgraph.graph.state import CompiledStateGraph
 from swarmkit_runtime._run_scope import current_run_id
 from swarmkit_runtime._stop_requests import stop_requested
 from swarmkit_runtime.governance import AuditEvent, DecisionSkillBinding, GovernanceProvider
-from swarmkit_runtime.model_providers import MockModelProvider
+from swarmkit_runtime.model_providers import Message, MockModelProvider
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent, ResolvedTopology
 from swarmkit_runtime.trace import AgentStep, RunTrace
@@ -47,6 +47,7 @@ from ._prompts import (
 from ._run_context import (
     current_parent_agent,
     reset_parent_agent,
+    set_current_agent,
     set_parent_agent,
 )
 from ._sentinels import (
@@ -244,6 +245,7 @@ def _build_agent_node(  # noqa: PLR0915
 
     async def node_fn(state: SwarmState) -> dict[str, Any]:  # noqa: PLR0911, PLR0912, PLR0915
         agent_id = agent.id
+        set_current_agent(agent_id)
 
         # Did a human ask this run to stop? Checked HERE — before the node does any work, after the
         # previous super-step checkpointed its result — because that is what makes "stop without
@@ -253,6 +255,15 @@ def _build_agent_node(  # noqa: PLR0915
             from swarmkit_runtime.review._hitl import RunStoppedError  # noqa: PLC0415
 
             raise RunStoppedError(current_run_id() or "", agent_id)
+
+        # The circuit breaker (`governance.limits`): one step per node entry, counted per agent and
+        # per run. Raises `CircuitBreakerError`, which ends the run with the limit named — never a
+        # silent timeout. Until 1.227.0 nothing called this and the limits block was decorative.
+        from swarmkit_runtime.governance import current_tracker  # noqa: PLC0415
+
+        _tracker = current_tracker()
+        if _tracker is not None:
+            _tracker.check_agent_step(agent_id)
 
         _start = datetime.now(tz=UTC)
         await governance.record_event(
@@ -484,7 +495,18 @@ def _build_agent_node(  # noqa: PLR0915
         if isinstance(result, dict):
             _elapsed = (datetime.now(tz=UTC) - _start).total_seconds()
             _output = result.get("output", "")
-            if _output and not (is_delegated(_output) or _output == AgentStatus.DELEGATED_PARALLEL):
+            _is_final_text = bool(_output) and not (
+                is_delegated(_output) or _output == AgentStatus.DELEGATED_PARALLEL
+            )
+            # Everything that applies to a FINAL ANSWER applies to this one too. A turn that
+            # called a tool comes back through the loop as a dict, and this branch used to return
+            # before any of it: the post_output gate, drift scoring, the memory writer and the
+            # governed-memory write all lived on the text path only. So an agent that did its work
+            # with tools was never judged, never scored, and never remembered — the four features
+            # were bypassed exactly when the agent had done something worth checking.
+            if _is_final_text:
+                _output = await _after_final_answer(_output, state, messages)
+                result = {**result, "output": _output}
                 _progress(f"[{agent_id}] done ({_elapsed:.1f}s)")
             await _record_completion(
                 governance,
@@ -530,17 +552,26 @@ def _build_agent_node(  # noqa: PLR0915
         _trace_step.result_length = len(result_text)
         reset_parent_agent(_parent_token)
 
+        result_text = await _after_final_answer(result_text, state, messages)
+
+        return _make_result(agent_id, result_text)
+
+    async def _after_final_answer(text: str, state: SwarmState, messages: list[Message]) -> str:
+        """What happens to an agent's final answer, whichever path produced it.
+
+        In order: intent-drift scoring, the post_output decision gates (which may revise the
+        text), the workspace memory writer, the governed-memory candidate write. One function so
+        the text path and the tool-loop path cannot drift apart again.
+        """
         if drift_observer and drift_observer.config.enabled:
             if not drift_observer.anchor_text:
                 drift_observer.set_anchor(state.get("input", ""))
             # Skip drift scoring for error passthroughs — they are not
             # agent reasoning and would distort the drift signal.
-            if not _is_error_passthrough(result_text):
-                drift_result = drift_observer.observe(
-                    step=len(drift_observer.history), output=result_text
-                )
+            if not _is_error_passthrough(text):
+                drift_result = drift_observer.observe(step=len(drift_observer.history), output=text)
                 await _handle_drift_result(
-                    drift_result, drift_observer, governance, agent_id, messages
+                    drift_result, drift_observer, governance, agent.id, messages
                 )
 
         if _ds_bindings:
@@ -548,10 +579,10 @@ def _build_agent_node(  # noqa: PLR0915
                 _make_retry_fn,
             )
 
-            _retry = _make_retry_fn(state.get("input", ""), result_text, model_provider, agent)
-            result_text, _ = await evaluate_post_output(
-                agent_id=agent_id,
-                output=result_text,
+            _retry = _make_retry_fn(state.get("input", ""), text, model_provider, agent)
+            text, _ = await evaluate_post_output(
+                agent_id=agent.id,
+                output=text,
                 bindings=_ds_bindings,
                 governance=governance,
                 retry_fn=_retry,
@@ -562,9 +593,9 @@ def _build_agent_node(  # noqa: PLR0915
             from swarmkit_runtime.memory._gate import memory_post_output  # noqa: PLC0415
 
             await memory_post_output(
-                agent_id=agent_id,
+                agent_id=agent.id,
                 user_input=state.get("input", ""),
-                agent_output=result_text,
+                agent_output=text,
                 bindings=_ds_bindings,
                 store=_memory,
                 model_provider=model_provider,
@@ -578,12 +609,11 @@ def _build_agent_node(  # noqa: PLR0915
             )
 
             summary = await governed_memory_post_output(
-                agent_id=agent_id, agent_output=result_text, store=_governed_memory
+                agent_id=agent.id, agent_output=text, store=_governed_memory
             )
             if summary["written"]:
-                _progress(f"  [{agent_id}] governed memory: {summary['by_op']}")
-
-        return _make_result(agent_id, result_text)
+                _progress(f"  [{agent.id}] governed memory: {summary['by_op']}")
+        return text
 
     node_fn.__name__ = f"agent_{agent.id}"
     return node_fn

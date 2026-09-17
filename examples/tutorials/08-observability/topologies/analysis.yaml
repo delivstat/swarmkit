@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: analysis
+  version: 0.1.0
+  description: One analyst whose structured verdict is gated by the design funnel.
+agents:
+  root:
+    id: analyst
+    role: root
+    archetype: writer
+    prompt:
+      system: |
+        Analyze the request and answer with JSON only:
+        {"findings": [..], "confidence": 0-1, "recommendation": "approve" | "reject" | "needs-review"}
+    output_schema:
+      type: object
+      required: [findings, confidence, recommendation]
+      properties:
+        findings:
+          type: array
+          items: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        recommendation: { type: string, enum: [approve, reject, needs-review] }
+    funnel: design-gate

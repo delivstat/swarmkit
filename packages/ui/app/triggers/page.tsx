@@ -46,7 +46,7 @@ export default function TriggersPage() {
 									<td className="px-4 py-2">{trigger.type}</td>
 									<td className="px-4 py-2">
 										<StatusBadge
-											status={trigger.enabled ? "completed" : "failed"}
+											status={trigger.enabled ? "enabled" : "disabled"}
 										/>
 									</td>
 									<td className="px-4 py-2 font-mono text-xs">
@@ -54,7 +54,7 @@ export default function TriggersPage() {
 									</td>
 									<td className="px-4 py-2 text-xs text-muted-foreground">
 										{Object.entries(trigger.config)
-											.map(([k, v]) => `${k}=${String(v)}`)
+											.map(([k, v]) => `${k}=${formatConfigValue(v)}`)
 											.join(", ") || "-"}
 									</td>
 								</tr>
@@ -65,4 +65,11 @@ export default function TriggersPage() {
 			)}
 		</div>
 	);
+}
+
+/** A nested block (a webhook's `auth`) as JSON rather than `[object Object]`. */
+function formatConfigValue(value: unknown): string {
+	return typeof value === "object" && value !== null
+		? JSON.stringify(value)
+		: String(value);
 }

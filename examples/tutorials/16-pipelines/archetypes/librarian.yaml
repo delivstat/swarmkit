@@ -1,0 +1,26 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: librarian
+  name: Librarian
+  description: Answers questions from the company handbook and cites where the answer came from.
+role: root
+defaults:
+  model:
+    provider: openrouter
+    name: moonshotai/kimi-k2.5
+    temperature: 0.2
+    max_tokens: 2048
+  prompt:
+    system: |
+      You answer questions about company policy from the handbook. Always search first
+      (search-knowledge); answer only from what the search returns and name the source file
+      for each fact. If the handbook does not cover the question, say so — do not guess.
+      For questions about vendors or contracts, read knowledge/docs/vendors.csv with read-csv.
+  skills:
+    - search-knowledge
+    - read-csv
+    - list-files
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,1 @@
+{"level": 6, "runs": [["structured-review", "Review: def login(user, pwd): return db.query(f\"SELECT * FROM users WHERE name={user} AND pass={pwd}\")"]]}

@@ -46,6 +46,15 @@ class _Store:
     def update_job(self, job_id: str, **fields: Any) -> None:
         self.updates.append({"job_id": job_id, **fields})
 
+    # Conversations live in the same store now (they were files under .swarmkit/conversations).
+    def create_conversation(self, conv_id: str, topology: str) -> None:
+        self.conversations: dict[str, Any] = getattr(self, "conversations", {})
+        self.conversations[conv_id] = {"topology": topology, "turns": []}
+
+    def update_conversation(self, conv_id: str, turns: Any, metadata: Any = None) -> None:
+        self.conversations = getattr(self, "conversations", {})
+        self.conversations.setdefault(conv_id, {})["turns"] = turns
+
 
 class _Usage:
     input_tokens = 1200

@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: tutor
+  version: 0.1.0
+  description: A single assistant that can write governed memory.
+agents:
+  root:
+    id: tutor
+    role: root
+    archetype: friendly-assistant
+    skills_additional:
+      - governed-memory    # write access to curated memory — grant deliberately

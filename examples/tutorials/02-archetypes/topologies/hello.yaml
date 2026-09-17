@@ -1,0 +1,11 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: hello
+  version: 0.2.0
+  description: A single agent using an archetype.
+agents:
+  root:
+    id: assistant
+    role: root
+    archetype: friendly-assistant

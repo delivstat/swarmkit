@@ -265,6 +265,7 @@ export function FunnelCanvas({
 	return (
 		<div className={className} style={{ width: "100%", height: "100%" }}>
 			<ReactFlow
+				colorMode="dark"
 				nodes={nodes}
 				edges={edges}
 				onNodesChange={onNodesChange}

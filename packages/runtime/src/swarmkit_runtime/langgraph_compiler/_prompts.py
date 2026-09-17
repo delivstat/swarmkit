@@ -23,6 +23,19 @@ from ._run_context import run_state_dir
 from ._sentinels import is_delegated, is_task_plan_status
 from ._state import SwarmState
 
+#: The tool schema of an `llm_prompt` skill that declares no `inputs`: one required string, the
+#: text the prompt is applied to. A skill wanting structured arguments declares `inputs` itself.
+_LLM_PROMPT_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "input": {
+            "type": "string",
+            "description": "The text this skill works on: the full content, not a reference.",
+        }
+    },
+    "required": ["input"],
+}
+
 
 def _check_scope_exists() -> bool:
     """Check if scope.json exists in the current run's state dir."""
@@ -114,26 +127,23 @@ def _get_completed_children(
     return completed
 
 
+# Phrases that announce a tool action instead of taking it ("Let me search the config"). Bare
+# "I'll" / "I will" / "I should" / "I want to" are not here: they are how a model acknowledges a
+# request ("Got it — I'll keep that in mind"), and matching them made the tool loop strip a
+# finished answer as "planning text", nudge, and finally replace it with a forced "## Analysis".
 _INCOMPLETE_MARKERS = [
     "let me",
-    "i'll ",
-    "i will ",
     "i need to",
     "next, i",
     "now i'll",
-    "now let me",
-    "i should",
+    "now i will",
+    "i'll now",
+    "i will now",
+    "i'm going to",
     "to find out",
     "to examine",
     "to investigate",
-    "to read",
     "to check",
-    "let me now",
-    "let me search",
-    "let me look",
-    "i noticed",
-    "i want to",
-    "i'm going to",
     "let's look",
     "let's check",
     "let's search",
@@ -661,7 +671,7 @@ def _as_text(content: str | Sequence[ContentBlock]) -> str:
     return "".join(b.text or "" for b in content if b.type == "text")
 
 
-def _build_tools(  # noqa: PLR0912
+def _build_tools(  # noqa: PLR0912, PLR0915
     agent: ResolvedAgent,
     mcp_manager: Any = None,
     planning_config: Any = None,
@@ -714,7 +724,7 @@ def _build_tools(  # noqa: PLR0912
                         impl.get("tool") if isinstance(impl, dict) else getattr(impl, "tool", "")
                     )
                     input_schema = mcp_manager.get_tool_input_schema(server_id, tool_name)
-                elif impl_type == "command":
+                elif impl_type in ("command", "llm_prompt"):
                     # The synthetic skill carries one required string per argv placeholder, so the
                     # model learns the arguments from the tool schema rather than by failing a call.
                     raw_inputs = getattr(skill.raw, "inputs", None)
@@ -722,6 +732,12 @@ def _build_tools(  # noqa: PLR0912
                         input_schema = raw_inputs
                     elif raw_inputs is not None and hasattr(raw_inputs, "model_dump"):
                         input_schema = raw_inputs.model_dump(exclude_none=True)
+                    if impl_type == "llm_prompt" and not input_schema:
+                        # An llm_prompt skill advertised NO parameters, so every model called it
+                        # with `{}`: `summarize {}` answered "no text was provided" and
+                        # `governed-memory {}` proposed nothing, eight turns running. The prompt
+                        # needs the text it works on; say so in the schema.
+                        input_schema = _LLM_PROMPT_INPUT_SCHEMA
                 elif impl_type == "agent":
                     from swarmkit_runtime.agent_skill._tool import (  # noqa: PLC0415
                         agent_tool_schema,

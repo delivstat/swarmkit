@@ -49,13 +49,23 @@ from swarmkit_runtime.commands import (
 )
 from swarmkit_runtime.credentials import CredentialService
 from swarmkit_runtime.governance import (
+    CircuitBreakerTracker,
     DecisionSkillBinding,
     DecisionSkillResult,
     GovernanceProvider,
+    limits_from_workspace,
     merge_decision_skills,
+    reset_run_tracker,
+    set_run_tracker,
 )
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
 from swarmkit_runtime.langgraph_compiler import compile_topology
+from swarmkit_runtime.langgraph_compiler._run_context import (
+    reset_run_gap_log,
+    reset_run_governed_memory,
+    set_run_gap_log,
+    set_run_governed_memory,
+)
 from swarmkit_runtime.mcp import (
     MCPClientManager,
     MCPServerConfig,
@@ -97,6 +107,16 @@ class RunEvent:
     timestamp: str
     payload: dict[str, object] = field(default_factory=dict)
     skill_id: str | None = None
+    #: Carried from the provider's event so the persisted row says whether the call was refused.
+    #: Until 1.227.0 this hop dropped both, and every `skill.executed` row in `audit_events` had
+    #: `policy_decision NULL` — a denied tool call read exactly like an allowed one, which is the
+    #: failure `DENIED_MARK` exists to prevent, defeated one layer down.
+    policy_decision: str | None = None
+    policy_reason: str | None = None
+    #: Every other typed field the provider's event carried (verdict, reasoning, confidence,
+    #: skill_category, model, tokens, cost, error …), so the persisted row is the event that was
+    #: recorded and not a subset of it. Same hop, same reason as the two above.
+    typed: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -215,7 +235,9 @@ def _run_trace_to_span(trace: Any, workspace_id: str) -> Any:
             "swarmkit.run.id": trace.run_id,
             "swarmkit.topology.id": trace.topology,
             "swarmkit.workspace.id": workspace_id,
-            "swarmkit.run.llm_calls": trace.llm_calls,
+            # `llm_calls` counts only the extra calls (tool loop, synthesis); every agent step is a
+            # call too. Same sum `swarmkit trace` prints — the span said 0 for a one-agent run.
+            "swarmkit.run.llm_calls": trace.llm_calls + len(trace.agent_steps),
             "swarmkit.model.tokens_in": trace.total_input_tokens,
             "swarmkit.model.tokens_out": trace.total_output_tokens,
             "swarmkit.model.cost_usd": trace.total_cost_usd,
@@ -307,6 +329,7 @@ class WorkspaceRuntime:
         self._credential_service = credential_service
         self._memory_store = self._create_memory_store()
         self._governed_memory_store = self._create_governed_memory_store()
+        self._gap_log = self._create_gap_log()
         # The service, not a path: `audit_provider_for_path` never saw the workspace config, so a
         # `storage.audit.backend: postgres` workspace wrote its trail to a local file (bug 01).
         self._audit_provider = audit_provider or self._storage().audit_provider()
@@ -378,6 +401,17 @@ class WorkspaceRuntime:
         from swarmkit_runtime.memory import MemoryStore  # noqa: PLC0415
 
         return MemoryStore(self._workspace_root)
+
+    def _create_gap_log(self) -> Any:
+        """The skill gap log (design §12), on the workspace's store. Best-effort: a store that
+        will not open costs the log, not the run."""
+        try:
+            from swarmkit_runtime.gaps import SkillGapLog  # noqa: PLC0415
+
+            return SkillGapLog(self._workspace_root)
+        except Exception:
+            logger.warning("skill gap log unavailable for this workspace", exc_info=True)
+            return None
 
     def _create_governed_memory_store(self) -> Any:
         """Build the governed-memory store when the workspace declares the ``governed-memory``
@@ -490,6 +524,13 @@ class WorkspaceRuntime:
         if bad_agents:
             raise MissingCommandPackError(bad_agents)
 
+        # Every model call this runtime makes is recorded to the workspace's prompt ring buffer,
+        # which `swarmkit debug` reads (telemetry/_recording.py). Wrapped here, once, so the
+        # decision-skill judge below and every agent node record alike.
+        from swarmkit_runtime.telemetry._recording import record_registry  # noqa: PLC0415
+
+        record_registry(registry, ws_root)
+
         decision_skills = {
             sid: skill
             for sid, skill in workspace.skills.items()
@@ -502,13 +543,27 @@ class WorkspaceRuntime:
                 SkillBackedGovernanceProvider,
             )
 
-            _model = os.environ.get("SWARMKIT_JUDGE_MODEL", "")
-            _default_provider = registry.get("openrouter") or registry.get("default")
+            # Which model judges: `SWARMKIT_JUDGE_MODEL` as `provider/model` wins; otherwise the
+            # same resolution a run uses (`SWARMKIT_PROVIDER` + `SWARMKIT_MODEL`, then the first
+            # real provider with a default model). Before this the judge was always OpenRouter
+            # with an EMPTY model name — a 400 on the first decision, never seen because the
+            # wrapper was never built (the enum bug this shipped with).
+            _judge = os.environ.get("SWARMKIT_JUDGE_MODEL", "")
+            if "/" in _judge and registry.get(_judge.split("/", 1)[0]) is not None:
+                _judge_provider_id, _judge_model = _judge.split("/", 1)
+                _judge_provider: Any = registry.get(_judge_provider_id)
+            else:
+                try:
+                    _judge_provider, _judge_model = resolve_authoring_provider(registry)
+                except RuntimeError:
+                    _judge_provider, _judge_model = registry.get("mock"), "mock"
+                if _judge:
+                    _judge_model = _judge
             governance = SkillBackedGovernanceProvider(
                 base=governance,
                 skills=decision_skills,
-                model_provider=_default_provider or governance,  # type: ignore[arg-type]
-                model_name=_model,
+                model_provider=_judge_provider,
+                model_name=_judge_model,
                 mcp_manager=mcp_manager,
             )
         if missing:
@@ -1031,6 +1086,9 @@ class WorkspaceRuntime:
             set_current_labels(None),
             set_stop_checker(self._stop_checker(thread_id)),
             set_agent_context(self._agent_context(topology_name)),
+            set_run_tracker(CircuitBreakerTracker(limits_from_workspace(self._workspace.raw))),
+            set_run_governed_memory(self._governed_memory_store),
+            set_run_gap_log(self._gap_log),
         )
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
@@ -1164,6 +1222,9 @@ class WorkspaceRuntime:
             set_current_labels(labels),
             set_stop_checker(self._stop_checker(trace.run_id)),
             set_agent_context(self._agent_context(topology_name)),
+            set_run_tracker(CircuitBreakerTracker(limits_from_workspace(self._workspace.raw))),
+            set_run_governed_memory(self._governed_memory_store),
+            set_run_gap_log(self._gap_log),
         )
 
     def _agent_context(self, topology_name: str) -> Any:
@@ -1310,7 +1371,9 @@ class WorkspaceRuntime:
         The filter is the fix: the provider's log is cumulative and never cleared, so an unfiltered
         drain re-persisted every earlier run's events under this run's id.
         """
-        run_token, label_token, stop_token, agent_token = token
+        run_token, label_token, stop_token, agent_token, tracker_token, memory_token, gap_token = (
+            token
+        )
         # Captured BEFORE the reset: `_persist_events_to_audit` builds fresh AuditEvents, and once
         # the scope is gone their `labels` default to empty — the run's grouping would reach `jobs`
         # and silently not reach `audit_events`, which is half a feature and the worse half.
@@ -1319,6 +1382,9 @@ class WorkspaceRuntime:
         # long-lived `swarmkit serve` would keep one entry per agent of every run it ever ran.
         prerequisites.forget_run(run_id)
         reset_stop_checker(stop_token)
+        reset_run_tracker(tracker_token)
+        reset_run_governed_memory(memory_token)
+        reset_run_gap_log(gap_token)
         reset_agent_context(agent_token)
         reset_current_run_id(run_token)
         reset_current_labels(label_token)
@@ -1373,6 +1439,9 @@ class WorkspaceRuntime:
                 agent_role=role,  # type: ignore[arg-type]
                 run_id=run_id,
                 labels=dict(labels or {}),
+                policy_decision=evt.policy_decision,  # type: ignore[arg-type]
+                policy_reason=evt.policy_reason,
+                **evt.typed,
             )
             await self._audit_provider.record(audit_event)
 
@@ -1538,6 +1607,25 @@ class WorkspaceRuntime:
 # ---- event extraction ----------------------------------------------------
 
 
+#: Typed `AuditEvent` fields carried through `RunEvent` to the durable row (besides the policy
+#: pair, which are named). `payload`, ids, run/labels/timestamps are handled explicitly; `inputs`
+#: and `outputs` are not carried because the per-skill audit policy (redaction, summary/none) is
+#: applied to the payload, and a typed copy would route around it.
+_CARRIED_FIELDS = (
+    "verdict",
+    "reasoning",
+    "confidence",
+    "skill_category",
+    "model_provider",
+    "model_name",
+    "tokens_in",
+    "tokens_out",
+    "cost_usd",
+    "error",
+    "parent_event_id",
+)
+
+
 def _extract_events(governance: GovernanceProvider, *, run_id: str | None = None) -> list[RunEvent]:
     """Pull this run's audit events from the governance provider.
 
@@ -1553,6 +1641,12 @@ def _extract_events(governance: GovernanceProvider, *, run_id: str | None = None
 
     ``run_id=None`` keeps the old unfiltered behaviour for callers that have no run to scope to.
     """
+    # A wrapper (the skill-backed provider that runs decision skills) records through the
+    # provider it wraps; the events live on the base. Without this unwrap a workspace with ANY
+    # decision skill persisted nothing — not the decisions, not the agents' own events.
+    inner = getattr(governance, "_base", None)
+    if inner is not None and not hasattr(governance, "events"):
+        governance = inner
     raw_events = getattr(governance, "events", None)
     if raw_events is None:
         recorder = getattr(governance, "_recorder", None)
@@ -1574,6 +1668,13 @@ def _extract_events(governance: GovernanceProvider, *, run_id: str | None = None
                     timestamp=str(evt.timestamp),
                     payload=dict(evt.payload) if evt.payload else {},
                     skill_id=evt.skill_id,
+                    policy_decision=getattr(evt, "policy_decision", None),
+                    policy_reason=getattr(evt, "policy_reason", None),
+                    typed={
+                        name: getattr(evt, name)
+                        for name in _CARRIED_FIELDS
+                        if getattr(evt, name, None) is not None
+                    },
                 )
             )
         elif isinstance(evt, dict):
@@ -1655,6 +1756,23 @@ def build_governance(workspace: ResolvedWorkspace, ws_root: Path) -> GovernanceP
     return MockGovernanceProvider(allow_all=True)
 
 
+#: A model that exists on each provider, for the calls that have no model of their own (authoring,
+#: the decision-skill judge). `SWARMKIT_PROVIDER=openrouter` with no `SWARMKIT_MODEL` used to fall
+#: to an Anthropic model id here, which OpenRouter rejects as "not a valid model ID".
+_DEFAULT_MODELS = {
+    "anthropic": "claude-sonnet-4-6",
+    "openrouter": "moonshotai/kimi-k2.5",
+    "openai": "gpt-4o-mini",
+    "google": "gemini-2.5-flash",
+    "groq": "llama-3.3-70b-versatile",
+    "mock": "mock",
+}
+
+
+def _default_model_for(provider_id: str) -> str:
+    return _DEFAULT_MODELS.get(provider_id, "deepseek/deepseek-chat")
+
+
 def resolve_authoring_provider(
     registry: ProviderRegistry | None = None,
 ) -> tuple[ModelProviderProtocol, str]:
@@ -1678,14 +1796,13 @@ def resolve_authoring_provider(
     if provider_id:
         provider = registry.get(provider_id)
         if provider is not None:
-            return provider, model_name or "claude-sonnet-4-6"
+            return provider, model_name or _default_model_for(provider_id)
 
     _preferred = ["openrouter", "anthropic", "openai", "google", "groq", "together"]
     for pid in _preferred:
         provider = registry.get(pid)
         if provider is not None:
-            default_model = "deepseek/deepseek-chat" if pid == "openrouter" else "claude-sonnet-4-6"
-            return provider, model_name or default_model
+            return provider, model_name or _default_model_for(pid)
 
     for pid in registry.provider_ids:
         if pid == "mock":

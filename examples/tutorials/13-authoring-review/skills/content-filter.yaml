@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: content-filter
+  name: Content Filter
+  description: >
+    Blocks harmful, offensive or off-topic input before it reaches the agent.
+category: decision
+implementation:
+  type: llm_prompt
+  prompt: |
+    You are a safety filter. The user message contains a trigger, an agent id and
+    the content to evaluate. Fail it if it asks for violence, hate, illegal activity
+    or exposes personal data; otherwise pass. Reply with JSON only:
+    {"verdict": "pass" | "fail", "confidence": 0-1, "reasoning": "<one sentence>"}
+outputs:
+  type: object
+  required: [verdict, reasoning]
+  properties:
+    verdict: { type: string, enum: [pass, fail] }
+    confidence: { type: number }
+    reasoning: { type: string }
+provenance:
+  authored_by: human
+  version: 1.0.0

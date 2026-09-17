@@ -27,9 +27,25 @@ _EXCLUDE_PATTERNS = {
 }
 
 
-def _should_exclude(path: str) -> bool:
+def _gitignore_patterns(workspace_path: Path) -> set[str]:
+    """The workspace's own `.gitignore`, as exclude patterns — plain names and globs, one per
+    line; `dir/` means the directory. A vector index or a scratch directory the author ignores
+    in git is not something they want shipped, and the publisher used to bundle it anyway."""
+    ignore = workspace_path / ".gitignore"
+    if not ignore.exists():
+        return set()
+    patterns: set[str] = set()
+    for raw in ignore.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        patterns.add(line.strip("/").split("/")[-1] if line.endswith("/") else line.lstrip("/"))
+    return patterns
+
+
+def _should_exclude(path: str, extra: frozenset[str] | set[str] = frozenset()) -> bool:
     parts = Path(path).parts
-    for pattern in _EXCLUDE_PATTERNS:
+    for pattern in _EXCLUDE_PATTERNS | extra:
         if pattern.startswith("*"):
             suffix = pattern[1:]
             if any(p.endswith(suffix) for p in parts):
@@ -65,10 +81,11 @@ def publish_package(workspace_path: Path, output_dir: Path) -> None:
     tarball = output_dir / f"{name}-{version}.tar.gz"
 
     file_count = 0
+    ignored = _gitignore_patterns(workspace_path)
     with tarfile.open(tarball, "w:gz") as tar:
         for path in sorted(workspace_path.rglob("*")):
             rel = path.relative_to(workspace_path)
-            if _should_exclude(str(rel)):
+            if _should_exclude(str(rel), ignored):
                 continue
             if path.is_file():
                 tar.add(path, arcname=f"{name}/{rel}")

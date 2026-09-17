@@ -51,7 +51,7 @@ class OrgOrTeam(BaseModel):
     name: str | None = None
 
 
-class Provider(Enum):
+class Provider(StrEnum):
     """
     GovernanceProvider implementation (design §8.5).
     """
@@ -61,7 +61,7 @@ class Provider(Enum):
     custom = "custom"
 
 
-class PolicyLanguage(Enum):
+class PolicyLanguage(StrEnum):
     """
     §21 open question — default yaml for v1.0.
     """
@@ -97,7 +97,7 @@ class Limits(BaseModel):
     )
 
 
-class Provider1(Enum):
+class Provider1(StrEnum):
     """
     Human-identity provider (design §16.1).
     """
@@ -133,7 +133,7 @@ class ModelProviderRegistration(BaseModel):
     config: dict[str, Any] | None = None
 
 
-class Source(Enum):
+class Source(StrEnum):
     """
     Which SecretsProvider resolves this credential. `oauth` resolves through the runtime's token store: the value is obtained by logging in once from the portal or CLI, and refreshed automatically at the point of use — see design/details/mcp-oauth.md and credential-service.md.
     """
@@ -168,12 +168,12 @@ class CredentialRef(BaseModel):
     )
 
 
-class Transport(Enum):
+class Transport(StrEnum):
     stdio = "stdio"
     http = "http"
 
 
-class Permission(Enum):
+class Permission(StrEnum):
     """
     Governance permission tier for this server's tools. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: write operations denied.
     """
@@ -184,14 +184,14 @@ class Permission(Enum):
     readonly = "readonly"
 
 
-class PermissionOverrides(Enum):
+class PermissionOverrides(StrEnum):
     open = "open"
     cautious = "cautious"
     strict = "strict"
     readonly = "readonly"
 
 
-class Effects(Enum):
+class Effects(StrEnum):
     read = "read"
     write = "write"
 
@@ -244,7 +244,7 @@ class McpServer(BaseModel):
     )
 
 
-class Backend(Enum):
+class Backend(StrEnum):
     """
     Checkpointer backend. Defaults to sqlite at .swarmkit/state/checkpoints.db.
     """
@@ -273,7 +273,7 @@ class Checkpoints(BaseModel):
     )
 
 
-class Backend1(Enum):
+class Backend1(StrEnum):
     """
     Audit backend. Defaults to whatever storage.runtime resolves to. ('agt' was accepted here until 1.130.0, but no writer ever implemented it — selecting it silently wrote sqlite.)
     """
@@ -302,7 +302,7 @@ class Audit(BaseModel):
     )
 
 
-class Backend2(Enum):
+class Backend2(StrEnum):
     database = "database"
     filesystem = "filesystem"
     s3 = "s3"
@@ -331,7 +331,7 @@ class Artifacts(BaseModel):
     )
 
 
-class Backend3(Enum):
+class Backend3(StrEnum):
     """
     Storage backend. sqlite (default, zero config) or postgres (production, shared).
     """
@@ -359,7 +359,7 @@ class Runtime(BaseModel):
     )
 
 
-class DefaultBackend(Enum):
+class DefaultBackend(StrEnum):
     sqlite = "sqlite"
     postgres = "postgres"
 
@@ -396,7 +396,7 @@ class Storage(BaseModel):
     knowledge_bases: KnowledgeBases | None = None
 
 
-class CompressionBackend(Enum):
+class CompressionBackend(StrEnum):
     """
     Compression backend. off (default): no compression. columnar: built-in lossless JSON minify + array-of-uniform-dicts rewrite to {columns, rows}. headtail: reversible-lossy — keep head+tail, elide the middle, recallable via the context_retrieve tool (for lossy-tolerant surfaces like logs). plugin: a custom ContextCompressor named by backend_class.
     """
@@ -630,7 +630,7 @@ class A2a(BaseModel):
     )
 
 
-class Provider2(Enum):
+class Provider2(StrEnum):
     """
     none: open access (default; only safe on loopback). api_key: bearer tokens from a static key registry. jwt: OIDC-compliant JWT bearer tokens (RS256/ES256 + JWKS).
     """
@@ -640,7 +640,7 @@ class Provider2(Enum):
     jwt = "jwt"
 
 
-class Tier(Enum):
+class Tier(StrEnum):
     """
     Transport scope tier: read (observe) | run (+ execute) | admin (+ mutate artifacts/rollout). Expands to serve:* scopes.
     """
@@ -712,7 +712,7 @@ class PromoteCriteria(BaseModel):
     )
 
 
-class Effects1(Enum):
+class Effects1(StrEnum):
     """
     Whether this command changes anything. Not inferrable from the binary — `curl` POSTs and `jq` takes `-i` — so the pack author declares it. Undeclared means `write`, so an unclassified command fails closed. `permission: readonly` denies every `write` command.
     """
@@ -721,7 +721,7 @@ class Effects1(Enum):
     write = "write"
 
 
-class Parse(Enum):
+class Parse(StrEnum):
     text = "text"
     json = "json"
     lines = "lines"
@@ -774,7 +774,7 @@ class BinaryRequirement(BaseModel):
     )
 
 
-class Permission1(Enum):
+class Permission1(StrEnum):
     """
     Governance permission tier for this pack's commands, matching mcp_server. open: skip governance checks. cautious (default): reads auto-approved, writes go through governance. strict: all calls require explicit approval. readonly: every command declaring `effects: write` is denied.
     """
@@ -830,7 +830,7 @@ class CommandPack(BaseModel):
     credentials_ref: str | None = None
 
 
-class Sink(Enum):
+class Sink(StrEnum):
     """
     webhook POSTs JSON; stdout prints it (development).
     """

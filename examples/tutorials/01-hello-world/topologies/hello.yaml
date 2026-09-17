@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: hello
+  version: 0.1.0
+  description: A single agent that greets users.
+agents:
+  root:
+    id: greeter
+    role: root
+    model:
+      provider: openrouter
+      name: moonshotai/kimi-k2.5
+      temperature: 0.7
+    prompt:
+      system: |
+        You are a friendly greeter. When someone sends you a message,
+        respond with a warm, personalized greeting. Keep it short —
+        2-3 sentences max.

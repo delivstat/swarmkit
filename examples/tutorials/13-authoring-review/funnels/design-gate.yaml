@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: design-gate
+  name: Design gate
+  description: Judge the analysis, then two leads sign off.
+judge:
+  skill: quality-check            # a decision skill; score below threshold retries with the critique
+  threshold: 0.8
+  max_retries: 1
+approve:                          # required — the only exit
+  rules:
+    - scope: design:approve
+      roles: [engineering-lead, product-lead]
+      quorum: all
+  min_distinct_approvers: 2
+provenance:
+  authored_by: human
+  version: 1.0.0

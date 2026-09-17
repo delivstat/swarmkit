@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: write-file
+  name: Write File
+  description: Write content to a file in the workspace.
+category: capability
+implementation:
+  type: mcp_tool
+  server: filesystem
+  tool: write_file
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: coordinator
+  name: Coordinator
+  description: >
+    Routes tasks to the right specialist. Doesn't do the work
+    itself — delegates and synthesizes results.
+role: root
+defaults:
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-chat-v3-0324   # the model that writes the answer
+    temperature: 0.3
+    max_tokens: 2048
+    tool_provider: openrouter
+    tool_model: moonshotai/kimi-k2.5        # the model that drives the tool loop (plans, reads results)
+  prompt:
+    system: |
+      You are a coordinator. Understand the user's request, delegate
+      to the right specialist, and synthesize their output into a
+      final response. Always delegate — never do the work yourself.
+provenance:
+  authored_by: human
+  version: 1.0.0

@@ -1,0 +1,40 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: my-swarm
+  name: My First Swarm
+  description: Learning SwarmKit step by step.
+governance:
+  provider: mock
+  # Circuit breakers: a run that exceeds these ends with CircuitBreakerError naming the limit.
+  limits:
+    max_steps_per_agent: 20
+    max_steps_per_run: 100
+  # Mandatory decision skills. Every topology inherits these; a topology can switch one off by
+  # id (`enabled: false`) or make it advisory (`required: false`).
+  decision_skills:
+    - id: content-filter
+      trigger: pre_input          # before the agent sees the input
+      scope: "*"
+    - id: quality-check
+      trigger: post_output        # after the agent answers
+      scope: "*"
+      required: false             # advisory: a fail is logged, not fatal
+
+mcp_servers:
+  # A server you wrote: one Python file, launched as a subprocess. `open` — the tool is harmless
+  # and local, so calls skip the governance check.
+  - id: weather
+    transport: stdio
+    command: ["uv", "run", "servers/weather_server.py"]
+    permission: open
+
+  # A published server, fetched by npx on first start. `readonly` allows only tools declared to
+  # read — the ones listed under `effects`; anything else is denied rather than guessed at.
+  - id: filesystem
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."]
+    permission: readonly
+    effects:
+      read_file: read
+      list_directory: read

@@ -164,5 +164,12 @@ def test_serve_publishes_summaries_not_details() -> None:
         __import__("pathlib").Path(__file__).resolve().parents[1]
         / "src/swarmkit_runtime/server/_jobs.py"
     ).read_text()
-    assert "e.summary" in src
+    # serve subscribes to the listener bus, which `emit_progress` feeds with `summary` only (and
+    # which also carries a model agent's own lines — the sink alone left model runs silent).
+    assert "progress_listener" in src
     assert "e.detail" not in src, "serve must not publish the harness's raw text"
+    bus = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "src/swarmkit_runtime/progress.py"
+    ).read_text()
+    assert 'f"[{event.agent_id}] {event.summary}"' in bus

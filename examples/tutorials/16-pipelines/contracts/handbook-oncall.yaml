@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Contract
+metadata:
+  id: handbook-oncall
+  name: Handbook ↔ Paging
+  description: The severities, response times and rota the paging system is configured from.
+parties: [handbook, pagerpost]
+provenance:
+  authored_by: human
+  version: 1.0.0

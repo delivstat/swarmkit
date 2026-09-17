@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 from datetime import date
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
-class Category(Enum):
+class Category(StrEnum):
     """
     Runtime semantics differ by category (design §6.2).
     """
@@ -47,7 +47,7 @@ class Metadata(BaseModel):
     description: str = Field(..., min_length=10)
 
 
-class Type(Enum):
+class Type(StrEnum):
     string = "string"
     number = "number"
     integer = "integer"
@@ -78,7 +78,7 @@ class Implementation2(BaseModel):
     prompt: str = Field(..., min_length=1)
 
 
-class Strategy(Enum):
+class Strategy(StrEnum):
     parallel_consensus = "parallel-consensus"
     sequential = "sequential"
     custom = "custom"
@@ -104,7 +104,7 @@ class Implementation4(BaseModel):
     command: str = Field(..., min_length=1)
 
 
-class OnUnanswerable(Enum):
+class OnUnanswerable(StrEnum):
     """
     What happens when the other agent asks a question — the same words a harness adapter uses for a mid-run request. relay: a person answers through the review queue (bounded wait, never hangs). abort: the call fails with the question as the reason. agent: the question is the tool result and the calling agent answers it, bounded by max_agent_answers and audited; past the budget it relays. A human gate on the other side is never the agent's to resolve, whatever this says.
     """
@@ -114,7 +114,7 @@ class OnUnanswerable(Enum):
     abort = "abort"
 
 
-class Permission(Enum):
+class Permission(StrEnum):
     """
     Governance tier for the call, as an MCP server's `permission` is for its tools.
     """
@@ -125,7 +125,7 @@ class Permission(Enum):
     readonly = "readonly"
 
 
-class Effects(Enum):
+class Effects(StrEnum):
     """
     What calling this agent does to the world. Under `readonly`, only `read` is allowed — `unknown` is denied, fail-closed, as for MCP tools.
     """
@@ -239,7 +239,7 @@ class Iam(BaseModel):
     required_scopes: list[IamScope] | None = None
 
 
-class Backoff(Enum):
+class Backoff(StrEnum):
     exponential = "exponential"
     linear = "linear"
     none = "none"
@@ -254,7 +254,7 @@ class Retry(BaseModel):
     backoff: Backoff | None = None
 
 
-class OnFailure(Enum):
+class OnFailure(StrEnum):
     escalate_to_human = "escalate_to_human"
     fail = "fail"
     retry = "retry"
@@ -272,7 +272,7 @@ class Constraints(BaseModel):
     on_failure: OnFailure | None = None
 
 
-class LogInputs(Enum):
+class LogInputs(StrEnum):
     """
     How much of the skill's input to log. Default varies by category: decision=full, capability=summary.
     """
@@ -282,7 +282,7 @@ class LogInputs(Enum):
     none = "none"
 
 
-class LogOutputs(Enum):
+class LogOutputs(StrEnum):
     """
     How much of the skill's output to log.
     """
@@ -314,7 +314,7 @@ class Audit(BaseModel):
     )
 
 
-class AuthoredBy(Enum):
+class AuthoredBy(StrEnum):
     human = "human"
     authored_by_swarm = "authored_by_swarm"
     derived_from_template = "derived_from_template"

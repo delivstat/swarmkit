@@ -418,9 +418,7 @@ def _execute_run(
             # approvals" quietly wrong. Not `failed` either — nothing went wrong.
             _finish_job(store, thread_id, "stopped", error="stopped by request")
             _stderr("\n⏹ Stopped by request. State checkpointed.")
-            _stderr(
-                f"  Resume with: swarmkit run {workspace_path} {topology_name} --resume {thread_id}"
-            )
+            _stderr(f"  Resume with: swarmkit run {workspace_path} {topology_name} --resume")
             raise typer.Exit(0) from None
 
         if isinstance(exc, HITLDeferredError):

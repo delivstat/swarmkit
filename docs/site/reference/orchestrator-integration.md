@@ -85,7 +85,7 @@ finishes first, and everything already done stays on the checkpoint. The job goe
 Asking twice is not an error, and a resume clears the request so the run does not immediately
 re-stop.
 
-Locally the same thing is `swarmkit run <topology> --resume <job-id>`.
+Locally the same thing is `swarmkit run <workspace> <topology> --resume`, which resumes the workspace's last checkpointed run (`swarmkit checkpoints` lists them).
 
 ## Approval gates
 

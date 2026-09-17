@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from datetime import date
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
@@ -63,7 +63,7 @@ class Validate(BaseModel):
     )
 
 
-class RouteBackAt(Enum):
+class RouteBackAt(StrEnum):
     """
     Default high. Findings at or above this severity retry; lower findings attach and travel to the human.
     """
@@ -88,7 +88,7 @@ class Metadata(BaseModel):
     description: str = Field(..., min_length=10)
 
 
-class AuthoredBy(Enum):
+class AuthoredBy(StrEnum):
     human = "human"
     authored_by_swarm = "authored_by_swarm"
     derived_from_template = "derived_from_template"
@@ -108,7 +108,7 @@ class Provenance(BaseModel):
     vendor: str | None = None
 
 
-class OnRevision(Enum):
+class OnRevision(StrEnum):
     """
     Default reset_all. What a revision does to prior approvals: reset_all invalidates all; reconfirm_changed keeps approvals whose scope was not affected.
     """
@@ -117,7 +117,7 @@ class OnRevision(Enum):
     reconfirm_changed = "reconfirm_changed"
 
 
-class Quorum1(Enum):
+class Quorum1(StrEnum):
     """
     all = every role in the group must approve; any = one role suffices; {k-of: N} = any N distinct role-holders.
     """

@@ -4,24 +4,65 @@ Give your agents real tools that interact with the world — files, APIs, databa
 
 ## What you'll learn
 
-- Configuring MCP servers in workspace.yaml
-- Writing a custom MCP server in Python
-- Permission tiers (open, cautious, strict, readonly)
-- Sandboxed execution (Docker isolation)
-- Lazy startup
-- Environment variables and credentials
+- Declaring MCP servers in `workspace.yaml` — a published one and one you wrote
+- Writing a stdio MCP server in one Python file
+- Permission tiers (`open`, `cautious`, `strict`, `readonly`) and declared `effects`
+- Watching a tool call happen, and watching one be refused
+- Sandboxing, environment variables and credentials
+
+The finished workspace is `examples/tutorials/05-mcp-tools/`. The transcripts are from real runs on
+OpenRouter; the weather server runs locally with no key.
 
 ## What is MCP?
 
-Model Context Protocol (MCP) is a standard for connecting AI agents to tools. Instead of building custom tool integrations, you wire existing MCP servers — there are 7,000+ available for GitHub, databases, Slack, file systems, browsers, and more.
-
-SwarmKit skills with `type: mcp_tool` call tools on MCP servers.
+Model Context Protocol is a standard for connecting agents to tools. Instead of building
+integrations, you wire existing servers — there are thousands, for GitHub, databases, Slack, file
+systems, browsers. A SwarmKit skill with `implementation.type: mcp_tool` names a server and a tool
+on it; the runtime starts the server when a topology needs it and routes every call through
+governance.
 
 ## Build it
 
-### 1. Add an MCP server to your workspace
+### 1. Write a server
 
-The filesystem MCP server lets agents read and write files:
+```bash
+mkdir servers
+```
+
+```python
+# servers/weather_server.py
+# /// script
+# dependencies = ["mcp>=1.0,<2"]
+# ///
+"""A small weather MCP server — one stdio tool, mock data."""
+
+from __future__ import annotations
+
+import json
+
+from mcp.server.fastmcp import FastMCP
+
+server = FastMCP("weather")
+
+
+@server.tool()
+def get_weather(city: str) -> str:
+    """Current weather for a city (mock data; a real server would call an API here)."""
+    return json.dumps(
+        {"city": city, "temperature": "22°C", "condition": "Partly cloudy", "humidity": "65%"}
+    )
+
+
+if __name__ == "__main__":
+    server.run()
+```
+
+The `# /// script` header is what lets `uv run servers/weather_server.py` install `mcp` on first
+use — your workspace needs no project file. The `<2` pin matters: `mcp` 2.x renamed `FastMCP`, and
+without the pin the server fails to import the day 2.x ships. (It did, while this level was being
+checked.)
+
+### 2. Declare the servers
 
 ```yaml
 # workspace.yaml — updated
@@ -33,20 +74,51 @@ metadata:
   description: Learning SwarmKit step by step.
 governance:
   provider: mock
+
 mcp_servers:
+  # A server you wrote: one Python file, launched as a subprocess. `open` — the tool is harmless
+  # and local, so calls skip the governance check.
+  - id: weather
+    transport: stdio
+    command: ["uv", "run", "servers/weather_server.py"]
+    permission: open
+
+  # A published server, fetched by npx on first start. `readonly` allows only tools declared to
+  # read — the ones listed under `effects`; anything else is denied rather than guessed at.
   - id: filesystem
     transport: stdio
     command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."]
+    permission: readonly
+    effects:
+      read_file: read
+      list_directory: read
 ```
 
-This starts the filesystem MCP server with access to the current directory.
+Commands run with the workspace root as their working directory, so `servers/weather_server.py`
+and `.` resolve there.
 
-### 2. Wire a skill to the MCP server
-
-Update your `read-file` skill to target this server:
+### 3. Skills over the tools
 
 ```yaml
-# skills/read-file.yaml — already created in Level 3
+# skills/get-weather.yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-weather
+  name: Get Weather
+  description: Get the current weather for a city.
+category: capability
+implementation:
+  type: mcp_tool
+  server: weather          # the id in workspace.yaml
+  tool: get_weather        # the tool the server exposes
+provenance:
+  authored_by: human
+  version: 1.0.0
+```
+
+```yaml
+# skills/read-file.yaml
 apiVersion: swarmkit/v1
 kind: Skill
 metadata:
@@ -56,168 +128,99 @@ metadata:
 category: capability
 implementation:
   type: mcp_tool
-  server: filesystem      # matches the id in workspace.yaml
-  tool: read_file         # the tool name exposed by the MCP server
+  server: filesystem
+  tool: read_file
 provenance:
   authored_by: human
   version: 1.0.0
 ```
 
-### 3. Write a custom MCP server
+A skill that names a server the workspace does not declare fails `swarmkit validate` — the
+mismatch is caught at load, not at the first call.
 
-Create a simple MCP server that provides a weather lookup tool:
+Grant `get-weather` to the assistant archetype (`skills: [summarize, get-weather]`) and tell it
+when to use it: *"When asked about the weather, use the get-weather tool and report what it
+returns."*
 
-```python
-# servers/weather_server.py
-"""Simple weather MCP server — returns mock weather data."""
+### 4. Run it
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
-import asyncio
-import json
-
-server = Server("weather")
-
-@server.list_tools()
-async def list_tools():
-    return [
-        Tool(
-            name="get_weather",
-            description="Get the current weather for a city.",
-            inputSchema={
-                "type": "object",
-                "required": ["city"],
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "City name (e.g., Tokyo, London)",
-                    },
-                },
-            },
-        )
-    ]
-
-@server.call_tool()
-async def call_tool(name: str, arguments: dict):
-    if name == "get_weather":
-        city = arguments.get("city", "Unknown")
-        # In production, call a real weather API here
-        weather = {
-            "city": city,
-            "temperature": "22°C",
-            "condition": "Partly cloudy",
-            "humidity": "65%",
-        }
-        return [TextContent(type="text", text=json.dumps(weather))]
-    return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
-async def main():
-    async with stdio_server() as (read, write):
-        await server.run(read, write, server.create_initialization_options())
-
-if __name__ == "__main__":
-    asyncio.run(main())
+```bash
+swarmkit run . hello --input "What is the weather in Tokyo?" --verbose
 ```
 
-Register it in workspace.yaml:
+```
+[assistant] thinking... (kimi-k2.5)
+--- [assistant] calling moonshotai/kimi-k2.5 ---
+  tools: ['summarize', 'get-weather', 'quality-check']
+  tool_calls: ['get-weather']
+  [assistant] calling get-weather {"city": "Tokyo"}
+  executing: get-weather
+  [mcp args: {'city': 'Tokyo'}]
+  [assistant] got results: get-weather (130B) | waiting for model... (turn 1)
+[assistant] done (11.4s)
+The weather in Tokyo is currently **22°C** and **partly cloudy**, with **65%** humidity.
 
-```yaml
-mcp_servers:
-  - id: filesystem
-    transport: stdio
-    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."]
-
-  - id: weather
-    transport: stdio
-    command: ["uv", "run", "servers/weather_server.py"]
+── run summary ──
+  assistant                root      11447ms
+  skills called: 1
 ```
 
-Create the skill:
+The server was started for the run (only servers a topology needs are started), the model called
+the tool with structured arguments, the result came back, the model answered from it.
 
-```yaml
-# skills/get-weather.yaml
-apiVersion: swarmkit/v1
-kind: Skill
-metadata:
-  id: get-weather
-  name: Get Weather
-  description: Get current weather for any city.
-category: capability
-implementation:
-  type: mcp_tool
-  server: weather
-  tool: get_weather
-provenance:
-  authored_by: human
-  version: 1.0.0
+### 5. Watch a call be refused
+
+Add a `write-file` skill over the filesystem server's `write_file` and a `files` topology whose
+root has `skills: [read-file, write-file]`. The server is `readonly`, and `write_file` is not in its
+`effects` map:
+
+```bash
+swarmkit run . files --input "Write 'hi' into scratch.txt using write-file, then tell me what happened." --verbose
 ```
 
-Add the skill to your assistant archetype:
-
-```yaml
-# archetypes/friendly-assistant.yaml — updated skills
-  skills:
-    - read-file
-    - summarize
-    - get-weather
+```
+  tools: ['read-file', 'write-file']
+  tool_calls: ['write-file']
+  [reader] calling write-file {"path": "scratch.txt", "content": "hi"}
+  executing: write-file
+  [reader] got results: write-file (190B) | waiting for model... (turn 1)
+[reader] done (10.6s)
+I attempted to write 'hi' to scratch.txt, but the operation was **denied**.
+The server returned an error indicating that it has a `readonly` permission setting that prevents
+write operations. …
 ```
 
-### 4. Permission tiers
+No `scratch.txt` exists afterwards. The refusal reached the model as a tool error it could explain,
+and the audit log has the call with `policy_decision: deny`. Reading works the same way and
+succeeds — `read_file` is declared `read`.
 
-Control what MCP servers can do:
+### 6. Permission tiers
 
-```yaml
-mcp_servers:
-  - id: filesystem
-    transport: stdio
-    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."]
-    permission: readonly    # agents can read but not write files
-
-  - id: weather
-    transport: stdio
-    command: ["uv", "run", "servers/weather_server.py"]
-    permission: open        # no governance check needed
-
-  - id: database
-    transport: stdio
-    command: ["npx", "-y", "@modelcontextprotocol/server-postgres"]
-    permission: strict      # every call requires governance approval
-    permission_overrides:
-      list_tables: open     # except listing tables — that's safe
-```
-
-| Tier | Behavior |
+| Tier | Behaviour |
 |------|----------|
-| `open` | Skip governance — fast, no approval needed |
-| `cautious` (default) | Reads auto-approved, writes need governance |
-| `strict` | Every call requires governance approval |
-| `readonly` | Deny all write operations |
+| `open` | No governance call — for local, harmless tools |
+| `cautious` (default) | Every call is evaluated by the governance provider with the tool's declared effect |
+| `strict` | Every call needs explicit approval |
+| `readonly` | Only tools declared `read` (in `effects`, or by the server's own `readOnlyHint`) are allowed; `write` and *unknown* are denied |
 
-### 5. Sandboxed execution
+`permission_overrides: {list_tables: open}` sets one tool's tier; `effects` says what each tool does,
+and is the half you control — it wins over the server's annotation.
 
-For untrusted MCP servers, run them in Docker:
+### 7. Sandboxing, env and credentials
 
 ```yaml
 mcp_servers:
   - id: untrusted-tool
     transport: stdio
     command: ["python", "some_tool.py"]
-    sandboxed: true         # runs in Docker container
-    sandbox_image: python:3.11-slim  # optional custom image
-```
+    sandboxed: true                     # runs in a container, no network, workspace read-only
+    sandbox_image: python:3.11-slim     # optional
 
-Sandboxed servers run with `--network=none` (no internet) and the workspace mounted read-only at `/workspace`.
-
-### 6. Environment variables and credentials
-
-```yaml
-mcp_servers:
   - id: github
     transport: stdio
     command: ["npx", "-y", "@modelcontextprotocol/server-github"]
     env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+      GITHUB_PERSONAL_ACCESS_TOKEN: "{credential.github-token}"   # never the literal
 
 credentials:
   github-token:
@@ -226,40 +229,30 @@ credentials:
       env: GITHUB_TOKEN
 ```
 
-Environment variables use `${VAR}` interpolation, resolved at runtime. As of runtime 1.98.0 this works in **every** artifact (topology, skill, archetype, workspace, trigger, funnel), not just MCP `env:` blocks, and supports defaults:
+`{credential.<name>}` resolves through the workspace `credentials` block at launch and keeps the
+secret out of the runtime's own environment. `${VAR}` and `${VAR:-default}` interpolate from the
+environment in every artifact ([Environment configuration](../reference/env-config.md)). The
+portal's Connections page shows every server, what it talks to, and whether its credential
+resolves:
 
-- `${VAR}` — the value of `VAR` (left literal if unset, so nothing regresses)
-- `${VAR:-default}` — `VAR` if set, else `default` (lets a reusable library run out-of-the-box while staying configurable, e.g. `${SDLC_REASONING_MODEL:-moonshotai/kimi-k2.5}`)
-- `$${VAR}` — a literal `${VAR}` (escape)
-
-Resolution order: workspace property map → OS environment → inline `:-default`. Full detail: [Environment configuration](../reference/env-config.md).
-
-### 7. Test it
-
-```bash
-# Create a test file
-echo "Hello from SwarmKit!" > test-file.txt
-
-# Run the assistant and ask it to read the file
-swarmkit run . hello --input "Read the file test-file.txt and tell me what it says"
-
-# Ask about weather
-swarmkit run . hello --input "What's the weather in Tokyo?"
-```
+![Connections](../img/tutorials/05-connections.png)
 
 ## Your workspace so far
 
 ```
 my-swarm/
-├── workspace.yaml          # now has mcp_servers config
+├── workspace.yaml          # now has mcp_servers
 ├── archetypes/
-├── skills/
-│   ├── read-file.yaml
-│   ├── get-weather.yaml    # new
-│   └── ...
 ├── servers/
-│   └── weather_server.py   # custom MCP server
+│   └── weather_server.py
+├── skills/
+│   ├── get-weather.yaml
+│   ├── read-file.yaml
+│   ├── write-file.yaml
+│   └── ...
 └── topologies/
+    ├── files.yaml
+    └── ...
 ```
 
 ## Next

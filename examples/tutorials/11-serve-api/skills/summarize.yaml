@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: summarize
+  name: Summarize
+  description: Summarize text into 3-5 bullet points, one clear sentence each.
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: |
+    You summarize. The user message is the text to summarize.
+    Reply with 3-5 bullet points; each bullet is one clear sentence.
+    Do not add commentary before or after the bullets.
+constraints:
+  timeout_seconds: 30
+  retry:
+    attempts: 2
+    backoff: exponential
+  on_failure: fallback
+audit:
+  log_inputs: summary
+  log_outputs: full
+provenance:
+  authored_by: human
+  version: 1.0.0

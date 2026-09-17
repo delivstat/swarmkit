@@ -123,7 +123,13 @@ def _await_gate(
     while True:
         state = http.get(f"/gates/{gate_id}")
         if state["status"] == "approved":
-            http.post(f"/jobs/{job_id}/resume")
+            # Serve resumes a parked run itself the moment its gate resolves (`gates.auto_resume`,
+            # on by default), so by the time this poll sees "approved" the run is usually already
+            # moving — and an explicit resume then answers 409 "not deferred". That is not a
+            # failure; it is the race this loop is on the losing side of by design. Resume only a
+            # run that is still parked, and let the job poll pick up the rest either way.
+            if http.get(f"/jobs/{job_id}")["status"] in {"deferred", "stopped"}:
+                http.post(f"/jobs/{job_id}/resume")
             return
         if state["status"] in {"rejected", "changes-requested"}:
             raise StageRejected(f"gate {gate_id} was {state['status']}")

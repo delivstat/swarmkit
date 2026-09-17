@@ -39,7 +39,7 @@ class Metadata(BaseModel):
     description: str | None = None
 
 
-class Mode(Enum):
+class Mode(StrEnum):
     """
     Execution mode (design §14.1).
     """
@@ -49,7 +49,7 @@ class Mode(Enum):
     scheduled = "scheduled"
 
 
-class Storage(Enum):
+class Storage(StrEnum):
     sqlite = "sqlite"
     postgres = "postgres"
 
@@ -62,7 +62,7 @@ class Checkpointing(BaseModel):
     storage: Storage | None = None
 
 
-class Role(Enum):
+class Role(StrEnum):
     root = "root"
     leader = "leader"
     worker = "worker"
@@ -76,7 +76,7 @@ class OutputSchema(RootModel[str]):
     )
 
 
-class Role2(Enum):
+class Role2(StrEnum):
     leader = "leader"
     worker = "worker"
 
@@ -125,7 +125,7 @@ class Iam(BaseModel):
     elevated_scopes: list[str] | None = None
 
 
-class Level(Enum):
+class Level(StrEnum):
     minimal = "minimal"
     standard = "standard"
     detailed = "detailed"
@@ -167,7 +167,7 @@ class Artifacts(BaseModel):
     )
 
 
-class OnDrift(Enum):
+class OnDrift(StrEnum):
     """
     Strategy when drift exceeds threshold. log=audit only, warn=log+event, nudge=inject refocus message.
     """

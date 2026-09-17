@@ -119,6 +119,12 @@ class RunTrace:
         self.total_tokens += input_tokens + output_tokens
         self.total_cost_usd += cost_usd
         self.llm_calls += 1
+        if cost_usd:
+            from swarmkit_runtime.governance import current_tracker  # noqa: PLC0415
+
+            tracker = current_tracker()
+            if tracker is not None:
+                tracker.add_cost(cost_usd)
 
         agent_tokens = self.token_by_agent.setdefault(
             agent_id, {"input": 0, "output": 0, "total": 0}

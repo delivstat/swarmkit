@@ -299,6 +299,7 @@ export interface AuditEvent {
 
 /** Per-run usage totals — the flat shape GET /usage/{job_id} returns (no by-model breakdown). */
 export interface JobUsage {
+	/** The number of run_usage rows — one per model billed, not the number of model calls. */
 	total_calls: number;
 	total_input_tokens: number;
 	total_output_tokens: number;

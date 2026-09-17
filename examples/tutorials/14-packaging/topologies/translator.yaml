@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: translator
+  version: 0.1.0
+agents:
+  root:
+    id: translator
+    role: root
+    archetype: friendly-assistant
+    skills_additional:
+      - translate-text
+    prompt:
+      system: "Translate whatever the user sends into the language they name, using the translate-text skill."

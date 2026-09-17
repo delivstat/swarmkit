@@ -77,7 +77,9 @@ One service resolves every store; nothing else opens a database. Moving to Postg
 ```yaml
 # workspace.yaml
 storage:
-  runtime: { backend: postgres, url: ${SWARMKIT_STORE_URL} }
+  runtime:
+    backend: postgres
+    url: ${SWARMKIT_STORE_URL}
 ```
 
 ```bash

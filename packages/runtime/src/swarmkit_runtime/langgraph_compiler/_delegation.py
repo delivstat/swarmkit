@@ -9,12 +9,11 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from swarmkit_runtime.governance import AuditEvent, GovernanceProvider
+from swarmkit_runtime.governance import GovernanceProvider
 from swarmkit_runtime.model_providers import CompletionResponse, Message
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol, ProviderRegistry
 from swarmkit_runtime.resolver import ResolvedAgent
@@ -24,9 +23,8 @@ from ._helpers import (
     _log_verbose_response,
     _make_result,
     _progress,
-    _safe_parse_json,
 )
-from ._prompts import _build_completion_request
+from ._prompts import _build_completion_request, _looks_incomplete
 from ._sentinels import AgentStatus, make_delegated
 from ._state import SwarmState
 from ._task_plan_handler import _handle_task_plan_tools
@@ -280,24 +278,26 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
                 "messages": merged_messages,
             }
 
+        # Keyword arguments, not positional: `command_packs` was added between `mcp_manager` and
+        # `governance` in 1.197.0, and this call kept passing governance in its old position — so
+        # the FIRST tool call of every turn ran with `governance=None`, ungoverned (readonly,
+        # strict and `requires:` all skipped once per turn), while retries were governed. A
+        # tutorial run under `permission: readonly` wrote a file. Tested by
+        # `test_first_tool_call_is_governed`.
         tool_results = await _handle_skill_tool_calls(
-            response, agent, model_provider, model_name, mcp_manager, governance
+            response,
+            agent,
+            model_provider,
+            model_name,
+            mcp_manager=mcp_manager,
+            command_packs=command_packs,
+            governance=governance,
         )
         if tool_results is not None:
-            for tr in tool_results:
-                await governance.record_event(
-                    AuditEvent(
-                        event_type="skill.executed",
-                        agent_id=agent_id,
-                        timestamp=datetime.now(tz=UTC),
-                        skill_id=tr.tool_name,
-                        payload={
-                            "tools_called": len(tool_results),
-                            "inputs": _safe_parse_json(tr.tool_name, response, agent),
-                            "outputs": {"result": tr.result[:1000]},
-                        },
-                    )
-                )
+            # Not recorded again here: `_handle_skill_tool_calls` audits every call it executes,
+            # with the policy decision. A second `skill.executed` from this site — without the
+            # decision — made every first-turn call appear twice in the log, once as refused and
+            # once as nothing in particular.
             loop_result = await _run_tool_loop(
                 response,
                 agent,
@@ -354,13 +354,26 @@ async def _dispatch_response(  # noqa: PLR0911, PLR0912, PLR0915
                 _log_verbose_response(response)
             continue
 
-        # Retry if agent has many skill tools it should be using.
+        # Retry if the model is *describing* a tool call instead of making one ("I would use
+        # get-weather to..."). Only then: this used to fire for ANY text answer from an agent
+        # that held a skill, so an assistant asked a plain question was told twice to "call the
+        # tools now" and answered "I don't have a task that requires a tool" — the nudge replaced
+        # a correct answer with a refusal, at three times the cost. Choosing not to use a tool is
+        # a legitimate answer. `test_text_answer_is_not_nudged_into_tools`.
         skill_tools = [
             t
             for t in tools
             if not t.name.startswith("delegate_to_") and t.name not in _UTILITY_TOOLS
         ]
-        if skill_tools and _attempt < _max_retries:
+        _lower = _resp_text.lower()
+        _names_a_tool = any(t.name in _resp_text for t in skill_tools)
+        # Naming a tool is not enough on its own — "I don't have a translate-text tool; I have
+        # summarize and get-weather" names two and is a finished answer. The text must also read
+        # as an announced action.
+        _announces = _looks_incomplete(_resp_text) or any(
+            m in _lower for m in ("would use", "will use", "'ll use", "can use", "going to use")
+        )
+        if skill_tools and _names_a_tool and _announces and _attempt < _max_retries:
             if verbose:
                 print(
                     f"  [retry {_attempt + 1}: model returned text, nudging to use tools]",

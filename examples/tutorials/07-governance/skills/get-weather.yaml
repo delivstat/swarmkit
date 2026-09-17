@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: get-weather
+  name: Get Weather
+  description: Get the current weather for a city.
+category: capability
+implementation:
+  type: mcp_tool
+  server: weather          # the id in workspace.yaml
+  tool: get_weather        # the tool the server exposes
+provenance:
+  authored_by: human
+  version: 1.0.0

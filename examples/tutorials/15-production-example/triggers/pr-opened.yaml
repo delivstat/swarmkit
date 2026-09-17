@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: pr-opened
+  name: PR opened
+  description: A GitHub webhook — a signed POST starts a content-team run.
+type: webhook
+targets:
+  - content-team
+config:
+  auth:
+    method: hmac
+    credentials_ref: github-webhook-secret   # a workspace `credentials` entry — a reference, never the literal
+    header: X-Hub-Signature-256              # GitHub's signing header (the default for hmac)

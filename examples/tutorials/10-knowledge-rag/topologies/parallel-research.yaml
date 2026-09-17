@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: parallel-research
+  version: 0.1.0
+  description: Three researchers work simultaneously.
+agents:
+  root:
+    id: coordinator
+    role: root
+    archetype: coordinator
+    children:
+      - id: researcher-tech
+        role: worker
+        archetype: researcher
+        prompt:
+          system: You research technology trends only. Five bullets at most.
+      - id: researcher-health
+        role: worker
+        archetype: researcher
+        prompt:
+          system: You research health and wellness only. Five bullets at most.
+      - id: researcher-finance
+        role: worker
+        archetype: researcher
+        prompt:
+          system: You research financial markets only. Five bullets at most.

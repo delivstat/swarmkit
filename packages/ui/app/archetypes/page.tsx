@@ -84,12 +84,9 @@ function ArchetypeEditor({
 
 	useEffect(() => {
 		if (archetypeId) {
-			const base = process.env.NEXT_PUBLIC_SWARMKIT_API ?? "";
 			Promise.all([
 				api.archetypeDetail(archetypeId),
-				fetch(`${base}/api/archetypes/${archetypeId}/yaml`).then((r) =>
-					r.json(),
-				),
+				api.archetypeYaml(archetypeId),
 			])
 				.then(([d, yamlData]) => {
 					setDetail(d);

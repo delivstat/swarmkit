@@ -125,16 +125,18 @@ async def test_the_duration_is_recorded_as_an_int() -> None:
 
 
 def test_the_event_shape_matches_the_initial_turn() -> None:
-    """Same event_type and fields as the site that already emitted for turn 1, so every existing
-    reader works unchanged. The point is coverage, not a new format."""
+    """One site records every skill call — the loop, with the policy decision. The delegation
+    site used to record the first turn's calls AGAIN without a decision, so each appeared twice,
+    once as refused and once as nothing in particular; it records nothing now."""
     from pathlib import Path  # noqa: PLC0415
 
     root = Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/langgraph_compiler"
     delegation = (root / "_delegation.py").read_text()
     loop = (root / "_tool_loop.py").read_text()
 
-    assert 'event_type="skill.executed"' in delegation
+    assert 'event_type="skill.executed"' not in delegation
     assert 'event_type="skill.executed"' in loop
+    assert "policy_decision=decision" in loop and "policy_reason=reason" in loop
     for field in ("skill_id=", "agent_id=", '"inputs"', '"outputs"'):
         assert field in loop, f"the loop's event is missing {field}"
 

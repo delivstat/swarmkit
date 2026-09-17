@@ -1,191 +1,378 @@
 # Level 9: Conversations & Memory
 
-Build agents that hold multi-turn conversations and remember across sessions.
+Agents that hold a conversation, remember what earlier runs learned, and treat the facts a person
+curated as established.
 
 ## What you'll learn
 
-- Multi-turn chat with `swarmkit chat`
-- Conversation persistence and resume
-- Workspace memory (MemoryStore and GBrainMemory)
-- Memory-reader and memory-writer decision skills
-- Cross-conversation context injection
+- Multi-turn chat with `swarmkit chat`, resuming, and the same conversation in the portal
+- **Workspace memory**: what a run remembered by itself (`memory-reader` / `memory-writer`)
+- **Governed memory**: facts that are reconciled on write, quarantined on conflict, and resolved by
+  a person — `swarmkit memory`, the `governed-memory` skill, the Memory page
+- Where all of it is stored
 
-## Multi-turn conversations
+The finished workspace is `examples/tutorials/09-conversations-memory/` — Level 8 plus two
+bindings, two skill files and one topology. Every transcript is a real run on OpenRouter.
 
-### 1. Start a chat
+## There are two memories
 
-```bash
-swarmkit chat . hello
-```
+| | workspace memory | governed memory |
+|---|---|---|
+| what it holds | `{topic, context, key_points, tags}` — a summary of a turn | `{subject, attribute, value}` — one fact |
+| written by | `memory-writer`, automatically, after a run | the `governed-memory` skill, `swarmkit memory add`, `POST /memory` |
+| reviewed | no | reconcile-on-write; a contradiction is quarantined for a person |
+| read by | `memory-reader`, before a run | `memory-reader`, before a run — curated facts first |
+| CLI / UI | — | `swarmkit memory search / get / quarantine / resolve`; **Memory** page |
 
-This opens an interactive chat session. Type messages, get responses, and the agent remembers the full conversation history. Type `/quit` to exit.
+Both live in the workspace's configured store (`storage.runtime` — SQLite in `.swarmkit/` by
+default, Postgres when you say so), like jobs, the audit log and conversations. Nothing here is a
+file you have to back up separately.
 
-### 2. Chat commands
+## Part 1 — workspace memory
 
-Inside a chat session:
+### 1. Bind the reader and the writer
 
-| Command | Action |
-|---------|--------|
-| `/quit` | Exit chat |
-| `/clear` | Clear conversation history |
-| `/history` | Show conversation turns |
-| `/new` | Start fresh conversation |
-
-### 3. Resume a conversation
-
-```bash
-# List saved conversations
-swarmkit conversations .
-
-# Resume by ID
-swarmkit chat . hello --resume abc123
-
-# Pick from a list
-swarmkit conversations . --pick
-```
-
-Conversations are saved to `.swarmkit/conversations/` as JSON files.
-
-## Workspace memory
-
-Memory goes beyond conversations — it lets agents remember insights across different conversations, different users, and different sessions.
-
-### 4. Enable memory
-
-Add memory decision skills to your workspace:
+Neither is a skill file; both ids are built into the runtime. They are bound like any decision skill:
 
 ```yaml
-# workspace.yaml — add memory skills
+# workspace.yaml — two more entries under governance.decision_skills
 governance:
   provider: mock
   decision_skills:
     - id: content-filter
       trigger: pre_input
       scope: "*"
-    # Memory — reads prior context before each turn
+    - id: quality-check
+      trigger: post_output
+      scope: "*"
+      required: false
+    # Workspace memory. `memory-reader` searches what earlier runs recorded (and what people
+    # curated — see governed memory) and puts it in front of the agent; `memory-writer` asks a
+    # model, after each answer, whether the turn is worth remembering.
     - id: memory-reader
       trigger: pre_input
       scope: "*"
+      required: false             # a memory read that can fail a run is worse than no memory
       config:
         max_results: 5
         similarity_threshold: 0.15
-        search_scope: all
-    # Memory — saves insights after each turn
+        search_scope: all         # user | all | both
     - id: memory-writer
       trigger: post_output
       scope: "*"
+      required: false
       config:
-        min_output_length: 100
+        min_output_length: 100    # greetings are not worth remembering
 ```
 
-### 5. How memory works
+`required: false` matters: it makes the binding advisory, so a memory that cannot be read or
+written costs the context, never the run.
 
-**After each turn (memory-writer):**
-1. An LLM extracts structured insights from the conversation
-2. Extracts: topic, context, key points, tags
-3. Decides if the turn is "worth saving" (greetings = no, deep discussion = yes)
-4. Saves to the memory store
+### 2. A run that is worth remembering
 
-**Before each turn (memory-reader):**
-1. Searches the memory store for relevant prior context
-2. If found, injects it into the agent's prompt:
-   ```
-   WORKSPACE MEMORY — relevant prior conversations:
-   Topic: Career confusion
-   Context: User was struggling with job change decision
-   Key points:
-     - Discussed dharma vs personal desire
-     - User found the Arjuna analogy helpful
-   ```
-3. The agent references it naturally: "As we discussed previously..."
-
-### 6. Two memory backends
-
-**MemoryStore (default)** — local JSON file + TF-IDF search:
+```bash
+swarmkit run . hello --input "I'm planning a two-week trip to Japan in November — Tokyo, Kyoto and Kanazawa. What should I know about the weather and what to pack?"
 ```
-.swarmkit/memory.json
-```
-Zero setup. Works immediately. Good for single-user, local use.
 
-**GBrainMemory** — auto-detected when GBrain MCP server is configured:
+```
+[assistant] thinking... (kimi-k2.5)
+  [assistant] calling get-weather {"city": "Tokyo"}
+  [assistant] calling get-weather {"city": "Kyoto"}
+  [assistant] calling get-weather {"city": "Kanazawa"}
+  [assistant] got results: get-weather (130B), get-weather (130B), get-weather (133B) | waiting for model... (turn 1)
+[assistant] done (50.2s)
+Great question! I checked the current weather for all three cities, but since you're traveling in
+**November**, let me share what to typically expect during that month, along with packing tips.
+…
+```
+
+After the answer, `memory-writer` asked a model whether the turn was worth keeping and what to keep.
+This is what it stored — `topic`, `context`, `key_points`, `tags`, extracted by the model, not
+copied:
+
+```json
+{
+  "id": "mem-20260917T131924-0",
+  "topic": "Japan travel planning - November weather and packing",
+  "context": "User is planning a two-week trip to Japan in November visiting Tokyo, Kyoto, and Kanazawa. They wanted to know what weather to expect and what clothing/gear to pack for those conditions.",
+  "key_points": [
+    "November is cool autumn weather: Tokyo/Kyoto highs ~17°C (63°F), lows ~8-10°C; Kanazawa slightly cooler at 15-16°C days, 7°C nights",
+    "Kanazawa is damper and more prone to rain/cloud cover due to Sea of Japan location",
+    "Layering is essential: medium-weight jacket, sweaters, thermal base layers for Kanazawa and evenings",
+    "Late November brings peak autumn foliage; generally dry and sunny in Tokyo/Kyoto"
+  ],
+  "tags": ["travel", "japan", "tokyo", "kyoto", "kanazawa", "november", "packing", "weather"],
+  "source_agent": "assistant"
+}
+```
+
+### 3. A later run that needs it
+
+A different run, a different day, no conversation history:
+
+```bash
+SWARMKIT_VERBOSE=1 swarmkit run . hello --input "Remind me — where was I planning to go, and when?" --verbose
+```
+
+```
+  [assistant] memory context injected
+--- [assistant] calling moonshotai/kimi-k2.5 ---
+  input: WORKSPACE MEMORY — relevant prior conversations for this user:
+Topic: Japan travel planning - November weather and packing
+Context: User is planning a two-week trip to Japan in November visiting Toky...
+[assistant] done (13.5s)
+As we discussed previously, you're planning a two-week trip to Japan in November, visiting Tokyo,
+Kyoto, and Kanazawa.
+```
+
+`memory-reader` searched the store with the input, found the entry, and prepended it to what the
+agent sees — with an instruction to use it as its own recollection rather than announce a
+database. Search is lexical: the score is how much of the question's content words the memory
+covers (`similarity_threshold: 0.15` = at least 15% of them). *"Remind me — where was I planning
+to go"* scores 0.40 against that entry; *"how do I cook rice"* scores 0.
+
+### 4. The same thing as a conversation
+
+`swarmkit chat` keeps the turns of one conversation together and hands the whole history to the
+topology on every turn — the swarm sees a longer input, not a special mode:
+
+```bash
+swarmkit chat . hello
+```
+
+```
+> What's the weather like in Kyoto right now?
+  [assistant] memory context injected
+  [assistant] calling get-weather {"city": "Kyoto"}
+[assistant] done (19.5s)
+Right now in Kyoto it's **22°C (72°F)** and **partly cloudy** with **65% humidity**.
+
+This is consistent with what we discussed earlier — still quite warm for November! …
+
+> And is that warmer or colder than Tokyo?
+  [assistant] calling get-weather {"city": "Tokyo"}
+[assistant] done (17.6s)
+Tokyo is currently **exactly the same** — also **22°C (72°F)** and **partly cloudy** …
+
+As we discussed earlier, Kanazawa remains the outlier in your itinerary …
+
+> exit
+
+Conversation saved: e016c48d
+Resume with: swarmkit chat ... --resume e016c48d
+```
+
+Inside a chat: `exit` / `quit` / `/quit` end it, `/clear` starts the context over (MCP servers
+stay up), `/model <provider/model>` switches the model for the rest of the session. Conversations
+are listed and resumed by id or prefix:
+
+```bash
+swarmkit conversations .
+```
+
+```
+Recent conversations:
+  1. [e016c48d] hello (4 turns)
+     "And is that warmer or colder than Tokyo?"
+     2026-09-17T13:59:42
+
+Resume with: swarmkit chat <workspace> <topology> --resume <id>
+Or use: swarmkit conversations <workspace> --pick
+```
+
+Every turn is a job (`Source: chat` in **Jobs**, linked by the conversation id), and the portal's
+**Chat** page is the same conversation store — a chat started from the CLI continues in the browser:
+
+![Chat](../img/tutorials/09-chat.png)
+
+## Part 2 — governed memory
+
+Workspace memory is whatever a run happened to record. Some facts deserve more: a correction a
+person made, a decision that should not be re-litigated. Governed memory is curated — every write
+is reconciled against what is already there, a contradiction is quarantined instead of applied, and
+resolving one is a human action.
+
+### 5. Turn it on
+
+Two skill files, copied from the runtime's reference set:
+
+```bash
+cp <swarmkit>/reference/skills/governed-memory.yaml <swarmkit>/reference/skills/memory-reconcile.yaml skills/
+```
+
+- `governed-memory` (`category: persistence`) — the skill an agent calls to propose facts. Its
+  presence in the workspace is what builds the store.
+- `memory-reconcile` (`category: decision`) — the judge for a **changed** value: `update`
+  (supersede), `refine` (merge the detail in) or `contradict` (quarantine). New keys and
+  identical restatements are handled deterministically, without a model.
+
+Reading needs nothing more: `memory-reader` (already bound) renders curated facts first. Writing is
+a grant, made deliberately:
+
 ```yaml
-mcp_servers:
-  - id: gbrain
-    transport: stdio
-    command: ["gbrain", "serve"]
+# topologies/tutor.yaml
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: tutor
+  version: 0.1.0
+  description: A single assistant that can write governed memory.
+agents:
+  root:
+    id: tutor
+    role: root
+    archetype: friendly-assistant
+    skills_additional:
+      - governed-memory    # write access to curated memory — grant deliberately
 ```
 
-When SwarmKit sees a `gbrain` MCP server + memory decision skills, it automatically uses GBrainMemory instead of MemoryStore. GBrain provides:
-- Hybrid vector + keyword search
-- Graph relationships between memories
-- Supabase/Postgres for production scale
-
-### 7. Test memory
+### 6. An agent proposes facts
 
 ```bash
-# Start a chat
-swarmkit chat . hello
-
-# Conversation 1:
-You: I'm dealing with grief after losing my father
-Agent: [responds with teaching about grief]
-
-# Exit and start a new conversation
-You: /quit
-
-# Start another chat
-swarmkit chat . hello
-
-# Conversation 2:
-You: I feel lost
-Agent: "I remember we discussed grief before, when you were
-dealing with your father's passing..."
+swarmkit run . tutor --input "Two things to remember about me: I'm vegetarian, and my home airport is Bengaluru (BLR)."
 ```
 
-The agent references the prior conversation because memory-reader found the relevant context.
+```
+--- [tutor] calling moonshotai/kimi-k2.5 ---
+  tools: ['summarize', 'get-weather', 'governed-memory']
+  tool_calls: ['governed-memory']
+  [tutor] calling governed-memory {"input": "User is vegetarian and their home airport is Bengaluru (BLR)."}
+  executing: governed-memory
+  [tutor] got results: governed-memory (346B) | waiting for model... (turn 1)
+[tutor] done (29.8s)
+Got it! I've noted that you're vegetarian and your home airport is Bengaluru (BLR). I'll keep that
+in mind for future conversations.
+```
 
-### 8. Memory in serve mode
-
-Memory works the same in serve mode — the HTTP API handles it:
+The skill turned the sentence into candidates and wrote each through the governed path; the tool
+result told the agent what happened to them (`2 candidate(s) written: 2 new`), which is why it can
+say "noted" truthfully.
 
 ```bash
-swarmkit serve .
-
-# POST /conversations — creates conversation
-# POST /conversations/{id}/messages — sends message (memory auto-injected)
+swarmkit memory search ""          # empty query: everything, by confidence
 ```
 
-## Memory configuration
+```
+  user · home_airport = Bengaluru (BLR)
+      type=profile confidence=1.00 reinforced x1
+  user · dietary_preference = vegetarian
+      type=profile confidence=1.00 reinforced x1
+```
 
-### memory-reader config
+### 7. A person refines, and something contradicts
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `max_results` | 5 | Max memories to inject per turn |
-| `similarity_threshold` | 0.1 | Min score to include |
-| `search_scope` | `user` | `user` (per-user), `all`, or `both` |
+`swarmkit memory add` writes through the same path an agent writes through — reconcile included:
 
-### memory-writer config
+```bash
+swarmkit memory add user home_airport "Bengaluru (BLR); prefers morning departures"
+```
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `min_output_length` | 50 | Skip extraction for short responses |
+```
+refine     user/home_airport
+```
 
-## Your workspace so far
+The judge read the current value and the proposal and decided the new detail belongs *with* the
+old, not instead of it. Now a bad import asserts something else:
+
+```bash
+swarmkit memory add user home_airport "Chennai (MAA)" --source old-crm-import
+```
+
+```
+contradict  user/home_airport — NOT written; quarantined for review
+  the trusted memory is unchanged. Resolve with: swarmkit memory resolve <id>
+```
+
+The command exits non-zero: a contradiction is not a success, and a seeding script must not read
+it as one. The trusted value stands until a person decides:
+
+```bash
+swarmkit memory quarantine
+```
+
+```
+  #1  user::home_airport
+      proposed: 'Chennai (MAA)'  vs current: 'Bengaluru (BLR); prefers morning departures'
+      The proposal directly conflicts with a firmly-held home airport memory at confidence 1.00;
+      without evidence of relocation, overwriting Bengaluru (BLR) with Chennai (MAA) requires
+      human curation.
+```
+
+```bash
+swarmkit memory resolve 1 --by alice --reject      # or --accept, which applies it as an update
+```
+
+```
+rejected #1 (trusted value stands)
+```
+
+Every step is in the fact's append-only history — who decided, deterministic or skill:
+
+```bash
+swarmkit memory get user home_airport --history
+```
+
+```
+  user · home_airport = Bengaluru (BLR); prefers morning departures
+      type=semantic confidence=1.00
+    2026-09-17T13:40:27  new       ∅ → Bengaluru (BLR)  (deterministic)
+    2026-09-17T13:41:51  refine    Bengaluru (BLR) → Bengaluru (BLR); prefers morning departures  (skill)
+    2026-09-17T13:42:42  contradict Bengaluru (BLR); prefers morning departures → Chennai (MAA)  (skill)
+```
+
+The **Memory** page is the same data: browse by subject, click a fact for its timeline, and the
+**Quarantine** tab is where a curator resolves in the browser:
+
+![Governed memory — a fact's timeline](../img/tutorials/09-memory.png)
+
+### 8. A curated fact reaches an agent
+
+Any agent under the `memory-reader` binding — no write grant needed:
+
+```bash
+SWARMKIT_VERBOSE=1 swarmkit run . hello --input "I'm flying to Tokyo next month — which airport do I leave from, and what should I keep in mind about food?" --verbose
+```
+
+```
+  [assistant] memory context injected
+--- [assistant] calling moonshotai/kimi-k2.5 ---
+  input: <curated-memory>
+Established facts for this workspace:
+- user · home_airport: Bengaluru (BLR); prefers morning departures
+</curated-memory>
+I'm flying to Tokyo next month — which airport do I leave f...
+[assistant] done (14.5s)
+Based on your profile, you leave from **Bengaluru (BLR)** — and since you prefer morning departures,
+aim for flights that depart in the AM to match your preference.
+…
+```
+
+Curated facts arrive in a labelled, delimited block *before* workspace memory, because they went
+through review and workspace memory did not. Retrieval is by relevance to the input, so a fact is
+injected when the question is about it — `dietary_preference` did not match this question's words
+and was not included; ask about food by name and it is.
+
+## Where it all lives
 
 ```
 my-swarm/
-├── workspace.yaml          # memory-reader + memory-writer configured
-├── .swarmkit/
-│   ├── conversations/      # saved chat sessions
-│   └── memory.json         # extracted insights
-├── archetypes/
+├── workspace.yaml               # memory-reader + memory-writer bound
 ├── skills/
-├── servers/
-├── gates/
-└── topologies/
+│   ├── governed-memory.yaml     # the persistence skill (write grant)
+│   ├── memory-reconcile.yaml    # the reconcile judge
+│   └── ...
+├── topologies/
+│   ├── tutor.yaml               # holds governed-memory
+│   └── ...
+└── .swarmkit/
+    └── store.sqlite             # jobs, conversations, workspace memory, governed memory —
+                                 # or Postgres, when `storage.runtime` says so (Level 21)
 ```
+
+One store, resolved once from `storage.runtime`. Conversations, workspace memory and governed
+memory are tables in it, next to jobs and usage; point the workspace at Postgres and all of them
+move together.
 
 ## Next
 
-[Level 10: Knowledge & RAG](10-knowledge-rag.md) — give your agents access to a knowledge base.
+[Level 10: Knowledge & RAG](10-knowledge-rag.md) — give your agents a knowledge base.

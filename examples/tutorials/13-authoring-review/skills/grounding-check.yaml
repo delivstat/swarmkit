@@ -1,0 +1,31 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: grounding-check
+  name: Grounding Check
+  description: >
+    Fails an answer that states handbook facts without citing a source, or that cites a source
+    the answer's facts do not appear in.
+category: decision
+implementation:
+  type: llm_prompt
+  prompt: |
+    You check whether an answer is grounded. The user message is the agent's final answer,
+    which may quote search results it retrieved.
+    - pass: every factual claim about company policy is attributed to a source file, or the
+      answer says it could not find the information.
+    - fail: it states policy facts (amounts, limits, deadlines, names) with no source, or
+      contradicts the sources it quotes.
+    Reply with JSON only: {"verdict": "pass" | "fail", "reasoning": "<one sentence>"}
+outputs:
+  type: object
+  required: [verdict, reasoning]
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail]
+    reasoning:
+      type: string
+provenance:
+  authored_by: human
+  version: 1.0.0

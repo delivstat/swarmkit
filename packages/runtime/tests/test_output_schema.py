@@ -187,6 +187,12 @@ class TestLooksIncomplete:
         assert _looks_incomplete("") is True
         assert _looks_incomplete("(no response)") is True
 
+    def test_an_acknowledgement_is_not_planning(self) -> None:
+        """ "I'll" was a marker, so this finished reply from a tutor that had just written to
+        memory was stripped as planning text, nudged, and replaced by a forced synthesis."""
+        assert _looks_incomplete("Got it — I'll keep that in mind! You're vegetarian.") is False
+        assert _looks_incomplete("I will remember that your home airport is BLR.") is False
+
 
 # ---- summarizer bypass ---------------------------------------------------
 
@@ -255,3 +261,28 @@ class TestOutputGovernance:
         agent = _make_agent(role="leader")
         schema = _get_outputs_schema(agent)
         assert schema is None
+
+
+def test_skill_outputs_are_not_the_agents_schema() -> None:
+    """A granted skill's `outputs` block describes what the skill returns. It was being applied
+    to the agent's own answer: a root agent holding a decision skill (`quality-check`, outputs
+    `{verdict, reasoning}`) had its plain-prose reply re-prompted into JSON and then recorded as
+    `output.validation_failed`. Only the agent's `output_schema` governs the agent's output."""
+    from pathlib import Path  # noqa: PLC0415
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from swarmkit_runtime.skills import ResolvedSkill  # noqa: PLC0415
+
+    raw = SimpleNamespace(
+        outputs={"type": "object", "required": ["verdict"], "properties": {"verdict": {}}}
+    )
+    skill = ResolvedSkill(id="quality-check", raw=raw, source_path=Path("x"))  # type: ignore[arg-type]
+    agent = ResolvedAgent(
+        id="assistant",
+        role="root",
+        model={"name": "mock"},
+        prompt={"system": "hi"},
+        skills=(skill,),
+        iam=None,
+    )
+    assert _get_outputs_schema(agent) is None

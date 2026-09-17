@@ -59,14 +59,15 @@ metadata:
 role: worker
 defaults:
   model: { provider: anthropic, name: claude-opus-4-7 }   # used by the harness's own auth
+  prompt:
+    system: You implement exactly the change described, with tests.
 executor:
   kind: harness
   ref: claude-code
   config:
     model: claude-opus-4-7
     allowed_tools: [Read, Edit, "Bash(git *)"]
-prompt:
-  system: You implement exactly the change described, with tests.
+provenance: { authored_by: human, version: 1.0.0 }
 ```
 
 `executor` is optional; absent means `kind: model`. `config` is opaque to the runtime and validated by

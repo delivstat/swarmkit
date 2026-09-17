@@ -183,3 +183,28 @@ class TestMCPServeModule:
         assert not _should_exclude("workspace.yaml")
         assert not _should_exclude("topologies/hello.yaml")
         assert not _should_exclude("skills/review.yaml")
+
+
+def test_publish_honours_the_workspace_gitignore(tmp_path: Path) -> None:
+    """A directory the author ignores in git (a vector index, a scratch dir) used to be bundled
+    regardless — the publisher had its own fixed exclude list and read nothing else."""
+    import tarfile  # noqa: PLC0415
+
+    from swarmkit_runtime.packages._publisher import publish_package  # noqa: PLC0415
+
+    ws = tmp_path / "ws"
+    (ws / "knowledge" / "chromadb").mkdir(parents=True)
+    (ws / "knowledge" / "docs").mkdir()
+    (ws / "workspace.yaml").write_text(
+        "apiVersion: swarmkit/v1\nkind: Workspace\nmetadata: {id: w, name: W}\n"
+        "governance: {provider: mock}\n"
+    )
+    (ws / "knowledge" / "chromadb" / "index.bin").write_bytes(b"\x00")
+    (ws / "knowledge" / "docs" / "a.md").write_text("# a\n")
+    (ws / ".gitignore").write_text("knowledge/chromadb/\n*.log\n")
+    (ws / "run.log").write_text("noise\n")
+    publish_package(ws, tmp_path / "dist")
+    with tarfile.open(next((tmp_path / "dist").iterdir())) as tar:
+        names = {m.name.split("/", 1)[1] for m in tar.getmembers()}
+    assert "knowledge/docs/a.md" in names
+    assert not any("chromadb" in n or n.endswith(".log") for n in names), names

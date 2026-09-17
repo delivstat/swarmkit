@@ -80,11 +80,11 @@ function AgentNode({
 	const Icon = style?.icon ?? User;
 	const isSelected = selectedId === agent.id;
 
+	// Two controls side by side, not nested: a <button> inside a <button> is invalid HTML and React
+	// reports a hydration error for it on every render of the tree.
 	return (
 		<div>
-			<button
-				type="button"
-				onClick={() => onSelect(agent.id)}
+			<div
 				style={{ paddingLeft: `${depth * 20 + 12}px` }}
 				className={cn(
 					"flex w-full items-center gap-2 rounded-md py-2 pr-3 text-left text-sm transition-colors",
@@ -96,10 +96,8 @@ function AgentNode({
 				{hasChildren ? (
 					<button
 						type="button"
-						onClick={(e) => {
-							e.stopPropagation();
-							setExpanded(!expanded);
-						}}
+						aria-label={expanded ? "Collapse" : "Expand"}
+						onClick={() => setExpanded(!expanded)}
 						className="-ml-1 p-0.5"
 					>
 						{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -107,17 +105,23 @@ function AgentNode({
 				) : (
 					<span className="w-4" />
 				)}
-				<Icon size={14} className={cn("shrink-0", style?.color)} />
-				<span className="text-foreground">{agent.id}</span>
-				{agent.source_archetype && (
-					<Badge variant="secondary" className="font-normal">
-						{agent.source_archetype}
-					</Badge>
-				)}
-				<span className="ml-auto text-xs text-muted-foreground">
-					{agent.skills.length > 0 && `${agent.skills.length} skills`}
-				</span>
-			</button>
+				<button
+					type="button"
+					onClick={() => onSelect(agent.id)}
+					className="flex min-w-0 flex-1 items-center gap-2 text-left"
+				>
+					<Icon size={14} className={cn("shrink-0", style?.color)} />
+					<span className="text-foreground">{agent.id}</span>
+					{agent.source_archetype && (
+						<Badge variant="secondary" className="font-normal">
+							{agent.source_archetype}
+						</Badge>
+					)}
+					<span className="ml-auto text-xs text-muted-foreground">
+						{agent.skills.length > 0 && `${agent.skills.length} skills`}
+					</span>
+				</button>
+			</div>
 			{hasChildren && expanded && (
 				<div>
 					{agent.children?.map((child) => (
@@ -856,7 +860,9 @@ export default function ComposerPage() {
 				<span className="font-semibold">Composer</span>
 
 				<Select
-					value={selectedTopology ?? undefined}
+					// Always controlled: `undefined` before the first load made React warn that the
+					// select switched from uncontrolled to controlled once a topology was picked.
+					value={selectedTopology ?? ""}
 					onValueChange={(v) => loadTopology(v)}
 				>
 					<SelectTrigger className="h-8 w-52">

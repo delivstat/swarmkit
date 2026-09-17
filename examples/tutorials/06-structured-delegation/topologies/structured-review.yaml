@@ -1,0 +1,55 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: structured-review
+  version: 0.1.0
+  description: >
+    Coordinator creates a task plan, workers execute in parallel,
+    results are synthesized into a final review.
+runtime:
+  planning:
+    scope_required: true
+    two_phase: true
+  synthesis:
+    provider: openrouter
+    model: deepseek/deepseek-chat-v3-0324
+    prompt: |
+      You are synthesizing a code review from several specialists.
+      Combine their findings into one actionable review, critical issues first:
+      ## Critical issues
+      ## Recommendations
+      ## Summary
+agents:
+  root:
+    id: review-coordinator
+    role: root
+    archetype: coordinator
+    prompt:
+      system: |
+        You are a code review coordinator. When given code to review, plan the
+        review as tasks for your specialists, then synthesize their findings.
+        Specialists: security-reviewer (vulnerabilities), quality-reviewer
+        (patterns, naming, error handling), test-reviewer (coverage).
+    children:
+      - id: security-reviewer
+        role: worker
+        archetype: researcher
+        prompt:
+          system: |
+            You are a security reviewer. Analyze code for injection, XSS/CSRF,
+            hardcoded secrets and insecure dependencies. Return a structured list
+            of findings, five at most.
+      - id: quality-reviewer
+        role: worker
+        archetype: researcher
+        prompt:
+          system: |
+            You review code quality: architecture, DRY, error handling, naming.
+            Return a structured list of findings, five at most.
+      - id: test-reviewer
+        role: worker
+        archetype: researcher
+        prompt:
+          system: |
+            You review test coverage: critical paths, edge cases, test quality.
+            Return a structured list of findings, five at most.

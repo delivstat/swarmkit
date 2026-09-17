@@ -95,6 +95,11 @@ class ResolvedAgent:
     # How this agent's node executes (design executor-abstraction). From its archetype's executor
     # block; defaults to `model` (today's behavior). The compiler dispatches on `executor.kind`.
     executor: ResolvedExecutor = field(default_factory=lambda: ResolvedExecutor(kind="model"))
+    # Intent-drift monitoring (design/details/intent-drift-detection.md): the agent's own block,
+    # else the topology-level one. The compiler builds an observer from it; ``None`` means off.
+    # The schema accepted this block at both levels since M7 and the resolver dropped it, so no
+    # workspace ever had drift scored — `test_intent_monitoring_reaches_the_compiler`.
+    intent_monitoring: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)

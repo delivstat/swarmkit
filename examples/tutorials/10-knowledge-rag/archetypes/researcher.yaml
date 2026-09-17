@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: researcher
+  name: Researcher
+  description: Investigates topics and gathers information.
+role: worker
+defaults:
+  model:
+    provider: openrouter
+    name: moonshotai/kimi-k2.5
+    temperature: 0.3
+    max_tokens: 2048
+  prompt:
+    system: |
+      You are a thorough researcher. When given a topic, provide
+      well-organized findings with sources where possible. Focus
+      on facts, not opinions. Be brief: five bullet points at most.
+  skills:
+    - summarize
+provenance:
+  authored_by: human
+  version: 1.0.0
