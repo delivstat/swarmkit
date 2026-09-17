@@ -4,30 +4,87 @@ How images actually reach an agent in SwarmKit, and the one trap that makes them
 arrive. Written up after a design agent spent three runs describing UI screens it had never seen —
 convincingly.
 
-Verified against runtime 1.129.2; the attachment channel below was added later.
+The skill route below was verified against runtime 1.129.2; the attachment channel was added in
+1.218.0 and is what most callers should use first.
 
 ## Two channels, for two different callers
 
-**If you already have the file, attach it to the run.** A caller that holds the bytes — a snapshot
-poller, a webhook with an upload, a script — passes them beside the input:
+| | Who holds the image | Who decides what to look at | Route |
+|---|---|---|---|
+| **Attach it to the run** | the caller, before the run starts | the caller | `attachments` / `--attach` — below |
+| **Let the agent fetch it** | nobody yet | the model, mid-run | an MCP tool returning `ImageContent` — the rest of this guide |
+
+They do not substitute for each other. A snapshot poller, a webhook with an upload, an application
+with a user's screenshot: all of them already hold the bytes and want *one* model call, not an
+agent that first has to decide to look. An agent reviewing a ticket with screenshots it has never
+seen needs the skill.
+
+## Attach it to the run
+
+Beside the input, not inside it. CLI, one `--attach` per file, repeatable, workspace-relative:
 
 ```bash
-swarmkit run ./workspace describe-scene --input "What is at the gate?" --attach snapshots/gate.jpg
+swarmkit run ./workspace describe-scene \
+  --input "What is at the gate?" \
+  --attach snapshots/gate.jpg --attach snapshots/gate-wide.jpg
 ```
+
+HTTP, the same two ways of naming a file:
 
 ```json
 POST /run/describe-scene
-{ "input": "What is at the gate?", "attachments": [{ "path": "snapshots/gate.jpg" }] }
+{
+  "input": "What is at the gate?",
+  "attachments": [
+    { "path": "snapshots/gate.jpg" },
+    { "data": "<base64 bytes>", "name": "gate-wide.jpg" }
+  ]
+}
 ```
 
-The file reaches the **entry agent's first message** — one model call, no tool round-trip. The media
-type is read from the content, so there is one `--attach` and no `--image`/`--pdf`; a bad path fails
-the call rather than the run; images only, for now. See `reference/serve.md` for the full field
-list.
+| Field | | |
+|---|---|---|
+| `path` | workspace-relative | **exactly one of** `path` / `data` |
+| `data` | base64 | for a caller holding bytes rather than a file — a poller, an upload |
+| `name` | optional | display/filename only; derived from `path` when absent |
+| `handling` | `preprocess` (default) or `native` | intent for non-image types; inert while only images are carried |
 
-**If an *agent* needs to decide mid-run what to look at, it needs a skill.** That is the rest of
-this guide, and it is still the only route in that case — because the runtime cannot know in advance
-what the model will want to see.
+What happens, and what does not:
+
+- **The media type is read from the bytes.** There is no `type` field, and sending one is a 422:
+  a caller's claim about content that is about to be forwarded to a third-party model is not
+  evidence. This is also why there is one `--attach` and no `--image` / `--pdf`.
+- **Images only, today:** `image/png`, `image/jpeg`, `image/gif`, `image/webp`. Anything else is
+  refused by name. Per attachment, 20 MiB (`SWARMKIT_ATTACHMENT_MAX_BYTES`).
+- **`url` is refused.** The runtime does not fetch caller-supplied addresses — that is the same
+  exfiltration primitive the skill route's path-resolution rejects (below). Send the bytes.
+- **A bad path is a 422 on the request**, not a job that fails a moment later: a job id means every
+  attachment was readable and carryable.
+- **It reaches the entry agent's first message and no downstream node.** The root agent sees the
+  image in the same model call as the input — no tool round-trip, one pass. A child agent that
+  wants it asks through a skill; the runtime does not fan a caller's file out to every node.
+- **It is re-read on every turn** of the root's tool loop, so the file has to stay readable for
+  the run's duration; that is the other reason streams and URLs are not accepted.
+- **Audited, never stored.** Every run writes a `run.attachments` event with name, media type,
+  size, SHA-256 and source path — the digest makes the reference checkable later; the bytes never
+  enter a log meant to stay readable.
+- **Provider coverage follows the family.** Anthropic and every `openai-compatible` provider
+  (OpenRouter, Groq, Ollama, llama-server …) get the image part from the same mapping the skill
+  route uses; a provider YAML with `capabilities: {images: false}` refuses at the request instead
+  of sending bytes a server would drop.
+
+Two edges worth knowing:
+
+- **Harness roots do not receive attachments.** A harness (Claude Code, opencode) reads files
+  from its worktree, so an attachment has no message to land in. Put the file in the repository
+  the worktree is cut from and name the path in the input, or route through a model agent.
+- **Over A2A, a file part becomes an attachment.** A remote caller's `message/send` with a
+  `file` part carrying `bytes` reaches the run exactly as `data` does; a `uri` file part is refused
+  for the same reason `url` is. The same rules apply when *your* agent calls a remote one through
+  an `agent` skill.
+
+That is the whole caller-side story. When the caller is an agent that has to *decide* what to
+look at, read on.
 
 ## An image in the prompt is still just text
 
@@ -142,6 +199,14 @@ A 64 KiB line limit on harness stdout used to make large images fatal —
 can be relaxed.
 
 ## Checklist
+
+If you hold the file before the run:
+
+- [ ] It is passed as `--attach` / `attachments`, not mentioned in the prompt
+- [ ] The consumer is a model agent at the root (a harness root does not receive it)
+- [ ] The `run.attachments` audit event shows the expected name, type, size and digest
+
+If an agent has to choose what to look at:
 
 - [ ] An MCP tool returns `ImageContent` — a path or base64 in the prompt does nothing
 - [ ] Paths handed to the agent are **absolute**, and under the docs-reader workspace root
