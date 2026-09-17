@@ -645,6 +645,32 @@ export interface OAuthCredential {
 	refreshed_at: number | null;
 }
 
+/** GET /api/a2a/probe — a remote Agent Card, read by the runtime so the browser need not cross
+ * origins. `supported: false` carries the reason (404 usually means A2A is off over there). */
+export interface A2AProbe {
+	supported: boolean;
+	detail?: string;
+	name?: string;
+	description?: string;
+	url?: string;
+	streaming?: boolean;
+	requires_bearer?: boolean;
+	skills?: { id: string; name: string; description: string }[];
+}
+
+/** GET /api/a2a/agents — one row per `agent` skill with a `card_url` (the remote form). */
+export interface RemoteAgentEntry {
+	id: string;
+	name: string;
+	card_url: string;
+	skill_id: string | null;
+	credentials_ref: string | null;
+	on_unanswerable: "agent" | "relay" | "abort";
+	permission: string;
+	effects: string;
+	timeout_s: number;
+}
+
 export interface OAuthProbe {
 	supported: boolean;
 	detail?: string;

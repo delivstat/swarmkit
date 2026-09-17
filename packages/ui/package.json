@@ -1,6 +1,6 @@
 {
 	"name": "@swarmkit/ui",
-	"version": "0.43.0",
+	"version": "0.44.0",
 	"description": "SwarmKit UI \u2014 topology composer, skill authoring interface, runtime dashboard.",
 	"license": "MIT",
 	"private": true,
@@ -12,7 +12,8 @@
 		"lint": "biome check .",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
-		"demo:approval": "node demos/screenshot_approval.mjs"
+		"demo:approval": "node demos/screenshot_approval.mjs",
+		"demo:remote-agent": "node demos/screenshot_remote_agent.mjs"
 	},
 	"dependencies": {
 		"@radix-ui/react-checkbox": "^1.1.3",

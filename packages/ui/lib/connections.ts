@@ -15,6 +15,7 @@ import type {
 	EventSinkEntry,
 	McpServerEntry,
 	OAuthCredential,
+	RemoteAgentEntry,
 	WorkspaceConfig,
 } from "./types";
 
@@ -26,7 +27,7 @@ export type ConnectionStatus =
 
 export interface ConnectionRow {
 	id: string;
-	kind: "server" | "event sink";
+	kind: "server" | "event sink" | "remote agent";
 	/** stdio command, http endpoint, or a sink's URL — what this actually talks to. */
 	target: string;
 	credentialId: string | null;
@@ -158,8 +159,12 @@ export function connectionRows(config: WorkspaceConfig): ConnectionRow[] {
 export function usersOf(
 	credentialId: string,
 	config: WorkspaceConfig,
+	agents: RemoteAgentEntry[] = [],
 ): string[] {
 	return [
+		...agents
+			.filter((a) => a.credentials_ref === credentialId)
+			.map((a) => `remote agent "${a.id}"`),
 		...config.mcp_servers
 			.filter((s) => s.credentials_ref === credentialId)
 			.map((s) => `server "${s.id}"`),
@@ -168,6 +173,101 @@ export function usersOf(
 			.filter(([e]) => e.credentials_ref === credentialId)
 			.map(([, i]) => `event sink ${i}`),
 	];
+}
+
+/**
+ * A remote agent (an `agent` skill with a `card_url`) as a connection row.
+ *
+ * Same status vocabulary as a server: a card that says it wants a bearer and a skill with no
+ * `credentials_ref` reads as needs-credential, because the call will be refused over there rather
+ * than here — the worse place to find out.
+ */
+export function remoteAgentRow(
+	agent: RemoteAgentEntry,
+	credentials: CredentialEntry[],
+): ConnectionRow {
+	const credential = credentialOf(
+		agent.credentials_ref ?? undefined,
+		credentials,
+	);
+	const { status, detail } = statusFor(
+		true,
+		credential,
+		agent.credentials_ref ?? undefined,
+	);
+	return {
+		id: agent.id,
+		kind: "remote agent",
+		target: agent.card_url,
+		credentialId: credential?.id ?? agent.credentials_ref ?? null,
+		credentialSource: credential?.source ?? null,
+		status,
+		detail:
+			status === "needs-credential" && !agent.credentials_ref
+				? "Remote agent with no credential — it will be called unauthenticated."
+				: detail,
+		permission: agent.permission,
+	};
+}
+
+export interface RemoteAgentDraft {
+	id: string;
+	name: string;
+	description: string;
+	cardUrl: string;
+	skillId: string;
+	credentialsRef: string;
+	onUnanswerable: "agent" | "relay" | "abort";
+	permission: "open" | "cautious" | "strict" | "readonly";
+	effects: "read" | "write" | "unknown";
+}
+
+/** A skill id from a card skill: the card's skill id if it is a legal identifier, else derived. */
+export function suggestedAgentSkillId(
+	cardSkillId: string,
+	cardName: string,
+): string {
+	const slug = (s: string) =>
+		s
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-+|-+$/g, "")
+			.replace(/^[^a-z]+/, "");
+	return slug(cardSkillId) || slug(cardName) || "remote-agent";
+}
+
+/**
+ * The skill file for a remote agent, built here rather than by the runtime so what gets written
+ * is exactly what the dialog showed. Strings are quoted; nothing user-typed reaches YAML unquoted.
+ */
+export function remoteAgentSkillYaml(draft: RemoteAgentDraft): string {
+	const q = (v: string) => JSON.stringify(v);
+	const lines = [
+		"apiVersion: swarmkit/v1",
+		"kind: Skill",
+		"metadata:",
+		`  id: ${draft.id}`,
+		`  name: ${q(draft.name || draft.id)}`,
+		`  description: ${q(draft.description || `Calls the ${draft.name || draft.id} agent over A2A.`)}`,
+		"category: capability",
+		"implementation:",
+		"  type: agent",
+		`  card_url: ${q(draft.cardUrl)}`,
+	];
+	if (draft.skillId) lines.push(`  skill_id: ${q(draft.skillId)}`);
+	if (draft.credentialsRef)
+		lines.push(`  credentials_ref: ${q(draft.credentialsRef)}`);
+	lines.push(
+		`  on_unanswerable: ${draft.onUnanswerable}`,
+		`  permission: ${draft.permission}`,
+		`  effects: ${draft.effects}`,
+		"provenance:",
+		"  authored_by: human",
+		`  authored_date: ${q(new Date().toISOString().slice(0, 10))}`,
+		"  version: 1.0.0",
+		"",
+	);
+	return lines.join("\n");
 }
 
 /** Rows needing a person's attention, worst first — the ordering a setup screen should use. */

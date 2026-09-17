@@ -456,3 +456,76 @@ def test_tasks_subscribe_replays_a_finished_task(client: TestClient) -> None:
         ]
     assert frames[-1]["result"]["final"] is True
     assert frames[-1]["result"]["taskId"] == task_id
+
+
+# ---- the portal's client-side reads: probe a card, list remote agents ----------------------------
+
+
+def test_probe_reads_a_remote_card_through_the_runtime(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The browser cannot fetch a cross-origin card; the runtime does, and reports what the agent
+    offers. Here the "remote" is this very instance, reached through the test client's transport."""
+    from swarmkit_runtime.agent_skill import _remote  # noqa: PLC0415
+
+    real_client = _remote.A2AClient._client
+
+    def _via_app(self: Any) -> Any:  # route the probe's httpx client into the app under test
+        import httpx  # noqa: PLC0415
+
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=client.app))
+
+    monkeypatch.setattr(_remote.A2AClient, "_client", _via_app)
+    try:
+        resp = client.get(
+            "/api/a2a/probe", params={"card_url": "http://self/.well-known/agent-card.json"}
+        )
+    finally:
+        monkeypatch.setattr(_remote.A2AClient, "_client", real_client)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["supported"] is True
+    assert body["name"] == "Hello desk"
+    assert [s["id"] for s in body["skills"]] == ["hello"]
+    assert body["requires_bearer"] is False
+
+
+def test_probe_reports_an_unreachable_card(client: TestClient) -> None:
+    resp = client.get("/api/a2a/probe", params={"card_url": "http://127.0.0.1:9/nope"})
+    body = resp.json()
+    assert body["supported"] is False and "could not fetch" in body["detail"]
+
+
+def test_remote_agents_lists_only_card_backed_agent_skills(
+    tmp_path: Path, a2a_workspace: Path
+) -> None:
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    skill = """apiVersion: swarmkit/v1
+kind: Skill
+metadata: {id: %s, name: %s, description: Calls another agent for the test.}
+category: capability
+implementation:
+%s
+provenance: {authored_by: human, version: 1.0.0}
+"""
+    (a2a_workspace / "skills" / "legal.yaml").write_text(
+        skill
+        % (
+            "legal",
+            "Legal",
+            "  type: agent\n  card_url: https://legal.example.com/card\n  skill_id: review\n"
+            "  credentials_ref: legal\n  on_unanswerable: relay\n  permission: strict",
+        )
+    )
+    (a2a_workspace / "skills" / "local.yaml").write_text(
+        skill % ("local", "Local", "  type: agent\n  topology: hello")
+    )
+    with TestClient(create_app(a2a_workspace)) as c:
+        rows = c.get("/api/a2a/agents").json()
+    assert [r["id"] for r in rows] == ["legal"]
+    assert rows[0]["card_url"] == "https://legal.example.com/card"
+    assert rows[0]["skill_id"] == "review"
+    assert rows[0]["credentials_ref"] == "legal"
+    assert rows[0]["on_unanswerable"] == "relay"
+    assert rows[0]["permission"] == "strict"

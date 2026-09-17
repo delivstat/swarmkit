@@ -4,12 +4,19 @@ import {
 	connectionRows,
 	needsAttention,
 	oauthCapable,
+	remoteAgentRow,
+	remoteAgentSkillYaml,
 	serverRow,
 	sinkRow,
+	suggestedAgentSkillId,
 	tokenView,
 	usersOf,
 } from "./connections";
-import type { CredentialEntry, WorkspaceConfig } from "./types";
+import type {
+	CredentialEntry,
+	RemoteAgentEntry,
+	WorkspaceConfig,
+} from "./types";
 
 const RESOLVING: CredentialEntry = {
 	id: "tg",
@@ -223,5 +230,110 @@ describe("oauthCapable", () => {
 			},
 		]);
 		expect(servers.map((s) => s.id)).toEqual(["linear"]);
+	});
+});
+
+const REMOTE: RemoteAgentEntry = {
+	id: "legal-review",
+	name: "Legal review",
+	card_url: "https://legal.example.com/.well-known/agent-card.json",
+	skill_id: "contract-review",
+	credentials_ref: "linear",
+	on_unanswerable: "agent",
+	permission: "strict",
+	effects: "read",
+	timeout_s: 600,
+};
+
+describe("remoteAgentRow", () => {
+	it("is a connection row keyed on the card, with the skill's tier", () => {
+		const row = remoteAgentRow({ ...REMOTE, credentials_ref: "tg" }, [
+			RESOLVING,
+		]);
+		expect(row.kind).toBe("remote agent");
+		expect(row.target).toBe(REMOTE.card_url);
+		expect(row.status).toBe("ready");
+		expect(row.permission).toBe("strict");
+	});
+
+	it("an unresolving credential reads as unresolved, as for a server", () => {
+		expect(remoteAgentRow(REMOTE, [BROKEN]).status).toBe("unresolved");
+	});
+
+	it("no credential on a remote agent is needs-credential, said plainly", () => {
+		const row = remoteAgentRow({ ...REMOTE, credentials_ref: null }, []);
+		expect(row.status).toBe("needs-credential");
+		expect(row.detail).toMatch(/unauthenticated/);
+	});
+});
+
+describe("usersOf counts remote agents", () => {
+	it("names the agent skill that references the credential", () => {
+		const config: WorkspaceConfig = {
+			credentials: [BROKEN],
+			mcp_servers: [],
+			events: [],
+		};
+		expect(usersOf("linear", config, [REMOTE])).toEqual([
+			'remote agent "legal-review"',
+		]);
+	});
+});
+
+describe("suggestedAgentSkillId", () => {
+	it("keeps a legal card skill id, slugs anything else", () => {
+		expect(suggestedAgentSkillId("contract-review", "Legal")).toBe(
+			"contract-review",
+		);
+		expect(suggestedAgentSkillId("Contract Review v2", "Legal")).toBe(
+			"contract-review-v2",
+		);
+		expect(suggestedAgentSkillId("", "Legal Desk")).toBe("legal-desk");
+		expect(suggestedAgentSkillId("123", "")).toBe("remote-agent");
+	});
+});
+
+describe("remoteAgentSkillYaml", () => {
+	it("writes exactly the agent block the dialog showed, strings quoted", () => {
+		const yaml = remoteAgentSkillYaml({
+			id: "legal-review",
+			name: 'Legal "desk"',
+			description: "",
+			cardUrl: REMOTE.card_url,
+			skillId: "contract-review",
+			credentialsRef: "legal",
+			onUnanswerable: "relay",
+			permission: "strict",
+			effects: "read",
+		});
+		expect(yaml).toContain("kind: Skill");
+		expect(yaml).toContain("  id: legal-review");
+		expect(yaml).toContain('  name: "Legal \\"desk\\""');
+		expect(yaml).toContain("  type: agent");
+		expect(yaml).toContain(`  card_url: "${REMOTE.card_url}"`);
+		expect(yaml).toContain('  skill_id: "contract-review"');
+		expect(yaml).toContain('  credentials_ref: "legal"');
+		expect(yaml).toContain("  on_unanswerable: relay");
+		expect(yaml).toContain("  permission: strict");
+		expect(yaml).toContain("  effects: read");
+		expect(yaml).toContain("  authored_by: human");
+		// A default description is written when none was given, so the skill is not blank to a model.
+		expect(yaml).toMatch(/description: "Calls the Legal/);
+	});
+
+	it("omits skill_id and credentials_ref when empty", () => {
+		const yaml = remoteAgentSkillYaml({
+			id: "x",
+			name: "x",
+			description: "d",
+			cardUrl: "https://a/card",
+			skillId: "",
+			credentialsRef: "",
+			onUnanswerable: "agent",
+			permission: "cautious",
+			effects: "unknown",
+		});
+		expect(yaml).not.toContain("skill_id");
+		expect(yaml).not.toContain("credentials_ref");
 	});
 });

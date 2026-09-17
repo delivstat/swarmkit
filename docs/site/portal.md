@@ -54,6 +54,15 @@ right now**, which is the failure that is otherwise invisible until a run gets a
 
 ![Connections](img/portal/connections.png)
 
+**Remote agents** live here too. "Add remote agent" takes an A2A Agent Card URL, has the runtime
+fetch the card (it is cross-origin to the browser), shows the agent's skills, and writes an
+`agent` skill file for the one you pick — with who answers its questions (`on_unanswerable`), the
+credential to send and the permission tier. Discovering a new agent is an authoring act, not a
+scan: nothing is granted by this; a topology names the skill, or holds `pack:workspace`, to reach
+it (`design/details/a2a-interop.md`).
+
+![Add remote agent](img/portal/connections-remote-agent.png)
+
 ## The catalogue
 
 ![Skills](img/portal/skills.png)
