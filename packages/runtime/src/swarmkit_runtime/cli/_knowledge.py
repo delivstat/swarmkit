@@ -84,10 +84,10 @@ def build_pack(
 ) -> str:
     """Assemble the full knowledge-pack markdown document.
 
-    ``lean`` is the pack to paste. The full pack is ~550k tokens, three quarters of it the 140
+    ``lean`` is the pack to paste. The full pack is ~610k tokens, three quarters of it the 140
     per-feature design notes (the *why*), and fits no context window but the largest. Lean keeps
     what an LLM needs to *use* SwarmKit — overview, the generated reference, the design doc,
-    guides, cross-cutting notes, schemas — at ~175k tokens, and drops the design notes, the
+    guides, cross-cutting notes, schemas — at ~190k tokens, and drops the design notes, the
     roadmap and the fixtures. Ask the full pack when the question is why something is the way it
     is.
 
@@ -180,11 +180,26 @@ def _corpus_sections(
     yield _Section(
         heading="How-to guides",
         preamble=(
-            "Task-oriented guides — authoring harness adapters, model selection, serve auth. "
+            "Task-oriented guides — building swarms, getting an image to a model, validating "
+            "output, memory bindings, authoring harness adapters, model selection, serve auth. "
             "How to actually do the thing, with runnable commands."
         ),
-        files=_discover_glob(repo_root, "docs/guides/*.md"),
+        files=_discover_glob(repo_root, "docs/site/guides/*.md")
+        + _discover_glob(repo_root, "docs/guides/*.md"),
     )
+    if not lean:
+        # Full pack only: 22 levels is ~50k tokens, and the lean pack's job is to fit a context
+        # window with the reference and the design doc in it. The guides above carry the recipe.
+        yield _Section(
+            heading="Tutorials",
+            preamble=(
+                "Twenty-two progressive levels, one shipped capability each from level 17 on; "
+                "the `just demo-*` target each level names is runnable on the mock provider. Read "
+                "these for the ORDER in which features are meant to be adopted, not for the field "
+                "list — that is the Reference."
+            ),
+            files=_discover_glob(repo_root, "docs/site/tutorials/*.md"),
+        )
     yield _Section(
         heading="Per-package invariants",
         preamble="Package-specific CLAUDE.md files — stricter than the root one.",

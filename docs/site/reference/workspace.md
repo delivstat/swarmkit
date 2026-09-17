@@ -17,8 +17,8 @@ Only `apiVersion`, `kind`, and `metadata` (`id` + `name`) are required; everythi
 | `model_providers` | Python-class registrations (`class`, `provider_id`, `config`) for a custom `ModelProvider`. The usual way to add a provider is a YAML file in `<workspace>/providers/` — see [Model provider](model-provider.md). |
 | `credentials` | Named credential **references** (never literals): each `{ source, config }` where `source` is `env`, `file`, or `oauth` (a token obtained by logging in from the portal, stored encrypted per owner and refreshed before a run — see [Connections](connections.md)). The cloud sources (`hashicorp-vault`, `aws-secrets-manager`, `gcp-secret-manager`, `azure-key-vault`, `plugin`) are accepted by the schema and refused at resolution until a `SecretsProvider` is wired for them. |
 | `mcp_servers` | The MCP registry: `id`, `transport` (`stdio`+`command` or `http`+`endpoint`), `env`, `credentials_ref`, `sandboxed`/`sandbox_image`, and governance `permission` tiers (`open`/`cautious`/`strict`/`readonly`). |
-| `storage` | Backends for `checkpoints`, `audit`, `runtime` (jobs/conversations/usage), and `knowledge_bases` — each `sqlite` or `postgres`. |
-| `context_compression` | Opt-in read-side compression of bulk tool output (`off` default / `columnar` / `headtail` / `plugin`). |
+| `storage` | Backends for `checkpoints`, `audit`, `runtime` (jobs/conversations/usage), `artifacts`, `memory`, `fleet` and `knowledge_bases` (`default_backend: sqlite \| postgres`) — each `sqlite` or `postgres`, following `storage.runtime` unless they declare their own block ([Storage](storage.md)). `storage.artifacts` additionally takes `database_url` (override the inherited connection URL) or, for the `s3` backend, `bucket` (needs the `boto3` optional dependency). |
+| `context_compression` | Opt-in read-side compression of bulk tool output: `backend` (`off` default / `columnar` / `headtail` / `plugin`, the last with `backend_class`), `min_bytes` (below which nothing is compressed), and `overrides[]` per surface — each with `match` (tool name glob) or `match_server` (glob on the backing MCP server id, e.g. `logs-*`) and its own `backend` / `min_bytes`. |
 | `planning` / `synthesis` | Workspace-default planning and synthesis config, overridable per topology. |
 | `events` | Where the runtime pushes what happened: `[{ sink: webhook \| stdout, url, credentials_ref, types }]`. Best-effort; `GET /events?after=<cursor>` is the durable log — see [Events](events.md). |
 | `gates` | `auto_resume` (default `true`): a run continues as soon as its gate is resolved, so an application does not have to call `POST /jobs/{id}/resume` — turn it off to batch or delay. |
@@ -27,7 +27,7 @@ Only `apiVersion`, `kind`, and `metadata` (`id` + `name`) are required; everythi
 
 ### Serve authentication (`server.auth`)
 
-`provider`: `none` (default; only safe on loopback) \| `api_key` \| `jwt`. A non-loopback bind with `provider: none` **refuses to start** unless `require_on_nonloopback: false` (default-secure). `api_key` needs `config.keys[]` (each `{ key_ref, client_id, tier | scopes }`); `jwt` needs `config.issuer`.
+`provider`: `none` (default; only safe on loopback) \| `api_key` \| `jwt`. A non-loopback bind with `provider: none` **refuses to start** unless `require_on_nonloopback: false` (default-secure). `api_key` needs `config.keys[]` (each `{ key_ref, client_id, client_name?, tier | scopes }` — `client_name` is the human-readable name shown in audit and `/whoami`, defaulting to the id); `jwt` needs `config.issuer` and reads scopes from the `scopes_claim` claim (default `scope`); `none` may set `identity` / `identity_name` so a loopback deployment still records who acted.
 
 ### Canary (`server.canary.routes`)
 

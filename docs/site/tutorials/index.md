@@ -1,6 +1,6 @@
 # Guided tutorials
 
-Learn SwarmKit from zero to production through 15 progressive levels. Each level builds on the same workspace, adding complexity incrementally.
+Learn SwarmKit from zero to production through 22 progressive levels. Levels 1–16 build on one workspace, adding complexity incrementally; levels 17–22 each take one shipped capability — harness executors, funnels, command packs and attachments, agents calling agents, operations, the fleet — and are runnable on the mock provider where the level says so.
 
 ## Prerequisites
 
@@ -35,7 +35,14 @@ export OPENROUTER_API_KEY=your-key-here
 | 12 | [Triggers & Canary](12-triggers-canary.md) | Cron, webhooks, canary deployments |
 | 13 | [Authoring & Review](13-authoring-review.md) | `init`, `author`, `edit`, review queues, skill gaps |
 | 14 | [Packaging & Distribution](14-packaging.md) | `mcp-serve`, `publish`, `install`, expertise packages |
-| 15 | [Production Example](15-production-example.md) | Full workspace combining all features |
+| 15 | [Production Example](15-production-example.md) | Full workspace combining levels 1–14 |
+| 16 | [Sequencing & Contracts](16-pipelines.md) | Correlated runs, defer and resume, gate state, contracts |
+| 17 | [Harness executors](17-harness-executors.md) | Claude Code / opencode as a node, adapters, the governed gateway, relay + trust, sandbox |
+| 18 | [Funnels & approval](18-funnels-approval.md) | validate → judge → approve, role registry, quorum, `--require-verified`, `cited-change`, `stop` |
+| 19 | [Command packs & attachments](19-command-packs-attachments.md) | A binary as a skill, `pack:` grants, a file beside the input |
+| 20 | [Agents calling agents](20-agents-calling-agents.md) | `agent` skills, `pack:workspace`, A2A server + client, the portal's remote agents |
+| 21 | [Providers, storage & operations](21-providers-storage-operations.md) | Declarative providers, storage status/migrate, `system`, `eval`, `knowledge-pack` |
+| 22 | [Running a fleet](22-fleet.md) | Control plane, enrolment (Mode A / B), federated runs and gates, registry, telemetry |
 
 ## How to use
 
@@ -45,10 +52,10 @@ Each level has:
 - **Run it** — commands to test
 - **What happened** — explanation of the output
 
-Working examples for each level are at `examples/tutorials/`.
+**`just demo-capstone`** runs every level's HTTP-reachable feature in one workspace (`examples/capstone`), on the mock provider, in under a minute. Runnable demos for levels 17–22 are `just demo-*` targets named in each level; `just` with no arguments lists them all. `examples/` holds the workspaces the demos run.
 
 ## Beyond the tutorials
 
-After Level 16, see the **[SDLC walkthrough](../sdlc-example/)** — a video tour of a production delivery workspace that combines the level features with the governance primitives: [Funnels](../reference/funnel.md), multi-party [approval](../reference/approval-policy.md), and [Contracts](../reference/contract.md). (Recorded before sequencing moved out of SwarmKit in 1.189.0; the artifact tour is current, the stage-graph sections are historical.)
+After Level 22, see the **[SDLC walkthrough](../sdlc-example/)** — a video tour of a production delivery workspace that combines the level features with the governance primitives: [Funnels](../reference/funnel.md), multi-party [approval](../reference/approval-policy.md), and [Contracts](../reference/contract.md). (Recorded before sequencing moved out of SwarmKit in 1.189.0; the artifact tour is current, the stage-graph sections are historical.)
 
 Start with [Level 1: Hello World](01-hello-world.md).

@@ -132,20 +132,36 @@ curl http://localhost:8000/jobs/history
 
 ### API key
 
+Mint one — it prints the config to paste, never the secret into a file:
+
+```bash
+swarmkit auth token control-plane --tier run --client-name "Fleet panel" --env-var PANEL_TOKEN
+```
+
 ```yaml
 # workspace.yaml
 server:
   auth:
     provider: api_key
+    config:
+      keys:
+        - key_ref: env:PANEL_TOKEN      # a reference, never the literal
+          client_id: control-plane
+          client_name: Fleet panel
+          tier: run                     # read | run | admin — or explicit `scopes`
 ```
 
 ```bash
-export SWARMKIT_API_KEY=my-secret-key
+export PANEL_TOKEN=…                    # the secret the command generated
 swarmkit serve .
-
-# Clients must include the key:
-curl -H "Authorization: Bearer my-secret-key" http://localhost:8000/topologies
+curl -H "Authorization: Bearer $PANEL_TOKEN" http://localhost:8000/topologies
+curl http://localhost:8000/auth-info    # public: which login gate a client should render
+curl -H "Authorization: Bearer $PANEL_TOKEN" http://localhost:8000/whoami   # the authenticated caller, its scopes
 ```
+
+Every `run`/`admin` call is audited with the acting `client_id`. A non-loopback bind with
+`provider: none` refuses to start unless you opt in (`--insecure`), so an unauthenticated serve
+cannot be exposed by accident.
 
 ### JWT with JWKS auto-discovery
 
@@ -153,9 +169,11 @@ curl -H "Authorization: Bearer my-secret-key" http://localhost:8000/topologies
 server:
   auth:
     provider: jwt
-    jwks_url: https://your-idp/.well-known/jwks.json
-    audience: swarmkit
-    issuer: https://your-idp/
+    config:
+      issuer: https://your-idp/
+      audience: swarmkit
+      jwks_url: https://your-idp/.well-known/jwks.json   # optional; discovered from the issuer otherwise
+      scopes_claim: scope                                 # which claim carries the tiers
 ```
 
 Tokens are validated against the JWKS endpoint. No secrets to manage — just point to your identity provider.

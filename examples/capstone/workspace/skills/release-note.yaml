@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: release-note
+  name: Release Note
+  description: >
+    Writes the note a human signs off on. Names the change, the risk, and what was checked — the
+    three things an approver needs in order to approve something rather than merely acknowledge it.
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: >
+    Write a short release note for the approver: what is shipping, what the assessed risk is, and
+    what a reviewer should verify. Address it to someone who was not in the room. Where the
+    assessment was uncertain, say so — an approver who is not told about the uncertainty cannot
+    account for it.
+iam:
+  required_scopes: [workspace:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

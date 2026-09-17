@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: ask-triage
+  name: Ask triage
+  description: Runs the triage topology as a child of this run and returns its classification.
+category: capability
+implementation:
+  type: agent
+  topology: triage
+  on_unanswerable: relay
+  permission: cautious
+  effects: read
+provenance:
+  authored_by: human
+  authored_date: "2026-09-17"
+  version: 1.0.0

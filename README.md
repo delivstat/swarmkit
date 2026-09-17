@@ -110,6 +110,16 @@ swarmkit author skill my-swarm/                        # add skills conversation
 swarmkit edit my-swarm/ --input "Add a security scan"  # modify via conversation
 ```
 
+### See everything in one run
+
+```bash
+just demo-showcase     # nine steps: data, a run, a human gate, the record — 30 s, no keys, no network
+just demo-capstone     # the same plus attachments, command packs, agent skills, A2A in and out, a stop
+```
+
+Both run on the mock provider. The [guided tutorials](https://delivstat.github.io/swarmkit/tutorials/)
+go from one agent (level 1) to a fleet (level 22); levels 17–22 each end in a `just demo-*` target.
+
 ## How it works
 
 <p align="center">
@@ -528,8 +538,8 @@ to fix.
 SwarmKit docs are designed for LLM consumption. The repo ships [`llms.txt`](./llms.txt) at the root (the short, current summary) and [`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt) (the whole doc site in one file):
 
 ```bash
-swarmkit knowledge-pack --lean -o pack.md   # ~170k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides
-swarmkit knowledge-pack -o pack.md          # ~550k tokens: the above plus every design note, the roadmap and schema fixtures
+swarmkit knowledge-pack --lean -o pack.md   # ~190k tokens: overview, generated CLI/HTTP reference, schemas, design doc, guides
+swarmkit knowledge-pack -o pack.md          # ~610k tokens: the above plus every design note, the roadmap and schema fixtures
 swarmkit knowledge-server                   # live MCP server for Claude Code / Cursor
 ```
 
@@ -537,7 +547,7 @@ The pack orders its sections by trust — the generated reference first, design 
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.225.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.226.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 

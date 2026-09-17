@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.225.0** (2026-09-17) — `agent` skills offered to harness nodes through the governed gateway
 - **v1.224.0** (2026-09-17) — add a remote agent by card URL from the portal
 - **v1.223.0** (2026-09-17) — `pack:workspace`: every topology as a synthesized agent skill
 - **v1.222.0** (2026-09-17) — another agent as a skill: `implementation.type: agent`

@@ -341,6 +341,23 @@ For a 5-agent pipeline, delegation-based might need 5+ root calls
 | Reference topology: content pipeline | 2-3 hours |
 | **Total** | **2-3 days** |
 
+## Schema shape — `depends_on` lives on the base `agent` def
+
+`depends_on` is declared on the **base `agent`** def in `topology.schema.json`, not only on
+`child_agent`. This is deliberate and load-bearing — do not move it back.
+
+`child_agent` is `allOf: [{ $ref: agent }, { properties: { role, … } }]`, and the base `agent`
+has `additionalProperties: false`. In JSON Schema, `additionalProperties` only sees the
+properties declared in **its own** subschema, not those added by a sibling `allOf` branch. So a
+`depends_on` declared only in `child_agent`'s branch was rejected by `agent`'s
+`additionalProperties: false` as an unexpected property — every child using `depends_on` failed
+validation (the DAG feature was latent-broken at the schema layer; only runtime tests exercised
+it). Fix: declare `depends_on` on the base `agent` so the strict base accepts it; `child_agent`
+keeps only the `role` narrowing. Cost: the root nominally accepts a `depends_on` it ignores (it
+has no siblings) — harmless, and cheaper than the `unevaluatedProperties` alternative, which
+emits noisy secondary errors on already-invalid documents. Regression fixture:
+`packages/schema/tests/fixtures/topology/with-depends-on.yaml`.
+
 ## Open questions
 
 1. Should `depends_on` agents pass their full output or a summary

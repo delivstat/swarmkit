@@ -1,0 +1,41 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: capstone
+  name: SwarmKit Capstone
+  description: >
+    Every level of the tutorials in one workspace: a gated swarm with a command pack and an agent
+    skill, served over HTTP and A2A, driven by an application, with an attachment beside the input.
+    Runs with no API keys and no network — the mock model provider answers deterministically.
+
+governance:
+  provider: mock
+  policy_language: yaml
+
+# The event seam. An application taps these; the runtime ships no chat integration of its own.
+# See design/details/extracting-the-channels.md.
+events:
+  - sink: stdout
+
+# Level 19 — a local binary as a skill. python3 is the one binary every machine running this has.
+command_packs:
+  - id: text-tools
+    description: Small deterministic text utilities.
+    requires:
+      - { binary: python3 }
+    permission: readonly
+    timeout_seconds: 10
+    commands:
+      - id: word-count
+        description: Count the words in a string.
+        argv: [python3, "-c", "import sys; print(len(sys.argv[1].split()))", "{text}"]
+        effects: read
+
+# Level 20 — this instance is an A2A agent to the outside; every topology is a skill on its card.
+server:
+  a2a:
+    enabled: true
+    identity:
+      name: Capstone desk
+      description: The tutorial capstone — a gated release swarm and a triage topology.
+      organization: SwarmKit tutorials

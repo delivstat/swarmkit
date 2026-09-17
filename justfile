@@ -381,6 +381,12 @@ demo-event-consumer:
 demo-showcase:
     @uv run python examples/showcase/demo.py
 
+# The tutorial capstone (docs/site/tutorials): the showcase plus attachments, a command pack, an
+# agent skill, pack:workspace, this instance as an A2A agent, the operator's reads and a stop — every
+# level's feature an application reaches over HTTP, in one run on the mock provider.
+demo-capstone:
+    @uv run python examples/capstone/demo.py
+
 # M3 exit demo — run the hello-swarm topology end-to-end. Uses whichever
 # model provider env vars are set (SWARMKIT_PROVIDER + SWARMKIT_MODEL,
 # or falls back to the agent's declared provider). The supervisor

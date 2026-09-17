@@ -54,6 +54,12 @@ nav:
     - "Level 14: Packaging": tutorials/14-packaging.md
     - "Level 15: Production Example": tutorials/15-production-example.md
     - "Level 16: Sequencing & Contracts": tutorials/16-pipelines.md
+    - "Level 17: Harness executors": tutorials/17-harness-executors.md
+    - "Level 18: Funnels & approval": tutorials/18-funnels-approval.md
+    - "Level 19: Command packs & attachments": tutorials/19-command-packs-attachments.md
+    - "Level 20: Agents calling agents": tutorials/20-agents-calling-agents.md
+    - "Level 21: Providers, storage & operations": tutorials/21-providers-storage-operations.md
+    - "Level 22: Running a fleet": tutorials/22-fleet.md
   - Architecture:
     - Design overview: architecture/design-overview.md
     - Implementation plan: architecture/implementation-plan.md
@@ -70,6 +76,25 @@ nav:
       - Structured output: design-notes/structured-output-governance.md
       - Executor abstraction: design-notes/executor-abstraction.md
       - Multi-party approval: design-notes/multi-party-approval.md
+      - Command packs: design-notes/command-packs.md
+      - Declarative model providers: design-notes/declarative-model-providers.md
+      - Images on both executors (attachments): design-notes/images-on-both-executors.md
+      - Storage service: design-notes/storage-service.md
+    - Executors & harnesses:
+      - Declarative adapters plan: design-notes/executor-declarative-adapters-plan.md
+      - Executor MCP gateway: design-notes/executor-mcp-gateway.md
+      - Shared MCP gateway: design-notes/shared-mcp-gateway.md
+      - Container sandbox: design-notes/executor-container-sandbox.md
+      - Harness output schema: design-notes/harness-output-schema.md
+      - Harness decision skills: design-notes/harness-decision-skills.md
+      - Harness tool outcomes: design-notes/harness-tool-outcomes.md
+    - Interop:
+      - A2A interop: design-notes/a2a-interop.md
+      - Agent Spec import: design-notes/agent-spec-import.md
+    - Fleet & evaluation:
+      - Fleet control plane: design-notes/fleet-control-plane.md
+      - Fleet compose: design-notes/fleet-compose.md
+      - Eval harness: design-notes/eval-harness.md
     - Gates & delivery:
       - Gate funnel: design-notes/gate-funnel.md
       - Reading a gate, approving without a saga: design-notes/gate-state-and-deferring-approval.md
@@ -88,6 +113,8 @@ nav:
       - User Knowledge Server: design-notes/user-knowledge-server.md
       - Knowledge Curator topology: design-notes/knowledge-curator-topology.md
       - Skill registry: design-notes/skill-registry.md
+      - Skill catalogue: design-notes/skill-catalogue.md
+      - Skill catalogue seed: design-notes/skill-catalogue-seed.md
     - Reference topologies:
       - Code Review Swarm: design-notes/topology-code-review.md
       - Skill Authoring Swarm: design-notes/topology-skill-authoring.md
