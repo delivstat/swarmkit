@@ -25,6 +25,7 @@ from pydantic import ValidationError as PydanticValidationError
 from swarmkit_schema import SchemaName, validate
 from swarmkit_schema.models import SwarmKitWorkspace
 
+from swarmkit_runtime.agent_skill._synthesis import synthesize_topology_skills
 from swarmkit_runtime.archetypes import build_archetype_registry
 from swarmkit_runtime.commands._config import parse_command_packs
 from swarmkit_runtime.commands._synthesis import synthesize_pack_skills
@@ -412,6 +413,23 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
         )
         errors.extend(pack_errors)
         skills = {**skills, **pack_skills}
+
+    # Every topology becomes an `agent` skill too, for `pack:workspace` (a2a-interop.md "Every
+    # topology is callable; none is granted by default"). Same place, same reason as pack commands.
+    topology_skills, topology_skill_errors = synthesize_topology_skills(
+        (
+            (
+                str((a.raw.get("metadata") or {}).get("name") or ""),
+                str((a.raw.get("metadata") or {}).get("description") or ""),
+                a.path,
+            )
+            for a in artifacts
+            if a.kind == "topology" and (a.raw.get("metadata") or {}).get("name")
+        ),
+        skills,
+    )
+    errors.extend(topology_skill_errors)
+    skills = {**skills, **topology_skills}
 
     archetypes, arch_errors = build_archetype_registry(artifacts, skills)
     errors.extend(arch_errors)

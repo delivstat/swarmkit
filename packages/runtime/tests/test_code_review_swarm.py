@@ -59,7 +59,12 @@ def test_reference_topology_validates(topology_file: Path) -> None:
 def test_reference_workspace_resolves() -> None:
     workspace = resolve_workspace(REFERENCE_WS)
     assert "code-review" in workspace.topologies
-    assert len(workspace.skills) == 27
+    # 27 authored, plus one synthesized `agent` skill per reference topology (`pack:workspace`).
+    authored = [s for s in workspace.skills.values() if s.pack_origin is None]
+    assert len(authored) == 27
+    assert {s.pack_origin[1] for s in workspace.skills.values() if s.pack_origin} == set(
+        workspace.topologies
+    )
     assert len(workspace.archetypes) == 16
 
 

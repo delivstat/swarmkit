@@ -665,6 +665,13 @@ def _expand_bulk_grant(
                     artifact_path,
                 )
             ]
+        if target == "workspace":
+            # `pack:workspace` is the topologies, not commands: running a topology is never
+            # `read`, and the read-only rule above guards against a *write command* widening a
+            # grant unnoticed. A new topology reaching a supervisor that holds `pack:workspace`
+            # is the ergonomics this grant exists for, and every call still goes through the
+            # cautious tier and the audit.
+            return sorted(matches, key=lambda s: s.id), []
         reads = [s for s in matches if s.pack_origin and s.pack_origin[2] == "read"]
         return sorted(reads, key=lambda s: s.id), []
 

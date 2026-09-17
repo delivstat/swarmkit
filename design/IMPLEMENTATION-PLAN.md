@@ -11,7 +11,7 @@ status: active
 
 **Status:** originally drafted 2026-04-21. Reorganised 2026-05-08 to incorporate product architecture (`product-architecture.md`), OpenTelemetry observability (`opentelemetry-observability.md`), intent drift detection (`intent-drift-detection.md`), market analysis (`market-analysis-and-risk-mitigations.md`), and ecosystem features.
 
-> **Read this paragraph as history.** It was written at runtime v1.103.0 and describes Phase 6 (M21) as shipped, including the bundled pipeline layer — `StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, the Temporal adapter, the pipeline-editor canvas and `deploy/pipeline`. **That layer was removed in 1.189.0** (`design/details/extracting-the-pipeline.md`): sequencing is the application's, and `examples/pipeline-orchestrator/` is the reference. The governance half — funnels, contracts, multi-party approval, defer-and-resume, correlated runs, the SDLC example — is what remains of M21. The runtime is at v1.222.0; `README.md` "Roadmap" is the current one-paragraph status.
+> **Read this paragraph as history.** It was written at runtime v1.103.0 and describes Phase 6 (M21) as shipped, including the bundled pipeline layer — `StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, the Temporal adapter, the pipeline-editor canvas and `deploy/pipeline`. **That layer was removed in 1.189.0** (`design/details/extracting-the-pipeline.md`): sequencing is the application's, and `examples/pipeline-orchestrator/` is the reference. The governance half — funnels, contracts, multi-party approval, defer-and-resume, correlated runs, the SDLC example — is what remains of M21. The runtime is at v1.223.0; `README.md` "Roadmap" is the current one-paragraph status.
 
 **Current (runtime v1.103.0):** Phases 1–4 shipped. Phase 5 (fleet & self-improvement) is largely shipped — eval harness (M15), fleet aggregation + control-plane/panel UI (M16), the executor/harness-isolation stack (M19), and the topology canvas (M20) all landed; the self-improvement distribution loop (M17) and workflow-archetype interop (M18) are the remaining tails. **Phase 6 — the delivery-pipeline & orchestration layer (M21)** shipped: `StageGraph` + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the pipeline-editor canvas, the end-to-end SDLC example, and the **bundled durable orchestrator** (`swarmkit orchestrator` + run-stage execution + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before a public launch: M11 (launch prep) and the M9 reference-topology tail.
 
@@ -50,7 +50,7 @@ status: active
 | 5 | M15 | Eval harness | ✅ | `swarmkit eval` scores a topology + flips exit code (slices 1–2; slice 3 schema-artifact remaining) |
 | 5 | M16 | Fleet aggregation | ✅ | `packages/control-plane` + panel UI: federated per-run trace, fleet run graph, cross-instance views |
 | 5 | M17 | Self-improvement cockpit | 🟡 | Fleet trace/eval views + harness-gate cockpit ✅; automated gap-mining → propose → distribute remaining |
-| 5 | M18 | Workflow archetypes + interop | 🔶 | Sequential/Parallel/Loop archetypes; **A2A server (1.221.0) and `agent` skill (1.222.0: local child run + remote A2A client, `on_unanswerable`) shipped**; `pack:workspace` + portal next (`a2a-interop.md`); Agent Spec importer (`agent-spec-import.md`) proposed |
+| 5 | M18 | Workflow archetypes + interop | 🔶 | Sequential/Parallel/Loop archetypes; **A2A server (1.221.0) and `agent` skill (1.222.0: local child run + remote A2A client, `on_unanswerable`) shipped**; `pack:workspace` (1.223.0); portal + harness gateway next (`a2a-interop.md`); Agent Spec importer (`agent-spec-import.md`) proposed |
 | 5 | M19 | Executor abstraction + harness isolation | ✅ | Harness node (claude-code/opencode) via `adapter.yaml`; relay, trust accrual, container sandbox, MCP gateway |
 | 5 | M20 | Topology canvas | ✅ | React Flow canvas — view + edit (YAML round-trip) + examine-a-run; fleet run-detail port pending |
 | 6 | M21 | Delivery pipelines & orchestration | ✅ | `just demo-sdlc` drives a requirement through the full StageGraph (8 stages, 3 human gates) as a saga |
@@ -695,7 +695,7 @@ Closes the loop: observe → measure → propose → approve → distribute.
       `input-required` gate rule (`a2a-interop.md` slices 1–2, 1.221.0).
 - [x] A2A agent / sub-swarm / another instance's swarm as an **`agent` skill** — local child
       run and remote card, `on_unanswerable: agent | relay | abort` (`a2a-interop.md` slice 3,
-      1.222.0). Left: `pack:workspace`, the portal's "Add an A2A agent", the harness gateway.
+      1.222.0); `pack:workspace` (1.223.0). Left: the portal's "Add an A2A agent", the harness gateway.
 
 ### M19 — Executor abstraction + harness isolation ✅
 

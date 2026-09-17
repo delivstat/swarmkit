@@ -97,7 +97,7 @@ async def execute_skill(
         )
 
     if impl_type == "agent":
-        from swarmkit_runtime.agent_skill import execute_agent_skill  # noqa: PLC0415
+        from swarmkit_runtime.agent_skill._executor import execute_agent_skill  # noqa: PLC0415
 
         return await execute_agent_skill(
             skill,

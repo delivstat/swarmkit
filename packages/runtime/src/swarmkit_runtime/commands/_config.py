@@ -111,6 +111,12 @@ def parse_command_packs(packs: Any) -> dict[str, CommandPackConfig]:
         return {}
     configs: dict[str, CommandPackConfig] = {}
     for pack in packs:
+        if str(pack.id) == "workspace":
+            # `pack:workspace` is the grant of every topology as an agent skill
+            # (agent_skill/_synthesis.py); a command pack of that name would make the grant
+            # ambiguous.
+            msg = "command pack id 'workspace' is reserved for the topologies of this workspace"
+            raise CommandPackError(msg)
         commands: dict[str, CommandSpecConfig] = {}
         for spec in pack.commands:
             argv = tuple(str(a) for a in spec.argv)

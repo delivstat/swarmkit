@@ -144,6 +144,12 @@ async def main() -> None:
         row = remote_app.state.store.list_jobs(limit=1)[0]
         print(f"remote job {row.id}: source={row.source} correlation_id={row.correlation_id}")
 
+    print("\n== pack:workspace — every topology as a synthesized agent skill ==")
+    synthetic = sorted(s for s, sk in rt.workspace.skills.items() if sk.pack_origin)
+    print("synthesized:", synthetic)
+    out = await call("topology-hello", {"input": "Greet engineers"})
+    print("topology-hello tool result:", out)
+
     print("\n== a target that does not exist fails the workspace load, not a run ==")
     bad_ws = _copy("bad")
     (bad_ws / "skills/ask-nowhere.yaml").write_text(
