@@ -1,0 +1,22 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: change-summary
+  name: Change Summary
+  description: >
+    Summarises what a release changes, in the terms a reviewer needs: what moved, what it touches,
+    and what a reader should check before approving. A capability — it produces a description, it
+    does not decide anything.
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: >
+    Summarise the proposed release in three bullets: what changed, what it touches, and what a
+    reviewer should check before approving. Quote identifiers exactly. If something is not stated
+    in the input, say so rather than filling the gap — a plausible invention is worse here than an
+    admitted hole, because the next reader cannot tell them apart.
+iam:
+  required_scopes: [workspace:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

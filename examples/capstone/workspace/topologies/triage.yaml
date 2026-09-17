@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: triage
+  version: 1.0.0
+  description: Classifies an incoming request; the release swarm calls it as a child run.
+agents:
+  root:
+    id: triager
+    role: root
+    archetype: analyst
+    skills: [text-tools-word-count]     # the command pack's synthesized skill, named individually

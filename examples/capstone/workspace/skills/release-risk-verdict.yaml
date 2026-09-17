@@ -1,0 +1,38 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: release-risk-verdict
+  name: Release Risk Verdict
+  description: >
+    Judges whether a release is safe to ship. A DECISION skill: its output is validated against the
+    schema below before anything downstream reads it, so a malformed verdict fails here rather than
+    being interpreted generously later. Low confidence routes to the human gate rather than
+    resolving itself.
+category: decision
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [safe-to-ship, needs-review, block]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    reasoning:
+      type: string
+  required: [verdict, confidence, reasoning]
+implementation:
+  type: llm_prompt
+  prompt: >
+    Assess this release for breaking changes, migration needs, config changes and rollback
+    complexity. Return JSON with verdict (safe-to-ship / needs-review / block), confidence (0-1)
+    and reasoning.
+
+    Below 0.8 confidence, return needs-review. Deciding under uncertainty is what the human gate
+    is for — guessing confidently is the failure this skill exists to prevent.
+iam:
+  required_scopes: [workspace:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

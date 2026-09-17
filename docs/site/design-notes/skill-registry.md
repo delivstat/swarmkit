@@ -7,6 +7,14 @@ status: proposed
 
 # Skill registry — community skill import + discovery
 
+> **Two decisions here are superseded by [`skill-catalogue.md`](skill-catalogue.md).** The registry
+> does **not** ship inside `swarmkit-runtime` — it is a separately-versioned repo, so a broken skill
+> does not need a runtime release to fix. And skills are **not** "trusted by source": provenance is
+> not liveness, and a trusted publisher's server still renames tools, so entries are verified
+> nightly against the real server and carry the date they were last seen working.
+>
+> The rest of this note — the `SKILL.md` landscape, the converter, the import surface — stands.
+
 ## Goal
 
 SwarmKit users should find and install pre-built skills from the

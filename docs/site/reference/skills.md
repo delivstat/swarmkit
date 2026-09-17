@@ -257,6 +257,10 @@ not filtered to reads (running a topology is never `read`); every call still goe
 and the audit. Naming a hand-authored skill `topology-<x>` is a collision error, and `workspace` is
 reserved as a command-pack id.
 
+## Constraints
+
+`constraints` is optional on any skill: `max_latency_ms`, `timeout_seconds`, `retry: {attempts, backoff: exponential | linear | none}`, and `on_failure: escalate_to_human | fail | retry | fallback` — what the runtime does when the skill's call fails after its retries. `escalate_to_human` files a review item rather than returning an error to the agent; `fallback` hands the failure to the agent as a tool error it can act on.
+
 ## Provenance
 
 Every skill declares who authored it. This affects runtime trust defaults:

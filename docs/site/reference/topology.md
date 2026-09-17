@@ -11,7 +11,7 @@ Required top-level: `apiVersion`, `kind`, `metadata`, `agents`. `metadata` requi
 | Top-level | Required | What it does |
 |---|---|---|
 | `agents` | yes | Exactly one `root` agent, which nests `children`. The whole swarm is one tree, one parent per agent. |
-| `runtime` | no | Execution config: `mode` (`one-shot`/`persistent`/`scheduled`), `max_concurrent_tasks`, `task_timeout_seconds`, `planning`, `synthesis`, `checkpointing.storage` (`sqlite`/`postgres`). |
+| `runtime` | no | Execution config: `mode` (`one-shot`/`persistent`/`scheduled`), `max_concurrent_tasks`, `task_timeout_seconds`, `planning`, `synthesis`, `checkpointing.storage` (`sqlite`/`postgres`). `planning.synthesis_roles` (default `[self, document-writer]`) names the roles the planner treats as synthesis/output roles — auto-wired to depend on research tasks so they run last, not in parallel; `planning.synthesizer_role` (default `synthesizer`) names the role the automatic synthesis step runs as when `synthesis` is set. |
 | `artifacts` | no | `knowledge_bases`, `review_queues`, `audit` (`level`/`storage`/`retention_days`), and `skill_gap_logging`. |
 | `intent_monitoring` | no | Semantic drift detection: `enabled`, `threshold` (default 0.75), `on_drift` (`log`/`warn`/`nudge`). |
 | `governance` | no | `decision_skills[]` bindings that override or extend workspace-level bindings by id. |

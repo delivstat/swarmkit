@@ -42,6 +42,9 @@ def _fake_repo(tmp_path: Path) -> Path:
     guides = tmp_path / "docs" / "guides"
     guides.mkdir(parents=True)
     (guides / "authoring-harness-adapters.md").write_text("# Authoring a harness adapter\n")
+    tutorials = tmp_path / "docs" / "site" / "tutorials"
+    tutorials.mkdir(parents=True)
+    (tutorials / "01-hello-world.md").write_text("# Level 1: Hello World\n")
     schemas_dir = tmp_path / "packages" / "schema" / "schemas"
     schemas_dir.mkdir(parents=True)
     (schemas_dir / "topology.schema.json").write_text('{"$id": "topology"}\n')
@@ -78,6 +81,7 @@ def test_pack_includes_every_section(tmp_path: Path) -> None:
         "## Per-feature design notes",
         "## Cross-cutting notes",
         "## How-to guides",
+        "## Tutorials",
         "## Per-package invariants",
         "## Canonical schemas",
         "## Schema fixtures",
@@ -145,6 +149,7 @@ def test_lean_pack_is_the_one_that_fits(tmp_path: Path) -> None:
         assert heading in pack
     for gone in (
         "## Per-feature design notes",
+        "## Tutorials",
         "## Historical design notes",
         "## Schema fixtures",
         "design/IMPLEMENTATION-PLAN.md",

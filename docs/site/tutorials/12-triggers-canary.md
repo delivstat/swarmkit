@@ -46,18 +46,20 @@ metadata:
   id: pr-webhook
   name: PR Webhook
 type: webhook
-topology: content-team
+targets: [content-team]
 enabled: true
-auth:
-  method: hmac
-  secret: "${WEBHOOK_SECRET}"    # HMAC-SHA256 signature validation
+config:
+  auth:
+    method: hmac
+    credentials_ref: webhook-secret     # a workspace `credentials` entry — a reference, never the literal
+    header: X-Hub-Signature-256         # GitHub's signing header (the default for hmac)
 ```
 
-When a webhook arrives at `/webhooks/pr-webhook`, the server validates the HMAC signature and fires the topology:
+When a webhook arrives at `POST /hooks/content-team` — the route is the **target topology's** name — the server validates the HMAC signature against the referenced credential and starts a run; the response is a job id. A `credentials_ref` naming an unset environment variable refuses the request (503) rather than accepting it unsigned.
 
 ```bash
 # Send a webhook (from GitHub, CI, etc.)
-curl -X POST http://localhost:8000/webhooks/pr-webhook \
+curl -X POST http://localhost:8000/hooks/content-team \
   -H "Content-Type: application/json" \
   -H "X-Hub-Signature-256: sha256=..." \
   -d '{"action": "opened", "pull_request": {"number": 42}}'
