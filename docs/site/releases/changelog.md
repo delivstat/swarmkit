@@ -8,6 +8,12 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.224.0** (2026-09-17) — add a remote agent by card URL from the portal
+- **v1.223.0** (2026-09-17) — `pack:workspace`: every topology as a synthesized agent skill
+- **v1.222.0** (2026-09-17) — another agent as a skill: `implementation.type: agent`
+- **v1.221.0** (2026-09-17) — an A2A server: the Agent Card and task API as a transport onto jobs
+- **v1.220.0** (2026-09-16) — the knowledge pack tells an LLM what shipped; the docs are generated where they rot
+- **v1.219.0** (2026-09-13) — declarative model providers: a provider is YAML over a wire-format family
 - **v1.218.0** (2026-09-11) — attachments on a run: a caller holding the file passes it beside the input
 - **v1.217.1** (2026-09-08) — a human can put a fact into governed memory. `swarmkit memory add` and `POST /memory` write through the same governed path an agent writes through, so a seeded fact gets the same reconcile decision, the same contradiction quarantine and the same audit line: the command reports `new`/`update`/`reinforce`/`refine`/`contradict` rather than a bare "added", and a contradiction exits non-zero with the trusted memory untouched. Until now the only write path was the persistence-skill hook, so a fact entered memory only when an agent chose to emit it mid-run — while the facts most worth keeping are the ones discovered incidentally. Every write is now audited as `memory.written`, emitted by the store so the agent path carries the same line.
 - **v1.216.3** (2026-09-08) — raises the `[ui]` floor to swarmkit-webui 0.18.0. 1.216.2 fixed the Connections page but left the floor at 0.15.0, so `pip install "swarmkit-runtime[ui]"` still resolved the 0.17.0 portal whose page throws on load — the fix shipped and the constraint let the broken build in anyway. A test now asserts the floor is at least the portal version in the tree, not merely that a floor exists.
