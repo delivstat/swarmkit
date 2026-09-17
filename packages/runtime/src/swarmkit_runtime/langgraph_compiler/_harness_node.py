@@ -227,10 +227,12 @@ def _task_spec(agent: ResolvedAgent, state: SwarmState, workspace_root: Path | N
     # downstream: the gateway advertises `<server>__<tool>` and the harness mangles that again. A
     # grant built from skill ids matches nothing, so constraining an agent denied every real tool.
     # Only `mcp_tool` skills appear; a prompt-only or built-in skill has no gateway tool to grant.
-    from swarmkit_runtime.mcp._gateway import GATEWAY_NAME_SEP  # noqa: PLC0415
+    from swarmkit_runtime.mcp._gateway import AGENT_SERVER_ID, GATEWAY_NAME_SEP  # noqa: PLC0415
 
     mcp_tools = tuple(
         f"{server}{GATEWAY_NAME_SEP}{tool}" for server, tool, _, _ in _granted_mcp_tools(agent)
+    ) + tuple(
+        f"{AGENT_SERVER_ID}{GATEWAY_NAME_SEP}{skill.id}" for skill in _granted_agent_skills(agent)
     )
     return TaskSpec(
         statement=statement,
@@ -559,6 +561,19 @@ def _granted_mcp_tools(agent: ResolvedAgent) -> list[tuple[str, str, str, str]]:
     return out
 
 
+def _granted_agent_skills(agent: ResolvedAgent) -> list[Any]:
+    """The agent's granted `agent` skills — offered to the harness as `agent__<skill>` gateway
+    tools (a2a-interop.md), so a harness node can delegate to another topology or a remote agent
+    under the same governance a model node would."""
+    from swarmkit_runtime.skills import impl_get  # noqa: PLC0415
+
+    return [
+        skill
+        for skill in agent.skills
+        if impl_get(getattr(skill.raw, "implementation", None), "type") == "agent"
+    ]
+
+
 async def _wire_mcp_gateway(
     stack: AsyncExitStack,
     agent: ResolvedAgent,
@@ -572,16 +587,21 @@ async def _wire_mcp_gateway(
     ephemeral governed gateway (on ``stack``, torn down with the run), write the harness-native MCP
     config into the sandbox, and return the task with ``mcp_config`` pointing at it. Otherwise the
     task is unchanged (no gateway, no config) — a harness with no MCP grants is untouched."""
-    if mcp_manager is None or adapter_spec is None:
+    if adapter_spec is None:
         return task, None
     if not any(g.when == "task.mcp_config" for g in adapter_spec.launch.optional_args):
         return task, None  # the adapter's harness has no --mcp-config seam
-    granted = _granted_mcp_tools(agent)
-    if not granted:
+    granted = _granted_mcp_tools(agent) if mcp_manager is not None else []
+    agent_skills = _granted_agent_skills(agent)
+    if not granted and not agent_skills:
         return task, None
 
     from swarmkit_runtime.executors._container import _HOST_ALIAS  # noqa: PLC0415
-    from swarmkit_runtime.mcp._gateway import build_gateway_tools, mcp_gateway  # noqa: PLC0415
+    from swarmkit_runtime.mcp._gateway import (  # noqa: PLC0415
+        build_agent_gateway_tools,
+        build_gateway_tools,
+        mcp_gateway,
+    )
 
     # In a container, bind all interfaces + advertise host.docker.internal so the container reaches
     # the gateway on the host (the container adds --add-host + allowlists the alias); else loopback.
@@ -589,7 +609,9 @@ async def _wire_mcp_gateway(
     bind_host = "0.0.0.0" if in_container else "127.0.0.1"
     advertise = _HOST_ALIAS if in_container else None
 
-    tools = build_gateway_tools(granted, mcp_manager)
+    tools = (
+        build_gateway_tools(granted, mcp_manager) if mcp_manager is not None else []
+    ) + build_agent_gateway_tools(agent_skills)
     gw = await stack.enter_async_context(
         mcp_gateway(
             tools,

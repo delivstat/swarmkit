@@ -48,8 +48,13 @@ read-filtered — running a topology is never `read`); the command-pack id `work
 **Shipped since (1.224.0):** the portal's Connections page — remote agents listed next to
 servers and sinks; "Add remote agent" probes a card through `GET /api/a2a/probe`, the person
 picks a skill / policy / credential / tier, and the `agent` skill file is written through the
-ordinary `PUT /api/skills/{id}`. `GET /api/a2a/agents` lists them. Still design: the harness
-gateway offering agent skills, the fleet listing.
+ordinary `PUT /api/skills/{id}`. `GET /api/a2a/agents` lists them.
+
+**Shipped since (1.225.0):** harness nodes — `mcp/_gateway.py` offers a granted `agent` skill as
+the flat tool `agent__<skill>` and runs its executor inside the run scope captured at
+registration (`contextvars.copy_context`), so a harness delegating to another topology or a
+remote agent gets the same child-run attribution, depth bound and audit as a model node. Still
+design: the fleet listing of cards; defer-while-awaiting-a-remote-answer.
 
 ## Why now
 
