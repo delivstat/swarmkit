@@ -1,4 +1,5 @@
 import type {
+	A2AProbe,
 	ArchetypeDetail,
 	AuditEvent,
 	CanaryStatus,
@@ -19,6 +20,7 @@ import type {
 	OAuthCredential,
 	OAuthProbe,
 	PersistedJob,
+	RemoteAgentEntry,
 	ReviewGate,
 	SagaDetail,
 	SagaNodeArtifact,
@@ -285,6 +287,9 @@ export const api = {
 	workspaceConfig: () => get<WorkspaceConfig>("/api/workspace/config"),
 	oauthCredentials: () =>
 		get<{ credentials: OAuthCredential[] }>("/api/oauth/credentials"),
+	a2aProbe: (cardUrl: string) =>
+		get<A2AProbe>(`/api/a2a/probe?card_url=${encodeURIComponent(cardUrl)}`),
+	remoteAgents: () => get<RemoteAgentEntry[]>("/api/a2a/agents"),
 	oauthProbe: (endpoint: string) =>
 		get<OAuthProbe>(`/auth/mcp/probe?endpoint=${encodeURIComponent(endpoint)}`),
 	oauthLogin: (credentialId: string, endpoint: string) =>

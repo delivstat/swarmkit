@@ -15,17 +15,33 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 import {
 	type ConnectionRow,
 	type ConnectionStatus,
+	type RemoteAgentDraft,
 	connectionRows,
 	needsAttention,
 	oauthCapable,
+	remoteAgentRow,
+	remoteAgentSkillYaml,
+	suggestedAgentSkillId,
 	tokenView,
 	usersOf,
 } from "@/lib/connections";
-import type { OAuthCredential, WorkspaceConfig } from "@/lib/types";
+import type {
+	A2AProbe,
+	OAuthCredential,
+	RemoteAgentEntry,
+	WorkspaceConfig,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS: Record<ConnectionStatus, { label: string; className: string }> = {
@@ -277,21 +293,305 @@ function RemoteServers({
 	);
 }
 
+/**
+ * Add a remote agent by its card URL (a2a-interop.md "Discovery" 2).
+ *
+ * Discovering a new agent is an authoring act, so the flow ends in a skill file, not a config
+ * entry: probe the card (through the runtime — the card is cross-origin), pick one of its skills,
+ * choose who answers its questions and which credential to send, and the skill is written the way
+ * a catalogue bundle is imported. Nothing is granted to any agent by this; a topology names the
+ * skill, or holds `pack:workspace`, to reach it.
+ */
+function RemoteAgentDialog({
+	credentials,
+	onClose,
+	onSaved,
+}: {
+	credentials: WorkspaceConfig["credentials"];
+	onClose: () => void;
+	onSaved: () => void;
+}) {
+	const [cardUrl, setCardUrl] = useState("");
+	const [probe, setProbe] = useState<A2AProbe | null>(null);
+	const [probing, setProbing] = useState(false);
+	const [draft, setDraft] = useState<RemoteAgentDraft | null>(null);
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	async function lookup() {
+		setProbing(true);
+		setError(null);
+		setProbe(null);
+		setDraft(null);
+		try {
+			const result = await api.a2aProbe(cardUrl.trim());
+			setProbe(result);
+			if (!result.supported) {
+				setError(result.detail ?? "No agent card there.");
+				return;
+			}
+			const first = result.skills?.[0];
+			setDraft({
+				id: suggestedAgentSkillId(first?.id ?? "", result.name ?? ""),
+				name: first?.name ?? result.name ?? "",
+				description: first?.description ?? result.description ?? "",
+				cardUrl: cardUrl.trim(),
+				skillId: first?.id ?? "",
+				credentialsRef: "",
+				onUnanswerable: "agent",
+				permission: "cautious",
+				effects: "unknown",
+			});
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setProbing(false);
+		}
+	}
+
+	function pickSkill(skillId: string) {
+		if (!draft || !probe) return;
+		const skill = probe.skills?.find((s) => s.id === skillId);
+		setDraft({
+			...draft,
+			skillId,
+			id: suggestedAgentSkillId(skillId, probe.name ?? ""),
+			name: skill?.name ?? draft.name,
+			description: skill?.description ?? draft.description,
+		});
+	}
+
+	async function save() {
+		if (!draft) return;
+		setSaving(true);
+		setError(null);
+		try {
+			const result = await api.saveSkill(draft.id, remoteAgentSkillYaml(draft));
+			if (!result.valid) {
+				setError(
+					result.errors?.map((e) => e.message).join("; ") ?? "Save failed",
+				);
+				return;
+			}
+			onSaved();
+			onClose();
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	const idOk = /^[a-z][a-z0-9-]*$/.test(draft?.id ?? "");
+
+	return (
+		<Dialog open onOpenChange={onClose}>
+			<DialogContent className="max-w-lg">
+				<DialogHeader>
+					<DialogTitle>Add remote agent</DialogTitle>
+				</DialogHeader>
+				<div className="space-y-4">
+					<div>
+						<Label htmlFor="a2a-card">Agent Card URL</Label>
+						<div className="flex gap-2">
+							<Input
+								id="a2a-card"
+								value={cardUrl}
+								onChange={(e) => setCardUrl(e.target.value)}
+								placeholder="https://agent.example.com/.well-known/agent-card.json"
+							/>
+							<Button
+								variant="outline"
+								onClick={() => void lookup()}
+								disabled={!cardUrl.trim() || probing}
+							>
+								{probing ? "Looking…" : "Look up"}
+							</Button>
+						</div>
+						<p className="mt-1 text-xs text-muted-foreground">
+							The runtime fetches the card and shows what the agent offers.
+							Nothing is written until you add it.
+						</p>
+					</div>
+
+					{probe?.supported && draft && (
+						<>
+							<div className="rounded-md border bg-muted/40 p-3 text-sm">
+								<p className="font-medium">{probe.name}</p>
+								{probe.description && (
+									<p className="text-muted-foreground">{probe.description}</p>
+								)}
+								<p className="mt-1 font-mono text-xs text-muted-foreground">
+									{probe.url}
+									{probe.requires_bearer ? " · bearer token required" : ""}
+								</p>
+							</div>
+							<div>
+								<Label htmlFor="a2a-skill">Skill on the card</Label>
+								<Select value={draft.skillId} onValueChange={pickSkill}>
+									<SelectTrigger id="a2a-skill">
+										<SelectValue placeholder="Pick a skill…" />
+									</SelectTrigger>
+									<SelectContent>
+										{(probe.skills ?? []).map((s) => (
+											<SelectItem key={s.id} value={s.id}>
+												{s.name}{" "}
+												<span className="font-mono text-xs">({s.id})</span>
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+							<div>
+								<Label htmlFor="a2a-id">Skill id in this workspace</Label>
+								<Input
+									id="a2a-id"
+									value={draft.id}
+									onChange={(e) => setDraft({ ...draft, id: e.target.value })}
+								/>
+								{!idOk && (
+									<p className="mt-1 text-xs text-destructive">
+										lowercase letters, digits and dashes, starting with a letter
+									</p>
+								)}
+							</div>
+							<div className="grid grid-cols-2 gap-3">
+								<div>
+									<Label htmlFor="a2a-policy">When it asks a question</Label>
+									<Select
+										value={draft.onUnanswerable}
+										onValueChange={(v) =>
+											setDraft({
+												...draft,
+												onUnanswerable: v as RemoteAgentDraft["onUnanswerable"],
+											})
+										}
+									>
+										<SelectTrigger id="a2a-policy">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="agent">
+												the calling agent answers (bounded)
+											</SelectItem>
+											<SelectItem value="relay">a person answers</SelectItem>
+											<SelectItem value="abort">the call fails</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+								<div>
+									<Label htmlFor="a2a-cred">Credential</Label>
+									<Select
+										value={draft.credentialsRef || "__none__"}
+										onValueChange={(v) =>
+											setDraft({
+												...draft,
+												credentialsRef: v === "__none__" ? "" : v,
+											})
+										}
+									>
+										<SelectTrigger id="a2a-cred">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="__none__">none</SelectItem>
+											{credentials.map((c) => (
+												<SelectItem key={c.id} value={c.id}>
+													{c.id}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									{probe.requires_bearer && !draft.credentialsRef && (
+										<p className="mt-1 text-xs text-warning">
+											The card asks for a bearer token.
+										</p>
+									)}
+								</div>
+							</div>
+							<div className="grid grid-cols-2 gap-3">
+								<div>
+									<Label htmlFor="a2a-tier">Permission tier</Label>
+									<Select
+										value={draft.permission}
+										onValueChange={(v) =>
+											setDraft({
+												...draft,
+												permission: v as RemoteAgentDraft["permission"],
+											})
+										}
+									>
+										<SelectTrigger id="a2a-tier">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="open">open</SelectItem>
+											<SelectItem value="cautious">cautious</SelectItem>
+											<SelectItem value="strict">strict</SelectItem>
+											<SelectItem value="readonly">readonly</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+								<div>
+									<Label htmlFor="a2a-effects">Effects</Label>
+									<Select
+										value={draft.effects}
+										onValueChange={(v) =>
+											setDraft({
+												...draft,
+												effects: v as RemoteAgentDraft["effects"],
+											})
+										}
+									>
+										<SelectTrigger id="a2a-effects">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="read">read</SelectItem>
+											<SelectItem value="write">write</SelectItem>
+											<SelectItem value="unknown">unknown</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+							</div>
+						</>
+					)}
+					{error && <p className="text-sm text-destructive">{error}</p>}
+				</div>
+				<DialogFooter>
+					<Button variant="ghost" onClick={onClose}>
+						Cancel
+					</Button>
+					<Button
+						onClick={() => void save()}
+						disabled={!draft || !draft.skillId || !idOk || saving}
+					>
+						{saving ? "Adding…" : "Add agent"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 export default function ConnectionsPage() {
 	const [config, setConfig] = useState<WorkspaceConfig | null>(null);
 	const [tokens, setTokens] = useState<OAuthCredential[]>([]);
+	const [agents, setAgents] = useState<RemoteAgentEntry[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
-	const [dialog, setDialog] = useState<"credential" | null>(null);
+	const [dialog, setDialog] = useState<"credential" | "agent" | null>(null);
 
 	const load = useCallback(async () => {
 		try {
-			const [cfg, oauth] = await Promise.all([
+			const [cfg, oauth, remote] = await Promise.all([
 				api.workspaceConfig(),
 				api.oauthCredentials().catch(() => ({ credentials: [] })),
+				api.remoteAgents().catch(() => []),
 			]);
 			setConfig(cfg);
 			setTokens(oauth.credentials);
+			setAgents(remote);
 			setError(null);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
@@ -319,7 +619,12 @@ export default function ConnectionsPage() {
 		}
 	}
 
-	const rows: ConnectionRow[] = config ? connectionRows(config) : [];
+	const rows: ConnectionRow[] = config
+		? [
+				...connectionRows(config),
+				...agents.map((a) => remoteAgentRow(a, config.credentials)),
+			]
+		: [];
 	const attention = needsAttention(rows);
 
 	return (
@@ -328,11 +633,14 @@ export default function ConnectionsPage() {
 				<div>
 					<h2 className="text-xl font-bold">Connections</h2>
 					<p className="text-sm text-muted-foreground">
-						The servers and event sinks this workspace talks to, and the
-						credentials they use.
+						The servers, event sinks and remote agents this workspace talks to,
+						and the credentials they use.
 					</p>
 				</div>
 				<div className="flex gap-2">
+					<Button variant="outline" onClick={() => setDialog("agent")}>
+						<Plus className="mr-1 h-4 w-4" /> Remote agent
+					</Button>
 					<Button variant="outline" onClick={() => setDialog("credential")}>
 						<Plus className="mr-1 h-4 w-4" /> Credential
 					</Button>
@@ -366,7 +674,7 @@ export default function ConnectionsPage() {
 			{config && rows.length === 0 && (
 				<Card>
 					<p className="text-sm text-muted-foreground">
-						No servers or event sinks configured yet.
+						No servers, event sinks or remote agents configured yet.
 					</p>
 				</Card>
 			)}
@@ -431,7 +739,7 @@ export default function ConnectionsPage() {
 							</thead>
 							<tbody>
 								{config.credentials.map((c) => {
-									const users = usersOf(c.id, config);
+									const users = usersOf(c.id, config, agents);
 									return (
 										<tr key={c.id} className="border-t">
 											<td className="px-4 py-2 font-mono">{c.id}</td>
@@ -483,6 +791,13 @@ export default function ConnectionsPage() {
 
 			{dialog === "credential" && (
 				<CredentialDialog
+					onClose={() => setDialog(null)}
+					onSaved={() => void load()}
+				/>
+			)}
+			{dialog === "agent" && config && (
+				<RemoteAgentDialog
+					credentials={config.credentials}
 					onClose={() => setDialog(null)}
 					onSaved={() => void load()}
 				/>

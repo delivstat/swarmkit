@@ -91,6 +91,22 @@ and revokes it upstream where the provider supports revocation. The store is key
 and owner, independently of `workspace.yaml`: edit the entry and the token stays; delete the token
 and the entry stays.
 
+## Remote agents (A2A)
+
+A remote agent is not a server entry: it is an `agent` skill with a `card_url`
+([skills](skills.md#another-agent-as-a-skill-implementationtype-agent)). The Connections page lists
+them next to servers and sinks with the same status column — a card that asks for a bearer and a
+skill with no `credentials_ref` reads as *needs credential*, because the refusal would otherwise
+come from the far side. Two reads back it:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/a2a/probe?card_url=…` | Fetch a remote Agent Card through the runtime and report its name, skills and whether it wants a bearer; `supported: false` carries the reason (a 404 usually means A2A is off over there). Reads nothing local, writes nothing. |
+| `GET` | `/api/a2a/agents` | Every `agent` skill with a `card_url`: id, card, skill, credential, `on_unanswerable`, tier. |
+
+Adding one writes the skill through `PUT /api/skills/{id}` — the same path as any skill — so the
+file is the record and the portal holds no state of its own.
+
 ## See also
 
 - [Workspace artifact](workspace.md) — the `credentials` and `mcp_servers` fields.

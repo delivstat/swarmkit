@@ -1,4 +1,5 @@
-"""A2A routes — the Agent Card at the well-known path and the JSON-RPC task endpoint.
+"""A2A routes — the Agent Card at the well-known path, the JSON-RPC task endpoint, and the
+portal's two reads for *calling* other agents (probe a card; list the remote agents declared).
 
 Thin: every method is answered by :class:`~swarmkit_runtime.server._a2a.A2AHandler`, which maps
 it onto the same job service ``POST /run`` uses (design/details/a2a-interop.md). This module
@@ -16,8 +17,11 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from swarmkit_runtime.agent_skill._remote import A2AClient, RemoteAgentError
+from swarmkit_runtime.agent_skill._spec import parse_agent_spec
 from swarmkit_runtime.auth import AuthProvider
 from swarmkit_runtime.review import FileReviewQueue
+from swarmkit_runtime.skills import impl_get
 
 from ._a2a import (
     INVALID_REQUEST,
@@ -92,6 +96,7 @@ def _gate_url_for(workspace_path: Path, base_url: str) -> Any:
 
 def _register_a2a_routes(app: FastAPI, auth: AuthProvider, workspace_path: Path) -> None:
     """GET /.well-known/agent-card.json, GET /a2a[/{topology}]/card, POST /a2a[/{topology}]."""
+    _register_a2a_client_routes(app)
 
     job_service = JobService(app.state.job_store)
 
@@ -173,3 +178,68 @@ def _register_a2a_routes(app: FastAPI, auth: AuthProvider, workspace_path: Path)
     async def a2a_topology_rpc(topology: str, request: Request) -> Response:
         """The per-topology JSON-RPC endpoint — the card's per-skill `url`."""
         return await _rpc(request, topology)
+
+
+def _register_a2a_client_routes(app: FastAPI) -> None:
+    """The portal's reads for *calling* other agents (a2a-interop.md "Discovery" 2)."""
+
+    @app.get("/api/a2a/probe")
+    async def probe_card(card_url: str) -> dict[str, Any]:
+        """Fetch a remote Agent Card so a person can pick a skill *before* a skill file exists.
+
+        Served by the runtime rather than fetched by the browser because a card elsewhere is
+        cross-origin to the portal. Independent of `server.a2a.enabled`: calling out is not
+        serving. Nothing is written; adding the agent is the person's next click.
+        """
+        try:
+            card = await A2AClient(timeout_s=20.0).fetch_card(card_url)
+        except RemoteAgentError as exc:
+            return {"supported": False, "detail": str(exc)}
+        raw = card.raw
+        return {
+            "supported": True,
+            "name": card.name,
+            "description": str(raw.get("description") or ""),
+            "url": card.url,
+            "streaming": card.streaming,
+            "requires_bearer": bool(raw.get("securitySchemes")),
+            "skills": [
+                {
+                    "id": str(s.get("id")),
+                    "name": str(s.get("name") or s.get("id")),
+                    "description": str(s.get("description") or ""),
+                }
+                for s in raw.get("skills") or []
+                if isinstance(s, dict) and s.get("id")
+            ],
+        }
+
+    @app.get("/api/a2a/agents")
+    async def remote_agents(request: Request) -> list[dict[str, Any]]:
+        """The remote agents this workspace can call — every `agent` skill with a `card_url`."""
+        rt = _get_runtime(request)
+        rows: list[dict[str, Any]] = []
+        for sid, skill in sorted(rt.workspace.skills.items()):
+            impl = skill.raw.implementation
+            if impl_get(impl, "type") != "agent":
+                continue
+            try:
+                spec = parse_agent_spec(impl)
+            except ValueError:
+                continue
+            if spec.is_local:
+                continue
+            rows.append(
+                {
+                    "id": sid,
+                    "name": str(getattr(skill.raw.metadata, "name", "") or sid),
+                    "card_url": spec.card_url,
+                    "skill_id": spec.skill_id,
+                    "credentials_ref": spec.credentials_ref,
+                    "on_unanswerable": spec.on_unanswerable,
+                    "permission": spec.permission,
+                    "effects": spec.effects,
+                    "timeout_s": spec.timeout_s,
+                }
+            )
+        return rows

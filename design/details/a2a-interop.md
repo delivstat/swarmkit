@@ -45,8 +45,11 @@ question waits bounded rather than parking the run.
 **Shipped since (1.223.0):** `pack:workspace` — `agent_skill/_synthesis.py` synthesizes
 `topology-<name>` per topology at registry build; `pack:workspace` expands to all of them (not
 read-filtered — running a topology is never `read`); the command-pack id `workspace` is reserved.
-Still design: the portal's "Add an A2A agent by card URL", the harness gateway offering agent
-skills, the fleet listing.
+**Shipped since (1.224.0):** the portal's Connections page — remote agents listed next to
+servers and sinks; "Add remote agent" probes a card through `GET /api/a2a/probe`, the person
+picks a skill / policy / credential / tier, and the `agent` skill file is written through the
+ordinary `PUT /api/skills/{id}`. `GET /api/a2a/agents` lists them. Still design: the harness
+gateway offering agent skills, the fleet listing.
 
 ## Why now
 
