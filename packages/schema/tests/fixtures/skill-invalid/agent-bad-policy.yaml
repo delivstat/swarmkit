@@ -1,0 +1,16 @@
+# `on_unanswerable` is agent | relay | fail — anything else is a typo, not a policy.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: bad-policy-agent
+  name: Bad policy agent
+  description: Misspells the input policy.
+category: capability
+implementation:
+  type: agent
+  topology: deep-research
+  on_unanswerable: human
+provenance:
+  authored_by: human
+  authored_date: "2026-09-17"
+  version: 1.0.0

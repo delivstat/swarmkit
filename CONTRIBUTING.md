@@ -90,8 +90,8 @@ means tests validate against the *old* shape and pass.
 `CLAUDE.md` holds the full list. The ones that most often come up in review:
 
 1. **Topology is data.** The runtime interprets YAML; it does not generate Python.
-2. **Skills are the only capability extension primitive** — four backings (`mcp_tool`, `llm_prompt`,
-   `composed`, `command`), one noun. Node *execution* is a separate seam: the `executor`
+2. **Skills are the only capability extension primitive** — five backings (`mcp_tool`, `llm_prompt`,
+   `composed`, `command`, `agent`), one noun. Node *execution* is a separate seam: the `executor`
    abstraction, where `model` and `harness` are kinds.
 3. **Governance goes through `GovernanceProvider`**; only `governance/` imports AGT.
 4. **LLM calls go through `ModelProvider`**; only `model_providers/` imports a vendor SDK.

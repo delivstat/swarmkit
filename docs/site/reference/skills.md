@@ -179,7 +179,7 @@ outputs:                           # required for decision skills
           message: { type: string }
   required: [verdict, confidence, reasoning]
 implementation:
-  type: mcp_tool                   # or: llm_prompt
+  type: mcp_tool                   # or: llm_prompt | composed | command | agent
   server: review-server
   tool: check_quality
 iam:
@@ -188,6 +188,54 @@ provenance:
   authored_by: human               # human | authored_by_swarm | vendor_published
   version: 1.0.0
 ```
+
+## Another agent as a skill (`implementation.type: agent`)
+
+One skill type, two resolutions — a topology in this workspace, or a remote agent reached through
+its A2A Agent Card (`design/details/a2a-interop.md`). Either way it is a skill: the same
+permission seam as an MCP tool or a command, the same `requires:` prerequisites, the same audit of
+the call.
+
+```yaml
+implementation:
+  type: agent
+  # exactly one of:
+  topology: deep-research                                          # same workspace → child run, no wire
+  card_url: https://research.internal/.well-known/agent-card.json  # elsewhere → A2A task API
+  skill_id: deep-research          # remote only: which card skill; omitted = the card's first
+  credentials_ref: research-agent  # remote only: a workspace `credentials` entry, sent as a bearer
+  timeout_s: 600
+  on_unanswerable: agent           # agent | relay | abort — the harness adapter's words
+  max_agent_answers: 2
+  permission: cautious             # open | cautious | strict | readonly
+  effects: read                    # read | write | unknown; readonly allows only `read`
+```
+
+The tool the model sees takes `{input, context?}` and returns the other agent's answer as text.
+
+**Local (`topology:`).** The target runs in-process as a child of the caller's run: its own run id
+and trace, a job row with `parent_job_id` and `source: agent`, the parent's MCP servers shared (and
+never closed by the child), the same correlation. A missing target fails the workspace load, not
+the first run. Depth is capped at 3: a topology calling a topology that calls it back is a cycle.
+
+**Remote (`card_url:`).** The card is fetched on first use and cached; `skill_id` must be on it.
+The call is `message/send` with our run id as the A2A `contextId` (so two instances' records join
+on it), then `tasks/get` until the task ends or asks for input. Past `timeout_s` the remote task
+is cancelled and the call fails.
+
+**When the other agent asks a question** (`input-required`), `on_unanswerable` decides, with the
+words a harness adapter uses:
+
+| policy | behaviour |
+|---|---|
+| `agent` (default) | The question comes back as the tool result — `{"status": "input_required", "task_id", "question"}` — and the calling agent answers by calling the skill again with `{task_id, answer}`. Audited as `executor.input_response` with `responder: agent:<id>`. After `max_agent_answers` on one task, the next question is relayed. |
+| `relay` | A person answers through the review queue — the same `input_request` item and bounded wait a harness question uses; no answer in time fails the call and cancels the remote task. |
+| `abort` | The call fails with the question as the reason; the remote task is cancelled. |
+
+A **human gate** on the other side (a SwarmKit run parked on approval) is never the agent's to
+answer, whatever the policy: the result says `kind: human_gate` and names the gate; a person
+resolves it there. No funnel is configured on the skill — a child topology runs its own funnels,
+a remote SwarmKit runs its own, and the caller's funnel gates what the caller does with the result.
 
 ## Provenance
 

@@ -171,6 +171,64 @@
             "pack": { "type": "string", "minLength": 1 },
             "command": { "type": "string", "minLength": 1 }
           }
+        },
+        {
+          "$comment": "Another agent as a skill (design/details/a2a-interop.md). Exactly one of `topology` (a topology in this workspace, run in-process as a child job) or `card_url` (a remote A2A agent's card; the task API is the transport). The tool takes {input, context?}; when the other agent asks a question and `on_unanswerable` is `agent`, it returns {status: input_required, task_id, question} and is called again with {task_id, answer}. There is no server or pack to inherit a tier from, so `permission` and `effects` sit here.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "agent" },
+            "topology": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$",
+              "description": "A topology in this workspace. Runs as a child job of the caller's run (same correlation, parent_job_id set); no network."
+            },
+            "card_url": {
+              "type": "string",
+              "pattern": "^https?://",
+              "description": "A remote agent's Agent Card URL (usually .../.well-known/agent-card.json). The card's `url` is where the task API is called."
+            },
+            "skill_id": {
+              "type": "string",
+              "description": "Remote only: which of the card's skills this skill invokes (sent as message.metadata.skill). Omitted: the card's first skill."
+            },
+            "credentials_ref": {
+              "type": "string",
+              "description": "Remote only: a workspace `credentials` entry, resolved by the credential service and sent as a bearer token."
+            },
+            "timeout_s": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 600,
+              "description": "How long to wait for the other agent's task to finish before the call fails."
+            },
+            "on_unanswerable": {
+              "enum": ["agent", "relay", "abort"],
+              "default": "agent",
+              "description": "What happens when the other agent asks a question — the same words a harness adapter uses for a mid-run request. relay: a person answers through the review queue (bounded wait, never hangs). abort: the call fails with the question as the reason. agent: the question is the tool result and the calling agent answers it, bounded by max_agent_answers and audited; past the budget it relays. A human gate on the other side is never the agent's to resolve, whatever this says."
+            },
+            "max_agent_answers": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 2,
+              "description": "Under `agent`: how many questions the calling agent may answer on one task before the next one is relayed to a person."
+            },
+            "permission": {
+              "enum": ["open", "cautious", "strict", "readonly"],
+              "default": "cautious",
+              "description": "Governance tier for the call, as an MCP server's `permission` is for its tools."
+            },
+            "effects": {
+              "enum": ["read", "write", "unknown"],
+              "default": "unknown",
+              "description": "What calling this agent does to the world. Under `readonly`, only `read` is allowed — `unknown` is denied, fail-closed, as for MCP tools."
+            }
+          },
+          "oneOf": [
+            { "required": ["topology"], "not": { "required": ["card_url"] } },
+            { "required": ["card_url"], "not": { "required": ["topology"] } }
+          ]
         }
       ]
     },

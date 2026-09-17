@@ -1,0 +1,16 @@
+# `agent` names exactly one target — a topology here OR a card elsewhere, never both.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: ambiguous-agent
+  name: Ambiguous agent
+  description: Names both a local topology and a remote card.
+category: capability
+implementation:
+  type: agent
+  topology: deep-research
+  card_url: https://legal.example.com/.well-known/agent-card.json
+provenance:
+  authored_by: human
+  authored_date: "2026-09-17"
+  version: 1.0.0

@@ -1,8 +1,8 @@
 """Skill execution for the compiler's agentic tool-use loop.
 
-Supports ``llm_prompt``, ``mcp_tool``, ``command``, and ``composed`` skills.
-See ``design/details/decision-skills.md``, ``design/details/mcp-client.md`` and
-``design/details/command-packs.md``.
+Supports ``llm_prompt``, ``mcp_tool``, ``command``, ``agent`` and ``composed`` skills.
+See ``design/details/decision-skills.md``, ``design/details/mcp-client.md``,
+``design/details/command-packs.md`` and ``design/details/a2a-interop.md``.
 """
 
 from __future__ import annotations
@@ -94,6 +94,17 @@ async def execute_skill(
             agent_id=agent_id,
             requires=requires,
             workspace_root=workspace_root,
+        )
+
+    if impl_type == "agent":
+        from swarmkit_runtime.agent_skill import execute_agent_skill  # noqa: PLC0415
+
+        return await execute_agent_skill(
+            skill,
+            input_text=input_text,
+            governance=governance,
+            agent_id=agent_id,
+            requires=requires,
         )
 
     if impl_type == "composed":

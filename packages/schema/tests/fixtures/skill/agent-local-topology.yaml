@@ -1,0 +1,19 @@
+# An `agent` skill, local form: another topology in this workspace runs as a child job of the
+# caller's run. See design/details/a2a-interop.md.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: research
+  name: Research agent
+  description: Delegates a research question to the deep-research topology.
+category: capability
+implementation:
+  type: agent
+  topology: deep-research
+  on_unanswerable: relay
+  permission: cautious
+  effects: read
+provenance:
+  authored_by: human
+  authored_date: "2026-09-17"
+  version: 1.0.0

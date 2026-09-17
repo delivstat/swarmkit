@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,7 @@ from langgraph.graph.state import CompiledStateGraph
 from swarmkit_runtime import prerequisites
 from swarmkit_runtime._run_scope import (
     current_labels,
+    current_run_id,
     reset_current_labels,
     reset_current_run_id,
     set_current_labels,
@@ -33,6 +35,12 @@ from swarmkit_runtime._stop_requests import (
     set_stop_checker,
     store_backed_checker,
 )
+from swarmkit_runtime.agent_skill._context import (
+    current_agent_context,
+    reset_agent_context,
+    set_agent_context,
+)
+from swarmkit_runtime.agent_skill._spec import find_bad_agent_targets
 from swarmkit_runtime.audit import AuditProvider, SqlAuditProvider, audit_provider_for_path
 from swarmkit_runtime.commands import (
     CommandPackConfig,
@@ -66,6 +74,11 @@ from swarmkit_runtime.resolver import ResolvedWorkspace, resolve_workspace
 from swarmkit_runtime.skills import impl_get
 
 logger = logging.getLogger("swarmkit.workspace")
+
+#: True while `run` is re-entered for an `agent` skill's local child (see `run_child`). A context
+#: variable, like the run id: it must be visible to the nested `run` on this task and to nothing
+#: else in the process.
+_nested_run: ContextVar[bool] = ContextVar("swarmkit_nested_run", default=False)
 
 
 def _get_field(obj: Any, name: str) -> str:
@@ -471,6 +484,11 @@ class WorkspaceRuntime:
         unrunnable = check_requirements(command_packs)
         if unrunnable:
             raise UnrunnableCommandPackError(unrunnable)
+        # Same rule as a command pack: a skill whose agent target does not exist fails the load,
+        # not the first run that reaches for it.
+        bad_agents = find_bad_agent_targets(workspace)
+        if bad_agents:
+            raise MissingCommandPackError(bad_agents)
 
         decision_skills = {
             sid: skill
@@ -854,7 +872,7 @@ class WorkspaceRuntime:
 
         trace = RunTrace()
         trace.start(run_thread, topology_name)
-        _run_scope_token = self._begin_run(trace, labels)
+        _run_scope_token = self._begin_run(trace, labels, topology_name)
         await self._audit_attachments(resolved_attachments, topology_name, run_thread, labels)
         # Opt-in read-side context compression for this run. Resolved from the workspace
         # `context_compression:` block (default backend + per-surface overrides), with env
@@ -864,8 +882,11 @@ class WorkspaceRuntime:
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
 
-        owns_mcp = not self._session_active
-        if owns_mcp and self._mcp_manager is not None:
+        # A nested run (an `agent` skill's local child) never owns the servers: the parent is
+        # using them, and closing them on the child's way out would take the parent down with it.
+        # It still starts any the child needs that the parent did not.
+        owns_mcp = not self._session_active and not _nested_run.get()
+        if self._mcp_manager is not None and (owns_mcp or _nested_run.get()):
             required = collect_required_servers(topology)
             await self._mcp_manager.start_required(required)
         try:
@@ -1009,6 +1030,7 @@ class WorkspaceRuntime:
             set_current_run_id(thread_id),
             set_current_labels(None),
             set_stop_checker(self._stop_checker(thread_id)),
+            set_agent_context(self._agent_context(topology_name)),
         )
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
@@ -1121,7 +1143,9 @@ class WorkspaceRuntime:
         _finalize_trace(trace, self._workspace_root, self.workspace_id)
         return await self._end_run(token, topology_name, trace.run_id)
 
-    def _begin_run(self, trace: Any, labels: dict[str, str] | None = None) -> Any:
+    def _begin_run(
+        self, trace: Any, labels: dict[str, str] | None = None, topology_name: str = ""
+    ) -> Any:
         """Enter a run: make the trace active and stamp this task with the run id and labels.
 
         One call because it is one fact — every AuditEvent constructed from here on belongs to this
@@ -1139,7 +1163,120 @@ class WorkspaceRuntime:
             set_current_run_id(trace.run_id),
             set_current_labels(labels),
             set_stop_checker(self._stop_checker(trace.run_id)),
+            set_agent_context(self._agent_context(topology_name)),
         )
+
+    def _agent_context(self, topology_name: str) -> Any:
+        """What an `agent` skill called during this run reaches for (agent_skill/_context.py).
+
+        Depth is the parent's plus one, so a chain of child runs is bounded; the credential
+        service and review queue are the workspace's own — a remote agent is called with the same
+        credentials a remote MCP server would be, and its questions land in the same inbox.
+        """
+        from swarmkit_runtime.agent_skill import AgentSkillContext  # noqa: PLC0415
+
+        parent = current_agent_context()
+        return AgentSkillContext(
+            run_child=self.run_child,
+            credential_service=self._credential_service,
+            review_queue=self._review_queue(),
+            governance=self._governance,
+            topology_id=topology_name,
+            depth=(parent.depth + 1) if parent is not None else 0,
+            transport=parent.transport if parent is not None else None,
+            relay_wait_s=parent.relay_wait_s if parent is not None else None,
+        )
+
+    async def run_child(self, topology_name: str, user_input: str) -> Any:
+        """Run a topology as a child of the current run — the local form of an `agent` skill.
+
+        In-process, same workspace, same MCP servers: `run` is re-entered with the nesting flag
+        set so it neither closes the servers the parent is using nor clears the parent's trace and
+        compression scope on the way out. The child gets its own run id, trace and audit
+        attribution (the scope tokens restore the parent's), and a job row with `parent_job_id`
+        when the store opens, so `swarmkit trace` and the jobs page show it nested.
+        """
+        from uuid import uuid4  # noqa: PLC0415
+
+        from swarmkit_runtime.agent_skill import ChildRunOutcome  # noqa: PLC0415
+        from swarmkit_runtime.compression._base import _run_state_var  # noqa: PLC0415
+        from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
+            get_active_trace,
+            set_active_trace,
+        )
+        from swarmkit_runtime.review._hitl import GateDeferredError  # noqa: PLC0415
+
+        parent_run = current_run_id()
+        parent_labels = current_labels()
+        parent_trace = get_active_trace()
+        parent_compression = _run_state_var.get()
+        child_id = str(uuid4())
+        store = self._store_or_none()
+        if store is not None:
+            try:
+                store.create_job(
+                    child_id,
+                    topology_name,
+                    user_input,
+                    parent_labels.get("correlation_id") or parent_run,
+                    "agent",
+                    labels={**parent_labels, "parent_run_id": parent_run or ""},
+                    parent_job_id=parent_run,
+                )
+                store.update_job(child_id, status="running")
+            except Exception:  # the record is best-effort, the run is not
+                logger.warning("child run %s will not appear in jobs: the store refused", child_id)
+        nested_token = _nested_run.set(True)
+        try:
+            result = await self.run(
+                topology_name,
+                user_input,
+                thread_id=child_id,
+                labels={**parent_labels, "parent_run_id": parent_run or ""},
+            )
+        except GateDeferredError as exc:
+            self._record_child(store, child_id, status="deferred")
+            return ChildRunOutcome(run_id=child_id, gate_id=exc.gate_id)
+        except Exception as exc:  # reported to the caller as the tool result
+            self._record_child(store, child_id, status="failed", error=str(exc))
+            return ChildRunOutcome(run_id=child_id, error=str(exc))
+        finally:
+            _nested_run.reset(nested_token)
+            set_active_trace(parent_trace)
+            _run_state_var.set(parent_compression)
+        if result.failed:
+            error = "; ".join(f"{k}: {v}" for k, v in result.node_errors.items())
+            self._record_child(store, child_id, status="failed", error=error, output=result.output)
+            return ChildRunOutcome(run_id=child_id, output=result.output, error=error)
+        self._record_child(store, child_id, status="completed", output=result.output)
+        return ChildRunOutcome(run_id=child_id, output=result.output)
+
+    def _store_or_none(self) -> Any:
+        try:
+            return self.store
+        except Exception:
+            return None
+
+    @staticmethod
+    def _record_child(
+        store: Any, run_id: str, *, status: str, error: str | None = None, output: str = ""
+    ) -> None:
+        if store is None:
+            return
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        try:
+            store.update_job(
+                run_id,
+                status=status,
+                output=output or None,
+                error=error,
+                completed_at=datetime.now(UTC).isoformat()
+                if status in ("completed", "failed")
+                else None,
+            )
+        except Exception:
+            logger.warning("child run %s: could not record %s", run_id, status)
 
     def _clear_stop_request(self, run_id: str) -> None:
         """Drop a satisfied stop request. Best-effort: a store that will not open must not stop a
@@ -1173,7 +1310,7 @@ class WorkspaceRuntime:
         The filter is the fix: the provider's log is cumulative and never cleared, so an unfiltered
         drain re-persisted every earlier run's events under this run's id.
         """
-        run_token, label_token, stop_token = token
+        run_token, label_token, stop_token, agent_token = token
         # Captured BEFORE the reset: `_persist_events_to_audit` builds fresh AuditEvents, and once
         # the scope is gone their `labels` default to empty — the run's grouping would reach `jobs`
         # and silently not reach `audit_events`, which is half a feature and the worse half.
@@ -1182,6 +1319,7 @@ class WorkspaceRuntime:
         # long-lived `swarmkit serve` would keep one entry per agent of every run it ever ran.
         prerequisites.forget_run(run_id)
         reset_stop_checker(stop_token)
+        reset_agent_context(agent_token)
         reset_current_run_id(run_token)
         reset_current_labels(label_token)
         events = _extract_events(self._governance, run_id=run_id)

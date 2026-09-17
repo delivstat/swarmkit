@@ -104,6 +104,133 @@ class Implementation4(BaseModel):
     command: str = Field(..., min_length=1)
 
 
+class OnUnanswerable(Enum):
+    """
+    What happens when the other agent asks a question — the same words a harness adapter uses for a mid-run request. relay: a person answers through the review queue (bounded wait, never hangs). abort: the call fails with the question as the reason. agent: the question is the tool result and the calling agent answers it, bounded by max_agent_answers and audited; past the budget it relays. A human gate on the other side is never the agent's to resolve, whatever this says.
+    """
+
+    agent = "agent"
+    relay = "relay"
+    abort = "abort"
+
+
+class Permission(Enum):
+    """
+    Governance tier for the call, as an MCP server's `permission` is for its tools.
+    """
+
+    open = "open"
+    cautious = "cautious"
+    strict = "strict"
+    readonly = "readonly"
+
+
+class Effects(Enum):
+    """
+    What calling this agent does to the world. Under `readonly`, only `read` is allowed — `unknown` is denied, fail-closed, as for MCP tools.
+    """
+
+    read = "read"
+    write = "write"
+    unknown = "unknown"
+
+
+class Implementation5(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    type: Literal["agent"]
+    topology: str = Field(
+        ...,
+        description="A topology in this workspace. Runs as a child job of the caller's run (same correlation, parent_job_id set); no network.",
+        pattern="^[a-z][a-z0-9-]*$",
+    )
+    card_url: str | None = Field(
+        None,
+        description="A remote agent's Agent Card URL (usually .../.well-known/agent-card.json). The card's `url` is where the task API is called.",
+        pattern="^https?://",
+    )
+    skill_id: str | None = Field(
+        None,
+        description="Remote only: which of the card's skills this skill invokes (sent as message.metadata.skill). Omitted: the card's first skill.",
+    )
+    credentials_ref: str | None = Field(
+        None,
+        description="Remote only: a workspace `credentials` entry, resolved by the credential service and sent as a bearer token.",
+    )
+    timeout_s: int | None = Field(
+        600,
+        description="How long to wait for the other agent's task to finish before the call fails.",
+        ge=1,
+    )
+    on_unanswerable: OnUnanswerable | None = Field(
+        "agent",
+        description="What happens when the other agent asks a question — the same words a harness adapter uses for a mid-run request. relay: a person answers through the review queue (bounded wait, never hangs). abort: the call fails with the question as the reason. agent: the question is the tool result and the calling agent answers it, bounded by max_agent_answers and audited; past the budget it relays. A human gate on the other side is never the agent's to resolve, whatever this says.",
+    )
+    max_agent_answers: int | None = Field(
+        2,
+        description="Under `agent`: how many questions the calling agent may answer on one task before the next one is relayed to a person.",
+        ge=0,
+    )
+    permission: Permission | None = Field(
+        "cautious",
+        description="Governance tier for the call, as an MCP server's `permission` is for its tools.",
+    )
+    effects: Effects | None = Field(
+        "unknown",
+        description="What calling this agent does to the world. Under `readonly`, only `read` is allowed — `unknown` is denied, fail-closed, as for MCP tools.",
+    )
+
+
+class Implementation6(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    type: Literal["agent"]
+    topology: str | None = Field(
+        None,
+        description="A topology in this workspace. Runs as a child job of the caller's run (same correlation, parent_job_id set); no network.",
+        pattern="^[a-z][a-z0-9-]*$",
+    )
+    card_url: str = Field(
+        ...,
+        description="A remote agent's Agent Card URL (usually .../.well-known/agent-card.json). The card's `url` is where the task API is called.",
+        pattern="^https?://",
+    )
+    skill_id: str | None = Field(
+        None,
+        description="Remote only: which of the card's skills this skill invokes (sent as message.metadata.skill). Omitted: the card's first skill.",
+    )
+    credentials_ref: str | None = Field(
+        None,
+        description="Remote only: a workspace `credentials` entry, resolved by the credential service and sent as a bearer token.",
+    )
+    timeout_s: int | None = Field(
+        600,
+        description="How long to wait for the other agent's task to finish before the call fails.",
+        ge=1,
+    )
+    on_unanswerable: OnUnanswerable | None = Field(
+        "agent",
+        description="What happens when the other agent asks a question — the same words a harness adapter uses for a mid-run request. relay: a person answers through the review queue (bounded wait, never hangs). abort: the call fails with the question as the reason. agent: the question is the tool result and the calling agent answers it, bounded by max_agent_answers and audited; past the budget it relays. A human gate on the other side is never the agent's to resolve, whatever this says.",
+    )
+    max_agent_answers: int | None = Field(
+        2,
+        description="Under `agent`: how many questions the calling agent may answer on one task before the next one is relayed to a person.",
+        ge=0,
+    )
+    permission: Permission | None = Field(
+        "cautious",
+        description="Governance tier for the call, as an MCP server's `permission` is for its tools.",
+    )
+    effects: Effects | None = Field(
+        "unknown",
+        description="What calling this agent does to the world. Under `readonly`, only `read` is allowed — `unknown` is denied, fail-closed, as for MCP tools.",
+    )
+
+
 class Iam(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -232,7 +359,12 @@ class SwarmKitSkill(BaseModel):
         description="JSON Schema defining the skill's output shape. Passed to providers for structured generation (Tier 0) and used for deterministic validation (Tier 1). See design/details/structured-output-governance.md.",
     )
     implementation: (
-        Implementation1 | Implementation2 | Implementation3 | Implementation4
+        Implementation1
+        | Implementation2
+        | Implementation3
+        | Implementation4
+        | Implementation5
+        | Implementation6
     )
     iam: Iam | None = None
     constraints: Constraints | None = None

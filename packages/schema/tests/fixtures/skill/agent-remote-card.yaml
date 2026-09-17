@@ -1,0 +1,24 @@
+# An `agent` skill, remote form: an A2A agent elsewhere, reached through its Agent Card. The
+# calling agent may answer up to two clarifying questions itself; a human gate on the far side is
+# never its to resolve.
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: legal-review
+  name: Legal review agent
+  description: Sends a contract to the legal review agent and returns its findings.
+category: capability
+implementation:
+  type: agent
+  card_url: https://legal.example.com/.well-known/agent-card.json
+  skill_id: contract-review
+  credentials_ref: legal-agent
+  timeout_s: 1800
+  on_unanswerable: agent
+  max_agent_answers: 2
+  permission: strict
+  effects: read
+provenance:
+  authored_by: human
+  authored_date: "2026-09-17"
+  version: 1.0.0

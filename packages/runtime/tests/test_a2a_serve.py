@@ -54,7 +54,7 @@ def _force_mock(monkeypatch: pytest.MonkeyPatch) -> None:
 def a2a_workspace(tmp_path: Path) -> Path:
     """hello-swarm with `server.a2a.enabled: true` and an identity block."""
     ws = tmp_path / "workspace"
-    shutil.copytree(EXAMPLE_WS, ws)
+    shutil.copytree(EXAMPLE_WS, ws, ignore=shutil.ignore_patterns(".swarmkit"))
     manifest = ws / "workspace.yaml"
     manifest.write_text(
         manifest.read_text(encoding="utf-8")
