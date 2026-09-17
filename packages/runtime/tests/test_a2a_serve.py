@@ -74,10 +74,14 @@ def client(a2a_workspace: Path) -> TestClient:  # type: ignore[misc]
 
 
 @pytest.fixture()
-def disabled_client() -> TestClient:  # type: ignore[misc]
+def disabled_client(tmp_path: Path) -> TestClient:  # type: ignore[misc]
+    """hello-swarm as shipped (no `server.a2a`), on its own copy: two workers opening the example's
+    live store at once race on table creation."""
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
-    with TestClient(create_app(EXAMPLE_WS)) as c:
+    ws = tmp_path / "plain"
+    shutil.copytree(EXAMPLE_WS, ws, ignore=shutil.ignore_patterns(".swarmkit"))
+    with TestClient(create_app(ws)) as c:
         yield c
 
 
