@@ -237,6 +237,22 @@ answer, whatever the policy: the result says `kind: human_gate` and names the ga
 resolves it there. No funnel is configured on the skill — a child topology runs its own funnels,
 a remote SwarmKit runs its own, and the caller's funnel gates what the caller does with the result.
 
+**`pack:workspace`.** Every topology in the workspace is also synthesized as an `agent` skill named
+`topology-<name>` (`cautious`, `effects: unknown`), the way command packs synthesize theirs, so a
+supervisor that may run any topology here says so in one line:
+
+```yaml
+agents:
+  root:
+    skills: [pack:workspace]     # topology-<name> for every topology, now and later
+```
+
+Nothing is granted by default — the card lists every topology to the outside, but inside the
+workspace an agent reaches only what its topology names. Unlike `pack:<command-pack>`, the grant is
+not filtered to reads (running a topology is never `read`); every call still goes through the tier
+and the audit. Naming a hand-authored skill `topology-<x>` is a collision error, and `workspace` is
+reserved as a command-pack id.
+
 ## Provenance
 
 Every skill declares who authored it. This affects runtime trust defaults:

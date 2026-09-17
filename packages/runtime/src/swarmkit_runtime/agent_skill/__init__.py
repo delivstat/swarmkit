@@ -18,10 +18,28 @@ The pieces:
 
 from __future__ import annotations
 
+from typing import Any
+
 from ._context import AgentSkillContext, ChildRunOutcome, current_agent_context, set_agent_context
-from ._executor import execute_agent_skill
-from ._governed import check_agent_permission
 from ._spec import AgentSkillSpec, find_bad_agent_targets, parse_agent_spec
+
+# The executor pulls in the compiler, which pulls in the resolver, which synthesizes the
+# `pack:workspace` skills from this package — so the executor and the permission seam load on
+# first use rather than at import, and this package stays importable from the resolver.
+_LAZY = {
+    "execute_agent_skill": ("._executor", "execute_agent_skill"),
+    "check_agent_permission": ("._governed", "check_agent_permission"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    target = _LAZY.get(name)
+    if target is None:
+        raise AttributeError(name)
+    from importlib import import_module  # noqa: PLC0415
+
+    return getattr(import_module(target[0], __name__), target[1])
+
 
 __all__ = [
     "AgentSkillContext",

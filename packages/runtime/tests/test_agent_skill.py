@@ -508,3 +508,57 @@ async def test_credentials_ref_is_sent_as_a_bearer(
     rt = WorkspaceRuntime.from_workspace_path(ws)
     await _call(rt, "ask", {"input": "x"}, transport=httpx.ASGITransport(app=app))
     assert "Bearer s3cret" in seen["auth"]
+
+
+# ---- pack:workspace ----------------------------------------------------------------------------
+
+
+def test_every_topology_is_a_synthetic_agent_skill(tmp_path: Path) -> None:
+    ws = _workspace(tmp_path, {"ask-hello": "  topology: hello"})
+    rt = WorkspaceRuntime.from_workspace_path(ws)
+    skills = rt.workspace.skills
+    assert "topology-hello" in skills and "topology-caller" in skills
+    synthetic = skills["topology-hello"]
+    assert synthetic.pack_origin == ("workspace", "hello", "unknown")
+    spec = parse_agent_spec(synthetic.raw.implementation)
+    assert spec.topology == "hello" and spec.permission == "cautious" and spec.effects == "unknown"
+    # The hand-authored skill targeting the same topology is untouched.
+    assert parse_agent_spec(skills["ask-hello"].raw.implementation).topology == "hello"
+
+
+def test_pack_workspace_grants_every_topology(tmp_path: Path) -> None:
+    ws = _workspace(tmp_path, {"ask-hello": "  topology: hello"})
+    (ws / "topologies" / "caller.yaml").write_text(_CALLER_TOPOLOGY.format(skills="pack:workspace"))
+    rt = WorkspaceRuntime.from_workspace_path(ws)
+    root = rt.workspace.topologies["caller"].root
+    granted = sorted(s.id for s in root.skills)
+    assert granted == ["topology-caller", "topology-hello"]
+
+
+@pytest.mark.asyncio
+async def test_pack_workspace_skill_runs_the_topology(tmp_path: Path) -> None:
+    ws = _workspace(tmp_path, {"ask-hello": "  topology: hello"})
+    rt = WorkspaceRuntime.from_workspace_path(ws)
+    assert await _call(rt, "topology-hello", {"input": "hi"}) == "mock response"
+
+
+def test_a_skill_named_like_a_synthetic_one_is_a_collision(tmp_path: Path) -> None:
+    from swarmkit_runtime.errors import ResolutionErrors  # noqa: PLC0415
+
+    ws = _workspace(tmp_path, {"topology-hello": "  topology: hello"})
+    with pytest.raises(ResolutionErrors) as exc:
+        WorkspaceRuntime.from_workspace_path(ws)
+    assert [e.code for e in exc.value.errors] == ["workspace-pack.id-collision"]
+
+
+def test_command_pack_may_not_be_named_workspace() -> None:
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from swarmkit_runtime.commands._config import (  # noqa: PLC0415
+        CommandPackError,
+        parse_command_packs,
+    )
+
+    pack = SimpleNamespace(id="workspace", commands=[])
+    with pytest.raises(CommandPackError, match="reserved"):
+        parse_command_packs([pack])

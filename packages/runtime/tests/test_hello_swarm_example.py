@@ -24,7 +24,9 @@ def test_hello_swarm_valid_workspace_resolves() -> None:
     assert str(ws.raw.metadata.id) == "hello-swarm"
     assert set(ws.topologies) == {"hello"}
     assert set(ws.archetypes) == {"greeter"}
-    assert set(ws.skills) == {"say-hello"}
+    # `topology-hello` is the workspace's own topology exposed as an `agent` skill for
+    # `pack:workspace` (agent_skill/_synthesis.py) — synthesized, not authored.
+    assert set(ws.skills) == {"say-hello", "topology-hello"}
 
     topology = ws.topologies["hello"]
     assert topology.root.id == "root"
