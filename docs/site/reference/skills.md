@@ -237,6 +237,10 @@ answer, whatever the policy: the result says `kind: human_gate` and names the ga
 resolves it there. No funnel is configured on the skill — a child topology runs its own funnels,
 a remote SwarmKit runs its own, and the caller's funnel gates what the caller does with the result.
 
+**From a harness node.** An `agent` skill granted to a harness (Claude Code, opencode, …) is offered
+through the governed MCP gateway as the flat tool `agent__<skill>` — the same executor, tier and
+audit as from a model node; the child run is attributed to the harness's run.
+
 **`pack:workspace`.** Every topology in the workspace is also synthesized as an `agent` skill named
 `topology-<name>` (`cautious`, `effects: unknown`), the way command packs synthesize theirs, so a
 supervisor that may run any topology here says so in one line:

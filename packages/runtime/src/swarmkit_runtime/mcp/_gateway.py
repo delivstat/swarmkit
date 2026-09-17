@@ -6,6 +6,11 @@ one governed path (:func:`~swarmkit_runtime.mcp._governed.governed_mcp_call`) be
 server. The harness points its own MCP config at this gateway, so a harness's tool call is governed
 + audited exactly like a model agent's — never a direct, ungoverned call.
 
+An ``agent`` skill (a2a-interop.md) is offered the same way: as one flat tool ``agent__<skill>``
+whose call runs the skill's executor — a child run of this workspace's topology, or a remote A2A
+task — under the run scope captured at registration, so the child is attributed, correlated and
+depth-bounded exactly as it would be from a model node.
+
 Protected by a per-run bearer token; bound to an ephemeral port; torn down on exit.
 """
 
@@ -13,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import logging
 import secrets
 import time
@@ -74,6 +80,37 @@ class GatewayTool:
     #: are known at once — deriving it at dispatch would mean rebuilding it per call from data the
     #: registration no longer has.
     skill_id: str = ""
+    #: For a tool backed by an `agent` skill rather than an MCP tool: the resolved skill. The call
+    #: then goes to `execute_agent_skill`, not to an MCP server; `server_id` is the literal
+    #: ``"agent"`` and `tool_name` the skill id, so the flat name reads `agent__<skill>`.
+    agent_skill: Any = None
+
+
+#: The pseudo-server name under which `agent` skills are flattened on the gateway.
+AGENT_SERVER_ID = "agent"
+
+
+def build_agent_gateway_tools(skills: Iterable[Any]) -> list[GatewayTool]:
+    """One gateway tool per granted `agent` skill, with the same `{input, context}` schema the
+    model path offers (`agent_skill/_tool.py`)."""
+    from swarmkit_runtime.agent_skill._tool import agent_tool_schema  # noqa: PLC0415
+
+    out: list[GatewayTool] = []
+    for skill in skills:
+        impl = getattr(skill.raw, "implementation", None)
+        desc = str(getattr(getattr(skill.raw, "metadata", None), "description", "") or "")
+        out.append(
+            GatewayTool(
+                name=f"{AGENT_SERVER_ID}{_NAME_SEP}{skill.id}",
+                server_id=AGENT_SERVER_ID,
+                tool_name=skill.id,
+                description=desc or f"Call the {skill.id} agent.",
+                input_schema=agent_tool_schema(impl),
+                skill_id=skill.id,
+                agent_skill=skill,
+            )
+        )
+    return sorted(out, key=lambda t: t.name)
 
 
 @dataclass
@@ -221,6 +258,10 @@ class _Registration:
         # drain (`_extract_events`) would discard it — the record would exist and reach nothing.
         self._run_id = current_run_id()
         self._labels = current_labels()
+        # The whole run scope, for an `agent` tool: its executor re-enters the runtime (a child
+        # run) and reads the run id, labels, trace and agent-skill context from context variables
+        # that uvicorn's tasks do not carry. Running the call inside this copy restores them.
+        self._context = contextvars.copy_context()
 
     async def _list(self) -> list[Any]:
         from mcp.types import Tool  # noqa: PLC0415
@@ -246,6 +287,20 @@ class _Registration:
             # governance signal, and it reached the model as ordinary text.
             await self._audit(name, arguments, "unknown tool", decision="deny", started=started)
             return [TextContent(type="text", text=f"unknown tool: {name}")]
+        if tool.agent_skill is not None:
+            text = await self._call_agent(tool, arguments)
+            from swarmkit_runtime.langgraph_compiler._skill_executor import (  # noqa: PLC0415
+                is_refusal,
+            )
+
+            await self._audit(
+                name,
+                arguments,
+                text,
+                decision="deny" if is_refusal(text) else "allow",
+                started=started,
+            )
+            return [TextContent(type="text", text=text)]
         try:
             resp = await governed_mcp_call(
                 self._mcp_manager,
@@ -270,6 +325,29 @@ class _Registration:
         content = _to_content(resp, TextContent, ImageContent)
         await self._audit(name, arguments, _result_preview(content), started=started)
         return content
+
+    async def _call_agent(self, tool: GatewayTool, arguments: dict[str, Any]) -> str:
+        """Run an `agent` skill for the harness — the same executor, permission seam and
+        `requires:` the model path uses, inside the registration's run scope."""
+        import json  # noqa: PLC0415
+
+        from swarmkit_runtime.agent_skill._executor import execute_agent_skill  # noqa: PLC0415
+
+        task = asyncio.create_task(
+            execute_agent_skill(
+                tool.agent_skill,
+                input_text=json.dumps(arguments),
+                governance=self._governance,
+                agent_id=self.agent_id,
+                requires=self._requires,
+            ),
+            context=self._context,
+        )
+        try:
+            return await task
+        except Exception as exc:
+            logger.warning("agent tool %r failed", tool.name, exc_info=True)
+            return f"[skill:{tool.skill_id}] {exc}"
 
     async def _audit(
         self,
@@ -474,7 +552,9 @@ _SERVERS: dict[str, _SharedGatewayServer] = {}
 @asynccontextmanager
 async def mcp_gateway(
     tools: Sequence[GatewayTool],
-    mcp_manager: MCPClientManager,
+    #: None is allowed when every tool is agent-backed — a harness with `agent` grants and no
+    #: MCP grants still gets a gateway.
+    mcp_manager: MCPClientManager | None,
     governance: GovernanceProvider | None,
     *,
     agent_id: str,

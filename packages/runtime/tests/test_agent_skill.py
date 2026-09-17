@@ -318,7 +318,9 @@ async def test_remote_unknown_skill_is_named(tmp_path: Path) -> None:
 async def test_remote_without_a2a_enabled_says_so(tmp_path: Path) -> None:
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
-    remote_app = create_app(EXAMPLE_WS)
+    plain = tmp_path / "plain"
+    shutil.copytree(EXAMPLE_WS, plain, ignore=shutil.ignore_patterns(".swarmkit"))
+    remote_app = create_app(plain)
     ws = _workspace(
         tmp_path, {"ask-remote": "  card_url: http://remote/.well-known/agent-card.json"}
     )

@@ -66,7 +66,7 @@ def _copy(name: str, extra_manifest: str = "") -> Path:
     return ws
 
 
-async def main() -> None:
+async def main() -> None:  # noqa: PLR0915 — a walkthrough, read top to bottom
     os.environ.setdefault("SWARMKIT_PROVIDER", "mock")
     logging.disable(logging.INFO)
 
@@ -149,6 +149,34 @@ async def main() -> None:
     print("synthesized:", synthetic)
     out = await call("topology-hello", {"input": "Greet engineers"})
     print("topology-hello tool result:", out)
+
+    print("\n== from a harness node: the same skill through the governed MCP gateway ==")
+    from mcp import ClientSession  # noqa: PLC0415
+    from mcp.client.sse import sse_client  # noqa: PLC0415
+    from swarmkit_runtime.mcp._gateway import (  # noqa: PLC0415
+        build_agent_gateway_tools,
+        mcp_gateway,
+    )
+
+    set_current_run_id("demo-harness-run")
+    # A fresh scope for the "harness run" (the helper above left the previous call's in place).
+    set_agent_context(AgentSkillContext(**{**rt._agent_context("caller").__dict__, "depth": 0}))
+    tools = build_agent_gateway_tools([rt.workspace.skills["ask-hello"]])
+    async with mcp_gateway(tools, None, rt._governance, agent_id="coder") as gw:
+        print("gateway advertises:", [t.name for t in gw.tools])
+        async with (
+            sse_client(gw.url, headers={"Authorization": f"Bearer {gw.token}"}) as (r, w),
+            ClientSession(r, w) as session,
+        ):
+            await session.initialize()
+            res = await session.call_tool("agent__ask-hello", {"input": "Greet engineers"})
+            print("harness tool result:", res.content[0].text)  # type: ignore[union-attr]
+    child = next(
+        j
+        for j in rt.store.list_jobs(limit=10)
+        if j.topology == "hello" and j.parent_job_id == "demo-harness-run"
+    )
+    print(f"child job {child.id}: parent_job_id={child.parent_job_id} (the harness's run)")
 
     print("\n== a target that does not exist fails the workspace load, not a run ==")
     bad_ws = _copy("bad")
