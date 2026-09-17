@@ -1,0 +1,15 @@
+# `server.a2a` — publish an Agent Card and answer the A2A task API from `swarmkit serve`
+# (design/details/a2a-interop.md). Off by default; identity fields are optional.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: a2a-workspace
+  name: A2A Workspace
+server:
+  a2a:
+    enabled: true
+    identity:
+      name: Review desk
+      description: Code review and triage swarms, human-gated.
+      url: https://swarm.example.com
+      organization: Example Org

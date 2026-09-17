@@ -451,7 +451,7 @@ function RunSummary({ job }: { job: JobResponse }) {
 				{job.correlation_id && (
 					<Field label="Part of">
 						<Link
-							href={`/runs?run=${encodeURIComponent(job.correlation_id)}`}
+							href={`/jobs?correlation_id=${encodeURIComponent(job.correlation_id)}`}
 							className="font-mono text-xs text-sky-500 hover:underline"
 						>
 							{job.correlation_id}

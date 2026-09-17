@@ -23,7 +23,7 @@ Only `apiVersion`, `kind`, and `metadata` (`id` + `name`) are required; everythi
 | `events` | Where the runtime pushes what happened: `[{ sink: webhook \| stdout, url, credentials_ref, types }]`. Best-effort; `GET /events?after=<cursor>` is the durable log — see [Events](events.md). |
 | `gates` | `auto_resume` (default `true`): a run continues as soon as its gate is resolved, so an application does not have to call `POST /jobs/{id}/resume` — turn it off to batch or delay. |
 | `command_packs` | Local binaries exposed as `command` skills — the sibling of `mcp_servers` for capabilities that already exist as executables (`design/details/command-packs.md`). |
-| `server` | `swarmkit serve` config: `jobs` (`max_concurrent`, `timeout_seconds`), `mcp.enabled`, `canary` routes, and `auth`. |
+| `server` | `swarmkit serve` config: `jobs` (`max_concurrent`, `timeout_seconds`), `mcp.enabled`, `a2a` (`enabled`, `identity`), `canary` routes, and `auth`. |
 
 ### Serve authentication (`server.auth`)
 

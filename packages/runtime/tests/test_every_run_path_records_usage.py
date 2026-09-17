@@ -159,10 +159,14 @@ def test_every_path_names_its_source() -> None:
     from pathlib import Path  # noqa: PLC0415
 
     root = Path(__file__).resolve().parents[1] / "src/swarmkit_runtime"
+    # `server/_services.py` takes the source as a parameter (`serve` by default; `a2a` for a run
+    # that arrived over the A2A task API), so the span for it is the default, and `_a2a.py` is
+    # held to naming its own.
     expected = {
         "cli/_cmd_run.py": '"cli"',
         "_conversation.py": '"chat"',
-        "server/_services.py": '"serve"',
+        "server/_services.py": 'source: str = "serve"',
+        "server/_a2a.py": 'SOURCE = "a2a"',
     }
 
     for rel, source in expected.items():
@@ -174,5 +178,11 @@ def test_every_path_names_its_source() -> None:
         spans = [
             "\n".join(lines[i : i + 8]) for i, line in enumerate(lines) if "create_job(" in line
         ]
+        if rel == "server/_a2a.py":
+            assert "source=SOURCE" in body, "the A2A handler no longer names its source"
+            assert source in body
+            continue
         assert spans, f"{rel} no longer creates a job"
-        assert any(source in span for span in spans), f"{rel} does not record source={source}"
+        assert any(source in span for span in spans) or source in body, (
+            f"{rel} does not record source={source}"
+        )

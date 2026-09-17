@@ -113,8 +113,12 @@ class JobService:
         labels: dict[str, str] | None = None,
         parent_job_id: str | None = None,
         attachments: list[Any] | None = None,
+        source: str = "serve",
     ) -> Job:
         """Resolve, gate on capacity, create + persist the job, and start it in the background.
+
+        *source* is the front door the run came through — ``serve`` for ``POST /run``, ``a2a``
+        for the A2A task API — and is what the portal's Source field and ``tasks/list`` read.
 
         *attachments* are the caller's declared files, resolved here so a bad one is a 422 on the
         request rather than a job that fails a moment later.
@@ -143,7 +147,7 @@ class JobService:
                 resolved_name,
                 user_input,
                 correlation_id,
-                "serve",
+                source,
                 labels=labels,
                 parent_job_id=parent_job_id,
             )

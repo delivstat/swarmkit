@@ -3,12 +3,13 @@ factory feeds to the scheduler and canary router."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 _DEFAULT_MAX_CONCURRENT = 5
 _DEFAULT_TIMEOUT_SECONDS = 300
 _DEFAULT_MCP_ENABLED = True
+_DEFAULT_A2A_ENABLED = False
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,12 @@ class ServerCfg:
     max_concurrent: int = _DEFAULT_MAX_CONCURRENT
     timeout_seconds: int = _DEFAULT_TIMEOUT_SECONDS
     mcp_enabled: bool = _DEFAULT_MCP_ENABLED
+    #: `server.a2a` — off by default: publishing an Agent Card is an authoring act
+    #: (design/details/a2a-interop.md "Discovery"), not something a workspace does by existing.
+    a2a_enabled: bool = _DEFAULT_A2A_ENABLED
+    #: `server.a2a.identity` as a plain dict (name / description / url / organization); the card
+    #: builder fills what is missing from the workspace.
+    a2a_identity: dict[str, str] = field(default_factory=dict)
 
 
 def _parse_server_config(workspace: Any) -> ServerCfg:
@@ -27,6 +34,13 @@ def _parse_server_config(workspace: Any) -> ServerCfg:
         return ServerCfg()
     jobs = getattr(server_raw, "jobs", None)
     mcp = getattr(server_raw, "mcp", None)
+    a2a = getattr(server_raw, "a2a", None)
+    identity_raw = getattr(a2a, "identity", None) if a2a is not None else None
+    identity = (
+        {k: v for k, v in identity_raw.model_dump(exclude_none=True).items() if isinstance(v, str)}
+        if identity_raw is not None
+        else {}
+    )
     return ServerCfg(
         max_concurrent=(getattr(jobs, "max_concurrent", None) or _DEFAULT_MAX_CONCURRENT),
         timeout_seconds=(getattr(jobs, "timeout_seconds", None) or _DEFAULT_TIMEOUT_SECONDS),
@@ -35,6 +49,12 @@ def _parse_server_config(workspace: Any) -> ServerCfg:
             if mcp is not None
             else _DEFAULT_MCP_ENABLED
         ),
+        a2a_enabled=(
+            bool(getattr(a2a, "enabled", _DEFAULT_A2A_ENABLED))
+            if a2a is not None
+            else _DEFAULT_A2A_ENABLED
+        ),
+        a2a_identity=identity,
     )
 
 

@@ -26,7 +26,7 @@ export interface SwarmKitWorkspace {
      */
     gates?:           Gates;
     governance?:      Governance;
-    identity?:        Identity;
+    identity?:        SwarmKitWorkspaceIdentity;
     kind:             Kind;
     mcp_servers?:     MCPServerElement[];
     metadata:         Metadata;
@@ -357,7 +357,7 @@ export type PolicyLanguage = "yaml" | "rego" | "cedar";
  */
 export type GovernanceProvider = "agt" | "mock" | "custom";
 
-export interface Identity {
+export interface SwarmKitWorkspaceIdentity {
     config?: { [key: string]: any };
     /**
      * Human-identity provider (design §16.1).
@@ -503,6 +503,13 @@ export interface Planning {
  * lifecycle, and canary deployments.
  */
 export interface Server {
+    /**
+     * A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at
+     * /.well-known/agent-card.json with one skill per topology and answers the A2A task API at
+     * /a2a — a transport onto the same jobs, gates and audit as POST /run. See
+     * design/details/a2a-interop.md.
+     */
+    a2a?:  A2A;
     auth?: Auth;
     /**
      * Canary deployment configuration. Routes traffic between topology versions by weight with
@@ -511,6 +518,46 @@ export interface Server {
     canary?: Canary;
     jobs?:   Jobs;
     mcp?:    MCP;
+}
+
+/**
+ * A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at
+ * /.well-known/agent-card.json with one skill per topology and answers the A2A task API at
+ * /a2a — a transport onto the same jobs, gates and audit as POST /run. See
+ * design/details/a2a-interop.md.
+ */
+export interface A2A {
+    /**
+     * Whether to publish the Agent Card and serve the A2A task API.
+     */
+    enabled?: boolean;
+    /**
+     * What the Agent Card says about this instance. Defaults come from the workspace name.
+     */
+    identity?: A2AIdentity;
+}
+
+/**
+ * What the Agent Card says about this instance. Defaults come from the workspace name.
+ */
+export interface A2AIdentity {
+    /**
+     * One paragraph on what this instance does, shown to discovering agents.
+     */
+    description?: string;
+    /**
+     * Human-readable agent name on the card (default: the workspace name).
+     */
+    name?: string;
+    /**
+     * Provider organization on the card.
+     */
+    organization?: string;
+    /**
+     * Public base URL other agents should call (default: derived from the request that fetched
+     * the card). Set it behind a proxy.
+     */
+    url?: string;
 }
 
 /**

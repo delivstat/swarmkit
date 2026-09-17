@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -37,11 +38,16 @@ function Cell({
 }
 
 /** A stage's link back to the pipeline run that asked for it. A standalone run has none. */
-function PipelineLink({ id }: { id: string | null }) {
+/**
+ * The correlation id a run was started with — a ticket, a requirement, an A2A context. It groups
+ * runs; the link narrows this page to that group. (It used to link to `/runs`, the bundled
+ * pipeline page, which left with the pipeline layer in 1.189.0.)
+ */
+function CorrelationLink({ id }: { id: string | null }) {
 	if (!id) return <span className="text-muted-foreground">-</span>;
 	return (
 		<Link
-			href={`/runs?run=${encodeURIComponent(id)}`}
+			href={`/jobs?correlation_id=${encodeURIComponent(id)}`}
 			className="font-mono text-xs text-sky-500 hover:underline"
 		>
 			{id}
@@ -113,9 +119,13 @@ function StopButton({ id, onDone }: { id: string; onDone?: () => void }) {
 	);
 }
 
-export default function JobsPage() {
+function JobsView() {
+	const correlationId = useSearchParams().get("correlation_id") ?? "";
 	const fetchLive = useCallback(() => api.jobs(), []);
-	const fetchHistory = useCallback(() => api.jobsHistory(), []);
+	const fetchHistory = useCallback(
+		() => api.jobsHistory(correlationId || undefined),
+		[correlationId],
+	);
 
 	const live = usePoll<JobListItem[]>(fetchLive, 3000);
 	// Slower: durable rows only change when a job starts or finishes, and this table can be long.
@@ -189,6 +199,14 @@ export default function JobsPage() {
 					<span className="text-xs text-muted-foreground">
 						from the durable store — survives a restart
 					</span>
+					{correlationId && (
+						<span className="text-xs text-muted-foreground">
+							· correlation <code className="font-mono">{correlationId}</code>{" "}
+							<Link href="/jobs" className="text-sky-500 hover:underline">
+								clear
+							</Link>
+						</span>
+					)}
 				</div>
 				{history.loading && !history.data && (
 					<p className="text-sm text-muted-foreground">Loading…</p>
@@ -209,7 +227,9 @@ export default function JobsPage() {
 								<tr className="bg-muted text-muted-foreground">
 									<th className="px-4 py-2 text-left font-medium">Job ID</th>
 									<th className="px-4 py-2 text-left font-medium">Topology</th>
-									<th className="px-4 py-2 text-left font-medium">Pipeline</th>
+									<th className="px-4 py-2 text-left font-medium">
+										Correlation
+									</th>
 									<th className="px-4 py-2 text-left font-medium">Version</th>
 									<th className="px-4 py-2 text-left font-medium">Status</th>
 									<th className="px-4 py-2 text-left font-medium">Started</th>
@@ -231,7 +251,7 @@ export default function JobsPage() {
 										</Cell>
 										<Cell>{job.topology}</Cell>
 										<Cell muted>
-											<PipelineLink id={job.correlation_id} />
+											<CorrelationLink id={job.correlation_id} />
 										</Cell>
 										<Cell muted>{job.version ? `v${job.version}` : "-"}</Cell>
 										<Cell>
@@ -254,5 +274,16 @@ export default function JobsPage() {
 				)}
 			</section>
 		</div>
+	);
+}
+
+// useSearchParams must sit under a Suspense boundary for the static export prerender.
+export default function JobsPage() {
+	return (
+		<Suspense
+			fallback={<p className="text-sm text-muted-foreground">Loading…</p>}
+		>
+			<JobsView />
+		</Suspense>
 	);
 }

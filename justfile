@@ -144,6 +144,11 @@ skill-liveness workspace="reference":
 demo-jobs-history:
     uv run python packages/runtime/demos/jobs_history.py
 
+# Demo the A2A server (a2a-interop.md): the Agent Card, message/send, tasks/get|list, the refusal
+# of a follow-up on a task, and message/stream over SSE — all against hello-swarm on mock.
+demo-a2a-server:
+    uv run python packages/runtime/demos/a2a_server.py
+
 # Demo output_schema on a harness executor (harness-output-schema.md): markdown against a declared
 # schema, corrected through the harness; and a schema-less worker left alone.
 demo-harness-output-schema:

@@ -28,6 +28,12 @@ A2A has been *named* in this repo since v0.2 and implemented nowhere. What exist
 
 So this note is the first design of the thing itself.
 
+**Shipped since (1.221.0):** slices 1 and 2 — `server/_a2a.py` (card builder, task↔job mapping,
+the JSON-RPC handler) and `server/_routes_a2a.py` (the well-known card, `/a2a`, `/a2a/{topology}`,
+SSE for `message/stream` / `tasks/subscribe`), `server.a2a` in the workspace schema, the
+`input-required` gate rule, `features.a2a` on `/capabilities`, `tests/test_a2a_serve.py`. The
+client (`agent` skill, slice 3) and the fleet listing (slice 4) are still design.
+
 ## Why now
 
 A2A is a Linux Foundation standard (spec 1.0, 150+ organisations); Google ADK, LangGraph, CrewAI
@@ -112,10 +118,10 @@ the per-topology endpoint — selects the topology. Mapping, and it is a mapping
 
 | A2A | SwarmKit |
 |---|---|
-| `message/send` | `POST /run/{topology}` with `input` = concatenated text parts, `attachments` = file parts (data-URI or workspace path; the 20 MB and image-only rules of `attachments.md` apply unchanged), `correlation_id` = `contextId`, label `a2a.task_id` = the task id; returns the Task |
+| `message/send` | `POST /run/{topology}` with `input` = concatenated text parts, `attachments` = file parts (inline `bytes` only — a `uri` file part is refused with `ContentTypeNotSupportedError`, the runtime does not fetch caller-supplied addresses; the 20 MB and image-only rules of `attachments.md` apply unchanged), `correlation_id` = `contextId` (kept verbatim in the `a2a.context_id` label), `source` = `a2a`; the **task id is the job id**; returns the Task |
 | `message/stream` | the same submit, then `GET /jobs/{id}/stream` re-emitted as A2A `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` over SSE |
 | `tasks/get` | `GET /jobs/{id}` (+ the artifact when completed, as a `data`/`text` part) |
-| `tasks/list` | `GET /jobs/history` filtered to jobs carrying an `a2a.task_id` label |
+| `tasks/list` | `GET /jobs/history` filtered to `source: a2a` (the same column that says `serve` / `cli` / `chat`, so the portal's Source field reads it too) |
 | `tasks/cancel` | `POST /jobs/{id}/stop` — cooperative, at the next agent boundary; the task reports `canceled` only when the job reports `stopped` |
 | `tasks/subscribe` | `GET /jobs/{id}/stream` from the current position |
 | `tasks/pushNotificationConfig/*` | `UnsupportedOperationError` (first cut) |

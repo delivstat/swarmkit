@@ -782,6 +782,41 @@
             }
           }
         },
+        "a2a": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at /.well-known/agent-card.json with one skill per topology and answers the A2A task API at /a2a — a transport onto the same jobs, gates and audit as POST /run. See design/details/a2a-interop.md.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether to publish the Agent Card and serve the A2A task API."
+            },
+            "identity": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "What the Agent Card says about this instance. Defaults come from the workspace name.",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable agent name on the card (default: the workspace name)."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "One paragraph on what this instance does, shown to discovering agents."
+                },
+                "url": {
+                  "type": "string",
+                  "description": "Public base URL other agents should call (default: derived from the request that fetched the card). Set it behind a proxy."
+                },
+                "organization": {
+                  "type": "string",
+                  "description": "Provider organization on the card."
+                }
+              }
+            }
+          }
+        },
         "canary": {
           "type": "object",
           "additionalProperties": false,

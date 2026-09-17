@@ -117,9 +117,10 @@ export interface PersistedJob {
 	usage_input_tokens: number | null;
 	usage_output_tokens: number | null;
 	usage_cost_usd: number | null;
-	/** The pipeline run or conversation this job belongs to. Null for a standalone run. */
+	/** The group this run was started in — a ticket, a conversation, an A2A context. Null for a
+	 * standalone run. */
 	correlation_id: string | null;
-	/** Which front door produced it — "serve" | "cli" | "pipeline" | "chat". Null for rows written
+	/** Which front door produced it — "serve" | "cli" | "pipeline" | "chat" | "a2a". Null for rows written
 	 * before the column existed; those are shown as unattributed rather than guessed at. */
 	source: string | null;
 }

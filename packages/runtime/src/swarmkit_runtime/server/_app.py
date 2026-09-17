@@ -34,6 +34,7 @@ from ._config import (
 from ._helpers import _membership_authenticates, _record_serve_access, _required_action
 from ._jobs import JobStore
 from ._mcp import _boot_mcp, _mcp_available, _mount_mcp, _start_scheduler
+from ._routes_a2a import A2A_WELL_KNOWN_PATH, _register_a2a_routes
 from ._routes_config import _register_config_routes
 from ._routes_conversations import _register_conversation_routes
 from ._routes_crud import _register_crud_routes
@@ -312,7 +313,13 @@ def create_app(  # noqa: PLR0915
         # gate to render); /fleet/register + /fleet/refresh authenticate with their own token
         # (enrollment token / current membership key) inside the route (design 19), so they bypass
         # the transport-token seam here.
-        if request.url.path in ("/health", "/auth-info", "/fleet/register", "/fleet/refresh"):
+        if request.url.path in (
+            "/health",
+            "/auth-info",
+            "/fleet/register",
+            "/fleet/refresh",
+            A2A_WELL_KNOWN_PATH,
+        ):
             return await call_next(request)
 
         auth_req = AuthReq(
@@ -386,6 +393,9 @@ def create_app(  # noqa: PLR0915
     _register_review_routes(app, workspace_path)
     _register_fleet_routes(app)
     _register_memory_routes(app)
+    # Registered unconditionally; each route answers 404 until `server.a2a.enabled` is true, so
+    # a workspace can flip it on with a reload and not a restart.
+    _register_a2a_routes(app, _auth, workspace_path)
 
     if _mcp_available:
         _mount_mcp(app)

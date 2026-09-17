@@ -237,7 +237,7 @@ Two backends: local JSON store (zero setup) or GBrain MCP server (hybrid vector 
 
 ### HTTP server + canary deployments (M10 — shipped)
 
-`swarmkit serve` runs your workspace as a persistent HTTP service with async job execution, SSE streaming, webhook triggers, MCP endpoint, and pluggable auth:
+`swarmkit serve` runs your workspace as a persistent HTTP service with async job execution, SSE streaming, webhook triggers, MCP endpoint, an opt-in A2A endpoint, and pluggable auth:
 
 ```bash
 swarmkit serve my-swarm/ --port 8000
@@ -460,6 +460,7 @@ See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmk
 100. **Harness gates from the panel** — each instance's relay / input-request gates are listed and resolved from the fleet panel; poll-mode (Mode B) instances say so rather than pretending
 101. **Gap mining across the fleet** — capability gaps aggregated by occurrence across instances, with propose → approve → distribute as the human-gated loop
 102. **Eval harness** — `swarmkit eval <workspace> <eval-set>` scores a topology (deterministic checks + rubric judges + trajectory checks), stores results, and flips the exit code so it gates CI
+103. **A2A server** (`server.a2a.enabled`) — an Agent Card at `/.well-known/agent-card.json` with one skill per topology, and the A2A task API at `POST /a2a` as a transport onto the same jobs, gates and audit; a run parked on a human gate is `input-required` that the calling agent cannot resolve ([design](./design/details/a2a-interop.md))
 
 ## Reference topologies
 
@@ -535,7 +536,7 @@ The pack orders its sections by trust — the generated reference first, design 
 
 ## Roadmap
 
-See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.220.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
+See [`design/IMPLEMENTATION-PLAN.md`](./design/IMPLEMENTATION-PLAN.md) for the full roadmap. Runtime is at v1.221.0. Phases 1–4 complete; Phase 5 (fleet & self-improvement) largely shipped — eval harness, the fleet control plane + panel UI, the executor/harness-isolation stack, and the topology canvas; Phase 6 shipped as the **governance** half — funnels, integration contracts, multi-party approval, defer-and-resume on a human gate, correlated runs and the end-to-end SDLC workspace. Its **sequencing** half was deliberately removed in 1.189.0: pipelines are the application's, and `examples/pipeline-orchestrator/` is the reference. Remaining before launch: installable-package Phase 2 + launch prep (M11) and the self-improvement distribution loop (M17). The [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) lists every version.
 
 ## Contributing
 

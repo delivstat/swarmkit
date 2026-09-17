@@ -103,6 +103,31 @@ Same pattern for `/api/skills` and `/api/archetypes`.
 
 Each topology becomes an MCP tool. External agents can call your swarm topologies via standard MCP protocol.
 
+### A2A endpoint
+
+Off by default; `server.a2a.enabled: true` turns it on (no restart — a reload is enough).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/.well-known/agent-card.json` | The Agent Card: one A2A skill per topology; public (no auth) |
+| `GET` | `/a2a/{topology}/card` | The same card narrowed to one topology |
+| `POST` | `/a2a` | JSON-RPC 2.0: `message/send`, `message/stream`, `tasks/get`, `tasks/list`, `tasks/cancel`, `tasks/subscribe`; the message's `metadata.skill` names the topology |
+| `POST` | `/a2a/{topology}` | The same, bound to one topology (the card's per-skill `url`) |
+
+A2A is a *transport onto jobs*, not a second execution path: `message/send` is `POST /run/{topology}`
+(`contextId` → `correlation_id`, file parts → attachments), `tasks/get` is `GET /jobs/{id}`, `tasks/cancel`
+is `POST /jobs/{id}/stop`, and the streaming methods re-emit `GET /jobs/{id}/stream` as A2A
+status/artifact events. The task id **is** the job id; the run carries `source: a2a` and appears in
+the portal's jobs page like any other. Task states map from job status: `pending`→`submitted`,
+`running`→`working`, `deferred`→`input-required`, `completed`, `failed`, `stopped`→`canceled`.
+
+A run parked on a human gate reports `input-required` with the gate's URL in the status message, but
+the A2A caller **cannot** supply that input: approval scopes are un-grantable to agents, so a
+follow-up `message/send` on the task is refused with `UnsupportedOperationError` and the gate URL. A
+person resolves it through the review queue; a subscribed client sees the task go `working` again.
+Push notifications, gRPC and card signing are not implemented (`-32003` / `-32004`). Streaming
+methods need `Accept: text/event-stream`. Full mapping: `design/details/a2a-interop.md`.
+
 ### Webhooks
 
 | Method | Path | Description |
@@ -151,7 +176,16 @@ server:
     timeout_seconds: 300
   mcp:
     enabled: true
+  a2a:
+    enabled: false          # publish the Agent Card + serve /a2a
+    identity:               # optional; what the card says about this instance
+      name: Review desk
+      description: Code review and triage swarms, human-gated.
+      url: https://swarm.example.com   # set behind a proxy; default is the request's host
+      organization: Example Org
 ```
+
+`/capabilities` reports `features.a2a` so a fleet can see which instances publish a card.
 
 ## Triggers
 
