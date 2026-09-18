@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.231.0** (2026-09-18) — serve needs no extra
 - **v1.230.0** (2026-09-18) — the fleet control plane audited against the runtime and brought back into step
 - **v1.227.0** (2026-09-18) — tutorials 1–16 rewritten from real runs; the bugs they found, fixed
 - **v1.226.0** (2026-09-17) — the docs audited against the code: six new tutorials, a capstone demo, the knowledge pack carries the guides
