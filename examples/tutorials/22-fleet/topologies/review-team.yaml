@@ -1,0 +1,42 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: review-team
+  version: 0.1.0
+  description: Leaders manage workers, the root coordinates leaders.
+agents:
+  root:
+    id: manager
+    role: root
+    archetype: coordinator
+    children:
+      - id: research-lead
+        role: leader
+        archetype: lead
+        prompt:
+          system: You lead the research team. Delegate to your workers and combine their findings.
+        children:
+          - id: searcher
+            role: worker
+            archetype: researcher
+            prompt:
+              system: You search for information on the given topic. Five bullets at most.
+          - id: fact-checker
+            role: worker
+            archetype: researcher
+            prompt:
+              system: You verify facts and check sources. Five bullets at most.
+      - id: writing-lead
+        role: leader
+        archetype: lead
+        prompt:
+          system: You lead the writing team. Delegate drafting, then editing.
+        children:
+          - id: drafter
+            role: worker
+            archetype: writer
+          - id: editor
+            role: worker
+            archetype: writer
+            prompt:
+              system: You edit and polish drafts for clarity and style. Return the edited text only.

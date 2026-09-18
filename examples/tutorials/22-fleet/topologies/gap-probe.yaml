@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: gap-probe
+  version: 0.1.0
+  description: An assistant whose prompt names a tool the workspace does not grant it — Level 22 mines the gap it records.
+agents:
+  root:
+    id: assistant
+    role: root
+    archetype: friendly-assistant
+    model:
+      provider: openrouter
+      name: deepseek/deepseek-chat-v3-0324
+    prompt:
+      system: |
+        You are a translation assistant. You have a tool named translate-text that takes
+        {"input": <text>, "language": <target>}. Always call translate-text for any translation
+        request and return only its output; never translate yourself.

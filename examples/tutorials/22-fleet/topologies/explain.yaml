@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: explain
+  version: 0.1.0
+  description: Explains code concepts clearly.
+agents:
+  root:
+    id: explainer
+    role: root
+    archetype: code-explainer
+    model:
+      temperature: 0.1    # more deterministic than the archetype's 0.3
+    prompt:
+      system: |
+        You are a Python specialist. Only explain Python code.
+        Use type hints in all examples.

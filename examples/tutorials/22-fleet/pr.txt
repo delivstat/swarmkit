@@ -1,0 +1,9 @@
+PR #88: Raise the travel meal allowance
+
+Proposed change to knowledge/docs/expense-policy.md, section "Meals":
+
+- Meals while travelling are reimbursed up to ₹3,500 per day.
+- Alcohol is reimbursable with dinner, up to two drinks.
+- Team meals need a manager's approval when the total exceeds ₹10,000.
+
+Rationale: hotel restaurant prices in Mumbai and Bengaluru have gone up.

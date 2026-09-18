@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: pipeline
+  version: 0.1.0
+  description: Research first, then write using the research.
+agents:
+  root:
+    id: coordinator
+    role: root
+    archetype: coordinator
+    children:
+      - id: researcher
+        role: worker
+        archetype: researcher
+      - id: writer
+        role: worker
+        archetype: writer
+        depends_on: [researcher]
