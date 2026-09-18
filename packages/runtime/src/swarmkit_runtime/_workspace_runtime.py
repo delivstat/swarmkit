@@ -11,6 +11,7 @@ architectural decision in ``memory/feedback_cli_architecture.md``.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -356,6 +357,14 @@ class WorkspaceRuntime:
             JournalingGovernance(self._governance, write=self._journal_write),
         )
         self._session_active = False
+        # Compile once per topology, reuse across runs. Compiling rebuilds the LangGraph graph,
+        # which is pure CPU on the event loop; the load benchmark (load-and-scale.md) showed it
+        # serialize concurrent runs. The graph is a pure function of (this runtime, topology) —
+        # governance, mcp manager, checkpointer and bindings are all runtime-scoped, and per-run
+        # state rides on the thread_id — so it is safe to share. A reload builds a fresh runtime,
+        # so the cache is invalidated for free (swap_runtime).
+        self._graph_cache: dict[str, Any] = {}
+        self._compile_lock = asyncio.Lock()
 
     def _attach_event_sinks(self) -> None:
         """Build `events:` sinks and hand them to the audit provider.
@@ -599,10 +608,24 @@ class WorkspaceRuntime:
         )
 
     async def _compiled(self, topology_name: str) -> Any:
-        """Compile *topology_name* with a live checkpointer. The run paths use this, not
-        ``compile()`` directly, because the saver has to exist before the graph is built."""
+        """The compiled graph for *topology_name*, cached and reused across runs.
+
+        The run paths use this, not ``compile()`` directly, because the saver has to exist before
+        the graph is built — and because compiling per run is pure CPU on the event loop that
+        serializes concurrent runs (load-and-scale.md). Cached per runtime; a reload builds a fresh
+        runtime and so a fresh cache. The lock makes two concurrent first-runs compile once, not
+        twice.
+        """
         await self._ensure_checkpointer()
-        return self.compile(topology_name)
+        cached = self._graph_cache.get(topology_name)
+        if cached is not None:
+            return cached
+        async with self._compile_lock:
+            cached = self._graph_cache.get(topology_name)  # another run may have filled it
+            if cached is None:
+                cached = self.compile(topology_name)
+                self._graph_cache[topology_name] = cached
+            return cached
 
     async def _ensure_checkpointer(self) -> Any:
         """Build the checkpointer once, before anything compiles a graph.
