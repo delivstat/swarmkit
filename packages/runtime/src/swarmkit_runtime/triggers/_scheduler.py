@@ -64,7 +64,7 @@ class TriggerScheduler:
         if not _croniter_available:
             logger.warning(
                 "croniter is not installed; cron triggers will be skipped. "
-                "Install with: pip install 'swarmkit-runtime[serve]'"
+                "croniter is a base dependency of swarmkit-runtime; reinstall it"
             )
         self._task = asyncio.create_task(self._loop(), name="trigger-scheduler")
         logger.info(

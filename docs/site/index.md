@@ -172,7 +172,7 @@ Describe a skill, a topology or a whole workspace; an agent drafts it, validates
 <div class="sk-steps">
 <div>
 <strong>Install</strong>
-<p><code>uv tool install "swarmkit-runtime[serve,ui]"</code> — the CLI, the server and the portal in one tool.</p>
+<p><code>uv tool install "swarmkit-runtime[ui]"</code> — the CLI and server, with the portal.</p>
 </div>
 <div>
 <strong>Write a workspace</strong>
@@ -190,7 +190,7 @@ Describe a skill, a topology or a whole workspace; an agent drafts it, validates
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv tool install "swarmkit-runtime[serve,ui]"   # [ui] is the portal; without it `serve` is API-only
+uv tool install "swarmkit-runtime[ui]"   # [ui] is the portal; without it `swarmkit serve` is API-only
 swarmkit init my-swarm            # a conversation; it writes the YAML
 swarmkit run my-swarm hello --input "Say hello to the team."
 swarmkit serve my-swarm           # the portal at http://127.0.0.1:8000

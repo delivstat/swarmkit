@@ -3,20 +3,20 @@
 ## Install the CLI (recommended)
 
 ```bash
-# Recommended: the CLI, the HTTP server and the web portal it hosts
-uv tool install "swarmkit-runtime[serve,ui]"
+# Recommended: the CLI and HTTP server, with the web portal it hosts
+uv tool install "swarmkit-runtime[ui]"
 
 # CLI only — `swarmkit run`, `trace`, `author`, … and a headless `swarmkit serve` (API, no portal)
 uv tool install swarmkit-runtime
 
 # Postgres instead of SQLite for the stores (design/details/storage-service.md)
-uv tool install "swarmkit-runtime[serve,ui,postgres]"
+uv tool install "swarmkit-runtime[ui,postgres]"
 
 # The fleet control plane — a separate package, its own CLI (Level 22)
 uv tool install swarmkit-control-plane
 ```
 
-This installs `swarmkit` as a globally available CLI tool in an isolated environment — no virtual env needed, no system Python pollution. `uv` is the recommended way to install and maintain SwarmKit. The extras: `[serve]` declares the HTTP server's own dependencies (JWT auth, cron triggers); `[ui]` adds the web portal `swarmkit serve` hosts at `/` — without it serve runs **headless**, API only, and says so at startup; `[postgres]` adds the Postgres checkpoint backend. To add an extra to an existing install, re-run the command — `uv tool install` upgrades in place.
+This installs `swarmkit` as a globally available CLI tool in an isolated environment — no virtual env needed, no system Python pollution. `uv` is the recommended way to install and maintain SwarmKit. The HTTP server, JWT auth and cron triggers are part of the runtime — no extra. `[ui]` adds the web portal `swarmkit serve` hosts at `/` — without it serve runs **headless**, API only, and says so at startup; `[postgres]` adds the Postgres checkpoint backend. (`[serve]` still installs, and installs nothing: it is a deprecated alias from when the server's dependencies were optional.) To add an extra to an existing install, re-run the command — `uv tool install` upgrades in place.
 
 ## From source
 
