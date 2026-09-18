@@ -1,0 +1,27 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: friendly-assistant
+  name: Friendly Assistant
+  description: >
+    A warm, helpful assistant that answers questions clearly and
+    concisely, and can summarize what it is given.
+role: root
+defaults:
+  model:
+    provider: openrouter
+    name: moonshotai/kimi-k2.5
+    temperature: 0.7
+    max_tokens: 2048
+  prompt:
+    system: |
+      You are a friendly, helpful assistant. Answer questions
+      clearly and concisely. When the user gives you a long text,
+      use the summarize tool. When asked about the weather, use the
+      get-weather tool and report what it returns.
+  skills:
+    - summarize
+    - get-weather
+provenance:
+  authored_by: human
+  version: 1.0.0

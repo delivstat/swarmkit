@@ -23,6 +23,10 @@ from swarmkit_runtime.governance._limits import (
     CircuitBreakerError,
     CircuitBreakerTracker,
     GovernanceLimits,
+    current_tracker,
+    limits_from_workspace,
+    reset_run_tracker,
+    set_run_tracker,
 )
 
 # ---- types --------------------------------------------------------------
@@ -403,11 +407,15 @@ __all__ = [
     "IdentityVerification",
     "PolicyDecision",
     "TrustScore",
+    "current_tracker",
     "hitl_requested_event",
     "hitl_resolved_event",
+    "limits_from_workspace",
     "merge_decision_skills",
     "redact_json_pointers",
+    "reset_run_tracker",
     "run_ended_event",
     "run_started_event",
+    "set_run_tracker",
     "summarize_value",
 ]

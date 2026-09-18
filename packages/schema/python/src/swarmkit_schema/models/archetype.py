@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 from datetime import date
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
-class Role(Enum):
+class Role(StrEnum):
     """
     Must match the agent role where this archetype is instantiated.
     """
@@ -106,7 +106,7 @@ class SkillGrant(RootModel[str]):
     root: str = Field(..., pattern="^(pack:|server:)?[a-z][a-z0-9-]*$")
 
 
-class Category(Enum):
+class Category(StrEnum):
     capability = "capability"
     decision = "decision"
     coordination = "coordination"
@@ -141,7 +141,7 @@ class Iam(BaseModel):
     elevated_scopes: list[str] | None = None
 
 
-class AuthoredBy(Enum):
+class AuthoredBy(StrEnum):
     human = "human"
     authored_by_swarm = "authored_by_swarm"
     derived_from_template = "derived_from_template"

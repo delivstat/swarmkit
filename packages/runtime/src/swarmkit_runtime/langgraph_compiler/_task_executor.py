@@ -608,6 +608,10 @@ def _make_retry_fn(
                 "COMPLETE revised response."
             ),
             tools=None,
+            # The agent's own cap, else a bounded default: an uncapped request is taken by some
+            # OpenAI-compatible upstreams as "the whole window" and refused — which failed a
+            # funnel's first revision with a 400.
+            max_tokens=int((agent.model or {}).get("max_tokens") or 4096),
         )
         response = await model_provider.complete(request)
         from swarmkit_runtime.langgraph_compiler._helpers import (  # noqa: PLC0415

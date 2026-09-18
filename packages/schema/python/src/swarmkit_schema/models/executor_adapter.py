@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from datetime import date
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -40,7 +40,7 @@ class SuccessWhen(BaseModel):
     exit_code: int | None = None
 
 
-class OnUnanswerable(Enum):
+class OnUnanswerable(StrEnum):
     """
     How a mid-run request outside the launch grant is handled (RFC §6.2). `deny` refuses it in place; `abort` terminates needs_approval; `relay` pauses the harness and routes the request to the approval inbox, then feeds the decision back. `relay` requires an `interaction` block with a driver (the one Tier-1 seam — bidirectional session control).
     """
@@ -50,7 +50,7 @@ class OnUnanswerable(Enum):
     relay = "relay"
 
 
-class Driver(Enum):
+class Driver(StrEnum):
     """
     `hold-stream` keeps the session alive and answers over streaming stdin (short waits); `park-resume` checkpoints the session id and re-launches with an expanded grant on approval (long waits, survives restarts).
     """
@@ -79,7 +79,7 @@ class Interaction(BaseModel):
     )
 
 
-class TelemetryGrade(Enum):
+class TelemetryGrade(StrEnum):
     """
     `opaque` (unobservable) adapters are denied by default (RFC decision 5); use requires explicit per-archetype opt-in.
     """
@@ -88,7 +88,7 @@ class TelemetryGrade(Enum):
     opaque = "opaque"
 
 
-class Profile(Enum):
+class Profile(StrEnum):
     files = "files"
     structured = "structured"
     media = "media"
@@ -138,7 +138,7 @@ class Launch(BaseModel):
     )
 
 
-class Default(Enum):
+class Default(StrEnum):
     """
     The auth mode used when the workspace/archetype does not override.
     """
@@ -184,7 +184,7 @@ class Stream(BaseModel):
     )
 
 
-class Event(Enum):
+class Event(StrEnum):
     started = "started"
     message = "message"
     tool_call = "tool_call"
@@ -264,7 +264,7 @@ class Grant(BaseModel):
     )
 
 
-class Kind(Enum):
+class Kind(StrEnum):
     """
     `worktree` (default) runs the harness directly in an ephemeral git worktree, as today. `container` provisions an isolated container with the worktree bind-mounted read-write, resource limits, and the `network` policy enforced.
     """
@@ -354,7 +354,7 @@ class Build2(BaseModel):
     )
 
 
-class Mode(Enum):
+class Mode(StrEnum):
     """
     Read-only (default) or read-write.
     """
@@ -378,7 +378,7 @@ class Mount(BaseModel):
     mode: Mode | None = Field("ro", description="Read-only (default) or read-write.")
 
 
-class Network(Enum):
+class Network(StrEnum):
     """
     Enforced egress policy for kind=container. `deny` → no outbound access (--network none); suits a local-model harness. `allowlist` → egress only to `allow` hosts, via a managed forward proxy — the mode a cloud harness needs to reach its model API and nothing else.
     """
@@ -444,7 +444,7 @@ class Sandbox(BaseModel):
     )
 
 
-class AuthoredBy(Enum):
+class AuthoredBy(StrEnum):
     human = "human"
     authored_by_swarm = "authored_by_swarm"
     derived_from_template = "derived_from_template"

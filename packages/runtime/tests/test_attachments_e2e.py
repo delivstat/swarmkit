@@ -64,6 +64,9 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def _mock_of(runtime: WorkspaceRuntime) -> MockModelProvider:
     registry: Any = runtime._provider_registry
     provider = registry.get("mock")
+    # Providers are wrapped by the `swarmkit debug` recorder since the ring buffer was wired;
+    # the mock underneath is what records the calls this test reads.
+    provider = getattr(provider, "_inner", provider)
     assert isinstance(provider, MockModelProvider)
     return provider
 

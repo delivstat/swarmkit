@@ -131,6 +131,11 @@ def _build_handlers(
         tools: list[Any] = []
         for ws_id, rt in runtimes.items():
             for topo_name, topo in rt.workspace.topologies.items():
+                # `hello@0.4.0` is a version key (canary, Level 12), not a tool: `@` and `.` are
+                # outside the MCP tool-name alphabet, and the bare name routes to the version the
+                # workspace chose.
+                if "@" in topo_name:
+                    continue
                 desc = (
                     getattr(topo.raw.metadata, "description", None) or f"Run {topo_name} topology"
                 )
@@ -183,6 +188,8 @@ def _build_handlers(
             ]
         for ws_id, rt in runtimes.items():
             for topo_name in rt.workspace.topologies:
+                if "@" in topo_name:
+                    continue
                 if name == tool_name_fn(ws_id, topo_name):
                     return await _run_topology(rt, topo_name, arguments, TextContent)
             if name == search_name_fn(ws_id):

@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: leads
+  name: Approval leads
+roles:
+  - id: engineering-lead
+    members: [alice]
+    scopes: [design:approve]
+  - id: product-lead
+    members: [bob]
+    scopes: [design:approve]

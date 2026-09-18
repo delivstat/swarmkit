@@ -80,6 +80,35 @@ describe("summarize", () => {
 		expect(s).toContain("human-only");
 	});
 
+	it("shows a drift row's score against its threshold — the cell was a dash", () => {
+		expect(
+			summarize(
+				event({
+					event_type: "intent.drift",
+					payload: {
+						drift_score: 0.885,
+						threshold: 0.75,
+						exceeded: true,
+						action: "warn",
+					},
+				}),
+			),
+		).toBe("drift 0.89 > 0.75 → warn");
+		expect(
+			summarize(
+				event({
+					event_type: "intent.drift",
+					payload: {
+						drift_score: 0.2,
+						threshold: 0.75,
+						exceeded: false,
+						action: null,
+					},
+				}),
+			),
+		).toBe("drift 0.20 ≤ 0.75");
+	});
+
 	it("otherwise shows what the tool was asked", () => {
 		expect(summarize(event({ inputs: { query: "PGM hold" } }))).toBe(
 			"query: PGM hold",

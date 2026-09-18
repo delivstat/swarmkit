@@ -91,7 +91,19 @@ def test_run_topology_returns_job(hello_client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert "job_id" in data
-    assert data["status"] == "running"
+    # The job's real state, not a hard-coded "running": it is queued the instant this returns
+    # and starts on the next loop tick. The response carries the rest of the job too.
+    assert data["status"] in ("pending", "running")
+    assert data["topology"] == "hello"
+    assert data["input"] == "Greet engineers"
+    assert data["created_at"]
+    # The tags the caller sent come straight back — the response used to read them off the
+    # in-memory job, which did not hold them, and answered `correlation_id: null`.
+    tagged = hello_client.post(
+        "/run/hello",
+        json={"input": "x", "correlation_id": "HB-88", "labels": {"app": "handbook"}},
+    ).json()
+    assert tagged["correlation_id"] == "HB-88" and tagged["source"] == "serve"
 
 
 def test_run_unknown_topology_returns_404(hello_client: TestClient) -> None:
@@ -147,7 +159,8 @@ def test_webhook_trigger(hello_client: TestClient) -> None:
     assert resp.status_code == 200
     data = resp.json()
     assert "job_id" in data
-    assert data["status"] == "running"
+    assert data["status"] in ("pending", "running")
+    assert data["topology"] == "hello"
 
 
 def test_webhook_unknown_topology(hello_client: TestClient) -> None:

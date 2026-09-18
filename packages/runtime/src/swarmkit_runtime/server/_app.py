@@ -33,7 +33,7 @@ from ._config import (
 )
 from ._helpers import _membership_authenticates, _record_serve_access, _required_action
 from ._jobs import JobStore
-from ._mcp import _boot_mcp, _mcp_available, _mount_mcp, _start_scheduler
+from ._mcp import _boot_mcp, _mcp_available, _mount_mcp, _start_scheduler, mcp_session_lifespan
 from ._routes_a2a import A2A_WELL_KNOWN_PATH, _register_a2a_routes
 from ._routes_config import _register_config_routes
 from ._routes_conversations import _register_conversation_routes
@@ -51,6 +51,21 @@ from ._webui import mount_webui
 from ._workspace_config import WorkspaceConfigService
 
 logger = logging.getLogger("swarmkit.server")
+
+
+def _webhook_has_its_own_auth(app: FastAPI, name: str) -> bool:
+    """True when a webhook trigger addressed by *name* (a target topology, or a pipeline trigger's
+    own id) declares `config.auth` — the signature the route will verify. A webhook trigger with
+    no auth block stays behind the serve gate: turning `server.auth` on must not open an unsigned
+    door."""
+    for tc in getattr(app.state, "trigger_configs", None) or []:
+        if tc.get("type") != "webhook":
+            continue
+        if not ((tc.get("config") or {}).get("auth") or (tc.get("config") or {}).get("secret_ref")):
+            continue
+        if name in (tc.get("targets") or []) or tc.get("id") == name:
+            return True
+    return False
 
 
 def _wire_storage(app: FastAPI, workspace_path: Path, runtime: WorkspaceRuntime) -> Any:
@@ -245,7 +260,9 @@ def create_app(  # noqa: PLR0915
         else:
             app.state.canary_router = None
 
-        yield
+        # The MCP transport's session manager lives exactly as long as the app does.
+        async with mcp_session_lifespan(app):
+            yield
         await scheduler.stop()
         await runtime.close()
 
@@ -320,6 +337,25 @@ def create_app(  # noqa: PLR0915
             "/fleet/refresh",
             A2A_WELL_KNOWN_PATH,
         ):
+            return await call_next(request)
+        # A CORS preflight carries no credentials by design — the browser sends it BEFORE the
+        # request that will carry `Authorization`. Answering it 401 here meant a portal on another
+        # origin could never reach an api_key-protected serve: every call died in preflight with
+        # "Failed to fetch". The CORS middleware (inside this one) answers preflights; a request
+        # that follows is authenticated like any other.
+        # A webhook is called by a third party (GitHub, CI) that cannot hold a serve API key; it
+        # authenticates with the signature its trigger declares (`config.auth`), checked by the
+        # route. Behind the API-key gate every signed delivery was a 401 before the signature was
+        # even read — the moment `server.auth` was turned on, every webhook trigger stopped.
+        is_preflight = (
+            request.method == "OPTIONS" and "access-control-request-method" in request.headers
+        )
+        is_signed_webhook = (
+            request.method == "POST"
+            and request.url.path.startswith("/hooks/")
+            and _webhook_has_its_own_auth(request.app, request.url.path.removeprefix("/hooks/"))
+        )
+        if is_preflight or is_signed_webhook:
             return await call_next(request)
 
         auth_req = AuthReq(

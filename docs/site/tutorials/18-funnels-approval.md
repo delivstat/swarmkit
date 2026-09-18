@@ -42,7 +42,10 @@ roles:
 # funnels/release-approval.yaml
 apiVersion: swarmkit/v1
 kind: Funnel
-metadata: { id: release-approval, name: Release approval }
+metadata:
+  id: release-approval
+  name: Release approval
+  description: Validate the note, judge its risk, then a release manager signs off.
 validate:
   schema: schemas/release-note.json        # shape, free, deterministic
   slice_budget: { max_files: 20, max_diff_lines: 400 }
@@ -58,6 +61,7 @@ approve:
       quorum: all                          # all | any | { k-of: 2 }
   exclude_author: true
   min_distinct_approvers: 1
+provenance: { authored_by: human, version: 1.0.0 }
 ```
 
 Attach it to the node whose output it gates:
@@ -105,7 +109,7 @@ SWARMKIT_PROVIDER=mock swarmkit run ./workspace release --input "Release 1.2.0"
 swarmkit review list ./workspace --kind role_task
 swarmkit review gate <gate-id> ./workspace                       # resolved? policy applied
 swarmkit review resolve <item-id> --as alice --approve ./workspace
-swarmkit run ./workspace release --resume <run-id>               # or let serve resume it
+swarmkit run ./workspace release --resume               # resumes the last checkpointed run; or let serve resume it
 ```
 
 `--as alice` is checked against the role registry; an identity not in the role, or the artifact's own
@@ -122,7 +126,7 @@ And stopping, which is a deferral with a different reason:
 
 ```bash
 swarmkit stop <run-id> ./workspace          # lands at the next agent boundary; a call in flight finishes
-swarmkit run ./workspace release --resume <run-id>
+swarmkit run ./workspace release --resume
 ```
 
 ## What happened

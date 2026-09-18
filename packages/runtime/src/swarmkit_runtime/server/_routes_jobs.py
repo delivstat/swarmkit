@@ -95,7 +95,10 @@ def _durable_job(request: Request, job_id: str) -> Any:
 
 #: What the in-memory `Job` can answer for. Everything else a reader asks for comes from the
 #: durable row, which is the only place it exists.
-_LIVE_FIELDS = frozenset(Job.__dataclass_fields__)
+#: The caller's tags travel on the in-memory job only so the submit response can carry them; once
+#: a row exists it is the record, so the view reads them from the row first.
+_TAG_FIELDS = frozenset({"correlation_id", "source", "labels"})
+_LIVE_FIELDS = frozenset(Job.__dataclass_fields__) - _TAG_FIELDS
 
 
 class _JobView:
@@ -119,7 +122,10 @@ class _JobView:
     def __getattr__(self, name: str) -> Any:
         if name in _LIVE_FIELDS:
             return getattr(self._live, name)
-        return getattr(self._row, name, None)
+        value = getattr(self._row, name, None)
+        if value is None and name in _TAG_FIELDS:
+            return getattr(self._live, name, None)
+        return value
 
 
 def _resolve_job(live: Any, row: Any) -> Any:
@@ -218,7 +224,10 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
             )
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
-        return JobResponse(job_id=job.id, status="running", output=None, error=None)
+        # The same shape a GET returns, filled from the job just created — this used to answer
+        # with `topology: ""`, `input: ""`, `created_at: ""`, so a caller had to fetch the job it
+        # had just submitted to learn anything about it.
+        return _to_response(job)
 
     @app.get("/jobs")
     async def list_jobs() -> list[JobListItem]:
@@ -420,8 +429,10 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
             body_json = await request.json()
         except Exception:
             body_json = raw_body.decode(errors="replace")
+        # A payload without an `input` field is handed to the topology as JSON text — not the
+        # Python repr (`{'action': 'opened', …}`) `str()` produced, which no model should parse.
         user_input = (
-            body_json.get("input", str(body_json))
+            body_json.get("input") or json.dumps(body_json)
             if isinstance(body_json, dict)
             else str(body_json)
         )
@@ -439,7 +450,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
             )
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
-        return JobResponse(job_id=job.id, status="running")
+        return _to_response(job)
 
 
 async def _handle_pipeline_webhook(

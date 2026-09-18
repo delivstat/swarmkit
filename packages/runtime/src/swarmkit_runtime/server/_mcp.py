@@ -7,6 +7,8 @@ import asyncio
 import importlib.util
 import logging
 import typing
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -15,7 +17,7 @@ from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.triggers import TriggerScheduler
 
 from ._config import ServerCfg
-from ._jobs import JobStore, _start_job
+from ._jobs import JobStore
 
 logger = logging.getLogger("swarmkit.server")
 
@@ -90,7 +92,21 @@ def _mount_mcp(app: FastAPI) -> None:
     """
     from swarmkit_runtime.mcp._sdk_compat import MCPServerClass  # noqa: PLC0415
 
-    mcp_server = MCPServerClass("swarmkit")
+    # The SDK switches on DNS-rebinding protection for a loopback host and then refuses any
+    # `Host:` it does not recognise with a 421 — including `127.0.0.1` without a port, and every
+    # name a container or reverse proxy is reached by. Serve already decides what it binds to and
+    # who may call it (`server.auth`); the transport must not second-guess that.
+    try:
+        from mcp.server.transport_security import (  # noqa: PLC0415
+            TransportSecuritySettings,
+        )
+
+        mcp_server = MCPServerClass(
+            "swarmkit",
+            transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+        )
+    except (ImportError, TypeError):  # an SDK without the setting has no such check
+        mcp_server = MCPServerClass("swarmkit")
     _tools_registered = False
 
     @app.middleware("http")
@@ -99,6 +115,8 @@ def _mount_mcp(app: FastAPI) -> None:
         if not _tools_registered and hasattr(request.app.state, "runtime"):
             rt: WorkspaceRuntime = request.app.state.runtime
             for name, topo in rt.workspace.topologies.items():
+                if "@" in name:  # a version key (canary), not a tool name — see mcp/_serve.py
+                    continue
                 description = topo.root.source_archetype or f"Run topology {name}"
 
                 def _make_tool_fn(topo_name: str, desc: str, app_ref: FastAPI) -> None:
@@ -133,11 +151,33 @@ def _mount_mcp(app: FastAPI) -> None:
         return await call_next(request)
 
     try:
+        # The streamable-HTTP transport serves at `settings.streamable_http_path` INSIDE the
+        # mounted app — `/mcp` by default, which under a `/mcp` mount made the real endpoint
+        # `/mcp/mcp`. Serve it at the mount root so a client points at `/mcp/`.
+        settings = getattr(mcp_server, "settings", None)
+        if settings is not None and hasattr(settings, "streamable_http_path"):
+            settings.streamable_http_path = "/"
         mcp_app = mcp_server.streamable_http_app()
         app.mount("/mcp", mcp_app)
+        # The transport's session manager must be RUN for the endpoint to answer at all; the
+        # lifespan in `_app.py` enters it (`mcp_session_lifespan`). Without that every request
+        # was a 500 — "Task group is not initialized" — and nothing said so at startup.
+        app.state.mcp_server = mcp_server
         logger.info("MCP endpoint mounted at /mcp")
     except Exception:
         logger.warning("Failed to mount MCP endpoint", exc_info=True)
+
+
+@asynccontextmanager
+async def mcp_session_lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Run the streamable-HTTP session manager for the life of the app (no-op without one)."""
+    mcp_server = getattr(app.state, "mcp_server", None)
+    manager = getattr(mcp_server, "session_manager", None) if mcp_server is not None else None
+    if manager is None:
+        yield
+        return
+    async with manager.run():
+        yield
 
 
 async def _boot_mcp(runtime: WorkspaceRuntime, cfg: ServerCfg) -> None:
@@ -162,19 +202,31 @@ async def _start_scheduler(
 ) -> TriggerScheduler:
     """Create and start a TriggerScheduler wired to the app's job store."""
 
-    async def _fire_trigger(topology_name: str, source: str) -> None:
+    async def _fire_trigger(topology_name: str, source: str, user_input: str = "") -> None:
+        # Through the SAME service as `POST /run/{topology}`: the run gets the canary version,
+        # the durable job row and the capacity gate. Fired directly, a scheduled run was an
+        # in-memory job with `source` as its input — invisible in `/jobs/history` once it ended,
+        # and its input was the literal string `trigger:<id>`.
+        from ._services import JobService, ServiceError  # noqa: PLC0415
+
         rt: WorkspaceRuntime = app.state.runtime
         sema: asyncio.Semaphore | None = getattr(app.state, "job_semaphore", None)
         server_cfg: ServerCfg = getattr(app.state, "server_config", ServerCfg())
-        job = await job_store.create(topology_name, source)
-        _start_job(
-            job_store,
-            job,
-            rt,
-            max_steps=10,
-            timeout_seconds=server_cfg.timeout_seconds,
-            semaphore=sema,
-        )
+        try:
+            job = await JobService(job_store).start(
+                rt=rt,
+                canary=getattr(app.state, "canary_router", None),
+                store=getattr(app.state, "store", None),
+                cfg=server_cfg,
+                semaphore=sema,
+                topology_name=topology_name,
+                user_input=user_input or source,
+                max_steps=10,
+                source=source,
+            )
+        except ServiceError as exc:
+            logger.warning("Trigger %r could not start %r: %s", source, topology_name, exc)
+            return
         logger.info(
             "Trigger fired topology=%r job_id=%s source=%r",
             topology_name,

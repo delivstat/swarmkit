@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: hello              # same name as hello.yaml — a second VERSION of it, not a second topology
+  version: 0.4.0
+  description: The canary candidate — the assistant answers with a one-line source note.
+agents:
+  root:
+    id: assistant
+    role: root
+    archetype: friendly-assistant
+    prompt:
+      system: |
+        You are a friendly, helpful assistant. Answer clearly and concisely, then end with one
+        line starting "Source:" that says where the answer came from (a tool, or general knowledge).
+    skills_additional:
+      - quality-check
+    intent_monitoring:
+      enabled: true
+      threshold: 0.75
+      on_drift: warn

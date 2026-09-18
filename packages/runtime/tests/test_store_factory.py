@@ -153,7 +153,10 @@ def test_typed_model_with_an_enum_backend_is_read(tmp_path: Path) -> None:
     # `Backend2` silently starts asserting about a different enum.
     annotation = Runtime.model_fields["backend"].annotation
     backend_enum: Any = next(a for a in get_args(annotation) if a is not type(None))
-    assert not isinstance(backend_enum.postgres, str)  # the trap, pinned
+    # The trap this test was written for — a plain Enum — is closed at the codegen now: every
+    # string enum is generated as a StrEnum, so the member IS its string. The read below must
+    # keep working either way, which is why the pin became an equality rather than being dropped.
+    assert backend_enum.postgres == "postgres"
 
     class _Runtime:
         backend = backend_enum.postgres

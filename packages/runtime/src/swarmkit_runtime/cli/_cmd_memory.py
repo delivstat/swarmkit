@@ -96,10 +96,14 @@ def add(
 ) -> None:
     """Write a fact into governed memory, through the same path an agent writes through.
 
-    The point is not to insert a row: `write()` reconciles the candidate against current memory and
+    The point is not to insert a row: the write reconciles the candidate against current memory and
     reports `new` / `update` / `reinforce` / `refine` / `contradict`. A human add inherits all of
-    it, contradiction handling included.
+    it, contradiction handling included — which means `awrite`, the path that consults the
+    `memory-reconcile` skill on a changed value. `write()` is the deterministic half only: through
+    it every changed value was an `update`, and a workspace with the reconcile skill declared never
+    saw a `refine` or a `contradict` from this command, or from `POST /memory`.
     """
+    import asyncio  # noqa: PLC0415
     import getpass  # noqa: PLC0415
 
     from swarmkit_runtime.governed_memory import MemoryCandidate  # noqa: PLC0415
@@ -139,20 +143,22 @@ def add(
         worst = 0
         counts: dict[str, int] = {}
         for candidate in candidates:
-            outcome = store.write(candidate)
+            outcome = asyncio.run(store.awrite(candidate))
             counts[outcome.op] = counts.get(outcome.op, 0) + 1
             worst = max(worst, _report(outcome, f"{candidate.subject}/{candidate.attribute}"))
         typer.echo("  " + ", ".join(f"{n} {op}" for op, n in sorted(counts.items())))
         raise typer.Exit(worst)
 
-    outcome = store.write(
-        MemoryCandidate(
-            subject=subject,
-            attribute=attribute,
-            value=value,
-            type=memory_type,  # type: ignore[arg-type]
-            confidence=confidence,
-            source=who,
+    outcome = asyncio.run(
+        store.awrite(
+            MemoryCandidate(
+                subject=subject,
+                attribute=attribute,
+                value=value,
+                type=memory_type,  # type: ignore[arg-type]
+                confidence=confidence,
+                source=who,
+            )
         )
     )
     raise typer.Exit(_report(outcome, f"{subject}/{attribute}"))

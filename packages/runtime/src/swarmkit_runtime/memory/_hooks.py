@@ -91,7 +91,10 @@ async def extract_and_save(
                 model=model_name,
                 messages=[Message(role="user", content=prompt)],
                 temperature=0.0,
-                max_tokens=500,
+                # Room for a reasoning model: kimi-k2.5 spent all of the previous 500 on its
+                # hidden thinking and returned an empty string, which parsed as "extraction
+                # failed" on every turn. The JSON itself is ~100 tokens.
+                max_tokens=2048,
             )
         )
         text = response.text.strip()

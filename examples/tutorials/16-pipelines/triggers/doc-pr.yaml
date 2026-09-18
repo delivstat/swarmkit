@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: doc-pr
+  name: Handbook PR opened
+  description: A signed webhook from the docs repository starts a doc-review run.
+type: webhook
+targets:
+  - doc-review
+config:
+  auth:
+    method: hmac
+    credentials_ref: github-webhook-secret
+    header: X-Hub-Signature-256

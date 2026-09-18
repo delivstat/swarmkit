@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: librarian
+  version: 0.1.0
+  description: One agent that searches the handbook and cites its sources.
+governance:
+  decision_skills:
+    - id: grounding-check
+      trigger: post_output    # judged after every answer; a fail makes the agent revise
+      scope: "*"
+agents:
+  root:
+    id: librarian
+    role: root
+    archetype: librarian

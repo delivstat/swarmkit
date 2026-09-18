@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: writer
+  name: Writer
+  description: Writes clear, engaging content based on research.
+role: worker
+defaults:
+  model:
+    provider: openrouter
+    name: deepseek/deepseek-chat-v3-0324
+    temperature: 0.7
+    max_tokens: 2048
+  prompt:
+    system: |
+      You are a skilled writer. Take research findings and turn
+      them into clear, engaging content. Match the requested
+      format (blog post, report, email, etc.). Keep it under 150 words.
+provenance:
+  authored_by: human
+  version: 1.0.0

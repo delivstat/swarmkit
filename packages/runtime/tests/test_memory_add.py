@@ -98,7 +98,7 @@ def test_a_contradiction_is_not_reported_as_success(
     class _Contradicting:
         """A store whose write always contradicts, standing in for a wired reconciler."""
 
-        def write(self, candidate: MemoryCandidate) -> Any:
+        async def awrite(self, candidate: MemoryCandidate) -> Any:
             return type("O", (), {"op": "contradict", "changed": False})()
 
     monkeypatch.setattr(_cmd_memory, "_store", lambda _w: _Contradicting())
@@ -257,3 +257,19 @@ def test_a_workspace_without_governed_memory_returns_404(
     with TestClient(create_app(tmp_path)) as c:
         resp = c.post("/memory", json={"subject": "a", "attribute": "b", "value": "c"})
     assert resp.status_code == 404
+
+
+def test_a_changed_value_goes_through_the_reconcile_skill(ws: Path) -> None:
+    """`memory add` (and `POST /memory`) called `write()`, the deterministic half: every changed
+    value became an `update`, and the `memory-reconcile` skill a workspace declared was never
+    consulted from either surface — only from the agent hook. Now `awrite`. On the mock model the
+    skill's output does not parse, which fails closed as `contradict`: the trusted value stays and
+    the candidate is quarantined — the documented behaviour, and distinguishable from `update`."""
+    (ws / "skills" / "memory-reconcile.yaml").write_text(
+        (REPO / "reference/skills/memory-reconcile.yaml").read_text()
+    )
+    assert add(ws, "sn8", "carton-count-source", "The task list.").exit_code == 0
+    changed = add(ws, "sn8", "carton-count-source", "Shipment/Containers.")
+    assert "contradict" in changed.stderr + changed.stdout, (changed.stdout, changed.stderr)
+    store = WorkspaceRuntime.from_workspace_path(ws).governed_memory
+    assert store.get("sn8", "carton-count-source").value == "The task list."

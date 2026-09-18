@@ -1,0 +1,117 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: my-swarm
+  name: My First Swarm
+  description: Learning SwarmKit step by step.
+governance:
+  provider: mock
+  # Circuit breakers: a run that exceeds these ends with CircuitBreakerError naming the limit.
+  limits:
+    max_steps_per_agent: 20
+    max_steps_per_run: 100
+  # Mandatory decision skills. Every topology inherits these; a topology can switch one off by
+  # id (`enabled: false`) or make it advisory (`required: false`).
+  decision_skills:
+    - id: content-filter
+      trigger: pre_input          # before the agent sees the input
+      scope: "*"
+    - id: quality-check
+      trigger: post_output        # after the agent answers
+      scope: "*"
+      required: false             # advisory: a fail is logged, not fatal
+    # Workspace memory. `memory-reader` searches what earlier runs recorded (and what people
+    # curated — see governed memory) and puts it in front of the agent; `memory-writer` asks a
+    # model, after each answer, whether the turn is worth remembering. Neither is a skill file:
+    # both ids are built into the runtime.
+    - id: memory-reader
+      trigger: pre_input
+      scope: "*"
+      required: false             # a memory read that can fail a run is worse than no memory
+      config:
+        max_results: 5
+        similarity_threshold: 0.15
+        search_scope: all         # user | all | both
+    - id: memory-writer
+      trigger: post_output
+      scope: "*"
+      required: false
+      config:
+        min_output_length: 100    # greetings are not worth remembering
+
+mcp_servers:
+  # A server you wrote: one Python file, launched as a subprocess. `open` — the tool is harmless
+  # and local, so calls skip the governance check.
+  - id: weather
+    transport: stdio
+    command: ["uv", "run", "servers/weather_server.py"]
+    permission: open
+
+  # A published server, fetched by npx on first start. `readonly` allows only tools declared to
+  # read — the ones listed under `effects`; anything else is denied rather than guessed at.
+  - id: filesystem
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."]
+    permission: readonly
+    effects:
+      read_file: read
+      list_directory: read
+
+  # Level 10. Full-text search over knowledge/docs — one file, no external service. `open`:
+  # local and read-only.
+  - id: knowledge-search
+    transport: stdio
+    command: ["uv", "run", "servers/search_server.py"]
+    env:
+      KNOWLEDGE_DIR: knowledge/docs
+    permission: open
+
+  # Built into the runtime: CSV, draw.io, SVG, images and plain files, with directory listing.
+  - id: docs-reader
+    transport: stdio
+    command: ["swarmkit", "docs-reader", "--workspace", "."]
+    permission: readonly
+    effects:
+      read_csv: read
+      read_text: read
+      list_files: read
+
+# Level 11. The server block: concurrency, the per-job timeout, and who may call.
+server:
+  jobs:
+    max_concurrent: 2           # a third simultaneous run is refused with 429, not queued forever
+    timeout_seconds: 600        # a run past this is marked failed
+  mcp:
+    enabled: true               # every topology is a tool at /mcp/
+  # Level 12. `hello` has two versions on disk; POST /run/hello picks one by weight.
+  canary:
+    routes:
+      - topology: hello
+        versions:
+          - version: "0.3.0"
+            weight: 80
+          - version: "0.4.0"
+            weight: 20
+            promote_when:
+              min_runs: 5              # promote after 5 runs of 0.4.0 …
+              error_rate_below: 0.2    # … with under 20% failures …
+              drift_below: 0.9         # … and a mean drift score under 0.9
+              window_minutes: 60
+  auth:
+    provider: api_key
+    config:
+      keys:
+        - key_ref: env:APP_TOKEN    # a reference, never the literal — minted by `swarmkit auth token`
+          client_id: app
+          client_name: My app
+          tier: run               # read | run | admin — or explicit `scopes`
+        - key_ref: env:OPS_TOKEN      # promote / rollback / reload need `admin`
+          client_id: ops
+          client_name: Ops
+          tier: admin
+
+credentials:
+  github-webhook-secret:
+    source: env
+    config:
+      env: GITHUB_WEBHOOK_SECRET

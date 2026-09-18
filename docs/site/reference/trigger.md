@@ -20,15 +20,15 @@ Required top-level: `apiVersion`, `kind`, `metadata`, `type`, `targets`.
 
 | `type` | Fired by | `config` (runtime-validated) |
 |---|---|---|
-| `cron` | schedule tick | `{ expression: <5/6-field cron>, timezone?: <IANA zone> }` |
-| `webhook` | HTTP POST to an endpoint | `{ path, auth?: {...} }` |
+| `cron` | schedule tick | `{ expression: <5/6-field cron>, timezone?: <IANA zone>, input?: <what the run is asked> }` — `timezone` is the zone the expression is written in; without `input` the run receives `trigger:<id>` |
+| `webhook` | HTTP POST to `/hooks/<target topology>` | `{ auth?: {...} }` — the route is the target topology's name; the body's `input` field, or the whole JSON body as text, is the run's input |
 | `file_watch` | filesystem change | `{ root, pattern, events: [...] }` |
 | `manual` | `POST /run/{topology}` (or the portal's "Run now") | none required |
 | `plugin` | a registered `TriggerProvider` | `provider_id` + arbitrary config |
 
 ### Webhook `auth`
 
-Optional, and the one config field the schema validates. Required members `method` (`hmac` \| `bearer` \| `api_key`) and `credentials_ref` (the name of a workspace `credentials` entry holding the secret); optional `header`. Secrets are never stored on the trigger — only referenced by name.
+Optional, and the one config field the schema validates. Required members `method` (`hmac` \| `bearer` \| `api_key`) and `credentials_ref` (the name of a workspace `credentials` entry holding the secret); optional `header` (defaults: `X-Hub-Signature-256`, `Authorization`, `X-API-Key`). `hmac` verifies `sha256=<hex>` over the body; `bearer` expects `Authorization: Bearer <secret>`; `api_key` expects the secret itself in the header. Secrets are never stored on the trigger — only referenced by name. A webhook that declares `auth` is admitted past serve's API-key gate and verified by this method instead; one that declares none stays behind the gate. A `credentials_ref` whose secret is not set refuses the delivery (503) rather than accepting it unsigned.
 
 ## Schema shape
 

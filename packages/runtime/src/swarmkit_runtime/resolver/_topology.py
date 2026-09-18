@@ -37,6 +37,8 @@ def build_topology_registry(
     registry: dict[str, ResolvedTopology] = {}
     funnels = funnels or {}
 
+    # (resolved topology, its file) in discovery order, grouped by id.
+    by_id: dict[str, list[tuple[ResolvedTopology, Path]]] = {}
     for artifact in artifacts:
         if artifact.kind != "topology":
             continue
@@ -46,25 +48,41 @@ def build_topology_registry(
         errors.extend(sub_errors)
         if resolved is None:
             continue
-        if resolved.id in registry:
-            prior = registry[resolved.id].source_path
+        version = str(resolved.raw.metadata.version)
+        same = by_id.setdefault(resolved.id, [])
+        clash = next((t for t, _ in same if str(t.raw.metadata.version) == version), None)
+        if clash is not None:
             errors.append(
                 ResolutionError(
                     code="topology.duplicate-id",
                     message=(
-                        f"Topology id {resolved.id!r} is declared twice: "
-                        f"first at {prior}, again at {artifact.path}."
+                        f"Topology {resolved.id!r} version {version} is declared twice: "
+                        f"first at {clash.source_path}, again at {artifact.path}."
                     ),
                     artifact_path=artifact.path,
                     yaml_pointer="/metadata/name",
                     suggestion=(
-                        "Rename one of the topologies so every topology ID "
-                        "is unique within the workspace."
+                        "Rename one of the topologies, or give the second file a different "
+                        "metadata.version if it is a new version of the same topology."
                     ),
                 )
             )
             continue
-        registry[resolved.id] = resolved
+        same.append((resolved, artifact.path))
+
+    for topology_id, entries in by_id.items():
+        if len(entries) == 1:
+            registry[topology_id] = entries[0][0]
+            continue
+        # Several versions of one topology (design/details/canary-deployments.md): each is
+        # reachable as `name@version` — the key the canary router asks for — and one is also the
+        # bare `name`: the file named after the topology (`hello.yaml`), else the first discovered.
+        # This used to be a duplicate-id error, so `hello@1.1.0` could never exist and canary
+        # routing was unreachable from any workspace on disk.
+        primary = next((t for t, path in entries if path.stem == topology_id), entries[0][0])
+        registry[topology_id] = primary
+        for resolved, _path in entries:
+            registry[f"{topology_id}@{resolved.raw.metadata.version}"] = resolved
 
     return registry, errors
 
@@ -106,6 +124,7 @@ def _resolve_topology(
         seen_ids=seen_ids,
         artifact_path=artifact.path,
         workspace_root=workspace_root,
+        intent_monitoring=raw.get("intent_monitoring"),
     )
     errors.extend(sub_errors)
     if root is None:
@@ -142,9 +161,14 @@ def _resolve_agent(
     seen_ids: set[str],
     artifact_path: Path,
     workspace_root: Path | None = None,
+    intent_monitoring: Mapping[str, Any] | None = None,
 ) -> tuple[ResolvedAgent | None, list[ResolutionError]]:
     errors: list[ResolutionError] = []
     agent_id = str(raw_agent.get("id", ""))
+    # Topology-level `intent_monitoring` is the default for every agent; an agent's own block
+    # replaces it (per-agent override, reference/intent-drift.md).
+    own_monitoring = raw_agent.get("intent_monitoring")
+    intent_monitoring = dict(own_monitoring) if own_monitoring else intent_monitoring
     role = raw_agent.get("role", "")
 
     if agent_id in seen_ids:
@@ -250,6 +274,7 @@ def _resolve_agent(
             seen_ids=seen_ids,
             artifact_path=artifact_path,
             workspace_root=workspace_root,
+            intent_monitoring=intent_monitoring,
         )
         errors.extend(child_errors)
         if child is not None:
@@ -282,6 +307,7 @@ def _resolve_agent(
             executor=(
                 archetype.executor if archetype is not None else ResolvedExecutor(kind="model")
             ),
+            intent_monitoring=intent_monitoring,
         ),
         errors,
     )

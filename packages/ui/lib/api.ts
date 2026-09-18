@@ -268,6 +268,12 @@ export const api = {
 		get<{ yaml: string }>(`/api/topologies/${id}/yaml`),
 	archetypeDetail: (id: string) =>
 		get<ArchetypeDetail>(`/api/archetypes/${id}`),
+	// Through the client, like every other read: the skill and archetype editors fetched their
+	// YAML with a bare `fetch`, which carries no API key — on an authenticated serve the editor
+	// opened on a blank document and offered to save it.
+	archetypeYaml: (id: string) =>
+		get<{ yaml: string }>(`/api/archetypes/${id}/yaml`),
+	skillYaml: (id: string) => get<{ yaml: string }>(`/api/skills/${id}/yaml`),
 	skillDetail: (id: string) => get<SkillDetail>(`/api/skills/${id}`),
 	saveTopology: (id: string, yaml: string, dryRun = false) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(

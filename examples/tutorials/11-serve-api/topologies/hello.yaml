@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: hello
+  version: 0.3.0
+  description: A single agent using an archetype.
+agents:
+  root:
+    id: assistant
+    role: root
+    archetype: friendly-assistant
+    skills_additional:
+      - quality-check    # added to the archetype's skills; `skills:` would replace them
+    intent_monitoring:
+      enabled: true
+      threshold: 0.75       # 0.5 = aggressive, 0.75 = balanced, 0.9 = permissive
+      on_drift: warn        # log | warn | nudge

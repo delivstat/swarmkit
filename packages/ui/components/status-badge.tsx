@@ -10,6 +10,9 @@ const STYLES: Record<string, { color: string; pulse?: boolean }> = {
 	queued: { color: "text-warning" },
 	failed: { color: "text-destructive" },
 	error: { color: "text-destructive" },
+	// A trigger's state. It was rendered as "completed"/"failed", which reads as a run outcome.
+	enabled: { color: "text-success" },
+	disabled: { color: "text-muted-foreground" },
 };
 
 export function StatusBadge({ status }: { status: string }) {

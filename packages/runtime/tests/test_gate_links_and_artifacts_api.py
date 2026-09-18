@@ -164,6 +164,51 @@ def test_a_missing_artifact_is_a_404_not_an_empty_string() -> None:
     src = (
         Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/server/_routes_introspection.py"
     ).read_text()
-    handler = src[src.index('@app.get("/artifacts/{ref:path}")') :][:1400]
+    handler = src[src.index('@app.get("/artifacts/{ref:path}")') :][:2400]
 
     assert "status_code=404" in handler
+
+
+def test_a_gates_artifact_ref_is_fetchable_over_http(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`GET /gates/{id}` reports `artifact_ref`; the documented next step is
+    `GET /artifacts/<that ref>` to see what is being approved. The ref is `<gate>#<fingerprint>`
+    and the artifact lives on the gate's role-tasks, not in the artifact store — so the fetch was
+    a 404 on every gate a run had ever opened. The route now reads it from the gate."""
+    from urllib.parse import quote  # noqa: PLC0415
+
+    from fastapi.testclient import TestClient  # noqa: PLC0415
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    monkeypatch.setenv("SWARMKIT_PROVIDER", "mock")
+    (tmp_path / "workspace.yaml").write_text(
+        "apiVersion: swarmkit/v1\nkind: Workspace\nmetadata: {id: g, name: G}\n"
+        "governance: {provider: mock}\n"
+    )
+    (tmp_path / "funnels").mkdir()
+    (tmp_path / "funnels" / "spec-review.yaml").write_text(
+        "apiVersion: swarmkit/v1\nkind: Funnel\n"
+        "metadata: {id: spec-review, name: Spec review, description: Two leads sign off.}\n"
+        "approve:\n  rules:\n    - {scope: design:approve, roles: [lead], quorum: all}\n"
+        "provenance: {authored_by: human, version: 1.0.0}\n"
+    )
+    # As a funnel opens it: `<gate_id>#<fingerprint>` — a fingerprint, not a store ref.
+    open_gate(
+        FileReviewQueue(tmp_path),
+        gate_id="run-9:designer",
+        topology_id="wms-design",
+        agent_id="designer",
+        policy=POLICY,
+        funnel_id="spec-review",
+        artifact_ref="run-9:designer#abc",
+        artifact="the spec",
+        run_id="run-9",
+    )
+    with TestClient(create_app(tmp_path)) as client:
+        gate = client.get("/gates/run-9:designer").json()
+        assert gate["artifact_ref"] == "run-9:designer#abc"
+        got = client.get(f"/artifacts/{quote(gate['artifact_ref'], safe='')}")
+        # On the unfixed code: 404 "No artifact at 'run-9:designer#abc'".
+        assert got.status_code == 200 and got.json()["content"] == "the spec"
+        assert client.get(f"/artifacts/{quote('nothing#here', safe='')}").status_code == 404

@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-knowledge
+  name: Search Knowledge
+  description: >
+    Search the company handbook (expenses, on-call, releases). Returns the best-matching
+    sections with their source file; cite the source when you use one.
+category: capability
+implementation:
+  type: mcp_tool
+  server: knowledge-search
+  tool: search_knowledge
+provenance:
+  authored_by: human
+  version: 1.0.0

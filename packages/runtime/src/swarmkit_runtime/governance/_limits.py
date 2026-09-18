@@ -1,7 +1,9 @@
 """Governance circuit breakers — prevent runaway agent execution.
 
-Enforced inside the compiler's agent execution loop. When a limit is
-exceeded, execution aborts with a clear error — not a silent timeout.
+Enforced at every node entry in the compiler (steps) and on every recorded model call (cost):
+when a limit is exceeded the run ends with ``CircuitBreakerError`` naming the limit — not a silent
+timeout. The tracker is installed per run by ``WorkspaceRuntime.run`` as a context variable, the
+same scoping the run id and the stop checker use.
 
 Defaults are sensible for development. Production workspaces should
 configure explicit limits in workspace.yaml:
@@ -35,7 +37,9 @@ See design/details/market-analysis-and-risk-mitigations.md (Risk 3).
 
 from __future__ import annotations
 
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -129,3 +133,43 @@ class CircuitBreakerTracker:
     def get_agent_steps(self, agent_id: str) -> int:
         """Return current step count for an agent."""
         return self._steps_per_agent.get(agent_id, 0)
+
+
+#: The tracker for the run on this task — installed by ``WorkspaceRuntime.run`` for the run's
+#: duration, read by the compiler at every node entry, the same scoping the run id and the stop
+#: checker use. ``None`` outside a run (a bare compile, a unit test) means no enforcement, which is
+#: what the limits' own ``None`` means.
+_tracker: ContextVar[CircuitBreakerTracker | None] = ContextVar(
+    "swarmkit_circuit_breaker", default=None
+)
+
+
+def current_tracker() -> CircuitBreakerTracker | None:
+    return _tracker.get()
+
+
+def set_run_tracker(tracker: CircuitBreakerTracker | None) -> Token[CircuitBreakerTracker | None]:
+    return _tracker.set(tracker)
+
+
+def reset_run_tracker(token: Token[CircuitBreakerTracker | None]) -> None:
+    _tracker.reset(token)
+
+
+def limits_from_workspace(raw_workspace: Any) -> GovernanceLimits:
+    """``governance.limits`` from the workspace model, or the defaults when absent.
+
+    Until 1.227.0 this block was accepted by the schema, documented as a circuit breaker, and read
+    by nothing — `max_steps_per_agent: 20` in a workspace.yaml had no effect on any run.
+    """
+    gov = getattr(raw_workspace, "governance", None)
+    limits = getattr(gov, "limits", None) if gov is not None else None
+    if limits is None:
+        return GovernanceLimits()
+    get = limits.get if isinstance(limits, dict) else lambda k, d=None: getattr(limits, k, d)
+    per_run = get("max_steps_per_run")
+    return GovernanceLimits(
+        max_steps_per_agent=get("max_steps_per_agent"),
+        max_steps_per_run=per_run if per_run is not None else GovernanceLimits().max_steps_per_run,
+        max_cost_per_run_usd=get("max_cost_per_run_usd"),
+    )

@@ -134,13 +134,22 @@ class OpenAIModelProvider(FamilyBase):
         return None
 
 
+#: The completion cap when a request names none — see `_to_openai_kwargs`.
+_DEFAULT_MAX_TOKENS = 4096
+
+
 def _to_openai_kwargs(
     request: CompletionRequest, *, structured_output: bool = True
 ) -> dict[str, Any]:
     messages = _build_openai_messages(request)
     kwargs: dict[str, Any] = {"model": request.model, "messages": messages}
-    if request.max_tokens is not None:
-        kwargs["max_tokens"] = request.max_tokens
+    # Always send a cap. Some OpenAI-compatible upstreams (OpenRouter routing to GMICloud, for one)
+    # read "unspecified" as "the whole context window" and refuse the request outright:
+    # `Requested token count exceeds the model's maximum context length … 131072 tokens for the
+    # completion`. That turned a synthesis, a judge or a retry — any call site that set no cap —
+    # into a 400 on the same provider that had answered every capped call. The Anthropic
+    # provider has defaulted to 4096 all along; this matches it.
+    kwargs["max_tokens"] = request.max_tokens or _DEFAULT_MAX_TOKENS
     if request.temperature is not None:
         kwargs["temperature"] = request.temperature
     if request.tools:

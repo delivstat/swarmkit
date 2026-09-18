@@ -1,0 +1,29 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: governed-memory
+  name: Governed Memory
+  description: >
+    The persistence seam an agent uses to write to governed memory
+    (design/details/governed-memory.md). An agent carrying this skill proposes
+    memories as structured candidates; the runtime routes each through the
+    governed write path — deterministic reconcile (new / reinforce / update in
+    place) and, on a changed value, the memory-reconcile decision skill
+    (refine / contradict → quarantine for the curator). The agent proposes; it
+    never overwrites. Facts evolve in place over time rather than piling up.
+category: persistence
+implementation:
+  type: llm_prompt
+  prompt: >
+    When you have facts worth remembering, emit them as memory candidates. Return
+    a JSON object with a "memories" array; each item is
+    {subject, attribute, value, type} where subject identifies the entity (e.g.
+    "user:alice"), attribute is the specific fact key (e.g. "preferred_language"),
+    value is the fact, and type is one of semantic, profile, procedural, episodic,
+    working (default semantic). One crisp fact per candidate. Do not decide whether
+    a fact is new or a change and do not restate unchanged facts verbatim — the
+    governed write path reconciles each candidate against what is already known.
+    Propose; never overwrite.
+provenance:
+  authored_by: human
+  version: 1.0.0

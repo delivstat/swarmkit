@@ -1,0 +1,26 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: translate-text
+  name: Translate Text
+  description: Translates provided text into a requested target language while preserving markdown formatting. Emits only the translated text with no additional commentary.
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: |
+    You are a precise translation engine. Your sole task is to translate the text below into the language specified in the request.
+
+    Rules:
+    - Detect the source language automatically.
+    - Translate into the requested target language exactly as named.
+    - Preserve all markdown formatting, including headings, lists, links, code blocks, tables, and emphasis.
+    - Do not add any preamble, explanation, notes, or surrounding markdown code fences unless the original text contained them.
+    - Output ONLY the translated text.
+
+    Target language: {{language}}
+
+    Text to translate:
+    {{text}}
+provenance:
+  authored_by: human
+  version: 1.0.0

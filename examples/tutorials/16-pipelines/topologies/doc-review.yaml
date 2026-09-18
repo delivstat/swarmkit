@@ -1,0 +1,107 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: doc-review
+  version: 1.0.0
+  description: >
+    Reviews a proposed change to the company handbook: one researcher checks the change against
+    what the handbook already says, three reviewers judge accuracy, clarity and consistency, and
+    the coordinator returns one structured verdict.
+runtime:
+  planning:
+    scope_required: true
+    two_phase: true
+  synthesis:
+    provider: openrouter
+    model: deepseek/deepseek-chat-v3-0324
+    prompt: |
+      You are synthesizing a documentation review from a researcher and three reviewers.
+      Return ONLY a JSON object of this shape, no prose around it:
+      {"verdict": "approve" | "request-changes",
+       "summary": "<two sentences>",
+       "findings": [{"area": "accuracy" | "clarity" | "consistency",
+                     "severity": "blocker" | "major" | "minor",
+                     "note": "<one sentence>",
+                     "source": "<handbook file the note relies on, or 'proposed change'>"}]}
+      A blocker means the change must not merge as written.
+governance:
+  decision_skills:
+    - id: grounding-check
+      trigger: post_output
+      scope: "*"
+      required: false
+agents:
+  root:
+    id: review-coordinator
+    role: root
+    archetype: coordinator
+    intent_monitoring:
+      enabled: true
+      threshold: 0.75
+      on_drift: warn
+    output_schema:
+      type: object
+      required: [verdict, summary, findings]
+      properties:
+        verdict:
+          type: string
+          enum: [approve, request-changes]
+        summary:
+          type: string
+        findings:
+          type: array
+          items:
+            type: object
+            required: [area, severity, note]
+            properties:
+              area:
+                type: string
+                enum: [accuracy, clarity, consistency]
+              severity:
+                type: string
+                enum: [blocker, major, minor]
+              note:
+                type: string
+              source:
+                type: string
+    prompt:
+      system: |
+        You coordinate a review of a proposed handbook change. The input is a pull request:
+        a title and the proposed text. Plan the review as tasks and put the FULL proposed text
+        in every task description — a worker sees only its task. First the researcher
+        (doc-searcher) finds what the handbook currently says on the topic, citing files;
+        then the three reviewers (after the research), each judging one aspect against the
+        researcher's findings. Then synthesize the verdict.
+    children:
+      - id: doc-searcher
+        role: worker
+        archetype: librarian
+        prompt:
+          system: |
+            You research the handbook for a documentation review. Search for every section the
+            proposed change touches or contradicts and report what the handbook says today,
+            with the source file for each fact. Do not judge the change; report the facts.
+      - id: accuracy-reviewer
+        role: worker
+        archetype: researcher
+        prompt:
+          system: |
+            You review a proposed handbook change for ACCURACY against the researcher's
+            findings: does it contradict a current rule, a number, a deadline, a name? Return a
+            structured list of findings, three at most, each with the handbook source.
+      - id: clarity-reviewer
+        role: worker
+        archetype: researcher
+        prompt:
+          system: |
+            You review a proposed handbook change for CLARITY: ambiguity, undefined terms,
+            missing numbers or conditions a reader would need. Return a structured list of
+            findings, three at most.
+      - id: consistency-reviewer
+        role: worker
+        archetype: researcher
+        prompt:
+          system: |
+            You review a proposed handbook change for CONSISTENCY with the rest of the handbook:
+            tone, terminology, currency and units, cross-references that would go stale. Return a
+            structured list of findings, three at most, each with the handbook source.

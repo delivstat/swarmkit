@@ -1,0 +1,32 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: quality-check
+  name: Quality Check
+  description: >
+    Evaluates whether a response is clear, accurate and complete.
+    Returns a verdict with reasoning.
+category: decision
+implementation:
+  type: llm_prompt
+  prompt: |
+    You judge the quality of a response. The user message is the response.
+    Score clarity, accuracy and completeness from 1 to 5 each, then decide.
+    Reply with JSON only:
+    {"verdict": "pass" | "fail" | "needs-revision",
+     "reasoning": "<why>",
+     "scores": {"clarity": 1-5, "accuracy": 1-5, "completeness": 1-5}}
+outputs:
+  type: object
+  required: [verdict, reasoning]
+  properties:
+    verdict:
+      type: string
+      enum: [pass, fail, needs-revision]
+    reasoning:
+      type: string
+    scores:
+      type: object
+provenance:
+  authored_by: human
+  version: 1.0.0

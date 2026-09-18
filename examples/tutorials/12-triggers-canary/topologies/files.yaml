@@ -1,0 +1,14 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: files
+  version: 0.1.0
+  description: An assistant that can read files from the workspace (filesystem server via npx).
+agents:
+  root:
+    id: reader
+    role: root
+    archetype: friendly-assistant
+    skills: [read-file, write-file]   # replaces the archetype's skills for this agent
+    prompt:
+      system: Use read-file and write-file as the user asks; report exactly what the tools return.

@@ -141,6 +141,9 @@ class JobService:
             raise BusyError("Max concurrent jobs reached. Try again later.")
         job = await self._jobs.create(resolved_name, user_input)
         job.version = selected_version
+        job.correlation_id = correlation_id
+        job.source = source
+        job.labels = dict(labels or {})
         if store:
             store.create_job(
                 job.id,
@@ -264,7 +267,8 @@ class ArtifactService:
     def put_yaml(
         self, kind: str, artifact_id: str, yaml_content: str, *, dry_run: bool, parse_check: bool
     ) -> tuple[dict[str, Any], WorkspaceRuntime | None]:
-        """Write (unless dry-run) then validate; reload only when valid and not a dry-run.
+        """Write, validate, keep it only if valid (restoring the previous file otherwise); reload
+        on success. A dry run validates the workspace as it is.
 
         *parse_check* short-circuits a YAML parse error into a structured result before touching
         disk (the topology editor pre-flights this; skills/archetypes rely on workspace validation).
@@ -277,15 +281,24 @@ class ArtifactService:
                     "valid": False,
                     "errors": [{"code": "yaml.parse", "message": str(exc)}],
                 }, None
-        if not dry_run:
-            f = self.find_file(kind, artifact_id) or (
-                self._artifact_dir(kind) / f"{artifact_id}.yaml"
-            )
-            f.parent.mkdir(parents=True, exist_ok=True)
-            f.write_text(yaml_content)
+        if dry_run:
+            return self.validate_workspace(), None
+        f = self.find_file(kind, artifact_id) or (self._artifact_dir(kind) / f"{artifact_id}.yaml")
+        f.parent.mkdir(parents=True, exist_ok=True)
+        previous = f.read_text() if f.exists() else None
+        f.write_text(yaml_content)
         result = self.validate_workspace()
-        new_rt = self.reload() if (result["valid"] and not dry_run) else None
-        return result, new_rt
+        if not result["valid"]:
+            # Validation is of the workspace with the file in place, so the file is written first —
+            # and used to STAY written when it failed. The running runtime kept the old artifact
+            # (no reload), the disk held the broken one, and the next `swarmkit serve` refused the
+            # whole workspace. Put back what was there.
+            if previous is None:
+                f.unlink()
+            else:
+                f.write_text(previous)
+            return result, None
+        return result, self.reload()
 
     def create_from_yaml(
         self, kind: str, yaml_content: str
@@ -310,8 +323,10 @@ class ArtifactService:
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(yaml_content)
         result = self.validate_workspace()
-        new_rt = self.reload() if result["valid"] else None
-        return result, new_rt
+        if not result["valid"]:
+            f.unlink()  # same rule as put_yaml: an artifact that failed validation is not created
+            return result, None
+        return result, self.reload()
 
     def delete(self, kind: str, artifact_id: str) -> tuple[dict[str, Any], WorkspaceRuntime | None]:
         f = self.find_file(kind, artifact_id)

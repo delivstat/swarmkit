@@ -37,13 +37,16 @@ SkillResult = str | tuple[str, list[ContentBlock]]
 #: as `policy_decision="allow"` would make a working gate indistinguishable from one never reached.
 DENIED_MARK = "] DENIED: "
 
+#: Output cap for an `llm_prompt` skill call that declares none (see `_execute_llm_prompt`).
+_DEFAULT_PROMPT_SKILL_MAX_TOKENS = 4096
+
 
 def is_refusal(result: str) -> bool:
     """Whether a skill result is a governance/prerequisite refusal rather than an answer."""
     return result.startswith("[skill:") and DENIED_MARK in result.split("\n", 1)[0]
 
 
-async def execute_skill(
+async def execute_skill(  # noqa: PLR0911
     skill: ResolvedSkill,
     *,
     input_text: str,
@@ -68,12 +71,15 @@ async def execute_skill(
     impl_type = impl_get(impl, "type")
 
     if impl_type == "llm_prompt":
-        return await _execute_llm_prompt(
+        text = await _execute_llm_prompt(
             skill,
             input_text=input_text,
             model_provider=model_provider,
             model_name=model_name,
         )
+        if str(getattr(skill.raw, "category", "")) != "persistence":
+            return text
+        return await _persist_through_governed_memory(text, agent_id=agent_id)
 
     if impl_type == "mcp_tool":
         return await _execute_mcp_tool(
@@ -192,6 +198,29 @@ async def _execute_command(
     return result.stdout
 
 
+async def _persist_through_governed_memory(text: str, *, agent_id: str) -> str:
+    """A `persistence` skill's candidates go through the governed write path when it is CALLED.
+
+    The `governed-memory` skill is offered to the agent as a tool; calling it produced the
+    ``{"memories": [...]}`` JSON as a tool result — which nothing read. The only writer was the
+    post_output hook over the agent's final prose, so a tutor that called the tool and then
+    answered "Got it, noted" wrote nothing, and said it had. Now the call itself writes, and the
+    tool result tells the agent what happened to each candidate (new / reinforce / contradict …).
+    """
+    from swarmkit_runtime.governed_memory._hook import governed_memory_post_output  # noqa: PLC0415
+
+    from ._run_context import current_governed_memory  # noqa: PLC0415
+
+    store = current_governed_memory()
+    if store is None:
+        return text
+    summary = await governed_memory_post_output(agent_id=agent_id, agent_output=text, store=store)
+    if not summary["written"]:
+        return text
+    ops = ", ".join(f"{n} {op}" for op, n in sorted(summary["by_op"].items()))
+    return f"{text}\n\n[governed memory] {summary['written']} candidate(s) written: {ops}"
+
+
 async def _execute_llm_prompt(
     skill: ResolvedSkill,
     *,
@@ -204,8 +233,16 @@ async def _execute_llm_prompt(
     prompt = impl_get(impl, "prompt")
 
     model_config = impl_get(impl, "model", None)
+    # A skill's `implementation.model` may name the model and cap its output. The cap has a
+    # default: with none, some OpenAI-compatible upstreams take "unspecified" as "the whole
+    # context window" and refuse the request (`Requested token count exceeds the model's maximum
+    # context length … 131072 tokens for the completion`) — which turned a funnel's judge into a
+    # 400 on a routine verdict. 4,096 tokens is more than any verdict or summary needs; a skill
+    # that wants more says so.
+    max_tokens = _DEFAULT_PROMPT_SKILL_MAX_TOKENS
     if model_config and isinstance(model_config, dict):
         model_name = model_config.get("name", model_name)
+        max_tokens = int(model_config.get("max_tokens", max_tokens))
 
     system_prompt = str(prompt) if prompt else f"You are executing the skill: {skill.id}"
 
@@ -214,6 +251,7 @@ async def _execute_llm_prompt(
             model=model_name,
             messages=(Message(role="user", content=input_text),),
             system=system_prompt,
+            max_tokens=max_tokens,
         )
     )
 

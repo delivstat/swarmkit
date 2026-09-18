@@ -91,6 +91,21 @@ def _audit_event_to_dict(event: Any) -> dict[str, Any]:
     return out
 
 
+def _gated_artifact(request: Request, artifact_ref: str) -> str | None:
+    """The artifact under review on the gate whose role-tasks carry *artifact_ref*."""
+    from swarmkit_runtime.review import FileReviewQueue  # noqa: PLC0415
+
+    workspace_path = getattr(request.app.state, "workspace_path", None)
+    if workspace_path is None:
+        return None
+    for item in FileReviewQueue(workspace_path).list_all():
+        if item.artifact_ref == artifact_ref:
+            artifact = (item.output or {}).get("artifact")
+            if artifact:
+                return str(artifact)
+    return None
+
+
 def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
     """Register health, topologies, skills, archetypes, validate, triggers endpoints."""
 
@@ -182,6 +197,12 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
         if store is None:
             raise HTTPException(status_code=503, detail="no artifact store is configured")
         content = store.get(ref)
+        if content is None and "#" in ref:
+            # A gate's `artifact_ref` (`<gate_id>#<fingerprint>`, from `GET /gates/{id}`) names
+            # the artifact a gate is asking someone to approve. It lives on the gate's role-tasks,
+            # not in the artifact store — so the documented "fetch what is being approved with
+            # GET /artifacts/<gate.artifact_ref>" was a 404 on every gate. Read it from there.
+            content = _gated_artifact(request, ref)
         if content is None:
             raise HTTPException(status_code=404, detail=f"No artifact at {ref!r}")
         return {"ref": ref, "content": content, "length": len(content)}

@@ -4,7 +4,10 @@ Each turn runs the topology with accumulated conversation history as
 context. The same service is used by CLI (swarmkit chat), HTTP server
 (/conversations endpoints), and the future web UI.
 
-Conversations persist as JSON in .swarmkit/conversations/.
+Conversations persist in the workspace's runtime store — the `conversations` table the storage
+service resolves (SQLite or Postgres, `storage.runtime`) — not in files. Conversations saved by
+earlier versions as `.swarmkit/conversations/<id>.json` are still readable, and are moved into the
+store the first time they are resumed.
 """
 
 from __future__ import annotations
@@ -80,8 +83,8 @@ class ConversationManager:
     def __init__(self, runtime: WorkspaceRuntime, workspace_root: Path) -> None:
         self._runtime = runtime
         self._workspace_root = workspace_root
-        self._conversations_dir = workspace_root / ".swarmkit" / "conversations"
-        self._conversations_dir.mkdir(parents=True, exist_ok=True)
+        # Pre-1.227 conversations. Read, never written: the store is where conversations live.
+        self._legacy_dir = workspace_root / ".swarmkit" / "conversations"
 
     async def start_session(self) -> None:
         """Start MCP servers for the conversation session.
@@ -104,24 +107,44 @@ class ConversationManager:
             created_at=now,
             updated_at=now,
         )
+        store = self._store()
+        if store is not None:
+            try:
+                store.create_conversation(conv.id, topology_name)
+            except Exception:
+                logger.warning(
+                    "conversation %s will not be resumable: could not create its row", conv.id
+                )
         self._save(conv)
         return conv
 
     def resume(self, conversation_id: str) -> Conversation | None:
         """Load an existing conversation by ID (or prefix)."""
-        for f in self._conversations_dir.glob("*.json"):
+        store = self._runtime.store
+        row = store.get_conversation(conversation_id)
+        if row is None:
+            rows = [
+                r for r in store.list_conversations(limit=500) if r.id.startswith(conversation_id)
+            ]
+            row = rows[0] if len(rows) == 1 else None
+        if row is not None:
+            return self._from_row(row)
+        # A conversation saved as a file by an earlier version: adopt it into the store so the
+        # next resume, and `swarmkit conversations`, find it where everything else is.
+        for f in self._legacy_dir.glob("*.json") if self._legacy_dir.is_dir() else []:
             if f.stem.startswith(conversation_id):
-                data = json.loads(f.read_text(encoding="utf-8"))
-                return Conversation.from_dict(data)
+                conv = Conversation.from_dict(json.loads(f.read_text(encoding="utf-8")))
+                store.create_conversation(conv.id, conv.topology_name)
+                self._save(conv)
+                return conv
         return None
 
     def list_conversations(self, last: int = 10) -> list[dict[str, str]]:
         """List recent conversations, newest first."""
-        files = sorted(self._conversations_dir.glob("*.json"), reverse=True)[:last]
         results = []
-        for f in files:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            turns = data.get("turns", [])
+        store = self._store()
+        for row in store.list_conversations(limit=last) if store is not None else []:
+            turns = row.turns
             last_human = ""
             for t in reversed(turns):
                 if t.get("role") == "human":
@@ -130,14 +153,24 @@ class ConversationManager:
                     break
             results.append(
                 {
-                    "id": data.get("id", f.stem),
-                    "topology": data.get("topology_name", ""),
+                    "id": row.id,
+                    "topology": row.topology,
                     "turns": str(len(turns)),
-                    "updated": data.get("updated_at", "")[:19],
+                    "updated": row.updated_at[:19],
                     "last_message": last_human,
                 }
             )
         return results
+
+    def _from_row(self, row: Any) -> Conversation:
+        return Conversation(
+            id=row.id,
+            workspace_path=str(row.metadata.get("workspace_path") or self._workspace_root),
+            topology_name=row.topology,
+            turns=[ConversationTurn(**t) for t in row.turns],
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
 
     async def send(self, conversation: Conversation, user_message: str) -> RunResult:
         """Send a message and get the swarm's response.
@@ -270,9 +303,17 @@ class ConversationManager:
         return "\n".join(parts)
 
     def _save(self, conversation: Conversation) -> None:
-        """Persist conversation to disk."""
-        path = self._conversations_dir / f"{conversation.id}.json"
-        path.write_text(
-            json.dumps(conversation.to_dict(), indent=2, default=str),
-            encoding="utf-8",
-        )
+        """Persist the conversation's turns to the store. Best-effort, the one-directional rule
+        again: a store that will not take the turns loses the ability to RESUME, never the
+        answer the user is reading."""
+        store = self._store()
+        if store is None:
+            return
+        try:
+            store.update_conversation(
+                conversation.id,
+                [asdict(t) for t in conversation.turns],
+                metadata={"workspace_path": conversation.workspace_path},
+            )
+        except Exception:
+            logger.warning("could not save conversation %s; it will not resume", conversation.id)

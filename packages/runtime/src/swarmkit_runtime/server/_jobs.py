@@ -14,7 +14,6 @@ from uuid import uuid4
 from swarmkit_runtime._workspace_runtime import RunResult, WorkspaceRuntime
 from swarmkit_runtime.canary import CanaryRouter
 from swarmkit_runtime.persistence import Store, usage_fields
-from swarmkit_runtime.progress import set_progress_sink
 from swarmkit_runtime.review._hitl import HITLDeferredError, RunStoppedError
 
 from ._config import _DEFAULT_TIMEOUT_SECONDS
@@ -38,6 +37,13 @@ class Job:
     events: list[str] = field(default_factory=list)
     created_at: str = ""
     completed_at: str | None = None
+    #: Drift scores the run recorded (`intent.drift` events), for the canary router's criterion.
+    drift_scores: list[float] = field(default_factory=list)
+    #: What the caller tagged the run with (Level 16). Held here too, so the response to the
+    #: submit — built from this object before the durable row is read back — carries them.
+    correlation_id: str | None = None
+    source: str | None = None
+    labels: dict[str, str] = field(default_factory=dict)
 
 
 class JobStore:
@@ -97,10 +103,6 @@ class JobStore:
         task.add_done_callback(self._background_tasks.discard)
 
 
-def _clear_progress_sink() -> None:
-    set_progress_sink(None)
-
-
 def _record_run_usage(store: Store, job_id: str, result: RunResult) -> None:
     """Persist a completed run's usage (design: runtime/usage-recording-and-cost).
 
@@ -144,13 +146,50 @@ async def execute_job(
     job.status = "running"
     version_label = f" v{job.version}" if job.version else ""
     job.events.append(f"Job started for topology '{job.topology}'{version_label}")
-    # Live progress into the SAME list the SSE endpoint already relays — a harness run used to be
-    # silent for its whole duration because nothing appended between "started" and "completed".
-    # `summary` only: this list goes over HTTP to anyone with serve:read, and a harness message can
-    # quote a file (design/details/harness-progress-stream.md).
-    set_progress_sink(lambda e: job.events.append(f"[{e.agent_id}] {e.summary}"))
+    # Live progress into the SAME list the SSE endpoint already relays. The LISTENER bus, not the
+    # progress sink: a model agent's lines ("[assistant] thinking...", "calling get-weather") go to
+    # `_helpers.progress_listener` only, and a harness's ProgressEvents are bridged onto that same
+    # bus by `emit_progress`. Subscribing to the sink alone — as this did — relayed harness runs and
+    # left every model run silent between "started" and "completed", the mirror image of the
+    # blackout the sink was added to remove. `summary` only reaches this list either way: it goes
+    # over HTTP to anyone with serve:read (design/details/harness-progress-stream.md).
+    from swarmkit_runtime.langgraph_compiler._helpers import progress_listener  # noqa: PLC0415
+
+    def _relay(line: str) -> None:
+        text = line.strip()
+        if text:
+            job.events.append(text)
+
     if store:
         store.update_job(job.id, status="running", events=job.events)
+    with progress_listener(_relay):
+        await _execute_job_body(
+            job,
+            rt,
+            max_steps,
+            timeout_seconds=timeout_seconds,
+            semaphore=semaphore,
+            canary_router=canary_router,
+            store=store,
+            resume=resume,
+            labels=labels,
+            attachments=attachments,
+        )
+
+
+async def _execute_job_body(
+    job: Job,
+    rt: WorkspaceRuntime,
+    max_steps: int,
+    *,
+    timeout_seconds: int,
+    semaphore: asyncio.Semaphore | None,
+    canary_router: CanaryRouter | None,
+    store: Store | None,
+    resume: bool,
+    labels: dict[str, str] | None,
+    attachments: list[Any] | None,
+) -> None:
     try:
         if semaphore is not None:
             await semaphore.acquire()
@@ -176,6 +215,13 @@ async def execute_job(
             result = await asyncio.wait_for(call, timeout=timeout_seconds)
             job.output = result.output
             job.status = "completed"
+            # Drift scores this run recorded (Level 8's `intent_monitoring`), for the canary
+            # router's `drift_below` criterion — which read a constant 0 before.
+            job.drift_scores = [
+                float(e.payload["drift_score"])
+                for e in getattr(result, "events", [])
+                if e.event_type == "intent.drift" and "drift_score" in e.payload
+            ]
             job.events.append("Job completed successfully")
             if store is not None:
                 _record_run_usage(store, job.id, result)
@@ -206,9 +252,6 @@ async def execute_job(
             job.status = "failed"
             job.events.append(f"Job failed: {exc}")
         finally:
-            # Drop the sink with the job: a finished job must not keep its closure alive on the
-            # ContextVar, and a later run in this context must not append to a completed job.
-            _clear_progress_sink()
             if semaphore is not None:
                 semaphore.release()
     finally:
@@ -223,11 +266,19 @@ async def execute_job(
                 events=job.events,
             )
         if canary_router and job.version:
+            # The BASE name: a canary-routed job's topology is the qualified `hello@0.4.0`, and
+            # the router keys its metrics by `hello`. Recorded under the qualified name, every
+            # result was dropped and `total_runs` stayed 0 — no canary could ever promote.
             canary_router.record_result(
-                job.topology,
+                job.topology.split("@")[0],
                 job.version,
                 success=(job.status == "completed"),
+                drift_score=_mean_drift(job.drift_scores),
             )
+
+
+def _mean_drift(scores: list[float] | None) -> float | None:
+    return sum(scores) / len(scores) if scores else None
 
 
 def _start_job(

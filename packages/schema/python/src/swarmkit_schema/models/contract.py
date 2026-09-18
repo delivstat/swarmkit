@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from datetime import date
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
@@ -28,7 +28,7 @@ class Metadata(BaseModel):
     description: str = Field(..., min_length=10)
 
 
-class AuthoredBy(Enum):
+class AuthoredBy(StrEnum):
     human = "human"
     authored_by_swarm = "authored_by_swarm"
     derived_from_template = "derived_from_template"

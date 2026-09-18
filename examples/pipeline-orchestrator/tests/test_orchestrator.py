@@ -135,8 +135,10 @@ def test_a_harness_stage_returns_its_diff() -> None:
 
 
 def test_a_deferred_stage_waits_for_the_gate_then_resumes() -> None:
-    """The whole reason this is not a for-loop over POST /run."""
-    serve = FakeServe({"job-1": ["deferred", "completed"]})
+    """The whole reason this is not a for-loop over POST /run. The status is re-read once the gate
+    approves — serve resumes a run itself the moment its gate resolves, so the explicit resume is
+    sent only to a run that is still parked."""
+    serve = FakeServe({"job-1": ["deferred", "deferred", "completed"]})
 
     artifact = run_stage(serve, Run("WMS-35"), _stage(), build_input=thread_upstream, sleep=_noop)
 
@@ -146,7 +148,7 @@ def test_a_deferred_stage_waits_for_the_gate_then_resumes() -> None:
 
 def test_it_keeps_waiting_while_the_gate_is_pending() -> None:
     """Days of pending is the correct behaviour for a gate, not a stall."""
-    serve = FakeServe({"job-1": ["deferred", "completed"]})
+    serve = FakeServe({"job-1": ["deferred", "deferred", "completed"]})
     serve.gate_status = "pending"
     polls = {"n": 0}
 
@@ -164,7 +166,7 @@ def test_it_keeps_waiting_while_the_gate_is_pending() -> None:
 def test_the_gate_verdict_comes_from_the_server() -> None:
     """`GET /gates/{id}` applies quorum, distinct approvers and exclude_author. Counting approved
     role-tasks here would be reimplementing an approval policy this app cannot see."""
-    serve = FakeServe({"job-1": ["deferred", "completed"]})
+    serve = FakeServe({"job-1": ["deferred", "deferred", "completed"]})
 
     run_stage(serve, Run("WMS-35"), _stage(), build_input=thread_upstream, sleep=_noop)
 
@@ -236,3 +238,15 @@ def test_the_whole_integration_is_five_endpoints() -> None:
 
     for endpoint in ("/run/", "/jobs/", "/review", "/gates/", "/resume"):
         assert endpoint in client
+
+
+def test_a_run_serve_already_resumed_is_not_resumed_again() -> None:
+    """`gates.auto_resume` (on by default) continues the run the moment its gate resolves, so the
+    orchestrator's poll usually finds it already running — an explicit resume then got a 409 and
+    the whole pipeline failed on a stage that had just been approved."""
+    serve = FakeServe({"job-1": ["deferred", "running", "completed"]})
+
+    artifact = run_stage(serve, Run("WMS-35"), _stage(), build_input=thread_upstream, sleep=_noop)
+
+    assert serve.resumed == []
+    assert artifact == "job-1 output"

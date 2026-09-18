@@ -144,6 +144,17 @@ export function summarize(event: AuditEvent): string {
 	if (event.event_type === "run.attachments") {
 		return summarizeAttachments(event);
 	}
+	if (event.event_type === "intent.drift") {
+		// The score is the row: `0.89 / 0.75 → warn` says the output drifted past the threshold.
+		const p = event.payload ?? {};
+		const score =
+			typeof p.drift_score === "number" ? p.drift_score.toFixed(2) : "?";
+		const threshold =
+			typeof p.threshold === "number" ? p.threshold.toFixed(2) : "?";
+		return p.exceeded
+			? `drift ${score} > ${threshold} → ${String(p.action ?? "log")}`
+			: `drift ${score} ≤ ${threshold}`;
+	}
 	const inputs =
 		event.inputs ??
 		(event.payload?.inputs as Record<string, unknown> | undefined);

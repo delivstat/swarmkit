@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: Trigger
+metadata:
+  id: morning-brief
+  name: Morning brief
+  description: Every weekday at 08:00 IST, ask the librarian for the day's release status.
+type: cron
+targets:
+  - librarian
+config:
+  expression: "0 8 * * 1-5"    # standard five-field cron
+  timezone: Asia/Kolkata
+  input: "Which day is it safe to release next, and what is the canary rule? Keep it to three lines."

@@ -164,3 +164,30 @@ def test_triggers_endpoint(hello_client: TestClient) -> None:
     data = resp.json()
     # hello-swarm workspace may have zero triggers — that's fine.
     assert isinstance(data, list)
+
+
+@pytest.mark.asyncio
+async def test_cron_expression_is_evaluated_in_the_configured_timezone() -> None:
+    """`config.timezone` was accepted and ignored: the expression ran in UTC, so "0 8 * * *" in
+    Asia/Kolkata fired at 13:30 local. Seed the last-fired time to 07:59:30 IST and poll at
+    08:00:30 IST — the trigger must fire; evaluated in UTC (02:30) it would not."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+    from unittest.mock import AsyncMock  # noqa: PLC0415
+
+    from swarmkit_runtime.triggers import _scheduler as sched_mod  # noqa: PLC0415
+
+    fire_fn = AsyncMock()
+    triggers = [
+        {
+            "id": "morning",
+            "type": "cron",
+            "enabled": True,
+            "targets": ["hello"],
+            "config": {"expression": "0 8 * * *", "timezone": "Asia/Kolkata", "input": "brief"},
+        }
+    ]
+    scheduler = sched_mod.TriggerScheduler(triggers=triggers, fire_fn=fire_fn, poll_interval=1)
+    # 07:59:30 IST == 02:29:30 UTC
+    scheduler._last_fired["morning"] = datetime(2026, 9, 17, 2, 29, 30, tzinfo=UTC)
+    await scheduler._maybe_fire(triggers[0], datetime(2026, 9, 17, 2, 30, 30, tzinfo=UTC))
+    fire_fn.assert_awaited_once_with("hello", "trigger:morning", "brief")

@@ -16,8 +16,9 @@ from typing import Any
 
 logger = logging.getLogger("swarmkit.triggers.scheduler")
 
-# Callable type: receives topology name and a trigger source label.
-FireFn = Callable[[str, str], Awaitable[None]]
+# Callable type: receives topology name, a trigger source label, and the input to run with
+# (`config.input`, or "" when the trigger sets none).
+FireFn = Callable[[str, str, str], Awaitable[None]]
 
 _POLL_INTERVAL_SECONDS = 30
 _croniter_available = importlib.util.find_spec("croniter") is not None
@@ -129,6 +130,19 @@ class TriggerScheduler:
             self._last_fired[trigger_id] = now
             return
 
+        # `config.timezone` names the zone the expression is written in ("0 8 * * 1-5" at 08:00
+        # in Asia/Kolkata). The expression was evaluated in UTC whatever the config said, so a
+        # trigger written for a local morning fired five and a half hours late.
+        tz_name = config.get("timezone")
+        if tz_name:
+            from zoneinfo import ZoneInfo  # noqa: PLC0415
+
+            try:
+                last = last.astimezone(ZoneInfo(str(tz_name)))
+            except Exception:
+                logger.warning(
+                    "Cron trigger %r: unknown timezone %r; using UTC", trigger_id, tz_name
+                )
         it = croniter(expression, last)
         next_fire: datetime = it.get_next(datetime)
 
@@ -141,9 +155,12 @@ class TriggerScheduler:
                 expression,
                 targets,
             )
+            # `config.input` is what the run is asked; without it the run used to receive the
+            # literal `trigger:<id>` as its input and had to guess what the schedule wanted.
+            user_input = str(config.get("input") or "")
             for topology_name in targets:
                 try:
-                    await self._fire_fn(topology_name, f"trigger:{trigger_id}")
+                    await self._fire_fn(topology_name, f"trigger:{trigger_id}", user_input)
                 except Exception:
                     logger.warning(
                         "fire_fn failed for topology %r (trigger %r)",

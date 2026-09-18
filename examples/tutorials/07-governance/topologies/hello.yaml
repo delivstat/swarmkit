@@ -1,0 +1,13 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: hello
+  version: 0.3.0
+  description: A single agent using an archetype.
+agents:
+  root:
+    id: assistant
+    role: root
+    archetype: friendly-assistant
+    skills_additional:
+      - quality-check    # added to the archetype's skills; `skills:` would replace them

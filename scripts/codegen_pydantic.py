@@ -102,9 +102,41 @@ def _generate_one(artifact: str) -> None:
         print(result.stderr, file=sys.stderr)
         raise SystemExit(f"datamodel-codegen failed for {artifact}")
 
-    # Prepend the do-not-edit header.
+    # Prepend the do-not-edit header, and make every string enum a StrEnum.
+    #
+    # `--use-subclass-enum` above only subclasses `str` for an enum whose schema ALSO says
+    # `"type": "string"`. Most enums in the canonical schemas do not (they are bare `enum: [...]`),
+    # so #781 fixed `Trigger` and left `Category`, `Permission`, `Role`, `Provider` and some sixty
+    # others as plain `Enum` — and `skill.raw.category == "decision"` stayed False, which meant the
+    # skill-backed governance provider was never built and no `governance.decision_skills` binding
+    # ever ran its skill (the mock auto-passed every one). Rewriting the class line here is
+    # deterministic and covers every enum the generator emits, whatever the schema said.
     current = output_path.read_text(encoding="utf-8")
+    current = _str_enums(current)
     output_path.write_text(HEADER + current, encoding="utf-8")
+
+
+def _str_enums(source: str) -> str:
+    """`class X(Enum):` -> `class X(StrEnum):` for enums whose members are all strings."""
+    import re  # noqa: PLC0415
+
+    def _rewrite(match: re.Match[str]) -> str:
+        name, body = match.group(1), match.group(2)
+        # A member is `    name = "value"`. A docstring line can contain ` = ` too (Quorum's
+        # does), but its right-hand side is prose, not a quoted string, so it does not count as
+        # a member — and does not veto the rewrite.
+        members = re.findall(r"^    \w+ = (.+)$", body, re.M)
+        quoted = [m for m in members if m.strip().startswith(('"', "'"))]
+        if quoted and all(m.strip().startswith(('"', "'")) or "=" in m for m in members):
+            return f"class {name}(StrEnum):{body}"
+        return match.group(0)
+
+    rewritten = re.sub(r"^class (\w+)\(Enum\):((?:\n(?:    .*|))*)", _rewrite, source, flags=re.M)
+    if "StrEnum" in rewritten and "from enum import Enum, StrEnum" not in rewritten:
+        rewritten = rewritten.replace(
+            "from enum import Enum\n", "from enum import Enum, StrEnum\n", 1
+        )
+    return rewritten
 
 
 def _write_init() -> None:

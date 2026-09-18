@@ -75,7 +75,7 @@
 | Command | Description |
 |---|---|
 | `swarmkit validate <workspace>` | Validate and resolve a workspace (`--tree` prints the resolved agent tree; `--require` reports declared config no code path reaches; `--require-verified` reports outputs nothing checks) |
-| `swarmkit run <workspace> <topology>` | Execute a topology one-shot (`--input "..."`, `--verbose`, `--dry-run`, `--resume <run-id>`, `--correlation-id`, `--label k=v`) |
+| `swarmkit run <workspace> <topology>` | Execute a topology one-shot (`--input "..."`, `--verbose`, `--dry-run`, `--resume`, `--correlation-id`, `--label k=v`) |
 | `swarmkit run ... --attach <path>` | Put a file in front of the entry agent; repeatable, workspace-relative. The media type is read from the file's content, not its name — hence one `--attach` rather than `--image`/`--pdf`. Images only today; a bad path or an uncarryable type fails before the run starts, and every attachment is audited by name, type, size and SHA-256, never by content |
 | `swarmkit serve <workspace>` | Start the HTTP server (and the portal, with the `[ui]` extra) — [Serve mode](serve.md), [HTTP API](http-api.md) |
 | `swarmkit chat <workspace> <topology>` | Multi-turn conversation (`--resume <id>` continues one) |
@@ -139,7 +139,7 @@ SWARMKIT_PROVIDER=openrouter SWARMKIT_MODEL=deepseek/deepseek-chat \
 | `swarmkit debug ... --span-id <id>` | Retrieve prompt/response for a specific OTel span |
 | `swarmkit debug ... --run-id <id>` | All prompts for a run |
 | `swarmkit debug ... --agent <name> -n 5` | Last N prompts for an agent |
-| `swarmkit stop <run-id> <workspace>` | Ask a run to stop at its next agent boundary. Cooperative, not a kill: a call in flight finishes first, the run keeps everything it has already done, and it resumes with `swarmkit run … --resume <run-id>`. Works across processes — it writes a durable flag, so it can stop a run `swarmkit serve` started. Stopping a finished run is a no-op, not an error. |
+| `swarmkit stop <run-id> <workspace>` | Ask a run to stop at its next agent boundary. Cooperative, not a kill: a call in flight finishes first, the run keeps everything it has already done, and it resumes with `swarmkit run … --resume`. Works across processes — it writes a durable flag, so it can stop a run `swarmkit serve` started. Stopping a finished run is a no-op, not an error. |
 
 ### Data sources
 

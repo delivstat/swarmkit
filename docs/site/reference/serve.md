@@ -99,7 +99,7 @@ Same pattern for `/api/skills` and `/api/archetypes`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/mcp` | Streamable HTTP MCP endpoint |
+| `POST` | `/mcp/` | Streamable HTTP MCP endpoint — every topology as a `run_<name>` tool, behind the same auth (Level 11) |
 
 Each topology becomes an MCP tool. External agents can call your swarm topologies via standard MCP protocol.
 

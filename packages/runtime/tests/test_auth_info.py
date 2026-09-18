@@ -46,3 +46,35 @@ def test_auth_info_is_public_even_when_api_key_is_required() -> None:
         assert res.json() == {"mode": "api_key"}
         # ...while a protected route without the token is still 401 (auth IS enforced elsewhere).
         assert client.get("/topologies").status_code == 401
+
+
+def test_a_cors_preflight_is_not_asked_for_a_token() -> None:
+    """A browser sends the preflight BEFORE the request that carries `Authorization`, and never
+    with credentials. The auth middleware sits outside the CORS middleware and answered every
+    preflight 401, so a portal on another origin could not make a single authenticated call —
+    every one died as "Failed to fetch". The preflight passes through; the real request is still
+    authenticated."""
+    provider = APIKeyAuthProvider(keys=[{"key_ref": "secret", "client_id": "cp", "tier": "read"}])
+    app = create_app(EXAMPLE_WS, auth_provider=provider, cors_origins=["http://portal.test"])
+    with TestClient(app) as client:
+        res = client.options(
+            "/topologies",
+            headers={
+                "Origin": "http://portal.test",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+        assert res.status_code == 200, res.text
+        assert res.headers["access-control-allow-origin"] == "http://portal.test"
+        # The request that follows the preflight is what carries the credential.
+        assert (
+            client.get("/topologies", headers={"Origin": "http://portal.test"}).status_code == 401
+        )
+        assert (
+            client.get(
+                "/topologies",
+                headers={"Origin": "http://portal.test", "Authorization": "Bearer secret"},
+            ).status_code
+            == 200
+        )
