@@ -152,7 +152,12 @@ nav:
     - "v1.2 notes": releases/v1.2.md
     - "v1.1 notes": releases/v1.1.md
 
+extra_css:
+  - stylesheets/home.css
+
 markdown_extensions:
+  - attr_list
+  - md_in_html
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.superfences

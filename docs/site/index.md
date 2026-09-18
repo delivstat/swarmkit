@@ -1,27 +1,57 @@
-# SwarmKit
-
-**Multi-agent AI swarms as YAML, not code.**
-
-Define agents, skills, and governance in a topology file. SwarmKit compiles it to LangGraph and runs it.
-
-!!! tip "Watch it in action"
-    **[The portal →](portal.md)** — screenshots and a tour, generated from the version in the tree.
-
-    **[SDLC example: a video walkthrough →](sdlc-example/)** — a guided tour of a real delivery workspace (topologies, archetypes, skills, funnels, and contracts), each shown running in the composer. Recorded before sequencing moved out of SwarmKit in 1.189.0, so its stage-graph sections are historical; everything else is current.
-
-!!! abstract "Building a swarm? Start with the playbook"
-    **[Building swarms — the complete playbook →](guides/building-swarms.md)** takes you from one agent to a governed multi-app delivery flow, one runnable artifact at a time. For LLMs and coding agents, there's a compact machine-readable index at **[`/llms.txt`](llms.txt)** and the full corpus inlined into one file at **[`/llms-full.txt`](llms-full.txt)**.
-
+---
+title: SwarmKit
+hide:
+  - toc
 ---
 
-## The problem
+# SwarmKit
 
-Building multi-agent systems with LangGraph means writing hundreds of lines of Python for every topology: node functions, edge routing, state management, tool wiring, governance, error handling. Change the agent structure and you're refactoring code, not configuration.
+<div class="sk-home" markdown>
 
-## The fix
+<section class="sk-hero" markdown>
+
+<h1>Multi-agent AI swarms as <em>data, not code</em>.</h1>
+
+<p class="lead">Define agents, skills, tools and governance in YAML. SwarmKit compiles it, runs it under real gates, records every step, and grows it — through a portal, a CLI and an HTTP API that ship together.</p>
+
+<div class="sk-cta">
+  <a class="primary" href="getting-started/install/">Install in 30 seconds</a>
+  <a href="tutorials/">22-level guided tutorial</a>
+  <a href="portal/">See the portal</a>
+  <a href="https://github.com/delivstat/swarmkit">GitHub</a>
+</div>
+
+<video autoplay muted loop playsinline preload="metadata" poster="img/tutorials/15-job-full.png">
+  <source src="img/portal/portal-tour.mp4" type="video/mp4">
+  <source src="img/portal/portal-tour.webm" type="video/webm">
+</video>
+
+<div class="sk-stats">
+  <div><strong>11</strong> open artifact schemas</div>
+  <div><strong>5</strong> skill backings — MCP, prompt, command, composed, agent</div>
+  <div><strong>12</strong> bundled model providers, declared in YAML</div>
+  <div><strong>7,000+</strong> MCP servers wire in as config</div>
+  <div><strong>~4,000</strong> tests in CI</div>
+</div>
+
+</section>
+
+<div class="sk-yaml" markdown>
+
+<div markdown>
+
+## A swarm is a file
+
+Ten agents, three leaders, tools, a human gate on deployment — and no Python. Change the structure and you edit configuration, not code. Every artifact is open YAML any conformant runtime can run, and the portal edits the same file you would.
+
+The runtime compiles it to a LangGraph `StateGraph`, starts the MCP servers it needs, enforces the governance you declared, and hands you a run you can replay.
+
+[Level 1: Hello World →](tutorials/01-hello-world.md){ .md-button }
+
+</div>
 
 ```yaml
-# A complete 10-agent code review swarm. No Python.
+# A complete code review swarm.
 apiVersion: swarmkit/v1
 kind: Topology
 metadata:
@@ -48,226 +78,195 @@ agents:
             skills: [test-coverage-review, run-tests]
 ```
 
+</div>
+
+## What you get
+
+<div class="sk-grid" markdown>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/04-canvas.png" alt="The topology canvas"></div>
+<div class="body" markdown>
+### Topologies you can see
+Hierarchies, parallel workers, DAG dependencies — drawn from the YAML on the canvas, edited as a form or as the file.
+<a class="more" href="tutorials/04-multi-agent/">Multi-agent →</a>
+</div>
+</div>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/15-job-full.png" alt="A five-agent run with its trace"></div>
+<div class="body" markdown>
+### Every run, explained
+Which agent fired, what each cost, the span waterfall, the exact prompt a model saw. `trace`, `why`, `ask`, `debug` from the terminal; the same on the job page.
+<a class="more" href="tutorials/08-observability/">Observability →</a>
+</div>
+</div>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/07-gates.png" alt="The gates inbox"></div>
+<div class="body" markdown>
+### Gates that hold
+Decision skills run before an agent sees input and after it answers. A funnel judges the artifact, then two named people approve — quorum enforced by the runtime, not the prompt.
+<a class="more" href="tutorials/07-governance/">Governance →</a>
+</div>
+</div>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/08-audit.png" alt="The append-only audit log"></div>
+<div class="body" markdown>
+### An audit trail nobody can edit
+Append-only from the agents' side: verdicts, tool calls with their policy decision, drift scores, gate resolutions — with the reasoning attached.
+<a class="more" href="tutorials/08-observability/#the-same-thing-in-the-portal">Audit →</a>
+</div>
+</div>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/05-connections.png" alt="Connections: MCP servers and credentials"></div>
+<div class="body" markdown>
+### 7,000+ tools, one config block
+Any MCP server is a few lines of `mcp_servers`. Permission tiers, declared `effects`, sandboxing, credentials by reference — a `readonly` server cannot write, whatever the model asks.
+<a class="more" href="tutorials/05-mcp-tools/">MCP tools →</a>
+</div>
+</div>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/09-memory.png" alt="Governed memory with a fact's timeline"></div>
+<div class="body" markdown>
+### Two memories, one of them curated
+Runs remember what they learned. Facts that matter are reconciled on write, quarantined on conflict, and resolved by a person — with the full history of every change.
+<a class="more" href="tutorials/09-conversations-memory/">Memory →</a>
+</div>
+</div>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/09-chat.png" alt="A chat with a topology"></div>
+<div class="body" markdown>
+### Chat, API, MCP — same run
+`swarmkit chat`, `POST /run`, SSE streams, a conversation API, and every topology as a tool for Claude Desktop or Cursor. A chat started in the terminal continues in the browser.
+<a class="more" href="tutorials/11-serve-api/">Serve →</a>
+</div>
+</div>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/12-canary.png" alt="Canary deployment between two topology versions"></div>
+<div class="body" markdown>
+### Ship a new version safely
+Two versions of one topology side by side, traffic split by weight, promotion when the error rate and drift say so — or by hand, or rolled back. Cron and signed webhooks start runs on their own.
+<a class="more" href="tutorials/12-triggers-canary/">Triggers & canary →</a>
+</div>
+</div>
+
+<div class="sk-card" markdown>
+<div class="shot"><img src="img/tutorials/13-skill-editor.png" alt="A skill written by the authoring agent, open in the editor"></div>
+<div class="body" markdown>
+### Grows by conversation
+Describe a skill, a topology or a whole workspace; an agent drafts it, validates it against the schema, and writes it only after you say yes. Gaps an agent hits are logged for the next one.
+<a class="more" href="tutorials/13-authoring-review/">Authoring →</a>
+</div>
+</div>
+
+</div>
+
+## Thirty seconds to a running swarm
+
+<div class="sk-steps">
+<div>
+<strong>Install</strong>
+<p><code>uv tool install swarmkit-runtime</code> — one binary, the portal included.</p>
+</div>
+<div>
+<strong>Write a workspace</strong>
+<p>Or let <code>swarmkit init</code> write it from a sentence. A workspace is a directory of YAML.</p>
+</div>
+<div>
+<strong>Run it</strong>
+<p><code>swarmkit run . hello --input "…"</code> — or <code>swarmkit serve .</code> and open the portal.</p>
+</div>
+<div>
+<strong>Read what happened</strong>
+<p><code>swarmkit trace</code>, <code>why</code>, <code>ask</code>, <code>debug</code>. Then add a gate, a tool, a second agent.</p>
+</div>
+</div>
+
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 uv tool install swarmkit-runtime
-swarmkit run my-swarm/ code-review --input "Review PR #49"
+swarmkit init my-swarm            # a conversation; it writes the YAML
+swarmkit run my-swarm hello --input "Say hello to the team."
+swarmkit serve my-swarm           # the portal at http://127.0.0.1:8000
 ```
 
-SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers, enforces governance policies, and runs the swarm. You keep the full power of LangGraph (checkpointing, streaming, state management) without writing the boilerplate.
+## Watch it
 
-## Why SwarmKit over alternatives
+<div class="sk-videos" markdown>
+<figure markdown>
+<video controls preload="none" playsinline poster="img/portal/dashboard.png">
+  <source src="img/portal/portal-tour.mp4" type="video/mp4">
+  <source src="img/portal/portal-tour.webm" type="video/webm">
+</video>
+<figcaption>The portal in two minutes — composer, canvas, jobs, gates, audit. <a href="portal/">Screenshots and the tour →</a></figcaption>
+</figure>
+<figure markdown>
+<video controls preload="none" playsinline poster="sdlc-example/assets/img/funnels-01-overview.png">
+  <source src="sdlc-example/assets/videos/full-tour.mp4" type="video/mp4">
+</video>
+<figcaption>A real delivery workspace: funnels, multi-party approval, contracts, each shown running. <a href="sdlc-example/">The SDLC walkthrough →</a></figcaption>
+</figure>
+</div>
+
+## Learn it in 22 levels
+
+Every level builds on one workspace. Every transcript is a real run, every YAML block is validated and run in CI, every screenshot is the portal on that workspace.
+
+<div class="sk-levels">
+<a href="tutorials/01-hello-world/">1 · Hello World<span>install, validate, run</span></a>
+<a href="tutorials/02-archetypes/">2 · Archetypes<span>reusable agent configs</span></a>
+<a href="tutorials/03-skills/">3 · Skills<span>capability, decision</span></a>
+<a href="tutorials/04-multi-agent/">4 · Multi-agent<span>hierarchy, parallel, DAG</span></a>
+<a href="tutorials/05-mcp-tools/">5 · MCP tools<span>servers, tiers, sandbox</span></a>
+<a href="tutorials/06-structured-delegation/">6 · Structured delegation<span>plans, scopes, dual model</span></a>
+<a href="tutorials/07-governance/">7 · Governance<span>gates, breakers, approval</span></a>
+<a href="tutorials/08-observability/">8 · Observability<span>trace, why, ask, OTel</span></a>
+<a href="tutorials/09-conversations-memory/">9 · Memory<span>chat, curated facts</span></a>
+<a href="tutorials/10-knowledge-rag/">10 · Knowledge & RAG<span>search server, grounding</span></a>
+<a href="tutorials/11-serve-api/">11 · Serve & API<span>jobs, SSE, auth, MCP</span></a>
+<a href="tutorials/12-triggers-canary/">12 · Triggers & canary<span>cron, webhooks, versions</span></a>
+<a href="tutorials/13-authoring-review/">13 · Authoring<span>init, author, gaps</span></a>
+<a href="tutorials/14-packaging/">14 · Packaging<span>publish, install, mcp-serve</span></a>
+<a href="tutorials/15-production-example/">15 · Production example<span>a webhook-driven review</span></a>
+<a href="tutorials/16-pipelines/">16 · Sequencing<span>defer, resume, contracts</span></a>
+<a href="tutorials/17-harness-executors/">17 · Harness executors<span>Claude Code as a node</span></a>
+<a href="tutorials/18-funnels-approval/">18 · Funnels & approval<span>quorum, roles</span></a>
+<a href="tutorials/19-command-packs-attachments/">19 · Packs & attachments<span>a binary as a skill</span></a>
+<a href="tutorials/20-agents-calling-agents/">20 · Agents calling agents<span>A2A, pack:workspace</span></a>
+<a href="tutorials/21-providers-storage-operations/">21 · Operations<span>providers, Postgres, eval</span></a>
+<a href="tutorials/22-fleet/">22 · Fleet<span>control plane, enrolment</span></a>
+</div>
+
+## Why not just write the code?
 
 | | SwarmKit | LangGraph (raw) | CrewAI | Claude Agent SDK |
 |---|---|---|---|---|
 | Agent definition | YAML topology | Python code | Python classes | Code + config |
-| Multi-agent orchestration | Declarative hierarchy + DAG | Manual graph construction | Role-based | Single agent loop |
-| Tool integration | 7,000+ MCP servers via YAML config | Build or wire yourself | Built-in + MCP | Built-in harness + MCP |
-| Governance / permissions | IAM scopes + policy engine (AGT) | DIY | None | None |
-| Audit trail | Hash-chained, append-only | DIY | None | None |
-| Human-in-the-loop | Native approval gates in YAML | Manual interrupt points | None | None |
-| Escape hatch / lock-in | Open YAML topologies + OSS runtime — no proprietary format or platform | N/A | Python classes | Vendor SDK |
-| Model support | 7 providers (Anthropic, OpenAI, Google, Ollama, ...) | Any | Multiple | Claude only |
+| Multi-agent orchestration | Declarative hierarchy + DAG + task plans | Manual graph construction | Role-based | Single agent loop |
+| Tool integration | 7,000+ MCP servers via YAML | Build or wire yourself | Built-in + MCP | Built-in harness + MCP |
+| Governance | Decision-skill gates, IAM scopes, circuit breakers, funnels | DIY | None | None |
+| Human approval | Structural: quorum, roles, defer-and-resume | Manual interrupt points | None | None |
+| Audit trail | Append-only, with reasoning | DIY | None | None |
+| Observability | Trace, drift, OTel, `why`/`ask`, prompt ring buffer | DIY | Minimal | Minimal |
+| Lock-in | Open YAML + OSS runtime | N/A | Python classes | Vendor SDK |
+| Models | 12 providers, declared as YAML | Any | Multiple | Claude only |
 
-## Quick start
+You keep LangGraph underneath — checkpointing, streaming, state — without writing its boilerplate, and the runtime records every step.
 
-### Install
+<div class="sk-band" markdown>
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv if you don't have it
-uv tool install swarmkit-runtime
-```
+## Built to be read by machines too
 
-### Create and run a swarm
+Docs are consumed by LLMs as much as by people. **[`/llms.txt`](llms.txt)** is the compact index; **[`/llms-full.txt`](llms-full.txt)** inlines the whole corpus. `swarmkit knowledge-server` serves the same corpus to Claude Code or Cursor over MCP, and `swarmkit mcp-serve` turns any workspace into tools an assistant can call.
 
-```bash
-# Create a workspace through conversation (you never write YAML)
-swarmkit init my-swarm/
+[The complete playbook →](guides/building-swarms.md){ .md-button } [Reference →](reference/cli.md){ .md-button } [Design notes →](architecture/design-overview.md){ .md-button }
 
-# Run it
-swarmkit run my-swarm/ my-topology --input "Do the thing"
+</div>
 
-# Or use the reference code review swarm out of the box
-swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit"
-```
-
-### 30-second workflow
-
-```bash
-swarmkit init my-swarm/                                # conversational workspace creation
-swarmkit validate my-swarm/ --tree                     # validate + show agent tree
-swarmkit run my-swarm/ my-topology --input "Greet us"  # run end-to-end
-swarmkit chat my-swarm/ my-topology                    # multi-turn conversation
-swarmkit author skill my-swarm/                        # add skills conversationally
-swarmkit edit my-swarm/ --input "Add a security scan"  # modify via conversation
-```
-
-## How it works
-
-![SwarmKit architecture](images/architecture.svg)
-
-## Key features
-
-### Topology as data
-
-Swarms are YAML files, not Python. Declare agents, hierarchy, skills, model preferences, and IAM scopes. The runtime interprets them — no code generation.
-
-### Skills as the only extension
-
-Need custom logic? Write a skill (LLM prompt or MCP server), not a Python plugin. SwarmKit's CLI can even write skills for you:
-
-```bash
-swarmkit author skill my-swarm/                # single-agent authoring
-swarmkit author skill my-swarm/ --thorough     # multi-agent authoring swarm
-swarmkit author mcp-server my-swarm/           # generate an MCP server
-```
-
-### 7,000+ tools via MCP
-
-Wire any MCP server in YAML. GitHub, databases, Slack, browsers, filesystems — no building tools from scratch:
-
-```yaml
-mcp_servers:
-  - id: github
-    transport: stdio
-    command: ["npx", "-y", "@modelcontextprotocol/server-github"]
-    env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
-```
-
-Sandboxed execution available: `sandboxed: true` runs MCP servers in Docker with `--network=none` and read-only mounts.
-
-### Governance built in
-
-Every tool call goes through `evaluate_action` before execution. IAM scopes per agent. Hash-chained audit trail via Microsoft AGT. Mock provider for dev, AGT for production:
-
-```yaml
-governance:
-  provider: agt
-  config:
-    policies_dir: ./policies
-```
-
-### Model providers — declared, not coded
-
-Providers are YAML artifacts (`kind: ModelProvider`) over four wire-format families — `openai-compatible`, `ollama`, `anthropic`, `google`. Twelve ship bundled; a provider registers when it is **ready** (its key is set, or it needs none). Mix providers within a single topology:
-
-| Provider | Env var | Example |
-|---|---|---|
-| Anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-4-6` |
-| Google | `GOOGLE_API_KEY` | `gemini-2.5-flash` |
-| OpenAI | `OPENAI_API_KEY` | `gpt-4o` |
-| OpenRouter | `OPENROUTER_API_KEY` | `meta-llama/llama-3.3-70b-instruct` |
-| Groq | `GROQ_API_KEY` | `llama-3.3-70b-versatile` |
-| Together | `TOGETHER_API_KEY` | `meta-llama/llama-3.3-70b` |
-| Ollama | none (`OLLAMA_BASE_URL` to point elsewhere) | `llama3.3` |
-| rkllama · llama-server · openvino-model-server · mlx-lm · lemonade | none — local edge runtimes | any |
-
-Any other OpenAI- or Ollama-compatible endpoint is six lines of YAML in `<workspace>/providers/` — no Python, no release. `swarmkit providers list` shows what is registered and what each is waiting for. See [`docs/site/reference/model-provider.md`](reference/model-provider.md).
-
-### Observability (M6 — shipped)
-
-Every run records structured audit events to SQLite. OpenTelemetry traces, metrics, governance circuit breakers, an event seam your application taps (`GET /events`, webhook sinks), and a local prompt ring buffer are built in.
-
-```bash
-swarmkit status my-swarm/                      # recent runs from audit store
-swarmkit logs my-swarm/ --last 3               # detailed events (--run-id, --agent filters)
-swarmkit why <run-id> my-swarm/                # LLM explains what happened
-swarmkit ask "Which agents are slowest?" -w .  # conversational observer (--run scoping)
-swarmkit debug my-swarm/ --span-id <id>        # retrieve prompts locally
-swarmkit review list my-swarm/                 # pending human reviews
-swarmkit gaps my-swarm/                        # recorded skill gaps
-```
-
-**Coming soon:** installable expertise packages.
-
-## Reference topologies
-
-Ships with production-quality topologies you can use immediately:
-
-**Code Review Swarm** — 3 leaders (Engineering, QA, Ops), 10 agents. Fetches PRs via GitHub MCP, reviews code quality + security + test coverage, HITL approval for deployment:
-
-```bash
-swarmkit run reference/ code-review --input "Review PR #49 on delivstat/swarmkit"
-```
-
-**Skill Authoring Swarm** — 6 specialist agents create SwarmKit artifacts through conversation, grounded by the Knowledge MCP Server:
-
-```bash
-swarmkit author skill my-workspace/ --thorough
-```
-
-**16 archetypes** and **27 skills** included under [`reference/`](https://github.com/delivstat/swarmkit/tree/main/reference/).
-
-### Or take a skill already wired
-
-[**swarmkit-skills**](https://github.com/delivstat/swarmkit-skills) is a separate catalogue of MCP
-servers with the configuration already worked out — the `mcp_servers` block, the permission tier, an
-`effects` map per tool so `readonly` is enforceable, and scopes that are neither too broad nor
-missing. That wiring is the part nobody publishes and everyone rediscovers.
-
-Entries are **bundles**: one server plus the skills that use it, because that is how a server is
-actually adopted.
-
-```yaml
-skills:
-  - pack:git          # every READ skill in the bundle, now and later
-  - fs-write-file     # a write, named — bulk grants never carry one
-```
-
-**Every entry is started and asked, nightly**, so it carries the date its server last answered
-rather than a promise. An entry needing a credential public CI cannot supply reports `unverifiable`
-instead of passing silently — roughly three in five of the most-wanted MCP servers need somebody's
-account, and a green tick meaning *we did not look* would be worth less than no tick.
-
-It is versioned separately from the runtime, so a broken third-party entry does not need a runtime
-release to fix.
-
-## Real-world example
-
-The [`examples/sterling-oms/`](https://github.com/delivstat/swarmkit/tree/main/examples/sterling-oms/) workspace demonstrates reasoning over 1,000+ API javadocs with multiple MCP servers (ChromaDB vector search, FTS5 keyword search, CDT config server) — a production-grade setup for enterprise domain knowledge.
-
-## Roadmap
-
-See the [Implementation Plan](architecture/implementation-plan.md) for the full 4-phase roadmap.
-
-### Phase 1 — Foundation (complete)
-
-| # | Milestone | Status |
-|---|---|---|
-| M0 | Schemas (dual-language validators, codegen; 11 artifact kinds today) | Done |
-| M1 | Topology loading and resolution | Done |
-| M2 | GovernanceProvider + AGT integration | Done |
-| M2.5 | ModelProvider abstraction (7 built-in providers) | Done |
-| M3 | LangGraph compiler (capability + coordination + DAG) | Done |
-| M3.5 | Conversational authoring (`swarmkit init/author/edit`) | Done |
-| M4 | Decision skills, structured output, review queue, HITL | Done |
-| M5 | MCP integration (stdio + HTTP, sandboxed servers, governance gating) | Done |
-
-### Phase 2 — Runtime completion (current)
-
-| # | Milestone | Status |
-|---|---|---|
-| M6 | Observability: AuditProvider, OTel traces + metrics, ring buffer, circuit breakers, notifications, CLI rewrite, audit redaction | Done (notifications superseded by the event seam in 1.216.0) |
-| M6.5 | Workspace env configuration: `workspace.env.yaml` + `SWARMKIT_ENV` switching | Done |
-| M7 | Intent drift detection: IntentObserver, schema extension, compiler wiring, authoring integration | Done |
-
-### Phase 3-4 — Ecosystem + production readiness
-
-> This roadmap is the original phased plan. Development is well past it — the runtime is at **1.192.0**, and features that shipped after M11 (first-class [Funnels](reference/funnel.md), integration [Contracts](reference/contract.md), multi-party approval, defer-and-resume on a human gate, [skill prerequisites](design-notes/skill-prerequisites.md), and [executor harnesses](reference/executor-adapter.md)) aren't in this table. See the [implementation plan](architecture/implementation-plan.md) for current status.
-
-| # | Milestone | Status |
-|---|---|---|
-| M8 | Knowledge + skills ecosystem: skill registry CLI, user knowledge server | Done |
-| M9 | Reference topologies: code review + skill authoring swarms runnable e2e | Done |
-| M10 | Execution modes: HTTP server, canary deployments | Done |
-| M11 | Launch prep: docs site, PyPI/npm publish, expertise packages (planned) | Docs + publish done |
-
-## For LLMs
-
-SwarmKit docs are designed for LLM consumption. The repo ships [`llms.txt`](https://github.com/delivstat/swarmkit/blob/main/llms.txt) at the root:
-
-```bash
-swarmkit knowledge-pack --lean -o pack.md   # ~170k tokens: what an LLM needs to use SwarmKit
-swarmkit knowledge-pack -o pack.md          # ~550k tokens: plus every design note (the why)
-swarmkit knowledge-server             # live MCP server for Claude Code / Cursor
-```
+</div>

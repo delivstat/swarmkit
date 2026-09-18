@@ -1,0 +1,53 @@
+/* The docs homepage. Everything here is scoped to `.sk-home` so the rest of the site is untouched. */
+.md-content__inner:has(.sk-home) > h1:first-of-type { display: none; }
+.sk-home { --sk-ink: #0f0f14; --sk-accent: #7c4dff; --sk-amber: #ffb300; --sk-sky: #38bdf8; }
+
+.sk-hero {
+  position: relative; border-radius: 16px; overflow: hidden; margin: 0 0 2.5rem;
+  background: radial-gradient(1200px 600px at 10% -10%, #3b1f8a 0%, #12101c 45%, #0b0b10 100%);
+  color: #f4f4f8; padding: 3rem 2.5rem 2.5rem;
+}
+.sk-hero h1 { color: #fff; font-size: 2.6rem; line-height: 1.1; margin: 0 0 .75rem; font-weight: 800; letter-spacing: -0.02em; }
+.sk-hero h1 em { font-style: normal; background: linear-gradient(90deg, #c4b5fd, #38bdf8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sk-hero p.lead { font-size: 1.15rem; max-width: 46rem; color: #d7d5e6; margin: 0 0 1.5rem; }
+.sk-hero .sk-cta { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 2rem; }
+.sk-hero .sk-cta a { display: inline-block; padding: .6rem 1.1rem; border-radius: 999px; font-weight: 600; text-decoration: none; border: 1px solid rgba(255,255,255,.18); color: #fff; }
+.sk-hero .sk-cta a.primary { background: #7c4dff; border-color: #7c4dff; }
+.sk-hero .sk-cta a.primary:hover { background: #6a3df0; }
+.sk-hero .sk-cta a:hover { background: rgba(255,255,255,.08); }
+.sk-hero video, .sk-hero img.shot { width: 100%; border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.12); display: block; }
+.sk-hero .sk-stats { display: flex; flex-wrap: wrap; gap: 1.5rem 2.5rem; margin-top: 1.5rem; }
+.sk-hero .sk-stats div { font-size: .8rem; color: #b9b6cc; }
+.sk-hero .sk-stats strong { display: block; color: #fff; font-size: 1.35rem; }
+
+.sk-yaml { display: grid; grid-template-columns: 1.1fr 1fr; gap: 1.5rem; align-items: center; margin: 2.5rem 0; }
+.sk-yaml .highlight { margin: 0; }
+@media (max-width: 900px) { .sk-yaml { grid-template-columns: 1fr; } }
+
+.sk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1.2rem; margin: 1.5rem 0 2.5rem; }
+.sk-card { border: 1px solid var(--md-default-fg-color--lightest); border-radius: 14px; overflow: hidden; background: var(--md-code-bg-color); display: flex; flex-direction: column; transition: transform .15s ease, box-shadow .15s ease; }
+.sk-card:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,.18); }
+.sk-card .shot { aspect-ratio: 16 / 9; overflow: hidden; background: #0b0b10; }
+.sk-card .shot img { width: 118%; height: 118%; object-fit: cover; object-position: top left; display: block; margin-left: -18.5%; }  /* crop the portal sidebar out of the thumbnail */
+.sk-card .body { padding: 1rem 1.1rem 1.2rem; }
+.sk-card h3 { margin: 0 0 .35rem; font-size: 1.05rem; }
+.sk-card p { margin: 0 0 .6rem; font-size: .88rem; color: var(--md-default-fg-color--light); }
+.sk-card a.more { font-size: .85rem; font-weight: 600; }
+
+.sk-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 1.5rem 0 2.5rem; counter-reset: sk; }
+.sk-steps div { border-left: 3px solid var(--sk-accent); padding: .2rem 0 .2rem 1rem; }
+.sk-steps div::before { counter-increment: sk; content: counter(sk, decimal-leading-zero); font-weight: 800; color: var(--sk-accent); display: block; font-size: .8rem; letter-spacing: .1em; }
+.sk-steps strong { display: block; margin-bottom: .2rem; }
+.sk-steps p { margin: 0; font-size: .88rem; color: var(--md-default-fg-color--light); }
+
+.sk-videos { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.2rem; margin: 1.5rem 0 2.5rem; }
+.sk-videos video { width: 100%; border-radius: 12px; border: 1px solid var(--md-default-fg-color--lightest); background: #000; display: block; }
+.sk-videos figcaption { font-size: .85rem; color: var(--md-default-fg-color--light); margin-top: .4rem; }
+
+.sk-levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem; margin: 1rem 0 2.5rem; }
+.sk-levels a { display: block; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 10px; padding: .55rem .7rem; font-size: .8rem; text-decoration: none; color: var(--md-default-fg-color); background: var(--md-code-bg-color); }
+.sk-levels a:hover { border-color: var(--sk-accent); color: var(--sk-accent); }
+.sk-levels a span { display: block; font-size: .7rem; color: var(--md-default-fg-color--light); }
+
+.sk-band { border-radius: 14px; padding: 1.5rem 1.75rem; margin: 2.5rem 0; background: linear-gradient(120deg, rgba(124,77,255,.12), rgba(56,189,248,.10)); border: 1px solid var(--md-default-fg-color--lightest); }
+.sk-band h2 { margin-top: 0; }
