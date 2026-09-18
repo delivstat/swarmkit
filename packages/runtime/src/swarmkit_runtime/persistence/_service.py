@@ -79,6 +79,24 @@ def reset_storage_cache() -> None:
     _SERVICES.clear()
 
 
+
+def _pool_config() -> tuple[int, int]:
+    """The Postgres pool sizing for the shared store engine — the single point storage owns.
+
+    `SWARMKIT_STORE_POOL_SIZE` (default 20) and `SWARMKIT_STORE_MAX_OVERFLOW` (default 10); a bad
+    value falls back rather than crashing. Resolved here so `make_engine` stays a pure factory and
+    there is one place to change how the pool is configured (e.g. to read it from `storage:` later).
+    """
+
+    def _int(name: str, default: int) -> int:
+        try:
+            v = int(os.environ.get(name, "") or default)
+            return v if v > 0 else default
+        except ValueError:
+            return default
+
+    return _int("SWARMKIT_STORE_POOL_SIZE", 20), _int("SWARMKIT_STORE_MAX_OVERFLOW", 10)
+
 class StorageConfigError(RuntimeError):
     """The storage config names something that cannot be honoured.
 
@@ -343,7 +361,8 @@ class StorageService:
         url = self.target(kind).url
         existing = self._engines.get(url)
         if existing is None:
-            existing = make_engine(url)
+            pool_size, max_overflow = _pool_config()
+            existing = make_engine(url, pool_size=pool_size, max_overflow=max_overflow)
             self._engines[url] = existing
         return existing
 

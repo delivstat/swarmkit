@@ -18,7 +18,7 @@ from swarmkit_runtime.persistence import (
     StoreKind,
     storage_for_workspace,
 )
-from swarmkit_runtime.persistence._service import reset_storage_cache
+from swarmkit_runtime.persistence._service import _pool_config, reset_storage_cache
 from swarmkit_runtime.persistence._store import make_engine
 
 PG = "postgresql://swarm:hunter2@127.0.0.1:5433/swarmkit"
@@ -300,21 +300,22 @@ def test_storage_status_and_system_exit_2_on_an_unresolved_store(
 # ---- configurable connection pool (load-and-scale.md) ------------------------------------------
 
 
-def test_postgres_pool_size_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SWARMKIT_STORE_POOL_SIZE", "37")
-    monkeypatch.setenv("SWARMKIT_STORE_MAX_OVERFLOW", "3")
+def test_make_engine_is_a_pure_factory_taking_pool_params() -> None:
     # A lazy engine — create_engine does not connect, so no server is needed to inspect the pool.
-    engine = make_engine("postgresql://u:p@127.0.0.1:5599/db")
+    engine = make_engine("postgresql://u:p@127.0.0.1:5599/db", pool_size=37, max_overflow=3)
     assert engine.pool.size() == 37  # type: ignore[attr-defined]
 
 
-def test_postgres_pool_defaults_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_storage_service_owns_the_pool_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The service is the single point that resolves pool sizing (from env) and passes it to
+    # make_engine — the knob is set in one place, not scattered through the callers.
     monkeypatch.delenv("SWARMKIT_STORE_POOL_SIZE", raising=False)
-    engine = make_engine("postgresql://u:p@127.0.0.1:5599/db")
-    assert engine.pool.size() == 20  # type: ignore[attr-defined]  # the server-oriented default
-
-
-def test_a_bad_pool_size_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_STORE_MAX_OVERFLOW", raising=False)
+    assert _pool_config() == (20, 10)  # server-oriented defaults
+    monkeypatch.setenv("SWARMKIT_STORE_POOL_SIZE", "50")
+    monkeypatch.setenv("SWARMKIT_STORE_MAX_OVERFLOW", "5")
+    assert _pool_config() == (50, 5)
     monkeypatch.setenv("SWARMKIT_STORE_POOL_SIZE", "not-a-number")
-    engine = make_engine("postgresql://u:p@127.0.0.1:5599/db")
-    assert engine.pool.size() == 20  # type: ignore[attr-defined]  # a bad value falls back
+    assert _pool_config()[0] == 20  # a bad value falls back, it does not crash
