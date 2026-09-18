@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flag cleanup report",
+  "type": "object",
+  "required": ["flag_key", "keep_branch", "files", "risk"],
+  "additionalProperties": false,
+  "properties": {
+    "flag_key": {"type": "string", "minLength": 1},
+    "keep_branch": {"type": "string", "description": "The variant that stays (usually the one at ~100%)."},
+    "rollout_percent": {"type": "number", "minimum": 0, "maximum": 100},
+    "files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "risk": {"enum": ["low", "medium", "high"]},
+    "notes": {"type": "string"}
+  }
+}

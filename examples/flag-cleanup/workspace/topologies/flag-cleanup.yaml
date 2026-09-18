@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: flag-cleanup
+  version: 0.1.0
+# Phase 2: the harness agent removes the flag in an isolated worktree and produces a candidate
+# diff; the `cleanup-review` funnel checks it, judges it (route-back on a finding) and takes the
+# human sign-off. One flag, one governed run — the application fans these out across repos.
+agents:
+  root:
+    id: cleaner
+    role: root
+    archetype: flag-cleanup-agent
+    funnel: cleanup-review
+    iam:
+      base_scope: [repo:read, repo:write]

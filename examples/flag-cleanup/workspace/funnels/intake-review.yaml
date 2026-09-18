@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: intake-review
+  name: Cleanup report confirmation
+  description: >
+    Phase 1's gate — the engineer confirmation DoorDash requires before any code changes. The
+    triager's cleanup report is validated against its schema, then a human on the flag-reviewer role
+    approves. The approve layer defers the run: it checkpoints and the job parks until a person
+    resolves it, so nothing stays resident while they decide.
+validate:
+  schema: schemas/cleanup-report.json
+  autocorrect: true
+approve:
+  rules:
+    - scope: flags:approve
+      roles: [flag-reviewer]
+      quorum: any
+provenance:
+  authored_by: human
+  version: 1.0.0

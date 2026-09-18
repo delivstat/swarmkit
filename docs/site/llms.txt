@@ -348,6 +348,10 @@ What the agent receives is a fenced, attributed, typed and versioned block — h
 
 `GET /whoami` returns the authenticated caller (`/auth-info` is public and describes the server, not the caller). Every attempt — allowed or denied — is audited as `approval.role_task_resolved`, with `approval.gate_opened` per round and `approval.changes_requested` on a rework.
 
+## Case study: feature-flag cleanup (the DoorDash shape, as data)
+
+[`examples/flag-cleanup/`](https://github.com/delivstat/swarmkit/tree/main/examples/flag-cleanup) is the SwarmKit form of DoorDash's agentic stale-flag cleanup ([case study](https://delivstat.github.io/swarmkit/case-studies/feature-flag-cleanup/)): Phase 1 a model agent triages a flag into a cleanup report a human confirms (`intake-review` funnel); Phase 2 a **harness** agent removes the flag in an isolated worktree under a budget and its diff faces the `cleanup-review` funnel — the `code-review` decision skill judges it (a finding routes the critique back to the harness) and a human on `flags:approve` signs off, the only exit. No orchestration code — the worktree isolation, the budget, the gate and the audit are the runtime's; the daily cross-repo fan-out is the calling application's. `just demo-flag-cleanup` runs it deterministically (real `claude-code` adapter over a scripted transcript through the real gate; no keys, no network).
+
 ## The SDLC example (the worked reference)
 
 [`examples/sdlc-pipeline`](https://github.com/delivstat/swarmkit/tree/main/examples/sdlc-pipeline) is the largest worked workspace: a software-delivery lifecycle — **intake → design → build → sit → pt → security-review → deploy → support-handover** — as topologies, archetypes, funnels, contracts and rigs, carrying three multi-party human gates, a harness build/review node, and IAM-scoped agents. Its *sequencing* half (the stage graph, the saga controller, the Temporal adapter) was removed with the bundled pipeline in 1.189.0; the artifacts, the gates and the per-stage demos remain, and `examples/pipeline-orchestrator/` shows how an application drives them.

@@ -264,6 +264,12 @@ demo-consolidated-design:
 demo-harness-build:
     uv run python examples/sdlc-pipeline/demo_harness_build.py
 
+# Demo the feature-flag-cleanup case study (docs/site/case-studies/feature-flag-cleanup.md): a
+# harness removes a stale flag in a worktree, the cleanup-review funnel judges the diff (route-back
+# on a finding) and a human signs off. Deterministic — no keys, no network.
+demo-flag-cleanup:
+    uv run python examples/flag-cleanup/demo.py
+
 # Demo cross-app SIT + PT against mock rigs + the pre-release security review (slice 8): the sit-qa
 # e2e flows across oms/web/mobile, the pt-engineer's perf test judged by pt-analysis, and the
 # security-review-approval funnel — the security-consultant harness review (HIGH finding routes back)

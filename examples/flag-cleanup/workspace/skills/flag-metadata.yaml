@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: flag-metadata
+  name: Flag metadata
+  description: >
+    Read a feature flag's rollout percentage, variants and last-change date from the
+    experimentation platform — the facts that decide whether a stale flag is safe to remove and
+    which branch of the code is the keep-branch.
+category: capability
+implementation:
+  type: mcp_tool
+  server: experimentation
+  tool: flag_metadata
+iam:
+  required_scopes: [flags:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

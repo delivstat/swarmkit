@@ -1,0 +1,34 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: flag-cleanup
+  name: Feature-flag cleanup
+  description: >
+    Retire stale feature flags at scale as data, not orchestration code — the SwarmKit shape of
+    DoorDash's agentic flag-cleanup system (docs/site/case-studies/feature-flag-cleanup.md). Phase
+    1 triages a stale flag into a cleanup report a human confirms; Phase 2 a harness agent removes
+    the flag in an isolated worktree, its diff faced by a funnel that checks it and takes a human
+    sign-off. The daily fan-out across repos is the calling application's; each governed cleanup is
+    one run here.
+governance:
+  provider: mock
+memory:
+  enabled: false
+# The flag's metadata (rollout %, last change) and where it is referenced come from MCP servers —
+# the experimentation platform and code search, exactly as DoorDash wired them, but every call is
+# governed and audited through SwarmKit's gateway. Declarative here; a real workspace points these
+# at the actual servers.
+mcp_servers:
+  - id: experimentation
+    transport: stdio
+    command: [flags-mcp, serve]
+    permission: readonly
+    effects:
+      flag_metadata: read
+      list_stale_flags: read
+  - id: code-search
+    transport: stdio
+    command: [code-search-mcp, serve]
+    permission: readonly
+    effects:
+      search_references: read

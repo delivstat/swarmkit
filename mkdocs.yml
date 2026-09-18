@@ -63,6 +63,8 @@ nav:
   - Architecture:
     - Design overview: architecture/design-overview.md
     - Implementation plan: architecture/implementation-plan.md
+  - Case studies:
+    - Feature-flag cleanup: case-studies/feature-flag-cleanup.md
   - Design notes:
     - Runtime:
       - LangGraph compiler: design-notes/langgraph-compiler.md
