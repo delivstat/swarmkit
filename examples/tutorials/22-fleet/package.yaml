@@ -1,0 +1,17 @@
+name: "@my-org/handbook-swarm"
+version: 1.0.0
+description: >
+  A librarian that answers from the company handbook with citations, a chat assistant with
+  memory, and the content team — everything built in Levels 1–13.
+author: Srijith Kartha <srijith.kartha@delivstat.com>
+license: MIT
+requires:
+  runtime: ">=1.227.0"
+  providers:
+    - openrouter
+  env:
+    - OPENROUTER_API_KEY
+topologies:
+  - librarian
+  - hello
+  - content-team

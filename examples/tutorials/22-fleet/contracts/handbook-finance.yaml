@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: Contract
+metadata:
+  id: handbook-finance
+  name: Handbook ↔ Finance portal
+  description: >
+    The expense rules the finance portal enforces (limits, receipt thresholds, payroll timing)
+    and the handbook pages that state them. A change to either side is a change to this contract.
+parties: [handbook, finance-portal]
+provenance:
+  authored_by: human
+  version: 1.0.0
