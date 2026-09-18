@@ -93,3 +93,21 @@ def test_version_keys_are_not_mcp_tools(tmp_path: Path, monkeypatch: pytest.Monk
     names = {t.name for t in asyncio.run(list_tools())}
     assert "run_hello" in names
     assert not any("@" in n for n in names), names
+
+
+def test_capabilities_do_not_list_canary_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`/capabilities` is what a fleet counts topologies from; `/fleet/state` cannot read the
+    `name@version` aliases and drops them. Both must name the same set."""
+    from swarmkit_runtime.server._helpers import _build_capabilities  # noqa: PLC0415
+
+    monkeypatch.setenv("SWARMKIT_PROVIDER", "mock")
+    monkeypatch.setenv("SWARMKIT_QUIET", "1")
+    (tmp_path / "topologies" / "hello").mkdir(parents=True)
+    (tmp_path / "workspace.yaml").write_text(_WS)
+    (tmp_path / "topologies" / "hello" / "hello.yaml").write_text(_TOPO % "0.1.0")
+    (tmp_path / "topologies" / "hello" / "hello-v0.2.0.yaml").write_text(_TOPO % "0.2.0")
+    rt = WorkspaceRuntime.from_workspace_path(tmp_path)
+    assert "hello@0.2.0" in rt.workspace.topologies
+    assert _build_capabilities(rt)["topologies"] == ["hello"]

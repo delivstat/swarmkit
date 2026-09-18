@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 from swarmkit_control_plane import SqliteRegistry, create_app
-from swarmkit_control_plane._connector import ConnectorError
+from swarmkit_control_plane._connector import ConnectorError, GateRefused
 
 _GATES: list[dict[str, Any]] = [
     {"id": "approval-1", "kind": "permission", "agent_id": "coder", "capability": "Bash(npm test)"},
@@ -38,7 +38,14 @@ def _client(tmp_path: Path, gates_fn: Any = None, resolve_fn: Any = None) -> Tes
     if resolve_fn is None:
 
         async def resolve_fn(
-            endpoint: str, token_ref: str, item_id: str, action: str, answer: str
+            endpoint: str,
+            token_ref: str,
+            item_id: str,
+            action: str,
+            answer: str = "",
+            *,
+            outcome: str = "",
+            comment: str = "",
         ) -> dict[str, Any]:
             return {"id": item_id, "status": "approved", "answer": answer}
 
@@ -92,7 +99,14 @@ def test_resolve_proxies_the_decision_to_the_instance(tmp_path: Path) -> None:
     calls: list[tuple[str, str, str]] = []
 
     async def resolve_fn(
-        endpoint: str, token_ref: str, item_id: str, action: str, answer: str
+        endpoint: str,
+        token_ref: str,
+        item_id: str,
+        action: str,
+        answer: str = "",
+        *,
+        outcome: str = "",
+        comment: str = "",
     ) -> dict[str, Any]:
         calls.append((item_id, action, answer))
         return {"id": item_id, "status": "approved", "answer": answer}
@@ -117,3 +131,65 @@ def test_resolve_rejects_bad_action_and_poll_mode(tmp_path: Path) -> None:
 
 def test_unknown_instance_404(tmp_path: Path) -> None:
     assert _client(tmp_path).get("/instances/nope/review").status_code == 404
+
+
+def test_resolve_forwards_a_multi_party_outcome(tmp_path: Path) -> None:
+    """A funnel's role-task is resolved with the `resolve` verb and an outcome — the generic
+    approve marks the queue row without counting toward the gate (the runtime now refuses it)."""
+    seen: list[dict[str, Any]] = []
+
+    async def resolve_fn(
+        endpoint: str,
+        token_ref: str,
+        item_id: str,
+        action: str,
+        answer: str = "",
+        *,
+        outcome: str = "",
+        comment: str = "",
+    ) -> dict[str, Any]:
+        seen.append({"item": item_id, "action": action, "outcome": outcome, "comment": comment})
+        return {"id": item_id, "kind": "role_task", "status": "approved", "resolved_by": "panel"}
+
+    client = _client(tmp_path, resolve_fn=resolve_fn)
+    iid = _enroll(client, "direct")
+    r = client.post(
+        f"/instances/{iid}/review/mpa-run:design-0-lead/resolve",
+        json={"outcome": "changes-requested", "comment": "tighten the scope"},
+    )
+    assert r.status_code == 200, r.text
+    assert seen == [
+        {
+            "item": "mpa-run:design-0-lead",
+            "action": "resolve",
+            "outcome": "changes-requested",
+            "comment": "tighten the scope",
+        }
+    ]
+    bad = client.post(f"/instances/{iid}/review/mpa-run:design-0-lead/resolve", json={})
+    assert bad.status_code == 400
+    assert "outcome" in bad.json()["detail"]
+
+
+def test_an_instance_refusal_is_relayed_not_reported_as_unreachable(tmp_path: Path) -> None:
+    """The instance said no (not a member of the role, wrong verb for the kind): the operator gets
+    the instance's reason with its status, and the instance is NOT marked unreachable."""
+
+    async def resolve_fn(
+        endpoint: str,
+        token_ref: str,
+        item_id: str,
+        action: str,
+        answer: str = "",
+        *,
+        outcome: str = "",
+        comment: str = "",
+    ) -> dict[str, Any]:
+        raise GateRefused(403, "panel is not a member of role security-reviewer")
+
+    client = _client(tmp_path, resolve_fn=resolve_fn)
+    iid = _enroll(client, "direct")
+    r = client.post(f"/instances/{iid}/review/mpa-1/resolve", json={"outcome": "approve"})
+    assert r.status_code == 403
+    assert "not a member" in r.json()["detail"]
+    assert client.get(f"/instances/{iid}").json()["health"] != "unreachable"

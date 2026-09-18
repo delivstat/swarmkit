@@ -234,13 +234,21 @@ export interface RunTraceEnvelope {
 /** A pending harness gate on an instance — §6.2 permission or §6.3 input awaiting a human. */
 export interface ReviewGate {
 	id: string;
-	kind: "permission" | "input" | "other";
+	kind: "permission" | "input" | "role_task" | "other";
 	agent_id: string;
+	topology_id?: string;
 	reason: string;
 	capability: string;
 	question: string;
 	options: string[];
 	free_text_allowed: boolean;
+	// Multi-party role-task (a funnel's approve layer): which role must act, in what capacity, on
+	// which run. Resolved with the `resolve` verb as the panel's identity on the instance.
+	gate_id?: string;
+	run_id?: string;
+	role?: string;
+	scope?: string;
+	artifact_ref?: string | null;
 }
 
 export interface GatesEnvelope {

@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 
 from swarmkit_control_plane._aggregation import AggregationStore
 from swarmkit_control_plane._artifacts import ArtifactStore
-from swarmkit_control_plane._connector import ConnectorError
+from swarmkit_control_plane._connector import ConnectorError, GateRefused
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._delta import pull_state
 from swarmkit_control_plane._fleet_identity import FleetIdentity
@@ -250,15 +250,28 @@ def _mount_instance_gates(
     async def instance_gate_resolve(
         instance_id: str, item_id: str, action: str, req: GateResolveRequest
     ) -> dict[str, Any]:
-        if action not in ("approve", "reject", "answer"):
-            raise HTTPException(400, "action must be approve | reject | answer")
+        if action not in ("approve", "reject", "answer", "resolve"):
+            raise HTTPException(400, "action must be approve | reject | answer | resolve")
+        if action == "resolve" and req.outcome not in ("approve", "changes-requested", "reject"):
+            raise HTTPException(400, "resolve needs outcome: approve | changes-requested | reject")
         inst = registry.get(instance_id)
         if inst is None:
             raise HTTPException(404, "instance not found")
         if inst.connection != "direct":
             raise HTTPException(409, "instance is poll-mode (Mode B) — not directly resolvable")
         try:
-            return await resolve(inst.endpoint, inst.token_ref, item_id, action, req.answer)
+            return await resolve(
+                inst.endpoint,
+                inst.token_ref,
+                item_id,
+                action,
+                req.answer,
+                outcome=req.outcome,
+                comment=req.comment,
+            )
+        except GateRefused as exc:
+            # The instance answered; its verdict on the decision is the human's to read.
+            raise HTTPException(exc.status_code, str(exc)) from exc
         except ConnectorError as exc:
             registry.update_health(instance_id, health="unreachable")
             raise HTTPException(502, f"instance unreachable: {exc}") from exc

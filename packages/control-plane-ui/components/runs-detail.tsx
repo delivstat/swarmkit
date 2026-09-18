@@ -21,8 +21,15 @@ function statusVariant(status: string): BadgeProps["variant"] {
 	const s = status.toLowerCase();
 	if (s === "running" || s === "pending") return "warning";
 	if (s === "completed" || s === "succeeded") return "success";
-	if (s === "failed" || s === "error" || s === "cancelled")
+	if (
+		s === "failed" ||
+		s === "error" ||
+		s === "cancelled" ||
+		s === "stopped" ||
+		s === "interrupted"
+	)
 		return "destructive";
+	// `deferred`: parked on a human gate — waiting, not broken.
 	return "muted";
 }
 

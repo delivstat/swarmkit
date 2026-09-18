@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Protocol
 
 from swarmkit_control_plane._artifacts import KINDS as ARTIFACT_KINDS
 
@@ -37,8 +37,24 @@ RunsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 RunTraceFn = Callable[[str, str, str], Awaitable[dict[str, Any] | None]]
 # (endpoint, token_ref) -> serve /review list (pending harness permission/input gates)
 GatesFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
+
+
 # (endpoint, token_ref, item_id, action, answer) -> updated gate (approve|reject|answer)
-ResolveGateFn = Callable[[str, str, str, str, str], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref, item_id, action, answer, *, outcome, comment) -> the updated item
+class ResolveGateFn(Protocol):
+    def __call__(
+        self,
+        endpoint: str,
+        token_ref: str,
+        item_id: str,
+        action: str,
+        answer: str = "",
+        *,
+        outcome: str = "",
+        comment: str = "",
+    ) -> Awaitable[dict[str, Any]]: ...
+
+
 # (endpoint, token_ref) -> serve /canary {"enabled", "routes"}
 CanaryFn = Callable[[str, str], Awaitable[dict[str, Any]]]
 # (endpoint, token_ref, topology, version) -> promote result
