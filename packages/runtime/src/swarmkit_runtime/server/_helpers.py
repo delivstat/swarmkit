@@ -15,6 +15,7 @@ import yaml
 from fastapi import HTTPException, Request
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
+from swarmkit_runtime.connect import DEPLOY_PLURAL
 from swarmkit_runtime.fleet import deploy_message, verify_signature
 from swarmkit_runtime.triggers._webhook import default_auth_header, validate_webhook_auth
 
@@ -396,8 +397,10 @@ def _filter_instance_state(state: dict[str, Any], refs: list[tuple[str, str]]) -
 #: explicitly below (it is a read despite the POST verb — the body only carries the ref list).
 _MEMBERSHIP_READ_ROUTES = frozenset({"/fleet/state", "/fleet/state/manifest"})
 #: Deploy write routes — the ``PUT /api/{collection}/{id}`` targets. Only a ``manage`` membership
-#: may authenticate to these (governed deploy over the membership credential, design 20).
-_MEMBERSHIP_DEPLOY_PREFIXES = ("/api/topologies/", "/api/skills/", "/api/archetypes/")
+#: may authenticate to these (governed deploy over the membership credential, design 20). Derived
+#: from the connector's deployable kinds so a kind added there is deployable here too — the two
+#: lists drifted once (funnels: deployable by the panel, 401 at the instance).
+_MEMBERSHIP_DEPLOY_PREFIXES = tuple(f"/api/{plural}/" for plural in DEPLOY_PLURAL.values())
 
 
 def _env_truthy(name: str) -> bool:

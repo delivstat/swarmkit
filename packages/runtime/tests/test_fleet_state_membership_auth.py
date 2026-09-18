@@ -191,6 +191,13 @@ def test_helper_manage_gates_deploy_put(tmp_path: Path) -> None:
     assert _membership_authenticates(req(manage_key), "PUT", "/api/skills/x") is True
     assert _membership_authenticates(req(monitor_key), "PUT", "/api/skills/x") is False
     assert _membership_authenticates(req(manage_key), "POST", "/api/topologies") is False
+    # Every kind the connector can deploy is a route a manage membership may write — the two
+    # lists drifted once (the panel could deploy a funnel; the instance answered 401).
+    from swarmkit_runtime.connect import DEPLOY_PLURAL  # noqa: PLC0415
+
+    for plural in DEPLOY_PLURAL.values():
+        assert _membership_authenticates(req(manage_key), "PUT", f"/api/{plural}/x") is True
+    assert _membership_authenticates(req(manage_key), "PUT", "/api/roles/x") is False
 
 
 # --- self-leave: a membership may revoke ONLY its own membership (design 19/20) --
