@@ -17,6 +17,7 @@ from swarmkit_control_plane._aggregation import AggregationStore
 from swarmkit_control_plane._artifacts import ArtifactStore
 from swarmkit_control_plane._auth import authenticate, authorize
 from swarmkit_control_plane._connector import (
+    fetch_artifact_yaml,
     fetch_artifacts,
     fetch_audit,
     fetch_canary,
@@ -44,6 +45,7 @@ from swarmkit_control_plane._deploy import push_artifact
 from swarmkit_control_plane._deploy_seq import DeploySeqStore
 from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import (
+    ArtifactYamlFn,
     AuditFn,
     AuthorFn,
     CanaryFn,
@@ -130,6 +132,7 @@ def create_app(
     usage: UsageFn = fetch_usage,
     gaps_pull: GapsFn = fetch_gaps,
     audit_pull: AuditFn = fetch_audit,
+    artifact_yaml: ArtifactYamlFn = fetch_artifact_yaml,
     author: AuthorFn = run_authoring,
     eval_run: EvalFn = run_eval,
     host: str = "127.0.0.1",
@@ -228,6 +231,7 @@ def create_app(
         usage,
         gaps_pull,
         audit_pull,
+        artifact_yaml,
     )
     _mount_register(app, registry, state_store, cred_store, register_fn, refresh_fn, fleet_identity)
     _mount_membership(app, registry, cred_store, leave_fn)

@@ -180,6 +180,22 @@ async def fetch_usage(endpoint: str, token_ref: str) -> dict[str, Any]:
     return usage
 
 
+async def fetch_artifact_yaml(
+    endpoint: str, token_ref: str, plural: str, artifact_id: str
+) -> str | None:
+    """The file text of one artifact (GET /api/{plural}/{id}/yaml), or None when the instance has
+    no such route or artifact. Adopt uses it when the cached state entry carries no text — a cache
+    written before the text travelled — so a later deploy still writes the file verbatim."""
+    path = f"/api/{plural}/{artifact_id}/yaml"
+    async with ServeClient(endpoint, token_ref) as serve:
+        resp = await serve.get(path)
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+    text = body.get("yaml") if isinstance(body, dict) else None
+    return text if isinstance(text, str) and text else None
+
+
 async def fetch_gaps(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
     """The instance's skill gap log (GET /gaps) — what `swarmkit gaps` prints there. Pulled on
     sync and folded into the fleet gap rollup (design 27). Raises ConnectorError."""

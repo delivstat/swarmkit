@@ -65,6 +65,8 @@ CanaryRollbackFn = Callable[[str, str, str], Awaitable[dict[str, Any]]]
 CanaryStartFn = Callable[..., Awaitable[dict[str, Any]]]
 # (endpoint, token_ref) -> serve /usage {"summary", "by_model"}
 UsageFn = Callable[[str, str], Awaitable[dict[str, Any]]]
+# (endpoint, token_ref, plural, id) -> the artifact's file text, or None
+ArtifactYamlFn = Callable[[str, str, str, str], Awaitable[str | None]]
 # (endpoint, token_ref) -> serve /gaps list (the instance's skill gap log)
 GapsFn = Callable[[str, str], Awaitable[list[dict[str, Any]]]]
 # (endpoint, token_ref, since) -> serve /audit events after `since` (None: the recent tail)

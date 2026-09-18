@@ -16,6 +16,7 @@ from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._delta import pull_state
 from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import (
+    ArtifactYamlFn,
     AuditFn,
     AuthorFn,
     CanaryFn,
@@ -464,6 +465,26 @@ async def _pull_signals(
     return pulled_gaps, pulled_audit
 
 
+async def _source_for_adopt(
+    inst: Instance, entry: dict[str, Any], req: AdoptRequest, fetch_artifact_yaml: ArtifactYamlFn
+) -> str | None:
+    """The file text to keep with an adopted version: the cached entry's, or — when the cache
+    predates the text (design 27) and the instance is reachable — fetched from the instance now,
+    so the version deploys verbatim. An instance without the route leaves it content-only."""
+    source = entry.get("yaml")
+    if isinstance(source, str):
+        return source
+    if inst.connection != "direct":
+        return None
+    try:
+        return await fetch_artifact_yaml(
+            inst.endpoint, inst.token_ref, _ADOPT_COLLECTIONS[req.kind], req.artifact_id
+        )
+    except ConnectorError as exc:
+        _log.warning("yaml fetch failed for %s: %s", inst.id, exc)
+        return None
+
+
 def _gap_records(gaps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Gap-log rows as aggregation records. The id carries the occurrence count, so a gap that
     recurs adds a row per occurrence and the rollup's `occurrences` is the instance's count —
@@ -558,6 +579,7 @@ def _mount_state(
     fetch_usage: UsageFn,
     fetch_gaps: GapsFn,
     fetch_audit: AuditFn,
+    fetch_artifact_yaml: ArtifactYamlFn,
 ) -> None:
     """Observed-state cache routes (fleet enrollment Phase 1, design 19) + adopt (Phase 3, doc 20).
 
@@ -636,7 +658,8 @@ def _mount_state(
         version (idempotent on ``content_hash``), with provenance recording the source instance +
         the snapshot's ``synced_at`` — so an operator can see an artifact came from instance X
         before deploying it fleet-wide."""
-        if registry.get(instance_id) is None:
+        inst = registry.get(instance_id)
+        if inst is None:
             raise HTTPException(404, "instance not found")
         if req.kind not in _ADOPT_COLLECTIONS:
             raise HTTPException(400, f"kind '{req.kind}' is not adoptable")
@@ -647,14 +670,14 @@ def _mount_state(
         if entry is None:
             raise HTTPException(404, f"{req.kind} '{req.artifact_id}' is not in the cached state")
         state = cached["state"]
-        source = entry.get("yaml")
+        source = await _source_for_adopt(inst, entry, req, fetch_artifact_yaml)
         published = artifacts.register_version(
             req.kind,
             req.artifact_id,
             content=entry.get("content"),
             authored_by=f"adopted:instance/{instance_id}@{cached['synced_at']}",
             schema_version=str(state.get("schema_version", "")) if isinstance(state, dict) else "",
-            source=source if isinstance(source, str) else None,
+            source=source,
         )
         return {
             "kind": req.kind,
