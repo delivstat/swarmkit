@@ -251,7 +251,7 @@ class SQLiteAuditProvider(SqlAuditProvider):
     provider_id = "sqlite"
 
     def __init__(self, db_path: str | Path, retention_days: int = 365) -> None:
-        # Explicit-path constructor; URL/backend resolution happens in the storage service.
+        # noqa: storage — explicit-path constructor; resolution happens in the storage service.
         super().__init__(make_engine(f"sqlite:///{Path(db_path)}"), retention_days)
 
 
