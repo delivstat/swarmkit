@@ -170,7 +170,7 @@ is shown before anything is written, and "no" sends you back to the conversation
 Not every skill needs writing. [`swarmkit-skills`](https://github.com/delivstat/swarmkit-skills)
 is a catalogue of MCP servers with the config already worked out and **checked nightly** — the
 `mcp_servers` block, the permission tier, an `effects` map per tool — and `swarmkit skill` is the
-command over it (runtime **1.235.0**).
+command over it (runtime **1.235.0**; the portal tab, 1.236.0).
 
 ```bash
 swarmkit skill search "git history"
@@ -316,7 +316,15 @@ removed skills/docx.yaml.
 
 `swarmkit skill list --available` is the whole catalogue with its verification dates;
 `show <id>` prints an entry. The same operations are `GET /api/skill-catalogue`,
-`POST /api/skills/add`, `POST /api/skills/import` and `GET /api/skills/check` on `swarmkit serve`.
+`POST /api/skills/add`, `POST /api/skills/import` and `GET /api/skills/check` on `swarmkit serve`
+— and the portal's **Skills → Library** tab is that API with a search box: every catalogue entry
+with its bundle and verification date, an **Add** that shows both fragments before it writes
+anything, a paste box for a `SKILL.md`, and a **Check** button. Adding needs an `admin` key, the
+same as `reload`.
+
+![The catalogue in the portal's Library tab](../img/tutorials/13-skills-library.png)
+
+![Add shows the skill file and the mcp_servers entry before writing](../img/tutorials/13-skills-library-add.png)
 
 ## The authoring swarm
 

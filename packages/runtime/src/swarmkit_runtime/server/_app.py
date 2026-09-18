@@ -265,7 +265,8 @@ def create_app(  # noqa: PLR0915
         async with mcp_session_lifespan(app):
             yield
         await scheduler.stop()
-        await runtime.close()
+        # The *current* runtime — a reload may have replaced the one this lifespan booted.
+        await app.state.runtime.close()
 
     app = FastAPI(
         title="SwarmKit",
@@ -420,6 +421,8 @@ def create_app(  # noqa: PLR0915
     app.state.job_store = job_store
     _register_job_routes(app, job_store)
     _register_conversation_routes(app, workspace_path)
+    # Before the CRUD routes: `GET /api/skills/check` must beat `GET /api/skills/{skill_id}`.
+    _register_skill_registry_routes(app)
     _register_crud_routes(app, ArtifactService(workspace_path))
     _register_config_routes(app, WorkspaceConfigService(workspace_path))
     _register_event_stream_routes(app)
@@ -430,7 +433,6 @@ def create_app(  # noqa: PLR0915
     _register_review_routes(app, workspace_path)
     _register_fleet_routes(app)
     _register_memory_routes(app)
-    _register_skill_registry_routes(app)
     # Registered unconditionally; each route answers 404 until `server.a2a.enabled` is true, so
     # a workspace can flip it on with a reload and not a restart.
     _register_a2a_routes(app, _auth, workspace_path)

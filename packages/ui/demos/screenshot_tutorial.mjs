@@ -58,8 +58,10 @@ for (const spec of routes) {
 			const scope = within
 				? page.locator("tr, .bg-card", { hasText: within }).first()
 				: page;
+			// buttons and tabs alike — a page's tab strip is `role="tab"`, not a button
 			await scope
-				.getByRole("button", { name: new RegExp(`^${name}$`, "i") })
+				.locator('button, [role="tab"]')
+				.filter({ hasText: new RegExp(`^${name}$`, "i") })
 				.first()
 				.click({ force: true });
 			await page.waitForTimeout(1500);

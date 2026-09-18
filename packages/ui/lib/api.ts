@@ -27,6 +27,9 @@ import type {
 	SagaNodeArtifact,
 	SagaSummary,
 	SendMessageResponse,
+	SkillAddResult,
+	SkillCatalogue,
+	SkillCheckRow,
 	SkillDetail,
 	SkillItem,
 	StopJobResponse,
@@ -275,6 +278,23 @@ export const api = {
 	archetypeYaml: (id: string) =>
 		get<{ yaml: string }>(`/api/archetypes/${id}/yaml`),
 	skillYaml: (id: string) => get<{ yaml: string }>(`/api/skills/${id}/yaml`),
+	// The catalogue and the `swarmkit skill` verbs over HTTP (design/details/skill-registry.md).
+	skillCatalogue: (q = "", refresh = false) =>
+		get<SkillCatalogue>(
+			`/api/skill-catalogue?${new URLSearchParams({ q, refresh: String(refresh) })}`,
+		),
+	addSkill: (ref: string, dryRun: boolean) =>
+		post<SkillAddResult>("/api/skills/add", { ref, dry_run: dryRun }),
+	importSkill: (text: string, origin: string, dryRun: boolean) =>
+		post<{ path: string; skill: unknown; written: boolean }>(
+			"/api/skills/import",
+			{
+				text,
+				origin,
+				dry_run: dryRun,
+			},
+		),
+	checkSkills: () => get<SkillCheckRow[]>("/api/skills/check"),
 	skillDetail: (id: string) => get<SkillDetail>(`/api/skills/${id}`),
 	saveTopology: (id: string, yaml: string, dryRun = false) =>
 		put<{ valid: boolean; errors?: { code: string; message: string }[] }>(

@@ -129,3 +129,47 @@ describe("contract endpoints", () => {
 		expect(String(init.body)).toContain("Contract");
 	});
 });
+
+describe("skill registry endpoints", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	const callOf = (m: ReturnType<typeof vi.fn>) =>
+		m.mock.calls[0] as [string, RequestInit];
+
+	it("searches the catalogue with q and refresh", async () => {
+		const fetchMock = stubFetch(200);
+		await api.skillCatalogue("git history", true);
+		const [url, init] = callOf(fetchMock);
+		expect(url).toContain("/api/skill-catalogue?q=git+history&refresh=true");
+		expect(init?.method ?? "GET").toBe("GET");
+	});
+
+	it("adds a skill via POST /api/skills/add with dry_run", async () => {
+		const fetchMock = stubFetch(200);
+		await api.addSkill("read-file", true);
+		const [url, init] = callOf(fetchMock);
+		expect(url).toContain("/api/skills/add");
+		expect(init.method).toBe("POST");
+		expect(JSON.parse(String(init.body))).toEqual({
+			ref: "read-file",
+			dry_run: true,
+		});
+	});
+
+	it("imports a SKILL.md via POST /api/skills/import", async () => {
+		const fetchMock = stubFetch(200);
+		await api.importSkill("---\nname: x\n---\nhi", "upload", false);
+		const [url, init] = callOf(fetchMock);
+		expect(url).toContain("/api/skills/import");
+		expect(JSON.parse(String(init.body))).toMatchObject({
+			origin: "upload",
+			dry_run: false,
+		});
+	});
+
+	it("checks the workspace's tools at GET /api/skills/check", async () => {
+		const fetchMock = stubFetch(200);
+		await api.checkSkills();
+		expect(callOf(fetchMock)[0]).toMatch(/\/api\/skills\/check$/);
+	});
+});

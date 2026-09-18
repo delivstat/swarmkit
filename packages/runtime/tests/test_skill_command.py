@@ -322,11 +322,15 @@ def test_http_routes_are_thin_over_the_service(tmp_path: Path, catalogue: Path) 
     (ws / "workspace.yaml").write_text(_WS.split("# the one server", maxsplit=1)[0])
     (ws / "skills").mkdir()
     with TestClient(create_app(ws)) as client:
+        # `/api/skills/check` must not be swallowed by `/api/skills/{skill_id}` (it was, once).
+        chk = client.get("/api/skills/check")
+        assert chk.status_code == 200 and chk.json() == []
         cat = client.get("/api/skill-catalogue", params={"q": "history"}).json()
         assert [s["id"] for s in cat["skills"]] == ["git-log"]
         assert cat["skills"][0]["installed"] is False
         dry = client.post("/api/skills/add", json={"ref": "git-log", "dry_run": True}).json()
         assert dry["applied"] is None and "skills/git-log.yaml" in dry["skill_files"]
+        assert dry["server_fragment"].startswith("mcp_servers:\n- id: git")
         assert not (ws / "skills" / "git-log.yaml").exists()
         done = client.post("/api/skills/add", json={"ref": "git-log"}).json()
         assert done["applied"] == {"skill_files": ["skills/git-log.yaml"], "server": True}
