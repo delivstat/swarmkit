@@ -3,7 +3,7 @@
 ## Every command
 
 <!-- BEGIN GENERATED: commands -->
-68 commands, from the CLI itself (`swarmkit <command> --help` for the options).
+69 commands, from the CLI itself (`swarmkit <command> --help` for the options).
 
 | Command | What it does |
 |---|---|
@@ -73,6 +73,7 @@
 | `swarmkit trust apply` | Apply a proposal: add the capability to the archetype's ``executor.config.allowed_tools`` and |
 | `swarmkit trust clear` | Lift a denial block and reset a pair's tally so it can accrue toward a proposal again. |
 | `swarmkit trust list` | List pending allowlist-changeset proposals (archetype ← capability + the approval count). |
+| `swarmkit upgrade` | Upgrade swarmkit-runtime in place, keeping its extras, after showing any breaking changes. |
 | `swarmkit validate` | Validate a SwarmKit workspace and print a resolved tree or errors. |
 | `swarmkit why` | Explain what happened in a run using an LLM. |
 <!-- END GENERATED: commands -->
