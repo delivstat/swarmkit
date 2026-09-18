@@ -79,7 +79,6 @@ def reset_storage_cache() -> None:
     _SERVICES.clear()
 
 
-
 def _pool_config() -> tuple[int, int]:
     """The Postgres pool sizing for the shared store engine — the single point storage owns.
 
@@ -96,6 +95,7 @@ def _pool_config() -> tuple[int, int]:
             return default
 
     return _int("SWARMKIT_STORE_POOL_SIZE", 20), _int("SWARMKIT_STORE_MAX_OVERFLOW", 10)
+
 
 class StorageConfigError(RuntimeError):
     """The storage config names something that cannot be honoured.
