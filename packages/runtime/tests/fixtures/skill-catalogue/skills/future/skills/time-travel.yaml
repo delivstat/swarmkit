@@ -1,0 +1,6 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata: {id: time-travel, name: Time Travel, description: Not yet.}
+category: capability
+implementation: {type: mcp_tool, server: future, tool: travel}
+provenance: {authored_by: human, version: 1.0.0}

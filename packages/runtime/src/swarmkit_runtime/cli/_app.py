@@ -22,6 +22,9 @@ trust_app = typer.Typer(help="Trust accrual — apply repeated-approval capabili
 memory_app = typer.Typer(help="Governed memory — search, inspect history, resolve contradictions.")
 storage_app = typer.Typer(help="Storage — show where data lives, migrate sqlite to postgres.")
 artifacts_app = typer.Typer(help="Artifacts — list and fetch run outputs by correlation id.")
+skill_app = typer.Typer(
+    help="Skills — find, add, import, check and remove (the catalogue + SKILL.md)."
+)
 
 app.add_typer(review_app, name="review")
 app.add_typer(author_app, name="author")
@@ -33,3 +36,4 @@ app.add_typer(providers_app, name="providers")
 app.add_typer(trust_app, name="trust")
 app.add_typer(memory_app, name="memory")
 app.add_typer(artifacts_app, name="artifacts")
+app.add_typer(skill_app, name="skill")

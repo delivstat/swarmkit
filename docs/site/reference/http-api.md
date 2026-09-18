@@ -1,6 +1,6 @@
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 96 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 100 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -143,6 +143,10 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `POST` | `/api/oauth/login` | Begin a login. Returns the URL the portal should open in a popup. |
 | `POST` | `/api/reload` | Re-read the workspace from disk and return its validation report. |
 | `GET` | `/api/schema/{artifact_type}` | The canonical JSON Schema for an artifact type — drives the UI's schema-generated |
+| `GET` | `/api/skill-catalogue` | The catalogue's bundles and skills — filtered by *q* when given. |
+| `POST` | `/api/skills/add` | Plan (and unless dry_run, apply) adding a catalogue skill/bundle or a Skill file. |
+| `GET` | `/api/skills/check` | Are the tools the workspace's mcp_tool skills name still there? |
+| `POST` | `/api/skills/import` | Convert a SKILL.md (given as text) and, unless dry_run, write it. |
 | `GET` | `/api/skills/{skill_id}` | One skill, resolved. |
 | `PUT` | `/api/skills/{skill_id}` | Replace a skill's YAML; validated before it is written. |
 | `GET` | `/api/skills/{skill_id}/yaml` | A skill's YAML as written on disk. |

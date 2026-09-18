@@ -1,0 +1,17 @@
+apiVersion: swarmkit/v1
+kind: SkillBundle
+metadata:
+  id: git
+  name: Git
+  description: Read history, diffs and blame from a local repository.
+server:
+  id: git
+  transport: stdio
+  command: [uvx, mcp-server-git, --repository, "${SWARMKIT_GIT_REPO}"]
+  permission: readonly
+  effects:
+    git_log: read
+    git_diff: read
+skills: [git-log, git-diff]
+requires_runtime: '>=1.199.0'
+verification: {state: verified, checked_at: '2026-09-17', detail: 2 tool(s) present}

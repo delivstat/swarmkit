@@ -3,7 +3,7 @@
 ## Every command
 
 <!-- BEGIN GENERATED: commands -->
-61 commands, from the CLI itself (`swarmkit <command> --help` for the options).
+68 commands, from the CLI itself (`swarmkit <command> --help` for the options).
 
 | Command | What it does |
 |---|---|
@@ -56,6 +56,13 @@
 | `swarmkit review show` | Show full details of a review item. |
 | `swarmkit run` | One-shot execution of a topology (design §14.1). |
 | `swarmkit serve` | Start the SwarmKit HTTP server (design §14.1). |
+| `swarmkit skill add` | Add a skill (and the MCP server it needs) to this workspace. |
+| `swarmkit skill check` | Start each mcp_tool skill's server and ask whether its tool still exists. |
+| `swarmkit skill import` | Import an Agent Skills SKILL.md as an llm_prompt skill. |
+| `swarmkit skill list` | The workspace's skills — or, with --available, the catalogue's. |
+| `swarmkit skill remove` | Delete skills/<id>.yaml — refused while an archetype or agent holds the skill. |
+| `swarmkit skill search` | Search the catalogue (and this workspace's own skills). |
+| `swarmkit skill show` | One skill (or bundle), from the workspace if it has it, else the catalogue. |
 | `swarmkit slice-check` | Check a diff against a slice budget — keep slices reviewable (exit 1 if over budget). |
 | `swarmkit status` | Show recent run status at a glance. |
 | `swarmkit stop` | Ask a running run to stop at its next agent boundary. |
@@ -229,7 +236,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 ## Environment variables
 
 <!-- BEGIN GENERATED: env -->
-46 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
+47 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
 
 **Storage**
 
@@ -239,6 +246,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 | `SWARMKIT_STORE_BACKEND` | Force the backend (sqlite \| postgres) regardless of workspace.yaml. Optional: setting only the URL is enough. |
 | `DATABASE_URL` | Fallback connection URL when SWARMKIT_STORE_URL is unset. *(URL; userinfo masked)* |
 | `SWARMKIT_WORKSPACE` | Default workspace root for commands that omit it. |
+| `SWARMKIT_SKILLS_CATALOGUE` | Where `swarmkit skill` reads the catalogue: a checkout directory or a mirror URL (default: the swarmkit-skills repo on GitHub). |
 | `SWARMKIT_GATES_DIR` | Where file-backed approval gates are written. |
 
 **Models**

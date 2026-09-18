@@ -46,6 +46,7 @@ from ._routes_jobs import _register_job_routes
 from ._routes_memory import _register_memory_routes
 from ._routes_oauth import OAuthService, _register_oauth_routes
 from ._routes_review import _register_review_routes
+from ._routes_skill_registry import _register_skill_registry_routes
 from ._services import ArtifactService
 from ._webui import mount_webui
 from ._workspace_config import WorkspaceConfigService
@@ -429,6 +430,7 @@ def create_app(  # noqa: PLR0915
     _register_review_routes(app, workspace_path)
     _register_fleet_routes(app)
     _register_memory_routes(app)
+    _register_skill_registry_routes(app)
     # Registered unconditionally; each route answers 404 until `server.a2a.enabled` is true, so
     # a workspace can flip it on with a reload and not a restart.
     _register_a2a_routes(app, _auth, workspace_path)

@@ -56,6 +56,12 @@ REGISTRY: tuple[EnvVar, ...] = (
         URLISH,
     ),
     EnvVar("SWARMKIT_WORKSPACE", "Storage", "Default workspace root for commands that omit it."),
+    EnvVar(
+        "SWARMKIT_SKILLS_CATALOGUE",
+        "Storage",
+        "Where `swarmkit skill` reads the catalogue: a checkout directory or a mirror URL "
+        "(default: the swarmkit-skills repo on GitHub).",
+    ),
     EnvVar("SWARMKIT_GATES_DIR", "Storage", "Where file-backed approval gates are written."),
     # ---- which model runs ----
     EnvVar("SWARMKIT_PROVIDER", "Models", "Default model provider when a topology names none."),

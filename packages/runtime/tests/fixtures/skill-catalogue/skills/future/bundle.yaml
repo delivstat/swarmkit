@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: SkillBundle
+metadata:
+  id: future
+  name: Future
+  description: A bundle that needs a runtime newer than any that exists.
+server: {id: future, transport: stdio, command: [future-server], permission: readonly}
+skills: [time-travel]
+requires_runtime: '>=99.0.0'
+verification: {state: verified, checked_at: '2026-09-17'}
