@@ -15,6 +15,7 @@ import type {
 	JobResponse,
 	JobUsage,
 	MemoryChange,
+	MemoryConfig,
 	MemoryItem,
 	MemoryQuarantineItem,
 	OAuthCredential,
@@ -339,6 +340,9 @@ export const api = {
 	reloadWorkspace: () => post<ValidateResponse>("/api/reload"),
 
 	// Governed memory (design/details/governed-memory.md) — the same store `swarmkit memory` uses.
+	// The effective `memory` block — on/off, reader/writer settings, which bindings are the
+	// workspace's own (design/details/memory-by-default.md). Read-only.
+	memoryConfig: () => get<MemoryConfig>("/memory/config"),
 	searchMemory: (query = "", type?: string, limit = 100) => {
 		const p = new URLSearchParams({ query, limit: String(limit) });
 		if (type) p.set("type", type);

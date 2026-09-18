@@ -30,6 +30,13 @@ from swarmkit_runtime.archetypes import build_archetype_registry
 from swarmkit_runtime.commands._config import parse_command_packs
 from swarmkit_runtime.commands._synthesis import synthesize_pack_skills
 from swarmkit_runtime.errors import ResolutionError, ResolutionErrors, yaml_pointer
+from swarmkit_runtime.memory._defaults import (
+    MemoryConfig,
+    MemoryDisabledButBound,
+    apply_memory_defaults,
+    bundled_memory_skills,
+    memory_config,
+)
 from swarmkit_runtime.skills import build_skill_registry
 from swarmkit_runtime.skills._runtime_floor import unmet_floors
 from swarmkit_runtime.workspace import (
@@ -369,6 +376,46 @@ def _apply_env_interpolation(ws_root: Path, artifacts: Sequence[DiscoveredArtifa
             artifact.raw.update(interpolated)
 
 
+def _apply_memory_defaults(
+    artifacts: list[DiscoveredArtifact],
+) -> tuple[list[DiscoveredArtifact], MemoryConfig]:
+    """Inject the memory auto-bindings into the workspace artifact and the bundled memory skills
+    into the artifact list (design/details/memory-by-default.md)."""
+    ws_index = next((i for i, a in enumerate(artifacts) if a.kind == "workspace"), None)
+    if ws_index is None:
+        return artifacts, MemoryConfig()
+    ws = artifacts[ws_index]
+    raw = dict(ws.raw)
+    cfg = memory_config(raw)
+    try:
+        applied = apply_memory_defaults(raw)
+    except MemoryDisabledButBound as exc:
+        raise ResolutionErrors(
+            [
+                ResolutionError(
+                    code="memory.disabled-but-bound",
+                    message=str(exc),
+                    artifact_path=ws.path,
+                    suggestion=(
+                        "either drop `memory.enabled: false` or remove the memory-reader / "
+                        "memory-writer entries from governance.decision_skills"
+                    ),
+                )
+            ]
+        ) from exc
+    out = list(artifacts)
+    if applied is not raw:
+        out[ws_index] = DiscoveredArtifact(path=ws.path, kind="workspace", raw=applied)
+    if cfg.enabled:
+        present = {
+            str((a.raw.get("metadata") or {}).get("id") or "")
+            for a in artifacts
+            if a.kind == "skill"
+        }
+        out.extend(bundled_memory_skills(present))
+    return out, cfg
+
+
 def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     """Load a SwarmKit workspace and produce a fully-resolved, typed tree.
 
@@ -390,6 +437,12 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
     validation_errors = validate_discovered(artifacts)
     if validation_errors:
         raise ResolutionErrors(validation_errors)
+
+    # Memory by default (design/details/memory-by-default.md): the reader/writer bindings the
+    # workspace did not write, and the bundled governed-memory skills it does not define. Applied
+    # to the raw artifacts here, so every phase below — and every reader of the resolved
+    # workspace — sees one workspace, not a workspace plus a rule about it.
+    artifacts, memory = _apply_memory_defaults(artifacts)
 
     # Phase 3 — registries + topologies + triggers, aggregated.
     errors: list[ResolutionError] = []
@@ -482,6 +535,7 @@ def resolve_workspace(root: str | Path) -> ResolvedWorkspace:
         funnels=funnels,
         role_registry=role_registry,
         contracts=contracts,
+        memory=memory.to_dict(),
     )
 
 

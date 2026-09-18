@@ -264,6 +264,7 @@ async def test_extract_and_save(store: MemoryStore) -> None:
         store=store,
         model_provider=mock_provider,
         model_name="test-model",
+        config={"min_output_length": 20},  # this test is about extraction, not the threshold
     )
 
     assert entry is not None

@@ -14,6 +14,7 @@ import json
 import logging
 from typing import Any
 
+from swarmkit_runtime.memory._defaults import READER_DEFAULTS, WRITER_DEFAULTS
 from swarmkit_runtime.memory._store import MemoryEntry, MemoryStore
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 
@@ -74,8 +75,8 @@ async def extract_and_save(
 
     Returns the saved MemoryEntry, or None if the turn wasn't worth saving.
     """
-    cfg = config or {}
-    min_output_length = cfg.get("min_output_length", 50)
+    cfg = {**WRITER_DEFAULTS, **(config or {})}
+    min_output_length = cfg["min_output_length"]
 
     if len(agent_output) < min_output_length:
         return None
@@ -140,10 +141,12 @@ def retrieve_context(
     Returns a formatted context string to prepend to the agent's system
     message, or None if no relevant memories found.
     """
-    cfg = config or {}
-    max_results = cfg.get("max_results", 5)
-    min_score = cfg.get("similarity_threshold", 0.1)
-    search_scope = cfg.get("search_scope", "user")
+    # One set of defaults, shared with the auto-binding (memory-by-default), so an explicit
+    # binding without config behaves exactly like no binding at all.
+    cfg = {**READER_DEFAULTS, **(config or {})}
+    max_results = cfg["max_results"]
+    min_score = cfg["similarity_threshold"]
+    search_scope = cfg["search_scope"]
 
     search_user = user if search_scope in ("user", "both") else None
     results = store.search(

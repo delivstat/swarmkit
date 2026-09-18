@@ -29,9 +29,14 @@ from typer.testing import CliRunner
 runner = CliRunner()
 REPO = Path(__file__).resolve().parents[3]
 
+# `memory.enabled: false` switches off everything memory-by-default would add (the reader/writer
+# bindings and the bundled governed-memory + memory-reconcile skills); what a workspace wires
+# explicitly still works. The `ws` fixture below adds `governed-memory` by hand and nothing else,
+# which is how these tests get a store with the deterministic (judge-less) reconcile path.
 WORKSPACE = (
     "apiVersion: swarmkit/v1\nkind: Workspace\nmetadata: {id: m, name: M}\n"
     "governance: {provider: mock, policy_language: yaml}\n"
+    "memory: {enabled: false}\n"
 )
 
 
@@ -39,8 +44,9 @@ WORKSPACE = (
 def ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("SWARMKIT_PROVIDER", "mock")
     (tmp_path / "workspace.yaml").write_text(WORKSPACE)
-    # The store exists only for a workspace declaring `governed-memory` — which is the behaviour
-    # `test_a_workspace_without_governed_memory_is_refused` covers from the other side.
+    # With memory switched off, the store exists only for a workspace declaring `governed-memory`
+    # itself — which is what `test_a_workspace_without_governed_memory_is_refused` covers from
+    # the other side.
     skills = tmp_path / "skills"
     skills.mkdir()
     (skills / "governed-memory.yaml").write_text(
@@ -53,7 +59,8 @@ def test_a_workspace_without_governed_memory_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Refuse naming the skill, rather than failing obscurely: the store is None, the agent lacks
-    the grant, or the model never emits — and every one looks identical to "nothing to remember"."""
+    the grant, or the model never emits — and every one looks identical to "nothing to remember".
+    (Memory is on by default; this is the `memory.enabled: false` workspace with no skill added.)"""
     monkeypatch.setenv("SWARMKIT_PROVIDER", "mock")
     (tmp_path / "workspace.yaml").write_text(WORKSPACE)
     result = runner.invoke(app, ["memory", "add", "a", "b", "c", "-w", str(tmp_path)])

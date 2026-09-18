@@ -424,6 +424,21 @@ export interface Comprehension {
 }
 
 /** A governed-memory current-state row (GET /memory, /memory/item). Mirrors memory_to_dict. */
+/** GET /memory/config — the effective `memory` block (design/details/memory-by-default.md). */
+export interface MemoryConfig {
+	enabled: boolean;
+	reader: {
+		max_results: number;
+		similarity_threshold: number;
+		search_scope: string;
+	};
+	writer: { min_output_length: number };
+	/** Bindings the workspace wrote itself under governance.decision_skills. */
+	explicit: string[];
+	/** Whether a governed store is wired (the governed-memory skill is present). */
+	governed_store: boolean;
+}
+
 export interface MemoryItem {
 	key: string;
 	subject: string;

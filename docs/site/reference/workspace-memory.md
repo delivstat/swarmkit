@@ -11,38 +11,54 @@ Two decision skill hooks run at the compiler level:
 
 ## Configuration
 
-Add memory decision skills to `workspace.yaml`:
+Memory is **on by default** (runtime 1.233.0, `design/details/memory-by-default.md`): a workspace
+that says nothing binds `memory-reader` before every agent and `memory-writer` after, both
+advisory. The `memory` block tunes or switches that off:
+
+```yaml
+memory:                          # optional; absent means enabled with these defaults
+  enabled: true                  # false: no automatic bindings, no bundled governed-memory skills
+  reader:
+    max_results: 5
+    similarity_threshold: 0.15
+    search_scope: all            # user | all | both
+  writer:
+    min_output_length: 100       # one model call per run whose answer clears this
+```
+
+Bind either skill yourself under `governance.decision_skills` when you want something the block
+cannot say — a narrower `scope`, `required: true` — and your binding is used as written while the
+automatic one for that id is skipped. An explicit binding next to `enabled: false` is a resolution
+error (`memory.disabled-but-bound`).
 
 ```yaml
 governance:
   decision_skills:
     - id: memory-reader
       trigger: pre_input
-      scope: "advisor"
+      scope: "advisor"           # only this agent reads memory
+      required: false
       config:
         max_results: 5
         similarity_threshold: 0.15
         search_scope: all
-    - id: memory-writer
-      trigger: post_output
-      scope: "advisor"
-      config:
-        min_output_length: 100
 ```
+
+`GET /memory/config` (and the portal's Memory page) report the configuration in force.
 
 ### memory-reader config
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `max_results` | 5 | Maximum memories to inject |
-| `similarity_threshold` | 0.1 | Minimum TF-IDF score to include |
-| `search_scope` | `user` | `user` (per-user), `all` (global), `both` |
+| `similarity_threshold` | 0.15 | Minimum TF-IDF score to include |
+| `search_scope` | `all` | `user` (per-user), `all` (global), `both` |
 
 ### memory-writer config
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `min_output_length` | 50 | Skip extraction for short responses |
+| `min_output_length` | 100 | Skip extraction for short responses |
 
 ## Storage
 

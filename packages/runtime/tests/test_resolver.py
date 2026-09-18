@@ -45,7 +45,13 @@ def test_resolve_minimal_workspace() -> None:
     # still succeeds.
     ws = resolve_workspace(VALID / "minimal")
     assert ws.topologies == {}
-    assert ws.skills == {}
+    # Memory is on by default: the two bundled memory skills are the only ones a bare workspace
+    # has (design/details/memory-by-default.md), and both memory bindings are present.
+    assert set(ws.skills) == {"governed-memory", "memory-reconcile"}
+    gov = ws.raw.governance
+    assert gov is not None
+    assert {b.id for b in gov.decision_skills or []} >= {"memory-reader", "memory-writer"}
+    assert ws.memory["enabled"] is True
     assert ws.archetypes == {}
     assert ws.triggers == ()
 

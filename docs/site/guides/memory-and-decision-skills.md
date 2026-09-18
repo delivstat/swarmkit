@@ -31,22 +31,30 @@ they went through review; workspace memory is whatever a previous run happened t
 
 ## Turning governed memory on
 
-Three things have to be true. Missing any one of them fails silently, which is what made this worth
-a guide.
-
-### 1. Declare the `governed-memory` skill in the workspace
-
-This is what causes the store to be constructed at all.
+Since runtime **1.233.0** it is on unless the workspace says otherwise
+(`design/details/memory-by-default.md`): the `governed-memory` and `memory-reconcile` skills are
+bundled and loaded when the workspace defines no skill with that id, and `memory-reader` /
+`memory-writer` are bound automatically, advisory, on every agent. What used to be three easy-to-
+miss steps is now one optional block:
 
 ```yaml
-# workspace.yaml
-skills:
-  - governed-memory
+# workspace.yaml — optional
+memory:
+  enabled: true                # false switches off everything automatic
+  reader: {max_results: 5, similarity_threshold: 0.15, search_scope: all}
+  writer: {min_output_length: 100}
 ```
 
-### 2. Bind `memory-reader` at `pre_input`
+The two steps below are what the defaults do for you; you still write them when you want
+something narrower (a reader scoped to one agent, a reconciler of your own).
 
-This is what causes curated facts to be injected into an agent's input.
+### 1. (Default) The `governed-memory` skill is present
+
+A copy in `skills/` overrides the bundled one — that is how you change its prompt or effects.
+
+### 2. (Default) `memory-reader` is bound at `pre_input`
+
+An explicit binding is used exactly as written and the automatic one is skipped:
 
 ```yaml
 # workspace.yaml
@@ -54,6 +62,7 @@ governance:
   decision_skills:
     - id: memory-reader
       trigger: pre_input
+      scope: "analyst"         # only this agent reads memory
       required: false          # advisory — see below, and read that section
       config:
         governed_limit: 5      # how many curated facts to inject (default 5)

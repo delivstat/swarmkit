@@ -30,43 +30,45 @@ file you have to back up separately.
 
 ## Part 1 — workspace memory
 
-### 1. Bind the reader and the writer
+### 1. It is already on
 
-Neither is a skill file; both ids are built into the runtime. They are bound like any decision skill:
+There is nothing to bind. Since runtime **1.233.0** memory is on by default: `memory-reader` runs
+before every agent and `memory-writer` after, both advisory (`required: false` — a memory that
+cannot be read or written costs the context, never the run), and the two governed-memory skills
+of Part 2 are bundled. A workspace that never mentions memory remembers. The knobs, and the
+off switch, live in one block:
 
 ```yaml
-# workspace.yaml — two more entries under governance.decision_skills
-governance:
-  provider: mock
-  decision_skills:
-    - id: content-filter
-      trigger: pre_input
-      scope: "*"
-    - id: quality-check
-      trigger: post_output
-      scope: "*"
-      required: false
-    # Workspace memory. `memory-reader` searches what earlier runs recorded (and what people
-    # curated — see governed memory) and puts it in front of the agent; `memory-writer` asks a
-    # model, after each answer, whether the turn is worth remembering.
-    - id: memory-reader
-      trigger: pre_input
-      scope: "*"
-      required: false             # a memory read that can fail a run is worse than no memory
-      config:
-        max_results: 5
-        similarity_threshold: 0.15
-        search_scope: all         # user | all | both
-    - id: memory-writer
-      trigger: post_output
-      scope: "*"
-      required: false
-      config:
-        min_output_length: 100    # greetings are not worth remembering
+# workspace.yaml — optional; absent means exactly this
+memory:
+  enabled: true
+  reader:
+    max_results: 5
+    similarity_threshold: 0.15
+    search_scope: all           # user | all | both
+  writer:
+    min_output_length: 100      # greetings are not worth remembering
 ```
 
-`required: false` matters: it makes the binding advisory, so a memory that cannot be read or
-written costs the context, never the run.
+`memory-writer` is one model call per run whose answer clears `min_output_length` — the price of
+remembering, paid by default. Raise the threshold before you reach for `enabled: false`. If you
+bind `memory-reader` or `memory-writer` yourself under `governance.decision_skills` (a narrower
+`scope`, say), your binding is used as written and the automatic one for that id is skipped;
+binding one next to `enabled: false` is a resolution error, not a coin toss.
+
+```bash
+swarmkit validate . --require
+```
+
+```
+reachability: 2 declared, all wired
+  decision_skill 'hello:memory-reader:pre_input' declared on topology hello — at pre_input: wired
+  decision_skill 'hello:memory-writer:post_output' declared on topology hello — at post_output: wired
+```
+
+The portal's **Memory** page says what is in force (`GET /memory/config` is the same data):
+
+![Memory is on](../img/tutorials/09-memory-config.png)
 
 ### 2. A run that is worth remembering
 
@@ -185,6 +187,37 @@ Every turn is a job (`Source: chat` in **Jobs**, linked by the conversation id),
 
 ![Chat](../img/tutorials/09-chat.png)
 
+### 4b. Switching it off
+
+The same second question on a copy of the workspace with memory switched off:
+
+```yaml
+# workspace.yaml
+memory:
+  enabled: false
+```
+
+```bash
+SWARMKIT_VERBOSE=1 swarmkit run . hello --input "Remind me — where was I planning to go, and when?"
+```
+
+```
+[assistant] done (5.1s)
+Could you share those details with me? I'd be happy to help you with information about your destination—like checking the weather there if you'd like!
+```
+
+No `memory context injected`, nothing recalled, and `swarmkit validate --require` lists no memory
+bindings. One more thing the flag does: it stops bundling the governed-memory skills of Part 2, so
+a topology that *grants* `governed-memory` (the `tutor` below) no longer resolves —
+
+```
+error: Agent 'tutor' references skill 'governed-memory' which is not defined in this workspace.
+  try   Define a skill with id='governed-memory' under skills/, or change the reference to an existing one.
+```
+
+— which is the right answer: a workspace with memory off should not have an agent that writes it.
+Copy the skill into `skills/` if you want governed memory without the automatic reader and writer.
+
 ## Part 2 — governed memory
 
 Workspace memory is whatever a run happened to record. Some facts deserve more: a correction a
@@ -192,22 +225,19 @@ person made, a decision that should not be re-litigated. Governed memory is cura
 is reconciled against what is already there, a contradiction is quarantined instead of applied, and
 resolving one is a human action.
 
-### 5. Turn it on
+### 5. It is on too — writing is the grant
 
-Two skill files, copied from the runtime's reference set:
-
-```bash
-cp <swarmkit>/reference/skills/governed-memory.yaml <swarmkit>/reference/skills/memory-reconcile.yaml skills/
-```
+The two skills behind governed memory ship with the runtime and are loaded unless your workspace
+defines its own (a copy in `skills/` wins):
 
 - `governed-memory` (`category: persistence`) — the skill an agent calls to propose facts. Its
-  presence in the workspace is what builds the store.
+  presence is what builds the store.
 - `memory-reconcile` (`category: decision`) — the judge for a **changed** value: `update`
   (supersede), `refine` (merge the detail in) or `contradict` (quarantine). New keys and
   identical restatements are handled deterministically, without a model.
 
-Reading needs nothing more: `memory-reader` (already bound) renders curated facts first. Writing is
-a grant, made deliberately:
+Reading needs nothing: `memory-reader` renders curated facts first. Writing is a grant, made
+deliberately, per agent:
 
 ```yaml
 # topologies/tutor.yaml
@@ -356,13 +386,9 @@ and was not included; ask about food by name and it is.
 
 ```
 my-swarm/
-├── workspace.yaml               # memory-reader + memory-writer bound
-├── skills/
-│   ├── governed-memory.yaml     # the persistence skill (write grant)
-│   ├── memory-reconcile.yaml    # the reconcile judge
-│   └── ...
+├── workspace.yaml               # nothing memory-specific — or a `memory:` block to tune / switch off
 ├── topologies/
-│   ├── tutor.yaml               # holds governed-memory
+│   ├── tutor.yaml               # holds governed-memory (bundled with the runtime; a skills/ copy wins)
 │   └── ...
 └── .swarmkit/
     └── store.sqlite             # jobs, conversations, workspace memory, governed memory —

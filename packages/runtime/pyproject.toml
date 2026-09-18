@@ -1,6 +1,6 @@
 [project]
 name = "swarmkit-runtime"
-version = "1.232.0"
+version = "1.233.0"
 description = "SwarmKit runtime: topology interpreter, LangGraph compiler, AGT-backed governance, CLI and HTTP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -87,7 +87,7 @@ dependencies = [
     # 1.205.0 landed beside schema 1.33.0 and refused a skill declaring `provenance.requires_runtime`
     # with "additional properties are not allowed", naming a field the runtime's own docs describe.
     # Raise this whenever the runtime starts reading a newly-added schema field.
-    "swarmkit-schema>=1.43.0",
+    "swarmkit-schema>=1.45.0",
 ]
 
 [project.optional-dependencies]
@@ -102,7 +102,7 @@ ui = [
     # before the bundled pipeline was removed and kept shipping a Pipelines section navigating to
     # endpoints that no longer existed. A floor turns that into a resolution error the installer
     # reports, instead of a dead area of the UI the operator has to diagnose.
-    "swarmkit-webui>=0.22.0",
+    "swarmkit-webui>=0.23.0",
 ]
 # `storage.checkpoints.backend: postgres`. The LangGraph checkpointer is a separate package from
 # the driver the rest of the stores use, which is why this is an extra and why checkpoints is the

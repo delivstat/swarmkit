@@ -1,0 +1,15 @@
+# The memory block (design/details/memory-by-default.md). Absent means enabled with defaults;
+# this one tunes the auto-bound reader and writer.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: remembering-workspace
+  name: Remembering Workspace
+memory:
+  enabled: true
+  reader:
+    max_results: 8
+    similarity_threshold: 0.2
+    search_scope: both
+  writer:
+    min_output_length: 40

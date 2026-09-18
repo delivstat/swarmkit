@@ -38,6 +38,14 @@ from swarmkit_runtime.review import FileReviewQueue
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace"
 
+
+def _memory_off(ws: Path) -> None:
+    """These tests read the mock governance provider's events directly; a bound decision skill
+    wraps the provider, so memory-by-default's own bindings are switched off here."""
+    p = ws / "workspace.yaml"
+    p.write_text(p.read_text() + "\nmemory: {enabled: false}\n")
+
+
 _SKILL_HEAD = """apiVersion: swarmkit/v1
 kind: Skill
 metadata:
@@ -84,6 +92,7 @@ def _workspace(tmp_path: Path, skills: dict[str, str]) -> Path:
     """hello-swarm plus the given `agent` skills and a `caller` topology granting them all."""
     ws = tmp_path / "workspace"
     shutil.copytree(EXAMPLE_WS, ws, ignore=shutil.ignore_patterns(".swarmkit"))
+    _memory_off(ws)
     for sid, impl in skills.items():
         (ws / "skills" / f"{sid}.yaml").write_text(_SKILL_HEAD.format(id=sid, impl=impl))
     (ws / "topologies" / "caller.yaml").write_text(
@@ -273,6 +282,7 @@ async def test_local_child_runs_inside_a_real_parent_run(tmp_path: Path) -> None
 def _a2a_workspace(tmp_path: Path) -> Path:
     ws = tmp_path / "remote"
     shutil.copytree(EXAMPLE_WS, ws, ignore=shutil.ignore_patterns(".swarmkit"))
+    _memory_off(ws)
     manifest = ws / "workspace.yaml"
     manifest.write_text(manifest.read_text() + "\nserver:\n  a2a:\n    enabled: true\n")
     return ws

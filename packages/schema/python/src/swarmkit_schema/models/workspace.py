@@ -13,6 +13,61 @@ from typing import Any, Literal
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 
+class SearchScope(StrEnum):
+    user = "user"
+    all = "all"
+    both = "both"
+
+
+class Reader(BaseModel):
+    """
+    Config for the auto-bound memory-reader (ignored when memory-reader is bound explicitly).
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    max_results: int | None = Field(5, ge=1)
+    similarity_threshold: float | None = Field(0.15, ge=0.0, le=1.0)
+    search_scope: SearchScope | None = "all"
+
+
+class Writer(BaseModel):
+    """
+    Config for the auto-bound memory-writer (ignored when memory-writer is bound explicitly). One model call per run whose output clears min_output_length.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    min_output_length: int | None = Field(100, ge=0)
+
+
+class Memory(BaseModel):
+    """
+    Workspace memory (design/details/memory-by-default.md). Absent means enabled with defaults: memory-reader runs before every agent and memory-writer after, and the governed-memory / memory-reconcile skills are bundled so curated memory exists. A memory-reader or memory-writer bound explicitly under governance.decision_skills is used as written. enabled: false switches off everything automatic (no auto-bindings, no bundled skills); what the workspace wires explicitly still works, and an explicit memory-reader/-writer binding next to enabled: false is a resolution error.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    enabled: bool | None = Field(
+        True,
+        description="Whether memory is on by default. false: no automatic reader/writer bindings and no bundled memory skills.",
+    )
+    reader: Reader | None = Field(
+        None,
+        description="Config for the auto-bound memory-reader (ignored when memory-reader is bound explicitly).",
+    )
+    writer: Writer | None = Field(
+        None,
+        description="Config for the auto-bound memory-writer (ignored when memory-writer is bound explicitly). One model call per run whose output clears min_output_length.",
+    )
+
+
 class Gates(BaseModel):
     """
     How the runtime behaves when a gate is satisfied. See design/details/extracting-the-channels.md.
@@ -1063,6 +1118,10 @@ class SwarmKitWorkspace(BaseModel):
     organisation: OrgOrTeam | None = None
     team: OrgOrTeam | None = None
     governance: Governance | None = None
+    memory: Memory | None = Field(
+        None,
+        description="Workspace memory (design/details/memory-by-default.md). Absent means enabled with defaults: memory-reader runs before every agent and memory-writer after, and the governed-memory / memory-reconcile skills are bundled so curated memory exists. A memory-reader or memory-writer bound explicitly under governance.decision_skills is used as written. enabled: false switches off everything automatic (no auto-bindings, no bundled skills); what the workspace wires explicitly still works, and an explicit memory-reader/-writer binding next to enabled: false is a resolution error.",
+    )
     identity: Identity | None = None
     model_providers: list[ModelProviderRegistration] | None = None
     credentials: dict[str, CredentialRef] | None = None

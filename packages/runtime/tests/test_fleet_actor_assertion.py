@@ -112,6 +112,11 @@ def _bearer(t: str) -> dict[str, str]:
 def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("SWARMKIT_PROVIDER", "mock")
     ws = copy_workspace(EXAMPLE_WS, tmp_path / "ws")
+    # The audit assertion below reads the mock governance provider's events directly; a bound
+    # decision skill wraps the provider, so memory-by-default's bindings are switched off here.
+    (ws / "workspace.yaml").write_text(
+        (ws / "workspace.yaml").read_text() + "\nmemory: {enabled: false}\n"
+    )
     (ws / "roles").mkdir(exist_ok=True)
     (ws / "roles" / "test-roles.yaml").write_text(ROLES_YAML)
     queue = FileReviewQueue(ws)
