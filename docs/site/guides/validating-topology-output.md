@@ -43,6 +43,58 @@ root:
 
 Set `output_schema: null` on an agent to opt out of an archetype's default.
 
+### The same schema as a file
+
+`output_schema` also accepts a **path** — a JSON or YAML file holding the schema, relative to the
+artifact that declares it (the topology or archetype file, not the workspace root, because a
+schema usually lives beside what uses it). Inline is fine for six lines; at any real size a file
+is easier to read, can be shared by several agents without copies that drift, and is validated
+as a JSON Schema at **load** time — a typo in a `required` list is a resolution error naming the
+file, not a conformance failure mid-run that reads like the agent's fault.
+
+```yaml
+# topologies/research.yaml
+root:
+  id: coordinator
+  archetype: coordinator
+  output_schema: schemas/research-verdict.json     # relative to this topology file
+```
+
+```json
+// topologies/schemas/research-verdict.json
+{
+  "type": "object",
+  "required": ["summary", "findings", "confidence"],
+  "properties": {
+    "summary": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim", "evidence"],
+        "properties": { "claim": { "type": "string" }, "evidence": { "type": "string" } }
+      }
+    }
+  }
+}
+```
+
+Both forms normalise to the parsed schema at load, so nothing downstream — the validator, the
+portal, `swarmkit validate --require-verified` — can tell which was written. Rules the resolver
+enforces:
+
+- the path must stay **inside the workspace**; remote URLs are refused, so a workspace's meaning
+  never depends on the network;
+- a missing or unparseable file, a file that is not an object, or one that is not a valid JSON
+  Schema is an error at load, naming the artifact that declared it;
+- it is one key, not two: `output_schema` is inline **or** a path, so "both declared" cannot
+  happen and no precedence rule can silently ignore the one you edited.
+
+An archetype can declare it the same way (`defaults.output_schema: schemas/verdict.json`,
+relative to the archetype file); an agent overrides with its own inline schema, its own path, or
+`null`.
+
 This eliminates shape-level hallucination outright. It does not, and cannot, tell you whether
 `evidence` supports `claim`.
 
