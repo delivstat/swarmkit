@@ -27,7 +27,7 @@ prepared to maintain.
 - **Not extracting `examples/sdlc-pipeline`.** It is the worked reference the docs are built on, it
   is the only example CI actually runs (`testpaths`), and it exists to demonstrate the framework
   rather than to be a product. It stays.
-- **Not deciding what happens to `examples/sterling-oms`** (122 files) or `examples/rynko-content`.
+- **Not deciding what happens to `examples/sterling-oms`** (122 files) or `examples/content-team`.
   They are the same *shape* of question and deserve the same answer eventually, but bundling four
   extractions into one plan is how none of them happen.
 - **Not changing either product.** No refactor, no restructure, no "while we're here". The extraction
@@ -230,6 +230,6 @@ the compose file. That is the proof the seam is real rather than claimed, in the
    from production. No merge was needed. See the note at the head of "Vedanta is a different job".
 3. **Do the Minder branches survive the move?** 17 branches, ≤3 commits each, 4–8 weeks old. Carrying
    all of them costs nothing mechanically and preserves 17 open decisions nobody has revisited.
-4. **Does SwarmKit want a `swarmkit-examples` repo** for `sterling-oms` and `rynko-content` too, or
+4. **Does SwarmKit want a `swarmkit-examples` repo** for `sterling-oms` and `content-team` too, or
    do they stay? Deliberately deferred — see non-goals — but the answer probably follows whatever
    these two extractions teach.

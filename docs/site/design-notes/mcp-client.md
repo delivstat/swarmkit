@@ -62,9 +62,9 @@ mcp_servers:
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
     credentials_ref: github_pat
-  - id: rynko-flow
+  - id: order-validator
     transport: http
-    endpoint: https://mcp.rynko.dev
+    endpoint: https://mcp.validator.dev
 ```
 
 Each server entry has:

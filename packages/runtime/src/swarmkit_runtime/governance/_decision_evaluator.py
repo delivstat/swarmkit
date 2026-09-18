@@ -35,7 +35,7 @@ async def evaluate_skill(
     """Invoke a decision skill and parse the result.
 
     Supports both ``llm_prompt`` and ``mcp_tool`` decision skills.
-    MCP-backed skills (e.g. Rynko Flow) require ``mcp_manager``.
+    MCP-backed skills (e.g. an external validation service) require ``mcp_manager``.
     """
     from swarmkit_runtime.langgraph_compiler._skill_executor import (  # noqa: PLC0415
         execute_skill as run_skill,

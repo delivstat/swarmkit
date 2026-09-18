@@ -7,7 +7,7 @@ status: accepted
 The workspace UI (`packages/ui`) grew as hand-rolled Tailwind: raw `<input>`/`<select>`/`<button>`
 elements with inline `style={{ background: "var(--bg)" }}` and ad-hoc class strings. It works, but the
 surfaces drift (inconsistent inputs, focus rings, spacing, radii) and every new surface re-invents the
-same primitives. We want the product to look like the Vercel / rynko family — the recognizable
+same primitives. We want the product to look like the Vercel / validator family — the recognizable
 neutral-dark, Geist-typeset, tight-spacing aesthetic.
 
 The stack is already shadcn's exact foundation, so this is an adoption, not a rewrite:

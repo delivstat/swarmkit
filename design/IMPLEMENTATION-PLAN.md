@@ -9,13 +9,13 @@ status: active
 
 **Source of truth:** `design/SwarmKit-Design-v0.6.md` (§20.1 lists the original Phase 1 scope). This plan extends that scope with features from design notes landed since v1.0.0. Every feature becomes one or more PRs under the [feature delivery workflow](../CLAUDE.md#feature-delivery-workflow--mandatory).
 
-**Status:** originally drafted 2026-04-21. Reorganised 2026-05-08 to incorporate product architecture (`product-architecture.md`), OpenTelemetry observability (`opentelemetry-observability.md`), intent drift detection (`intent-drift-detection.md`), market analysis (`market-analysis-and-risk-mitigations.md`), and ecosystem features.
+**Status:** originally drafted 2026-04-21. Reorganised 2026-05-08 to incorporate product architecture (`design/archive/rynko/product-architecture.md` (archived)), OpenTelemetry observability (`opentelemetry-observability.md`), intent drift detection (`intent-drift-detection.md`), market analysis (`market-analysis-and-risk-mitigations.md`), and ecosystem features.
 
 > **Read this paragraph as history.** It was written at runtime v1.103.0 and describes Phase 6 (M21) as shipped, including the bundled pipeline layer — `StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, the Temporal adapter, the pipeline-editor canvas and `deploy/pipeline`. **That layer was removed in 1.189.0** (`design/details/extracting-the-pipeline.md`): sequencing is the application's, and `examples/pipeline-orchestrator/` is the reference. The governance half — funnels, contracts, multi-party approval, defer-and-resume, correlated runs, the SDLC example — is what remains of M21. The runtime is at v1.234.0; `README.md` "Roadmap" is the current one-paragraph status.
 
 **Current (runtime v1.103.0):** Phases 1–4 shipped. Phase 5 (fleet & self-improvement) is largely shipped — eval harness (M15), fleet aggregation + control-plane/panel UI (M16), the executor/harness-isolation stack (M19), and the topology canvas (M20) all landed; the self-improvement distribution loop (M17) and workflow-archetype interop (M18) are the remaining tails. **Phase 6 — the delivery-pipeline & orchestration layer (M21)** shipped: `StageGraph` + saga controller, funnels, integration contracts, multi-party approval, the domain-neutral orchestration seam, pipeline triggering, a Temporal adapter, the pipeline-editor canvas, the end-to-end SDLC example, and the **bundled durable orchestrator** (`swarmkit orchestrator` + run-stage execution + `swarmkit pipeline` CLI + the UI Runs view + `deploy/pipeline` compose) that makes pipelines usable out of the box. Remaining before a public launch: M11 (launch prep) and the M9 reference-topology tail.
 
-**Scope:** this plan covers the **open-source SwarmKit framework** only. The commercial Rynko platform (UI, cloud telemetry, team features) has its own plan — see `design/details/product-architecture.md` for the boundary.
+**Scope:** this plan covers the **open-source SwarmKit framework** only. A commercial managed platform above it was planned once and never built (`design/archive/rynko/`).
 
 ## How this plan works
 
@@ -231,7 +231,7 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 **Goal:** every runtime path is observable via OTel traces and CLI primitives. Local ring buffer preserves prompt privacy. Governance circuit breakers prevent runaway costs.
 
-**Design reference:** `design/details/opentelemetry-observability.md`, `design/details/human-interaction-model.md`, `design/details/product-architecture-refinements.md`.
+**Design reference:** `design/details/opentelemetry-observability.md`, `design/details/human-interaction-model.md`, `design/archive/rynko/product-architecture-refinements.md` (archived).
 
 **Dependencies:** none — M5 governance wiring is complete. Ready to start.
 
@@ -244,7 +244,7 @@ Add observability, intent drift detection, and operational tooling. Everything h
 - [x] **AuditProvider abstraction** — `record()`, `query()`, `count()` methods. Built-ins: mock, sqlite (default). Registry system for plugins. `audit/_provider.py`.
 - [x] **Per-skill audit redaction** — `audit:` block on skills with `log_inputs`, `log_outputs`, `redact` fields. Category-level defaults. Workspace-level clamping. `audit/_redact.py`.
 - [x] **CLI primitives** — `swarmkit status` (snapshot), `swarmkit logs <run-id> [--follow]` (event tail), `swarmkit stop <run-id>` (graceful shutdown), `swarmkit why <run-id>` (decision chain). Note: `swarmkit events [--filter]` deferred — cross-run stream not yet needed.
-- [x] **`swarmkit review`** — CLI-based HITL approval flow (`review list|show|approve|reject`). Full interactive TUI deferred to Rynko UI.
+- [x] **`swarmkit review`** — CLI-based HITL approval flow (`review list|show|approve|reject`). Full interactive TUI deferred to portal.
 - [x] **`swarmkit ask`** — conversational observer, LLM-backed. Parses question → loads audit events → answers.
 - [x] **Notification plugin** — webhook-based. Built-ins: terminal (stdout), slack, discord, telegram, generic webhook. Fires on: `hitl_requested`, `run_ended { status: error }`, `skill_gap_surfaced`. `notifications/`. Note: email (SMTP) provider deferred.
 - [x] **Governance circuit breakers** — `max_steps_per_agent`, `max_steps_per_run` (default: 500). Enforced in governance engine. `governance/_limits.py`. Cost-based limit (`max_cost_per_run_usd`) plumbing exists but is inactive until provider-level cost extraction lands.
@@ -294,7 +294,7 @@ Add observability, intent drift detection, and operational tooling. Everything h
 
 - [x] **Authoring integration** — `swarmkit init` and `swarmkit author topology` ask if the user wants intent monitoring. If yes, add `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: log }`. If no, add as a commented-out block so users discover the feature.
 
-**Not in scope:** `threshold: auto` self-learning mode. Needs feedback signal design, cold-start strategy, and run history storage (Rynko). See open questions in design note.
+**Not in scope:** `threshold: auto` self-learning mode. Needs feedback signal design, cold-start strategy, and run history storage. See open questions in design note.
 
 **Exit demo:** reference topology with `intent_monitoring: { enabled: true, threshold: 0.75, on_drift: nudge }`. Run it, show drift scores per step in CLI output. Demonstrate a nudge firing when an agent drifts past threshold. OTel console exporter shows drift events in spans.
 
@@ -434,7 +434,7 @@ Mandatory decision skills with workspace/topology merge semantics. See `design/d
 - [x] **Reference skills** — grounding-verifier, contradiction-detector, citation-checker (PR #201)
 - [x] **Sterling integration** — grounding-verifier + contradiction-detector wired, archetype grounding rules (PR #205)
 
-**Architecture:** governance layer enforces, compiler stays topology-agnostic. Rynko Flow validation gates use the same mechanism (governance decision skills with `mcp_tool` implementation type).
+**Architecture:** governance layer enforces, compiler stays topology-agnostic. External validation gates use the same mechanism (governance decision skills with `mcp_tool` implementation type).
 
 **Exit demo:** Sterling researcher fabricates a name → grounding-verifier catches it → agent revises → clean output passes through.
 
@@ -442,7 +442,7 @@ Mandatory decision skills with workspace/topology merge semantics. See `design/d
 
 Replace prose between agents with structured JSON. Research-backed: 55-87% token reduction + 3-36% accuracy improvement. See `design/details/structured-inter-agent-communication.md`.
 
-**Architecture:** three layers — MCP provenance envelope (Phase A), default output_schema for workers, validation (Tier 1 deterministic + Tier 2 Rynko opt-in).
+**Architecture:** three layers — MCP provenance envelope (Phase A), default output_schema for workers, validation (Tier 1 deterministic + Tier 2 external-validator opt-in).
 
 **Wave 1 — Provenance + structured output (v1.2.26–v1.2.29):**
 - [x] **MCP provenance envelope** — `ToolMetadata` + `ToolResponse` in `MCPClientManager.call_tool`. PR #223.
@@ -478,7 +478,7 @@ Ship-ready for open-source users. Everything needed for public launch.
 
 **Goal:** the execution modes from §14.1 + canary deployments.
 
-**Design reference:** §14.1, §14.4. `design/details/serve-and-auth.md`. `design/details/market-analysis-and-risk-mitigations.md` (canary feature adoption from AgentField analysis).
+**Design reference:** §14.1, §14.4. `design/details/serve-and-auth.md`. `design/archive/rynko/market-analysis-and-risk-mitigations.md` (archived) (canary feature adoption from AgentField analysis).
 
 **Dependencies:** M6 ✅ (observability for canary health metrics), M7 ✅ (drift detection for canary promotion criteria).
 
@@ -626,7 +626,7 @@ process boundary, which a single run never crosses).
 
 Turns the mature observability + governance foundation into a cross-instance control
 plane and a human-gated self-improvement loop. Self-hostable + OSS (invariant #4);
-Rynko is an optional managed backend, never required. See
+A managed backend is optional, never required. See
 `design/details/fleet-control-plane.md` and `design/details/adk-lessons.md`.
 
 **Status:** the eval harness (M15), fleet aggregation + the `swarmkit-control-plane`
@@ -801,29 +801,25 @@ emit` → orchestrator drives → stage parks at its gate → `advance` resumes 
 
 ---
 
-## Rynko Platform (separate plan)
+## The managed platform that was not built
 
-The commercial Rynko platform — UI dashboard, cloud telemetry, team features, self-learning intelligence — is out of scope for this plan. It has its own implementation plan in the Rynko repository.
-
-Key design notes that inform the Rynko plan:
-
-- `design/details/product-architecture.md` — open-source/commercial boundary, deployment models, revenue model
-- `design/details/product-architecture-refinements.md` — local ring buffer, checkpointer for approval gates, OTLP/HTTP, usage-based pricing, unified workspace
-- `design/details/opentelemetry-observability.md` — OTel Phase 2-3 (Rynko-specific: full metrics, cost attribution, sampling)
-- `design/details/intent-drift-detection.md` — `threshold: auto` self-learning (needs Rynko for run history)
-- `design/details/market-analysis-and-risk-mitigations.md` — competitive positioning, risk mitigations
+A commercial platform above the framework — hosted dashboard, cloud telemetry, team features,
+self-learning intelligence — was planned in April–May 2026 and never built. Its notes are archived
+under `design/archive/rynko/`; nothing current depends on them. What they reserved for it, the
+framework now covers itself: funnels and multi-party approval for gates, OpenTelemetry to any
+collector for tracing, the self-hosted fleet control plane for operations.
 
 ## Deferred / future
 
 Items explicitly not in this plan:
 
 - **UI Testing Topology** — reference topology for vision-based browser testing via Playwright MCP. See `design/details/ui-testing-topology.md`. Deferred until Playwright MCP is mature.
-- **Intent drift `threshold: auto`** — self-learning from historical run data. Needs feedback signal design, cold-start strategy, and Rynko for run history storage.
-- **Secure local bridge** — localhost proxy for Rynko UI to pull prompts on-demand. v1.1+ Rynko feature.
-- **Self-hosted UI** — enterprise-only, Phase 3 of Rynko. Docker/Helm deployment.
-- **OTel Phase 3** — sampling strategies for high-volume topologies, Rynko ingestion optimisations.
+- **Intent drift `threshold: auto`** — self-learning from historical run data. Needs feedback signal design, cold-start strategy, and a managed backend for run history storage.
+- **Secure local bridge** — localhost proxy for portal to pull prompts on-demand. v1.1+ a managed backend feature.
+- **Self-hosted UI** — enterprise-only, Phase 3 of a managed backend. Docker/Helm deployment.
+- **OTel Phase 3** — sampling strategies for high-volume topologies, a managed backend ingestion optimisations.
 - **Skill marketplace** — community ratings, trust scores. v1 is import-only.
-- **Cross-topology agent communication** — explicitly not planned. Mesh discovery is a governance liability, not a feature. See `design/details/market-analysis-and-risk-mitigations.md` (AgentField analysis).
+- **Cross-topology agent communication** — explicitly not planned. Mesh discovery is a governance liability, not a feature. See `design/archive/rynko/market-analysis-and-risk-mitigations.md` (archived) (AgentField analysis).
 - **Installable expertise packages Phase 2-3** — public registry, dependency resolution, search/ratings. Phase 1 ships in M11.
 - **OpenClaw as agent execution layer** — each agent node in a SwarmKit topology runs as an OpenClaw instance. SwarmKit stays the orchestrator (topology, delegation, governance); OpenClaw provides per-agent containment (OS-level sandboxing via Microsoft Execution Containers), enterprise identity (Entra), and the MCP tool ecosystem (Hermes, Nvidia MXC). This separates the swarm coordination layer (SwarmKit) from the single-agent execution layer (OpenClaw). Ref: [The New Stack — Microsoft just made the agent runtime free](https://thenewstack.io/microsoft-just-made-the-agent-runtime-free-and-kept-everything-around-it/). Evaluate when OpenClaw stabilizes and has a Python-native embedding API.
   - **Observability gap:** When OpenClaw runs as an MCP tool, SwarmKit sees input/output/duration but not internal token usage, model calls, or cost. OpenClaw has native OTel support (`diagnostics-otel` plugin) and rich hooks (`model_call_started/ended` with usage metadata). Two integration paths: (1) **shared OTel collector** — both SwarmKit and OpenClaw export to the same OTLP endpoint, spans correlated by trace context propagation; (2) **hook-based metadata** — OpenClaw's `model_call_ended` hook writes usage to a shared sidecar that SwarmKit reads post-call. MCP protocol has no in-band metadata support, so observability is side-channel only. Community plugins: `knostic/openclaw-telemetry` (JSONL + syslog), `ClawMetry` (dashboard for token costs).
@@ -853,15 +849,12 @@ Every design note under `design/details/` and where it appears in this plan:
 | `knowledge-mcp-server.md` | M8 (server implemented ✅, enhancements remaining) |
 | `knowledge-pack-cli.md` | M1 ✅ |
 | `langgraph-compiler.md` | M3 ✅ |
-| `market-analysis-and-risk-mitigations.md` | M10 (canary), cross-cutting (risk awareness) |
 | `mcp-client.md` | M5 ✅ |
 | `mcp-discovery-pattern.md` | M8 |
 | `model-provider-abstraction.md` | M2.5 ✅ |
 | `model-provider-tool-calling.md` | M2.5 ✅ |
 | `opentelemetry-observability.md` | M6 |
 | `pre-input-decision-gate.md` | M9 ✅ |
-| `product-architecture.md` | Cross-cutting (scope boundary) |
-| `product-architecture-refinements.md` | M6 (ring buffer, circuit breakers) |
 | `pydantic-codegen.md` | M0 ✅ |
 | `skill-registry.md` | M8 |
 | `skill-schema-v1.md` | M0 ✅ |

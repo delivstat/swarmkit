@@ -292,7 +292,7 @@ ffmpeg for recording + TTS for narration.
    between runs?
 2. Should baseline screenshots be stored for visual diff comparison?
 3. How to authenticate with SSO-protected enterprise apps?
-4. Can test results feed back into a Rynko Flow gate for CI/CD?
+4. Can test results feed back into a an external validation gate for CI/CD?
 5. Should generated tests include page object model (POM) classes or
    flat test functions?
 6. How to handle multi-tab/multi-window scenarios?

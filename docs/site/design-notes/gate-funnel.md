@@ -37,8 +37,8 @@ It composes existing pieces and sibling capabilities; it does not redefine them:
 - **Layer 1 — structured-output validation:** SwarmKit's **native** four-tier output governance,
   Tiers 0–2 (all deterministic): `constrained-output-schema.md` (implemented) +
   `structured-output-governance.md`. This is the runtime's own schema-constrained decoding + JSON-
-  Schema check + business-rule field checks with field-specific auto-correction — **no Rynko or
-  external dependency** (Rynko is only the credited inspiration in that note, not a component).
+  Schema check + business-rule field checks with field-specific auto-correction — **no a managed backend or
+  external dependency** (a managed backend is only the credited inspiration in that note, not a component).
 - **Layer 2 — LLM-as-judge:** an existing governance **decision skill** (`decision-skills.md`,
   `governance-decision-skills.md`), instantiated as the rubric-parameterised `artifact-judge`.
 - **Layer 3 — harness review:** sibling `design/details/harness-reviewer.md`.

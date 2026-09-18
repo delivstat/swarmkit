@@ -46,7 +46,7 @@ outputs:
   required: [verdict, confidence, reasoning, criteria]
 implementation:
   type: mcp_tool
-  server: rynko_flow
+  server: order_validator
   tool: validate_code_review_v2
 iam:
   required_scopes: [repo:read]

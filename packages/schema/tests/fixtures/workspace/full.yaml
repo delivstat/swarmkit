@@ -38,9 +38,9 @@ mcp_servers:
     command: ["mcp-github"]
     credentials_ref: github_pat
     sandboxed: false
-  - id: rynko-flow
+  - id: order-validator
     transport: http
-    endpoint: https://mcp.rynko.dev
+    endpoint: https://mcp.validator.dev
     sandboxed: false
 storage:
   runtime:

@@ -189,7 +189,7 @@ incidents.
 A legal team installs the compliance workspace. From Claude Desktop,
 they paste a contract clause and ask "does this comply with our
 policies?" SwarmKit runs a compliance topology with policy documents,
-regulatory knowledge base, and a Rynko Flow validation gate.
+regulatory knowledge base, and a external validation gate.
 
 ### Code review as a service
 

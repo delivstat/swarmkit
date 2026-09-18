@@ -220,7 +220,7 @@ mcp_servers:
 - **No distributed consensus.** Canary promotion, governance decisions
   are fine as eventually-consistent. No Raft/Paxos.
 - **No cross-topology communication.** Mesh discovery is a governance
-  liability, not a feature (per market-analysis design note).
+  liability, not a feature (per the archived market-analysis note).
 
 ## Implementation priority
 

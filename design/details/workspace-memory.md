@@ -28,7 +28,7 @@ The pattern is universal — not domain-specific:
   this config path in PROJ-100 — the PaymentDetailsList feed requires
   SAP allocation. Here's what we found." Caches CDT lookups, API
   patterns, code discoveries.
-- **Rynko content:** remembers client voice, past validations, what
+- **a managed backend content:** remembers client voice, past validations, what
   failed review and why.
 - **Any workspace:** the agent gets smarter the more it's used.
 
@@ -53,7 +53,7 @@ Workspace Knowledge Graph
 
 **Domain knowledge** is what the agent knows about the domain — loaded
 once, updated occasionally by humans or ingestion pipelines. This already
-exists (vedanta wisdom blocks, Sterling CDT data, Rynko docs).
+exists (vedanta wisdom blocks, Sterling CDT data, a managed backend docs).
 
 **Operational memory** is what the agent learns from doing its job —
 accumulated automatically across every conversation. This is new.

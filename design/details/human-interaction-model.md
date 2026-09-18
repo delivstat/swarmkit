@@ -189,7 +189,7 @@ One command, natural-language questions, LLM-backed. For "why did X happen" rath
 ```
 $ swarmkit ask "why did the review swarm take 20 minutes?"
 The run took 19m42s. 17m of that was a single invocation of
-`code-quality-review` against `rynko-flow` MCP — the call timed out
+`code-quality-review` against `order-validator` MCP — the call timed out
 once and retried with exponential backoff (run_id r-..., events 34-41).
 Recommend raising max_latency_ms on that skill or adding a retry budget.
 ```

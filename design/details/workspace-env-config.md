@@ -8,7 +8,7 @@ status: draft
 # Workspace environment configuration
 
 **Scope:** runtime, schema (workspace extension)
-**Design reference:** §9.3 (workspace config), `product-architecture.md`
+**Design reference:** §9.3 (workspace config), `design/archive/rynko/product-architecture.md` (archived)
 **Status:** draft — implement between M6 and M7
 
 ## Goal

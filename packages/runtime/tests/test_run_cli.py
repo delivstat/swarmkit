@@ -72,4 +72,4 @@ def test_run_rejects_skill_referencing_unconfigured_mcp_server() -> None:
     assert result.exit_code == 1
     combined = (result.stdout or "") + (result.stderr or "")
     assert "mcp_servers" in combined
-    assert "rynko-flow" in combined or "github-repo" in combined
+    assert "order-validator" in combined or "github-repo" in combined

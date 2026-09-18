@@ -76,8 +76,8 @@ v0.1 framed SwarmKit as a framework for composing swarms. v0.2 frames it as a fr
 ## [Heading3] 2. Skills as universal extension primitive
 v0.1 treated MCP tools, validation gates, A2A handoffs, evaluation criteria, and notification channels as separate schema concepts with their own configuration. v0.2 unifies all of these as skills with different category semantics. This significantly simplifies the schema, matches OpenClaw's proven mental model structurally, and gives the community a single extension surface to contribute to.
 
-## [Heading3] 3. Rynko Flow decoupling
-v0.1 treated Rynko Flow integration as an optional but elevated concern with dedicated schema fields and a strategic relationship section. v0.2 removes all framework-level coupling to Rynko Flow. Rynko Flow becomes one of many MCP-exposed validation providers, accessed through the same mechanism as any other MCP tool. This produces cleaner framework positioning, genuine vendor neutrality, and ironically a stronger story for Rynko Flow itself — adoption is earned on merit rather than engineered through coupling.
+## [Heading3] 3. an external validation service decoupling
+v0.1 treated external-validator integration as an optional but elevated concern with dedicated schema fields and a strategic relationship section. v0.2 removes all framework-level coupling to an external validation service. an external validation service becomes one of many MCP-exposed validation providers, accessed through the same mechanism as any other MCP tool. This produces cleaner framework positioning, genuine vendor neutrality, and ironically a stronger story for an external validation service itself — adoption is earned on merit rather than engineered through coupling.
 
 ## [Heading3] 4. Conversational skill authoring
 v0.1 did not address skill authoring explicitly. v0.2 introduces a Skill Authoring Swarm as one of the two v1.0 reference topologies. Users describe skills in natural language through a conversational interface; the authoring swarm asks clarifying questions, produces structured previews, runs mandatory tests, and publishes only on successful validation. The authoring tool is itself a SwarmKit topology — the framework eats its own dogfood.
@@ -193,7 +193,7 @@ CHANGED FROM v0.1 — v0.1 shipped one v1.0 topology. v0.2 added a second. v0.6 
 Multi-modal generation with multi-persona evaluation and human-reviewed feedback loops. Strategy, Generation, QA, Publishing, and Analyst leaders. Demonstrates persistent knowledge bases and feedback contracts between leaders.
 
 ## [Heading3] Document Processing Swarm (v1.2)
-High-volume parallel processing with validation-heavy gates. Intake, Extraction, Validation, and Output leaders. Demonstrates how validation skills (including but not limited to Rynko Flow) integrate into the swarm.
+High-volume parallel processing with validation-heavy gates. Intake, Extraction, Validation, and Output leaders. Demonstrates how validation skills (including but not limited to an external validation service) integrate into the swarm.
 
 ## [Heading3] Customer Support Swarm (v1.3)
 Reactive query-driven swarm with classification and routing. Triage, Resolution, and Escalation leaders. Demonstrates RAG patterns and confidence-based human escalation.
@@ -293,7 +293,7 @@ To the user authoring a topology, all four categories are "skills" — the categ
 
 ## [Heading2] 6.3 Skill anatomy
 A skill definition includes:
-id: code-quality-reviewname: Code Quality Reviewcategory: decisiondescription: Evaluates a code diff for quality issues including SRP,              error handling, and naming conventions. Returns pass/fail              verdict with confidence score and per-criterion reasoning.inputs:  diff: { type: string, required: true }  language: { type: enum, values: [python, typescript, go], required: true }  outputs:  verdict: { type: enum, values: [pass, fail] }  confidence: { type: number, range: [0, 1] }  reasoning: { type: array, items: { criterion: string, verdict: string } }implementation:  type: mcp_tool  server: rynko_flow  tool: validate_code_review_v2  iam:  required_scopes: [repo:read]  constraints:  max_latency_ms: 2000  retry: { attempts: 2, backoff: exponential }  on_failure: escalate_to_humanprovenance:  authored_by: human  authored_date: 2026-04-15  version: 1.0.0
+id: code-quality-reviewname: Code Quality Reviewcategory: decisiondescription: Evaluates a code diff for quality issues including SRP,              error handling, and naming conventions. Returns pass/fail              verdict with confidence score and per-criterion reasoning.inputs:  diff: { type: string, required: true }  language: { type: enum, values: [python, typescript, go], required: true }  outputs:  verdict: { type: enum, values: [pass, fail] }  confidence: { type: number, range: [0, 1] }  reasoning: { type: array, items: { criterion: string, verdict: string } }implementation:  type: mcp_tool  server: order_validator  tool: validate_code_review_v2  iam:  required_scopes: [repo:read]  constraints:  max_latency_ms: 2000  retry: { attempts: 2, backoff: exponential }  on_failure: escalate_to_humanprovenance:  authored_by: human  authored_date: 2026-04-15  version: 1.0.0
 
 ## [Heading2] 6.4 Provenance — a new property in v0.2
 Every skill declares where it came from. This matters for trust, review, and governance. Recognised provenance values:
@@ -571,7 +571,7 @@ CHANGED FROM v0.1 — In v0.1 this agent definition had separate fields for tool
 v1.0 ships with three reference topologies. Each works immediately, is production-quality, and serves as a learning artifact for the framework's core patterns.
 
 ## [Heading3] Code Review Swarm
-Demonstrates multi-agent coordination. Three-leader hierarchy (Engineering, QA, Operations) with workers under each. A2A handoffs between leaders. Validation skills at handoff points (any compatible MCP validator including Rynko Flow). LLM judge skills at each leader before handoff. Mandatory HITL on production deployments. Guarded cross-leader channel example. GitHub webhook trigger configuration.
+Demonstrates multi-agent coordination. Three-leader hierarchy (Engineering, QA, Operations) with workers under each. A2A handoffs between leaders. Validation skills at handoff points (any compatible MCP validator including an external validation service). LLM judge skills at each leader before handoff. Mandatory HITL on production deployments. Guarded cross-leader channel example. GitHub webhook trigger configuration.
 
 ## [Heading3] Skill Authoring Swarm
 Demonstrates skill-level extensibility. Conversation-led skill authoring. User describes a desired capability in natural language; the authoring swarm asks clarifying questions, drafts the skill definition, generates input/output schemas, determines required IAM scopes, selects an implementation strategy (MCP tool, LLM prompt, composed skill), runs mandatory validation tests against real MCP servers, and publishes only on successful test.
@@ -868,9 +868,9 @@ Composite skill invoking multiple single-judge skills in parallel with consensus
 When Tier 2 returns low confidence, or when the action crosses a sensitivity threshold. Expensive; used sparingly.
 
 ## [Heading2] 17.3 Validation skills from any provider
-Any MCP server that exposes validation tools can provide validation skills to SwarmKit. This includes open-source validators, homegrown business rules engines, commercial services, and Rynko Flow. The framework is vendor-neutral at the architectural level. Users choose validation providers based on capability and requirements, not framework lock-in.
+Any MCP server that exposes validation tools can provide validation skills to SwarmKit. This includes open-source validators, homegrown business rules engines, commercial services, and an external validation service. The framework is vendor-neutral at the architectural level. Users choose validation providers based on capability and requirements, not framework lock-in.
 AGT's policy engine and MCP-based validation skills are complementary, not competing. AGT enforces policy at the action level (may this agent invoke this tool?). Validation skills operate at the semantic level (is this output correct?). A typical flow: AGT policy check passes, skill invokes MCP validation tool, tool returns verdict, decision skill records result for judicial pillar.
-CHANGED FROM v0.1 — v0.1 had a dedicated section on Rynko Flow integration. v0.2 removed it. v0.5 retains the framework-agnostic position — Rynko Flow is one of many possible validation skill providers, accessed through standard MCP. No framework-level coupling.
+CHANGED FROM v0.1 — v0.1 had a dedicated section on external-validator integration. v0.2 removed it. v0.5 retains the framework-agnostic position — an external validation service is one of many possible validation skill providers, accessed through standard MCP. No framework-level coupling.
 
 ## [Heading1] 18. MCP Integration & External Tools
 
@@ -887,8 +887,8 @@ AGT's MCP security gateway wraps MCP tool invocations with policy enforcement �
 Coordination skills that hand off between leaders use Google's A2A protocol where supported. For agents that do not natively support A2A, the runtime provides an adapter layer that wraps them in A2A-compatible Task semantics. A2A messages between agents are authenticated by AGT's Agent Mesh — each agent's DID signs its outbound messages, and receiving agents verify signatures before acting.
 
 ## [Heading2] 18.3 Example — validation through MCP
-A skill that validates an invoice through Rynko Flow:
-id: invoice-validation-gatecategory: decisiondescription: Validates invoice structure and content via Rynko Flow gate  inputs:  invoice: { type: object, required: true }  outputs:  verdict: { type: enum, values: [pass, fail] }  run_id: { type: string, description: Attestation Run ID on pass }  implementation:  type: mcp_tool  server: rynko_flow       # Any MCP server; Rynko is one option  tool: validate_invoice_v3  provenance:  authored_by: human  version: 1.0.0
+A skill that validates an invoice through an external validation service:
+id: invoice-validation-gatecategory: decisiondescription: Validates invoice structure and content via an external validation gate  inputs:  invoice: { type: object, required: true }  outputs:  verdict: { type: enum, values: [pass, fail] }  run_id: { type: string, description: Attestation Run ID on pass }  implementation:  type: mcp_tool  server: order_validator       # Any MCP server; a managed backend is one option  tool: validate_invoice_v3  provenance:  authored_by: human  version: 1.0.0
 An equivalent skill using a different validator — say, an open-source JSON Schema validator — would have the same schema and a different `server` value. Topologies can mix validation skills from different providers freely.
 
 ## [Heading1] 19. Comparison to Existing Tools

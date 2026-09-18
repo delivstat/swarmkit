@@ -132,8 +132,8 @@ M0-M5 are complete. M6 is the next milestone: add OpenTelemetry traces, a local 
 
 - `design/details/opentelemetry-observability.md` — OTel traces, metrics, attributes, exporters
 - `design/details/human-interaction-model.md` — audit event schema, CLI primitives, notification plugins
-- `design/details/product-architecture-refinements.md` — local ring buffer, circuit breakers
-- `design/details/market-analysis-and-risk-mitigations.md` — circuit breakers (Risk 3)
+- `design/archive/rynko/product-architecture-refinements.md` (archived) — local ring buffer, circuit breakers
+- `design/archive/rynko/market-analysis-and-risk-mitigations.md` (archived) — circuit breakers (Risk 3)
 
 ## Key existing code to modify
 

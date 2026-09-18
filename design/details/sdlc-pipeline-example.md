@@ -281,7 +281,7 @@ decision skills + structured-output validation (`project_governance_decision_ski
 `feedback_structured_output_priority`); we make it standard on every artifact.
 
 1. **Structured-output validation (deterministic).** Shape/schema correctness with field-level
-   auto-correction (the Rynko pattern). No LLM. Eliminates shape hallucination before any judge.
+   auto-correction (the structured-output pattern). No LLM. Eliminates shape hallucination before any judge.
 2. **LLM-as-judge gate (governance decision skill).** A rubric-scored critique of the artifact
    against its acceptance criteria (design vs BRD; test plan coverage vs design; diff vs design +
    lint/test signal). On fail → the critique flows back to the drafting agent as an **auto-retry

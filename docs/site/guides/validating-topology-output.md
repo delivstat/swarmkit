@@ -201,7 +201,7 @@ outputs:
     reasoning: { type: string }
 implementation:
   type: mcp_tool
-  server: rynko-flow
+  server: order-validator
   tool: validate_order_validation
   arguments:
     strict: true

@@ -69,7 +69,7 @@ async def test_mcp_tool_without_manager_names_server_and_remediation() -> None:
     because non-CLI compile sites (notebooks, scripts) hit this path
     instead of the CLI's compile-time guard.
     """
-    skill = _get_skill("code-quality-review")  # mcp_tool, server: rynko-flow
+    skill = _get_skill("code-quality-review")  # mcp_tool, server: order-validator
     mock = MockModelProvider()
     result = await execute_skill(
         skill,
@@ -78,7 +78,7 @@ async def test_mcp_tool_without_manager_names_server_and_remediation() -> None:
         model_name="mock",
         mcp_manager=None,
     )
-    assert "rynko-flow" in result
+    assert "order-validator" in result
     assert "validate_code_review" in result
     assert "workspace.yaml" in result
     assert "mcp_servers" in result
@@ -93,7 +93,7 @@ async def test_mcp_tool_denied_by_governance() -> None:
     # Inject iam scopes so governance has something to deny
     original_iam = getattr(skill.raw, "iam", None)
     try:
-        skill.raw.__dict__["iam"] = {"required_scopes": ["mcp:rynko-flow"]}
+        skill.raw.__dict__["iam"] = {"required_scopes": ["mcp:order-validator"]}
         mock_model = MockModelProvider()
         gov = MockGovernanceProvider(allowed_scopes=frozenset())
         result = await execute_skill(

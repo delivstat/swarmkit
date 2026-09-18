@@ -4,7 +4,7 @@ Persists LLM prompt/response pairs keyed by OTel span ID. Prompts
 never leave the user's environment — this is the "Privacy-First
 Debugger" from design/details/product-architecture-refinements.md.
 
-The Rynko dashboard shows structural OTel traces; this buffer stores
+The backend's dashboard shows structural OTel traces; this buffer stores
 the actual content locally for `swarmkit debug --span-id <id>`.
 
 Storage: .swarmkit/prompts.sqlite (survives process restarts).

@@ -8,7 +8,7 @@ Resolution order (highest priority wins):
 For quick local testing:
   SWARMKIT_OTEL_EXPORTER=console swarmkit run ...
 
-For production (Rynko, Grafana, Jaeger):
+For production (Grafana, Jaeger, a managed backend):
   ~/.swarmkit/config.yaml with full telemetry block.
 """
 
@@ -30,7 +30,7 @@ class TelemetryConfig:
 
     The ``headers`` dict is passed directly to the OTLP exporter. Use it
     to set whatever auth header your backend expects:
-      - Rynko: {"Authorization": "Bearer rk-..."}
+      - a managed backend: {"Authorization": "Bearer <key>"}
       - Grafana: {"Authorization": "Basic <base64>"}
       - Honeycomb: {"x-honeycomb-team": "<key>"}
 
