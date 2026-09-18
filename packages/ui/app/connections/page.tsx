@@ -417,7 +417,17 @@ function RemoteAgentDialog({
 					{probe?.supported && draft && (
 						<>
 							<div className="rounded-md border bg-muted/40 p-3 text-sm">
-								<p className="font-medium">{probe.name}</p>
+								<p className="flex items-center gap-2 font-medium">
+									{probe.name}
+									{probe.is_swarmkit && (
+										<Badge
+											variant="outline"
+											title={`SwarmKit ${probe.swarmkit?.runtime ?? ""} — returns run id, usage and an observability pointer per task`}
+										>
+											SwarmKit
+										</Badge>
+									)}
+								</p>
 								{probe.description && (
 									<p className="text-muted-foreground">{probe.description}</p>
 								)}

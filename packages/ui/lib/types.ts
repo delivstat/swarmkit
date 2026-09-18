@@ -717,6 +717,15 @@ export interface A2AProbe {
 	url?: string;
 	streaming?: boolean;
 	requires_bearer?: boolean;
+	/** True when the remote advertises the SwarmKit A2A federation extension — it returns its run
+	 * id, token/cost usage and an observability pointer per task (a2a-federation.md). */
+	is_swarmkit?: boolean;
+	swarmkit?: {
+		runtime?: string;
+		returns_usage?: boolean;
+		returns_observability?: boolean;
+		honors_budget?: boolean;
+	} | null;
 	skills?: { id: string; name: string; description: string }[];
 }
 

@@ -48,6 +48,10 @@ WELL_KNOWN_PATH = "/.well-known/agent-card.json"
 #: `jobs.source` for a run that arrived over A2A — the same column that says `serve` / `cli` /
 #: `chat`, so the portal's Source field and `tasks/list` read one thing. The task id IS the job id.
 SOURCE = "a2a"
+#: The A2A capability extension a SwarmKit instance advertises so a SwarmKit caller can identify
+#: it and expect the federation round-trip (a2a-federation.md).
+SWARMKIT_A2A_EXTENSION = "https://swarmkit.dev/a2a/federation/v1"
+
 #: The A2A `contextId` rides on `jobs.correlation_id` (the generic "same ticket" grouping); the
 #: label keeps the exact string a client sent, since a correlation id may be set by other callers.
 LABEL_CONTEXT = "a2a.context_id"
@@ -140,6 +144,24 @@ def build_agent_card(
             "pushNotifications": False,
             "stateTransitionHistory": False,
             "extendedAgentCard": False,
+            # SwarmKit-to-SwarmKit federation (a2a-federation.md): a non-SwarmKit client ignores
+            # `extensions`; a SwarmKit caller reads this to know the callee hands back its run id,
+            # token/cost usage and an observability pointer, and honors a passed budget.
+            "extensions": [
+                {
+                    "uri": SWARMKIT_A2A_EXTENSION,
+                    "description": (
+                        "Returns run id, token/cost usage and an observability pointer per "
+                        "task; honors a passed budget."
+                    ),
+                    "params": {
+                        "runtime": runtime_version(),
+                        "returns_usage": True,
+                        "returns_observability": True,
+                        "honors_budget": False,
+                    },
+                }
+            ],
         },
         "defaultInputModes": ["text/plain", "application/json"],
         "defaultOutputModes": ["text/plain", "application/json"],
@@ -211,6 +233,19 @@ def task_from_job(job: Any, *, gate_url: str | None = None) -> dict[str, Any]:
                 "taskId": job.id,
                 "parts": _text_parts(str(err)),
             }
+    if state in ("completed", "failed", "canceled"):
+        sk = task["metadata"]["swarmkit"]
+        sk["run_id"] = job.id
+        usage = {
+            "input_tokens": int(getattr(job, "usage_input_tokens", 0) or 0),
+            "output_tokens": int(getattr(job, "usage_output_tokens", 0) or 0),
+            "cost_usd": float(getattr(job, "usage_cost_usd", 0.0) or 0.0),
+        }
+        if usage["input_tokens"] or usage["output_tokens"] or usage["cost_usd"]:
+            sk["usage"] = usage
+        # A pointer, never the data: the caller pulls events/audit by run_id with its own
+        # authorization against this endpoint (a2a-federation.md non-goals).
+        sk["observability"] = {"events": True, "audit": True}
     output = getattr(job, "output", None)
     if state == "completed" and output is not None:
         task["artifacts"] = [

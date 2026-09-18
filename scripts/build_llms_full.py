@@ -112,6 +112,7 @@ MANIFEST: list[tuple[str, list[str]]] = [
             "docs/site/design-notes/dag-dependency-graph.md",
             "docs/site/design-notes/command-packs.md",
             "docs/site/design-notes/a2a-interop.md",
+            "docs/site/design-notes/a2a-federation.md",
             "docs/site/design-notes/declarative-model-providers.md",
             "docs/site/design-notes/storage-service.md",
             "docs/site/design-notes/audit-event-journal.md",
