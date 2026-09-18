@@ -29,12 +29,19 @@ class RemoteAgentError(RuntimeError):
     """The remote agent could not be reached, refused the call, or answered malformed JSON-RPC."""
 
 
+#: URI of the SwarmKit A2A federation extension a card advertises (a2a-federation.md).
+SWARMKIT_A2A_EXTENSION = "https://swarmkit.dev/a2a/federation/v1"
+
+
 @dataclass(frozen=True)
 class AgentCard:
     url: str
     name: str
     skills: tuple[str, ...]
     streaming: bool
+    #: The federation extension's `params` when the remote is a SwarmKit instance, else None —
+    #: {runtime, returns_usage, returns_observability, honors_budget}. Presence == "is SwarmKit".
+    swarmkit: dict[str, Any] | None = None
     raw: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
@@ -127,11 +134,18 @@ class A2AClient:
             if isinstance(s, dict) and s.get("id")
         )
         caps = card.get("capabilities") or {}
+        swarmkit = None
+        for ext in caps.get("extensions") or []:
+            if isinstance(ext, dict) and ext.get("uri") == SWARMKIT_A2A_EXTENSION:
+                params = ext.get("params")
+                swarmkit = dict(params) if isinstance(params, dict) else {}
+                break
         return AgentCard(
             url=str(card["url"]),
             name=str(card.get("name") or card_url),
             skills=skills,
             streaming=bool(caps.get("streaming", False)),
+            swarmkit=swarmkit,
             raw=card,
         )
 

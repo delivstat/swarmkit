@@ -92,6 +92,7 @@ nav:
       - Harness tool outcomes: design-notes/harness-tool-outcomes.md
     - Interop:
       - A2A interop: design-notes/a2a-interop.md
+      - A2A federation: design-notes/a2a-federation.md
       - Agent Spec import: design-notes/agent-spec-import.md
     - Fleet & evaluation:
       - Fleet control plane: design-notes/fleet-control-plane.md

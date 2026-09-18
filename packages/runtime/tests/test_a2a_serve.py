@@ -233,12 +233,16 @@ def test_card_has_one_skill_per_topology_and_no_scheme_without_auth() -> None:
     assert card["skills"][1]["description"] == "Run the triage topology."
     assert card["url"] == "http://h:8000/a2a"
     assert card["name"] == "My workspace"
-    assert card["capabilities"] == {
-        "streaming": True,
-        "pushNotifications": False,
-        "stateTransitionHistory": False,
-        "extendedAgentCard": False,
-    }
+    caps = card["capabilities"]
+    assert caps["streaming"] is True
+    assert caps["pushNotifications"] is False
+    assert caps["stateTransitionHistory"] is False
+    assert caps["extendedAgentCard"] is False
+    # The SwarmKit A2A federation extension (a2a-federation.md) — a non-SwarmKit client ignores it.
+    from swarmkit_runtime.server._a2a import SWARMKIT_A2A_EXTENSION  # noqa: PLC0415
+
+    assert [e["uri"] for e in caps["extensions"]] == [SWARMKIT_A2A_EXTENSION]
+    assert caps["extensions"][0]["params"]["returns_usage"] is True
     assert "securitySchemes" not in card
     assert "provider" not in card
 

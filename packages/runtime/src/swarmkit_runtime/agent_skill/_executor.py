@@ -316,9 +316,48 @@ async def _call_remote(  # noqa: PLR0911, PLR0912 — one branch per policy and 
     except RemoteAgentError as exc:
         return f"[skill:{skill.id}] {exc}"
 
+    await _record_remote_usage(task, card, skill_id, agent_id=agent_id, governance=governance)
     if task.state == "completed":
         return task.artifact or task.message or "(no output)"
     return f"[skill:{skill.id}] {card.name} task {task.id} ended {task.state}: {task.message}"
+
+
+async def _record_remote_usage(
+    task: RemoteTask,
+    card: AgentCard,
+    skill_id: str | None,
+    *,
+    agent_id: str,
+    governance: GovernanceProvider | None,
+) -> None:
+    """Stitch a SwarmKit callee's record into ours (a2a-federation.md).
+
+    A SwarmKit remote returns its run id, token/cost usage and an observability pointer in the
+    task's `metadata.swarmkit`. Record it as an `a2a.remote_usage` audit event — attributed to the
+    remote, marked as its report — so the caller's own audit links the two runs and carries the
+    remote's cost. A non-SwarmKit remote sends none of this and nothing is recorded.
+    """
+    sk = task.raw.get("metadata", {}).get("swarmkit", {}) if isinstance(task.raw, dict) else {}
+    remote_run = sk.get("run_id")
+    usage = sk.get("usage") if isinstance(sk.get("usage"), dict) else {}
+    if not remote_run and not usage:
+        return
+    await _audit(
+        governance,
+        "a2a.remote_usage",
+        agent_id,
+        {
+            "skill_id": skill_id,
+            "card": card.name,
+            "endpoint": card.url,
+            "remote_run_id": remote_run,
+            "input_tokens": int(usage.get("input_tokens", 0) or 0),
+            "output_tokens": int(usage.get("output_tokens", 0) or 0),
+            "cost_usd": float(usage.get("cost_usd", 0.0) or 0.0),
+            "observability": sk.get("observability") or {},
+            "source": "reported",
+        },
+    )
 
 
 async def _relay_question(

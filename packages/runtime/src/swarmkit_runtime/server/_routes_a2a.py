@@ -202,6 +202,10 @@ def _register_a2a_client_routes(app: FastAPI) -> None:
             "url": card.url,
             "streaming": card.streaming,
             "requires_bearer": bool(raw.get("securitySchemes")),
+            # Federation: a SwarmKit callee advertises the extension, so the portal can badge it and
+            # the caller knows it will get the run id / usage round-trip (a2a-federation.md).
+            "is_swarmkit": card.swarmkit is not None,
+            "swarmkit": card.swarmkit or None,
             "skills": [
                 {
                     "id": str(s.get("id")),

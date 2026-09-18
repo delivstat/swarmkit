@@ -574,3 +574,74 @@ def test_command_pack_may_not_be_named_workspace() -> None:
     pack = SimpleNamespace(id="workspace", commands=[])
     with pytest.raises(CommandPackError, match="reserved"):
         parse_command_packs([pack])
+
+
+# ---- A2A federation: SwarmKit calling SwarmKit hands back its record ---------------------------
+
+
+def test_our_card_advertises_the_federation_extension(tmp_path: Path) -> None:
+    """A SwarmKit instance's card carries the federation extension so a caller can identify it."""
+    import asyncio  # noqa: PLC0415
+
+    from swarmkit_runtime.agent_skill._remote import (  # noqa: PLC0415
+        SWARMKIT_A2A_EXTENSION,
+        A2AClient,
+    )
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    remote_app = create_app(_a2a_workspace(tmp_path))
+
+    async def _probe() -> None:
+        async with remote_app.router.lifespan_context(remote_app):
+            client = A2AClient(timeout_s=20.0, transport=httpx.ASGITransport(app=remote_app))
+            card = await client.fetch_card("http://remote/.well-known/agent-card.json")
+        assert card.swarmkit is not None, "our own card must advertise the federation extension"
+        assert card.swarmkit.get("returns_usage") is True
+        exts = card.raw["capabilities"]["extensions"]
+        assert any(e["uri"] == SWARMKIT_A2A_EXTENSION for e in exts)
+
+    asyncio.run(_probe())
+
+
+@pytest.mark.asyncio
+async def test_a_plain_card_is_not_a_swarmkit_agent() -> None:
+    """A non-SwarmKit card advertises no federation extension, so `swarmkit` parses to None."""
+    from swarmkit_runtime.agent_skill._remote import A2AClient  # noqa: PLC0415
+
+    card = {"url": "http://x/a2a", "name": "Some Agent", "capabilities": {"streaming": True}}
+
+    def _handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=card)
+
+    client = A2AClient(transport=httpx.MockTransport(_handler))
+    parsed = await client.fetch_card("http://x/card")
+    assert parsed.swarmkit is None
+
+
+@pytest.mark.asyncio
+async def test_a_swarmkit_callee_returns_run_id_and_usage_and_the_caller_records_it(
+    tmp_path: Path,
+) -> None:
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    remote_app = create_app(_a2a_workspace(tmp_path))
+    ws = _workspace(
+        tmp_path,
+        {"ask-remote": "  card_url: http://remote/.well-known/agent-card.json\n  skill_id: hello"},
+    )
+    rt = WorkspaceRuntime.from_workspace_path(ws)
+    transport = httpx.ASGITransport(app=remote_app)
+    async with remote_app.router.lifespan_context(remote_app):
+        out = await _call(rt, "ask-remote", {"input": "Greet engineers"}, transport=transport)
+    assert out == "mock response", out
+
+    # The callee's job id and the caller's a2a.remote_usage event name the same run.
+    remote_run = remote_app.state.store.list_jobs(limit=1)[0].id
+    events = {e.event_type: e for e in rt._governance.events}  # type: ignore[attr-defined]
+    assert "a2a.remote_usage" in events, list(events)
+    ev = events["a2a.remote_usage"]
+    assert ev.payload["remote_run_id"] == remote_run
+    assert ev.payload["endpoint"].endswith("/a2a")
+    assert ev.payload["source"] == "reported"
+    # The mock provider bills tokens, so the round-trip carried a non-zero usage total.
+    assert ev.payload["input_tokens"] > 0 or ev.payload["output_tokens"] > 0
