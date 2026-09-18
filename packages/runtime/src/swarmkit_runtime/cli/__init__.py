@@ -32,6 +32,7 @@ from . import (  # noqa: F401
     _cmd_skill,
     _cmd_storage,
     _cmd_trust,
+    _cmd_upgrade,
 )
 from ._app import app
 from ._cmd_serve import _auth_requires_secure
