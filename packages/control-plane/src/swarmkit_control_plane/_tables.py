@@ -105,6 +105,17 @@ artifact_sources = Table(
     PrimaryKeyConstraint("kind", "id", "version"),
 )
 
+# Where an incremental pull on sync left off, per instance and signal ("audit" today). Its own
+# table for the same no-migration reason as artifact_sources.
+sync_cursors = Table(
+    "sync_cursors",
+    metadata,
+    Column("instance_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("cursor", Text, nullable=False),
+    PrimaryKeyConstraint("instance_id", "kind"),
+)
+
 reported_artifacts = Table(
     "reported_artifacts",
     metadata,

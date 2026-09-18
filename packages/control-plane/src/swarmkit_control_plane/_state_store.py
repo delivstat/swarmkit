@@ -17,7 +17,7 @@ from typing import Any
 from sqlalchemy import select
 
 from swarmkit_control_plane._store_base import Store, upsert
-from swarmkit_control_plane._tables import instance_state
+from swarmkit_control_plane._tables import instance_state, sync_cursors
 
 
 class InstanceStateStore(Store):
@@ -53,3 +53,25 @@ class InstanceStateStore(Store):
         if row is None:
             return None
         return {"state": row["state"], "synced_at": row["synced_at"]}
+
+    def get_cursor(self, instance_id: str, kind: str) -> str | None:
+        """Where the last incremental pull of *kind* for this instance stopped, or None."""
+        with self._lock, self._engine.connect() as conn:
+            row = conn.execute(
+                select(sync_cursors.c.cursor).where(
+                    sync_cursors.c.instance_id == instance_id, sync_cursors.c.kind == kind
+                )
+            ).first()
+        return None if row is None else str(row[0])
+
+    def put_cursor(self, instance_id: str, kind: str, cursor: str) -> None:
+        with self._lock, self._engine.begin() as conn:
+            conn.execute(
+                upsert(
+                    self._engine,
+                    sync_cursors,
+                    {"instance_id": instance_id, "kind": kind, "cursor": cursor},
+                    index_elements=["instance_id", "kind"],
+                    set_={"cursor": cursor},
+                )
+            )

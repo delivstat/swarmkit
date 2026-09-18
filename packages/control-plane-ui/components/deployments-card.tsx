@@ -17,7 +17,16 @@ import { api } from "@/lib/api";
 import type { DriftRow, DriftStatus } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
-const KINDS = ["topology", "skill", "archetype", "workspace", "trigger"];
+// Role registries are observed and versioned but not deployable (iam:modify is a human's, §8.7).
+const KINDS = [
+	"topology",
+	"skill",
+	"archetype",
+	"workspace",
+	"trigger",
+	"funnel",
+	"contract",
+];
 const FIELD = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
 const DRIFT_VARIANT: Record<DriftStatus, BadgeProps["variant"]> = {

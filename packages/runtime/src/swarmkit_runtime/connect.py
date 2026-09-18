@@ -37,6 +37,8 @@ DEPLOY_PLURAL: dict[str, str] = {
     "topology": "topologies",
     "skill": "skills",
     "archetype": "archetypes",
+    "funnel": "funnels",
+    "contract": "contracts",
 }
 DEPLOY_TIER = "admin"
 

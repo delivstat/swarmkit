@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
+from urllib.parse import urlencode
 
 from swarmkit_control_plane._serve_client import (
     ConnectorError,
@@ -177,6 +178,47 @@ async def fetch_usage(endpoint: str, token_ref: str) -> dict[str, Any]:
     async with ServeClient(endpoint, token_ref) as serve:
         usage: dict[str, Any] = serve.ok(await serve.get("/usage"), "/usage")
     return usage
+
+
+async def fetch_artifact_yaml(
+    endpoint: str, token_ref: str, plural: str, artifact_id: str
+) -> str | None:
+    """The file text of one artifact (GET /api/{plural}/{id}/yaml), or None when the instance has
+    no such route or artifact. Adopt uses it when the cached state entry carries no text — a cache
+    written before the text travelled — so a later deploy still writes the file verbatim."""
+    path = f"/api/{plural}/{artifact_id}/yaml"
+    async with ServeClient(endpoint, token_ref) as serve:
+        resp = await serve.get(path)
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+    text = body.get("yaml") if isinstance(body, dict) else None
+    return text if isinstance(text, str) and text else None
+
+
+async def fetch_gaps(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
+    """The instance's skill gap log (GET /gaps) — what `swarmkit gaps` prints there. Pulled on
+    sync and folded into the fleet gap rollup (design 27). Raises ConnectorError."""
+    async with ServeClient(endpoint, token_ref) as serve:
+        gaps: list[dict[str, Any]] = serve.ok(await serve.get("/gaps"), "/gaps")
+    return gaps
+
+
+#: How many audit events one sync pulls. A long-idle instance catches up over several syncs.
+AUDIT_PULL_LIMIT = 500
+
+
+async def fetch_audit(endpoint: str, token_ref: str, since: str | None) -> list[dict[str, Any]]:
+    """The instance's audit events after *since* (GET /audit?since=…), newest first. Pulled on
+    sync with a per-instance cursor so each event travels once (design 27). Raises
+    ConnectorError."""
+    # The cursor is an ISO timestamp with an offset; its `+` must be encoded or it arrives as a
+    # space and the instance answers 422 (found on the second sync of the very first live run).
+    query = {"limit": str(AUDIT_PULL_LIMIT), **({"since": since} if since else {})}
+    path = f"/audit?{urlencode(query)}"
+    async with ServeClient(endpoint, token_ref) as serve:
+        events: list[dict[str, Any]] = serve.ok(await serve.get(path), "/audit")
+    return events
 
 
 async def fetch_runs(endpoint: str, token_ref: str) -> list[dict[str, Any]]:

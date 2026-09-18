@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -20,6 +22,8 @@ from ._helpers import (
     _instance_state_manifest,
 )
 from ._services import ArtifactService
+
+logger = logging.getLogger("swarmkit.server")
 
 
 class ArtifactRef(BaseModel):
@@ -421,10 +425,12 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
         request: Request,
         run_id: str | None = None,
         agent_id: str | None = None,
+        since: datetime | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Append-only audit events, newest-first (read-only; the media pillar exposes no
-        update/delete). Empty when the workspace has no audit store yet."""
+        update/delete). Empty when the workspace has no audit store yet. ``since`` (ISO 8601)
+        returns only events after that instant — what a fleet syncs incrementally on."""
         runtime = getattr(request.app.state, "runtime", None)
         if runtime is None:
             return []
@@ -433,10 +439,34 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
         events = [
             _audit_event_to_dict(e)
             async for e in runtime.audit_provider.query(
-                run_id=run_id, agent_id=agent_id, limit=limit
+                run_id=run_id, agent_id=agent_id, since=since, limit=limit
             )
         ]
         return events
+
+    @app.get("/gaps")
+    async def get_gaps(request: Request) -> list[dict[str, Any]]:
+        """The skill gap log — what `swarmkit gaps` prints: every tool an agent reached for and
+        did not hold, with the action that would close it (design §12). A fleet pulls this on sync
+        to rank gaps across instances (design/details/control-plane/27)."""
+        from swarmkit_runtime.gaps import SkillGapLog  # noqa: PLC0415
+
+        try:
+            log = SkillGapLog(request.app.state.workspace_path)
+        except Exception:
+            logger.debug("gap log unavailable", exc_info=True)
+            return []
+        return [
+            {
+                "skill_id": g.skill_id,
+                "topology_id": g.topology_id,
+                "pattern": g.pattern,
+                "suggested_action": g.suggested_action,
+                "first_seen": g.first_seen.isoformat(),
+                "occurrences": g.occurrences,
+            }
+            for g in log.list_gaps()
+        ]
 
     @app.get("/canary")
     async def canary_status(request: Request) -> dict[str, Any]:

@@ -296,6 +296,10 @@ export interface InstanceState {
 		skills: InstanceArtifact[];
 		archetypes: InstanceArtifact[];
 		triggers: InstanceArtifact[];
+		// Runtime 1.230.0+ (design 27); an older serve omits them.
+		funnels?: InstanceArtifact[];
+		contracts?: InstanceArtifact[];
+		roles?: InstanceArtifact[];
 	};
 	providers: string[];
 	governance_provider: string;
@@ -322,6 +326,10 @@ export interface SyncResult {
 	synced_at: string;
 	counts: Record<string, number>;
 	delta?: SyncDelta;
+	// Signals pulled alongside state (designs 23 and 27); absent on an older panel.
+	pulled_usage?: number;
+	pulled_gaps?: number;
+	pulled_audit?: number;
 }
 
 /** POST /instances/{id}/register — the enrollment handshake result (design 19, Phase 2). The

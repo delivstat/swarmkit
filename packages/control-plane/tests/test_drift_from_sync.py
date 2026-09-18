@@ -171,3 +171,51 @@ def test_a_version_registered_as_content_deploys_without_text(tmp_path: Path) ->
         json={"kind": "topology", "artifact_id": "hello", "version": "v1"},
     )
     assert pushes[0]["source"] is None
+
+
+def test_adopt_fetches_the_text_when_the_cache_has_none(tmp_path: Path) -> None:
+    """A cache written before the text travelled (or by an older serve) has content only. Adopt
+    asks the instance for the file so the version still deploys verbatim."""
+    bare = _state(_CONTENT)
+    del bare["artifacts"]["topologies"][0]["yaml"]
+    asked: list[tuple[str, str]] = []
+
+    async def artifact_yaml(endpoint: str, token_ref: str, plural: str, aid: str) -> str | None:
+        asked.append((plural, aid))
+        return _YAML
+
+    db = tmp_path / "registry.sqlite"
+    registry = SqliteRegistry(db)
+    artifacts = ArtifactStore(db)
+    pushes: list[dict[str, Any]] = []
+
+    async def fetch_state(endpoint: str, token_ref: str) -> dict[str, Any]:
+        return bare
+
+    async def deploy(
+        endpoint: str, token_ref: str, kind: str, aid: str, content: Any, **kw: Any
+    ) -> dict[str, Any]:
+        pushes.append({"kind": kind, "id": aid, **kw})
+        return {"valid": True}
+
+    async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:
+        return {"schema_version": "1.44.0"}
+
+    client = TestClient(
+        create_app(
+            registry,
+            artifacts=artifacts,
+            fetch_state=fetch_state,
+            deploy=deploy,
+            verify=verify,
+            artifact_yaml=artifact_yaml,
+        )
+    )
+    iid = _enroll_and_sync(client)
+    client.post(f"/instances/{iid}/adopt", json={"kind": "topology", "artifact_id": "hello"})
+    assert asked == [("topologies", "hello")]
+    client.post(
+        f"/instances/{iid}/deploy",
+        json={"kind": "topology", "artifact_id": "hello", "version": "v1"},
+    )
+    assert pushes[0]["source"] == _YAML

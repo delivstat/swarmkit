@@ -19,6 +19,8 @@ DEPLOYABLE: dict[str, str] = {
     "topology": "topologies",
     "skill": "skills",
     "archetype": "archetypes",
+    "funnel": "funnels",
+    "contract": "contracts",
 }
 
 

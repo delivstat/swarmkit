@@ -24,13 +24,18 @@ def _entries(state: dict[str, Any], collection: str) -> list[dict[str, Any]]:
     return items if isinstance(items, list) else []
 
 
-def _index_content(state: dict[str, Any]) -> dict[tuple[str, str], Any]:
-    """``(collection, id) -> content`` over every artifact in a state."""
-    out: dict[tuple[str, str], Any] = {}
+#: The fields a manifest entry lacks and a body carries: the parsed artifact, and the file text
+#: a deploy writes back verbatim (design 27). Both travel together through fetch and reuse.
+_BODY_FIELDS = ("content", "yaml")
+
+
+def _index_content(state: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    """``(collection, id) -> {content, yaml}`` over every artifact in a state."""
+    out: dict[tuple[str, str], dict[str, Any]] = {}
     for collection, entries in (state.get("artifacts", {}) or {}).items():
         for entry in entries or []:
             if isinstance(entry, dict) and "id" in entry:
-                out[(collection, entry["id"])] = entry.get("content")
+                out[(collection, entry["id"])] = {k: entry[k] for k in _BODY_FIELDS if k in entry}
     return out
 
 
@@ -74,12 +79,12 @@ def merge_state(
         for entry in entries or []:
             key = (collection, entry.get("id"))
             if key in fetched:
-                content = fetched[key]
+                body = fetched[key]
                 fetched_n += 1
             else:
-                content = cached.get(key)
+                body = cached.get(key) or {}
                 reused_n += 1
-            merged.append({**entry, "content": content})
+            merged.append({**entry, "content": body.get("content"), **body})
         merged_artifacts[collection] = merged
     full["artifacts"] = merged_artifacts
 
