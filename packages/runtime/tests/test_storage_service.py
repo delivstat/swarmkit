@@ -19,6 +19,7 @@ from swarmkit_runtime.persistence import (
     storage_for_workspace,
 )
 from swarmkit_runtime.persistence._service import reset_storage_cache
+from swarmkit_runtime.persistence._store import make_engine
 
 PG = "postgresql://swarm:hunter2@127.0.0.1:5433/swarmkit"
 
@@ -294,3 +295,26 @@ def test_storage_status_and_system_exit_2_on_an_unresolved_store(
     assert out.exit_code == 2, out.output
     assert "UNRESOLVED" in out.output and "environment:" in out.output
     assert "Traceback" not in out.output
+
+
+# ---- configurable connection pool (load-and-scale.md) ------------------------------------------
+
+
+def test_postgres_pool_size_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_STORE_POOL_SIZE", "37")
+    monkeypatch.setenv("SWARMKIT_STORE_MAX_OVERFLOW", "3")
+    # A lazy engine — create_engine does not connect, so no server is needed to inspect the pool.
+    engine = make_engine("postgresql://u:p@127.0.0.1:5599/db")
+    assert engine.pool.size() == 37  # type: ignore[attr-defined]
+
+
+def test_postgres_pool_defaults_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_STORE_POOL_SIZE", raising=False)
+    engine = make_engine("postgresql://u:p@127.0.0.1:5599/db")
+    assert engine.pool.size() == 20  # type: ignore[attr-defined]  # the server-oriented default
+
+
+def test_a_bad_pool_size_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_STORE_POOL_SIZE", "not-a-number")
+    engine = make_engine("postgresql://u:p@127.0.0.1:5599/db")
+    assert engine.pool.size() == 20  # type: ignore[attr-defined]  # a bad value falls back

@@ -50,6 +50,19 @@ REGISTRY: tuple[EnvVar, ...] = (
         "only the URL is enough.",
     ),
     EnvVar(
+        "SWARMKIT_STORE_POOL_SIZE",
+        "Storage",
+        "Postgres connection pool size for the shared store engine (default 20). Raise for a "
+        "higher server.jobs.max_concurrent or more instances; keep (pool + overflow) x instances "
+        "under Postgres max_connections. Ignored for SQLite.",
+    ),
+    EnvVar(
+        "SWARMKIT_STORE_MAX_OVERFLOW",
+        "Storage",
+        "Extra Postgres connections the pool may open beyond SWARMKIT_STORE_POOL_SIZE under burst "
+        "(default 10). Ignored for SQLite.",
+    ),
+    EnvVar(
         "DATABASE_URL",
         "Storage",
         "Fallback connection URL when SWARMKIT_STORE_URL is unset.",

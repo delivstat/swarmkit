@@ -237,7 +237,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 ## Environment variables
 
 <!-- BEGIN GENERATED: env -->
-50 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
+52 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
 
 **Storage**
 
@@ -245,6 +245,8 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 |---|---|
 | `SWARMKIT_STORE_URL` | Connection URL for every store. Set alone it also SELECTS postgres — a URL names its own backend. Overrides storage.runtime.url in workspace.yaml. *(URL; userinfo masked)* |
 | `SWARMKIT_STORE_BACKEND` | Force the backend (sqlite \| postgres) regardless of workspace.yaml. Optional: setting only the URL is enough. |
+| `SWARMKIT_STORE_POOL_SIZE` | Postgres connection pool size for the shared store engine (default 20). Raise for a higher server.jobs.max_concurrent or more instances; keep (pool + overflow) x instances under Postgres max_connections. Ignored for SQLite. |
+| `SWARMKIT_STORE_MAX_OVERFLOW` | Extra Postgres connections the pool may open beyond SWARMKIT_STORE_POOL_SIZE under burst (default 10). Ignored for SQLite. |
 | `DATABASE_URL` | Fallback connection URL when SWARMKIT_STORE_URL is unset. *(URL; userinfo masked)* |
 | `SWARMKIT_WORKSPACE` | Default workspace root for commands that omit it. |
 | `SWARMKIT_SKILLS_CATALOGUE` | Where `swarmkit skill` reads the catalogue: a checkout directory or a mirror URL (default: the swarmkit-skills repo on GitHub). |
