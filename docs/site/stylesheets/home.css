@@ -21,9 +21,12 @@
 .sk-hero .sk-stats strong { display: block; color: #fff; font-size: 1.35rem; }
 
 .sk-yaml { display: grid; grid-template-columns: 1.1fr 1fr; gap: 1.5rem; align-items: center; margin: 2.5rem 0; }
+.sk-yaml > * { min-width: 0; }             /* grid items default to min-width:auto, which lets the <pre> widen the page instead of scrolling */
 .sk-yaml .highlight { margin: 0; }
+.sk-yaml .highlight pre, .sk-yaml .highlight code { overflow-x: auto; max-width: 100%; }
 @media (max-width: 900px) { .sk-yaml { grid-template-columns: 1fr; } }
 
+.sk-grid > *, .sk-steps > *, .sk-videos > *, .sk-levels > * { min-width: 0; }
 .sk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1.2rem; margin: 1.5rem 0 2.5rem; }
 .sk-card { border: 1px solid var(--md-default-fg-color--lightest); border-radius: 14px; overflow: hidden; background: var(--md-code-bg-color); display: flex; flex-direction: column; transition: transform .15s ease, box-shadow .15s ease; }
 .sk-card:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,.18); }
