@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.236.0** (2026-09-18) — reload keeps serve up with MCP servers configured; the catalogue in the portal
 - **v1.235.0** (2026-09-18) — swarmkit skill: the catalogue and Agent Skills files from the command line
 - **v1.234.0** (2026-09-18) — the fleet audit's last leftovers
 - **v1.233.0** (2026-09-18) — memory on by default, and a fleet panel that approves as the person who clicked
