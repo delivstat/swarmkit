@@ -96,10 +96,6 @@ class SqlAuditProvider(AuditProvider):
             "payload": _dumps(event.payload),
         }
 
-        # The write is synchronous SQLAlchemy; run it in a thread so it does not block the event
-        # loop. The journal is write-through (per event), so on the hot path this is what kept the
-        # loop from overlapping concurrent runs (load-and-scale.md). A DB round-trip releases the
-        # GIL, so threads genuinely overlap here.
         def _insert() -> bool:
             try:
                 with self._engine.begin() as conn:
@@ -109,7 +105,17 @@ class SqlAuditProvider(AuditProvider):
                 # duplicate event_id (PK) — append-only dedup, never raise (per the ABC).
                 return False
 
-        if await asyncio.to_thread(_insert):
+        # Postgres: run the write in a thread so the write-through journal (per event) does not
+        # block the event loop — a DB round-trip releases the GIL, so it overlaps concurrent runs
+        # (load-and-scale.md). SQLite: keep it on the loop. SQLite is a single writer, so a
+        # concurrent thread write buys nothing and instead contends for the file lock — writing
+        # audit off-loop while the loop writes the job store to the same file yields `database is
+        # locked`. The two backends are genuinely different, so the write path is too.
+        if self._engine.dialect.name == "sqlite":
+            wrote = _insert()
+        else:
+            wrote = await asyncio.to_thread(_insert)
+        if wrote:
             await self._push(event)
 
     async def _push(self, event: AuditEvent) -> None:

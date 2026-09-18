@@ -180,6 +180,14 @@ clean number needs the driver on a separate host.
   Postgres (job claiming is atomic); aggregate throughput scales with N. This is the fleet topology.
   On one multi-core box, N processes ≈ cores is the first thing to try — it sidesteps the
   single-loop ceiling directly.
+- **Pool sizing is a Postgres concept, not a SQLite one — deliberately.** Postgres is a client/server
+  database: N pooled connections are N real parallel sessions, and `SWARMKIT_STORE_POOL_SIZE` sizes
+  that (keep pool + overflow, times instances, under Postgres `max_connections`). SQLite is an
+  embedded file with a **single writer** — writes serialize on a file lock no matter how many
+  "connections" you open, so a pool would buy no write concurrency and can worsen `database is
+  locked` contention. Its real levers are WAL mode + `busy_timeout`, which the engine already sets.
+  So the knob applies to Postgres only; that is not an inconsistency, it is the two engines being
+  honestly different.
 - **Treat 429 as backpressure** in the client (retry with jitter), because admission latency
   degrades under load on a saturated instance.
 
