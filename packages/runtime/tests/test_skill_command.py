@@ -311,10 +311,16 @@ def test_cli_end_to_end(ws: Path, tmp_path: Path) -> None:
 # ---- HTTP: the portal's peer surface ---------------------------------------------------------
 
 
-def test_http_routes_are_thin_over_the_service(ws: Path) -> None:
+def test_http_routes_are_thin_over_the_service(tmp_path: Path, catalogue: Path) -> None:
     from fastapi.testclient import TestClient  # noqa: PLC0415
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
+    # A workspace with no MCP servers: serve's lifespan starts every declared server, and a
+    # placeholder that exits before the handshake can leave a session waiting.
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "workspace.yaml").write_text(_WS.split("# the one server", maxsplit=1)[0])
+    (ws / "skills").mkdir()
     with TestClient(create_app(ws)) as client:
         cat = client.get("/api/skill-catalogue", params={"q": "history"}).json()
         assert [s["id"] for s in cat["skills"]] == ["git-log"]
