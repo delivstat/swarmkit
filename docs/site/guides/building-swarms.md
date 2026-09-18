@@ -1,6 +1,6 @@
 # Building swarms — the complete playbook
 
-This is the end-to-end guide to building a **complete automated agent swarm** with SwarmKit — from a single agent to a governed, multi-app delivery flow that your application sequences over weeks. It is written to be read top to bottom: each step adds exactly one capability, shows the smallest real artifact that unlocks it, gives the command to run it, and links to the deep reference.
+This is the end-to-end guide to building a **complete automated agent swarm** on SwarmKit, the open-source AI platform runtime — from a single agent to a governed, multi-app delivery flow that your application sequences over weeks. It is written to be read top to bottom: each step adds exactly one capability, shows the smallest real artifact that unlocks it, gives the command to run it, and links to the deep reference.
 
 If you only read one thing first, read the mental model. Everything else is a specialisation of it.
 

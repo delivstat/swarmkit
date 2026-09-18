@@ -1,6 +1,6 @@
 # Design overview
 
-The authoritative architecture is [`design/SwarmKit-Design-v0.6.md`](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md).
+SwarmKit is the open-source **AI platform runtime** — governed AI systems, from a single agent to a multi-agent swarm, defined as data and run under real gates. The authoritative architecture is [`design/SwarmKit-Design-v0.6.md`](https://github.com/delivstat/swarmkit/blob/main/design/SwarmKit-Design-v0.6.md).
 
 ## Three pillars
 

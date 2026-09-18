@@ -10,9 +10,9 @@ hide:
 
 <section class="sk-hero" markdown>
 
-<h1>Multi-agent AI swarms as <em>data, not code</em>.</h1>
+<h1>The open-source <em>AI platform runtime</em>.</h1>
 
-<p class="lead">Define agents, skills, tools and governance in YAML. SwarmKit compiles it, runs it under real gates, records every step, and grows it — through a portal, a CLI and an HTTP API that ship together.</p>
+<p class="lead">Define agents, tools and governance as data, not code. SwarmKit runs them under real gates, records every step, and grows them — from a single agent to a multi-agent swarm — through a portal, a CLI and an HTTP API that ship together.</p>
 
 <div class="sk-cta">
   <a class="primary" href="getting-started/install/">Install in 30 seconds</a>
