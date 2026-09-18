@@ -18,8 +18,8 @@ was run against it on the mock provider, and the output shown is what it printed
 # Install uv (Python package manager) if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install SwarmKit
-uv tool install swarmkit-runtime
+# Install SwarmKit — [serve] is the HTTP server, [ui] the web portal it hosts (Level 11)
+uv tool install "swarmkit-runtime[serve,ui]"
 
 # Verify
 swarmkit --help
@@ -198,7 +198,7 @@ and `--verbose` ends with a run summary:
 `swarmkit serve .` hosts the same workspace over HTTP, and with the `[ui]` extra the portal too:
 
 ```bash
-uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"
+uv tool install "swarmkit-runtime[serve,ui]"
 SWARMKIT_PROVIDER=mock swarmkit serve .            # → http://127.0.0.1:8000
 ```
 

@@ -5,8 +5,8 @@ Learn SwarmKit from zero to production through 22 progressive levels. Levels 1�
 ## Prerequisites
 
 ```bash
-# Install SwarmKit
-uv tool install swarmkit-runtime
+# Install SwarmKit — [serve] is the HTTP server, [ui] the web portal it hosts; Levels 1–10 need only the CLI
+uv tool install "swarmkit-runtime[serve,ui]"
 
 # Verify
 swarmkit --help
