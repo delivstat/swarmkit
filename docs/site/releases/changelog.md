@@ -8,6 +8,8 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.227.0** (2026-09-18) — tutorials 1–16 rewritten from real runs; the bugs they found, fixed
+- **v1.226.0** (2026-09-17) — the docs audited against the code: six new tutorials, a capstone demo, the knowledge pack carries the guides
 - **v1.225.0** (2026-09-17) — `agent` skills offered to harness nodes through the governed gateway
 - **v1.224.0** (2026-09-17) — add a remote agent by card URL from the portal
 - **v1.223.0** (2026-09-17) — `pack:workspace`: every topology as a synthesized agent skill
