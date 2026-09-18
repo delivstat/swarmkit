@@ -78,6 +78,20 @@ MANIFEST: list[tuple[str, list[str]]] = [
             "docs/site/reference/connections.md",
             "docs/site/reference/orchestrator-integration.md",
             "docs/site/reference/governed-memory.md",
+            "docs/site/reference/workspace-memory.md",
+            "docs/site/reference/events.md",
+            "docs/site/reference/storage.md",
+            "docs/site/reference/telemetry.md",
+            "docs/site/reference/env-config.md",
+        ],
+    ),
+    (
+        # The two guides whose subject is a silent failure: an output nothing checks, an image
+        # the model describes from prose because the path did not resolve.
+        "Guides",
+        [
+            "docs/site/guides/validating-topology-output.md",
+            "docs/site/guides/getting-an-image-to-a-model.md",
         ],
     ),
     (
@@ -96,6 +110,15 @@ MANIFEST: list[tuple[str, list[str]]] = [
             "docs/site/design-notes/governance-provider-interface.md",
             "docs/site/design-notes/model-provider-abstraction.md",
             "docs/site/design-notes/dag-dependency-graph.md",
+            "docs/site/design-notes/command-packs.md",
+            "docs/site/design-notes/a2a-interop.md",
+            "docs/site/design-notes/declarative-model-providers.md",
+            "docs/site/design-notes/storage-service.md",
+            "docs/site/design-notes/memory-by-default.md",
+            "docs/site/design-notes/extracting-the-channels.md",
+            "docs/site/design-notes/skill-catalogue.md",
+            "docs/site/design-notes/skill-registry.md",
+            "docs/site/design-notes/fleet-control-plane.md",
         ],
     ),
 ]
