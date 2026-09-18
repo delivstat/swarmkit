@@ -26,7 +26,7 @@ from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.governance._approval import ApprovalPolicy, GateStatus, evaluate
 from swarmkit_runtime.review import FileReviewQueue, ReviewItem
 from swarmkit_runtime.review._multiparty import collect_resolutions, membership_error
-from swarmkit_runtime.server._helpers import _get_runtime
+from swarmkit_runtime.server._helpers import _asserted_actor, _get_runtime
 
 
 class AnswerRequest(BaseModel):
@@ -120,8 +120,12 @@ async def _resolve_role_task(
     comment: str,
     actor: str,
     reread: Any,
+    via_fleet: str | None = None,
 ) -> dict[str, Any]:
     """Authorize → check membership → audit → record, mirroring ``_ingress_pipeline_event``.
+
+    *via_fleet* is set when *actor* is a person a fleet panel asserted (design 28) rather than the
+    transport identity: the audit records both, so "who approved" and "through what" stay distinct.
 
     ``approvals:resolve`` is a reserved human-identity scope (§8.7), so an agent or webhook token
     can never cast a resolution whatever its serve tier. Every attempt is audited, allowed or
@@ -162,6 +166,7 @@ async def _resolve_role_task(
                 "outcome": outcome,
                 "comment": comment,
                 "identity": actor,
+                "via_fleet": via_fleet,
                 "artifact_ref": item.artifact_ref,
                 "round": item.round,
                 "allowed": denial is None,
@@ -463,17 +468,26 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa
     async def resolve_multiparty_task(
         item_id: str, body: ResolveRequest, request: Request
     ) -> dict[str, Any]:
-        """Resolve a multi-party approval role-task as the authenticated caller."""
+        """Resolve a multi-party approval role-task as the authenticated caller — or, when a fleet
+        with an ``approve-as`` membership asserts who clicked (signed, design 28), as that
+        person."""
         queue = _queue()
+        item = _find(queue, item_id)
+        asserted = _asserted_actor(request, item.id)
+        actor = (
+            asserted[0]
+            if asserted
+            else getattr(getattr(request.state, "identity", None), "client_id", None) or "anonymous"
+        )
         return await _resolve_role_task(
             runtime=_get_runtime(request),
             signal=getattr(request.app.state, "pipeline_signal", None),
             resume=_resume_from_state(request),
             queue=queue,
-            item=_find(queue, item_id),
+            item=item,
             outcome=body.outcome,
             comment=body.comment,
-            actor=getattr(getattr(request.state, "identity", None), "client_id", None)
-            or "anonymous",
+            actor=actor,
+            via_fleet=asserted[1] if asserted else None,
             reread=lambda item_id: _item_to_dict(_find(queue, item_id)),
         )

@@ -17,10 +17,22 @@ import secrets
 from dataclasses import dataclass
 from typing import Literal
 
-#: Membership scope: observe-only vs may-deploy. ``manage`` is human-issued (enforced at the route).
-Scope = Literal["monitor", "manage"]
+#: Membership scope: observe-only, may-deploy, or may-assert-who-clicked. ``manage`` and
+#: ``approve-as`` are human-issued (enforced at the route). ``approve-as`` (design 28) lets the
+#: fleet resolve a multi-party role-task as the OIDC subject it asserts, signed by its identity —
+#: the role registry still decides whether that subject is a member; the scope only decides whether
+#: the panel's word about *who* is believed. It implies ``manage``.
+Scope = Literal["monitor", "manage", "approve-as"]
 
-SCOPES: tuple[Scope, ...] = ("monitor", "manage")
+SCOPES: tuple[Scope, ...] = ("monitor", "manage", "approve-as")
+
+#: Scopes ordered by what they grant; a scope covers every scope at or below its rank.
+_SCOPE_RANK: dict[str, int] = {"monitor": 0, "manage": 1, "approve-as": 2}
+
+
+def scope_covers(granted: str, needed: str) -> bool:
+    """True if a membership with *granted* scope may do what *needed* asks for."""
+    return _SCOPE_RANK.get(granted, -1) >= _SCOPE_RANK.get(needed, 99)
 
 
 def mint_secret() -> str:

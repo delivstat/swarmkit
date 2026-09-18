@@ -12,6 +12,11 @@ in `auth/_scopes.py`. See design/details/control-plane/13-connector-registry.md 
 from __future__ import annotations
 
 # verb -> required serve tier (read | run | admin)
+#: Membership scopes an instance may grant a fleet, lowest to highest — mirrors the runtime's
+#: ``fleet.SCOPES`` (asserted equal by the contract test). ``approve-as`` (design 28) lets the
+#: fleet resolve multi-party approvals as the signed-in operator it asserts.
+MEMBERSHIP_SCOPES: tuple[str, ...] = ("monitor", "manage", "approve-as")
+
 VERB_TIERS: dict[str, str] = {
     "capabilities": "read",
     "usage": "read",

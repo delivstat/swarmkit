@@ -49,6 +49,18 @@ def deploy_message(
     return (base if deploy_seq is None else f"{base}:{deploy_seq}").encode()
 
 
+#: How long a signed actor assertion stays valid, in seconds (design 28). A captured header
+#: cannot be replayed after this; inside it, a replay re-resolves the same task as the same person.
+ACTOR_ASSERTION_TTL_S = 300
+
+
+def actor_message(item_id: str, subject: str, issued_at: int) -> bytes:
+    """The exact bytes a fleet signs to assert *who* is resolving a review item through it:
+    ``actor:<item_id>:<subject>:<issued_at>`` (design 28). Binding the item id means a signature
+    for one role-task cannot resolve another; ``issued_at`` (unix seconds) bounds its life."""
+    return f"actor:{item_id}:{subject}:{issued_at}".encode()
+
+
 def verify_signature(public_key_b64: str, signature_b64: str, message: bytes) -> bool:
     """True iff *signature_b64* is a valid Ed25519 signature by *public_key_b64* over *message*.
     Never raises — a malformed key/signature is simply not valid."""

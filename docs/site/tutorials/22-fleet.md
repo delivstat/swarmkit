@@ -206,8 +206,8 @@ curl -s -H "Authorization: Bearer $APP_TOKEN" localhost:8125/gates/141a7cb613e4:
 {"status": "pending", "outstanding": ["product-lead (design:approve)"], "distinct_approvers": ["alice"]}
 ```
 
-This is the honest shape of a panel that acts as one identity: it can cast *Alice's* approval and
-nothing else. Bob resolves his own role-task with his own key (Level 16), and the run resumes:
+That is what a panel acting as one identity can do: cast *Alice's* approval and nothing else. Bob
+resolves his own role-task with his own key (Level 16), and the run resumes:
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $BOB_TOKEN" localhost:8125/review/mpa-141a7cb613e4:analyst-0-product-lead/resolve -d '{"outcome":"approve","comment":"numbers check out"}'
@@ -222,6 +222,88 @@ curl -s -H "Authorization: Bearer $APP_TOKEN" localhost:8125/jobs/141a7cb613e4
 
 Harness gates (Level 17's permission and input requests) resolve from the same card, with
 approve / reject / an answer.
+
+### 5b. Approve as yourself
+
+The enrolment key is the panel's identity, not a person's. When operators sign into the panel with
+OIDC, the panel knows who clicked — and an instance can be told to believe it. That is a separate,
+human-issued membership scope, `approve-as`: the panel signs an assertion of the operator's subject
+with its fleet identity (the key the instance pinned at register), the instance verifies it, and
+the **role registry** still decides whether that subject is a member of the role. The card says up
+front who a click will count as.
+
+This run used a local OpenID provider (`packages/control-plane/demos/local_idp.py`) so the whole
+flow — the fleet UI's real sign-in, the panel's JWT verification, the assertion — runs on a laptop:
+
+```bash
+IDP_USER=alice IDP_ISSUER=http://127.0.0.1:8556 uv run uvicorn local_idp:app --app-dir packages/control-plane/demos --port 8556
+swarmkit-control-plane --data-dir ~/.swarmkit/fleet --port 8843 --cors-origin http://127.0.0.1:3000 \
+  --oidc-issuer http://127.0.0.1:8556 --oidc-audience swarmkit-fleet
+# the fleet UI: NEXT_PUBLIC_OIDC_AUTHORITY=http://127.0.0.1:8556 NEXT_PUBLIC_OIDC_CLIENT_ID=swarmkit-fleet-ui NEXT_PUBLIC_OIDC_AUDIENCE=swarmkit-fleet
+```
+
+Enrol the instance with the **application's** key this time — deliberately not a person's:
+
+```bash
+curl -s -H "Authorization: Bearer $ALICE_JWT" -X POST localhost:8843/instances -d '{"name":"handbook","endpoint":"http://127.0.0.1:8125","token_ref":"env:APP_TOKEN","tier":"run"}'
+curl -s -H "Authorization: Bearer $ALICE_JWT" localhost:8843/instances/fb81aa82cad0/review | jq .resolves_as
+```
+
+```json
+{"kind": "instance-key", "reason": "the instance holds no membership for this fleet — register it"}
+```
+
+```bash
+swarmkit fleet enroll-token . --scope approve-as --ttl 900
+```
+
+```
+# Enrollment token (scope: approve-as, valid 900s, single-use):
+<the token>
+# NOTE: 'approve-as' lets the fleet deploy AND resolve multi-party approvals as the
+# signed-in operator it asserts (their OIDC subject must be a role member).
+```
+
+```bash
+curl -s -H "Authorization: Bearer $ALICE_JWT" -X POST localhost:8843/instances/fb81aa82cad0/register -d '{"enroll_token":"<the token>"}'
+curl -s -H "Authorization: Bearer $ALICE_JWT" localhost:8843/instances/fb81aa82cad0/review | jq .resolves_as
+```
+
+```json
+{"membership_id": "151264116841", "scope": "approve-as", "fingerprint": "0702cd84ac3c"}
+{"kind": "subject", "subject": "alice"}
+```
+
+Now the fleet UI. Alice signs in, the card says **Resolving as alice**, she approves the
+engineering-lead task; then Bob signs in and approves the other:
+
+<video controls preload="none" playsinline muted poster="../../img/tutorials/22-sign-in.png" style="width:100%;border-radius:8px">
+  <source src="../../img/fleet/approve-as-alice.mp4" type="video/mp4">
+  <a href="../../img/fleet/approve-as-alice.mp4">Download (MP4)</a>
+</video>
+
+![Signed in as alice](../img/tutorials/22-gates-as-alice.png)
+
+![Signed in as bob](../img/tutorials/22-gates-as-bob.png)
+
+```bash
+curl -s -H "Authorization: Bearer $APP_TOKEN" localhost:8125/gates/5170acfddf1e:analyst
+curl -s -H "Authorization: Bearer $APP_TOKEN" localhost:8125/jobs/5170acfddf1e
+curl -s -H "Authorization: Bearer $APP_TOKEN" localhost:8125/review/all | jq '.[] | select(.run_id=="5170acfddf1e") | {role, status, resolved_by}'
+```
+
+```json
+{"gate_id": "5170acfddf1e:analyst", "status": "approved", "resolved": true, "distinct_approvers": ["alice", "bob"], "outstanding": []}
+{"job_id": "5170acfddf1e", "status": "completed", "correlation_id": "HB-92"}
+{"role": "engineering-lead", "status": "approved", "resolved_by": "alice"}
+{"role": "product-lead",     "status": "approved", "resolved_by": "bob"}
+```
+
+Two people, two clicks in one panel, one enrolment key that belongs to neither of them — and the
+instance counted the people. The instance's audit records both the person and the fleet that
+relayed the click (`via_fleet`). Without OIDC on the panel, or without `approve-as` on the
+instance, the card reads "Resolving as the enrolment key" with the reason, and nothing is asserted
+([design 28](https://github.com/delivstat/swarmkit/blob/main/design/details/control-plane/28-operator-identity-to-instance.md)).
 
 ### 6. Gaps, mined
 
@@ -379,7 +461,8 @@ Then `just demo-fleet-identity` (the instance's signed identity, enrolment and k
 
 - No instance handed over authority: the panel holds a membership key with a scope, and every
   mutation it triggers is a request the instance authorises with the acting principal — Alice's
-  approval counted, Alice's approval *as product-lead* refused.
+  approval counted, Alice's approval *as product-lead* refused; and with `approve-as`, the people
+  who signed in, not the key the panel holds.
 - A deploy is a signed, content-addressed push that writes your file back as you wrote it, and
   drift is a hash comparison against what the last sync observed.
 - The fleet learns what its agents lack from the instances themselves: `skill.gap` → `/gaps` →
@@ -390,6 +473,6 @@ Then `just demo-fleet-identity` (the instance's signed identity, enrolment and k
 ## Learn more
 
 - [Fleet control plane](../design-notes/fleet-control-plane.md) · [Fleet compose](../design-notes/fleet-compose.md)
-- `design/details/control-plane/27-fleet-signals-and-kinds.md` — the September 2026 audit and what it changed
+- `design/details/control-plane/27-fleet-signals-and-kinds.md` — the September 2026 audit and what it changed; `28-operator-identity-to-instance.md` — approve as yourself
 - `deploy/control-plane/README.md` — auth, runbook, backup; `deploy/fleet/README.md` — the demo fleet
 - [Telemetry configuration](../reference/telemetry.md) · [Serve mode](../reference/serve.md) (the `/fleet/*` seam)

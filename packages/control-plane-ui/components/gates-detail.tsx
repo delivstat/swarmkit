@@ -69,6 +69,21 @@ export function GatesDetail({
 		<Card>
 			<CardHeader>
 				<CardTitle>Gates on {instanceName}</CardTitle>
+				{data?.resolves_as ? (
+					<p
+						className="text-xs text-muted-foreground"
+						data-testid="resolves-as"
+					>
+						{data.resolves_as.kind === "subject" ? (
+							<>
+								Resolving as{" "}
+								<span className="font-mono">{data.resolves_as.subject}</span>
+							</>
+						) : (
+							<>Resolving as the enrolment key — {data.resolves_as.reason}</>
+						)}
+					</p>
+				) : null}
 			</CardHeader>
 			<CardContent className="space-y-3">
 				{error ? (

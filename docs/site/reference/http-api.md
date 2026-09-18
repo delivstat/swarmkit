@@ -36,7 +36,7 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `POST` | `/review/{item_id}/answer` | Answer a question a run asked; a bare integer selects one of its options. |
 | `POST` | `/review/{item_id}/approve` | Approve a pending review item as the authenticated caller. |
 | `POST` | `/review/{item_id}/reject` | Reject a pending review item as the authenticated caller. |
-| `POST` | `/review/{item_id}/resolve` | Resolve a multi-party approval role-task as the authenticated caller. |
+| `POST` | `/review/{item_id}/resolve` | Resolve a multi-party approval role-task as the authenticated caller — or, when a fleet |
 
 ## Artifacts
 

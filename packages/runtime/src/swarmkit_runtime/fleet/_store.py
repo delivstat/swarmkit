@@ -248,6 +248,17 @@ class MembershipStore:
             )
         return [_row_to_membership(r) for r in rows]
 
+    def membership_for_fleet(self, fleet_id: str) -> Membership | None:
+        """The live membership a fleet holds here, or None — by fleet id (design 28: the scope an
+        asserted actor is checked against). Newest first when a fleet registered more than once."""
+        live = [
+            m
+            for m in self.list_memberships()
+            if m.fleet_id == fleet_id
+            and not (m.expires_at and datetime.fromisoformat(m.expires_at) <= _now())
+        ]
+        return max(live, key=lambda m: m.created_at) if live else None
+
     def revoke_membership(self, membership_id: str) -> bool:
         """Eject a fleet — delete its membership (its key stops authenticating). Returns True if one
         was removed."""

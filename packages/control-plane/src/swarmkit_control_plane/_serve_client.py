@@ -106,9 +106,12 @@ class ServeClient:
         except httpx.HTTPError as exc:
             raise ConnectorError(f"cannot reach {self._base}: {exc}") from exc
 
-    async def post(self, path: str, json: Any) -> httpx.Response:
+    async def post(
+        self, path: str, json: Any, *, headers: dict[str, str] | None = None
+    ) -> httpx.Response:
+        merged = {**self._headers, **(headers or {})}
         try:
-            return await self._http().post(self.url(path), json=json, headers=self._headers)
+            return await self._http().post(self.url(path), json=json, headers=merged)
         except httpx.HTTPError as exc:
             raise ConnectorError(f"cannot reach {self._base}: {exc}") from exc
 

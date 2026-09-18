@@ -160,6 +160,9 @@ def create_app(
     cred_store = CredentialStore(registry.engine)  # membership secrets, encrypted at rest
     join_store = JoinCodeStore(registry.engine)  # one-time Mode B join codes
     fleet_identity = FleetIdentity(registry.engine)  # this panel's Ed25519 identity (design 21)
+    # Exposed for tests and tooling that need to verify what this panel signed.
+    app.state.fleet_identity = fleet_identity
+    app.state.cred_store = cred_store
     deploy_seq = DeploySeqStore(registry.engine)  # monotonic deploy counter (design 22)
     growth = GrowthService(registry, props, arts, author, eval_run)
     deploy_svc = DeployService(registry, arts, agg, deploy, cred_store, fleet_identity, deploy_seq)
@@ -216,7 +219,7 @@ def create_app(
     _mount_instances(app, registry, verify, jobs, author)
     _mount_instance_runs(app, registry, runs)
     _mount_instance_run_trace(app, registry, run_trace)
-    _mount_instance_gates(app, registry, gates, resolve_gate)
+    _mount_instance_gates(app, registry, gates, resolve_gate, fleet_identity, cred_store)
     _mount_instance_canary(app, registry, canary, canary_promote, canary_rollback, canary_start)
     _mount_token_routes(app, registry, verify)
     _mount_state(
