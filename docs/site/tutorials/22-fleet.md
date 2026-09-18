@@ -18,9 +18,9 @@ The workspace is `examples/tutorials/22-fleet/` — Level 16 plus one topology, 
 Everything below ran against runtime 1.230.0, control-plane 0.48.0 and fleet UI 0.12.0; the
 transcripts are what they printed.
 
-<video controls preload="none" playsinline muted poster="../img/tutorials/22-instances.png" style="width:100%;border-radius:8px">
-  <source src="../img/fleet/fleet-tour.mp4" type="video/mp4">
-  <a href="../img/fleet/fleet-tour.mp4">Download the walkthrough (MP4)</a>
+<video controls preload="none" playsinline muted poster="../../img/tutorials/22-instances.png" style="width:100%;border-radius:8px">
+  <source src="../../img/fleet/fleet-tour.mp4" type="video/mp4">
+  <a href="../../img/fleet/fleet-tour.mp4">Download the walkthrough (MP4)</a>
 </video>
 
 ## The idea
