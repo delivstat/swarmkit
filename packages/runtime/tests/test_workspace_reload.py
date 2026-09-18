@@ -47,22 +47,44 @@ class _Request:
 # ---- a failed reload does not swap in a broken runtime -------------------------------------------
 
 
-def test_a_failed_reload_keeps_the_previous_runtime() -> None:
+class _Runtime:
+    """A runtime that records the lifecycle a reload owes it."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.started = False
+        self.closed = False
+
+    async def start_session(self) -> None:
+        self.started = True
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_a_failed_reload_keeps_the_previous_runtime() -> None:
     """The property the UI's wording depends on. If a bad reload replaced the live runtime, the
     server would start serving a config it had just rejected."""
-    state = _State("the runtime that was already serving")
+    old = _Runtime("the runtime that was already serving")
+    state = _State(old)
 
-    _install(_Request(state), None)  # type: ignore[arg-type]
+    await _install(_Request(state), None)  # type: ignore[arg-type]
 
-    assert state.runtime == "the runtime that was already serving"
+    assert state.runtime is old and not old.closed
 
 
-def test_a_successful_reload_swaps_it_in() -> None:
-    state = _State("old")
+@pytest.mark.asyncio
+async def test_a_successful_reload_starts_the_new_and_closes_the_old() -> None:
+    """A reload used to assign the new runtime and forget the old one: its MCP servers were never
+    closed (one more set of subprocesses per reload) and the new one's never started."""
+    old, new = _Runtime("old"), _Runtime("rebuilt")
+    state = _State(old)
 
-    _install(_Request(state), "rebuilt")  # type: ignore[arg-type]
+    await _install(_Request(state), new)  # type: ignore[arg-type]
 
-    assert state.runtime == "rebuilt"
+    assert state.runtime is new
+    assert new.started and old.closed
 
 
 # ---- a reload picks up what changed on disk ------------------------------------------------------

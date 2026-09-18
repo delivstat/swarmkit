@@ -85,6 +85,7 @@ def _register_skill_registry_routes(app: FastAPI) -> None:
                     str(p.relative_to(workspace)): t for p, t in plan.skill_files.items()
                 },
                 "server_entry": plan.server_entry,
+                "server_fragment": plan.server_fragment,
                 "server_state": plan.server_state,
                 "notes": list(plan.notes),
                 "applied": None,
@@ -94,7 +95,7 @@ def _register_skill_registry_routes(app: FastAPI) -> None:
         except SkillRegistryError as exc:
             raise HTTPException(400, str(exc)) from exc
         if out["applied"] is not None:
-            _reload(request)
+            await _reload(request)
         return out
 
     @app.post("/api/skills/import")
@@ -115,7 +116,7 @@ def _register_skill_registry_routes(app: FastAPI) -> None:
         if not body.dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(_dump(raw))
-            _reload(request)
+            await _reload(request)
         return {"path": str(path.relative_to(workspace)), "skill": raw, "written": not body.dry_run}
 
     @app.get("/api/skills/check")
@@ -126,9 +127,9 @@ def _register_skill_registry_routes(app: FastAPI) -> None:
         return [r.__dict__ for r in await check_skills(request.app.state.workspace_path)]
 
 
-def _reload(request: Request) -> None:
+async def _reload(request: Request) -> None:
     """Pick the new file(s) up the way a CRUD write does, so the Skills page sees them."""
-    from ._routes_crud import _install  # noqa: PLC0415
+    from ._helpers import swap_runtime  # noqa: PLC0415
     from ._services import ArtifactService  # noqa: PLC0415
 
-    _install(request, ArtifactService(request.app.state.workspace_path).reload())
+    await swap_runtime(request.app, ArtifactService(request.app.state.workspace_path).reload())

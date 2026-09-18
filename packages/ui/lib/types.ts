@@ -130,6 +130,49 @@ export interface SkillItem {
 	category: string;
 }
 
+/** GET /api/skill-catalogue — the swarmkit-skills catalogue as `swarmkit skill list --available`
+ * sees it, plus whether each skill is already in this workspace. */
+export interface SkillCatalogue {
+	source: string;
+	bundles: {
+		id: string;
+		name: string;
+		description: string;
+		skills: string[];
+		verification: { state?: string; checked_at?: string; detail?: string };
+		requires_runtime: string | null;
+	}[];
+	skills: {
+		id: string;
+		bundle: string;
+		name: string;
+		description: string;
+		backing: string;
+		server: string | null;
+		installed: boolean;
+	}[];
+}
+
+/** POST /api/skills/add — the plan (`skill add --dry-run`) and, unless dry_run, what was applied. */
+export interface SkillAddResult {
+	skill_files: Record<string, string>;
+	server_entry: Record<string, unknown> | null;
+	/** The same entry as the YAML `swarmkit skill add` prints and writes. */
+	server_fragment: string;
+	server_state: "new" | "same" | "differs";
+	notes: string[];
+	applied: { skill_files: string[]; server: boolean } | null;
+}
+
+/** GET /api/skills/check — one row per mcp_tool skill. */
+export interface SkillCheckRow {
+	skill_id: string;
+	server_id: string;
+	tool: string;
+	status: "ok" | "missing" | "server-failed";
+	detail: string;
+}
+
 export interface ValidateResponse {
 	valid: boolean;
 	workspace_id: string;

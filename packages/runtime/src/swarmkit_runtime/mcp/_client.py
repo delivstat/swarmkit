@@ -24,6 +24,7 @@ import shutil
 import sys
 import threading
 import time
+from collections.abc import Callable, Coroutine
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -176,6 +177,15 @@ class MCPClientManager:
         self._tool_read_only: dict[str, dict[str, bool]] = {}
         self._stderr_tails: dict[str, _StderrTail] = {}
         self._stack = AsyncExitStack()
+        # The one task that enters and exits every session's context (see `_on_owner`): the MCP
+        # SDK's stdio transport is an anyio task group, and a cancel scope entered in one task
+        # cannot be exited from another. Requests, jobs and the serve lifespan all ask this task.
+        self._owner: asyncio.Task[None] | None = None
+        self._owner_loop: asyncio.AbstractEventLoop | None = None
+        self._owner_queue: (
+            asyncio.Queue[tuple[Callable[[], Coroutine[Any, Any, Any]], asyncio.Future[Any]] | None]
+            | None
+        ) = None
         self._tool_cache: dict[str, str] = {}
         self._cache_hits = 0
         self._cache_misses = 0
@@ -271,6 +281,58 @@ class MCPClientManager:
         self._sessions.pop(server_id, None)
         self._session_credentials.pop(server_id, None)
 
+    # ---- session ownership ----------------------------------------------------------------------
+
+    async def _on_owner(self, fn: Callable[[], Coroutine[Any, Any, Any]]) -> Any:
+        """Run *fn* on this manager's owner task and return its result.
+
+        The owner task is created lazily on the running loop and lives until ``close_all``. If the
+        loop that created it is gone (a test that runs each case under its own ``asyncio.run``),
+        a fresh owner is started — the sessions the old one held died with its loop.
+        """
+        loop = asyncio.get_running_loop()
+        if self._owner is None or self._owner.done() or self._owner_loop is not loop:
+            self._owner_loop = loop
+            self._owner_queue = asyncio.Queue()
+            self._stack = AsyncExitStack()
+            self._sessions.clear()
+            self._owner = loop.create_task(self._owner_main(self._owner_queue), name="mcp-owner")
+        assert self._owner_queue is not None
+        fut: asyncio.Future[Any] = loop.create_future()
+        await self._owner_queue.put((fn, fut))
+        return await fut
+
+    async def _owner_main(
+        self,
+        queue: asyncio.Queue[
+            tuple[Callable[[], Coroutine[Any, Any, Any]], asyncio.Future[Any]] | None
+        ],
+    ) -> None:
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    return
+                fn, fut = item
+                try:
+                    result = await fn()
+                except BaseException as exc:
+                    if not fut.done():
+                        fut.set_exception(exc)
+                    if isinstance(exc, asyncio.CancelledError):
+                        raise
+                else:
+                    if not fut.done():
+                        fut.set_result(result)
+        finally:
+            # Whatever happens to the owner, the sessions it entered are exited here — the only
+            # place they legally can be.
+            try:
+                await self._stack.aclose()
+            except Exception:
+                _logger.debug("closing MCP sessions raised", exc_info=True)
+            self._sessions.clear()
+
     async def get_session(self, server_id: str) -> ClientSession:
         """Get or start a session for the given server.
 
@@ -295,11 +357,8 @@ class MCPClientManager:
                 f"Add it to workspace.yaml under mcp_servers."
             )
 
-        if config.transport == "http":
-            session = await self._start_http(config)
-        else:
-            session = await self._start_stdio(config)
-
+        opener = self._start_http if config.transport == "http" else self._start_stdio
+        session: ClientSession = await self._on_owner(lambda: opener(config))
         self._sessions[server_id] = session
         return session
 
@@ -520,8 +579,22 @@ class MCPClientManager:
         return dict(server_tools.get(tool_name, {}))
 
     async def close_all(self) -> None:
-        """Close all sessions and stop all servers."""
-        await self._stack.aclose()
+        """Close all sessions and stop all servers — from any task: the owner task exits the
+        contexts it entered and finishes."""
+        owner, queue = self._owner, self._owner_queue
+        self._owner = self._owner_queue = None
+        if owner is None or owner.done() or queue is None:
+            self._sessions.clear()
+            return
+        if self._owner_loop is not asyncio.get_running_loop():
+            # Another loop's task: its sessions died with that loop; nothing to await here.
+            self._sessions.clear()
+            return
+        await queue.put(None)
+        try:
+            await owner
+        except Exception:
+            _logger.debug("MCP owner task ended with an error", exc_info=True)
         self._sessions.clear()
 
     @property

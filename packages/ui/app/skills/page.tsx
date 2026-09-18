@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Card } from "@/components/card";
 import { SchemaForm } from "@/components/schema-form";
+import { SkillLibrary } from "@/components/skill-library";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import type { JsonSchema } from "@/lib/schema-form";
@@ -243,39 +245,52 @@ export default function SkillsPage() {
 					<Plus size={12} /> New Skill
 				</Button>
 			</div>
-			{loading && <p className="text-sm text-muted-foreground">Loading…</p>}
-			{error && <p className="text-sm text-destructive">{error}</p>}
-			{data && (
-				<div className="grid grid-cols-2 gap-3">
-					{data.map((skill) => (
-						<Card key={skill.id}>
-							<div className="flex items-center justify-between">
-								<span className="font-medium">{skill.id}</span>
-								<div className="flex items-center gap-2">
-									<Badge
-										variant="outline"
-										className={cn(
-											"border-current",
-											CATEGORY_COLORS[skill.category] ??
-												"text-muted-foreground",
-										)}
-									>
-										{skill.category || "unknown"}
-									</Badge>
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										onClick={() => setEditingSkill(skill.id)}
-									>
-										View
-									</Button>
-								</div>
-							</div>
-						</Card>
-					))}
-				</div>
-			)}
+			{/* Workspace = the skills this workspace has; Library = the catalogue it can add from
+			    (`swarmkit skill search|add|import|check` — design/details/skill-registry.md). */}
+			<Tabs defaultValue="workspace">
+				<TabsList className="mb-4">
+					<TabsTrigger value="workspace">Workspace</TabsTrigger>
+					<TabsTrigger value="library">Library</TabsTrigger>
+				</TabsList>
+				<TabsContent value="workspace">
+					{loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+					{error && <p className="text-sm text-destructive">{error}</p>}
+					{data && (
+						<div className="grid grid-cols-2 gap-3">
+							{data.map((skill) => (
+								<Card key={skill.id}>
+									<div className="flex items-center justify-between">
+										<span className="font-medium">{skill.id}</span>
+										<div className="flex items-center gap-2">
+											<Badge
+												variant="outline"
+												className={cn(
+													"border-current",
+													CATEGORY_COLORS[skill.category] ??
+														"text-muted-foreground",
+												)}
+											>
+												{skill.category || "unknown"}
+											</Badge>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() => setEditingSkill(skill.id)}
+											>
+												View
+											</Button>
+										</div>
+									</div>
+								</Card>
+							))}
+						</div>
+					)}
+				</TabsContent>
+				<TabsContent value="library">
+					<SkillLibrary onChanged={refetch} />
+				</TabsContent>
+			</Tabs>
 
 			{editingSkill !== null && (
 				<SkillEditor

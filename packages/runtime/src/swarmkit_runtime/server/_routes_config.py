@@ -15,16 +15,19 @@ from swarmkit_runtime.server._services import ServiceError
 from swarmkit_runtime.server._workspace_config import WorkspaceConfigService
 
 
-def _reload(request: Request, service: WorkspaceConfigService) -> None:
+async def _reload(request: Request, service: WorkspaceConfigService) -> None:
     """Swap in a runtime rebuilt from the edited file.
 
     Without this a saved connection would apply on the next restart, and Minder's lesson is that a
     settings screen whose changes need a restart is a settings screen people stop trusting.
     """
+    from ._helpers import swap_runtime  # noqa: PLC0415
+
     try:
-        request.app.state.runtime = WorkspaceRuntime.from_workspace_path(service.workspace_path)
+        new_rt = WorkspaceRuntime.from_workspace_path(service.workspace_path)
     except Exception:
         return
+    await swap_runtime(request.app, new_rt)
 
 
 def _register_config_routes(app: FastAPI, service: WorkspaceConfigService) -> None:
@@ -51,7 +54,7 @@ def _register_config_routes(app: FastAPI, service: WorkspaceConfigService) -> No
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
         if result.get("saved"):
-            _reload(request, service)
+            await _reload(request, service)
         return result
 
     @app.delete("/api/workspace/config/{section}/{entry_id}")
@@ -64,5 +67,5 @@ def _register_config_routes(app: FastAPI, service: WorkspaceConfigService) -> No
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
         if result.get("saved"):
-            _reload(request, service)
+            await _reload(request, service)
         return result
