@@ -36,6 +36,7 @@ async def push_artifact(
     signature: str | None = None,
     fleet_id: str | None = None,
     deploy_seq: int | None = None,
+    source: str | None = None,
 ) -> dict[str, Any]:
     """Mode A: PUT the artifact **content** (a dict) to the instance's serve /api collection. A
     fleet *signature*, when supplied, rides in the ``X-Fleet-Signature`` header (+ ``fleet_id`` and
@@ -43,6 +44,8 @@ async def push_artifact(
     key and the downgrade guard before applying (doc 22)."""
     plural = DEPLOYABLE[kind]
     payload: dict[str, Any] = {"content": content}
+    if source:
+        payload["yaml"] = source  # written verbatim by the instance; the signature covers content
     if fleet_id:
         payload["fleet_id"] = fleet_id
     if deploy_seq is not None:

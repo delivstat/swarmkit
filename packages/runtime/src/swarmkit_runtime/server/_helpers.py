@@ -246,12 +246,16 @@ def _artifact_version(obj: Any) -> str:
 def _artifact_entries(
     svc: Any, kind: str, ids_versions: list[tuple[str, str]]
 ) -> list[dict[str, Any]]:
-    """``[{id, version, content_hash, content}]`` for one kind — content read from the workspace
-    YAML via the ArtifactService. Unreadable files are skipped, never fatal."""
+    """``[{id, version, content_hash, content, yaml}]`` for one kind — content read from the
+    workspace YAML via the ArtifactService. ``yaml`` is the file as written (comments, order,
+    layout): a fleet that adopts the artifact and deploys it elsewhere writes that text back rather
+    than a re-serialised dict, so a deploy does not strip the operator's annotations. Unreadable
+    files are skipped, never fatal."""
     entries: list[dict[str, Any]] = []
     for aid, version in ids_versions:
         try:
-            content = yaml.safe_load(svc.read_yaml(kind, aid)) or {}
+            text = svc.read_yaml(kind, aid)
+            content = yaml.safe_load(text) or {}
         except Exception:
             logger.debug("instance-state: could not read %s '%s'", kind, aid, exc_info=True)
             continue
@@ -261,6 +265,7 @@ def _artifact_entries(
                 "version": version,
                 "content_hash": _content_hash(content),
                 "content": content,
+                "yaml": text,
             }
         )
     return entries
@@ -326,7 +331,10 @@ def _instance_state_manifest(state: dict[str, Any]) -> dict[str, Any]:
     (design 19 §delta sync). Metadata (workspace_id, schema_version, providers, …) is preserved."""
     manifest = {k: v for k, v in state.items() if k != "artifacts"}
     manifest["artifacts"] = {
-        collection: [{ek: ev for ek, ev in entry.items() if ek != "content"} for entry in entries]
+        collection: [
+            {ek: ev for ek, ev in entry.items() if ek not in ("content", "yaml")}
+            for entry in entries
+        ]
         for collection, entries in state.get("artifacts", {}).items()
     }
     return manifest

@@ -104,6 +104,8 @@ async def execute_command(  # noqa: PLR0911, PLR0912 — branchy dispatch; each 
         # The instance applies the deploy locally: wrap the content and forward the fleet signature
         # so local serve can verify it against the pinned key before applying (design 22).
         json_body = {"content": args.get("body")}
+        if isinstance(args.get("yaml"), str):
+            json_body["yaml"] = args["yaml"]  # the adopted file's text, written verbatim
         if args.get("fleet_id"):
             json_body["fleet_id"] = args["fleet_id"]
         if args.get("deploy_seq") is not None:

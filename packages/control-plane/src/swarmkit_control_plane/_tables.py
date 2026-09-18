@@ -91,6 +91,20 @@ deployments = Table(
     PrimaryKeyConstraint("instance_id", "kind", "id"),
 )
 
+# The file an adopted artifact was read from, verbatim — comments, key order, layout. Deploy writes
+# this text back rather than the re-serialised `content`, so a fleet deploy does not strip an
+# operator's annotations. Its own table (not a column) so an existing panel database needs no
+# migration: create_all adds a table it lacks and leaves the rows it has alone.
+artifact_sources = Table(
+    "artifact_sources",
+    metadata,
+    Column("kind", Text, nullable=False),
+    Column("id", Text, nullable=False),
+    Column("version", Text, nullable=False),
+    Column("source", Text, nullable=False),
+    PrimaryKeyConstraint("kind", "id", "version"),
+)
+
 reported_artifacts = Table(
     "reported_artifacts",
     metadata,

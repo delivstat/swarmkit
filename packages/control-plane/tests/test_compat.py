@@ -43,7 +43,9 @@ def _client(tmp_path: Path, artifact_schema: str) -> TestClient:
     async def verify(endpoint: str, token_ref: str) -> dict[str, Any]:  # pragma: no cover
         return {}
 
-    async def deploy(endpoint: str, tr: str, kind: str, aid: str, content: Any) -> dict[str, Any]:
+    async def deploy(
+        endpoint: str, tr: str, kind: str, aid: str, content: Any, **_sig: Any
+    ) -> dict[str, Any]:
         return {"deployed": aid}
 
     return TestClient(create_app(registry, verify=verify, artifacts=artifacts, deploy=deploy))
