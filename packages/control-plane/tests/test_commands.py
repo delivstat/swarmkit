@@ -101,6 +101,30 @@ def test_enqueue_rejects_verb_above_tier(tmp_path: Path) -> None:
     assert "exceeds" in resp.json()["detail"]
 
 
+def test_enqueue_rejects_a_command_the_connector_could_not_address(tmp_path: Path) -> None:
+    """A `run` without `topology_name`/`body` used to be queued as-is and came back a poll later
+    as "serve returned 422" — now it is a 400 to the operator, naming what is missing."""
+    client = _client(tmp_path)
+    iid = _enroll_poll(client, tier="run")
+    resp = client.post(
+        f"/instances/{iid}/commands",
+        json={"verb": "run", "args": {"topology_name": "hello", "input": "hi"}},
+    )
+    assert resp.status_code == 400
+    assert "body" in resp.json()["detail"]
+    ok = client.post(
+        f"/instances/{iid}/commands",
+        json={"verb": "run", "args": {"topology_name": "hello", "body": {"input": "hi"}}},
+    )
+    assert ok.status_code == 200, ok.text
+    assert (
+        client.post(
+            f"/instances/{iid}/commands", json={"verb": "job-status", "args": {}}
+        ).status_code
+        == 400
+    )
+
+
 def test_enqueue_rejects_unknown_verb(tmp_path: Path) -> None:
     client = _client(tmp_path)
     iid = _enroll_poll(client)

@@ -16,6 +16,7 @@ so those runs recorded as free rather than as priced from the table.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar
 
 from swarmkit_runtime.persistence import record_run_usage, usage_fields
@@ -186,3 +187,69 @@ def test_every_path_names_its_source() -> None:
         assert any(source in span for span in spans) or source in body, (
             f"{rel} does not record source={source}"
         )
+
+
+# ---- the provider that billed the model ------------------------------------------------------
+
+
+class _UsageWithProviders(_Usage):
+    provider_by_model: ClassVar[dict[str, str]] = {
+        "anthropic/claude-opus-5": "openrouter",
+        "openai/gpt-5": "openrouter",
+    }
+
+
+def test_the_rows_carry_the_provider() -> None:
+    """A model name alone does not say who billed it (the same id is reachable through several
+    providers), and the fleet Runs page showed '—' for every model because of it."""
+    store = _Store()
+    record_run_usage(store, "j1", _UsageWithProviders())
+    assert {r.provider for r in store.usage_rows} == {"openrouter"}
+    # A summary recorded before providers were tracked writes '' rather than failing.
+    store = _Store()
+    record_run_usage(store, "j2", _Usage())
+    assert {r.provider for r in store.usage_rows} == {""}
+
+
+def test_usage_by_model_groups_on_provider_and_upgrades_an_old_database(tmp_path: Path) -> None:
+    """The store's `/usage` query reports the provider, and a database created before the column
+    existed gains it on open (older rows read as '')."""
+    from sqlalchemy import create_engine, text  # noqa: PLC0415
+    from swarmkit_runtime.persistence._store import SqliteStore, UsageRow  # noqa: PLC0415
+
+    (tmp_path / ".swarmkit").mkdir()
+    db = tmp_path / ".swarmkit" / "store.sqlite"
+    # An old-shape run_usage table: no provider column.
+    engine = create_engine(f"sqlite:///{db}")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE TABLE run_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT, "
+                "conversation_id TEXT, agent_id TEXT NOT NULL, model TEXT NOT NULL, "
+                "input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER, "
+                "cost_usd FLOAT, created_at TEXT NOT NULL)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO run_usage (agent_id, model, input_tokens, output_tokens, "
+                "cache_read_tokens, cost_usd, created_at) "
+                "VALUES ('', 'old/model', 10, 5, 0, 0.01, 'x')"
+            )
+        )
+    engine.dispose()
+    store = SqliteStore(tmp_path)
+    store.record_usage(
+        UsageRow(
+            agent_id="",
+            model="moonshotai/kimi-k2.5",
+            input_tokens=7,
+            output_tokens=3,
+            cost_usd=0.002,
+            provider="openrouter",
+            job_id="j1",
+        )
+    )
+    rows = {(r["model"], r["provider"]): r for r in store.get_usage_by_model()}
+    assert rows[("old/model", "")]["calls"] == 1
+    assert rows[("moonshotai/kimi-k2.5", "openrouter")]["input_tokens"] == 7

@@ -43,3 +43,16 @@ def test_membership_scopes_match_runtime() -> None:
     from swarmkit_runtime.fleet import SCOPES  # noqa: PLC0415
 
     assert MEMBERSHIP_SCOPES == SCOPES
+
+
+def test_verb_args_match_the_runtime_route_templates() -> None:
+    """Every path parameter in the runtime's route template is a required arg on the panel side,
+    so a command the panel accepts is one the connector can address."""
+    import string  # noqa: PLC0415
+
+    from swarmkit_control_plane._verbs import VERB_ARGS  # noqa: PLC0415
+
+    for verb, (_method, template, _tier) in connect.VERB_ROUTES.items():
+        params = {f for _, f, _, _ in string.Formatter().parse(template) if f}
+        assert params <= set(VERB_ARGS[verb]), verb
+    assert {"kind", "id", "body"} <= set(VERB_ARGS["deploy"])

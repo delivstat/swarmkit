@@ -138,3 +138,25 @@ def test_audit_since_returns_only_newer_events(client: TestClient) -> None:
     newer = [e["event_type"] for e in client.get("/audit", params={"since": cursor}).json()]
     assert "run.completed" in newer
     assert "skill.gap" not in newer
+
+
+def test_fleet_state_carries_a2a_both_ways(client: TestClient, workspace: Path) -> None:
+    """A fleet wants to know which instances serve an agent card and which outside agents each
+    one calls (the fleet card listing left over from the A2A work)."""
+    (workspace / "skills" / "ask-oracle.yaml").write_text(
+        "apiVersion: swarmkit/v1\nkind: Skill\nmetadata:\n  id: ask-oracle\n"
+        "  name: Ask the oracle\n"
+        "  description: A remote agent.\ncategory: capability\nimplementation:\n  type: agent\n"
+        "  card_url: https://oracle.example.com/.well-known/agent-card.json\n"
+        "provenance: {authored_by: human, version: 1.0.0}\n"
+    )
+    client.post("/api/reload")
+    a2a = client.get("/fleet/state").json()["a2a"]
+    assert a2a["enabled"] is False and a2a["card_url"] is None  # hello-swarm does not serve A2A
+    remote = {r["id"]: r for r in a2a["remote_agents"]}
+    assert (
+        remote["ask-oracle"]["card_url"] == "https://oracle.example.com/.well-known/agent-card.json"
+    )
+    assert (
+        client.get("/fleet/state/manifest").json()["a2a"] == a2a
+    )  # metadata, kept by the manifest

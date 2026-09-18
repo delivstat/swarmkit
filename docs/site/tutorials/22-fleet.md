@@ -381,14 +381,21 @@ connector: joined fleet as instance 7b21754a0d77 (tier=run)
 ```
 
 `--serve-token` is the local serve's key; every tutorial workspace has API-key auth on, so without
-it the connector's own `/fleet/state` read is a 401. The join issues a poll credential the
-connector holds in memory; for a long-running connector, mint one on the instance's page and pass
-it explicitly:
+it the connector's own `/fleet/state` read is a 401. The join code is single-use; the credential
+it issues is saved (`~/.swarmkit/connect/<pair>.json`, owner-readable only), so the long-running
+connector is the same command with no join code:
 
 ```bash
-swarmkit connect http://127.0.0.1:8843 --instance-id 7b21754a0d77 --panel-token env:PANEL_TOKEN \
-  --serve-url http://127.0.0.1:8125 --serve-token env:OPS_TOKEN --tier run --interval 2
+swarmkit connect http://127.0.0.1:8843 --serve-url http://127.0.0.1:8125 --serve-token env:OPS_TOKEN --interval 2
 ```
+
+```
+connector: resuming as instance 7b21754a0d77 from /home/you/.swarmkit/connect/c71129859c7ccdf3.json
+connector: polling http://127.0.0.1:8843 as instance 7b21754a0d77 (tier=run)
+```
+
+(`--instance-id` + `--panel-token` still work for a credential minted on the instance's page;
+`--state` moves the file.)
 
 From then on the panel drives it through a **command queue** — the connector polls, executes each
 command against local serve over loopback, and reports the result:
@@ -397,6 +404,10 @@ command against local serve over loopback, and reports the result:
 curl -s -X POST localhost:8843/instances/7b21754a0d77/commands -d '{"verb":"run","args":{"topology_name":"hello","body":{"input":"Say hello in five words."}}}'
 curl -s localhost:8843/instances/7b21754a0d77/commands
 ```
+
+(A `run` without `topology_name` and `body` is refused at enqueue with a 400 naming them — the
+panel checks the connector's route template before queueing, so a malformed command does not come
+back a poll later as "serve returned 422".)
 
 ```json
 {"cmd_id": "00547ab722a8", "verb": "run", "status": "queued"}

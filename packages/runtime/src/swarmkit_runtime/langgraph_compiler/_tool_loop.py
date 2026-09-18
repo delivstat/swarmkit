@@ -29,7 +29,9 @@ from ._skill_executor import DENIED_MARK, is_refusal
 logger = logging.getLogger("swarmkit.compiler")
 
 
-def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResponse) -> None:
+def _record_tool_loop_tokens(
+    agent_id: str, model: str, response: CompletionResponse, provider: Any = None
+) -> None:
     """Record tokens from a tool-loop LLM call into the active trace."""
     from swarmkit_runtime.langgraph_compiler._compiler import (  # noqa: PLC0415
         get_active_trace,
@@ -43,6 +45,7 @@ def _record_tool_loop_tokens(agent_id: str, model: str, response: CompletionResp
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             cost_usd=response.usage.cost_usd,
+            provider=str(getattr(provider, "provider_id", "") or ""),
         )
 
 
@@ -751,7 +754,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
             _loop_model, loop_messages, system_prompt, tools, agent
         )
         current_response = await _loop_provider.complete(follow_up)
-        _record_tool_loop_tokens(agent.id, _loop_model, current_response)
+        _record_tool_loop_tokens(agent.id, _loop_model, current_response, _loop_provider)
 
         state_change = _check_for_state_change(current_response, agent, agent.id, None)
         if state_change is not None:
@@ -819,7 +822,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
                     _loop_model, loop_messages, system_prompt, tools, agent
                 )
                 current_response = await _loop_provider.complete(nudge_req)
-                _record_tool_loop_tokens(agent.id, model_name, current_response)
+                _record_tool_loop_tokens(agent.id, _loop_model, current_response, _loop_provider)
                 state_change = _check_for_state_change(current_response, agent, agent.id, None)
                 if state_change is not None:
                     return state_change
@@ -926,7 +929,7 @@ async def _run_tool_loop(  # noqa: PLR0912, PLR0915
         )
     synthesis_req = _build_completion_request(model_name, loop_messages, system_prompt, [], agent)
     synthesis_response = await model_provider.complete(synthesis_req)
-    _record_tool_loop_tokens(agent.id, model_name, synthesis_response)
+    _record_tool_loop_tokens(agent.id, model_name, synthesis_response, model_provider)
     text = _extract_text(synthesis_response)
 
     if text and not _looks_incomplete(text):

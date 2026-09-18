@@ -41,6 +41,7 @@ def record_run_usage(store: Any, job_id: str, usage: Any) -> float:
 
     total_cost = 0.0
     by_model: dict[str, dict[str, Any]] = getattr(usage, "by_model", None) or {}
+    provider_by_model: dict[str, str] = getattr(usage, "provider_by_model", None) or {}
     with contextlib.suppress(Exception):
         for model, tok in by_model.items():
             # Provider-reported cost is authoritative; when it is absent — token-only providers —
@@ -53,6 +54,7 @@ def record_run_usage(store: Any, job_id: str, usage: Any) -> float:
                 UsageRow(
                     agent_id="",
                     model=model,
+                    provider=provider_by_model.get(model, ""),
                     input_tokens=int(tok.get("input", 0)),
                     output_tokens=int(tok.get("output", 0)),
                     cost_usd=cost,

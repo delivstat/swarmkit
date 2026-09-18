@@ -240,6 +240,14 @@ def connect(
         float,
         typer.Option("--interval", help="Seconds between polls."),
     ] = 5.0,
+    state: Annotated[
+        Path | None,
+        typer.Option(
+            "--state",
+            help="Where the join credential is kept (default ~/.swarmkit/connect/<pair>.json).",
+            show_default=False,
+        ),
+    ] = None,
     once: Annotated[
         bool,
         typer.Option("--once", help="Run a single poll cycle and exit (for testing)."),
@@ -259,10 +267,8 @@ def connect(
     from swarmkit_runtime.auth._secrets import resolve_secret_ref  # noqa: PLC0415
     from swarmkit_runtime.connect import run_connector  # noqa: PLC0415
 
-    if not (instance_id or join_code):
-        raise typer.BadParameter(
-            "provide --instance-id (already enrolled) or --join-code (Mode B)."
-        )
+    # Neither flag: the connector resumes from its saved join (run_connector loads it, or says
+    # where it looked).
 
     resolved_panel = resolve_secret_ref(panel_token) if panel_token else None
     resolved_serve = resolve_secret_ref(serve_token) if serve_token else None
@@ -270,8 +276,9 @@ def connect(
 
     if resolved_join:
         typer.echo(f"connector: joining fleet at {panel_url} via join code")
-    else:
+    elif instance_id:
         typer.echo(f"connector: polling {panel_url} as instance {instance_id} (tier={tier})")
+    # neither: run_connector says which saved credential it resumed from
     asyncio.run(
         run_connector(
             panel_url=panel_url,
@@ -285,6 +292,7 @@ def connect(
             interval=interval,
             once=once,
             log=typer.echo,
+            state_path=state,
         )
     )
 

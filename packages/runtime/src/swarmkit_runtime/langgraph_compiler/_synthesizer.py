@@ -147,6 +147,7 @@ async def run_synthesis(
         elapsed=_elapsed,
         result_length=len(text),
         synthesizer_role=synthesizer_role,
+        provider_id=str(getattr(provider, "provider_id", "") or ""),
     )
 
     if output_path:
@@ -242,6 +243,7 @@ def _record_trace(
     elapsed: float,
     result_length: int,
     synthesizer_role: str = DEFAULT_SYNTHESIZER_ROLE,
+    provider_id: str = "",
 ) -> None:
     """Record synthesizer call in the active run trace."""
 
@@ -259,6 +261,7 @@ def _record_trace(
     step = AgentStep(
         agent_id="__synthesizer__",
         model=model,
+        provider=provider_id,
         parent_agent=None,
         role=synthesizer_role,
         start_time=start_time,

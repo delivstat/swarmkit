@@ -60,6 +60,17 @@ const CACHED: CachedState = {
 				},
 			],
 		},
+		a2a: {
+			enabled: true,
+			card_url: "/.well-known/agent-card.json",
+			remote_agents: [
+				{
+					id: "ask-oracle",
+					name: "Ask the oracle",
+					card_url: "https://oracle.example.com/.well-known/agent-card.json",
+				},
+			],
+		},
 		providers: ["anthropic"],
 		governance_provider: "mock",
 		health: {},
@@ -171,5 +182,13 @@ describe("InventoryCard", () => {
 		expect(screen.getByText("Role registries")).toBeTruthy();
 		expect(screen.getByText("Funnels")).toBeTruthy();
 		expect(screen.queryByText("Contracts")).toBeNull(); // empty kinds stay hidden
+	});
+
+	it("shows A2A both ways: the instance's card and the remote agents it calls", async () => {
+		mockApi.instanceState.mockResolvedValue(CACHED);
+		renderCard();
+		const a2a = await screen.findByTestId("a2a");
+		expect(a2a.textContent).toContain("serves a card");
+		expect(a2a.textContent).toContain("ask-oracle → oracle.example.com");
 	});
 });

@@ -74,6 +74,7 @@ run_usage = Table(
     Column("conversation_id", Text),
     Column("agent_id", Text, nullable=False),
     Column("model", Text, nullable=False),
+    Column("provider", Text, nullable=False, default="", server_default=""),
     Column("input_tokens", Integer, default=0),
     Column("output_tokens", Integer, default=0),
     Column("cache_read_tokens", Integer, default=0),

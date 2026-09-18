@@ -454,6 +454,7 @@ def _build_agent_node(  # noqa: PLR0915
         _trace_step = AgentStep(
             agent_id=agent_id,
             model=model_name,
+            provider=str(getattr(model_provider, "provider_id", "") or ""),
             parent_agent=current_parent_agent(),
             role=agent.role,
             start_time=_start.timestamp(),
