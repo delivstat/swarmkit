@@ -65,9 +65,14 @@ class MockModelProvider:
         """
         if os.environ.get("SWARMKIT_MOCK_DELEGATE") != "1" or not request.tools:
             return None
-        if any(m.role == "tool" or (isinstance(m.content, list) and any(
-            getattr(b, "type", "") == "tool_result" for b in m.content
-        )) for m in request.messages):
+        if any(
+            m.role == "tool"
+            or (
+                isinstance(m.content, list)
+                and any(getattr(b, "type", "") == "tool_result" for b in m.content)
+            )
+            for m in request.messages
+        ):
             return None  # the children have answered; the default text is the synthesis
         delegates = [t.name for t in request.tools if t.name.startswith("delegate_to_")]
         if not delegates:
