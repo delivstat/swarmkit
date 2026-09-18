@@ -16,7 +16,7 @@ import typer
 
 from ._app import fleet_app
 
-_SCOPES = ("monitor", "manage")
+_SCOPES = ("monitor", "manage", "approve-as")
 
 
 @fleet_app.command("enroll-token")
@@ -58,6 +58,11 @@ def enroll_token(
     typer.echo("# 'Register' (Fleet enrollment) — paste the token there. Works once, then expires.")
     if scope == "manage":
         typer.echo("# NOTE: 'manage' lets the fleet deploy artifacts to this instance.")
+    if scope == "approve-as":
+        typer.echo(
+            "# NOTE: 'approve-as' lets the fleet deploy AND resolve multi-party approvals as the"
+        )
+        typer.echo("# signed-in operator it asserts (their OIDC subject must be a role member).")
 
 
 @fleet_app.command("memberships")

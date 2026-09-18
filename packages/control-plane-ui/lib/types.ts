@@ -251,10 +251,17 @@ export interface ReviewGate {
 	artifact_ref?: string | null;
 }
 
+/** Who a multi-party resolution from this panel counts as on the instance (design 28): the
+ * signed-in operator when the panel can vouch for them, else the enrolment key. */
+export type ResolvesAs =
+	| { kind: "subject"; subject: string }
+	| { kind: "instance-key"; reason: string };
+
 export interface GatesEnvelope {
 	reachable: boolean;
 	reason: "poll-mode" | "unreachable" | null;
 	gates: ReviewGate[];
+	resolves_as?: ResolvesAs;
 }
 
 export type DriftStatus = "ok" | "drift" | "missing";

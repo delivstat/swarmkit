@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
 
@@ -410,6 +411,25 @@ async def fetch_gates(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
     return gates
 
 
+@dataclass(frozen=True)
+class ActorAssertion:
+    """Who is resolving, vouched for by the fleet identity (design 28): the panel's fleet id, the
+    operator's OIDC subject, the unix-seconds issue time and the signature over all three."""
+
+    fleet_id: str
+    subject: str
+    issued_at: int
+    signature: str
+
+    def headers(self) -> dict[str, str]:
+        return {
+            "X-Fleet-Id": self.fleet_id,
+            "X-Fleet-Actor": self.subject,
+            "X-Fleet-Actor-Issued": str(self.issued_at),
+            "X-Fleet-Actor-Signature": self.signature,
+        }
+
+
 class GateRefused(ConnectorError):
     """The instance answered the resolution with a 4xx of its own — the caller is not a member of
     the role, the item is not pending, the verb does not fit the kind. The instance was reached;
@@ -429,12 +449,15 @@ async def resolve_gate(
     *,
     outcome: str = "",
     comment: str = "",
+    actor: ActorAssertion | None = None,
 ) -> dict[str, Any]:
     """Proxy a human decision to the instance's review queue (POST /review/{id}/{action}), where
     action is approve | reject | answer for a harness gate, or resolve for a multi-party
-    role-task (``outcome`` approve | changes-requested | reject, counted against the panel's
-    identity on the instance). Returns the updated item. Raises GateRefused when the instance
-    declined the decision, ConnectorError when it could not be reached."""
+    role-task (``outcome`` approve | changes-requested | reject). A resolution counts against the
+    panel's enrolment identity on the instance — unless *actor* carries a signed assertion of the
+    signed-in operator, which an ``approve-as`` instance counts instead (design 28). Returns the
+    updated item. Raises GateRefused when the instance declined the decision, ConnectorError when
+    it could not be reached."""
     body: dict[str, Any]
     if action == "answer":
         body = {"answer": answer}
@@ -444,7 +467,7 @@ async def resolve_gate(
         body = {"comment": comment} if comment else {}
     path = f"/review/{item_id}/{action}"
     async with ServeClient(endpoint, token_ref) as serve:
-        resp = await serve.post(path, body)
+        resp = await serve.post(path, body, headers=actor.headers() if actor else None)
         # 401 is the panel's token; every other 4xx here is the instance's verdict on the decision —
         # including 403, which is how it says the panel's identity is not a member of the role.
         if 400 <= resp.status_code < 500 and resp.status_code != 401:

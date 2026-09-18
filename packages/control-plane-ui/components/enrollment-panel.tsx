@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import type { Instance, RefreshResult, RegisterResult } from "@/lib/types";
 
-const SCOPES = ["", "monitor", "manage"];
+const SCOPES = ["", "monitor", "manage", "approve-as"];
 
 /**
  * Phase-2 enrollment handshake (design 19), Mode A. The panel registers with the instance using a
@@ -82,7 +82,10 @@ export function EnrollmentPanel({
 					token. The instance owner mints it with{" "}
 					<code>swarmkit fleet enroll-token --scope manage</code> and hands it
 					over. The issued membership credential is stored{" "}
-					<strong>encrypted on the panel</strong> and never shown here.
+					<strong>encrypted on the panel</strong> and never shown here.{" "}
+					<code>approve-as</code> additionally lets this panel resolve
+					multi-party approvals as the signed-in operator (their OIDC subject
+					must be a role member on the instance).
 				</p>
 
 				<div className="flex flex-wrap items-end gap-3">

@@ -83,4 +83,28 @@ describe("GatesDetail — multi-party role-task", () => {
 			"not a member of role engineering-lead",
 		);
 	});
+
+	it("says who a resolution counts as", async () => {
+		mockApi.instanceGates.mockResolvedValue({
+			...ROLE_TASK,
+			resolves_as: { kind: "subject", subject: "alice" },
+		});
+		renderCard();
+		const who = await screen.findByTestId("resolves-as");
+		expect(who.textContent).toContain("Resolving as alice");
+	});
+
+	it("says when it can only act as the enrolment key, and why", async () => {
+		mockApi.instanceGates.mockResolvedValue({
+			...ROLE_TASK,
+			resolves_as: {
+				kind: "instance-key",
+				reason: "no signed-in operator (OIDC) on this panel",
+			},
+		});
+		renderCard();
+		const who = await screen.findByTestId("resolves-as");
+		expect(who.textContent).toContain("enrolment key");
+		expect(who.textContent).toContain("no signed-in operator");
+	});
 });

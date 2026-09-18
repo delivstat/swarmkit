@@ -9,15 +9,19 @@ separately.
 from __future__ import annotations
 
 from swarmkit_runtime.fleet._credentials import (
+    SCOPES,
     Membership,
     Scope,
     fingerprint,
     mint_secret,
+    scope_covers,
     secret_hash,
 )
 from swarmkit_runtime.fleet._factory import create_membership_store
 from swarmkit_runtime.fleet._identity import (
+    ACTOR_ASSERTION_TTL_S,
     FLEET_ID_PREFIX,
+    actor_message,
     deploy_message,
     fleet_id_from_public_key,
     proof_message,
@@ -27,16 +31,20 @@ from swarmkit_runtime.fleet._identity import (
 from swarmkit_runtime.fleet._store import MembershipStore
 
 __all__ = [
+    "ACTOR_ASSERTION_TTL_S",
     "FLEET_ID_PREFIX",
+    "SCOPES",
     "Membership",
     "MembershipStore",
     "Scope",
+    "actor_message",
     "create_membership_store",
     "deploy_message",
     "fingerprint",
     "fleet_id_from_public_key",
     "mint_secret",
     "proof_message",
+    "scope_covers",
     "secret_hash",
     "verify_proof",
     "verify_signature",

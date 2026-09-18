@@ -52,6 +52,7 @@ class ResolveGateFn(Protocol):
         *,
         outcome: str = "",
         comment: str = "",
+        actor: Any = None,
     ) -> Awaitable[dict[str, Any]]: ...
 
 

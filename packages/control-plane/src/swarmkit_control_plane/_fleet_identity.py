@@ -45,6 +45,12 @@ def proof_message(enrollment_token: str, workspace_id: str) -> bytes:
     return f"{enrollment_token}:{workspace_id}".encode()
 
 
+def actor_message(item_id: str, subject: str, issued_at: int) -> bytes:
+    """The bytes the fleet signs to assert who is resolving a review item through it — must match
+    serve's ``actor_message`` (``actor:<item_id>:<subject>:<issued_at>``, design 28)."""
+    return f"actor:{item_id}:{subject}:{issued_at}".encode()
+
+
 def deploy_message(
     kind: str, artifact_id: str, content_hash: str, deploy_seq: int | None = None
 ) -> bytes:
@@ -111,6 +117,12 @@ class FleetIdentity(Store):
         """Sign ``<enrollment_token>:<workspace_id>`` — the base64 proof-of-possession the instance
         verifies against this identity's public key (design 21)."""
         signature = self._private_key.sign(proof_message(enrollment_token, workspace_id))
+        return base64.b64encode(signature).decode("ascii")
+
+    def sign_actor(self, item_id: str, subject: str, issued_at: int) -> str:
+        """Sign ``actor:<item_id>:<subject>:<issued_at>`` — the assertion an ``approve-as``
+        instance verifies before resolving the item as *subject* (design 28)."""
+        signature = self._private_key.sign(actor_message(item_id, subject, issued_at))
         return base64.b64encode(signature).decode("ascii")
 
     def sign_deploy(

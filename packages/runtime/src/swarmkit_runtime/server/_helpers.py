@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,7 +17,13 @@ from fastapi import HTTPException, Request
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.connect import DEPLOY_PLURAL
-from swarmkit_runtime.fleet import deploy_message, verify_signature
+from swarmkit_runtime.fleet import (
+    ACTOR_ASSERTION_TTL_S,
+    actor_message,
+    deploy_message,
+    scope_covers,
+    verify_signature,
+)
 from swarmkit_runtime.triggers._webhook import default_auth_header, validate_webhook_auth
 
 logger = logging.getLogger("swarmkit.server")
@@ -462,6 +469,46 @@ def _verify_signed_deploy(
         )
 
 
+def _asserted_actor(request: Any, item_id: str) -> tuple[str, str] | None:
+    """The person a fleet asserts is resolving *item_id* through it, verified (design 28):
+    ``(subject, fleet_id)``, or None when the request carries no assertion.
+
+    The fleet must hold an ``approve-as`` membership here and a pinned identity; the signature must
+    verify over ``actor_message(item_id, subject, issued_at)``; ``issued_at`` must be within the
+    assertion TTL. Any failure is a 401 naming the reason — an assertion that does not verify must
+    not fall back to the enrolment key, or the panel could never tell the two outcomes apart."""
+    subject = request.headers.get("X-Fleet-Actor", "").strip()
+    if not subject:
+        return None
+    fleet_id = request.headers.get("X-Fleet-Id", "").strip()
+    signature = request.headers.get("X-Fleet-Actor-Signature", "")
+    issued_raw = request.headers.get("X-Fleet-Actor-Issued", "")
+    if not (fleet_id and signature and issued_raw):
+        raise HTTPException(401, "an actor assertion needs X-Fleet-Id, -Signature and -Issued")
+    store = request.app.state.membership_store
+    membership = store.membership_for_fleet(fleet_id)
+    if membership is None:
+        raise HTTPException(401, f"fleet {fleet_id} holds no membership on this instance")
+    if not scope_covers(str(membership.scope), "approve-as"):
+        raise HTTPException(
+            401,
+            f"fleet {fleet_id} is not granted approve-as on this instance "
+            f"(its scope is {membership.scope}); re-register with an approve-as enrollment token",
+        )
+    pinned = store.get_fleet_key(fleet_id)
+    if pinned is None:
+        raise HTTPException(401, f"fleet {fleet_id} has no pinned identity on this instance")
+    try:
+        issued_at = int(issued_raw)
+    except ValueError:
+        raise HTTPException(401, "X-Fleet-Actor-Issued must be unix seconds") from None
+    if abs(int(time.time()) - issued_at) > ACTOR_ASSERTION_TTL_S:
+        raise HTTPException(401, "actor assertion is stale — outside the assertion window")
+    if not verify_signature(pinned, signature, actor_message(item_id, subject, issued_at)):
+        raise HTTPException(401, "invalid fleet actor signature")
+    return subject, fleet_id
+
+
 def _membership_authenticates(request: Any, method: str, path: str) -> bool:  # noqa: PLR0911
     """True if *method*+*path* accepts membership auth (design 19/20) and the request carries a
     valid membership key as a Bearer token. This is the fallback the transport-auth seam consults
@@ -487,7 +534,8 @@ def _membership_authenticates(request: Any, method: str, path: str) -> bool:  # 
     if method.upper() == "POST" and path == "/fleet/state/artifacts":
         return True  # delta-sync body fetch — a read (POST only for the ref list)
     if method.upper() == "PUT" and path.startswith(_MEMBERSHIP_DEPLOY_PREFIXES):
-        return getattr(membership, "scope", None) == "manage"  # deploy is manage-only
+        # deploy needs manage (approve-as implies it)
+        return scope_covers(str(getattr(membership, "scope", "")), "manage")
     if method.upper() == "DELETE" and path.startswith("/fleet/membership/"):
         # A fleet may revoke ONLY its own membership (self-leave) — "membership key or local admin"
         # (design 19). It can't eject another fleet; that stays a serve:admin owner action.

@@ -34,3 +34,12 @@ def test_tier_ranks_agree() -> None:
     for tier in ("read", "run", "admin"):
         assert panel_rank(tier) == connect._tier_rank(tier)
     assert panel_rank("nonsense") == connect._tier_rank("nonsense") == -1
+
+
+def test_membership_scopes_match_runtime() -> None:
+    """The scopes an instance can grant a fleet are one vocabulary on both sides (design 28 added
+    approve-as; the panel's enrolment selector and the runtime's enroll-token must agree)."""
+    from swarmkit_control_plane._verbs import MEMBERSHIP_SCOPES  # noqa: PLC0415
+    from swarmkit_runtime.fleet import SCOPES  # noqa: PLC0415
+
+    assert MEMBERSHIP_SCOPES == SCOPES

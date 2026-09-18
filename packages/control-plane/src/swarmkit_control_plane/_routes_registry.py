@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 
 from swarmkit_control_plane._aggregation import AggregationStore
 from swarmkit_control_plane._artifacts import ArtifactStore
-from swarmkit_control_plane._connector import ConnectorError, GateRefused
+from swarmkit_control_plane._connector import ActorAssertion, ConnectorError, GateRefused
 from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._delta import pull_state
 from swarmkit_control_plane._fleet_identity import FleetIdentity
@@ -227,31 +228,70 @@ def _mount_instance_run_trace(
         return {"reachable": True, "reason": None if trace else "no-trace", "trace": trace}
 
 
+def _resolves_as(request: Request, has_identity: bool, has_membership: bool) -> dict[str, Any]:
+    """Who a resolution from this panel counts as on the instance (design 28): the signed-in
+    operator's subject when the panel can vouch for it (OIDC principal + fleet identity + a
+    membership the instance issued, so it pinned our key), else the enrolment key."""
+    principal = getattr(request.state, "principal", None)
+    subject = getattr(principal, "subject", None)
+    if subject and has_identity and has_membership:
+        return {"kind": "subject", "subject": subject}
+    reason = (
+        "no signed-in operator (OIDC) on this panel"
+        if not subject
+        else "the instance holds no membership for this fleet — register it"
+    )
+    return {"kind": "instance-key", "reason": reason}
+
+
 def _mount_instance_gates(
-    app: FastAPI, registry: SqliteRegistry, gates: GatesFn, resolve: ResolveGateFn
+    app: FastAPI,
+    registry: SqliteRegistry,
+    gates: GatesFn,
+    resolve: ResolveGateFn,
+    identity: FleetIdentity | None = None,
+    cred_store: CredentialStore | None = None,
 ) -> None:
     """Federated harness gates — the fleet operator's view of §6.2 permission + §6.3 input requests
     paused on instances, resolved through the same /review API the CLI + serve UI use. Live-pulled
-    (Mode A / direct); a NAT'd Mode-B instance can't be federated inbound and says so."""
+    (Mode A / direct); a NAT'd Mode-B instance can't be federated inbound and says so.
+
+    A multi-party role-task is resolved as the signed-in operator when the panel can vouch for
+    them — a signed assertion the instance honours under an ``approve-as`` membership (design 28)
+    — else as the enrolment key; ``resolves_as`` on the listing says which before the click."""
+
+    def _has_membership(instance_id: str) -> bool:
+        return cred_store is not None and cred_store.get_metadata(instance_id) is not None
 
     @app.get("/instances/{instance_id}/review")
-    async def instance_gates(instance_id: str) -> dict[str, Any]:
+    async def instance_gates(instance_id: str, request: Request) -> dict[str, Any]:
         inst = registry.get(instance_id)
         if inst is None:
             raise HTTPException(404, "instance not found")
+        resolves_as = _resolves_as(request, identity is not None, _has_membership(instance_id))
         if inst.connection != "direct":
-            return {"reachable": False, "reason": "poll-mode", "gates": []}
+            return {
+                "reachable": False,
+                "reason": "poll-mode",
+                "gates": [],
+                "resolves_as": resolves_as,
+            }
         try:
             fetched = await gates(inst.endpoint, inst.token_ref)
         except ConnectorError as exc:
             registry.update_health(instance_id, health="unreachable")
             _log.warning("gates fetch failed for %s: %s", instance_id, exc)
-            return {"reachable": False, "reason": "unreachable", "gates": []}
-        return {"reachable": True, "reason": None, "gates": fetched}
+            return {
+                "reachable": False,
+                "reason": "unreachable",
+                "gates": [],
+                "resolves_as": resolves_as,
+            }
+        return {"reachable": True, "reason": None, "gates": fetched, "resolves_as": resolves_as}
 
     @app.post("/instances/{instance_id}/review/{item_id}/{action}")
     async def instance_gate_resolve(
-        instance_id: str, item_id: str, action: str, req: GateResolveRequest
+        instance_id: str, item_id: str, action: str, req: GateResolveRequest, request: Request
     ) -> dict[str, Any]:
         if action not in ("approve", "reject", "answer", "resolve"):
             raise HTTPException(400, "action must be approve | reject | answer | resolve")
@@ -262,6 +302,17 @@ def _mount_instance_gates(
             raise HTTPException(404, "instance not found")
         if inst.connection != "direct":
             raise HTTPException(409, "instance is poll-mode (Mode B) — not directly resolvable")
+        actor = None
+        if action == "resolve" and identity is not None:
+            who = _resolves_as(request, True, _has_membership(instance_id))
+            if who["kind"] == "subject":
+                issued_at = int(time.time())
+                actor = ActorAssertion(
+                    fleet_id=identity.fleet_id,
+                    subject=str(who["subject"]),
+                    issued_at=issued_at,
+                    signature=identity.sign_actor(item_id, str(who["subject"]), issued_at),
+                )
         try:
             return await resolve(
                 inst.endpoint,
@@ -271,6 +322,7 @@ def _mount_instance_gates(
                 req.answer,
                 outcome=req.outcome,
                 comment=req.comment,
+                actor=actor,
             )
         except GateRefused as exc:
             # The instance answered; its verdict on the decision is the human's to read.
