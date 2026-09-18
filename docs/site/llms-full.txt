@@ -9610,6 +9610,59 @@ The journal is the durability mechanism; the batch is the backstop.
   returned). One event, named by what came after it on resume.
 - The LangGraph checkpoint: durable as before, so the run still resumes.
 
+### What it looks like
+
+A real run of `test_kill9_recovery.py`'s workspace: `swarmkit run` on a `lead → prepare → build`
+chain whose `build` node is a harness, `kill -9`'d while the harness is running. The audit is read
+back with `swarmkit logs` **before any resume** — the process is gone, nothing flushed at a run
+boundary, yet the trail is there up to the kill:
+
+```
+$ swarmkit run ws change --input "Fix the login bug."
+  # ... SIGKILL delivered while the harness runs ...
+
+$ swarmkit logs ws -n 1
+
+── audit store ──
+  lead                     started  (root)
+  lead                     done     25ms
+  prepare                  started  (worker)
+  prepare                  done     6ms
+  build                    started  (worker)
+  build                    executor.started      # the harness had started — and it is on the record
+```
+
+The last durable line is the harness starting; its `executor.result` is absent because the harness
+never finished. Resuming picks up from the checkpoint and appends to the same trail — the pre-kill
+rows are untouched (append-only), the harness node re-runs (checkpoint recovery), and the run
+completes:
+
+```
+$ swarmkit run ws change --resume
+Resuming from checkpoint: 350c162e-...
+[prepare] done  [lead] done
+
+$ swarmkit logs ws -n 1
+
+── audit store ──
+  lead                     started  (root)
+  lead                     done     25ms
+  prepare                  started  (worker)
+  prepare                  done     6ms
+  build                    started  (worker)
+  build                    executor.started      # attempt 1 — the killed one, still recorded
+  build                    started  (worker)
+  build                    executor.started      # attempt 2 — the resume
+  build                    executor.result
+  prepare                  started  (worker)
+  prepare                  done     11ms
+  lead                     started  (root)
+  lead                     done     4ms
+```
+
+Before 1.239.0 the first `swarmkit logs` printed an empty store: the whole trail lived in memory
+and the SIGKILL took it.
+
 ### Cost
 
 One store write per event instead of one batch per run. Audit volume is a handful of events per
