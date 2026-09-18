@@ -71,3 +71,24 @@ def set_current_run_id(run_id: str | None) -> Token[str | None]:
 def reset_current_run_id(token: Token[str | None]) -> None:
     """Leave a run scope, restoring whatever was in effect before."""
     _current_run_id.reset(token)
+
+
+#: The topology name of the current run, stamped so the write-through audit journal
+#: (audit-event-journal.md) can set `AuditEvent.topology_id` when the event is persisted at record
+#: time — the batch persist used to supply it at run end, which a crashed run never reaches.
+_current_topology: ContextVar[str | None] = ContextVar("swarmkit_current_topology", default=None)
+
+
+def current_topology() -> str | None:
+    """The topology the calling task's run is executing, or None outside a run."""
+    return _current_topology.get()
+
+
+def set_current_topology(name: str | None) -> Token[str | None]:
+    """Enter a topology scope. Pass the returned token to :func:`reset_current_topology`."""
+    return _current_topology.set(name)
+
+
+def reset_current_topology(token: Token[str | None]) -> None:
+    """Leave a topology scope."""
+    _current_topology.reset(token)

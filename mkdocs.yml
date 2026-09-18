@@ -80,6 +80,7 @@ nav:
       - Declarative model providers: design-notes/declarative-model-providers.md
       - Images on both executors (attachments): design-notes/images-on-both-executors.md
       - Storage service: design-notes/storage-service.md
+      - Audit event journal: design-notes/audit-event-journal.md
       - Memory by default: design-notes/memory-by-default.md
     - Executors & harnesses:
       - Declarative adapters plan: design-notes/executor-declarative-adapters-plan.md

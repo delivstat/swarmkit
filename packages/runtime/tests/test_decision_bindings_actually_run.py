@@ -100,8 +100,10 @@ def test_workspace_with_decision_skills_gets_the_skill_backed_provider(
     (ws / "topologies" / "hello.yaml").write_text(_TOPO)
     rt = WorkspaceRuntime.from_workspace_path(ws)
     # On the unfixed code this was the bare MockGovernanceProvider: the binding named a skill the
-    # provider could not run, and answered "pass" for it without running anything.
-    assert isinstance(rt._governance, SkillBackedGovernanceProvider)
+    # provider could not run, and answered "pass" for it without running anything. The write-through
+    # audit journal (audit-event-journal.md) now wraps whatever provider the runtime built, so the
+    # skill-backed provider is one `_base` in.
+    assert isinstance(rt._governance._base, SkillBackedGovernanceProvider)  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
