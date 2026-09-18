@@ -4,6 +4,7 @@ factory import them without an ``_app`` ⇄ routes cycle."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -574,3 +575,37 @@ def _get_runtime(request: Request) -> WorkspaceRuntime:
     if runtime is None:
         raise HTTPException(status_code=503, detail="Workspace not loaded yet")
     return runtime
+
+
+async def swap_runtime(app: Any, new_rt: Any) -> None:
+    """Install a rebuilt runtime the way boot installed the first one — start its MCP servers
+    when serve is configured to, make it current, then close the one it replaces.
+
+    Every reload used to just assign ``app.state.runtime``: the old runtime's servers were never
+    closed (one more set of subprocesses per reload) and the new one's were never started, so the
+    first request to need a tool opened sessions in its own task — which the MCP transport then
+    refused to close from anywhere else. Serialised, so two reloads cannot interleave.
+    """
+    if new_rt is None:
+        return
+    lock = getattr(app.state, "runtime_swap_lock", None)
+    if lock is None:
+        lock = asyncio.Lock()
+        app.state.runtime_swap_lock = lock
+    async with lock:
+        cfg = getattr(app.state, "server_config", None)
+        if cfg is None or getattr(cfg, "mcp_enabled", True):
+            try:
+                await new_rt.start_session()
+            except Exception:
+                logger.warning(
+                    "MCP server start failed after reload; runs will manage per-invocation",
+                    exc_info=True,
+                )
+        old = getattr(app.state, "runtime", None)
+        app.state.runtime = new_rt
+        if old is not None and old is not new_rt:
+            try:
+                await old.close()
+            except Exception:
+                logger.warning("closing the replaced runtime raised", exc_info=True)

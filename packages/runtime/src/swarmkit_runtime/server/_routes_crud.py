@@ -14,14 +14,14 @@ from fastapi import FastAPI, HTTPException, Request
 
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 
-from ._helpers import _get_runtime, _verify_signed_deploy
+from ._helpers import _get_runtime, _verify_signed_deploy, swap_runtime
 from ._services import ArtifactService, ServiceError
 
 
-def _install(request: Request, new_rt: WorkspaceRuntime | None) -> None:
-    """Swap in a rebuilt runtime after a successful CRUD write (no-op when the reload failed)."""
-    if new_rt is not None:
-        request.app.state.runtime = new_rt
+async def _install(request: Request, new_rt: WorkspaceRuntime | None) -> None:
+    """Swap in a rebuilt runtime after a successful CRUD write (no-op when the reload failed):
+    its MCP servers started, the replaced runtime's closed (see ``swap_runtime``)."""
+    await swap_runtime(request.app, new_rt)
 
 
 async def _put(
@@ -44,7 +44,7 @@ async def _put(
     result, new_rt = service.put_yaml(
         kind, artifact_id, yaml_text, dry_run=body.get("dry_run", False), parse_check=parse_check
     )
-    _install(request, new_rt)
+    await _install(request, new_rt)
     return result
 
 
@@ -144,7 +144,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:  # no
         """Create a topology from YAML; validated against the schema before it is written."""
         body = await request.json()
         result, new_rt = service.create_from_yaml("topology", body.get("yaml", ""))
-        _install(request, new_rt)
+        await _install(request, new_rt)
         return result
 
     @app.delete("/api/topologies/{topology_id}")
@@ -154,7 +154,7 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:  # no
             result, new_rt = service.delete("topology", topology_id)
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
-        _install(request, new_rt)
+        await _install(request, new_rt)
         return result
 
     @app.put("/api/skills/{skill_id}")
@@ -180,5 +180,5 @@ def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:  # no
     @app.post("/api/reload")
     async def reload_workspace(request: Request) -> dict[str, Any]:
         """Re-read the workspace from disk and return its validation report."""
-        _install(request, service.reload())
+        await _install(request, service.reload())
         return service.validate_workspace()
