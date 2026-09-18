@@ -64,6 +64,23 @@ def test_merge_reuses_cached_content_and_fills_fetched() -> None:
     assert summary == {"fetched": 2, "reused": 1, "removed": 0}
 
 
+def test_merge_carries_the_file_text_with_the_content() -> None:
+    """An entry's `yaml` (the file as written, design 27) travels with its content — fetched or
+    reused. The merge once rebuilt entries with content only, so every sync after the first
+    dropped the text and a later deploy re-serialised the operator's file."""
+    cached_a = {**_entry("a", "h1", {"v": "old-a"}), "yaml": "v: old-a  # keep\n"}
+    cached = _state([cached_a])
+    manifest = _state([_entry("a", "h1"), _entry("b", "h2")])
+    fetched_b = {**_entry("b", "h2", {"v": "new-b"}), "yaml": "v: new-b  # fresh\n"}
+    fetched = _state([fetched_b])
+
+    full, _ = merge_state(manifest, cached, fetched)
+    by_id = {e["id"]: e for e in full["artifacts"]["topologies"]}
+    assert by_id["a"]["yaml"] == "v: old-a  # keep\n"  # reused with its content
+    assert by_id["b"]["yaml"] == "v: new-b  # fresh\n"  # fetched with its content
+    assert by_id["a"]["content"] == {"v": "old-a"}
+
+
 def test_merge_drops_removed_artifacts_and_counts_them() -> None:
     cached = _state([_entry("a", "h1", {"v": "a"}), _entry("gone", "hx", {"v": "x"})])
     manifest = _state([_entry("a", "h1")])  # 'gone' no longer on the instance
