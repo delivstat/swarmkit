@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.243.0** (2026-09-18) — the compiled graph is cached per topology
 - **v1.242.0** (2026-09-18) — load-test harness and the first published NFR numbers
 - **v1.241.0** (2026-09-18) — swarmkit upgrade, with a breaking-change gate
 - **v1.240.0** (2026-09-18) — A2A federation: a SwarmKit callee hands back its record
