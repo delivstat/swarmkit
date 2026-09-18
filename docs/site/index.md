@@ -208,9 +208,9 @@ swarmkit serve my-swarm           # the portal at http://127.0.0.1:8000
 </figure>
 <figure markdown>
 <video controls preload="none" playsinline poster="sdlc-example/assets/img/funnels-01-overview.png">
-  <source src="sdlc-example/assets/videos/full-tour.mp4" type="video/mp4">
+  <source src="sdlc-example/assets/videos/funnels.mp4" type="video/mp4">
 </video>
-<figcaption>A real delivery workspace: funnels, multi-party approval, contracts, each shown running. <a href="sdlc-example/">The SDLC walkthrough →</a></figcaption>
+<figcaption>A funnel in a real delivery workspace: validate, judge, then a multi-party human approval. <a href="sdlc-example/">The SDLC walkthrough →</a></figcaption>
 </figure>
 </div>
 
