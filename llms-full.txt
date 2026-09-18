@@ -83,10 +83,11 @@ This file is also published on the docs site at <https://delivstat.github.io/swa
 
 **Two tiers.** This `llms.txt` is the compact, link-first map. Its companion **[`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt)** inlines the *full text* of the playbook, all 11 artifact references, and the core design notes into one file — fetch it once and you have the entire corpus, no link-following. Use `llms.txt` to navigate; use `llms-full.txt` when you want everything in context at once.
 
-**Status:** runtime v1.236.0 (1.0.0 was 2026-04-26); `swarmkit-schema`, `swarmkit-webui` and `swarmkit-control-plane` version independently. Phases 1–5 of the implementation plan shipped: the runtime, CLI and `swarmkit serve`; harness executors (M19); the topology canvas (M20); the fleet control plane. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. What SwarmKit is, in one line each: reusable `Funnel` gates (`validate → judge → review → approve`; only humans approve; a gate **defers** the run and `POST /jobs/{id}/resume` continues it), multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit; skills as the one capability primitive (`mcp_tool`, `llm_prompt`, `composed`, `command`, `agent`) with `requires:` ordering enforced at the permission seam; 12 declarative model providers over four wire-format families; MCP with Docker sandboxing, permission tiers and per-tool `effects`; harness executors as declarative `adapter.yaml`; memory on by default (governed + workspace); one storage service (SQLite or Postgres) behind every store; OpenTelemetry, intent-drift detection, audit redaction, circuit breakers; a self-hosted fleet control plane; the `swarmkit-skills` catalogue reachable from `swarmkit skill` and the portal. **11 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace. Recent changes are listed by version in the next section; the [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) has every release.
+**Status:** runtime v1.237.0 (1.0.0 was 2026-04-26); `swarmkit-schema`, `swarmkit-webui` and `swarmkit-control-plane` version independently. Phases 1–5 of the implementation plan shipped: the runtime, CLI and `swarmkit serve`; harness executors (M19); the topology canvas (M20); the fleet control plane. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. What SwarmKit is, in one line each: reusable `Funnel` gates (`validate → judge → review → approve`; only humans approve; a gate **defers** the run and `POST /jobs/{id}/resume` continues it), multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit; skills as the one capability primitive (`mcp_tool`, `llm_prompt`, `composed`, `command`, `agent`) with `requires:` ordering enforced at the permission seam; 12 declarative model providers over four wire-format families; MCP with Docker sandboxing, permission tiers and per-tool `effects`; harness executors as declarative `adapter.yaml`; memory on by default (governed + workspace); one storage service (SQLite or Postgres) behind every store; OpenTelemetry, intent-drift detection, audit redaction, circuit breakers; a self-hosted fleet control plane; the `swarmkit-skills` catalogue reachable from `swarmkit skill` and the portal. **11 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace. Recent changes are listed by version in the next section; the [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) has every release.
 
 ## Recent changes (newest first, by runtime version)
 
+- **1.237.0** — `swarmkit storage status`, `swarmkit system` and `GET /storage` report a store whose configuration cannot be honoured (a postgres backend whose `${VAR}` URL is unset) as an `UNRESOLVED` row plus one sentence per cause, exit 2, and `system` still prints the environment section — instead of a traceback from the diagnostic command. A run still refuses.
 - **1.236.0** — a workspace reload (`POST /reload`, a portal edit, `skill add` over HTTP) hands MCP sessions to one owner task and swaps the runtime under a lock: the new runtime's servers start before the old one's close, and a reload with `mcp_servers` configured no longer takes serve down. The portal's **Skills → Library** tab (webui 0.24.0) is the catalogue with a search box: Add shows both fragments before writing, a `SKILL.md` pastes in, Check runs from a button.
 - **1.235.0** — `swarmkit skill` (`design/details/skill-registry.md`): `search`/`list --available` over the `swarmkit-skills` catalogue (verified nightly; cached a day; `SWARMKIT_SKILLS_CATALOGUE` points at a checkout or mirror); `add <skill|bundle|file>` writes the skill file and the `mcp_servers` entry after showing both (`--dry-run`, `--yes`; comment-preserving, rolled back if the workspace would not load, idempotent); `import <SKILL.md>` converts an Agent Skills file to an `llm_prompt` skill; `check` starts each `mcp_tool` skill's server and confirms the tool exists; `remove` refuses while an agent or archetype holds the skill. Same over HTTP at `/api/skill-catalogue` and `/api/skills/{add,import,check}`. A skill declares the runtime floor it needs (`provenance.requires_runtime`) and is refused, naming the version, when it is not met.
 - **1.234.0** (control-plane 0.50.0, fleet UI 0.14.0) — `swarmkit connect --join-code` saves its credential (`~/.swarmkit/connect/<pair>.json`, 0600) and a later start with no flags resumes; `/usage` `by_model` carries the `provider` that billed each model; the panel refuses a command whose args the connector could not address (400 naming them); `/fleet/state` carries `a2a` and the fleet inventory shows it.
@@ -4060,6 +4061,29 @@ shown on the web UI's **System** page — the answer to "why is this screen empt
 from the screen that is empty.
 
 Passwords are masked everywhere. This output goes to terminal scrollback, log files and CI capture.
+
+A store whose configuration cannot be honoured — the usual case is `backend: postgres` with
+`url: ${SWARMKIT_STORE_URL}` in a shell where that variable is not set — is a row, not a crash
+(1.237.0; before that `swarmkit system` died with a traceback on exactly the workspace it was
+meant to diagnose). Stores that inherit one block share one line, and the command exits 2:
+
+```
+  store        backend   location  (source)
+  runtime      postgres  UNRESOLVED  (storage.runtime — see below)
+  audit        postgres  UNRESOLVED  (storage.runtime — see below)
+  checkpoints  sqlite    workspace-local  (default)
+  …
+
+  ! runtime, audit, artifacts, memory, fleet: storage backend 'postgres' (from storage.runtime)
+    has no URL. Set one of: storage.runtime.url, SWARMKIT_STORE_URL. (If the value is '${VAR}',
+    that variable is not in swarmkit's environment — a `source .env` sets a shell variable that child processes never see unless it is exported: `set -a; source .env; set +a`.) Refusing to fall back to sqlite …
+```
+
+`swarmkit system` prints the same rows and then carries on to the **environment** section, which
+is where the answer usually is. If you upgraded from before 1.130.0 and this is the first time you
+have seen it: that version silently ignored the setting and wrote to SQLite, so check
+`.swarmkit/*.sqlite` for rows before assuming the Postgres database is the history — `swarmkit
+storage migrate` copies them over.
 
 ## It fails rather than degrades
 

@@ -80,7 +80,20 @@ def reset_storage_cache() -> None:
 
 
 class StorageConfigError(RuntimeError):
-    """The storage config names something that cannot be honoured."""
+    """The storage config names something that cannot be honoured.
+
+    ``kind``/``backend``/``source`` are set when the error is about one store, so a report can
+    say which store and group the stores that share one cause (five stores inheriting one
+    ``storage.runtime`` block with an unset URL are one problem, not five).
+    """
+
+    def __init__(
+        self, message: str, *, kind: str = "", backend: str = "", source: str = ""
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.backend = backend
+        self.source = source
 
 
 class StoreKind(StrEnum):
@@ -268,7 +281,10 @@ class StorageService:
         if backend != "postgres":
             raise StorageConfigError(
                 f"storage backend {backend!r} for {kind.value} (from {source}) is not supported. "
-                "Use 'sqlite' or 'postgres'."
+                "Use 'sqlite' or 'postgres'.",
+                kind=kind.value,
+                backend=backend,
+                source=source,
             )
         if not url:
             settings = dict.fromkeys(
@@ -276,9 +292,14 @@ class StorageService:
             )
             raise StorageConfigError(
                 f"storage backend 'postgres' for {kind.value} (from {source}) has no URL. Set one "
-                f"of: {', '.join(settings)}. (If the value is '${{VAR}}', that variable is unset.) "
+                f"of: {', '.join(settings)}. (If the value is '${{VAR}}', that variable is not in "
+                "swarmkit's environment — a `source .env` sets a shell variable that child "
+                "processes never see unless it is exported: `set -a; source .env; set +a`.) "
                 "Refusing to fall back to sqlite: the run would write to a different database "
-                "than the one configured."
+                "than the one configured.",
+                kind=kind.value,
+                backend=backend,
+                source=source,
             )
         if kind is StoreKind.CHECKPOINTS and not _postgres_checkpointer_available():
             # Degrade, loudly — the one place that is right, and only here.
@@ -429,7 +450,16 @@ class StorageService:
         empty one rather than a misrouted one."""
         lines = []
         for kind in StoreKind:
-            t = self.target(kind)
+            try:
+                t = self.target(kind)
+            except StorageConfigError as exc:
+                # A diagnostic that dies on the misconfiguration it exists to show is no
+                # diagnostic. The row names the store; `problems()` carries the sentence.
+                lines.append(
+                    f"  {kind.value:<12} {exc.backend or '?':<9} UNRESOLVED  "
+                    f"({exc.source or '?'} — see below)"
+                )
+                continue
             where = redacted_url(t.url) if t.backend == "postgres" else "workspace-local"
             backend, source = t.backend, t.source
             # Report what was actually BUILT when that differs from what was configured — the
@@ -440,6 +470,28 @@ class StorageService:
                 source = f"{t.source} → memory (langgraph-checkpoint-sqlite not installed)"
             lines.append(f"  {kind.value:<12} {backend:<9} {where}  ({source})")
         return lines
+
+    def problems(self) -> list[str]:
+        """Every store whose configuration cannot be honoured, one sentence each.
+
+        `report()` renders these as UNRESOLVED rows; a command that shows the report exits
+        non-zero when this is non-empty. Resolving a store is what raises for a RUN — this
+        collects the same errors without raising, so `swarmkit system` can still print the
+        environment section, which is usually where the answer is (the variable is unset).
+        """
+        grouped: dict[tuple[str, str], list[str]] = {}
+        for kind in StoreKind:
+            try:
+                self.target(kind)
+            except StorageConfigError as exc:
+                # Stores inheriting one block share one cause; the message is the same sentence
+                # with the store name swapped, so key on the sentence with the name removed.
+                text = str(exc).replace(f" for {kind.value} ", " ")
+                text = text.replace(
+                    f"storage.{kind.value}.url, storage.runtime.url", "storage.runtime.url"
+                )
+                grouped.setdefault((exc.source, text), []).append(kind.value)
+        return [f"{', '.join(kinds)}: {text}" for (_, text), kinds in grouped.items()]
 
     def log_report(self) -> None:
         logger.info("storage:\n%s", "\n".join(self.report()))
@@ -454,7 +506,10 @@ class StorageService:
         """
         out: list[str] = []
         for kind in StoreKind:
-            target = self.target(kind)
+            try:
+                target = self.target(kind)
+            except StorageConfigError:
+                continue  # reported by problems()
             if target.backend != "postgres":
                 continue
             local = self._root / ".swarmkit" / _SQLITE_FILE[kind]

@@ -115,6 +115,29 @@ from the screen that is empty.
 
 Passwords are masked everywhere. This output goes to terminal scrollback, log files and CI capture.
 
+A store whose configuration cannot be honoured — the usual case is `backend: postgres` with
+`url: ${SWARMKIT_STORE_URL}` in a shell where that variable is not set — is a row, not a crash
+(1.237.0; before that `swarmkit system` died with a traceback on exactly the workspace it was
+meant to diagnose). Stores that inherit one block share one line, and the command exits 2:
+
+```
+  store        backend   location  (source)
+  runtime      postgres  UNRESOLVED  (storage.runtime — see below)
+  audit        postgres  UNRESOLVED  (storage.runtime — see below)
+  checkpoints  sqlite    workspace-local  (default)
+  …
+
+  ! runtime, audit, artifacts, memory, fleet: storage backend 'postgres' (from storage.runtime)
+    has no URL. Set one of: storage.runtime.url, SWARMKIT_STORE_URL. (If the value is '${VAR}',
+    that variable is not in swarmkit's environment — a `source .env` sets a shell variable that child processes never see unless it is exported: `set -a; source .env; set +a`.) Refusing to fall back to sqlite …
+```
+
+`swarmkit system` prints the same rows and then carries on to the **environment** section, which
+is where the answer usually is. If you upgraded from before 1.130.0 and this is the first time you
+have seen it: that version silently ignored the setting and wrote to SQLite, so check
+`.swarmkit/*.sqlite` for rows before assuming the Postgres database is the history — `swarmkit
+storage migrate` copies them over.
+
 ## It fails rather than degrades
 
 A backend that cannot be honoured raises at startup:

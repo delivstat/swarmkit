@@ -22,7 +22,7 @@ invariant that stops an advisory layer deciding — so a gate that runs needs an
 there is nothing to park a human in: `resolve_multiparty` would poll the review queue inside the
 agent's coroutine for up to seven days (`_DEFAULT_MAX_WAIT_SECONDS`), hold the model session, and
 lose the wait on a serve restart. A `swarmkit run` from a terminal could not approve at all. Human
-approval on the pipeline path is the stage-level `gate:`, which parks the saga durably.
+approval defers the run when a review queue and role registry exist, and is advisory otherwise.
 
 So the in-node approver records and passes, and every run says so in the audit log. It is stated
 there rather than in a warning because `approve` is a REQUIRED property of the Funnel schema — every
@@ -380,7 +380,10 @@ async def test_the_compile_notice_names_the_funnel_and_the_remedy(
         _runtime(root, _Governance(), [CONFORMING]).compile("design")
 
     assert "spec-review" in caplog.text
-    assert "stage-level `gate:`" in caplog.text
+    # A bare compile has no review queue, so the approve layer is advisory — and the notice says
+    # what would make it a real gate, not (as it once did) that a pipeline stage owns approval.
+    assert "advisory in this run" in caplog.text
+    assert "saga" not in caplog.text and "pipeline" not in caplog.text
 
 
 # ---- an unusable schema does not take the funnel down --------------------------------------------

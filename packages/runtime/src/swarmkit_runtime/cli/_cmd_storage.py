@@ -54,16 +54,16 @@ def storage_status(
     root = workspace.resolve()
     try:
         service = storage_for_workspace(root)
-        lines = service.report()
-    except StorageConfigError as exc:
+    except StorageConfigError as exc:  # the block itself does not parse
         typer.echo(f"storage config error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
 
     typer.echo(f"storage for {root}:")
     typer.echo("")
     typer.echo(f"  {'store':<12} {'backend':<9} {'location'}  (source)")
-    for line in lines:
+    for line in service.report():
         typer.echo(line)
+    problems = _echo_problems(service.problems())
 
     warnings = service.split_warnings()
     if warnings:
@@ -72,6 +72,17 @@ def storage_status(
             typer.echo(f"  ! {line}")
         typer.echo("")
         typer.echo("  Copy the local rows over with:  swarmkit storage migrate <workspace>")
+    if problems:
+        raise typer.Exit(code=2)
+
+
+def _echo_problems(problems: list[str]) -> list[str]:
+    """Print each unresolved store under the table. The rows say WHICH store; this says WHY."""
+    if problems:
+        typer.echo("")
+        for text in problems:
+            typer.echo(f"  ! {text}")
+    return problems
 
 
 @storage_app.command("migrate")
@@ -373,8 +384,11 @@ def system_info(
 
     typer.echo("\nstorage:")
     typer.echo(f"  {'store':<12} {'backend':<9} {'location'}  (source)")
-    for line in storage_for_workspace(root).report():
+    storage = storage_for_workspace(root)
+    for line in storage.report():
         typer.echo(line)
+    # Keep going: the environment section below is where "the variable is unset" shows.
+    problems = _echo_problems(storage.problems())
 
     properties = workspace_properties(root)
     typer.echo("\nworkspace properties (workspace.env.yaml):")
@@ -394,6 +408,8 @@ def system_info(
         typer.echo("  (none of the known variables are set)")
     if not all_vars:
         typer.echo("\n  --all also lists the variables that are not set, with what each does.")
+    if problems:
+        raise typer.Exit(code=2)
 
 
 def _pkg_version(name: str) -> str:

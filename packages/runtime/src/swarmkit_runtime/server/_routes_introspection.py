@@ -260,12 +260,26 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
         service = getattr(request.app.state, "storage", None)
         if service is None:  # pragma: no cover - lifespan always sets it
             return {"stores": [], "warnings": ["storage service unavailable"]}
-        from swarmkit_runtime.persistence import StoreKind  # noqa: PLC0415
+        from swarmkit_runtime.persistence import (  # noqa: PLC0415
+            StorageConfigError,
+            StoreKind,
+        )
         from swarmkit_runtime.persistence._store import redacted_url  # noqa: PLC0415
 
         stores = []
         for kind in StoreKind:
-            target = service.target(kind)
+            try:
+                target = service.target(kind)
+            except StorageConfigError as exc:
+                stores.append(
+                    {
+                        "store": kind.value,
+                        "backend": exc.backend or "?",
+                        "location": "UNRESOLVED",
+                        "source": exc.source or "?",
+                    }
+                )
+                continue
             stores.append(
                 {
                     "store": kind.value,
@@ -278,7 +292,11 @@ def _register_introspection_routes(app: FastAPI) -> None:  # noqa: PLR0915
                     "source": target.source,
                 }
             )
-        return {"stores": stores, "warnings": service.split_warnings()}
+        return {
+            "stores": stores,
+            "warnings": service.split_warnings(),
+            "problems": service.problems(),
+        }
 
     @app.get("/system")
     async def system(request: Request) -> dict[str, Any]:
