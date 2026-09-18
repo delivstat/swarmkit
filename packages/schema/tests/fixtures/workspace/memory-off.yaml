@@ -1,0 +1,8 @@
+# The opt-out: no reader, no writer, no governed store.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: forgetful-workspace
+  name: Forgetful Workspace
+memory:
+  enabled: false

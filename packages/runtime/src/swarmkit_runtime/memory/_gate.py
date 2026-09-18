@@ -14,6 +14,7 @@ import logging
 from typing import Any
 
 from swarmkit_runtime.governance import DecisionSkillBinding, DecisionSkillResult
+from swarmkit_runtime.memory._defaults import WRITER_DEFAULTS
 from swarmkit_runtime.memory._hooks import extract_and_save, retrieve_context
 from swarmkit_runtime.model_providers._registry import ModelProviderProtocol
 
@@ -281,8 +282,8 @@ async def _gbrain_extract_and_save(
     """Extract insights and save to GBrain memory."""
     import json  # noqa: PLC0415
 
-    cfg = config or {}
-    min_output_length = cfg.get("min_output_length", 50)
+    cfg = {**WRITER_DEFAULTS, **(config or {})}
+    min_output_length = cfg["min_output_length"]
 
     if len(agent_output) < min_output_length:
         return None

@@ -29,6 +29,7 @@ _WS = """apiVersion: swarmkit/v1
 kind: Workspace
 metadata: {id: governed, name: Governed}
 governance: {provider: mock}
+memory: {enabled: false}   # the test reads the mock provider's events directly
 mcp_servers:
   - id: fs
     transport: stdio

@@ -60,6 +60,12 @@ describe("observability endpoints", () => {
 
 	const urlOf = (m: ReturnType<typeof vi.fn>) => m.mock.calls[0]?.[0] as string;
 
+	it("memoryConfig reads the effective memory block", async () => {
+		const fetchMock = stubFetch(200);
+		await api.memoryConfig();
+		expect(urlOf(fetchMock)).toContain("/memory/config");
+	});
+
 	it("runTrace hits the per-run trace path", async () => {
 		const fetchMock = stubFetch(200);
 		await api.runTrace("job-1");

@@ -29,6 +29,57 @@
     "governance": {
       "$ref": "#/$defs/governance"
     },
+    "memory": {
+      "type": "object",
+      "description": "Workspace memory (design/details/memory-by-default.md). Absent means enabled with defaults: memory-reader runs before every agent and memory-writer after, and the governed-memory / memory-reconcile skills are bundled so curated memory exists. A memory-reader or memory-writer bound explicitly under governance.decision_skills is used as written. enabled: false switches off everything automatic (no auto-bindings, no bundled skills); what the workspace wires explicitly still works, and an explicit memory-reader/-writer binding next to enabled: false is a resolution error.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether memory is on by default. false: no automatic reader/writer bindings and no bundled memory skills."
+        },
+        "reader": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Config for the auto-bound memory-reader (ignored when memory-reader is bound explicitly).",
+          "properties": {
+            "max_results": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 5
+            },
+            "similarity_threshold": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.15
+            },
+            "search_scope": {
+              "type": "string",
+              "enum": [
+                "user",
+                "all",
+                "both"
+              ],
+              "default": "all"
+            }
+          }
+        },
+        "writer": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Config for the auto-bound memory-writer (ignored when memory-writer is bound explicitly). One model call per run whose output clears min_output_length.",
+          "properties": {
+            "min_output_length": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 100
+            }
+          }
+        }
+      }
+    },
     "identity": {
       "$ref": "#/$defs/identity"
     },
@@ -785,7 +836,7 @@
         "a2a": {
           "type": "object",
           "additionalProperties": false,
-          "description": "A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at /.well-known/agent-card.json with one skill per topology and answers the A2A task API at /a2a — a transport onto the same jobs, gates and audit as POST /run. See design/details/a2a-interop.md.",
+          "description": "A2A (Agent2Agent) server. When enabled, `swarmkit serve` publishes an Agent Card at /.well-known/agent-card.json with one skill per topology and answers the A2A task API at /a2a \u2014 a transport onto the same jobs, gates and audit as POST /run. See design/details/a2a-interop.md.",
           "properties": {
             "enabled": {
               "type": "boolean",

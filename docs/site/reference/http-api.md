@@ -1,6 +1,6 @@
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 95 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 96 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -60,6 +60,7 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 |---|---|---|
 | `GET` | `/memory` | Search governed memory by text, optionally narrowed to one type. |
 | `POST` | `/memory` | Write a fact through the same governed path an agent writes through. |
+| `GET` | `/memory/config` | The effective `memory` block (design/details/memory-by-default.md): whether memory is |
 | `GET` | `/memory/item` | One memory item by id, with its history. |
 | `GET` | `/memory/quarantine` | Memory writes held for a human because they contradict what is stored. |
 | `POST` | `/memory/quarantine/{quarantine_id}/resolve` | Resolve a quarantined memory write: accept it, reject it, or keep both. |

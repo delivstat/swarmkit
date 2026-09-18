@@ -21,6 +21,7 @@ from swarmkit_runtime.governance._skill_backed import SkillBackedGovernanceProvi
 _WS_POST = """apiVersion: swarmkit/v1
 kind: Workspace
 metadata: {id: gated, name: Gated}
+memory: {enabled: false}   # these tests assert the exact bindings that ran
 governance:
   provider: mock
   decision_skills:
@@ -48,6 +49,7 @@ agents:
 _WS = """apiVersion: swarmkit/v1
 kind: Workspace
 metadata: {id: gated, name: Gated}
+memory: {enabled: false}
 governance:
   provider: mock
   decision_skills:

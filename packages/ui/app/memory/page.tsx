@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { buildMemoryTree, groupByType, memoryKey } from "@/lib/memory-tree";
 import type {
 	MemoryChange,
+	MemoryConfig,
 	MemoryItem,
 	MemoryQuarantineItem,
 } from "@/lib/types";
@@ -18,15 +19,54 @@ import type {
 /** Governed memory (design/details/governed-memory.md) — read-only browse + the curator's quarantine
  * review. The same store + JSON as `swarmkit memory` and the /memory endpoints. Memory is never
  * edited here (agents write it through the governed path); the one write is resolving a contradiction. */
+function MemoryConfigLine() {
+	const [cfg, setCfg] = useState<MemoryConfig | null>(null);
+	useEffect(() => {
+		api
+			.memoryConfig()
+			.then(setCfg)
+			.catch(() => setCfg(null));
+	}, []);
+	if (!cfg) return null;
+	if (!cfg.enabled) {
+		return (
+			<p
+				className="mb-4 text-sm text-muted-foreground"
+				data-testid="memory-config"
+			>
+				Memory is <strong>off</strong> for this workspace (
+				<code>memory.enabled: false</code>); nothing is read before a run or
+				written after one.
+			</p>
+		);
+	}
+	const own = cfg.explicit.length
+		? ` (${cfg.explicit.join(", ")} bound by the workspace)`
+		: "";
+	return (
+		<p
+			className="mb-4 text-sm text-muted-foreground"
+			data-testid="memory-config"
+		>
+			Memory is <strong>on</strong> — reader: top {cfg.reader.max_results} ≥{" "}
+			{cfg.reader.similarity_threshold}, scope{" "}
+			<code>{cfg.reader.search_scope}</code>; writer: answers ≥{" "}
+			{cfg.writer.min_output_length} chars{own}. Set in{" "}
+			<code>workspace.yaml</code> under <code>memory</code>.
+		</p>
+	);
+}
+
 export default function MemoryPage() {
 	return (
 		<div>
 			<h2 className="mb-1 text-xl font-bold">Governed memory</h2>
-			<p className="mb-4 text-sm text-muted-foreground">
+			<p className="mb-1 text-sm text-muted-foreground">
 				Facts that evolve in place over time. Browse the current state and each
 				fact&apos;s timeline, and resolve contradictions parked for the curator.
 				Read-only — the same data as <code>swarmkit memory</code>.
 			</p>
+			<MemoryConfigLine />
 			<Tabs defaultValue="browse">
 				<TabsList className="mb-4">
 					<TabsTrigger value="browse">Browse</TabsTrigger>

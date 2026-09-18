@@ -50,6 +50,16 @@ def _store(request: Request) -> Any:
 
 
 def _register_memory_routes(app: FastAPI) -> None:
+    @app.get("/memory/config")
+    def memory_config(request: Request) -> dict[str, Any]:
+        """The effective `memory` block (design/details/memory-by-default.md): whether memory is
+        on, the reader/writer settings in force, and which bindings the workspace wrote itself.
+        Read-only — the block sits beside `governance` and is edited in workspace.yaml."""
+        rt = _get_runtime(request)
+        cfg = dict(getattr(rt.workspace, "memory", {}) or {})
+        cfg["governed_store"] = rt.governed_memory is not None
+        return cfg
+
     @app.get("/memory")
     def search_memory(
         request: Request, query: str = "", type: str | None = None, limit: int = 20

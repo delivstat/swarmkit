@@ -1,0 +1,9 @@
+# search_scope is user | all | both; anything else is refused by the schema.
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: bad-memory
+  name: Bad Memory
+memory:
+  reader:
+    search_scope: everything

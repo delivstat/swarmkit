@@ -143,7 +143,7 @@ agents:
 ```
 
 Around it, unchanged from the levels that introduced them: the workspace's `content-filter`
-(`pre_input`) and `quality-check` (`post_output`) bindings, `memory-reader` / `memory-writer`,
+(`pre_input`) and `quality-check` (`post_output`) bindings, memory on by default (`memory-reader` / `memory-writer`),
 `governance.limits` circuit breakers, the `knowledge-search` and `docs-reader` servers, API-key
 auth with `max_concurrent: 2` and a 20-minute job cap, the canary route on `hello`, and the
 webhook trigger below.

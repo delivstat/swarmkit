@@ -24,11 +24,21 @@ export interface SwarmKitWorkspace {
      * How the runtime behaves when a gate is satisfied. See
      * design/details/extracting-the-channels.md.
      */
-    gates?:           Gates;
-    governance?:      Governance;
-    identity?:        SwarmKitWorkspaceIdentity;
-    kind:             Kind;
-    mcp_servers?:     MCPServerElement[];
+    gates?:       Gates;
+    governance?:  Governance;
+    identity?:    SwarmKitWorkspaceIdentity;
+    kind:         Kind;
+    mcp_servers?: MCPServerElement[];
+    /**
+     * Workspace memory (design/details/memory-by-default.md). Absent means enabled with
+     * defaults: memory-reader runs before every agent and memory-writer after, and the
+     * governed-memory / memory-reconcile skills are bundled so curated memory exists. A
+     * memory-reader or memory-writer bound explicitly under governance.decision_skills is used
+     * as written. enabled: false switches off everything automatic (no auto-bindings, no
+     * bundled skills); what the workspace wires explicitly still works, and an explicit
+     * memory-reader/-writer binding next to enabled: false is a resolution error.
+     */
+    memory?:          Memory;
     metadata:         Metadata;
     model_providers?: ModelProviderElement[];
     organisation?:    Organisation;
@@ -446,6 +456,51 @@ export interface MCPServerElement {
 }
 
 export type Transport = "stdio" | "http";
+
+/**
+ * Workspace memory (design/details/memory-by-default.md). Absent means enabled with
+ * defaults: memory-reader runs before every agent and memory-writer after, and the
+ * governed-memory / memory-reconcile skills are bundled so curated memory exists. A
+ * memory-reader or memory-writer bound explicitly under governance.decision_skills is used
+ * as written. enabled: false switches off everything automatic (no auto-bindings, no
+ * bundled skills); what the workspace wires explicitly still works, and an explicit
+ * memory-reader/-writer binding next to enabled: false is a resolution error.
+ */
+export interface Memory {
+    /**
+     * Whether memory is on by default. false: no automatic reader/writer bindings and no
+     * bundled memory skills.
+     */
+    enabled?: boolean;
+    /**
+     * Config for the auto-bound memory-reader (ignored when memory-reader is bound explicitly).
+     */
+    reader?: Reader;
+    /**
+     * Config for the auto-bound memory-writer (ignored when memory-writer is bound explicitly).
+     * One model call per run whose output clears min_output_length.
+     */
+    writer?: Writer;
+}
+
+/**
+ * Config for the auto-bound memory-reader (ignored when memory-reader is bound explicitly).
+ */
+export interface Reader {
+    max_results?:          number;
+    search_scope?:         SearchScope;
+    similarity_threshold?: number;
+}
+
+export type SearchScope = "user" | "all" | "both";
+
+/**
+ * Config for the auto-bound memory-writer (ignored when memory-writer is bound explicitly).
+ * One model call per run whose output clears min_output_length.
+ */
+export interface Writer {
+    min_output_length?: number;
+}
 
 export interface Metadata {
     /**

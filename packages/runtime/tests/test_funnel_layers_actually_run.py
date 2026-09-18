@@ -99,6 +99,9 @@ def _workspace(tmp_path: Path, funnel: dict[str, Any]) -> Path:
                 "apiVersion": "swarmkit/v1",
                 "kind": "Workspace",
                 "metadata": {"id": "gated", "name": "gated"},
+                # These tests assert the exact bindings that ran; memory-by-default's own two
+                # would be noise here.
+                "memory": {"enabled": False},
             }
         )
     )

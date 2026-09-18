@@ -24,6 +24,14 @@ from swarmkit_runtime.mcp._gateway import (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EXAMPLE_WS = REPO_ROOT / "examples" / "hello-swarm" / "workspace"
 
+
+def _memory_off(ws: Path) -> None:
+    """These tests read the mock governance provider's events directly; a bound decision skill
+    wraps the provider, so memory-by-default's own bindings are switched off here."""
+    p = ws / "workspace.yaml"
+    p.write_text(p.read_text() + "\nmemory: {enabled: false}\n")
+
+
 _SKILL = """apiVersion: swarmkit/v1
 kind: Skill
 metadata:
@@ -50,6 +58,7 @@ def _mock(monkeypatch: pytest.MonkeyPatch) -> None:
 def _rt(tmp_path: Path, impl: str) -> WorkspaceRuntime:
     ws = tmp_path / "ws"
     shutil.copytree(EXAMPLE_WS, ws, ignore=shutil.ignore_patterns(".swarmkit"))
+    _memory_off(ws)
     (ws / "skills" / "ask-hello.yaml").write_text(_SKILL.format(id="ask-hello", impl=impl))
     return WorkspaceRuntime.from_workspace_path(ws)
 
@@ -139,6 +148,7 @@ def test_harness_task_spec_grants_agent_tools(tmp_path: Path) -> None:
 
     ws = tmp_path / "ws"
     shutil.copytree(EXAMPLE_WS, ws, ignore=shutil.ignore_patterns(".swarmkit"))
+    _memory_off(ws)
     (ws / "skills" / "ask-hello.yaml").write_text(
         _SKILL.format(id="ask-hello", impl="  topology: hello")
     )

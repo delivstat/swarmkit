@@ -148,6 +148,10 @@ class ResolvedWorkspace:
     # Integration contracts (id -> ResolvedContract). A StageGraph's stage `locks` reference these;
     # the orchestrator's lock manager serialises requirements on them.
     contracts: Mapping[str, ResolvedContract] = field(default_factory=dict)
+    # The effective `memory` block, defaults applied (design/details/memory-by-default.md):
+    # {enabled, reader, writer, explicit}. What `swarmkit validate`, /memory/status and the
+    # portal's Memory page report.
+    memory: Mapping[str, Any] = field(default_factory=dict)
 
 
 __all__ = [
