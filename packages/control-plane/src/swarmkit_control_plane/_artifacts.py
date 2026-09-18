@@ -22,7 +22,12 @@ from sqlalchemy import func, select
 from sqlalchemy.engine import Connection, RowMapping
 
 from swarmkit_control_plane._store_base import Store, upsert
-from swarmkit_control_plane._tables import artifact_versions, deployments, reported_artifacts
+from swarmkit_control_plane._tables import (
+    artifact_sources,
+    artifact_versions,
+    deployments,
+    reported_artifacts,
+)
 
 KINDS = ("topology", "skill", "archetype", "workspace", "trigger")
 
@@ -49,8 +54,11 @@ class ArtifactStore(Store):
         authored_by: str = "",
         schema_version: str = "",
         version: str | None = None,
+        source: str | None = None,
     ) -> dict[str, Any]:
-        """Register a version. Idempotent: identical content to the latest returns that version."""
+        """Register a version. Idempotent: identical content to the latest returns that version.
+        ``source`` is the file text the content was parsed from, kept for a text-preserving deploy;
+        it is recorded for a new version and for an idempotent hit that has none yet."""
         chash = content_hash(content)
         now = datetime.now(UTC).isoformat()
         with self._lock, self._engine.begin() as conn:
@@ -68,6 +76,8 @@ class ArtifactStore(Store):
                 .all()
             )
             if rows and rows[0]["content_hash"] == chash:
+                if source:
+                    self._put_source(conn, kind, id, rows[0]["version"], source)
                 return self._get_version(conn, kind, id, rows[0]["version"])  # no-op
             seq = (rows[0]["seq"] + 1) if rows else 1
             ver = version or f"v{seq}"
@@ -84,7 +94,32 @@ class ArtifactStore(Store):
                     seq=seq,
                 )
             )
+            if source:
+                self._put_source(conn, kind, id, ver, source)
             return self._get_version(conn, kind, id, ver)
+
+    def _put_source(self, conn: Connection, kind: str, id: str, version: str, source: str) -> None:
+        conn.execute(
+            upsert(
+                self._engine,
+                artifact_sources,
+                {"kind": kind, "id": id, "version": version, "source": source},
+                index_elements=["kind", "id", "version"],
+                set_={"source": source},
+            )
+        )
+
+    def get_source(self, kind: str, id: str, version: str) -> str | None:
+        """The file text a version was adopted from, or None for a version registered as content."""
+        with self._lock, self._engine.connect() as conn:
+            row = conn.execute(
+                select(artifact_sources.c.source).where(
+                    artifact_sources.c.kind == kind,
+                    artifact_sources.c.id == id,
+                    artifact_sources.c.version == version,
+                )
+            ).first()
+        return None if row is None else str(row[0])
 
     def _get_version(self, conn: Connection, kind: str, id: str, version: str) -> dict[str, Any]:
         row = (
@@ -297,13 +332,15 @@ class ArtifactStore(Store):
                     .mappings()
                     .first()
                 )
+                # Content is the comparison: the registry names a version `v1` and the instance
+                # names its file `0.3.0`, so version labels never agree — the hash does, and a
+                # sync (or a connector report) supplies it. Labels are the fallback when there is
+                # no hash on either side.
                 if got is None:
                     status = "missing"  # intended but the instance hasn't reported it
-                elif got["version"] == d["version"] and (
-                    not want
-                    or not got["content_hash"]
-                    or got["content_hash"] == want["content_hash"]
-                ):
+                elif want and got["content_hash"] and want["content_hash"]:
+                    status = "ok" if got["content_hash"] == want["content_hash"] else "drift"
+                elif got["version"] == d["version"]:
                     status = "ok"
                 else:
                     status = "drift"

@@ -274,6 +274,9 @@ class DeployService:
             raise ConflictError(f"schema-incompatible deploy: {reason}")
 
         content = ver["content"]
+        # The adopted file's text, when the version has one: the instance writes it verbatim (after
+        # checking it parses to the signed content), so the deploy keeps comments and layout.
+        source = self._artifacts.get_source(kind, artifact_id, version)
         # Sign the deploy with the panel's fleet identity (design 22): the instance verifies the
         # signature against the pinned key before applying, so a stolen membership key alone can't
         # push. Signed over the registry content_hash (which serve recomputes from the content).
@@ -301,6 +304,7 @@ class DeployService:
                     signature=signature,
                     fleet_id=fleet_id,
                     deploy_seq=deploy_seq,
+                    source=source,
                 )
             except DeployError as exc:
                 raise UpstreamError(f"deploy failed: {exc}") from exc
@@ -309,6 +313,8 @@ class DeployService:
             # Mode B: the connector applies locally over loopback; carry the signature + fleet_id +
             # sequence in the command so local serve can verify against the pinned key (design 22).
             args: dict[str, Any] = {"kind": kind, "id": artifact_id, "body": content}
+            if source:
+                args["yaml"] = source
             if signature:
                 args["signature"] = signature
                 args["fleet_id"] = fleet_id

@@ -29,14 +29,16 @@ async def _put(
 ) -> dict[str, Any]:
     """Apply a PUT to an artifact. Accepts ``{yaml}`` (operator edit) or ``{content}`` (a fleet
     deploy — a dict; design 22). For a ``content`` deploy the fleet signature is verified against
-    the pinned key before applying; then the dict is serialised for the workspace writer."""
+    the pinned key before applying; then the dict is serialised for the workspace writer — unless
+    the deploy also carries ``yaml``, the file as the fleet adopted it, in which case that text is
+    written instead (comments and layout intact), provided it parses to the signed content."""
     body = await request.json()
     content = body.get("content")
     if content is not None:
         _verify_signed_deploy(
             request, kind, artifact_id, content, body.get("fleet_id"), body.get("deploy_seq")
         )
-        yaml_text = yaml.safe_dump(content, sort_keys=False)
+        yaml_text = _text_for_signed_content(body.get("yaml"), content)
     else:
         yaml_text = body.get("yaml", "")
     result, new_rt = service.put_yaml(
@@ -44,6 +46,21 @@ async def _put(
     )
     _install(request, new_rt)
     return result
+
+
+def _text_for_signed_content(text: Any, content: Any) -> str:
+    """The YAML to write for a signed deploy: the source text when it is the signed content
+    verbatim, else the content re-serialised. The signature covers *content*; text that parsed to
+    anything else would let a deploy write what was not signed, so it is refused."""
+    if not isinstance(text, str) or not text.strip():
+        return yaml.safe_dump(content, sort_keys=False)
+    try:
+        parsed = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"deploy yaml does not parse: {exc}") from exc
+    if parsed != content:
+        raise HTTPException(status_code=400, detail="deploy yaml does not match the signed content")
+    return text
 
 
 def _register_crud_routes(app: FastAPI, service: ArtifactService) -> None:  # noqa: PLR0915

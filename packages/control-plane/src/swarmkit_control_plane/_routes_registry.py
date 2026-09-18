@@ -430,6 +430,30 @@ _ADOPT_COLLECTIONS: dict[str, str] = {
 }
 
 
+def _reported_from_state(arts: Any) -> list[dict[str, Any]]:
+    """``[{kind, id, version, content_hash}]`` from an InstanceState's ``artifacts`` block, for
+    ``ArtifactStore.report``. Collections map back to the singular kind the registry keys on."""
+    kinds = {collection: kind for kind, collection in _ADOPT_COLLECTIONS.items()}
+    out: list[dict[str, Any]] = []
+    if not isinstance(arts, dict):
+        return out
+    for collection, entries in arts.items():
+        kind = kinds.get(str(collection))
+        if kind is None or not isinstance(entries, list):
+            continue
+        for e in entries:
+            if isinstance(e, dict) and e.get("id"):
+                out.append(
+                    {
+                        "kind": kind,
+                        "id": e["id"],
+                        "version": str(e.get("version", "")),
+                        "content_hash": str(e.get("content_hash", "")),
+                    }
+                )
+    return out
+
+
 def _find_cached_artifact(
     state: dict[str, Any], kind: str, artifact_id: str
 ) -> dict[str, Any] | None:
@@ -490,6 +514,10 @@ def _mount_state(
             raise HTTPException(502, f"state sync failed: {exc}") from exc
         synced_at = state_store.put(instance_id, state)
         arts = state.get("artifacts", {}) if isinstance(state, dict) else {}
+        # What the instance actually runs, for drift: each synced artifact's version + content
+        # hash. Nothing else reports it — the runtime never called /artifacts/report — so before
+        # this, drift said "missing" for every deployment on every real instance.
+        artifacts.report(instance_id, _reported_from_state(arts))
         # Best-effort usage pull (design 23): fold the instance's /usage rollup into the panel
         # aggregation so the Runs page reflects Mode-A instances without the push pipeline. State is
         # the contract — a usage hiccup logs and yields pulled_usage: 0, never fails the sync.
@@ -535,12 +563,14 @@ def _mount_state(
         if entry is None:
             raise HTTPException(404, f"{req.kind} '{req.artifact_id}' is not in the cached state")
         state = cached["state"]
+        source = entry.get("yaml")
         published = artifacts.register_version(
             req.kind,
             req.artifact_id,
             content=entry.get("content"),
             authored_by=f"adopted:instance/{instance_id}@{cached['synced_at']}",
             schema_version=str(state.get("schema_version", "")) if isinstance(state, dict) else "",
+            source=source if isinstance(source, str) else None,
         )
         return {
             "kind": req.kind,
