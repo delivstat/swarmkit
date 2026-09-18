@@ -382,7 +382,7 @@ on LangGraph's native checkpointer.
 1. Agent hits approval gate → runtime serializes full graph state to
    disk via the checkpointer.
 2. Runtime process can safely terminate — state is durable.
-3. Approval arrives via Rynko webhook, CLI input, or polling — hours
+3. Approval arrives via webhook, CLI input, or polling — hours
    or days later.
 4. Runtime rehydrates from the checkpoint and resumes execution from
    exactly where it paused.
@@ -393,8 +393,8 @@ wherever the topology declares a governance scope reserved for human
 identity (§8.7). The interrupt serializes state and yields control;
 resumption is a standard LangGraph checkpoint restore.
 
-For the Rynko cloud deployment model, the approval event surfaces in
-the Rynko UI's review queue. For CLI-only mode, the runtime prompts
+For the hosted deployment model, the approval event surfaces in
+the portal's Gates page. For CLI-only mode, the runtime prompts
 in the terminal and blocks until the user responds. Same checkpointer,
 different approval surface.
 
@@ -419,9 +419,9 @@ output validation in the compiler's tool-use loop. This is an
 architectural commitment — the compiler is where it's enforced, even
 though the design note lands in M4.
 
-### Why — the Rynko insight
+### Why — the gate-validation insight
 
-Production experience with Rynko gate validation shows that
+Production experience with external gate validation shows that
 **structured constraints + field-specific error feedback** eliminates
 most hallucination without any LLM judge. When a model is constrained
 to produce `{verdict: "pass"|"fail", confidence: 0.0-1.0}` via

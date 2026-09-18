@@ -14,7 +14,7 @@ deterministically — before any LLM judge fires. Field-specific
 validation errors are fed back to the model as targeted re-prompts,
 fixing one field at a time instead of regenerating the entire response.
 
-**Insight from Rynko gate validation:** structured constraints +
+**Insight from external gate validation:** structured constraints +
 field-specific error feedback eliminates most hallucination at near-zero
 cost. Shape-level errors (wrong type, missing field, out-of-range value)
 don't need an LLM judge — they need a schema check + a re-prompt.

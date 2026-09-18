@@ -1,4 +1,4 @@
-"""Tests for Rynko Flow governance integration (Tier 2 validation).
+"""Tests for an MCP-backed decision skill — Tier 2 validation through an external validator.
 
 Verifies that MCP-backed decision skills can fire through the
 SkillBackedGovernanceProvider, and that the decision evaluator
@@ -21,13 +21,13 @@ from swarmkit_schema import validate
 
 
 def _make_mcp_decision_skill() -> MagicMock:
-    """Create a mock MCP-backed decision skill (like rynko-output-validator)."""
+    """Create a mock MCP-backed decision skill (like order-output-validator)."""
     skill = MagicMock(spec=ResolvedSkill)
-    skill.id = "rynko-output-validator"
+    skill.id = "order-output-validator"
     skill.raw = MagicMock()
     skill.raw.implementation = {
         "type": "mcp_tool",
-        "server": "rynko-flow",
+        "server": "order-validator",
         "tool": "validate_gate",
     }
     skill.raw.category = "decision"
@@ -88,9 +88,9 @@ class TestEvaluateSkillMCP:
         tool_response = ToolResponse(
             data=mock_mcp_result,
             metadata=ToolMetadata(
-                source="rynko-flow:validate_gate",
+                source="order-validator:validate_gate",
                 duration_ms=200,
-                server_id="rynko-flow",
+                server_id="order-validator",
             ),
         )
 
@@ -150,9 +150,9 @@ class TestEvaluateSkillMCP:
         tool_response = ToolResponse(
             data=mock_mcp_result,
             metadata=ToolMetadata(
-                source="rynko-flow:validate_gate",
+                source="order-validator:validate_gate",
                 duration_ms=150,
-                server_id="rynko-flow",
+                server_id="order-validator",
             ),
         )
 
@@ -183,10 +183,10 @@ class TestEvaluateSkillMCP:
 
 
 class TestReferenceSkill:
-    def test_rynko_skill_yaml_is_valid(self) -> None:
-        skill_path = Path("docs/examples/rynko-output-validator.yaml")
+    def test_mcp_backed_skill_yaml_is_valid(self) -> None:
+        skill_path = Path("docs/examples/order-output-validator.yaml")
         data = yaml.safe_load(skill_path.read_text())
         validate("skill", data)
         assert data["category"] == "decision"
         assert data["implementation"]["type"] == "mcp_tool"
-        assert data["implementation"]["server"] == "rynko-flow"
+        assert data["implementation"]["server"] == "order-validator"

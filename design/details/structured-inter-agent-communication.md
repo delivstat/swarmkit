@@ -73,9 +73,9 @@ structured tool calls). Surfaces 1-3 are the implementation work.
                               │ structured findings
                               ▼
 ┌─────────────────────────────────────────────────────┐
-│  Layer 3: Validation (optional Rynko Flow)           │
+│  Layer 3: Validation (optional an external validation service)           │
 │  Deterministic schema check (always, free).          │
-│  Rynko Flow gate (opt-in, for business validation).  │
+│  an external validation gate (opt-in, for business validation).  │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -202,17 +202,17 @@ Two tiers:
 `output_schema`. Built into the compiler. Invalid → retry with
 schema feedback. No external service needed.
 
-**Tier 2 (opt-in, Rynko Flow):** for workspaces that need business
+**Tier 2 (opt-in, an external validation service):** for workspaces that need business
 validation beyond schema shape. Wired as a governance decision
-skill with `implementation.type: mcp_tool` pointing at Rynko Flow.
+skill with `implementation.type: mcp_tool` pointing at an external validation service.
 Example: "every finding about a pipeline must reference a real
 pipeline ID from the CDT" — that's domain validation, not schema.
 
 ```yaml
-# workspace.yaml — opt-in Rynko validation
+# workspace.yaml — opt-in a managed backend validation
 governance:
   decision_skills:
-    - id: rynko-output-validator
+    - id: order-output-validator
       trigger: post_output
       config:
         gate_id: "sterling-findings-gate"
@@ -230,8 +230,8 @@ Agent produces output
   → source fields auto-filled from tool call metadata
   → Tier 1 validation: schema check (deterministic, free)
   
-If Rynko configured:
-  → Tier 2 validation: Rynko gate checks business rules
+If a managed backend configured:
+  → Tier 2 validation: external gate checks business rules
   
 Output reaches coordinator
   → Structured findings with provenance
@@ -406,9 +406,9 @@ output_schema is separate — it's on the archetype, not the skill.
 
 #### PR 6: MCP-backed decision skills ✓ (v1.2.31, PR #228)
 - `mcp_manager` threaded through governance → decision evaluator
-- Any MCP server can be a governance decision skill (not just Rynko)
+- Any MCP server can be a governance decision skill (not just a managed backend)
 - `_parse_result` strips provenance tags from MCP responses
-- Reference skill YAML in `docs/examples/rynko-output-validator.yaml`
+- Reference skill YAML in `docs/examples/order-output-validator.yaml`
 
 ### Wave 3: Sterling + authoring + gate-validator ✓ (v1.2.32, PRs #230–#231)
 
@@ -423,7 +423,7 @@ output_schema is separate — it's on the archetype, not the skill.
 - `list_gates` + `validate_gate` tools, returns decision skill result format
 - Sterling workspace wired: 3 domain-specific gate schemas (findings, code, config)
 - LLM-based grounding-verifier disabled in favour of deterministic gate validation
-- Any MCP-backed decision skill works (not just Rynko) — generic infrastructure
+- Any MCP-backed decision skill works (not just a managed backend) — generic infrastructure
 
 ### Future: Full MCP Gateway (M10/M11)
 
@@ -445,8 +445,8 @@ output_schema is separate — it's on the archetype, not the skill.
    the provenance wrapper — community servers, authored servers,
    remote servers. No server-side changes needed.
 
-3. **Rynko is opt-in only.** Tier 1 (schema check) is always free.
-   Rynko business validation is a governance decision skill that
+3. **a managed backend is opt-in only.** Tier 1 (schema check) is always free.
+   a managed backend business validation is a governance decision skill that
    workspaces explicitly wire.
 
 4. **Source auto-population.** The runtime tracks which tool call

@@ -85,10 +85,10 @@ mcp_servers:
     command: ["mcp-github"]         # when transport=stdio
     credentials_ref: github_pat
     sandboxed: false                # trusted external server
-  - id: rynko_flow
+  - id: order_validator
     transport: http
-    endpoint: https://mcp.rynko.dev
-    credentials_ref: rynko_api_key
+    endpoint: https://mcp.validator.dev
+    credentials_ref: validator_api_key
     sandboxed: false
   - id: acme_internal
     transport: stdio
@@ -216,7 +216,7 @@ Audit `backend: agt` defers to AGT's Agent SRE append-only storage (design §16.
 
 ### Naming convention — MCP server IDs
 
-MCP server `id` uses the repo-wide lowercase-kebab identifier pattern (`^[a-z][a-z0-9-]*$`). Skills reference servers by this ID through `implementation.server`, which is currently an unconstrained string (runtime-validated against the workspace registry at M1). Some existing skill fixtures reference snake_case server names (e.g. `rynko_flow` in the merged §6.3 adaptation); the M1 resolver PR will clean up that cross-artifact inconsistency when it lands.
+MCP server `id` uses the repo-wide lowercase-kebab identifier pattern (`^[a-z][a-z0-9-]*$`). Skills reference servers by this ID through `implementation.server`, which is currently an unconstrained string (runtime-validated against the workspace registry at M1). Some existing skill fixtures reference snake_case server names (e.g. `order_validator` in the merged §6.3 adaptation); the M1 resolver PR will clean up that cross-artifact inconsistency when it lands.
 
 ## What's not in the schema
 

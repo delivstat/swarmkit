@@ -271,7 +271,7 @@ def test_a_fenced_mcp_response_with_provenance_still_parses(
     neither may trip the warning."""
     from swarmkit_runtime.governance._decision_evaluator import _parse_result  # noqa: PLC0415
 
-    raw = '```json\n{"verdict": "fail", "reasoning": "no"}\n```\n[source: rynko-flow]'
+    raw = '```json\n{"verdict": "fail", "reasoning": "no"}\n```\n[source: order-validator]'
     with caplog.at_level("WARNING"):
         assert _parse_result("x", raw).verdict == "fail"
     assert caplog.text == ""

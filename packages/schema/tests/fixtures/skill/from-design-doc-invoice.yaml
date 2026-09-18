@@ -5,7 +5,7 @@ kind: Skill
 metadata:
   id: invoice-validation-gate
   name: Invoice Validation Gate
-  description: Validates invoice structure and content via Rynko Flow gate.
+  description: Validates invoice structure and content via an external validation service gate.
 category: decision
 inputs:
   type: object
@@ -28,7 +28,7 @@ outputs:
   required: [verdict, run_id, reasoning]
 implementation:
   type: mcp_tool
-  server: rynko_flow
+  server: order_validator
   tool: validate_invoice_v3
 provenance:
   authored_by: human

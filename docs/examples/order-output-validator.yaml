@@ -1,10 +1,10 @@
 apiVersion: swarmkit/v1
 kind: Skill
 metadata:
-  id: rynko-output-validator
-  name: Rynko Output Validator
+  id: order-output-validator
+  name: Order Output Validator
   description: >
-    Validates structured agent output against business rules via Rynko Flow.
+    Validates structured agent output against business rules via an external validation service (any MCP server that exposes a validator tool).
     Tier 2 validation: domain-specific checks beyond JSON Schema shape.
     Example: every finding about a pipeline must reference a real pipeline ID.
     Only fires when explicitly configured in workspace governance.
@@ -28,7 +28,7 @@ outputs:
   required: [verdict, confidence, reasoning]
 implementation:
   type: mcp_tool
-  server: rynko-flow
+  server: order-validator
   tool: validate_gate
 provenance:
   authored_by: human

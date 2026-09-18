@@ -9,20 +9,20 @@ credentials:
     source: env
     config:
       env: GITHUB_TOKEN
-  rynko_api_key:
+  validator_api_key:
     source: env
     config:
-      env: RYNKO_API_KEY
+      env: VALIDATOR_API_KEY
 mcp_servers:
   - id: github
     transport: stdio
     command: ["mcp-github"]
     credentials_ref: github_pat
     sandboxed: false
-  - id: rynko-flow
+  - id: order-validator
     transport: http
-    endpoint: https://mcp.rynko.dev
-    credentials_ref: rynko_api_key
+    endpoint: https://mcp.validator.dev
+    credentials_ref: validator_api_key
     sandboxed: false
   - id: acme-internal-scaffolded
     transport: stdio

@@ -20,7 +20,7 @@ outputs:
   required: [verdict, confidence, reasoning]
 implementation:
   type: mcp_tool
-  server: rynko-flow
+  server: order-validator
   tool: validate_code_review
 provenance:
   authored_by: human

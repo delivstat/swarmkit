@@ -64,8 +64,8 @@ def test_parse_stdio_entry() -> None:
 
 
 def test_parse_http_entry() -> None:
-    configs = parse_mcp_servers([_http("rynko", "https://mcp.example.com")])
-    cfg = configs["rynko"]
+    configs = parse_mcp_servers([_http("validator", "https://mcp.example.com")])
+    cfg = configs["validator"]
     assert cfg.transport == "http"
     assert cfg.endpoint == "https://mcp.example.com"
     assert cfg.command == []

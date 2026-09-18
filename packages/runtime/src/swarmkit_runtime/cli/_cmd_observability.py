@@ -453,7 +453,7 @@ def debug(
 
     Prompts are stored locally in .swarmkit/prompts.sqlite and never
     sent to the telemetry backend. Use span IDs from OTel traces to
-    correlate with the Rynko dashboard.
+    correlate with the backend's dashboard.
     """
     from swarmkit_runtime.telemetry import PromptRingBuffer  # noqa: PLC0415
 

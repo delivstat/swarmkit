@@ -510,7 +510,7 @@ Memory-writer extracts structured insights (topic, context, key_points, tags) vi
 
 ## Product architecture & observability (design notes; OTel, intent drift and the ring buffer shipped)
 
-- [Product architecture](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture.md): open-source runtime + Rynko as the commercial ops platform. Deployment models, revenue model, brand separation.
+- [Product architecture](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture.md): open-source runtime + a managed backend as the commercial ops platform. Deployment models, revenue model, brand separation.
 - [Product architecture refinements](https://github.com/delivstat/swarmkit/blob/main/design/details/product-architecture-refinements.md): local ring buffer for prompt privacy, LangGraph checkpointer for approval gates, usage-based pricing, OTLP/HTTP transport.
 - [OpenTelemetry observability](https://github.com/delivstat/swarmkit/blob/main/design/details/opentelemetry-observability.md): OTel as the telemetry standard. Trace-per-run, span-per-agent-step, `swarmkit.*` semantic attributes, console + OTLP exporters.
 - [Intent drift detection](https://github.com/delivstat/swarmkit/blob/main/design/details/intent-drift-detection.md): optional per-agent intent monitoring via embedding similarity. Log/warn/nudge strategies.
@@ -3685,8 +3685,8 @@ It composes existing pieces and sibling capabilities; it does not redefine them:
 - **Layer 1 — structured-output validation:** SwarmKit's **native** four-tier output governance,
   Tiers 0–2 (all deterministic): `constrained-output-schema.md` (implemented) +
   `structured-output-governance.md`. This is the runtime's own schema-constrained decoding + JSON-
-  Schema check + business-rule field checks with field-specific auto-correction — **no Rynko or
-  external dependency** (Rynko is only the credited inspiration in that note, not a component).
+  Schema check + business-rule field checks with field-specific auto-correction — **no a managed backend or
+  external dependency** (a managed backend is only the credited inspiration in that note, not a component).
 - **Layer 2 — LLM-as-judge:** an existing governance **decision skill** (`decision-skills.md`,
   `governance-decision-skills.md`), instantiated as the rubric-parameterised `artifact-judge`.
 - **Layer 3 — harness review:** sibling `design/details/harness-reviewer.md`.
@@ -5491,7 +5491,7 @@ Cardinality discipline: task text, file contents, diffs, and full messages are *
 
 ### 8.3 Audit log (the governance projection)
 
-The audit log is a separate, tamper-evident, retained projection — not the trace backend, which is sampled and short-lived. It records only governance-relevant facts, each stamped with responder identity and timestamp: harness delegation (archetype, capability set, budget), every `approval_requested`/`response` with responder, every `input_requested`/`response` with responder (`lead`|`operator`|`memoized`), gate outcomes, artifact acceptance/merge, and trust-accrual changeset proposals and approvals. This is the record that answers "prove this change was approved before it merged" — and it is exactly where a Rynko Flow attestation attaches, since it is the boundary-crossing record.
+The audit log is a separate, tamper-evident, retained projection — not the trace backend, which is sampled and short-lived. It records only governance-relevant facts, each stamped with responder identity and timestamp: harness delegation (archetype, capability set, budget), every `approval_requested`/`response` with responder, every `input_requested`/`response` with responder (`lead`|`operator`|`memoized`), gate outcomes, artifact acceptance/merge, and trust-accrual changeset proposals and approvals. This is the record that answers "prove this change was approved before it merged" — and it is exactly where a an external validation service attestation attaches, since it is the boundary-crossing record.
 
 ### 8.4 Log records and raw retention
 
@@ -5571,7 +5571,7 @@ deterministically — before any LLM judge fires. Field-specific
 validation errors are fed back to the model as targeted re-prompts,
 fixing one field at a time instead of regenerating the entire response.
 
-**Insight from Rynko gate validation:** structured constraints +
+**Insight from external gate validation:** structured constraints +
 field-specific error feedback eliminates most hallucination at near-zero
 cost. Shape-level errors (wrong type, missing field, out-of-range value)
 don't need an LLM judge — they need a schema check + a re-prompt.

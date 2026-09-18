@@ -2,10 +2,10 @@
 apiVersion: swarmkit/v1
 kind: Skill
 metadata:
-  id: rynko-invoice-validator
-  name: Rynko Invoice Validator
+  id: validator-invoice-validator
+  name: Vendor Invoice Validator
   description: |
-    Validates invoice structure and content via the Rynko Flow gate.
+    Validates invoice structure and content via an external validation service gate.
     Vendor-published skill; trust posture governed by the vendor relationship.
 category: decision
 inputs:
@@ -33,9 +33,9 @@ outputs:
   required: [verdict, run_id, reasoning]
 implementation:
   type: mcp_tool
-  server: rynko_flow
+  server: order_validator
   tool: validate_invoice_v3
 provenance:
   authored_by: vendor_published
-  vendor: rynko
+  vendor: validator
   version: 3.2.1

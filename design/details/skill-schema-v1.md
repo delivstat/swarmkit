@@ -60,7 +60,7 @@ outputs:
         verdict: { type: string }
 implementation:
   type: mcp_tool
-  server: rynko_flow
+  server: order_validator
   tool: validate_code_review_v2
 iam:
   required_scopes: [repo:read]
@@ -141,7 +141,7 @@ Rationale for a mini-DSL vs. embedding JSON Schema inline: skill authors are not
 # type=mcp_tool — the common case
 implementation:
   type: mcp_tool
-  server: rynko_flow           # server ID registered in workspace
+  server: order_validator           # server ID registered in workspace
   tool: validate_invoice_v3    # tool name on that server
 
 # type=llm_prompt — single-LLM-call skill (e.g. judges, drafters)
@@ -195,7 +195,7 @@ provenance:
   authored_date: "2026-04-15"         # optional, YYYY-MM-DD
   version: "1.0.0"                     # required, semver
   registry: community/analytics        # when authored_by=imported_from_registry
-  vendor: rynko                        # when authored_by=vendor_published
+  vendor: validator                        # when authored_by=vendor_published
 ```
 
 The runtime applies different trust defaults by value — the schema just records it.

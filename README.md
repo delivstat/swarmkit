@@ -524,7 +524,7 @@ swarmkit/
 │   ├── control-plane/   # the self-hostable fleet control plane
 │   └── control-plane-ui/ # the fleet panel
 ├── reference/           # 3 topologies, 16 archetypes, 27 skills, 4 command packs
-├── examples/            # 13 runnable: hello-swarm, sterling-oms, rynko-content, pipeline-orchestrator, sdlc-pipeline, showcase, …
+├── examples/            # 12 runnable: hello-swarm, sterling-oms, pipeline-orchestrator, sdlc-pipeline, showcase, …
 ├── docs/                # User-facing docs + discipline notes
 └── llms.txt             # LLM-queryable index (llmstxt.org)
 ```

@@ -407,7 +407,7 @@ If the coordinator needs detail, it can call `read-context` with the result path
 ## Non-goals
 
 - **Per-turn persistence within an agent.** Writing to disk after every tool call adds I/O overhead and complexity. The task plan updates at agent boundaries (start/complete/fail). Mid-agent persistence is a separate future feature.
-- **Cross-run learning.** The task plan is per-run. Learning from previous runs is a Rynko feature.
+- **Cross-run learning.** The task plan is per-run. Learning from previous runs is a validator feature.
 - **Topology-level task plans.** Plans are created at runtime by coordinators, not declared in topology YAML. The topology's `depends_on` field is for agent-level DAGs, not task-level.
 
 ## Implementation plan

@@ -305,7 +305,7 @@ Cardinality discipline: task text, file contents, diffs, and full messages are *
 
 ### 8.3 Audit log (the governance projection)
 
-The audit log is a separate, tamper-evident, retained projection — not the trace backend, which is sampled and short-lived. It records only governance-relevant facts, each stamped with responder identity and timestamp: harness delegation (archetype, capability set, budget), every `approval_requested`/`response` with responder, every `input_requested`/`response` with responder (`lead`|`operator`|`memoized`), gate outcomes, artifact acceptance/merge, and trust-accrual changeset proposals and approvals. This is the record that answers "prove this change was approved before it merged" — and it is exactly where a Rynko Flow attestation attaches, since it is the boundary-crossing record.
+The audit log is a separate, tamper-evident, retained projection — not the trace backend, which is sampled and short-lived. It records only governance-relevant facts, each stamped with responder identity and timestamp: harness delegation (archetype, capability set, budget), every `approval_requested`/`response` with responder, every `input_requested`/`response` with responder (`lead`|`operator`|`memoized`), gate outcomes, artifact acceptance/merge, and trust-accrual changeset proposals and approvals. This is the record that answers "prove this change was approved before it merged" — and it is exactly where a an external validation service attestation attaches, since it is the boundary-crossing record.
 
 ### 8.4 Log records and raw retention
 

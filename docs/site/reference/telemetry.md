@@ -48,8 +48,8 @@ Location: `~/.swarmkit/config.yaml`
 telemetry:
   enabled: true
   exporter: otlp                              # otlp | console | none
-  endpoint: https://api.rynko.dev/v1/traces   # OTLP/HTTP endpoint
-  api_key: rk-your-api-key                    # sent via api_key_header
+  endpoint: https://otlp.example.com/v1/traces   # OTLP/HTTP endpoint
+  api_key: your-api-key                    # sent via api_key_header
   api_key_header: Authorization               # which header carries the key
   headers:                                    # additional headers (optional)
     x-org-id: acme-corp
@@ -68,14 +68,14 @@ telemetry:
 
 Different backends expect different authentication headers:
 
-### Rynko (default)
+### A managed OTLP backend
 
 ```yaml
 telemetry:
-  endpoint: https://api.rynko.dev/v1/traces
-  api_key: rk-your-key
+  endpoint: https://otlp.example.com/v1/traces
+  api_key: your-key
   # api_key_header defaults to "Authorization"
-  # Key is sent as: Authorization: Bearer rk-your-key
+  # Key is sent as: Authorization: Bearer your-key
 ```
 
 ### Grafana Cloud
@@ -217,7 +217,7 @@ SwarmKit emits OTel metrics alongside traces for operational dashboards and aler
 | `swarmkit.tool.duration_ms` | `tool_name`, `status` | Tool call latency distribution |
 | `swarmkit.approval.wait_ms` | `scope` | Human approval wait time distribution |
 
-Metrics are emitted via the OTel metrics API. When using OTLP export, they go to the same endpoint as traces. Dashboards in Grafana, Datadog, or Rynko can query them for operational monitoring.
+Metrics are emitted via the OTel metrics API. When using OTLP export, they go to the same endpoint as traces. Dashboards in Grafana, Datadog, or a managed backend can query them for operational monitoring.
 
 Metrics are safe to call before initialization — all recording functions are no-ops when instruments haven't been created yet.
 

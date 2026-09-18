@@ -44,7 +44,7 @@ either.
   `governance/_decision_evaluator.py`); no **cross-instance aggregation / control
   plane**; no **fleet self-improvement** (today: per-instance skill-gap logs →
   review queue → human authoring, §12.5). Today multi-instance aggregation is assumed
-  to be the commercial Rynko layer — this note defines a **self-hostable OSS** path.
+  to be the commercial a managed backend layer — this note defines a **self-hostable OSS** path.
 
 ## The three planes
 
@@ -56,7 +56,7 @@ DATA PLANE — N swarmkit serve instances (+ edge single-instance, e.g. Minder)
         │  OTLP + audit stream (signed, tagged)
         ▼
 OBSERVABILITY PLANE — standard, do NOT reinvent
-  OTel Collector → backend (Tempo/Jaeger + Grafana, or Rynko managed)
+  OTel Collector → backend (Tempo/Jaeger + Grafana, or a managed backend managed)
   raw spans/metrics, fleet-wide, via the OTel ecosystem
         │  swarm-semantic summary (not raw spans)
         ▼
@@ -136,8 +136,8 @@ Gemini-first defaults (ModelProvider abstraction already covers multi-provider).
 ## Reconciliation with SwarmKit's principles
 
 - **Invariant #4 (no lock-in):** the control plane is **OSS + self-hostable**,
-  OTel-standard; **Rynko is an optional managed backend, never required**. This is the
-  open-source answer to "Rynko is the aggregation layer."
+  OTel-standard; **a managed backend is an optional managed backend, never required**. This is the
+  open-source answer to "a managed backend is the aggregation layer."
 - **No central SPOF for execution:** the control plane is for evolution/observation
   only. Instances run fully with it down — buffer telemetry, apply no new approved
   changes. It is never a runtime dependency.
@@ -184,8 +184,8 @@ Gemini-first defaults (ModelProvider abstraction already covers multi-provider).
 4. **Edge appliances (Minder):** opt-in fleet enrollment; a homeowner's box probably
    *doesn't* join a fleet, but a fleet operator (a security company running many) would.
    Enrollment + consent model.
-5. **OSS vs Rynko boundary:** what's in the OSS control plane vs the Rynko managed
-   layer (this note: OSS = the full loop, self-hostable; Rynko = managed + scale).
+5. **OSS vs managed boundary:** what's in the OSS control plane vs the managed
+   layer (this note: OSS = the full loop, self-hostable; a managed backend = managed + scale).
 
 ## Test / demo plan
 

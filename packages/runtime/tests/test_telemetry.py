@@ -61,13 +61,13 @@ class TestTelemetryConfig:
         config_dir = home / ".swarmkit"
         config_dir.mkdir(parents=True)
         (config_dir / "config.yaml").write_text(
-            "telemetry:\n  enabled: true\n  exporter: console\n  endpoint: http://rynko.dev/traces\n"
+            "telemetry:\n  enabled: true\n  exporter: console\n  endpoint: http://otlp.example.com/traces\n"
         )
         with patch("swarmkit_runtime.telemetry._config.Path.home", return_value=home):
             config = load_telemetry_config()
         assert config.enabled is True
         assert config.exporter == "console"
-        assert config.endpoint == "http://rynko.dev/traces"
+        assert config.endpoint == "http://otlp.example.com/traces"
 
 
 class TestSwarmKitTelemetryDisabled:

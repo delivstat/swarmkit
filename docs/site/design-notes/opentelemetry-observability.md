@@ -1,6 +1,6 @@
 ---
 title: OpenTelemetry observability
-description: OTel as the standard telemetry layer for the SwarmKit runtime, with OTLP as the protocol to Rynko and any third-party backend.
+description: OTel as the standard telemetry layer for the SwarmKit runtime, with OTLP as the protocol to a managed backend and any third-party backend.
 tags: [runtime, observability, telemetry]
 status: draft
 ---
@@ -8,12 +8,12 @@ status: draft
 # OpenTelemetry observability
 
 **Scope:** runtime
-**Design reference:** §8.3 (audit log), §14 (runtime architecture), `product-architecture.md`
+**Design reference:** §8.3 (audit log), §14 (runtime architecture), `design/archive/rynko/product-architecture.md` (archived)
 **Status:** draft
 
 ## Goal
 
-Adopt OpenTelemetry as the telemetry standard for the SwarmKit runtime so that all agent execution data — traces, metrics, events — is emittable to any OTel-compatible backend, including the Rynko platform.
+Adopt OpenTelemetry as the telemetry standard for the SwarmKit runtime so that all agent execution data — traces, metrics, events — is emittable to any OTel-compatible backend, including the managed platform.
 
 ## Non-goals
 
@@ -23,13 +23,13 @@ Adopt OpenTelemetry as the telemetry standard for the SwarmKit runtime so that a
 
 ## Background
 
-The product architecture (`product-architecture.md`) defines three deployment models. In all three, the runtime needs to emit structured telemetry. OTel is the vendor-neutral standard that makes this work:
+The archived product-architecture note defined three deployment models. In all three, the runtime needs to emit structured telemetry. OTel is the vendor-neutral standard that makes this work:
 
 - **CLI-only (free):** user sends OTel data to their own collector (Jaeger, Grafana, Datadog) or ignores it entirely
-- **Cloud on Rynko:** runtime sends OTLP to Rynko's ingestion endpoint. Rynko adds the agent-aware semantic layer (drift analysis, governance visualization, cross-run analytics)
-- **Enterprise self-hosted:** same OTLP, pointed at the customer's own Rynko instance or their existing observability stack
+- **Cloud on a managed backend:** runtime sends OTLP to the backend's ingestion endpoint. A managed backend adds the agent-aware semantic layer (drift analysis, governance visualization, cross-run analytics)
+- **Enterprise self-hosted:** same OTLP, pointed at the customer's own observability backend or their existing observability stack
 
-This resolves the open question in `product-architecture.md` about telemetry protocol: it's OTLP.
+This resolved that note's open question about telemetry protocol: it's OTLP.
 
 ## Trace model
 
@@ -131,21 +131,21 @@ Lightweight counters and histograms for operational monitoring. Emitted via OTel
 telemetry:
   enabled: true
   exporter: otlp              # otlp | console | none
-  endpoint: https://api.rynko.dev/v1/traces
+  endpoint: https://otlp.example.com/v1/traces
   protocol: grpc               # grpc | http
-  api_key: rk-...              # Rynko API key, or omit for third-party backends
+  api_key: …              # backend API key, or omit for third-party backends
   headers: {}                  # additional headers for custom collectors
   sample_rate: 1.0             # 1.0 = all traces, 0.1 = 10% sampling
   send_prompts: false          # opt-in: include LLM prompt/response content as span events
 ```
 
-Default: `exporter: none`. Telemetry is opt-in. When a user adds a Rynko API key via the upgrade path, the exporter switches to `otlp` pointing at Rynko's endpoint.
+Default: `exporter: none`. Telemetry is opt-in. When a user adds a backend API key via the upgrade path, the exporter switches to `otlp` pointing at the backend's endpoint.
 
 The `console` exporter prints spans to stderr in a human-readable format — useful for local debugging without any external collector.
 
-## What Rynko adds on top of raw OTel
+## What an agent-aware backend adds on top of raw OTel
 
-Raw OTel data gives you generic trace visualization (Jaeger, Grafana Tempo). Rynko's value is the agent-aware semantic layer built on top of the same data:
+Raw OTel data gives you generic trace visualization (Jaeger, Grafana Tempo). A managed backend's value is the agent-aware semantic layer built on top of the same data:
 
 - **Topology-aware trace view** — spans rendered as an agent flow diagram, not just a waterfall
 - **Intent drift visualization** — drift scores plotted over the run timeline, with nudge events highlighted
@@ -155,7 +155,7 @@ Raw OTel data gives you generic trace visualization (Jaeger, Grafana Tempo). Ryn
 - **Cost attribution** — LLM token usage per agent per step, aggregated across runs
 - **Alerting** — threshold-based alerts on drift, latency, error rates, approval wait times
 
-This is the commercial differentiator: OTel data is free and portable, the intelligence on top of it is what Rynko sells.
+This is the commercial differentiator: OTel data is free and portable, the intelligence on top of it is what a managed backend sells.
 
 ## Implementation approach
 
@@ -175,11 +175,11 @@ Start lightweight, instrument deeper as the runtime stabilizes:
 - Drift-related attributes and metrics
 - Approval gate spans with wait time
 
-### Phase 3 (with Rynko integration)
+### Phase 3 (with a managed backend integration)
 
 - Full metrics suite
 - Cost attribution (token counts as span attributes)
-- Rynko-specific ingestion optimizations (batching, compression)
+- Backend-specific ingestion optimizations (batching, compression)
 - Sampling strategies for high-volume topologies
 
 ## API shape
@@ -215,7 +215,7 @@ Run a reference topology with `telemetry.exporter: console`, show the span outpu
 
 ## Local ring buffer — privacy-first prompt debugging
 
-Raw LLM prompts and responses never leave the user's environment. To maintain a high-quality debugging experience in the Rynko UI without compromising privacy, the runtime uses a persistent local ring buffer.
+Raw LLM prompts and responses never leave the user's environment. To maintain a high-quality debugging experience in the portal without compromising privacy, the runtime uses a persistent local ring buffer.
 
 - **Storage:** local SQLite database (not in-memory). Must survive process restarts — overnight batch jobs fail, developer debugs the next morning.
 - **Keyed by:** OTel `span_id` and `run_id`, linking local debug data to cloud trace visualization.
@@ -228,9 +228,9 @@ swarmkit debug --run-id <id>               # all prompts for a run
 swarmkit debug --agent researcher --last 5 # last 5 steps for an agent
 ```
 
-- **Privacy guarantee:** the ring buffer is local-only. Rynko never receives prompt content unless `send_prompts: true` is explicitly set in the telemetry config.
+- **Privacy guarantee:** the ring buffer is local-only. A managed backend never receives prompt content unless `send_prompts: true` is explicitly set in the telemetry config.
 
-This enables a "Zero-Trust AI Ops" positioning — enterprises get a collaborative debugging UI in Rynko without proprietary data ever leaving their VPC. The Rynko dashboard shows the structural OTel trace; the CLI pulls the sensitive content from local storage when needed.
+This enables a "Zero-Trust AI Ops" positioning — enterprises get a collaborative debugging UI in a managed backend without proprietary data ever leaving their VPC. The a managed backend dashboard shows the structural OTel trace; the CLI pulls the sensitive content from local storage when needed.
 
 ## Transport recommendation
 
@@ -238,7 +238,7 @@ Start with **OTLP/HTTP** using asynchronous batching. Advantages over gRPC:
 
 - Keeps the runtime lightweight
 - Avoids connection-drop headaches in diverse network environments (enterprise firewalls, proxies)
-- Makes Rynko instantly compatible with the broader observability ecosystem
+- Makes a managed backend instantly compatible with the broader observability ecosystem
 
 Move to gRPC only when payload size or velocity becomes a bottleneck.
 
@@ -248,4 +248,4 @@ Move to gRPC only when payload size or velocity becomes a bottleneck.
 - Span event vs child span for drift scores — events are lighter but less visible in trace UIs
 - Whether to include a `swarmkit.cost.tokens` attribute on LLM call spans (requires model provider cooperation)
 - How granular should the prompt opt-in be? Per-topology? Per-agent? Per-run? Per-MCP-server?
-- Should the local ring buffer support a "secure tunnel" mode where the Rynko UI can pull prompts on-demand from the runtime (with user approval), or is CLI-only access sufficient?
+- Should the local ring buffer support a "secure tunnel" mode where the portal can pull prompts on-demand from the runtime (with user approval), or is CLI-only access sufficient?
