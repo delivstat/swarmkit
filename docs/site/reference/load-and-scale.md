@@ -11,7 +11,7 @@ These numbers are a **baseline**, dated so a post-improvement run can be compare
 | Run | Date | Runtime | Box | Notes |
 |---|---|---|---|---|
 | 1 (baseline) | 2026-09-18 | 1.242.0 | 1 dev machine, WSL2 (shared) | first harness run; synchronous per-run work on the event loop |
-| 2 | _pending_ | _after the optimization below_ | — | to be added: per-run sync sections moved off the loop |
+| 2 | 2026-09-18 | 1.243.0 | same box | compile now cached — isolates the DB-on-loop term |
 
 When the optimization lands (moving the synchronous compile/persist sections off the event loop),
 re-run `examples/loadtest/run.sh` on the same box and add Run 2 here beside Run 1 — same tables, so
@@ -116,6 +116,31 @@ model-only runs, memory is not the limiting resource here; CPU-on-the-loop is. (
 different: each holds a git worktree and a subprocess, so budget memory and fds per *harness* run
 separately — measure the `mcp-heavy` and a harness shape for your own mix.)
 
+## Run 2 (2026-09-18, runtime 1.243.0) — compile caching, and what it revealed
+
+The first optimization landed: the LangGraph graph is now **compiled once per topology and reused**
+across runs (it was rebuilt every run — pure CPU on the loop). Same `tiny` ramp, Postgres, 2s
+latency:
+
+| concurrency | Run 1 runs/s (p50) | Run 2 runs/s (p50) |
+|---|---|---|
+| 5   | 2.25 (2.4s) | 2.2 (2.4s) |
+| 25  | 3.3 (9.0s)  | 3.55 (8.2s) |
+| 50  | 2.55 (35s)  | 2.55 (38s) |
+| 100 | 5.0 (70s)   | 5.0 (68s) |
+
+**The knee did not move.** Compile caching is a real, correct change — it removes redundant per-run
+CPU and is a prerequisite for using more cores — but it barely touched the plateau. That is the
+finding: **compile is not the dominant term; the synchronous DB writes are.** Each run does several
+blocking `INSERT`s on the event loop (the write-through audit journal is now per-event), and the
+store engine uses SQLAlchemy's default connection pool (size 5). A small sync pool + per-event
+blocking writes caps effective concurrency at ~5 regardless of `max_concurrent` — which is exactly
+what both runs show.
+
+So the next change is the high-value one, now with evidence pointing straight at it: **move the
+store/audit writes off the loop** (an async driver or `asyncio.to_thread`), coalesce the journal's
+per-event flush, and size the pool for the target concurrency. Run 3 will measure that.
+
 ## What this means for sizing
 
 - **A single serve process is not a throughput engine for CPU-bound-per-run work.** Plan for
@@ -131,9 +156,10 @@ separately — measure the `mcp-heavy` and a harness shape for your own mix.)
 
 ## The honest optimization target
 
-These numbers point at one high-value runtime change: move the **synchronous per-run sections off the
-event loop** — cache/parallelise topology compile, and run the store/audit writes (now write-through,
-so per-event) through a thread pool or an async driver. That would let one process actually use the
+Compile caching (Run 2) is done. The remaining, and now clearly dominant, change is to move the
+**synchronous store/audit writes off the event loop** — an async driver or `asyncio.to_thread`, a
+coalesced flush for the write-through journal, and a connection pool sized for the target concurrency
+(it defaults to 5 today). That would let one process actually use the
 concurrency the semaphore allows and keep admission/polling responsive under load. This benchmark is
 the evidence for it and the way to measure the change.
 
