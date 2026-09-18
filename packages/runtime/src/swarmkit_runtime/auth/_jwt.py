@@ -4,8 +4,7 @@ Validates RS256/ES256 tokens from any OIDC-compliant issuer.  JWKS keys
 are fetched and cached on first use; a cache miss triggers a single
 background refresh so that key rotation is transparent.
 
-Requires ``PyJWT[crypto]`` — installed automatically via the ``serve``
-extra (``pip install 'swarmkit[serve]'``).
+Requires ``PyJWT[crypto]`` — a base dependency of swarmkit-runtime since 1.231.0.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ try:
     from jwt import PyJWKClient
 except ImportError as _imp_err:
     raise ImportError(
-        "JWTAuthProvider requires PyJWT. Install with: pip install 'swarmkit[serve]'"
+        "JWTAuthProvider requires PyJWT — a base dependency of swarmkit-runtime; reinstall it"
     ) from _imp_err
 
 

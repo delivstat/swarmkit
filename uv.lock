@@ -3022,7 +3022,7 @@ requires-dist = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.230.0"
+version = "1.231.0"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -3031,6 +3031,7 @@ dependencies = [
     { name = "aiosqlite" },
     { name = "anthropic" },
     { name = "anyio" },
+    { name = "croniter" },
     { name = "fastapi" },
     { name = "google-genai" },
     { name = "httpx" },
@@ -3045,6 +3046,7 @@ dependencies = [
     { name = "prompt-toolkit" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "ruamel-yaml" },
@@ -3066,11 +3068,6 @@ dev = [
 postgres = [
     { name = "langgraph-checkpoint-postgres" },
 ]
-serve = [
-    { name = "croniter" },
-    { name = "mcp" },
-    { name = "pyjwt", extra = ["crypto"] },
-]
 ui = [
     { name = "swarmkit-webui" },
 ]
@@ -3088,7 +3085,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "anthropic", specifier = ">=0.39" },
     { name = "anyio", specifier = ">=4.4" },
-    { name = "croniter", marker = "extra == 'serve'", specifier = ">=1.0" },
+    { name = "croniter", specifier = ">=1.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "google-genai", specifier = ">=1.0" },
     { name = "httpx", specifier = ">=0.27" },
@@ -3097,7 +3094,6 @@ requires-dist = [
     { name = "langgraph-checkpoint-postgres", marker = "extra == 'postgres'", specifier = ">=2.0" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
     { name = "mcp", specifier = ">=1.0" },
-    { name = "mcp", marker = "extra == 'serve'", specifier = ">=1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "openai", specifier = ">=1.50" },
     { name = "opentelemetry-api", specifier = ">=1.20" },
@@ -3106,7 +3102,7 @@ requires-dist = [
     { name = "prompt-toolkit", specifier = ">=3.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
     { name = "pydantic", specifier = ">=2.8" },
-    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'serve'", specifier = ">=2.8" },
+    { name = "pyjwt", extras = ["crypto"], specifier = ">=2.8" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },

@@ -41,7 +41,7 @@ def run_mcp_server(workspace_paths: list[Path]) -> None:
         )
     except ImportError:
         print(
-            "MCP package required: uv tool install swarmkit-runtime[serve]",
+            "MCP package required — a base dependency of swarmkit-runtime; reinstall it",
             file=sys.stderr,
         )
         sys.exit(1)
