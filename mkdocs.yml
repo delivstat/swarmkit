@@ -1,7 +1,7 @@
 docs_dir: docs/site
 site_dir: _site
 site_name: SwarmKit
-site_description: An open-source framework for composing, running, and growing multi-agent AI swarms.
+site_description: SwarmKit is the open-source AI platform runtime — governed AI systems, from a single agent to a multi-agent swarm, defined as data and run under real gates.
 site_url: https://delivstat.github.io/swarmkit/
 repo_url: https://github.com/delivstat/swarmkit
 repo_name: delivstat/swarmkit

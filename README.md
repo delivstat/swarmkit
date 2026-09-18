@@ -1,9 +1,9 @@
 <p align="center">
   <h1 align="center">SwarmKit</h1>
   <p align="center">
-    <strong>Multi-agent AI swarms as YAML, not code.</strong>
+    <strong>The open-source AI platform runtime.</strong>
     <br />
-    Define agents, skills, and governance in a topology file. SwarmKit compiles it to LangGraph and runs it.
+    Define agents, tools, and governance as data. SwarmKit runs them under real gates and records every step — from a single agent to a multi-agent swarm (compiled to LangGraph under the hood).
   </p>
 </p>
 

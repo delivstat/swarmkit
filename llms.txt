@@ -1,6 +1,6 @@
 # SwarmKit
 
-> An open-source framework for composing, running, and growing multi-agent AI swarms. Topology is data (YAML/JSON); skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
+> SwarmKit is the open-source AI platform runtime: agents, tools and governance defined as data (YAML/JSON) and run under real gates with every step recorded — from a single agent to a multi-agent swarm. Topology is data; skills are the universal extension primitive; governance is built in via Microsoft AGT; swarms grow by observing their own capability gaps and authoring new skills through conversation with human approval at every step.
 
 This file is also published on the docs site at <https://delivstat.github.io/swarmkit/llms.txt>. New here? Read **[Building swarms — the complete playbook](https://delivstat.github.io/swarmkit/guides/building-swarms/)** for the ordered build recipe, then this file for the compact map with inline schemas.
 

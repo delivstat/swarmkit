@@ -4,7 +4,7 @@ Primary project reference for Claude Code instances working in this repo. Read t
 
 ## What SwarmKit is
 
-An open-source framework for composing, running, and **growing** multi-agent AI swarms. Three distinctive claims, in order of importance:
+An open-source **AI platform runtime**: it runs governed AI systems defined as data — from a single agent to a multi-agent **swarm** — under real gates, recording every step. Three distinctive claims, in order of importance:
 
 1. **Topology is data.** Swarms are YAML/JSON files the runtime interprets. Not Python code.
 2. **Skills are the only extension primitive.** Capability / decision / coordination / persistence — one mental model.

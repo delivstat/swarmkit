@@ -1,6 +1,6 @@
 # Guided tutorials
 
-Learn SwarmKit from zero to production through 22 progressive levels. Levels 1–16 build on one workspace, adding complexity incrementally — every transcript in them is a real run, every YAML is validated against the schema and run on the mock provider in CI (`examples/tutorials/`), and every screenshot is the portal on that workspace; levels 17–22 each take one shipped capability — harness executors, funnels, command packs and attachments, agents calling agents, operations, the fleet — and are runnable on the mock provider where the level says so.
+Learn SwarmKit — the open-source AI platform runtime — from zero to production through 22 progressive levels. Levels 1–16 build on one workspace, adding complexity incrementally — every transcript in them is a real run, every YAML is validated against the schema and run on the mock provider in CI (`examples/tutorials/`), and every screenshot is the portal on that workspace; levels 17–22 each take one shipped capability — harness executors, funnels, command packs and attachments, agents calling agents, operations, the fleet — and are runnable on the mock provider where the level says so.
 
 ## Prerequisites
 
