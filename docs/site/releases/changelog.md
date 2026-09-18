@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.240.0** (2026-09-18) — A2A federation: a SwarmKit callee hands back its record
 - **v1.239.0** (2026-09-18) — the audit is a write-through journal
 - **v1.237.0** (2026-09-18) — the diagnostic commands report an unresolvable store instead of dying on it
 - **v1.236.0** (2026-09-18) — reload keeps serve up with MCP servers configured; the catalogue in the portal
