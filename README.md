@@ -56,7 +56,7 @@ agents:
 ```
 
 ```bash
-uv tool install swarmkit-runtime
+uv tool install "swarmkit-runtime[serve,ui]"
 swarmkit run my-swarm/ code-review --input "Review PR #49"
 ```
 
@@ -83,7 +83,7 @@ SwarmKit compiles this YAML to a LangGraph `StateGraph`, wires MCP tool servers,
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv if you don't have it
-uv tool install swarmkit-runtime
+uv tool install "swarmkit-runtime[serve,ui]"     # [serve] = HTTP server, [ui] = the portal it hosts; bare = CLI + headless serve
 ```
 
 ### Create and run a swarm
@@ -261,7 +261,7 @@ curl -X POST http://localhost:8000/run/my-topology \
 **The web portal ships with the runtime.** Install the `[ui]` extra and `swarmkit serve` hosts the portal at its own origin — no Node, no separate process, no CORS, no API-URL env var (the portal talks to the workspace serve was started with):
 
 ```bash
-uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"
+uv tool install "swarmkit-runtime[serve,ui]"
 swarmkit serve my-swarm/                # → portal AND API on http://localhost:8000
 ```
 
@@ -438,7 +438,7 @@ See it end to end in the **[SDLC walkthrough](https://delivstat.github.io/swarmk
 74. **`swarmkit validate --tree`** — visual agent tree with skills, archetypes, MCP servers
 75. **`swarmkit run --dry-run`** — show resolved agents without executing
 76. **`swarmkit run --verbose`** — per-agent execution detail
-77. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`uv tool install swarmkit-runtime --with "swarmkit-runtime[serve,ui]"` → `swarmkit serve` hosts the portal at its own origin)
+77. **Web UI** — dashboard, chat, topology composer (+ node/edge canvas), skill/archetype editors; ships with the runtime (`uv tool install "swarmkit-runtime[serve,ui]"` → `swarmkit serve` hosts the portal at its own origin)
 78. **JSON & TypeScript schemas** — validators in both languages
 79. **Reference topologies** — code-review (10 agents), skill-authoring (6 agents)
 80. **16 archetypes + 27 skills** — production-ready out of the box
