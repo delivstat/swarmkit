@@ -114,7 +114,7 @@ Ship in `packages/runtime/src/swarmkit_runtime/model_providers/builtin/`:
 | `ollama` | `httpx` only (no SDK) | Local inference. Defaults to `http://localhost:11434`; `extra.base_url` overrides. |
 | `mock` | none | Deterministic responses keyed by request hash; test-only. Always importable. |
 
-Each SDK is a soft dependency: the provider module declares `provider_id` and attempts its import lazily. A user topology that names `provider: anthropic` fails at load time with a clean "anthropic SDK not installed; `pip install swarmkit-runtime[anthropic]`" message.
+Each SDK is a soft dependency: the provider module declares `provider_id` and attempts its import lazily. A user topology that names `provider: anthropic` fails at load time with a clean "anthropic SDK not installed; `uv tool install swarmkit-runtime[anthropic]` or `pip install swarmkit-runtime[anthropic]`" message.
 
 Ranking rationale (why these five):
 - **Anthropic** — SwarmKit's primary LLM partner; authoring swarms target Claude.

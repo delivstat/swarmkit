@@ -80,6 +80,7 @@ nav:
       - Declarative model providers: design-notes/declarative-model-providers.md
       - Images on both executors (attachments): design-notes/images-on-both-executors.md
       - Storage service: design-notes/storage-service.md
+      - Memory by default: design-notes/memory-by-default.md
     - Executors & harnesses:
       - Declarative adapters plan: design-notes/executor-declarative-adapters-plan.md
       - Executor MCP gateway: design-notes/executor-mcp-gateway.md
@@ -99,6 +100,7 @@ nav:
       - Gate funnel: design-notes/gate-funnel.md
       - Reading a gate, approving without a saga: design-notes/gate-state-and-deferring-approval.md
       - Extracting the pipeline: design-notes/extracting-the-pipeline.md
+      - Extracting the channels (events): design-notes/extracting-the-channels.md
       - Finishing the orchestration seam (historical): design-notes/finishing-the-orchestration-seam.md
       - Funnel verification strength: design-notes/funnel-verification-check.md
       - Skill prerequisites: design-notes/skill-prerequisites.md
