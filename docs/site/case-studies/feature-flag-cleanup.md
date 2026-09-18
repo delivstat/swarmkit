@@ -88,6 +88,18 @@ and gated by an `intake-review` funnel whose `approve` layer is the engineer con
 — Jira, code search, the experimentation platform — are MCP servers, governed through the same
 gateway.
 
+Here is that funnel in the portal — the fixed *draft → validate → judge → review → approve*
+pipeline, with the **validate** layer active (the report checked against `cleanup-report.json`, with
+autocorrect), the automated middle layers off for this gate, and **approve** as the only exit. The
+`retry → draft` edge is the bounded loop; `escalate → human gate` is what happens when it is
+exhausted — validation drives the retry, it never silently advances:
+
+![The intake-review funnel: validate the report against its schema, then a human approves](../img/case-studies/cs-flag-funnel-validate.png)
+
+Validation here is deterministic and free — a JSON Schema check, no LLM — and it runs *before* the
+judge or a human ever sees the artifact, so a malformed report is corrected or bounced, not
+reviewed.
+
 ## What's SwarmKit, and what's yours
 
 Here's the honest line, and it's the interesting part. SwarmKit runs **one bounded, governed cleanup
