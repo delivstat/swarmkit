@@ -79,6 +79,12 @@ REGISTRY: tuple[EnvVar, ...] = (
     EnvVar("SWARMKIT_MAX_TOOLS", "Run limits", "Tools exposed to one agent."),
     EnvVar("SWARMKIT_MAX_RESULT_CHARS", "Run limits", "Truncation ceiling for a tool result."),
     EnvVar("SWARMKIT_MAX_DELEGATIONS_PER_CHILD", "Run limits", "Delegation fan-out cap per child."),
+    EnvVar(
+        "SWARMKIT_MOCK_DELEGATE",
+        "Testing",
+        "When set to 1, the mock provider delegates to every child so a mock run traverses a "
+        "multi-agent topology (tests only).",
+    ),
     EnvVar("SWARMKIT_MAX_PER_TOOL", "Run limits", "Calls to one search/write tool per turn (8)."),
     EnvVar(
         "SWARMKIT_MAX_PER_READ_TOOL", "Run limits", "Calls to one read-only tool per turn (50)."
