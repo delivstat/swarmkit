@@ -25,10 +25,13 @@ from swarmkit_runtime import prerequisites
 from swarmkit_runtime._run_scope import (
     current_labels,
     current_run_id,
+    current_topology,
     reset_current_labels,
     reset_current_run_id,
+    reset_current_topology,
     set_current_labels,
     set_current_run_id,
+    set_current_topology,
 )
 from swarmkit_runtime._stop_requests import (
     reset_stop_checker,
@@ -107,6 +110,9 @@ class RunEvent:
     timestamp: str
     payload: dict[str, object] = field(default_factory=dict)
     skill_id: str | None = None
+    #: The source event's stable id, carried so the end-of-run persist reuses it and the store's
+    #: id-dedup makes the batch a no-op for events the write-through journal already wrote.
+    event_id: str | None = None
     #: Carried from the provider's event so the persisted row says whether the call was refused.
     #: Until 1.227.0 this hop dropped both, and every `skill.executed` row in `audit_events` had
     #: `policy_decision NULL` — a denied tool call read exactly like an allowed one, which is the
@@ -338,6 +344,17 @@ class WorkspaceRuntime:
         # Attach the workspace's event sinks to the provider, because `record` is the one path
         # every event already takes. Nothing else in the runtime needs to know sinks exist.
         self._attach_event_sinks()
+        # Write-through audit (audit-event-journal.md): every event the compiler records is
+        # persisted the moment it happens, not batched at run end — so a crashed run still leaves
+        # its trail. The wrapper delegates everything else to the real provider.
+        from typing import cast  # noqa: PLC0415
+
+        from swarmkit_runtime.audit._journal import JournalingGovernance  # noqa: PLC0415
+
+        self._governance = cast(
+            GovernanceProvider,
+            JournalingGovernance(self._governance, write=self._journal_write),
+        )
         self._session_active = False
 
     def _attach_event_sinks(self) -> None:
@@ -1092,6 +1109,7 @@ class WorkspaceRuntime:
             set_run_tracker(CircuitBreakerTracker(limits_from_workspace(self._workspace.raw))),
             set_run_governed_memory(self._governed_memory_store),
             set_run_gap_log(self._gap_log),
+            set_current_topology(topology_name),
         )
 
         effective_limit = max(max_steps, _compute_recursion_limit(topology))
@@ -1228,6 +1246,7 @@ class WorkspaceRuntime:
             set_run_tracker(CircuitBreakerTracker(limits_from_workspace(self._workspace.raw))),
             set_run_governed_memory(self._governed_memory_store),
             set_run_gap_log(self._gap_log),
+            set_current_topology(topology_name),
         )
 
     def _agent_context(self, topology_name: str) -> Any:
@@ -1374,9 +1393,16 @@ class WorkspaceRuntime:
         The filter is the fix: the provider's log is cumulative and never cleared, so an unfiltered
         drain re-persisted every earlier run's events under this run's id.
         """
-        run_token, label_token, stop_token, agent_token, tracker_token, memory_token, gap_token = (
-            token
-        )
+        (
+            run_token,
+            label_token,
+            stop_token,
+            agent_token,
+            tracker_token,
+            memory_token,
+            gap_token,
+            topology_token,
+        ) = token
         # Captured BEFORE the reset: `_persist_events_to_audit` builds fresh AuditEvents, and once
         # the scope is gone their `labels` default to empty — the run's grouping would reach `jobs`
         # and silently not reach `audit_events`, which is half a feature and the worse half.
@@ -1389,6 +1415,7 @@ class WorkspaceRuntime:
         reset_run_governed_memory(memory_token)
         reset_run_gap_log(gap_token)
         reset_agent_context(agent_token)
+        reset_current_topology(topology_token)
         reset_current_run_id(run_token)
         reset_current_labels(label_token)
         events = _extract_events(self._governance, run_id=run_id)
@@ -1431,6 +1458,14 @@ class WorkspaceRuntime:
                 evt, ws_audit_level, resolve_audit_config, apply_audit_policy
             )
 
+            import contextlib  # noqa: PLC0415
+            from uuid import UUID  # noqa: PLC0415
+
+            id_kw: dict[str, Any] = {}
+            if evt.event_id:
+                # Not a uuid we minted → AuditEvent assigns a fresh one.
+                with contextlib.suppress(ValueError, TypeError):
+                    id_kw["event_id"] = UUID(evt.event_id)
             audit_event = AuditEvent(
                 event_type=evt.event_type,
                 agent_id=evt.agent_id,
@@ -1444,6 +1479,7 @@ class WorkspaceRuntime:
                 labels=dict(labels or {}),
                 policy_decision=evt.policy_decision,  # type: ignore[arg-type]
                 policy_reason=evt.policy_reason,
+                **id_kw,
                 **evt.typed,
             )
             await self._audit_provider.record(audit_event)
@@ -1492,6 +1528,29 @@ class WorkspaceRuntime:
             )
         )
 
+    async def _journal_write(self, event: Any) -> None:
+        """Persist one event the instant it is recorded (audit-event-journal.md).
+
+        Applies the same per-skill redaction as the end-of-run batch, stamps the topology from the
+        run scope (the event already carries its own ``run_id``/``labels``/``event_id``), and writes
+        it to the durable store. Reusing ``event_id`` means the end-of-run batch — which writes the
+        same events again as a completeness net — is deduped by the store and does not double.
+        """
+        import dataclasses  # noqa: PLC0415
+
+        from swarmkit_runtime.audit import apply_audit_policy, resolve_audit_config  # noqa: PLC0415
+
+        payload = self._redact_payload(
+            getattr(event, "skill_id", None),
+            dict(getattr(event, "payload", None) or {}),
+            self._get_workspace_audit_level(),
+            resolve_audit_config,
+            apply_audit_policy,
+        )
+        topology_id = current_topology() or getattr(event, "topology_id", None)
+        durable = dataclasses.replace(event, payload=payload, topology_id=topology_id)
+        await self._audit_provider.record(durable)
+
     def _get_workspace_audit_level(self) -> str | None:
         """Read workspace-level audit.level from storage config."""
         storage = getattr(self._workspace.raw, "storage", None)
@@ -1509,11 +1568,23 @@ class WorkspaceRuntime:
         resolve_fn: Any,
         apply_fn: Any,
     ) -> dict[str, object]:
-        """Apply per-skill audit redaction to event payload."""
-        if not evt.skill_id or evt.skill_id not in self._workspace.skills:
-            return dict(evt.payload)
+        """Apply per-skill audit redaction to a RunEvent's payload."""
+        return self._redact_payload(evt.skill_id, dict(evt.payload), ws_level, resolve_fn, apply_fn)
 
-        skill = self._workspace.skills[evt.skill_id]
+    def _redact_payload(
+        self,
+        skill_id: str | None,
+        payload: dict[str, object],
+        ws_level: str | None,
+        resolve_fn: Any,
+        apply_fn: Any,
+    ) -> dict[str, object]:
+        """Apply per-skill audit redaction to a payload — the shared core of the batch persist and
+        the write-through journal, so both redact identically."""
+        if not skill_id or skill_id not in self._workspace.skills:
+            return dict(payload)
+
+        skill = self._workspace.skills[skill_id]
         skill_audit = getattr(skill.raw, "audit", None)
         skill_category = getattr(skill.raw, "category", None)
 
@@ -1521,7 +1592,7 @@ class WorkspaceRuntime:
             skill_audit, skill_category, workspace_level=ws_level
         )
 
-        payload = dict(evt.payload)
+        payload = dict(payload)
 
         if "inputs" in payload and isinstance(payload["inputs"], dict):
             payload["inputs"] = apply_fn(
@@ -1647,9 +1718,19 @@ def _extract_events(governance: GovernanceProvider, *, run_id: str | None = None
     # A wrapper (the skill-backed provider that runs decision skills) records through the
     # provider it wraps; the events live on the base. Without this unwrap a workspace with ANY
     # decision skill persisted nothing — not the decisions, not the agents' own events.
-    inner = getattr(governance, "_base", None)
-    if inner is not None and not hasattr(governance, "events"):
-        governance = inner
+    # Unwrap the provider chain to the level that actually holds the log. There can be more than
+    # one wrapper now — the write-through journal (audit-event-journal.md) sits OUTSIDE the
+    # skill-backed provider, which itself records through its own base — so a single `_base` hop
+    # reached the skill-backed layer and stopped, finding no `events` there and returning []. Walk
+    # `_base` until a level exposes `events` (a wrapper delegates the attribute, but skill-backed
+    # provider deliberately does not — that absence is the signal to keep unwrapping).
+    seen: set[int] = set()
+    while not hasattr(governance, "events") and id(governance) not in seen:
+        seen.add(id(governance))
+        base = getattr(governance, "_base", None)
+        if base is None:
+            break
+        governance = base
     raw_events = getattr(governance, "events", None)
     if raw_events is None:
         recorder = getattr(governance, "_recorder", None)
@@ -1671,6 +1752,7 @@ def _extract_events(governance: GovernanceProvider, *, run_id: str | None = None
                     timestamp=str(evt.timestamp),
                     payload=dict(evt.payload) if evt.payload else {},
                     skill_id=evt.skill_id,
+                    event_id=str(getattr(evt, "event_id", "")) or None,
                     policy_decision=getattr(evt, "policy_decision", None),
                     policy_reason=getattr(evt, "policy_reason", None),
                     typed={

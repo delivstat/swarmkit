@@ -60,6 +60,7 @@
    - A2A interop — every topology is an A2A agent, and a remote A2A agent is a skill — `docs/site/design-notes/a2a-interop.md`
    - Declarative model providers — a provider is data, a wire format is code — `docs/site/design-notes/declarative-model-providers.md`
    - One storage service — `docs/site/design-notes/storage-service.md`
+   - The audit is a write-through journal — `docs/site/design-notes/audit-event-journal.md`
    - Memory by default — `docs/site/design-notes/memory-by-default.md`
    - Taking communication out of the runtime — `docs/site/design-notes/extracting-the-channels.md`
    - Skill catalogue — `docs/site/design-notes/skill-catalogue.md`
@@ -83,10 +84,11 @@ This file is also published on the docs site at <https://delivstat.github.io/swa
 
 **Two tiers.** This `llms.txt` is the compact, link-first map. Its companion **[`llms-full.txt`](https://delivstat.github.io/swarmkit/llms-full.txt)** inlines the *full text* of the playbook, all 11 artifact references, and the core design notes into one file — fetch it once and you have the entire corpus, no link-following. Use `llms.txt` to navigate; use `llms-full.txt` when you want everything in context at once.
 
-**Status:** runtime v1.238.0 (1.0.0 was 2026-04-26); `swarmkit-schema`, `swarmkit-webui` and `swarmkit-control-plane` version independently. Phases 1–5 of the implementation plan shipped: the runtime, CLI and `swarmkit serve`; harness executors (M19); the topology canvas (M20); the fleet control plane. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. What SwarmKit is, in one line each: reusable `Funnel` gates (`validate → judge → review → approve`; only humans approve; a gate **defers** the run and `POST /jobs/{id}/resume` continues it), multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit; skills as the one capability primitive (`mcp_tool`, `llm_prompt`, `composed`, `command`, `agent`) with `requires:` ordering enforced at the permission seam; 12 declarative model providers over four wire-format families; MCP with Docker sandboxing, permission tiers and per-tool `effects`; harness executors as declarative `adapter.yaml`; memory on by default (governed + workspace); one storage service (SQLite or Postgres) behind every store; OpenTelemetry, intent-drift detection, audit redaction, circuit breakers; a self-hosted fleet control plane; the `swarmkit-skills` catalogue reachable from `swarmkit skill` and the portal. **11 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace. Recent changes are listed by version in the next section; the [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) has every release.
+**Status:** runtime v1.239.0 (1.0.0 was 2026-04-26); `swarmkit-schema`, `swarmkit-webui` and `swarmkit-control-plane` version independently. Phases 1–5 of the implementation plan shipped: the runtime, CLI and `swarmkit serve`; harness executors (M19); the topology canvas (M20); the fleet control plane. **Sequencing lives in your application, not in SwarmKit** — the bundled pipeline (`kind: StageGraph`, the saga controller, `swarmkit orchestrator`, `swarmkit pipeline`, `POST /pipelines/*`) was removed in 1.189.0; what stays is one bounded governed run, its gates, and its record, with `examples/pipeline-orchestrator/` as a reference application that imports no runtime module. What SwarmKit is, in one line each: reusable `Funnel` gates (`validate → judge → review → approve`; only humans approve; a gate **defers** the run and `POST /jobs/{id}/resume` continues it), multi-party approval over a `RoleRegistry`, `Contract` locks as a checked vocabulary, correlated runs and an append-only audit; skills as the one capability primitive (`mcp_tool`, `llm_prompt`, `composed`, `command`, `agent`) with `requires:` ordering enforced at the permission seam; 12 declarative model providers over four wire-format families; MCP with Docker sandboxing, permission tiers and per-tool `effects`; harness executors as declarative `adapter.yaml`; memory on by default (governed + workspace); one storage service (SQLite or Postgres) behind every store; OpenTelemetry, intent-drift detection, audit redaction, circuit breakers; a self-hosted fleet control plane; the `swarmkit-skills` catalogue reachable from `swarmkit skill` and the portal. **11 canonical artifact schemas** (topology, workspace, archetype, skill, funnel, contract, role-registry, trigger, executor-adapter, model-provider + the embedded approval-policy). Reference libraries: 3 reference topologies, 27 skills, 16 archetypes, plus the SDLC example workspace. Recent changes are listed by version in the next section; the [changelog](https://delivstat.github.io/swarmkit/releases/changelog/) has every release.
 
 ## Recent changes (newest first, by runtime version)
 
+- **1.239.0** — the audit is a write-through journal (`design/details/audit-event-journal.md`): each event is persisted the moment it is recorded, not batched at the run boundary, so a run that crashes (SIGKILL, OOM, power loss) still leaves its trail up to the crash and `GET /events` shows it. Before this, a hard kill wrote nothing while the checkpoint survived — recovery was durable, the record was not. The end-of-run write stays as an idempotent completeness net (the store dedups on event id).
 - **1.238.0** — a `kill -9` mid-harness regression test (`test_kill9_recovery.py`, `design/details/failure-path-evaluation.md`): a run killed with SIGKILL resumes from its checkpoint and completes (the interrupted node re-runs, the checkpointed one does not). It documents a real limit — the audit trail is flushed at the run boundary, so a hard kill loses the killed attempt's audit while the checkpoint stays durable and the resumed run's record is complete. Opt-in `SWARMKIT_MOCK_DELEGATE=1` makes the mock provider delegate to children, so a `swarmkit run` on the mock traverses a multi-agent topology (off by default; nothing that counts calls changes).
 - **1.237.0** — `swarmkit storage status`, `swarmkit system` and `GET /storage` report a store whose configuration cannot be honoured (a postgres backend whose `${VAR}` URL is unset) as an `UNRESOLVED` row plus one sentence per cause, exit 2, and `system` still prints the environment section — instead of a traceback from the diagnostic command. A run still refuses.
 - **1.236.0** — a workspace reload (`POST /reload`, a portal edit, `skill add` over HTTP) hands MCP sessions to one owner task and swaps the runtime under a lock: the new runtime's servers start before the old one's close, and a reload with `mcp_servers` configured no longer takes serve down. The portal's **Skills → Library** tab (webui 0.24.0) is the catalogue with a search box: Add shows both fragments before writing, a `SKILL.md` pastes in, Check runs from a button.
@@ -478,6 +480,7 @@ Per-feature design notes under `design/details/`:
 - [LangGraph compiler](https://github.com/delivstat/swarmkit/blob/main/design/details/langgraph-compiler.md): topology → StateGraph translation, approval gate checkpointing.
 - [DAG dependency graph](https://github.com/delivstat/swarmkit/blob/main/design/details/dag-dependency-graph.md): `depends_on` for parallel-with-dependencies execution.
 - [Decision skills](https://github.com/delivstat/swarmkit/blob/main/design/details/decision-skills.md): LLM judge verdicts, confidence scores, multi-persona panels.
+- [Audit event journal](https://github.com/delivstat/swarmkit/blob/main/design/details/audit-event-journal.md): write-through audit — each event durable when recorded, so a crashed run keeps its trail; the store dedups the end-of-run backstop.
 - [Human interaction model](https://github.com/delivstat/swarmkit/blob/main/design/details/human-interaction-model.md): audit event schema, CLI primitives, the review queue (its notification layer left the runtime in 1.216.0 — see Events).
 - [Skill registry](https://github.com/delivstat/swarmkit/blob/main/design/details/skill-registry.md): the `swarmkit skill` command over the catalogue — search, add (both fragments shown first), import SKILL.md, check, remove; shipped 1.235.0.
 - [Memory by default](https://github.com/delivstat/swarmkit/blob/main/design/details/memory-by-default.md): the defaults a silent workspace gets, the `memory:` block, and the `memory.disabled-but-bound` error; shipped 1.233.0.
@@ -9520,6 +9523,115 @@ key the process uses). Values are masked by declaration — the reserved `secret
 name heuristic as the fallback for workspaces written before it existed.
 
 ## Superseded open questions
+
+══════════════════════════════════════════════════════════════════════════════
+## Source: docs/site/design-notes/audit-event-journal.md
+## Published: https://delivstat.github.io/swarmkit/design-notes/audit-event-journal/
+══════════════════════════════════════════════════════════════════════════════
+
+---
+title: The audit is a write-through journal
+description: Persist each audit event the moment it is recorded, not in one batch at the run boundary, so a run that crashes (SIGKILL, OOM, power loss) still leaves the trail up to the crash.
+tags: [audit, observability, durability, governance]
+status: accepted
+---
+
+# The audit is a write-through journal
+
+## The gap
+
+Until 1.239.0 audit events were held in the governance provider's in-memory list for the whole
+run and written to the store in one batch at `_end_run`. `GET /events` — "the durable log an
+application reconciles from" — reads the same `audit_events` table, so both surfaces depended on
+the run reaching its boundary. A `kill -9` mid-run, an OOM, or a power loss wrote **nothing**:
+`test_kill9_recovery.py` shows the store empty right after a SIGKILL, while the LangGraph
+checkpoint (written per node) survived and the run resumed. Recovery was durable; the record of
+what happened before the crash was not.
+
+That inverts what an audit log is for. The append-only invariant (§8.3) is about *integrity* — no
+agent can update or delete an entry — and it was never violated. Durability was simply never
+stated, so batch-at-end (one pass, one redaction, no per-event write on a hot run) looked free.
+It is not free for the run a security team most wants to reconstruct: the one that crashed.
+
+## Goal
+
+Each recorded event reaches the durable store when it is recorded. A hard kill loses at most the
+single in-flight event, not the run. `GET /events` and `swarmkit logs` show a crashed run's trail
+up to the crash. No new public API; the change is where the write happens, not what is written.
+
+## Non-goals
+
+- Not per-event `fsync`. The floor is "written to the store before the next event", not "flushed
+  to disk before the operation the event describes returns". SQLite WAL and Postgres both make
+  the row visible to a reader immediately; surviving a kernel-level power cut mid-fsync is a
+  storage-engine concern, not this seam's.
+- Not a second store. The journal writes to the same `AuditProvider` the batch used.
+- Not removing the end-of-run pass. It stays as a completeness safety net (see below), made a
+  no-op for already-journaled events by the store's existing id dedup.
+
+## Design
+
+Three facts already in place make this small:
+
+1. **`AuditEvent` stamps `event_id` (uuid4) and `run_id` at construction** from the per-task run
+   scope. So an event is self-identifying and self-attributing the moment a node creates it.
+2. **`AuditProvider.record` dedups on `event_id`** (a duplicate primary key returns quietly, per
+   the ABC). So writing the same event twice is safe and idempotent.
+3. **The runtime owns both** the governance provider and the audit provider, and constructs the
+   provider it hands the compiler — the right place to interpose.
+
+The seam is a wrapper, `JournalingGovernance` (`audit/_journal.py`), installed by the runtime
+around the base provider:
+
+```
+record_event(event):
+    await base.record_event(event)      # unchanged: in-memory list, trust, flight recorder
+    await write(event)                  # NEW: redact, stamp topology, persist NOW
+                                        # failure is logged, never raised — the run continues and
+                                        # the end-of-run batch is the retry
+```
+
+`write` is the runtime's `_journal_write`: it applies the same per-skill redaction the batch
+applied (`_redact_payload`, factored out of `_apply_skill_redaction`), stamps the topology from a
+new `current_topology` run-scope var (the event's own `run_id`/`labels` are already set), and
+`dataclasses.replace`s the event with the redacted payload — keeping `event_id`, so the store
+dedups it against any later write.
+
+The end-of-run path is unchanged except that `RunEvent` now carries `event_id` and
+`_persist_events_to_audit` reuses it instead of minting a fresh one. That turns the batch into a
+**completeness net**: an event the journal missed (a write that raised, an event recorded outside
+run scope) is still written at the end, while every event the journal already wrote is deduped.
+The journal is the durability mechanism; the batch is the backstop.
+
+### What a crash now leaves
+
+- Events recorded before the crash: **in the store**, redacted, attributed to the run.
+- The event in flight at the instant of the kill: possibly lost (its `record` may not have
+  returned). One event, named by what came after it on resume.
+- The LangGraph checkpoint: durable as before, so the run still resumes.
+
+### Cost
+
+One store write per event instead of one batch per run. Audit volume is a handful of events per
+agent step, and SQLite/WAL and Postgres both take a single-row insert cheaply. If a
+high-throughput deployment needs it, a bounded coalescing buffer (flush every N events or T ms) is
+a later tuning of `_journal_write` alone — the write-through default is what an audit log should
+ship with.
+
+## Test plan
+
+- `test_audit_journal.py` — a two-node run; assert the audit store has each event *before* the run
+  ends (drive record, read store mid-run via a spy); a failed journal write is logged and the
+  end-of-run batch still persists the event; the batch does not duplicate a journaled event.
+- `test_kill9_recovery.py` — updated: after the SIGKILL the store now holds the pre-kill events
+  (this is the assertion that flips — the note it referenced is this one), and the resumed run's
+  record joins them without duplication.
+- Existing audit/observability suites unchanged: same events, same redaction, same `GET /events`.
+
+## Demo plan
+
+`just demo-...` not needed; the kill-9 test is the demo. `docs/site/guides/evaluating-the-failure-path.md`
+(the eight-test evaluation) cites this note for Test 7/8, now answered "the trail survives".
 
 ══════════════════════════════════════════════════════════════════════════════
 ## Source: docs/site/design-notes/memory-by-default.md

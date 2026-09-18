@@ -9,11 +9,10 @@ fake set to finish immediately, and reads the audit back:
 - CHECKPOINT RECOVERY WORKS: the resumed run finishes the chain from where it was killed. The
   node the kill interrupted (`build`, the harness) re-runs; the node already checkpointed
   (`prepare`) does not. This is the behaviour a WMS incidents app relies on.
-- THE AUDIT OF A KILLED ATTEMPT IS NOT DURABLE: right after the SIGKILL the audit store is
-  empty, because audit events buffer in memory and are flushed at the run boundary (`_end_run`),
-  which a hard kill never reaches. The RESUMED run writes a complete record. This is a real
-  limitation, asserted here so a change to incremental audit writes would (rightly) break it and
-  force this note to be updated — see docs/site/guides/evaluating-the-failure-path.md.
+- THE AUDIT OF THE KILLED ATTEMPT SURVIVES: the write-through journal (audit-event-journal.md)
+  persists each event when it happens, so right after the SIGKILL the store already holds the
+  trail up to the kill — including the harness's `executor.started`. (Before 1.239.0 this was
+  empty: events buffered in memory and flushed only at the run boundary a hard kill never reaches.)
 
 No network, no key: the model nodes use the mock provider and the fake harness speaks Claude
 Code's stream-json in three lines.
@@ -185,10 +184,15 @@ def test_a_run_killed_mid_harness_resumes_from_its_checkpoint(tmp_path: Path) ->
     proc.wait(timeout=30)
     assert proc.returncode == -signal.SIGKILL
 
-    # The audit is flushed at the run boundary, so a hard kill leaves nothing behind — the
-    # checkpoint, not the audit, is what makes the run recoverable.
-    assert _audit(ws) == [], "audit is flushed at run end; a SIGKILL writes nothing"
-    assert (ws / ".swarmkit" / "state" / "checkpoints.db").exists(), "the checkpoint is durable"
+    # The write-through journal makes the pre-kill trail durable: the events up to and including
+    # the harness starting are in the store, though the process was killed with -9 and never
+    # reached its end-of-run flush.
+    after_kill = _audit(ws)
+    assert ("agent.completed", "lead") in after_kill
+    assert ("agent.completed", "prepare") in after_kill
+    assert ("executor.started", "build") in after_kill, "the harness start is durable"
+    assert ("executor.result", "build") not in after_kill, "the harness had not finished"
+    assert (ws / ".swarmkit" / "state" / "checkpoints.db").exists(), "the checkpoint is durable too"
 
     # Attempt 2: resume. The fake harness now finishes at once.
     started.unlink()
@@ -202,7 +206,10 @@ def test_a_run_killed_mid_harness_resumes_from_its_checkpoint(tmp_path: Path) ->
     assert resumed.returncode == 0, resumed.stderr[-3000:]
 
     final = _audit(ws)
-    # The resumed run reached the harness and completed the chain — checkpoint recovery.
-    assert final.count(("executor.started", "build")) == 1, "the harness re-ran once on resume"
-    assert ("executor.result", "build") in final
+    # Append-only: the pre-kill trail is still there, and the resume added to it without erasing.
+    assert final[: len(after_kill)] == after_kill
+    # The killed attempt's harness start plus the resumed one — both on the record.
+    assert final.count(("executor.started", "build")) == 2, "both attempts are on the record"
+    # Only the resumed attempt produced a result and completed the chain (checkpoint recovery).
+    assert final.count(("executor.result", "build")) == 1
     assert ("agent.completed", "lead") in final, "the run finished after the resume"

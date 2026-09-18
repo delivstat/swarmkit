@@ -114,6 +114,7 @@ MANIFEST: list[tuple[str, list[str]]] = [
             "docs/site/design-notes/a2a-interop.md",
             "docs/site/design-notes/declarative-model-providers.md",
             "docs/site/design-notes/storage-service.md",
+            "docs/site/design-notes/audit-event-journal.md",
             "docs/site/design-notes/memory-by-default.md",
             "docs/site/design-notes/extracting-the-channels.md",
             "docs/site/design-notes/skill-catalogue.md",
