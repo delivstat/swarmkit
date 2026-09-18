@@ -55,6 +55,19 @@ export default function SystemPage() {
 				URLs are shown with the password masked.
 			</p>
 
+			{data && (data.storage.problems?.length ?? 0) > 0 && (
+				<Card className="mb-4 border-destructive/40 bg-destructive/5">
+					<h4 className="mb-2 text-sm font-semibold">
+						A store's configuration cannot be honoured
+					</h4>
+					<ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+						{data.storage.problems?.map((w) => (
+							<li key={w}>{w}</li>
+						))}
+					</ul>
+				</Card>
+			)}
+
 			{data && data.storage.warnings.length > 0 && (
 				<Card className="mb-4 border-amber-500/40 bg-amber-500/5">
 					<h4 className="mb-2 text-sm font-semibold">

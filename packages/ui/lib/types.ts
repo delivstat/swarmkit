@@ -22,6 +22,9 @@ export interface StorageReport {
 	stores: StorageTarget[];
 	/** Configured remote, but a populated local SQLite still exists — rows the UI cannot see. */
 	warnings: string[];
+	/** Stores whose configuration cannot be honoured (a postgres backend with no URL) — one
+	 * sentence per cause, the stores it covers named first. Absent on older runtimes. */
+	problems?: string[];
 }
 
 /** One known environment variable, from GET /system. Curated — never a raw os.environ dump, so a

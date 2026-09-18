@@ -914,10 +914,12 @@ def _wrap_with_funnel_gate(
     and turning every currently-passing pipeline into a failing one is not what a quality gate is
     for.
 
-    Human approval is NOT this layer. `build_advisory_approver` explains why at length: the
-    in-node path has nothing to park a human in, so `resolve_multiparty` here would poll inside
-    the agent's coroutine for up to seven days and lose the wait on a restart. The pipeline's
-    stage-level ``gate:`` already parks the saga durably; that is where an approval belongs.
+    Human approval is the `approve` layer, and it does not wait in-node: with a review queue and
+    a role registry to open onto, the node raises `HITLDeferredError` — the run checkpoints, the
+    job goes `deferred`, and a resolved gate resumes it (gate-state-and-deferring-approval.md).
+    Without those (a bare CLI run, or roles the workspace does not define) the layer stays
+    advisory: `build_advisory_approver` records the deferral in the audit rather than polling
+    inside the agent's coroutine for up to seven days and losing the wait on a restart.
     """
     from swarmkit_runtime.langgraph_compiler._gate_funnel import (  # noqa: PLC0415
         build_advisory_approver,
@@ -959,25 +961,22 @@ def _wrap_with_funnel_gate(
         # No `review` entry, deliberately: `run_agent_funnel_gate` builds no reviewer at all, on
         # either binding. That omission is this check's own acceptance test — a declared `review:`
         # reports as unreachable on day one, with nothing reconstructed.
-    if declares_approve:
-        # Said, not hidden — but at INFO, because `approve` is a REQUIRED property of the Funnel
-        # schema: every funnel has one, so a warning here would fire on every compile of every
-        # gated topology and mean nothing. The durable "never silently" guarantee is the audit
-        # record instead: `funnel.advisory_completed` states the deferral on every run, which
-        # survives log levels and can be queried after the fact.
+    # A real human gate needs a queue to open onto and a registry to count quorum against. Absent
+    # either, the layer stays advisory, exactly as it behaved before. Resolved once here, not per
+    # invocation.
+    approver_deps = _approver_deps(funnel, review_queue, role_registry)
+    if declares_approve and approver_deps is None:
+        # Said, not hidden — at INFO, because a bare `swarmkit run` has no queue and this would
+        # otherwise fire as a warning on every CLI run of every gated topology. The durable "never
+        # silently" guarantee is the audit record: `funnel.advisory_completed` states the deferral
+        # on every run, which survives log levels and can be queried after the fact.
         _logger.info(
-            "funnel %r on agent %r: the advisory layers (validate/judge/review) run in-node; its "
-            "`approve` layer does not. Human approval is the stage-level `gate:` on the pipeline, "
-            "which parks the saga durably — an in-node approve would block this run's coroutine "
-            "waiting for a person and lose the wait on a restart.",
+            "funnel %r on agent %r: its `approve` layer is advisory in this run — no review queue "
+            "and role registry to park a human decision on (under `swarmkit serve` with a role "
+            "registry whose roles the policy names, the run defers on the gate instead).",
             funnel.id,
             agent.id,
         )
-
-    # A real human gate needs a queue to open onto and a registry to count quorum against. Absent
-    # either — or on a pipeline stage, which opens its own gate and parks the saga — the layer stays
-    # advisory, exactly as it behaved before. Resolved once here, not per invocation.
-    approver_deps = _approver_deps(funnel, review_queue, role_registry)
 
     async def gated_node(state: SwarmState) -> dict[str, Any]:
         # Re-entry first, and this is the load-bearing part. LangGraph checkpoints at super-step

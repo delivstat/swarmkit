@@ -244,3 +244,53 @@ def test_nothing_outside_persistence_hardcodes_a_sqlite_path() -> None:
 def test_the_service_is_cached_per_workspace(tmp_path: Path) -> None:
     """Two calls must not produce two resolutions — that is how the split brain started."""
     assert storage_for_workspace(tmp_path) is storage_for_workspace(tmp_path)
+
+
+# ---- the report never dies on the misconfiguration it exists to show -----------------------
+
+
+def test_report_marks_an_unresolvable_store_instead_of_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`swarmkit system` on a postgres workspace with the URL variable unset used to be a
+    traceback — from the diagnostic command. The row says which store, `problems()` says why,
+    and five stores inheriting one block are one problem, not five."""
+    monkeypatch.delenv("SWARMKIT_STORE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    svc = _svc(tmp_path, {"runtime": {"backend": "postgres", "url": "${SWARMKIT_STORE_URL}"}})
+    report = svc.report()
+    assert any(line.startswith("  runtime      postgres  UNRESOLVED") for line in report)
+    assert any(line.startswith("  checkpoints  sqlite") for line in report)  # never inherits
+    problems = svc.problems()
+    assert len(problems) == 1
+    assert problems[0].startswith("runtime, audit, artifacts, memory, fleet: ")
+    assert "SWARMKIT_STORE_URL" in problems[0]
+    assert svc.split_warnings() == []  # must not raise either
+    # A run still refuses — the report is the only place that tolerates the state.
+    with pytest.raises(StorageConfigError, match="has no URL"):
+        svc.target(StoreKind.RUNTIME)
+
+
+def test_storage_status_and_system_exit_2_on_an_unresolved_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from swarmkit_runtime.cli import app  # noqa: PLC0415
+    from typer.testing import CliRunner  # noqa: PLC0415
+
+    monkeypatch.delenv("SWARMKIT_STORE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    (tmp_path / "workspace.yaml").write_text(
+        "apiVersion: swarmkit/v1\nkind: Workspace\nmetadata: {id: w, name: W}\n"
+        "governance: {provider: mock}\n"
+        "storage: {runtime: {backend: postgres, url: '${SWARMKIT_STORE_URL}'}}\n"
+    )
+    reset_storage_cache()
+    runner = CliRunner()
+    out = runner.invoke(app, ["storage", "status", str(tmp_path)])
+    assert out.exit_code == 2, out.output
+    assert "UNRESOLVED" in out.output and "Traceback" not in out.output
+    reset_storage_cache()
+    out = runner.invoke(app, ["system", str(tmp_path)])
+    assert out.exit_code == 2, out.output
+    assert "UNRESOLVED" in out.output and "environment:" in out.output
+    assert "Traceback" not in out.output
