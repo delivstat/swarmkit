@@ -1,0 +1,23 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: flag-triage
+  version: 0.1.0
+# Phase 1: one model agent turns a stale-flag ticket into a cleanup report a human confirms.
+# `output_schema` shape-checks the report for free; the `intake-review` funnel takes the sign-off.
+agents:
+  root:
+    id: triager
+    role: root
+    archetype: flag-triager
+    funnel: intake-review
+    output_schema:
+      type: object
+      required: [flag_key, keep_branch, files, risk]
+      properties:
+        flag_key: {type: string}
+        keep_branch: {type: string}
+        rollout_percent: {type: number}
+        files: {type: array, items: {type: string}}
+        risk: {enum: [low, medium, high]}
+        notes: {type: string}

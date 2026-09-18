@@ -1,0 +1,11 @@
+apiVersion: swarmkit/v1
+kind: RoleRegistry
+metadata:
+  id: flag-roles
+  name: Flag cleanup roles
+roles:
+  # The engineer who confirms the Phase-1 report and signs off the Phase-2 diff. `flags:approve` is
+  # a human-only scope — no agent can hold it, so the cleanup cannot merge itself.
+  - id: flag-reviewer
+    members: [alice, bob]
+    scopes: [flags:approve]

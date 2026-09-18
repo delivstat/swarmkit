@@ -1,0 +1,19 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: search-flag-refs
+  name: Search flag references
+  description: >
+    Find every reference to a flag key across the repository — the call sites, the
+    dependency-injected wrappers and the tests — so the cleanup can account for all of them before
+    it starts.
+category: capability
+implementation:
+  type: mcp_tool
+  server: code-search
+  tool: search_references
+iam:
+  required_scopes: [repo:read]
+provenance:
+  authored_by: human
+  version: 1.0.0

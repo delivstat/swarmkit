@@ -1,0 +1,30 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: code-review
+  name: Cleanup diff review
+  description: >
+    Judge a flag-removal diff: the flag and its wrapper are gone, the keep-branch behaviour is
+    preserved inline, dead tests are removed, and nothing unrelated changed. Returns
+    pass / needs-revision with the finding, so a below-threshold diff routes back to the harness.
+category: decision
+implementation:
+  type: llm_prompt
+  prompt: |
+    You are reviewing a diff that removes a stale feature flag.
+    PASS only if: every reference to the flag key is gone (including DI wrappers), the winning
+    branch's behaviour is inlined, tests that only exercised the flag are removed, and no unrelated
+    code changed. Otherwise return needs-revision with the specific finding.
+    Return JSON: {"verdict": "pass"|"needs-revision", "reasoning": "..."}
+outputs:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [pass, needs-revision]
+    reasoning:
+      type: string
+  required: [verdict]
+provenance:
+  authored_by: human
+  version: 1.0.0

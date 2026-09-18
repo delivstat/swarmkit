@@ -1,0 +1,25 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: flag-triager
+  name: Flag triager
+  description: >
+    Phase 1. Reads a stale-flag ticket, pulls the flag's rollout metadata and every reference to
+    it, and writes a cleanup report — the keep-branch, the files to touch, the risk — for a human
+    to confirm before any code changes. A model node; it decides, it does not edit.
+role: root
+defaults:
+  model: {provider: mock, name: mock}
+  prompt:
+    system: >
+      You triage a stale feature flag for removal. Use flag-metadata to read its rollout and
+      last-change date and search-flag-refs to find every reference. Decide the keep-branch (the
+      variant at ~100% rollout), list the files that must change, flag any deep call chains as
+      higher risk, and produce the cleanup report. Do not edit code — that is the next phase, after
+      a human confirms your report.
+  skills:
+    - flag-metadata
+    - search-flag-refs
+provenance:
+  authored_by: human
+  version: 1.0.0

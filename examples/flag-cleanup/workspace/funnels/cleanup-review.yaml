@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: Funnel
+metadata:
+  id: cleanup-review
+  name: Cleanup diff review
+  description: >
+    Phase 2's gate on the harness's candidate diff — DoorDash's "submit a PR only after the checks
+    pass, and a human signs off". The harness runs the build and tests itself (they show in its
+    tool trail), then the code-review decision skill judges the diff — a needs-revision verdict
+    routes the finding back to the harness for a bounded revision — then a human on the
+    flag-reviewer role approves, the only exit, and where the PR is opened.
+judge:
+  skill: code-review
+  threshold: 0.8
+  max_retries: 2
+approve:
+  rules:
+    - scope: flags:approve
+      roles: [flag-reviewer]
+      quorum: any
+  exclude_author: true
+provenance:
+  authored_by: human
+  version: 1.0.0

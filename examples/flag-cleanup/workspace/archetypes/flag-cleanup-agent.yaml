@@ -1,0 +1,31 @@
+apiVersion: swarmkit/v1
+kind: Archetype
+metadata:
+  id: flag-cleanup-agent
+  name: Flag cleanup agent
+  description: >
+    Phase 2. A harness executor (Claude Code) that removes the flag in an isolated git worktree:
+    it deletes the flag references and their DI wrappers, inlines the keep-branch, drops the
+    flag-only tests, runs the build and tests, and produces a candidate diff. Bounded by a budget —
+    DoorDash's one-hour ceiling is `max_wall_clock_minutes: 60`.
+role: root
+executor:
+  kind: harness
+  ref: claude-code
+  config:
+    budget:
+      max_wall_clock_minutes: 60
+      max_turns: 40
+      max_cost_usd: 8.0
+defaults:
+  prompt:
+    system: >
+      Remove the named stale feature flag from this repository. Delete every reference including
+      dependency-injected wrappers, inline the keep-branch behaviour, remove tests that only
+      exercised the flag, run the build and the tests, and leave a reviewable diff. Change nothing
+      unrelated to the flag.
+  skills:
+    - search-flag-refs
+provenance:
+  authored_by: human
+  version: 1.0.0
