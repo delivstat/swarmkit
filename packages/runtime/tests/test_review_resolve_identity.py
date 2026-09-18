@@ -299,3 +299,21 @@ def test_whoami_reports_the_authenticated_caller(client: TestClient) -> None:
     assert body["client_id"] == "anonymous"  # NoneAuthProvider default
     assert body["mode"] == "none"
     assert isinstance(body["scopes"], list)
+
+
+# ---- the generic verbs refuse a role-task ------------------------------
+
+
+@pytest.mark.parametrize("verb", ["approve", "reject"])
+def test_generic_verbs_refuse_a_role_task(client: TestClient, workspace: Path, verb: str) -> None:
+    """A fleet panel that only knew approve|reject|answer marked the queue row and left the gate
+    open forever: the row left the pending list, no resolution was counted. The generic verbs now
+    refuse a role-task and point at /resolve; the item stays pending for a member of the role."""
+    resp = client.post(f"/review/mpa-run-42:design-0-security-reviewer/{verb}", json={})
+    assert resp.status_code == 409
+    assert "/resolve" in resp.json()["detail"]
+    assert "security-reviewer" in resp.json()["detail"]
+    pending = {i.id for i in FileReviewQueue(workspace).list_pending()}
+    assert "mpa-run-42:design-0-security-reviewer" in pending
+    # A harness permission item is unaffected.
+    assert client.post(f"/review/approval-1/{verb}", json={}).status_code == 200

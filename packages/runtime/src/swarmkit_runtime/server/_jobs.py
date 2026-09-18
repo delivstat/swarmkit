@@ -29,7 +29,9 @@ class Job:
     #: checkpointed under this job's id, and it continues when the gate resolves.
     #: `stopped` is its own status, not a flavour of `deferred` or `failed`: deferred means
     #: "waiting on a human decision that will arrive", and nothing went wrong here.
-    status: Literal["pending", "running", "completed", "failed", "deferred", "stopped"]
+    status: Literal[
+        "pending", "running", "completed", "failed", "deferred", "stopped", "interrupted"
+    ]
     input: str
     version: str | None = None
     output: str | None = None

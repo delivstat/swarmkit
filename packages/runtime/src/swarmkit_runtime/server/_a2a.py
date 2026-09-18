@@ -60,6 +60,9 @@ JOB_TO_TASK_STATE: dict[str, str] = {
     "completed": "completed",
     "failed": "failed",
     "stopped": "canceled",
+    # A run a dead process left `running`, swept on restart: it did not finish and nobody chose to
+    # stop it — that is a failure from the caller's side, not a cancellation.
+    "interrupted": "failed",
 }
 
 TERMINAL_STATES = frozenset({"completed", "failed", "canceled", "rejected"})

@@ -40,9 +40,21 @@ export class ApiError extends Error {
 	constructor(
 		message: string,
 		readonly status: number,
+		/** The server's own reason (`detail`), when the body carried one — an instance refusing a
+		 * gate resolution says *why* there, and that is what the operator needs to read. */
+		readonly detail: string = "",
 	) {
 		super(message);
 		this.name = "ApiError";
+	}
+}
+
+async function errorDetail(res: Response): Promise<string> {
+	try {
+		const body = (await res.json()) as { detail?: unknown };
+		return typeof body.detail === "string" ? body.detail : "";
+	} catch {
+		return "";
 	}
 }
 
@@ -66,6 +78,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 		throw new ApiError(
 			`${init?.method ?? "GET"} ${path} → ${res.status}`,
 			res.status,
+			await errorDetail(res),
 		);
 	}
 	return (await res.json()) as T;
@@ -172,11 +185,23 @@ export const api = {
 	// /review API the CLI + serve UI use.
 	instanceGates: (id: string) =>
 		request<GatesEnvelope>(`/instances/${id}/review`),
-	resolveGate: (id: string, itemId: string, action: string, answer = "") =>
-		request<ReviewGate>(`/instances/${id}/review/${itemId}/${action}`, {
-			method: "POST",
-			body: JSON.stringify({ answer }),
-		}),
+	// `answer` for an input gate; `outcome` (+ optional comment) for a multi-party role-task,
+	// which is resolved with the `resolve` verb — the generic approve does not count toward it.
+	resolveGate: (
+		id: string,
+		itemId: string,
+		action: string,
+		answer = "",
+		outcome = "",
+		comment = "",
+	) =>
+		request<ReviewGate>(
+			`/instances/${id}/review/${encodeURIComponent(itemId)}/${action}`,
+			{
+				method: "POST",
+				body: JSON.stringify({ answer, outcome, comment }),
+			},
+		),
 	// Fleet canary (design 26) — federated status + manage-scope promote/rollback.
 	instanceCanary: (id: string) =>
 		request<CanaryEnvelope>(`/instances/${id}/canary`),

@@ -34,8 +34,11 @@ class PollRequest(BaseModel):
 
 
 class GateResolveRequest(BaseModel):
-    # Only used for the `answer` action (§6.3 input); empty for approve/reject.
+    # `answer` is for the `answer` action (§6.3 input). `outcome` is for `resolve` — a multi-party
+    # role-task: approve | changes-requested | reject. `comment` travels with any of them.
     answer: str = ""
+    outcome: str = ""
+    comment: str = ""
 
 
 class CanaryPromoteRequest(BaseModel):

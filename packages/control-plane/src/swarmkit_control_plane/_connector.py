@@ -264,6 +264,11 @@ async def start_canary(
     return result
 
 
+# Job statuses after which polling is pointless: the run will not complete on its own. `stopped`
+# is an operator's stop, `interrupted` a restart sweep over a run a dead process left running.
+_TERMINAL_FAILURES = frozenset({"failed", "stopped", "interrupted"})
+
+
 async def run_authoring(
     endpoint: str, token_ref: str, topology: str, message: str
 ) -> dict[str, Any]:
@@ -292,8 +297,12 @@ async def run_authoring(
             status = job.get("status")
             if status == "completed":
                 return {"reply": job.get("output") or "", "status": "completed"}
-            if status == "failed":
-                raise ConnectorError(f"authoring run failed: {job.get('error') or 'unknown'}")
+            if status == "deferred":
+                # Parked on a human gate on the instance: not a failure, and not ours to wait
+                # out — the gate is resolved on the instance and the run resumes there.
+                return {"reply": job.get("error") or "", "status": "deferred", "job_id": job_id}
+            if status in _TERMINAL_FAILURES:
+                raise ConnectorError(f"authoring run {status}: {job.get('error') or 'unknown'}")
     raise ConnectorError("authoring run did not complete in time")
 
 
@@ -321,10 +330,11 @@ async def run_eval(  # noqa: PLR0911 — each branch reports a distinct eval sta
                 if jr.status_code != 200:
                     return {"status": f"poll-error-{jr.status_code}"}
                 job = jr.json()
-                if job.get("status") == "completed":
+                status = job.get("status")
+                if status == "completed":
                     return _parse_eval(job.get("output") or "")
-                if job.get("status") == "failed":
-                    return {"status": "failed", "error": job.get("error") or "unknown"}
+                if status == "deferred" or status in _TERMINAL_FAILURES:
+                    return {"status": status, "error": job.get("error") or "unknown"}
     except ConnectorError as exc:
         return {"status": "unreachable", "error": str(exc)}
     return {"status": "timeout"}
@@ -358,13 +368,48 @@ async def fetch_gates(endpoint: str, token_ref: str) -> list[dict[str, Any]]:
     return gates
 
 
+class GateRefused(ConnectorError):
+    """The instance answered the resolution with a 4xx of its own — the caller is not a member of
+    the role, the item is not pending, the verb does not fit the kind. The instance was reached;
+    its reason is the message, and it belongs to the human, not to the health monitor."""
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+
+
 async def resolve_gate(
-    endpoint: str, token_ref: str, item_id: str, action: str, answer: str
+    endpoint: str,
+    token_ref: str,
+    item_id: str,
+    action: str,
+    answer: str = "",
+    *,
+    outcome: str = "",
+    comment: str = "",
 ) -> dict[str, Any]:
     """Proxy a human decision to the instance's review queue (POST /review/{id}/{action}), where
-    action is approve | reject | answer. Returns the updated gate. Raises ConnectorError."""
-    body = {"answer": answer} if action == "answer" else {}
+    action is approve | reject | answer for a harness gate, or resolve for a multi-party
+    role-task (``outcome`` approve | changes-requested | reject, counted against the panel's
+    identity on the instance). Returns the updated item. Raises GateRefused when the instance
+    declined the decision, ConnectorError when it could not be reached."""
+    body: dict[str, Any]
+    if action == "answer":
+        body = {"answer": answer}
+    elif action == "resolve":
+        body = {"outcome": outcome or "approve", "comment": comment}
+    else:
+        body = {"comment": comment} if comment else {}
     path = f"/review/{item_id}/{action}"
     async with ServeClient(endpoint, token_ref) as serve:
-        result: dict[str, Any] = serve.ok(await serve.post(path, body), path)
+        resp = await serve.post(path, body)
+        # 401 is the panel's token; every other 4xx here is the instance's verdict on the decision —
+        # including 403, which is how it says the panel's identity is not a member of the role.
+        if 400 <= resp.status_code < 500 and resp.status_code != 401:
+            try:
+                detail = str(resp.json().get("detail", resp.text[:200]))
+            except ValueError:
+                detail = resp.text[:200]
+            raise GateRefused(resp.status_code, detail)
+        result: dict[str, Any] = serve.ok(resp, path)
     return result

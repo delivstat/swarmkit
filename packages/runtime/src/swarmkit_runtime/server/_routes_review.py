@@ -343,6 +343,21 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa
     def _queue() -> FileReviewQueue:
         return FileReviewQueue(workspace_path)
 
+    def _not_a_role_task(item: ReviewItem, verb: str) -> None:
+        """A multi-party role-task is resolved through ``/resolve`` as the authenticated caller —
+        that is what the quorum counts. The generic verbs would mark the queue row without casting a
+        resolution: the item leaves the pending list, the gate stays open, and the run never
+        resumes. Refuse rather than let a client wedge a gate it cannot see."""
+        if _KINDS.get(item.skill_id) == "role_task":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"'{item.id}' is a multi-party role-task ({item.output.get('role', '?')}): "
+                    f'POST /review/{item.id}/resolve with {{"outcome": ...}} as a member of the '
+                    f"role; /{verb} does not count toward the gate"
+                ),
+            )
+
     def _find(queue: FileReviewQueue, item_id: str) -> ReviewItem:
         item = queue.get(item_id)
         if item is None:  # convenience: accept an id prefix, like the CLI
@@ -418,6 +433,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa
         """Approve a pending review item as the authenticated caller."""
         queue = _queue()
         item = _find(queue, item_id)
+        _not_a_role_task(item, "approve")
         queue.resolve(item.id, "approved", (body.comment if body else ""))
         return _item_to_dict(_find(queue, item.id))
 
@@ -426,6 +442,7 @@ def _register_review_routes(app: FastAPI, workspace_path: Path) -> None:  # noqa
         """Reject a pending review item as the authenticated caller."""
         queue = _queue()
         item = _find(queue, item_id)
+        _not_a_role_task(item, "reject")
         queue.resolve(item.id, "rejected", (body.comment if body else ""))
         return _item_to_dict(_find(queue, item.id))
 

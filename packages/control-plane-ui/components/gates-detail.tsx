@@ -5,14 +5,16 @@ import { useCallback, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import type { GatesEnvelope, ReviewGate } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
-/** Federated harness gates for one instance — §6.2 permission approvals and §6.3 input requests
- * paused on the instance, resolved through the same /review API the CLI + serve UI use (one queue,
- * three front-ends). Live-pulled (Mode A / direct); a poll-mode (Mode B) instance can't be
- * federated inbound and says so. */
+/** Federated gates for one instance — §6.2 permission approvals, §6.3 input requests and a
+ * funnel's multi-party role-tasks paused on the instance, resolved through the same /review API the
+ * CLI + serve UI use (one queue, three front-ends). Live-pulled (Mode A / direct); a poll-mode
+ * (Mode B) instance can't be federated inbound and says so. A role-task is resolved as the panel's
+ * identity on the instance: if that identity is not a member of the role, the instance refuses and
+ * its reason is shown on the card. */
 export function GatesDetail({
 	instanceId,
 	instanceName,
@@ -30,13 +32,25 @@ export function GatesDetail({
 		{ refreshInterval: 3000 },
 	);
 	const [busy, setBusy] = useState<string | null>(null);
+	const [refusals, setRefusals] = useState<Record<string, string>>({});
 
 	const resolve = useCallback(
-		async (itemId: string, action: string, answer = "") => {
+		async (itemId: string, action: string, answer = "", outcome = "") => {
 			setBusy(itemId);
+			setRefusals((r) => ({ ...r, [itemId]: "" }));
 			try {
-				await api.resolveGate(instanceId, itemId, action, answer);
+				await api.resolveGate(instanceId, itemId, action, answer, outcome);
 				refresh();
+			} catch (err) {
+				// The instance's own reason (not a member of the role, item no longer pending) is the
+				// thing to show; a transport failure gets the generic message.
+				const msg =
+					err instanceof ApiError && err.detail
+						? err.detail
+						: err instanceof Error
+							? err.message
+							: String(err);
+				setRefusals((r) => ({ ...r, [itemId]: msg }));
 			} finally {
 				setBusy(null);
 			}
@@ -73,6 +87,7 @@ export function GatesDetail({
 							key={gate.id}
 							gate={gate}
 							busy={busy === gate.id}
+							refusal={refusals[gate.id] ?? ""}
 							resolve={resolve}
 						/>
 					))
@@ -85,11 +100,18 @@ export function GatesDetail({
 function GateRow({
 	gate,
 	busy,
+	refusal,
 	resolve,
 }: {
 	gate: ReviewGate;
 	busy: boolean;
-	resolve: (itemId: string, action: string, answer?: string) => void;
+	refusal: string;
+	resolve: (
+		itemId: string,
+		action: string,
+		answer?: string,
+		outcome?: string,
+	) => void;
 }) {
 	const [text, setText] = useState("");
 	return (
@@ -102,7 +124,47 @@ function GateRow({
 				</span>
 			</div>
 
-			{gate.kind === "permission" ? (
+			{gate.kind === "role_task" ? (
+				<>
+					<p className="mt-2 text-sm">
+						<span className="font-medium">{gate.role}</span> must approve{" "}
+						<code className="font-mono">{gate.scope}</code>
+						{gate.run_id ? (
+							<span className="text-muted-foreground">
+								{" "}
+								· run <span className="font-mono">{gate.run_id}</span>
+							</span>
+						) : null}
+					</p>
+					<div className="mt-2 flex flex-wrap gap-2">
+						<Button
+							size="sm"
+							disabled={busy}
+							onClick={() => resolve(gate.id, "resolve", "", "approve")}
+						>
+							Approve
+						</Button>
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={busy}
+							onClick={() =>
+								resolve(gate.id, "resolve", "", "changes-requested")
+							}
+						>
+							Request changes
+						</Button>
+						<Button
+							size="sm"
+							variant="destructive"
+							disabled={busy}
+							onClick={() => resolve(gate.id, "resolve", "", "reject")}
+						>
+							Reject
+						</Button>
+					</div>
+				</>
+			) : gate.kind === "permission" ? (
 				<>
 					<p className="mt-2 text-sm">
 						Requests <code className="font-mono">{gate.capability}</code>
@@ -161,6 +223,11 @@ function GateRow({
 					) : null}
 				</>
 			)}
+			{refusal ? (
+				<p role="alert" className="mt-2 text-sm text-destructive">
+					{refusal}
+				</p>
+			) : null}
 		</div>
 	);
 }

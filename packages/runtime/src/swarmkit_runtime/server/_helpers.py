@@ -211,7 +211,9 @@ def _build_capabilities(rt: Any) -> dict[str, Any]:
         "schema_version": _pkg_version("swarmkit-schema"),
         "workspace_id": str(raw.metadata.id),
         "workspace_name": str(getattr(raw.metadata, "name", "") or ""),
-        "topologies": sorted(ws.topologies.keys()),
+        # `name@version` keys are canary routing aliases of a topology the list already names;
+        # a fleet counting topologies must not count them twice (and /fleet/state cannot read them).
+        "topologies": sorted(k for k in ws.topologies if "@" not in k),
         "model_providers": rt.provider_registry.provider_ids,
         "governance_provider": _enum_value(getattr(raw, "governance", None), "provider", "mock"),
         "features": {
