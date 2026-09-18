@@ -1,0 +1,12 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata: {name: mcp-heavy, version: 0.1.0}
+# One agent holding four MCP-backed tools — every call goes through the governed gateway + audit.
+agents:
+  root:
+    id: agent
+    role: root
+    model: {provider: mock, name: mock}
+    prompt: {system: You gather facts from github, jira, docs and database, then answer.}
+    skills: [github-fetch, jira-fetch, docs-fetch, database-fetch]
+    iam: {base_scope: [github:read, jira:read, docs:read, database:read]}

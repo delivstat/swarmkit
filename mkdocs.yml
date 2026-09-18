@@ -128,6 +128,7 @@ nav:
     - CLI commands: reference/cli.md
     - Serve mode: reference/serve.md
     - HTTP API: reference/http-api.md
+    - Load and scale: reference/load-and-scale.md
     - Dual model support: reference/dual-model.md
     - Workspace memory: reference/workspace-memory.md
     - Governed memory: reference/governed-memory.md

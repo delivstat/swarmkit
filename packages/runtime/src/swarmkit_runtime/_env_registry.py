@@ -85,6 +85,18 @@ REGISTRY: tuple[EnvVar, ...] = (
         "When set to 1, the mock provider delegates to every child so a mock run traverses a "
         "multi-agent topology (tests only).",
     ),
+    EnvVar(
+        "SWARMKIT_MOCK_LATENCY_MS",
+        "Testing",
+        "Base wall time in ms the mock provider sleeps per model call, so a load test measures the "
+        "runtime under realistic concurrency rather than an instant mock (0/unset = instant).",
+    ),
+    EnvVar(
+        "SWARMKIT_MOCK_LATENCY_JITTER_MS",
+        "Testing",
+        "Uniform +/- jitter in ms added to SWARMKIT_MOCK_LATENCY_MS, so concurrent mock calls do "
+        "not wake on the same tick (real model variance).",
+    ),
     EnvVar("SWARMKIT_MAX_PER_TOOL", "Run limits", "Calls to one search/write tool per turn (8)."),
     EnvVar(
         "SWARMKIT_MAX_PER_READ_TOOL", "Run limits", "Calls to one read-only tool per turn (50)."

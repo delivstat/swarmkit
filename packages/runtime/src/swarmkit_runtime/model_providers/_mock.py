@@ -7,7 +7,9 @@ response if no match is found.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import random
 from collections.abc import AsyncIterator
 
 from ._types import (
@@ -16,6 +18,29 @@ from ._types import (
     ContentBlock,
     Usage,
 )
+
+
+async def _mock_latency() -> None:
+    """Simulate a model call's wall time so a load test measures the runtime under realistic
+    concurrency, not an instant-return mock (SWARMKIT_MOCK_LATENCY_MS, load-and-scale.md).
+
+    ``SWARMKIT_MOCK_LATENCY_MS`` is the base sleep in milliseconds (0/unset = instant, today's
+    behaviour). ``SWARMKIT_MOCK_LATENCY_JITTER_MS`` adds a uniform +/- jitter so concurrent calls
+    do not all wake on the same tick — real model variance, deterministic in aggregate.
+    """
+    try:
+        base = float(os.environ.get("SWARMKIT_MOCK_LATENCY_MS", "0") or 0)
+    except ValueError:
+        base = 0.0
+    if base <= 0:
+        return
+    try:
+        jitter = float(os.environ.get("SWARMKIT_MOCK_LATENCY_JITTER_MS", "0") or 0)
+    except ValueError:
+        jitter = 0.0
+    delay = base + (random.uniform(-jitter, jitter) if jitter > 0 else 0.0)
+    await asyncio.sleep(max(0.0, delay) / 1000.0)
+
 
 _DEFAULT_RESPONSE = CompletionResponse(
     content=(ContentBlock(type="text", text="mock response"),),
@@ -47,6 +72,7 @@ class MockModelProvider:
         self._calls: list[CompletionRequest] = []
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
+        await _mock_latency()
         self._calls.append(request)
         key = self._key(request)
         if key in self._responses:

@@ -1,0 +1,31 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: {id: lt-mcp, name: Loadtest mcp-heavy}
+governance: {provider: mock}
+memory: {enabled: false}
+server:
+  jobs:
+    max_concurrent: 1000
+# Four independent MCP connections (github/jira/docs/database), each the same mock latency server.
+# Measures connection pressure, tool-call amplification and governance overhead per call.
+mcp_servers:
+  - id: github
+    transport: stdio
+    command: [uv, run, python, examples/loadtest/mcp/mock_mcp.py]
+    permission: readonly
+    effects: {fetch: read, search: read}
+  - id: jira
+    transport: stdio
+    command: [uv, run, python, examples/loadtest/mcp/mock_mcp.py]
+    permission: readonly
+    effects: {fetch: read, search: read}
+  - id: docs
+    transport: stdio
+    command: [uv, run, python, examples/loadtest/mcp/mock_mcp.py]
+    permission: readonly
+    effects: {fetch: read, search: read}
+  - id: database
+    transport: stdio
+    command: [uv, run, python, examples/loadtest/mcp/mock_mcp.py]
+    permission: readonly
+    effects: {fetch: read, search: read}

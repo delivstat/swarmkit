@@ -1,0 +1,24 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata: {name: typical, version: 0.1.0}
+# leader → {reviewer, security, tester}: fan-out, aggregation, realistic audit volume.
+# What most users actually run. With SWARMKIT_MOCK_DELEGATE=1 the leader delegates to all three.
+agents:
+  root:
+    id: leader
+    role: root
+    model: {provider: mock, name: mock}
+    prompt: {system: You coordinate reviewers and synthesize their findings.}
+    children:
+      - id: reviewer
+        role: worker
+        model: {provider: mock, name: mock}
+        prompt: {system: You review for correctness.}
+      - id: security
+        role: worker
+        model: {provider: mock, name: mock}
+        prompt: {system: You review for security issues.}
+      - id: tester
+        role: worker
+        model: {provider: mock, name: mock}
+        prompt: {system: You review test coverage.}

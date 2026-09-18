@@ -1,0 +1,7 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata: {id: github-fetch, name: github fetch, description: Fetch a record from the github system.}
+category: capability
+implementation: {type: mcp_tool, server: github, tool: fetch}
+iam: {required_scopes: [github:read]}
+provenance: {authored_by: human, version: 1.0.0}

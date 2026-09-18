@@ -6,6 +6,7 @@ See ``design/details/model-provider-abstraction.md``.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -829,3 +830,39 @@ def test_openai_compatible_requests_always_carry_a_completion_cap() -> None:
         model="m", messages=(Message(role="user", content="hi"),), max_tokens=200
     )
     assert _to_openai_kwargs(capped)["max_tokens"] == 200
+
+
+# ---- mock latency knob (load-and-scale.md) -----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mock_latency_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SWARMKIT_MOCK_LATENCY_MS", raising=False)
+    req = CompletionRequest(model="mock", messages=[Message(role="user", content="hi")])
+    t = time.perf_counter()
+    await MockModelProvider().complete(req)
+    assert (time.perf_counter() - t) < 0.05, "no latency unless SWARMKIT_MOCK_LATENCY_MS is set"
+
+
+@pytest.mark.asyncio
+async def test_mock_latency_sleeps_per_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_MOCK_LATENCY_MS", "120")
+    monkeypatch.delenv("SWARMKIT_MOCK_LATENCY_JITTER_MS", raising=False)
+    req = CompletionRequest(model="mock", messages=[Message(role="user", content="hi")])
+    t = time.perf_counter()
+    await MockModelProvider().complete(req)
+    elapsed_ms = (time.perf_counter() - t) * 1000
+    assert 110 <= elapsed_ms < 400, elapsed_ms
+
+
+@pytest.mark.asyncio
+async def test_mock_latency_jitter_stays_within_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SWARMKIT_MOCK_LATENCY_MS", "100")
+    monkeypatch.setenv("SWARMKIT_MOCK_LATENCY_JITTER_MS", "40")
+    req = CompletionRequest(model="mock", messages=[Message(role="user", content="hi")])
+    provider = MockModelProvider()
+    for _ in range(8):
+        t = time.perf_counter()
+        await provider.complete(req)
+        ms = (time.perf_counter() - t) * 1000
+        assert 55 <= ms < 500, ms  # base 100 +/- 40, generous upper bound for a loaded CI box
