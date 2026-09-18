@@ -11,6 +11,8 @@ in `auth/_scopes.py`. See design/details/control-plane/13-connector-registry.md 
 
 from __future__ import annotations
 
+from typing import Any
+
 # verb -> required serve tier (read | run | admin)
 #: Membership scopes an instance may grant a fleet, lowest to highest — mirrors the runtime's
 #: ``fleet.SCOPES`` (asserted equal by the contract test). ``approve-as`` (design 28) lets the
@@ -26,6 +28,28 @@ VERB_TIERS: dict[str, str] = {
     "reload": "admin",
     "deploy": "admin",  # push an artifact version to local serve (Mode B governed deploy)
 }
+
+#: The args each verb needs before it is worth queueing — the connector's route template and body
+#: shape (runtime ``connect.VERB_ROUTES``). Checked at enqueue so a malformed command is a 400 to
+#: the operator now, not an error result reported back by the instance a poll later.
+VERB_ARGS: dict[str, tuple[str, ...]] = {
+    "capabilities": (),
+    "usage": (),
+    "job-status": ("job_id",),
+    "validate": (),
+    "run": ("topology_name", "body"),
+    "reload": (),
+    "deploy": ("kind", "id", "body"),
+}
+
+
+def missing_args(verb: str, args: dict[str, Any]) -> list[str]:
+    """The required args *verb* lacks in *args* (``body`` must be a mapping)."""
+    missing = [k for k in VERB_ARGS.get(verb, ()) if k not in args]
+    if "body" in VERB_ARGS.get(verb, ()) and "body" in args and not isinstance(args["body"], dict):
+        missing.append("body (must be an object)")
+    return missing
+
 
 _TIER_RANK: dict[str, int] = {"read": 0, "run": 1, "admin": 2}
 

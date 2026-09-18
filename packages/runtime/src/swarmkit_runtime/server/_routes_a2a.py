@@ -18,10 +18,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from swarmkit_runtime.agent_skill._remote import A2AClient, RemoteAgentError
-from swarmkit_runtime.agent_skill._spec import parse_agent_spec
 from swarmkit_runtime.auth import AuthProvider
 from swarmkit_runtime.review import FileReviewQueue
-from swarmkit_runtime.skills import impl_get
+from swarmkit_runtime.server._a2a import remote_agent_rows
 
 from ._a2a import (
     INVALID_REQUEST,
@@ -217,29 +216,4 @@ def _register_a2a_client_routes(app: FastAPI) -> None:
     @app.get("/api/a2a/agents")
     async def remote_agents(request: Request) -> list[dict[str, Any]]:
         """The remote agents this workspace can call — every `agent` skill with a `card_url`."""
-        rt = _get_runtime(request)
-        rows: list[dict[str, Any]] = []
-        for sid, skill in sorted(rt.workspace.skills.items()):
-            impl = skill.raw.implementation
-            if impl_get(impl, "type") != "agent":
-                continue
-            try:
-                spec = parse_agent_spec(impl)
-            except ValueError:
-                continue
-            if spec.is_local:
-                continue
-            rows.append(
-                {
-                    "id": sid,
-                    "name": str(getattr(skill.raw.metadata, "name", "") or sid),
-                    "card_url": spec.card_url,
-                    "skill_id": spec.skill_id,
-                    "credentials_ref": spec.credentials_ref,
-                    "on_unanswerable": spec.on_unanswerable,
-                    "permission": spec.permission,
-                    "effects": spec.effects,
-                    "timeout_s": spec.timeout_s,
-                }
-            )
-        return rows
+        return remote_agent_rows(_get_runtime(request))

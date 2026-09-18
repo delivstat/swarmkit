@@ -61,7 +61,12 @@ from swarmkit_control_plane._schemas import (
 )
 from swarmkit_control_plane._state_store import InstanceStateStore
 from swarmkit_control_plane._tokens import mint_token
-from swarmkit_control_plane._verbs import is_known_verb, tier_rank, verb_within_tier
+from swarmkit_control_plane._verbs import (
+    is_known_verb,
+    missing_args,
+    tier_rank,
+    verb_within_tier,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -981,6 +986,13 @@ def _mount_command_queue(app: FastAPI, registry: SqliteRegistry) -> None:
         if not verb_within_tier(req.verb, inst.tier):
             raise HTTPException(
                 403, f"verb '{req.verb}' exceeds the instance's granted tier '{inst.tier}'"
+            )
+        lacking = missing_args(req.verb, req.args)
+        if lacking:
+            raise HTTPException(
+                400,
+                f"verb '{req.verb}' needs args {', '.join(lacking)} "
+                f'(e.g. run: {{"topology_name": …, "body": {{"input": …}}}})',
             )
         cmd = registry.enqueue(instance_id, req.verb, req.args)
         return cmd.public_dict()

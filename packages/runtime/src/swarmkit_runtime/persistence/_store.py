@@ -188,6 +188,7 @@ class UsageRow:
     cost_usd: float = 0.0
     job_id: str | None = None
     conversation_id: str | None = None
+    provider: str = ""  # the ModelProvider id that served the call
 
 
 class Store:
@@ -201,6 +202,7 @@ class Store:
         self._engine = engine
         create_all_idempotent(metadata, engine)
         self._migrate_jobs()
+        self._migrate_added_columns("run_usage", self._ADDED_USAGE_COLUMNS)
 
     #: Columns added to ``jobs`` after the initial schema, in the order they arrived. Additive and
     #: nullable only — this is the whole migration facility, so anything needing a backfill or a
@@ -213,6 +215,21 @@ class Store:
         ("parent_job_id", "TEXT"),
         ("stop_requested_at", "TEXT"),
     )
+
+    #: Same facility for ``run_usage``: ``provider`` arrived with 1.234.0 so /usage can say which
+    #: provider billed a model. NOT NULL with a default, so older rows read as '' rather than NULL.
+    _ADDED_USAGE_COLUMNS = (("provider", "TEXT NOT NULL DEFAULT ''"),)
+
+    def _migrate_added_columns(self, table: str, columns: tuple[tuple[str, str], ...]) -> None:
+        from sqlalchemy import inspect, text  # noqa: PLC0415
+
+        existing = {c["name"] for c in inspect(self._engine).get_columns(table)}
+        missing = [(n, t) for n, t in columns if n not in existing]
+        if not missing:
+            return
+        with self._engine.begin() as conn:
+            for name, sql_type in missing:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}"))
 
     def _migrate_jobs(self) -> None:
         """Add job columns introduced after the initial schema.
@@ -470,6 +487,7 @@ class Store:
                     conversation_id=usage.conversation_id,
                     agent_id=usage.agent_id,
                     model=usage.model,
+                    provider=usage.provider,
                     input_tokens=usage.input_tokens,
                     output_tokens=usage.output_tokens,
                     cache_read_tokens=usage.cache_read_tokens,
@@ -560,12 +578,13 @@ class Store:
         stmt = (
             select(
                 run_usage.c.model,
+                run_usage.c.provider,
                 func.count().label("calls"),
                 func.sum(run_usage.c.input_tokens).label("input_tokens"),
                 func.sum(run_usage.c.output_tokens).label("output_tokens"),
                 func.sum(run_usage.c.cost_usd).label("cost_usd"),
             )
-            .group_by(run_usage.c.model)
+            .group_by(run_usage.c.model, run_usage.c.provider)
             .order_by(func.sum(run_usage.c.cost_usd).desc())
         )
         with self._engine.connect() as conn:
@@ -573,6 +592,7 @@ class Store:
         return [
             {
                 "model": r["model"],
+                "provider": r["provider"] or "",
                 "calls": r["calls"],
                 "input_tokens": r["input_tokens"],
                 "output_tokens": r["output_tokens"],

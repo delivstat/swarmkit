@@ -41,6 +41,7 @@ class AgentStep:
 
     agent_id: str
     model: str = ""
+    provider: str = ""  # the ModelProvider id that served the call (what /usage groups on)
     parent_agent: str | None = None
     role: str = ""
     start_time: float = 0.0
@@ -85,6 +86,9 @@ class RunTrace:
     token_by_agent: dict[str, dict[str, int]] = field(default_factory=dict)
     # token counts are ints; the "cost" key is a float (USD) — hence the widened value type.
     token_by_model: dict[str, dict[str, float]] = field(default_factory=dict)
+    # model → the provider id that served it, for /usage to group on (a model name alone does
+    # not say which provider billed it: the same id can be reached through several).
+    provider_by_model: dict[str, str] = field(default_factory=dict)
     # Context compression savings (read-side). bytes are characters.
     compression_bytes_in: int = 0
     compression_bytes_out: int = 0
@@ -112,6 +116,7 @@ class RunTrace:
         input_tokens: int,
         output_tokens: int,
         cost_usd: float = 0.0,
+        provider: str = "",
     ) -> None:
         """Record tokens (and provider-reported cost) from any LLM call (tool loop, synthesis)."""
         self.total_input_tokens += input_tokens
@@ -141,6 +146,8 @@ class RunTrace:
             model_tokens["output"] += output_tokens
             model_tokens["total"] += input_tokens + output_tokens
             model_tokens["cost"] = model_tokens.get("cost", 0.0) + cost_usd
+            if provider:
+                self.provider_by_model[model] = provider
 
     def start(self, run_id: str, topology: str) -> None:
         self.run_id = run_id
@@ -169,6 +176,8 @@ class RunTrace:
             model_tokens["output"] += step.output_tokens
             model_tokens["total"] += step.total_tokens
             model_tokens["cost"] = model_tokens.get("cost", 0.0) + step.cost_usd
+            if step.provider:
+                self.provider_by_model[step.model] = step.provider
 
     def finish(self) -> None:
         self.end_time = time.time()

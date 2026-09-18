@@ -310,6 +310,18 @@ export interface InstanceState {
 	};
 	providers: string[];
 	governance_provider: string;
+	// A2A both ways (runtime 1.234.0+): does the instance serve an agent card, and which remote
+	// agents does it call. Absent on an older serve.
+	a2a?: {
+		enabled: boolean;
+		card_url: string | null;
+		remote_agents: {
+			id: string;
+			name: string;
+			card_url: string;
+			skill_id?: string | null;
+		}[];
+	};
 	health: Record<string, unknown>;
 }
 

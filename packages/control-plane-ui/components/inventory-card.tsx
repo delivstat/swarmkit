@@ -167,6 +167,33 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 							);
 						})
 					: null}
+				{data?.state.a2a ? (
+					<div data-testid="a2a">
+						<div className="mb-1 flex items-center gap-2 text-sm font-medium">
+							A2A
+							<Badge variant="muted">
+								{data.state.a2a.enabled ? "serves a card" : "no card"}
+							</Badge>
+						</div>
+						{data.state.a2a.remote_agents.length ? (
+							<div className="flex flex-wrap gap-1">
+								{data.state.a2a.remote_agents.map((r) => (
+									<span
+										key={r.id}
+										title={r.card_url}
+										className="rounded border px-2 py-0.5 font-mono text-xs"
+									>
+										{r.id} → {new URL(r.card_url).host}
+									</span>
+								))}
+							</div>
+						) : (
+							<p className="text-xs text-muted-foreground">
+								Calls no remote agents.
+							</p>
+						)}
+					</div>
+				) : null}
 				{selected ? (
 					<div className="space-y-2">
 						<div className="flex items-center justify-between gap-2">

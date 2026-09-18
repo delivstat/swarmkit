@@ -585,3 +585,37 @@ class A2AHandler:
 
 def _frame(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+def remote_agent_rows(rt: Any) -> list[dict[str, Any]]:
+    """The remote agents this workspace can call — every `agent` skill with a `card_url` — as
+    `GET /api/a2a/agents` lists them and `/fleet/state` carries them (a fleet wants to know which
+    outside agents each instance talks to, design/details/control-plane/27)."""
+    from swarmkit_runtime.agent_skill._spec import parse_agent_spec  # noqa: PLC0415
+    from swarmkit_runtime.skills import impl_get  # noqa: PLC0415
+
+    rows: list[dict[str, Any]] = []
+    for sid, skill in sorted(rt.workspace.skills.items()):
+        impl = skill.raw.implementation
+        if impl_get(impl, "type") != "agent":
+            continue
+        try:
+            spec = parse_agent_spec(impl)
+        except ValueError:
+            continue
+        if spec.is_local:
+            continue
+        rows.append(
+            {
+                "id": sid,
+                "name": str(getattr(skill.raw.metadata, "name", "") or sid),
+                "card_url": spec.card_url,
+                "skill_id": spec.skill_id,
+                "credentials_ref": spec.credentials_ref,
+                "on_unanswerable": spec.on_unanswerable,
+                "permission": spec.permission,
+                "effects": spec.effects,
+                "timeout_s": spec.timeout_s,
+            }
+        )
+    return rows

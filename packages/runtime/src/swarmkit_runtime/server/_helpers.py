@@ -24,6 +24,7 @@ from swarmkit_runtime.fleet import (
     scope_covers,
     verify_signature,
 )
+from swarmkit_runtime.server._a2a import remote_agent_rows
 from swarmkit_runtime.triggers._webhook import default_auth_header, validate_webhook_auth
 
 logger = logging.getLogger("swarmkit.server")
@@ -363,6 +364,13 @@ def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
         },
         "providers": caps["model_providers"],
         "governance_provider": caps["governance_provider"],
+        # A2A, both directions: whether this instance serves an agent card, and which remote
+        # agents it calls (design/details/a2a-interop.md; a fleet's card listing, design 27).
+        "a2a": {
+            "enabled": bool(caps["features"].get("a2a")),
+            "card_url": "/.well-known/agent-card.json" if caps["features"].get("a2a") else None,
+            "remote_agents": remote_agent_rows(rt),
+        },
         "health": {"status": "ok"},
     }
 

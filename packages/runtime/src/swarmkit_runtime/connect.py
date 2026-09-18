@@ -14,6 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import json
+import os
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -285,6 +289,53 @@ async def bootstrap_join(
     return instance_id, panel_token, granted_tier
 
 
+# ---- the connector's own credential (design 19, the piece that was in memory only) --------------
+
+
+def default_state_path(panel_url: str, serve_url: str) -> Path:
+    """Where a joined connector keeps its instance id and panel token: one file per (panel,
+    serve) pair under ``~/.swarmkit/connect/``, so the same box can be a member of two fleets."""
+    key = hashlib.sha256(f"{panel_url.rstrip('/')}|{serve_url.rstrip('/')}".encode()).hexdigest()
+    return Path.home() / ".swarmkit" / "connect" / f"{key[:16]}.json"
+
+
+def save_state(
+    path: Path, *, panel_url: str, serve_url: str, instance_id: str, panel_token: str, tier: str
+) -> None:
+    """Persist the join result, owner-readable only. The join code was single-use; without this
+    the next start had to be a hand-minted token and ``--instance-id``."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = {
+        "panel_url": panel_url.rstrip("/"),
+        "serve_url": serve_url.rstrip("/"),
+        "instance_id": instance_id,
+        "panel_token": panel_token,
+        "tier": tier,
+    }
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(body, indent=2) + "\n")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def load_state(path: Path, *, panel_url: str, serve_url: str) -> dict[str, str] | None:
+    """The saved join for this (panel, serve) pair, or None. A file for another pair is ignored
+    rather than misused."""
+    try:
+        body = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(body, dict):
+        return None
+    if body.get("panel_url") != panel_url.rstrip("/") or body.get("serve_url") != serve_url.rstrip(
+        "/"
+    ):
+        return None
+    if not (body.get("instance_id") and body.get("panel_token")):
+        return None
+    return {k: str(v) for k, v in body.items()}
+
+
 async def run_connector(
     *,
     panel_url: str,
@@ -298,12 +349,16 @@ async def run_connector(
     interval: float = 5.0,
     once: bool = False,
     log: Any = print,
+    state_path: Path | None = None,
 ) -> None:
     """Poll the panel forever (or once), executing queued commands against local serve.
 
     With *join_code* set, the connector first performs the Mode B join handshake (design 19) to
     obtain its ``instance_id`` + panel token, then polls — no pre-provisioned credential needed.
+    The result is saved to *state_path* (default ``~/.swarmkit/connect/<pair>.json``, 0600), and
+    a later start with neither ``--instance-id`` nor ``--join-code`` resumes from it.
     """
+    state_path = state_path or default_state_path(panel_url, serve_url)
     if join_code:
         instance_id, panel_token, granted_tier = await bootstrap_join(
             panel_url=panel_url,
@@ -313,8 +368,28 @@ async def run_connector(
             name=name,
             log=log,
         )
-    if not instance_id:
-        raise ConnectorError("connector needs --instance-id or --join-code")
+        save_state(
+            state_path,
+            panel_url=panel_url,
+            serve_url=serve_url,
+            instance_id=instance_id,
+            panel_token=panel_token or "",
+            tier=granted_tier,
+        )
+        log(f"connector: credential saved to {state_path} — restart with no flags to resume")
+    elif not instance_id:
+        saved = load_state(state_path, panel_url=panel_url, serve_url=serve_url)
+        if saved is None:
+            raise ConnectorError(
+                "connector needs --instance-id or --join-code "
+                f"(no saved credential at {state_path})"
+            )
+        instance_id, panel_token, granted_tier = (
+            saved["instance_id"],
+            saved["panel_token"],
+            saved.get("tier", granted_tier),
+        )
+        log(f"connector: resuming as instance {instance_id} from {state_path}")
     panel_headers = {"Authorization": f"Bearer {panel_token}"} if panel_token else {}
     async with (
         httpx.AsyncClient(timeout=40, headers=panel_headers) as panel_client,

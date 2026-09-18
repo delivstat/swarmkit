@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -384,12 +385,121 @@ def test_join_result_defaults_tier_and_rejects_missing_credential() -> None:
         _join_result({"credential": {"value": "tok"}})
 
 
-def test_connect_cli_requires_instance_id_or_join_code() -> None:
+def test_connect_cli_without_flags_resumes_or_says_where_it_looked(tmp_path: Path) -> None:
     from swarmkit_runtime.cli import app  # noqa: PLC0415
     from typer.testing import CliRunner  # noqa: PLC0415
 
-    # neither --instance-id nor --join-code → a usage error (exit 2), rejected before any network
-    # call. (The message text is a rich-rendered panel that wraps at the terminal width, so assert
-    # on the stable exit code rather than substrings of the formatted output.)
-    result = CliRunner().invoke(app, ["connect", "http://panel"])
-    assert result.exit_code == 2
+    # neither --instance-id nor --join-code → resume from the saved join; with none saved, an
+    # error naming the state file, before any network call.
+    result = CliRunner().invoke(
+        app, ["connect", "http://panel", "--state", str(tmp_path / "none.json")]
+    )
+    assert result.exit_code != 0
+    assert "no saved credential" in str(result.exception)
+
+
+# ---- the connector keeps what the join issued ---------------------------------------------------
+
+
+def test_state_round_trips_and_is_owner_only(tmp_path: Path) -> None:
+    from swarmkit_runtime.connect import load_state, save_state  # noqa: PLC0415
+
+    path = tmp_path / "connect" / "pair.json"
+    save_state(
+        path,
+        panel_url="http://panel/",
+        serve_url="http://127.0.0.1:8000",
+        instance_id="abc123",
+        panel_token="poll-token",
+        tier="run",
+    )
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+    got = load_state(path, panel_url="http://panel", serve_url="http://127.0.0.1:8000/")
+    assert got is not None
+    assert (got["instance_id"], got["panel_token"], got["tier"]) == ("abc123", "poll-token", "run")
+    # A file for another (panel, serve) pair is not reused.
+    assert (
+        load_state(path, panel_url="http://other-panel", serve_url="http://127.0.0.1:8000") is None
+    )
+    assert load_state(tmp_path / "missing.json", panel_url="http://panel", serve_url="x") is None
+
+
+def test_default_state_path_is_per_pair() -> None:
+    from swarmkit_runtime.connect import default_state_path  # noqa: PLC0415
+
+    a = default_state_path("http://panel", "http://127.0.0.1:8000")
+    assert a == default_state_path("http://panel/", "http://127.0.0.1:8000/")  # slash-insensitive
+    assert a != default_state_path("http://panel", "http://127.0.0.1:8001")
+    assert a.parent == Path.home() / ".swarmkit" / "connect"
+
+
+@pytest.mark.asyncio
+async def test_run_connector_resumes_from_the_saved_join(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Start once with a join code, then again with no flags: the second start polls as the
+    instance the join created, with the token it was issued. Before, the join code was spent and
+    the operator had to mint a token and pass --instance-id by hand."""
+    from swarmkit_runtime import connect  # noqa: PLC0415
+
+    polls: list[tuple[str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/fleet/state":
+            return httpx.Response(200, json=_STATE)
+        if request.url.path == "/fleet/join":
+            return httpx.Response(
+                200,
+                json={
+                    "instance_id": "abc123",
+                    "credential": {"type": "api_key", "value": "poll-token", "tier": "run"},
+                },
+            )
+        if request.url.path == "/instances/abc123/poll":
+            polls.append((request.url.path, request.headers.get("Authorization")))
+            return httpx.Response(200, json={"commands": []})
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    real = httpx.AsyncClient
+
+    def client(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        kwargs["transport"] = transport
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", client)
+    state = tmp_path / "state.json"
+    logs: list[str] = []
+    await connect.run_connector(
+        panel_url="http://panel",
+        instance_id="",
+        join_code="join-code-xyz",
+        serve_url="http://serve",
+        once=True,
+        log=logs.append,
+        state_path=state,
+    )
+    assert state.exists()
+    assert any("credential saved" in line for line in logs)
+    await connect.run_connector(
+        panel_url="http://panel",
+        instance_id="",
+        serve_url="http://serve",
+        once=True,
+        log=logs.append,
+        state_path=state,
+    )
+    assert any("resuming as instance abc123" in line for line in logs)
+    assert polls and all(auth == "Bearer poll-token" for _, auth in polls)
+    # No saved credential and no flags: the error says where it looked.
+    with pytest.raises(connect.ConnectorError, match="no saved credential"):
+        await connect.run_connector(
+            panel_url="http://panel",
+            instance_id="",
+            serve_url="http://serve",
+            once=True,
+            log=logs.append,
+            state_path=tmp_path / "none.json",
+        )
