@@ -8,6 +8,7 @@ kill -9 proof is `test_kill9_recovery.py`.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,9 +21,11 @@ from swarmkit_runtime._run_scope import (
     set_current_topology,
 )
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
+from swarmkit_runtime.audit import SqlAuditProvider
 from swarmkit_runtime.audit._journal import JournalingGovernance
 from swarmkit_runtime.governance import AuditEvent
 from swarmkit_runtime.governance._mock import MockGovernanceProvider
+from swarmkit_runtime.persistence._store import make_engine
 
 _WS = """\
 apiVersion: swarmkit/v1
@@ -133,3 +136,27 @@ async def test_the_wrapper_delegates_everything_else(tmp_path: Path) -> None:
     # `.events` and `._base` are visible for _extract_events.
     assert gov.events == base.events
     assert gov._base is base
+
+
+# ---- backend-appropriate write path (Postgres off-loop, SQLite on-loop) -------------------------
+
+
+@pytest.mark.asyncio
+async def test_sqlite_audit_write_stays_on_the_loop(tmp_path: Path, monkeypatch: Any) -> None:
+    """SQLite is a single writer: writing audit off-loop (in a thread) while the loop writes the job
+    store to the same file yields `database is locked`. So the SQLite path must NOT use to_thread —
+    it stays inline. (Postgres does use a thread; a DB round-trip releases the GIL there.)"""
+    provider = SqlAuditProvider(make_engine(f"sqlite:///{tmp_path / 'a.sqlite'}"))
+    assert provider._engine.dialect.name == "sqlite"
+
+    called = {"to_thread": False}
+    real = asyncio.to_thread
+
+    async def _spy(fn: Any, *a: Any, **k: Any) -> Any:
+        called["to_thread"] = True
+        return await real(fn, *a, **k)
+
+    monkeypatch.setattr("swarmkit_runtime.audit._store.asyncio.to_thread", _spy)
+    await provider.record(_event("agent.started", "worker"))
+    assert called["to_thread"] is False, "the SQLite audit write must stay on the loop"
+    assert ("agent.started", "worker") in await _all(provider)
