@@ -39,6 +39,7 @@ _ARTIFACT_DIRS = {
     "funnel": "funnels",
     "stage-graph": "pipelines",
     "contract": "contracts",
+    "role": "roles",
 }
 
 

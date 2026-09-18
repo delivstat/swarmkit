@@ -113,7 +113,8 @@ function ActivityTable({ scope }: { scope: string }) {
 					<p className="p-6 text-sm text-muted-foreground">Loading…</p>
 				) : rows.length === 0 ? (
 					<p className="p-6 text-sm text-muted-foreground">
-						No audit events yet (pushed to{" "}
+						No audit events yet — <strong>Sync now</strong> on an instance pulls
+						its audit tail (or push to{" "}
 						<code className="rounded bg-muted px-1 py-0.5 text-xs">
 							POST /aggregate/audit
 						</code>
@@ -187,7 +188,7 @@ export default function RunsPage() {
 		<>
 			<PageHeader
 				title="Runs"
-				description={`Usage + activity for ${scopeLabel}. Aggregates are pushed; per-run detail is fetched live from the instance.`}
+				description={`Usage + activity for ${scopeLabel}. Usage, gaps and audit are pulled on sync; per-run detail is fetched live from the instance.`}
 				actions={
 					<>
 						{selected ? (

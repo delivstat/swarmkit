@@ -1,6 +1,6 @@
 # HTTP API
 
-Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 94 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
+Every endpoint `swarmkit serve` exposes, generated from the server's own OpenAPI document (`GET /openapi.json` on a running instance has the schemas; `/docs` renders them). 95 operations. The prose reference — auth modes, triggers, attachments, SSE — is [Serve mode](serve.md); the event contract an application consumes is [Events](events.md).
 
 Paths are relative to the server root. `{...}` segments are path parameters.
 
@@ -78,6 +78,7 @@ Paths are relative to the server root. `{...}` segments are path parameters.
 | `GET` | `/comprehension` | Comprehension-debt signals from the audit log — same data as `swarmkit comprehension`. |
 | `GET` | `/contracts` | The contracts in this workspace, by id. |
 | `GET` | `/funnels` | The funnels in this workspace, by id. |
+| `GET` | `/gaps` | The skill gap log — what `swarmkit gaps` prints: every tool an agent reached for and |
 | `GET` | `/health` | Liveness: the instance is up and its workspace loaded. |
 | `GET` | `/observability/runs/{run_id}/trace` | The finished run's span tree (topology.run → agent.step → tool.call) for a UI waterfall, |
 | `GET` | `/skills` | The skills in this workspace, by id. |

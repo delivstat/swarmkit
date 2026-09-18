@@ -29,7 +29,16 @@ from swarmkit_control_plane._tables import (
     reported_artifacts,
 )
 
-KINDS = ("topology", "skill", "archetype", "workspace", "trigger")
+KINDS = (
+    "topology",
+    "skill",
+    "archetype",
+    "workspace",
+    "trigger",
+    "funnel",
+    "contract",
+    "role",
+)
 
 
 def content_hash(content: Any) -> str:

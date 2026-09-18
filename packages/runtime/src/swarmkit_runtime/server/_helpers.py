@@ -238,9 +238,14 @@ def _content_hash(content: Any) -> str:
 
 
 def _artifact_version(obj: Any) -> str:
-    """``metadata.version`` off a resolved artifact, or '' if absent."""
-    meta = getattr(getattr(obj, "raw", None), "metadata", None)
-    return str(getattr(meta, "version", "") or "")
+    """The artifact's own version: ``metadata.version`` (topologies, archetypes) or
+    ``provenance.version`` (skills, funnels, contracts), '' if it declares neither."""
+    raw = getattr(obj, "raw", None)
+    meta = getattr(raw, "metadata", None)
+    version = getattr(meta, "version", "") or ""
+    if not version:
+        version = getattr(getattr(raw, "provenance", None), "version", "") or ""
+    return str(version)
 
 
 def _artifact_entries(
@@ -271,6 +276,28 @@ def _artifact_entries(
     return entries
 
 
+def _role_registry_files(svc: Any) -> list[tuple[str, str]]:
+    """``(id, version)`` for every ``roles/*.yaml`` — by ``metadata.id`` (or name), like the
+    other kinds are keyed. Unreadable files are skipped."""
+    out: list[tuple[str, str]] = []
+    try:
+        role_dir = svc._artifact_dir("role")
+    except Exception:
+        return out
+    if not role_dir.is_dir():
+        return out
+    for f in sorted(role_dir.rglob("*.yaml")):
+        try:
+            raw = yaml.safe_load(f.read_text()) or {}
+        except Exception:
+            continue
+        meta = raw.get("metadata", {}) if isinstance(raw, dict) else {}
+        rid = str(meta.get("id") or meta.get("name") or "")
+        if rid:
+            out.append((rid, str(meta.get("version", "") or "")))
+    return out
+
+
 def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
     """The full observed state of this instance — every artifact's *content*, not just names.
 
@@ -284,6 +311,11 @@ def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
     topos = [(k, _artifact_version(v)) for k, v in sorted(ws.topologies.items())]
     skills = [(k, _artifact_version(v)) for k, v in sorted(ws.skills.items())]
     archs = [(k, _artifact_version(v)) for k, v in sorted(ws.archetypes.items())]
+    funnels = [(k, _artifact_version(v)) for k, v in sorted(ws.funnels.items())]
+    contracts = [(k, _artifact_version(v)) for k, v in sorted(ws.contracts.items())]
+    # Role registries resolve into one merged registry, so the files are enumerated from disk:
+    # a fleet needs each registry as the artifact it is (design/details/control-plane/27).
+    roles = _role_registry_files(svc)
 
     triggers: list[dict[str, Any]] = []
     for t in getattr(ws, "triggers", []) or []:
@@ -317,6 +349,9 @@ def _build_instance_state(rt: Any, svc: Any) -> dict[str, Any]:
             "skills": _artifact_entries(svc, "skill", skills),
             "archetypes": _artifact_entries(svc, "archetype", archs),
             "triggers": triggers,
+            "funnels": _artifact_entries(svc, "funnel", funnels),
+            "contracts": _artifact_entries(svc, "contract", contracts),
+            "roles": _artifact_entries(svc, "role", roles),
         },
         "providers": caps["model_providers"],
         "governance_provider": caps["governance_provider"],

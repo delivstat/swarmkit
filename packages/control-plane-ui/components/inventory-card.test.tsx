@@ -42,6 +42,23 @@ const CACHED: CachedState = {
 			],
 			archetypes: [],
 			triggers: [],
+			funnels: [
+				{
+					id: "design-gate",
+					version: "1.0.0",
+					content_hash: "f00d",
+					content: { kind: "Funnel" },
+				},
+			],
+			contracts: [],
+			roles: [
+				{
+					id: "leads",
+					version: "",
+					content_hash: "r0le",
+					content: { kind: "RoleRegistry" },
+				},
+			],
 		},
 		providers: ["anthropic"],
 		governance_provider: "mock",
@@ -97,6 +114,9 @@ describe("InventoryCard", () => {
 			synced_at: "x",
 			counts: { topologies: 1 },
 			delta: { mode: "delta", fetched: 1, reused: 40, removed: 0 },
+			pulled_usage: 2,
+			pulled_gaps: 3,
+			pulled_audit: 12,
 		});
 		mockApi.instanceState.mockResolvedValue(CACHED); // after sync, cache has data
 		renderCard();
@@ -105,7 +125,9 @@ describe("InventoryCard", () => {
 			expect(mockApi.syncInstance).toHaveBeenCalledWith("i1"),
 		);
 		await waitFor(() =>
-			expect(screen.getByText(/1 fetched, 40 unchanged/i)).toBeTruthy(),
+			expect(
+				screen.getByText(/1 fetched, 40 unchanged.*3 gaps, 12 audit events/i),
+			).toBeTruthy(),
 		);
 		await waitFor(() =>
 			expect(screen.getByText("solution-design")).toBeTruthy(),
@@ -139,5 +161,15 @@ describe("InventoryCard", () => {
 				screen.getByText(/Adopted skill\/get-weather as v1/i),
 			).toBeTruthy(),
 		);
+	});
+
+	it("lists funnels, contracts and role registries next to the four original kinds", async () => {
+		mockApi.instanceState.mockResolvedValue(CACHED);
+		renderCard();
+		expect(await screen.findByText("design-gate")).toBeTruthy();
+		expect(screen.getByText("leads")).toBeTruthy();
+		expect(screen.getByText("Role registries")).toBeTruthy();
+		expect(screen.getByText("Funnels")).toBeTruthy();
+		expect(screen.queryByText("Contracts")).toBeNull(); // empty kinds stay hidden
 	});
 });

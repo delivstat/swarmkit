@@ -95,3 +95,25 @@ async def test_a_403_on_resolve_is_the_instances_verdict(monkeypatch: pytest.Mon
         await resolve_gate("http://serve:8000", "", "mpa-1", "resolve", outcome="approve")
     assert exc.value.status_code == 403
     assert "not a member of role product-lead" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_audit_cursor_survives_the_query_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An ISO cursor carries `+00:00`; unencoded, the `+` reaches the instance as a space and
+    the pull 422s on every sync after the first. The instance must see the exact timestamp."""
+    from swarmkit_control_plane._connector import fetch_audit  # noqa: PLC0415
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params.get("since", ""))
+        return httpx.Response(200, json=[])
+
+    transport = httpx.MockTransport(handler)
+
+    def factory(endpoint: str, token_ref: str, **kw: Any) -> ServeClient:
+        return ServeClient(endpoint, token_ref, transport=transport)
+
+    monkeypatch.setattr(_connector, "ServeClient", factory)
+    await fetch_audit("http://serve:8000", "", "2026-09-18T04:00:15.123456+00:00")
+    assert seen == ["2026-09-18T04:00:15.123456+00:00"]

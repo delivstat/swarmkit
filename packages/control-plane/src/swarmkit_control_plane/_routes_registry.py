@@ -16,11 +16,13 @@ from swarmkit_control_plane._credential_store import CredentialStore
 from swarmkit_control_plane._delta import pull_state
 from swarmkit_control_plane._fleet_identity import FleetIdentity
 from swarmkit_control_plane._fntypes import (
+    AuditFn,
     AuthorFn,
     CanaryFn,
     CanaryPromoteFn,
     CanaryRollbackFn,
     CanaryStartFn,
+    GapsFn,
     GatesFn,
     JobsFn,
     LeaveFn,
@@ -427,7 +429,82 @@ _ADOPT_COLLECTIONS: dict[str, str] = {
     "skill": "skills",
     "archetype": "archetypes",
     "trigger": "triggers",
+    "funnel": "funnels",
+    "contract": "contracts",
+    "role": "roles",  # observed and versioned, not deployable (iam:modify is a human's, §8.7)
 }
+
+
+async def _pull_signals(
+    inst: Instance,
+    instance_id: str,
+    state_store: InstanceStateStore,
+    agg: AggregationStore,
+    fetch_gaps: GapsFn,
+    fetch_audit: AuditFn,
+) -> tuple[int, int]:
+    """The two signals the growth loop and the audit view were designed around and never received
+    (design 27): the gap log, and the audit tail after a per-instance cursor. Same contract as the
+    usage pull — best-effort; a failure logs and counts zero, never fails the sync."""
+    pulled_gaps = pulled_audit = 0
+    try:
+        gaps = await fetch_gaps(inst.endpoint, inst.token_ref)
+        pulled_gaps = agg.ingest(instance_id, "gap", _gap_records(gaps))["ingested"]
+    except ConnectorError as exc:
+        _log.warning("gaps pull failed for %s: %s", instance_id, exc)
+    try:
+        cursor = state_store.get_cursor(instance_id, "audit")
+        events = await fetch_audit(inst.endpoint, inst.token_ref, cursor)
+        pulled_audit = agg.ingest(instance_id, "audit", _audit_records(events))["ingested"]
+        newest = max((str(e.get("timestamp", "")) for e in events), default="")
+        if newest:
+            state_store.put_cursor(instance_id, "audit", newest)
+    except ConnectorError as exc:
+        _log.warning("audit pull failed for %s: %s", instance_id, exc)
+    return pulled_gaps, pulled_audit
+
+
+def _gap_records(gaps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Gap-log rows as aggregation records. The id carries the occurrence count, so a gap that
+    recurs adds a row per occurrence and the rollup's `occurrences` is the instance's count —
+    while a re-sync of an unchanged log dedups to nothing."""
+    out: list[dict[str, Any]] = []
+    for g in gaps:
+        if not isinstance(g, dict) or not g.get("skill_id"):
+            continue
+        n = int(g.get("occurrences") or 1)
+        for i in range(1, n + 1):
+            out.append(
+                {
+                    "id": f"{g['skill_id']}@{g.get('topology_id', '')}#{i}",
+                    "capability": str(g["skill_id"]),
+                    "description": str(g.get("suggested_action") or g.get("pattern") or ""),
+                    "topology_id": str(g.get("topology_id", "")),
+                    "pattern": str(g.get("pattern", "")),
+                    "ts": str(g.get("first_seen", "")),
+                }
+            )
+    return out
+
+
+def _audit_records(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Serve audit events as aggregation records: `event_id` is the dedup key, `timestamp`
+    becomes `ts`, `event_type` becomes the `action` the Runs page shows."""
+    out: list[dict[str, Any]] = []
+    for e in events:
+        if not isinstance(e, dict) or not e.get("event_id"):
+            continue
+        out.append(
+            {
+                "id": str(e["event_id"]),
+                "ts": str(e.get("timestamp", "")),
+                "action": str(e.get("event_type", "")),
+                "agent_id": e.get("agent_id"),
+                "run_id": e.get("run_id"),
+                "payload": e.get("payload"),
+            }
+        )
+    return out
 
 
 def _reported_from_state(arts: Any) -> list[dict[str, Any]]:
@@ -479,6 +556,8 @@ def _mount_state(
     fetch_manifest: StateManifestFn,
     fetch_artifacts: StateArtifactsFn,
     fetch_usage: UsageFn,
+    fetch_gaps: GapsFn,
+    fetch_audit: AuditFn,
 ) -> None:
     """Observed-state cache routes (fleet enrollment Phase 1, design 19) + adopt (Phase 3, doc 20).
 
@@ -528,12 +607,17 @@ def _mount_state(
             pulled_usage = agg.put_usage_snapshot(instance_id, by_model)["written"]
         except ConnectorError as exc:
             _log.warning("usage pull failed for %s: %s", instance_id, exc)
+        pulled_gaps, pulled_audit = await _pull_signals(
+            inst, instance_id, state_store, agg, fetch_gaps, fetch_audit
+        )
         return {
             "instance_id": instance_id,
             "synced_at": synced_at,
             "counts": {kind: len(items) for kind, items in arts.items()},
             "delta": summary,  # {mode, fetched, reused, removed} — bytes saved on the wire
             "pulled_usage": pulled_usage,  # per-model usage rows refreshed from /usage (design 23)
+            "pulled_gaps": pulled_gaps,  # new gap-log rows folded into the rollup (design 27)
+            "pulled_audit": pulled_audit,  # new audit events after the cursor (design 27)
         }
 
     @app.get("/instances/{instance_id}/state")

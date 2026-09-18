@@ -20,6 +20,9 @@ const KINDS: {
 	{ key: "skills", label: "Skills", singular: "skill" },
 	{ key: "archetypes", label: "Archetypes", singular: "archetype" },
 	{ key: "triggers", label: "Triggers", singular: "trigger" },
+	{ key: "funnels", label: "Funnels", singular: "funnel" },
+	{ key: "contracts", label: "Contracts", singular: "contract" },
+	{ key: "roles", label: "Role registries", singular: "role" },
 ];
 
 type Selection = { artifact: InstanceArtifact; kind: string };
@@ -55,13 +58,23 @@ export function InventoryCard({ instanceId }: { instanceId: string }) {
 		try {
 			const res = await api.syncInstance(instanceId);
 			const d = res.delta;
-			// Delta sync (design 19): show how much was transferred vs reused from cache.
+			// Delta sync (design 19): show how much was transferred vs reused from cache — and the
+			// signals pulled alongside it (design 27), so an operator sees the Gaps/Runs pages fill.
+			const state = d
+				? d.mode === "delta"
+					? `Delta sync — ${d.fetched} fetched, ${d.reused} unchanged${d.removed ? `, ${d.removed} removed` : ""}.`
+					: `Full sync — ${d.fetched} artifact${d.fetched === 1 ? "" : "s"} pulled.`
+				: "Synced.";
+			const signals = [
+				res.pulled_gaps
+					? `${res.pulled_gaps} gap${res.pulled_gaps === 1 ? "" : "s"}`
+					: "",
+				res.pulled_audit
+					? `${res.pulled_audit} audit event${res.pulled_audit === 1 ? "" : "s"}`
+					: "",
+			].filter(Boolean);
 			setSyncMsg(
-				d
-					? d.mode === "delta"
-						? `Delta sync — ${d.fetched} fetched, ${d.reused} unchanged${d.removed ? `, ${d.removed} removed` : ""}.`
-						: `Full sync — ${d.fetched} artifact${d.fetched === 1 ? "" : "s"} pulled.`
-					: "Synced.",
+				signals.length ? `${state} Pulled ${signals.join(", ")}.` : state,
 			);
 			refresh();
 		} catch (err) {

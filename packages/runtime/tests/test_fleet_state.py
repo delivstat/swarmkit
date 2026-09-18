@@ -37,7 +37,15 @@ def test_fleet_state_envelope(client: TestClient) -> None:
     assert body["workspace_id"] == "hello-swarm"
     assert body["schema_version"]  # populated from the installed schema package
     assert body["generated_at"]
-    assert set(body["artifacts"]) == {"topologies", "skills", "archetypes", "triggers"}
+    assert set(body["artifacts"]) == {
+        "topologies",
+        "skills",
+        "archetypes",
+        "triggers",
+        "funnels",
+        "contracts",
+        "roles",
+    }
     assert isinstance(body["providers"], list)
 
 
@@ -78,7 +86,15 @@ def test_manifest_is_names_and_hashes_without_content(client: TestClient) -> Non
     # same envelope + metadata as the full state...
     assert manifest["kind"] == "InstanceState"
     assert manifest["workspace_id"] == full["workspace_id"]
-    assert set(manifest["artifacts"]) == {"topologies", "skills", "archetypes", "triggers"}
+    assert set(manifest["artifacts"]) == {
+        "topologies",
+        "skills",
+        "archetypes",
+        "triggers",
+        "funnels",
+        "contracts",
+        "roles",
+    }
     # ...but every entry keeps id/version/content_hash and drops content.
     entry = manifest["artifacts"]["topologies"][0]
     assert set(entry) == {"id", "version", "content_hash"}
