@@ -237,7 +237,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 ## Environment variables
 
 <!-- BEGIN GENERATED: env -->
-48 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
+50 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
 
 **Storage**
 
@@ -288,6 +288,8 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 | Variable | Purpose |
 |---|---|
 | `SWARMKIT_MOCK_DELEGATE` | When set to 1, the mock provider delegates to every child so a mock run traverses a multi-agent topology (tests only). |
+| `SWARMKIT_MOCK_LATENCY_MS` | Base wall time in ms the mock provider sleeps per model call, so a load test measures the runtime under realistic concurrency rather than an instant mock (0/unset = instant). |
+| `SWARMKIT_MOCK_LATENCY_JITTER_MS` | Uniform +/- jitter in ms added to SWARMKIT_MOCK_LATENCY_MS, so concurrent mock calls do not wake on the same tick (real model variance). |
 
 **MCP + sandbox**
 

@@ -1,0 +1,10 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata: {name: tiny, version: 0.1.0}
+# One agent, one model call, no tools — measures API + scheduler + audit overhead.
+agents:
+  root:
+    id: solo
+    role: root
+    model: {provider: mock, name: mock}
+    prompt: {system: You answer in one line.}

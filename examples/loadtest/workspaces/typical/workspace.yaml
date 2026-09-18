@@ -1,0 +1,8 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata: {id: lt-typical, name: Loadtest typical}
+governance: {provider: mock}
+memory: {enabled: false}
+server:
+  jobs:
+    max_concurrent: 1000

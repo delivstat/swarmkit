@@ -1,0 +1,7 @@
+apiVersion: swarmkit/v1
+kind: Skill
+metadata: {id: database-fetch, name: database fetch, description: Fetch a record from the database system.}
+category: capability
+implementation: {type: mcp_tool, server: database, tool: fetch}
+iam: {required_scopes: [database:read]}
+provenance: {authored_by: human, version: 1.0.0}
