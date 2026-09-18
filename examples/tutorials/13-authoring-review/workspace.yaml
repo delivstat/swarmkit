@@ -58,6 +58,19 @@ mcp_servers:
       list_files: read
 
 # Level 11. The server block: concurrency, the per-job timeout, and who may call.
+  - id: git
+    transport: stdio
+    command:
+      - uvx
+      - mcp-server-git
+      - --repository
+      - ${SWARMKIT_GIT_REPO}
+    permission: readonly
+    effects:
+      git_status: read
+      git_diff: read
+      git_log: read
+      git_show: read
 server:
   jobs:
     max_concurrent: 2           # a third simultaneous run is refused with 429, not queued forever

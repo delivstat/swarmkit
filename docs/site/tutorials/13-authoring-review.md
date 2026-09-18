@@ -8,6 +8,7 @@ runtime writes it — and where the runtime tells you what it is missing.
 - `swarmkit author skill|topology|archetype|mcp-server` — one agent, a conversation, a file
 - `swarmkit init` — a workspace from a description
 - `swarmkit edit` and `--thorough` — the skill-authoring **swarm**, and what it needs
+- `swarmkit skill search|add|import|check` — the catalogue, and Agent Skills files
 - The skill gap log: how a workspace learns what it lacks (`swarmkit gaps`)
 - The review queue: what lands there and how you answer it
 
@@ -164,6 +165,159 @@ fresh/
 runs it. Minimal was the request; a fuller description gets archetypes and skills too — the plan
 is shown before anything is written, and "no" sends you back to the conversation.
 
+## Take one from the catalogue
+
+Not every skill needs writing. [`swarmkit-skills`](https://github.com/delivstat/swarmkit-skills)
+is a catalogue of MCP servers with the config already worked out and **checked nightly** — the
+`mcp_servers` block, the permission tier, an `effects` map per tool — and `swarmkit skill` is the
+command over it (runtime **1.235.0**).
+
+```bash
+swarmkit skill search "git history"
+```
+
+```
+git-log                  git            Returns commit history. History answers *why* a line looks the way it
+```
+
+Adding a catalogue skill writes to **two places** — the skill file, and an `mcp_servers` entry in
+`workspace.yaml` — so it shows both and asks. `--dry-run` prints them and writes nothing:
+
+```bash
+swarmkit skill add git-log --dry-run
+```
+
+```
+# catalogue verification: verified (checked 2026-09-18)
+# skills/git-log.yaml (new)
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: git-log
+  name: Git Log
+  description: Returns commit history. History answers *why* a line looks the way
+    it does. An agent without it re-litigates decisions already made.
+category: capability
+implementation:
+  type: mcp_tool
+  server: git
+  tool: git_log
+iam:
+  required_scopes:
+  - workspace:read
+provenance:
+  authored_by: human
+  version: 1.0.0
+  requires_runtime: '>=1.199.0'
+  registry: swarmkit-skills
+
+# mcp_servers entry (added to workspace.yaml)
+mcp_servers:
+- id: git
+  transport: stdio
+  command:
+  - uvx
+  - mcp-server-git
+  - --repository
+  - ${SWARMKIT_GIT_REPO}
+  permission: readonly
+  effects:
+    git_status: read
+    git_diff: read
+    git_log: read
+    git_show: read
+
+dry run — nothing written.
+```
+
+A whole bundle is one command; the `mcp_servers` edit keeps your comments (it goes through the
+same service the portal's Connections page uses) and a second run changes nothing:
+
+```bash
+swarmkit skill add git --yes
+diff workspace.before.yaml workspace.yaml
+swarmkit skill add git --yes
+swarmkit validate .
+```
+
+```
+wrote skills/git-status.yaml, skills/git-diff.yaml, skills/git-log.yaml and mcp_servers updated.
+60a61,73
+>   - id: git
+>     transport: stdio
+>     command:
+>       - uvx
+>       - mcp-server-git
+>       - --repository
+>       - ${SWARMKIT_GIT_REPO}
+>     permission: readonly
+>     effects:
+>       git_status: read
+>       git_diff: read
+>       git_log: read
+>       git_show: read
+wrote no new files.
+no errors, 0 warnings
+```
+
+`swarmkit skill list` says what the workspace holds and who holds it; `check` starts every
+`mcp_tool` skill's server the way a run would and asks whether the tool is still there:
+
+```bash
+swarmkit skill list
+SWARMKIT_GIT_REPO=. swarmkit skill check
+```
+
+```
+content-filter           decision     llm_prompt                   bound:pre_input
+get-weather              capability   mcp_tool → weather           hello/assistant, translator/translator
+git-diff                 capability   mcp_tool → git               held by nobody
+git-log                  capability   mcp_tool → git               held by nobody
+git-status               capability   mcp_tool → git               held by nobody
+…
+ok      git-diff                 git:git_diff
+ok      git-log                  git:git_log
+ok      git-status               git:git_status
+ok      list-files               docs-reader:list_files
+ok      read-csv                 docs-reader:read_csv
+ok      read-file                filesystem:read_file
+ok      search-knowledge         knowledge-search:search_knowledge
+ok      write-file               filesystem:write_file
+```
+
+"Held by nobody" is the next step, not a problem: grant `git-log` to an agent
+(`skills_additional`, Level 4) and it is in the tool list. The portal's **Skills** page lists the
+three the moment they land:
+
+![The catalogue skills in the portal](../img/tutorials/13-skills-catalogue.png)
+
+An **Agent Skills** `SKILL.md` — the format Anthropic and others publish instructions in — imports
+as an `llm_prompt` skill, the body as the prompt, verbatim:
+
+```bash
+swarmkit skill import https://raw.githubusercontent.com/anthropics/skills/main/skills/docx/SKILL.md
+```
+
+```
+wrote skills/docx.yaml (docx, llm_prompt).
+```
+
+And `remove` refuses while something holds the skill — a grant is a decision someone made:
+
+```bash
+swarmkit skill remove get-weather
+swarmkit skill remove docx
+```
+
+```
+error: 'get-weather' is held by hello/assistant, translator/translator — remove the grant first
+removed skills/docx.yaml.
+```
+
+`swarmkit skill list --available` is the whole catalogue with its verification dates;
+`show <id>` prints an entry. The same operations are `GET /api/skill-catalogue`,
+`POST /api/skills/add`, `POST /api/skills/import` and `GET /api/skills/check` on `swarmkit serve`.
+
 ## The authoring swarm
 
 `swarmkit author … --thorough` and `swarmkit edit` do not use one agent. They run the
@@ -263,7 +417,8 @@ agent for another attempt (Level 7). Review is for the decisions that are a pers
 ```
 my-swarm/
 ├── skills/
-│   └── translate-text.yaml      # authored
+│   ├── translate-text.yaml      # authored
+│   ├── git-log.yaml             # from the catalogue (+ git-status, git-diff; `mcp_servers: git`)
 ├── topologies/
 │   └── translator.yaml          # authored
 └── .swarmkit/

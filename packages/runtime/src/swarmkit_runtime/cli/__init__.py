@@ -29,6 +29,7 @@ from . import (  # noqa: F401
     _cmd_providers,
     _cmd_run,
     _cmd_serve,
+    _cmd_skill,
     _cmd_storage,
     _cmd_trust,
 )

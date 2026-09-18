@@ -1,19 +1,137 @@
 ---
-title: Skill registry — community skill import + discovery
-description: Architecture for importing skills from the Agent Skills (SKILL.md) and MCP ecosystems. CLI for install/search/list. Authoring AI integration.
+title: Skill registry — the `swarmkit skill` command over the catalogue and SKILL.md
+description: How a workspace finds, adds, imports and checks skills — the swarmkit skill command group over the swarmkit-skills catalogue, a SKILL.md converter, and a liveness check. Refreshed September 2026 from the April proposal.
 tags: [skills, registry, ecosystem, community]
-status: proposed
+status: accepted
 ---
 
-# Skill registry — community skill import + discovery
+# Skill registry — the `swarmkit skill` command
 
-> **Two decisions here are superseded by [`skill-catalogue.md`](skill-catalogue.md).** The registry
-> does **not** ship inside `swarmkit-runtime` — it is a separately-versioned repo, so a broken skill
-> does not need a runtime release to fix. And skills are **not** "trusted by source": provenance is
-> not liveness, and a trusted publisher's server still renames tools, so entries are verified
-> nightly against the real server and carry the date they were last seen working.
->
-> The rest of this note — the `SKILL.md` landscape, the converter, the import surface — stands.
+> **Refreshed 2026-09-18.** The April proposal below (kept under "Original landscape") is what
+> this note now implements, with the two decisions [`skill-catalogue.md`](skill-catalogue.md)
+> reversed in the meantime kept reversed: the library is the separately-versioned
+> **`swarmkit-skills` catalogue**, not a registry inside the runtime wheel, and an entry's
+> standing is its **verification date**, not its publisher. What was still missing on the day of
+> the refresh: the command group itself. None of `swarmkit skill …` existed; `swarmkit install`
+> moves whole workspaces, `swarmkit author skill` writes one from a conversation, and the
+> catalogue was "copy a bundle by hand".
+
+## What ships
+
+```bash
+swarmkit skill list                       # the workspace's skills: id, category, backing, who holds it
+swarmkit skill list --available           # the catalogue: bundles, skills, verification dates
+swarmkit skill search "git history"       # catalogue names + descriptions (and the workspace's own)
+swarmkit skill show git-log               # one entry, from the workspace or the catalogue
+swarmkit skill add git-log                # a catalogue skill: skills/git-log.yaml + its mcp_servers entry
+swarmkit skill add git                    # a whole bundle: every skill + the server, one prompt
+swarmkit skill add ./my-skill.yaml        # a local Skill file (or a SkillBundle), same path
+swarmkit skill import ./SKILL.md          # an Agent Skills file → an llm_prompt skill
+swarmkit skill check                      # do the tools the workspace's mcp_tool skills name still exist?
+swarmkit skill remove git-log             # delete the file — refused while an archetype or agent holds it
+```
+
+`add` writes to **two places** — a new file under `skills/` (safe) and an `mcp_servers` entry in
+`workspace.yaml` (hand-authored, not safe to edit silently) — so it shows both fragments and asks;
+`--dry-run` prints them and writes nothing; `--yes` is for scripts. The `mcp_servers` edit goes
+through the same comment-preserving, validate-or-roll-back service the portal's Connections page
+uses (`server/_workspace_config.py`), so a hand edit and a `skill add` produce the same file.
+
+### Sources, in order
+
+1. **The workspace** — `skills/*.yaml` (for `list`, `show`, `search`, `remove`, `check`).
+2. **The catalogue** — `delivstat/swarmkit-skills` on GitHub: `skills/<bundle>/bundle.yaml`
+   (`kind: SkillBundle`: the `mcp_servers` block, the skill ids, `verification`) and
+   `skills/<bundle>/skills/<id>.yaml`. Fetched over HTTPS, cached under
+   `~/.swarmkit/cache/skills-catalogue.json` for a day (`--refresh` to refetch);
+   `SWARMKIT_SKILLS_CATALOGUE=<dir-or-url>` points at a checkout or a mirror, which is also how the
+   tests run against a fixture catalogue with no network.
+3. **A path or URL** — a `Skill` or `SkillBundle` YAML file given to `add` directly.
+
+`reference/skills/` in this repo stays what `skill-catalogue.md` said: worked examples the docs
+teach from, versioned with the runtime — not a fourth source. Two of them (`governed-memory`,
+`memory-reconcile`) are bundled by `memory-by-default.md` for a different reason.
+
+### The converter (`import`)
+
+An Agent Skills `SKILL.md` is YAML frontmatter (`name`, `description`, optional `metadata`) over a
+markdown body of instructions. It becomes an `llm_prompt` skill:
+
+```yaml
+apiVersion: swarmkit/v1
+kind: Skill
+metadata:
+  id: <name, kebab-cased>
+  name: <name, title-cased>
+  description: <description>
+category: capability
+implementation:
+  type: llm_prompt
+  prompt: |
+    <the markdown body, verbatim>
+provenance:
+  authored_by: imported_from_registry
+  version: <metadata.version or 1.0.0>
+  registry: <the file's origin — path or URL>
+```
+
+It is validated against `skill.schema.json` before it is written, and `add`'s two-place rule does
+not apply (an `llm_prompt` skill needs no server). Anything the body references that a prompt
+cannot do — scripts, bundled files — is left in the prompt for a person to see; the converter does
+not pretend a SKILL.md with a `scripts/` directory is a prompt.
+
+### `check`
+
+For every `mcp_tool` skill in the workspace: start its server through the runtime's own MCP
+client (the same start, sandbox and credentials a run would use), list the tools, and report
+whether the tool the skill names is there — `ok`, `missing <tool>` (the server renamed it), or
+`server failed: <reason>`. The catalogue's nightly job asks the same question of every entry; this
+asks it of *yours*. It changes nothing; the exit code is non-zero when anything is not `ok`.
+
+### Service, then CLI, then HTTP
+
+Business logic lives in `swarmkit_runtime.skills._registry` (catalogue index and search, the add
+planner and applier, the converter, the checker); `cli/_cmd_skill.py` and the serve routes
+`GET /api/skill-catalogue`, `GET /api/skill-catalogue/{id}`, `POST /api/skills/add`,
+`POST /api/skills/import`, `GET /api/skills/check` are thin over it — the CLI-first, thin-interface
+rule. The portal's Skills page gets a **Library** tab over the same routes in a follow-up.
+
+## Non-goals
+
+- Bundling the catalogue into the runtime (`skill-catalogue.md`'s reversal stands).
+- Importing MCP servers from a URL as a bundle (`import-mcp`). Curating a server — the permission
+  tier, an `effects` map per tool, the argument shapes — is the catalogue's job and is done by a
+  person with the server in front of them (`feedback: probe, don't transcribe`). `add` of a
+  catalogue bundle is the supported way to get a server into a workspace.
+- Auto-updating installed skills; `check` reports, it does not rewrite.
+- A rating or marketplace system.
+
+## Test plan
+
+- catalogue: index built from a fixture directory (`SWARMKIT_SKILLS_CATALOGUE`); search ranks
+  name and description hits; cache respected and `--refresh` bypasses it.
+- add: the planner yields the skill file and the `mcp_servers` fragment; `--dry-run` writes
+  nothing; apply writes the file and upserts the server through the config service (comments
+  intact); re-running is idempotent; a bundle adds every skill and one server; an unknown id names
+  the closest matches; a `requires_runtime` above the running runtime is refused naming both.
+- import: frontmatter + body → a valid `llm_prompt` skill; a missing `name` is an error; the body
+  is verbatim; `provenance.registry` carries the origin.
+- check: against a stub MCP server — `ok` when the tool matches, `missing` when renamed,
+  `server failed` when it will not start; non-zero exit when anything is not `ok`.
+- remove: refused while an archetype or agent grants the skill; deletes otherwise.
+- CLI: every subcommand invoked through the Typer app on a fixture workspace; HTTP routes through
+  the TestClient.
+
+## Demo plan
+
+Level 13 gains a section run for real: `skill search git`, `skill add git` against the live
+catalogue (the two fragments, the prompt, the resulting files), `skill check`, and `skill import`
+of an Anthropic `SKILL.md`. Transcripts in the tutorial, the portal Skills page showing the added
+skill.
+
+---
+
+## Original landscape and proposal (April 2026)
 
 ## Goal
 
@@ -103,7 +221,7 @@ Workspace skills/
   └── skills/<name>.yaml       ← workspace-local, validated
 ```
 
-### CLI commands
+### CLI commands (as proposed; the shipped surface is above)
 
 ```bash
 # Install from the local registry into the workspace
