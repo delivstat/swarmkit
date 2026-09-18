@@ -2733,7 +2733,7 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 ## Environment variables
 
 <!-- BEGIN GENERATED: env -->
-47 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
+48 variables, from the runtime's own registry (`swarmkit system` and `GET /system` report the same list, secrets masked). A variable the code reads and the registry does not know fails a test.
 
 **Storage**
 
@@ -2778,6 +2778,12 @@ Started via `swarmkit serve <workspace> [--port 8000] [--host 0.0.0.0]`. Every e
 | `SWARMKIT_HISTORY_TURNS` | Conversation turns replayed into context. |
 | `SWARMKIT_CONTEXT_COMPRESSION` | Enable read-side context compression (off by default). |
 | `SWARMKIT_CONTEXT_COMPRESSION_MIN_BYTES` | Payload size below which compression is skipped. |
+
+**Testing**
+
+| Variable | Purpose |
+|---|---|
+| `SWARMKIT_MOCK_DELEGATE` | When set to 1, the mock provider delegates to every child so a mock run traverses a multi-agent topology (tests only). |
 
 **MCP + sandbox**
 
