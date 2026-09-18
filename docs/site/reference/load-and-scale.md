@@ -12,6 +12,7 @@ These numbers are a **baseline**, dated so a post-improvement run can be compare
 |---|---|---|---|---|
 | 1 (baseline) | 2026-09-18 | 1.242.0 | 1 dev machine, WSL2 (shared) | first harness run; synchronous per-run work on the event loop |
 | 2 | 2026-09-18 | 1.243.0 | same box | compile now cached — isolates the DB-on-loop term |
+| 3 | 2026-09-18 | 1.244.0 | same box | audit write off-loop + pool=100 — one of several sync writes moved |
 
 When the optimization lands (moving the synchronous compile/persist sections off the event loop),
 re-run `examples/loadtest/run.sh` on the same box and add Run 2 here beside Run 1 — same tables, so
@@ -137,9 +138,37 @@ store engine uses SQLAlchemy's default connection pool (size 5). A small sync po
 blocking writes caps effective concurrency at ~5 regardless of `max_concurrent` — which is exactly
 what both runs show.
 
-So the next change is the high-value one, now with evidence pointing straight at it: **move the
-store/audit writes off the loop** (an async driver or `asyncio.to_thread`), coalesce the journal's
-per-event flush, and size the pool for the target concurrency. Run 3 will measure that.
+So the next change targets that: **move the store/audit writes off the loop** (an async driver or
+`asyncio.to_thread`), coalesce the journal's per-event flush, and size the pool for the target
+concurrency. Run 3 tried a first slice of this — read on; the lesson there is that a *partial* move
+does not move the knee.
+
+## Run 3 (2026-09-18, runtime 1.244.0) — off-loop audit write + configurable pool
+
+Two more changes: the write-through audit `INSERT` now runs off the event loop
+(`asyncio.to_thread`), and the store connection pool is configurable
+(`SWARMKIT_STORE_POOL_SIZE`, default 20) — set to 100 for this run. Same `tiny` ramp:
+
+| concurrency | Run 2 runs/s (p50) | Run 3 runs/s (p50) |
+|---|---|---|
+| 5   | 2.2 (2.4s)  | 2.05 (2.6s) |
+| 25  | 3.55 (8.2s) | 3.25 (9.0s) |
+| 50  | 2.55 (38s)  | 2.55 (39s) |
+| 100 | 5.0 (68s)   | 5.0 (77s) |
+
+**Still no movement — and that is informative.** Moving *only* the audit write off the loop was not
+enough, because a run does several other **synchronous** store writes on the loop that are still
+there: `create_job`, `update_job` (running, then completed), the per-run usage write, and the trace
+file. Audit is one of ~six; moving one leaves the ceiling where it was. The DB-on-loop hypothesis is
+not disproven — it is under-tested until *all* the per-run store writes are off the loop (or on an
+async driver). A larger pool likewise cannot help while the writes themselves still block the single
+loop; it is necessary for scale-out (and now tunable), not sufficient on its own.
+
+So Run 4 is the real test: move the whole per-run store write path off the loop (job store + usage +
+trace, not just audit) or switch to an async DB driver, then re-measure. **A note on the rig:** the
+driver, serve, and Postgres share one 8-core box, so absolute peaks are contended; the *shape*
+(flat throughput, linear latency, unmoved by three partial fixes) is what these runs establish, and a
+clean number needs the driver on a separate host.
 
 ## What this means for sizing
 
@@ -156,8 +185,9 @@ per-event flush, and size the pool for the target concurrency. Run 3 will measur
 
 ## The honest optimization target
 
-Compile caching (Run 2) is done. The remaining, and now clearly dominant, change is to move the
-**synchronous store/audit writes off the event loop** — an async driver or `asyncio.to_thread`, a
+Compile caching (Run 2) and the audit write + configurable pool (Run 3) are done. The remaining
+change — and the one Run 3 shows is needed in full, not in part — is to move the **entire per-run
+store write path off the event loop** (job store, usage and trace, not only audit) — an async driver or `asyncio.to_thread`, a
 coalesced flush for the write-through journal, and a connection pool sized for the target concurrency
 (it defaults to 5 today). That would let one process actually use the
 concurrency the semaphore allows and keep admission/polling responsive under load. This benchmark is

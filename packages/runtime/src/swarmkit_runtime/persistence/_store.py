@@ -12,6 +12,7 @@ preserving the prior concurrency behaviour. Timestamps + JSON ride as Text, unch
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -111,13 +112,33 @@ def create_all_idempotent(metadata: Any, engine: Engine) -> None:
         raise last
 
 
+def _env_int(name: str, default: int) -> int:
+    """A positive int from the environment, or the default (a bad value falls back, not crashes)."""
+    try:
+        v = int(os.environ.get(name, "") or default)
+        return v if v > 0 else default
+    except ValueError:
+        return default
+
+
 def make_engine(url: str) -> Engine:
     """Create a SQLAlchemy engine, enabling WAL + busy_timeout + FKs for the SQLite dialect.
 
     For a SQLite *file* URL the parent directory is created if absent (matching the prior stores),
     so ``sqlite:///{workspace}/.swarmkit/store.sqlite`` works on a fresh workspace.
     """
-    engine = create_engine(normalize_url(url))
+    normalized = normalize_url(url)
+    # A Postgres pool sized for the target concurrency. The store engine is shared across every
+    # store on the same URL (one pool per database), so this is the whole instance's DB concurrency.
+    # Defaults suit a single serve process; raise for a bigger `max_concurrent` or more instances,
+    # keeping the total (pool + overflow) x instances under Postgres `max_connections`. SQLite does
+    # not pool the same way, so the knobs apply to Postgres only (load-and-scale.md).
+    kwargs: dict[str, Any] = {}
+    if not normalized.startswith("sqlite"):
+        kwargs["pool_size"] = _env_int("SWARMKIT_STORE_POOL_SIZE", 20)
+        kwargs["max_overflow"] = _env_int("SWARMKIT_STORE_MAX_OVERFLOW", 10)
+        kwargs["pool_pre_ping"] = True
+    engine = create_engine(normalized, **kwargs)
     if engine.dialect.name == "sqlite":
         db_file = engine.url.database
         if db_file and db_file != ":memory:":

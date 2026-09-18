@@ -12,6 +12,7 @@ Append-only (§8.3): only INSERT (dedup by PK) + a retention DELETE are issued �
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -94,14 +95,22 @@ class SqlAuditProvider(AuditProvider):
             "error": _dumps(event.error),
             "payload": _dumps(event.payload),
         }
-        try:
-            with self._engine.begin() as conn:
-                conn.execute(insert(audit_events).values(**values))
-        except IntegrityError:
-            # duplicate event_id (PK) — append-only dedup, never raise (per the ABC). Also do not
-            # push: a duplicate insert means somebody already heard about this one.
-            return
-        await self._push(event)
+
+        # The write is synchronous SQLAlchemy; run it in a thread so it does not block the event
+        # loop. The journal is write-through (per event), so on the hot path this is what kept the
+        # loop from overlapping concurrent runs (load-and-scale.md). A DB round-trip releases the
+        # GIL, so threads genuinely overlap here.
+        def _insert() -> bool:
+            try:
+                with self._engine.begin() as conn:
+                    conn.execute(insert(audit_events).values(**values))
+                return True
+            except IntegrityError:
+                # duplicate event_id (PK) — append-only dedup, never raise (per the ABC).
+                return False
+
+        if await asyncio.to_thread(_insert):
+            await self._push(event)
 
     async def _push(self, event: AuditEvent) -> None:
         """Tell the application, after the log has it.
