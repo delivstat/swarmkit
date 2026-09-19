@@ -148,6 +148,14 @@ def serve(
             "(same-origin only); never combined with a wildcard.",
         ),
     ] = None,
+    role: Annotated[
+        str,
+        typer.Option(
+            "--role",
+            help="all (accept + execute in-process, the default) or api (accept + enqueue only; "
+            "run `swarmkit worker` to execute — worker-execution.md). api requires Postgres.",
+        ),
+    ] = "all",
 ) -> None:
     """Start the SwarmKit HTTP server (design §14.1).
 
@@ -156,7 +164,14 @@ def serve(
 
     Default-secure: a non-loopback bind with auth provider 'none' refuses to start unless
     --insecure is given or server.auth.require_on_nonloopback is false.
+
+    ``--role api`` splits execution out (worker-execution.md): serve accepts, enqueues, and
+    streams, while a pool of ``swarmkit worker`` processes claim and run jobs. This is how serve
+    scales past a single event loop's throughput. The all-in-one default is unchanged.
     """
+    if role not in ("all", "api"):
+        typer.echo(f"invalid role '{role}' — use all | api", err=True)
+        raise typer.Exit(code=2)
     _print_banner()
     _suppress_noisy_logs()
     import uvicorn  # noqa: PLC0415
@@ -176,6 +191,7 @@ def serve(
             cors_origins=cors_origin or None,
             host=host,
             insecure=effective_insecure,
+            enqueue_only=(role == "api"),
         )
     except RuntimeError as exc:
         typer.echo(
@@ -195,6 +211,8 @@ def serve(
         f"swarmkit-runtime {runtime_version() or '(uninstalled)'}"
         + (f" · web portal {portal}" if portal else " · headless (no web portal installed)")
     )
+    if role == "api":
+        typer.echo("role: api — enqueue only; start `swarmkit worker` to execute queued jobs.")
     uvicorn.run(app_instance, host=host, port=port)
 
 
@@ -295,6 +313,64 @@ def connect(
             state_path=state,
         )
     )
+
+
+@app.command()
+def worker(
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace root directory.", show_default=False),
+    ] = Path("."),
+    lease_seconds: Annotated[
+        int,
+        typer.Option(
+            "--lease-seconds",
+            help="How long a claim holds a job before another worker may reclaim it. The worker "
+            "heartbeats to extend it while running.",
+        ),
+    ] = 60,
+    poll_seconds: Annotated[
+        float,
+        typer.Option("--poll-seconds", help="Idle poll interval when the queue is empty."),
+    ] = 1.0,
+    once: Annotated[
+        bool,
+        typer.Option("--once", help="Claim and run a single job (or exit if empty), then stop."),
+    ] = False,
+) -> None:
+    """Run a worker that claims and executes queued jobs (worker-execution.md).
+
+    Pairs with ``swarmkit serve --role api``: serve enqueues, workers execute. Each worker runs
+    jobs on its own event loop and DB engine, heartbeats while running, and reclaims runs
+    abandoned by dead workers (which resume from their checkpoint, not from the start). Scale
+    throughput by running more workers.
+
+    Requires a Postgres store — multiple processes cannot share a SQLite writer. Mind the
+    connection budget: physical connections are workers * (pool + overflow + checkpointer); size
+    SWARMKIT_STORE_POOL_SIZE down or front Postgres with PgBouncer past a handful of workers.
+    """
+    _print_banner()
+    _suppress_noisy_logs()
+    from swarmkit_runtime._versions import runtime_version  # noqa: PLC0415
+    from swarmkit_runtime.queue import QueueUnavailableError, run_worker  # noqa: PLC0415
+
+    typer.echo(f"swarmkit-runtime {runtime_version() or '(uninstalled)'} · worker")
+    try:
+        executed = asyncio.run(
+            run_worker(
+                workspace_path.resolve(),
+                lease_seconds=lease_seconds,
+                poll_seconds=poll_seconds,
+                once=once,
+            )
+        )
+    except QueueUnavailableError as exc:
+        typer.echo(f"{exc}\n(The worker model requires a Postgres store.)", err=True)
+        raise typer.Exit(code=2) from exc
+    except KeyboardInterrupt:
+        raise typer.Exit(code=0) from None
+    if once:
+        typer.echo(f"ran {executed} job(s)")
 
 
 @app.command(name="mcp-serve")

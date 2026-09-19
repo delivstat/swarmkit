@@ -176,6 +176,9 @@ class JobRow:
     parent_job_id: str | None = None
     #: when a human asked this run to stop; None once it has stopped and been resumed
     stop_requested_at: str | None = None
+    #: How many times this run has been (re)claimed by a worker. Bumped on reclaim, so a worker can
+    #: tell a fresh run (0) from one resumed after an abandoned attempt (worker-execution.md).
+    attempt: int = 0
 
 
 @dataclass
@@ -416,6 +419,7 @@ class Store:
             diffs=json.loads(row["diff"]) if row.get("diff") else None,
             parent_job_id=row.get("parent_job_id"),
             stop_requested_at=row.get("stop_requested_at"),
+            attempt=int(row.get("attempt") or 0),
             topology=row["topology"],
             status=row["status"],
             input=row["input"],

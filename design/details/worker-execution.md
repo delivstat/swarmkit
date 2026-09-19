@@ -146,9 +146,13 @@ against a SQLite store with a clear message rather than corrupting under content
 
 ## Demo / rollout plan
 
-1. Land the `JobQueue` interface + `PostgresJobQueue` + `reclaim_expired`, behind a flag, with serve
-   still all-in-one by default (no behaviour change).
-2. `swarmkit worker` + `serve --role api`; document PgBouncer and the connection-budget math.
+1. **Shipped (1.247.0).** The `JobQueue` interface + `PostgresJobQueue` + `reclaim_expired`, with
+   serve still all-in-one by default (no behaviour change).
+2. **Shipped (1.248.0).** `swarmkit worker` + `serve --role api`: the API tier enqueues a run as
+   `queued` (resolving topology/attachments up front) and never executes; a worker claims it,
+   runs it via the exact `execute_job` path, heartbeats, and reclaims abandoned runs. The API tier
+   drops its in-memory job stub so `GET /jobs/{id}` reads the durable row a worker keeps current.
+   Connection-budget math + PgBouncer documented above.
 3. Run 5 in `load-and-scale.md`: api + N workers, aggregate throughput vs N, with the streaming
    driver.
 4. Only then consider a Redis backend, if a deployment's fan-out actually needs it.

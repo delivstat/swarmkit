@@ -115,6 +115,7 @@ class JobService:
         parent_job_id: str | None = None,
         attachments: list[Any] | None = None,
         source: str = "serve",
+        enqueue_only: bool = False,
     ) -> Job:
         """Resolve, gate on capacity, create + persist the job, and start it in the background.
 
@@ -123,6 +124,12 @@ class JobService:
 
         *attachments* are the caller's declared files, resolved here so a bad one is a 422 on the
         request rather than a job that fails a moment later.
+
+        *enqueue_only* is the API tier's mode (``serve --role api``, worker-execution.md): resolve
+        and persist the job as ``queued`` for a worker to claim, then return without executing it.
+        The resolve still happens here so a bad topology or attachment is a 4xx on submit, not a
+        run that only fails once a worker picks it up. Requires a durable store (Postgres); a
+        worker cannot claim a job that was never written down.
         """
         resolved_name, selected_version = self.resolve_topology(rt, canary, topology_name)
         # Resolved HERE rather than inside the background run, so a path that does not exist or
@@ -138,13 +145,21 @@ class JobService:
                 resolved_attachments = resolve_all(attachments, rt.workspace_root)
             except AttachmentError as exc:
                 raise InvalidRequestError(str(exc)) from exc
-        if semaphore is not None and semaphore.locked():
+        # In-process admission (reject-when-full) is the all-in-one server's cap. In queue mode the
+        # limit is the worker pool + queue depth, not this loop, so the semaphore does not apply.
+        if not enqueue_only and semaphore is not None and semaphore.locked():
             raise BusyError("Max concurrent jobs reached. Try again later.")
         job = await self._jobs.create(resolved_name, user_input)
         job.version = selected_version
         job.correlation_id = correlation_id
         job.source = source
         job.labels = dict(labels or {})
+        if enqueue_only and store is None:
+            err = ServiceError(
+                "queue mode requires a durable store; a worker cannot claim an unpersisted job"
+            )
+            err.status = 500
+            raise err
         if store:
             store.create_job(
                 job.id,
@@ -157,6 +172,17 @@ class JobService:
             )
             if selected_version:
                 store.update_job(job.id, version=selected_version)
+        if enqueue_only:
+            # Mark it claimable and return; a worker (swarmkit worker) drains the queue. The
+            # in-memory Job mirrors the durable status so the submit response reads "queued".
+            if store:
+                store.update_job(job.id, status="queued")
+            job.status = "queued"
+            # Drop the in-memory stub: the API tier never executes this job, so its live copy would
+            # stay "queued" forever and shadow the durable row a worker keeps current (GET merges
+            # live-over-row). The returned object still shapes the submit response.
+            await self._jobs.remove(job.id)
+            return job
         _start_job(
             self._jobs,
             job,

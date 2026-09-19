@@ -3,7 +3,7 @@
 ## Every command
 
 <!-- BEGIN GENERATED: commands -->
-69 commands, from the CLI itself (`swarmkit <command> --help` for the options).
+70 commands, from the CLI itself (`swarmkit <command> --help` for the options).
 
 | Command | What it does |
 |---|---|
@@ -76,6 +76,7 @@
 | `swarmkit upgrade` | Upgrade swarmkit-runtime in place, keeping its extras, after showing any breaking changes. |
 | `swarmkit validate` | Validate a SwarmKit workspace and print a resolved tree or errors. |
 | `swarmkit why` | Explain what happened in a run using an LLM. |
+| `swarmkit worker` | Run a worker that claims and executes queued jobs (worker-execution.md). |
 <!-- END GENERATED: commands -->
 
 ## The ones you will use first
