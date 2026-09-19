@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 import typer
 
+from swarmkit_runtime._input_schema import InputValidationError
 from swarmkit_runtime._workspace_runtime import (
     MissingMCPServerError,
     RunResult,
@@ -339,7 +340,7 @@ def _finish_job(
         _stderr(f"note: could not record the run's outcome: {exc}")
 
 
-def _execute_run(
+def _execute_run(  # noqa: PLR0915
     runtime: WorkspaceRuntime,
     topology_name: str,
     user_input: str,
@@ -389,6 +390,12 @@ def _execute_run(
                 attachments=[{"path": a} for a in (attach or [])],
             )
         )
+    except InputValidationError as exc:
+        # The caller's input did not match the topology's input_schema (input-schema.md): a usage
+        # error caught before any node ran, so it exits like a bad flag — no billed run.
+        _finish_job(store, thread_id, "failed", error=str(exc))
+        _stderr(f"error: {exc}")
+        raise typer.Exit(_EXIT_USAGE) from exc
     except AttachmentError as exc:
         # A usage error, not a run failure: nothing was executed and nothing was billed, so it
         # exits like a bad flag rather than leaving a "failed" row implying work was attempted.

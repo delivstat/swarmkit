@@ -10,9 +10,16 @@ export interface SwarmKitTopology {
     /**
      * Schema version. Breaking changes bump this major.
      */
-    apiVersion:         APIVersion;
-    artifacts?:         Artifacts;
-    governance?:        Governance;
+    apiVersion:  APIVersion;
+    artifacts?:  Artifacts;
+    governance?: Governance;
+    /**
+     * Optional JSON Schema (draft 2020-12) that the caller-supplied input must satisfy before
+     * the run starts. Validate-and-reject at the entry point (422 over HTTP, non-zero exit on
+     * the CLI, a JSON-RPC error over A2A) with no LLM spend; an object schema requires JSON
+     * input, while {"type": "string"} accepts plain text. See design/details/input-schema.md.
+     */
+    input_schema?:      { [key: string]: any };
     intent_monitoring?: IntentMonitoring;
     kind:               Kind;
     metadata:           Metadata;

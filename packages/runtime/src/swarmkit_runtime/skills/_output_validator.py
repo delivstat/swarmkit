@@ -83,13 +83,21 @@ def validate_all_skill_output(
     outputs_schema: dict[str, Any],
 ) -> list[FieldError]:
     """Like ``validate_skill_output`` but collects ALL errors, not just the first."""
-    validator_cls = jsonschema.Draft202012Validator
-    validator = validator_cls(outputs_schema)
-    errors: list[FieldError] = []
-    for error in sorted(validator.iter_errors(output), key=lambda e: list(e.path)):
-        field = _extract_field_path(error)
-        errors.append(FieldError(field, error.message))
-    return errors
+    return validate_against_schema(output, outputs_schema)
+
+
+def validate_against_schema(
+    instance: Any,
+    schema: dict[str, Any],
+) -> list[FieldError]:
+    """Validate any instance (a parsed object, or a plain string) against a JSON Schema, returning
+    ALL field-specific errors (empty if valid). Draft 2020-12, the dialect the schemas use. Shared
+    by output validation and topology ``input_schema`` (input-schema.md)."""
+    validator = jsonschema.Draft202012Validator(schema)
+    return [
+        FieldError(_extract_field_path(error), error.message)
+        for error in sorted(validator.iter_errors(instance), key=lambda e: list(e.path))
+    ]
 
 
 def validate_business_rules(

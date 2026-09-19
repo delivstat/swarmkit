@@ -351,6 +351,44 @@ parser defaults it to `pass` and the check reports success on every rejection.
 - [ ] Any tool-backed skill emits `verdict` as exactly `pass` / `fail` / `needs-revision`
 - [ ] A run with a deliberately unsupported claim actually gets flagged
 
+## The other end: `input_schema` (validate what comes in)
+
+`output_schema` guards what a run *produces*; `input_schema` guards what a caller *sends*. It is an
+optional JSON Schema on the **topology** (not per-agent — input is caller-supplied only at the
+entry) that the input must satisfy before the run starts. Symmetric to `output_schema` with one
+deliberate difference: it is validate-and-**reject**, not validate-and-correct — a caller cannot be
+re-prompted mid-run, so a malformed request simply never becomes a run (no LLM spend).
+
+```yaml
+# topologies/triage.yaml
+apiVersion: swarmkit/v1
+kind: Topology
+metadata: { name: triage, version: 0.1.0 }
+input_schema:                       # optional; JSON Schema draft 2020-12
+  type: object
+  required: [ticket_id, severity]
+  properties:
+    ticket_id: { type: string }
+    severity: { enum: [P0, P1, P2] }
+agents: { ... }
+```
+
+Checked at the single choke point (`WorkspaceRuntime.run`), so every entry inherits it:
+
+| Entry | On a malformed request |
+|---|---|
+| `POST /run` | **422** at submit, with the offending field named; no job is created |
+| `swarmkit run` | non-zero exit, the error on stderr, no billed run |
+| A2A `message/send` | a JSON-RPC error, no task created |
+
+An **object** schema requires the input to be JSON (`input must be a JSON object matching
+input_schema` otherwise); `{ "type": "string" }` accepts plain natural-language text, so a
+conversational topology can assert "non-empty text" without forcing JSON. Every check emits an
+`input.validated` or `input.rejected` audit event. A topology that omits `input_schema` is
+unchanged. For **meaning** rather than shape (an allow-list lookup, a policy call), use a
+`pre_input` decision skill — the same shape-vs-semantics split as `output_schema` vs a decision
+skill above; `input_schema` runs first because it is the cheapest, structural check.
+
 ## See also
 
 - [Building swarms](building-swarms.md) — where skills and bindings sit in a topology.
