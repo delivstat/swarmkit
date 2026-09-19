@@ -76,6 +76,43 @@ def storage_status(
         raise typer.Exit(code=2)
 
 
+@app.command("queue-stats")
+def queue_stats(
+    workspace: Annotated[
+        Path, typer.Argument(help="Workspace root (directory with workspace.yaml).")
+    ] = Path("."),
+) -> None:
+    """Show durable job-queue health: backlog depth, oldest-unclaimed age, queue-wait and
+    execution-latency percentiles, and depth by topology (queue-observability.md)."""
+    from swarmkit_runtime.persistence import (  # noqa: PLC0415
+        StorageConfigError,
+        storage_for_workspace,
+    )
+
+    root = workspace.resolve()
+    try:
+        store = storage_for_workspace(root).store()
+    except StorageConfigError as exc:
+        typer.echo(f"storage config error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    s = store.queue_stats()
+    typer.echo(f"queue @ {root}:")
+    typer.echo(f"  queued            {s['queued']}")
+    typer.echo(f"  running           {s['running']}")
+    typer.echo(f"  oldest queued     {s['oldest_queued_age_seconds']}s")
+    qw50, qw95 = s["queue_wait_p50_seconds"], s["queue_wait_p95_seconds"]
+    typer.echo(f"  queue wait        p50 {qw50}s  p95 {qw95}s")
+    typer.echo(
+        f"  execution         p50 {s['execution_p50_seconds']}s  p95 {s['execution_p95_seconds']}s"
+        f"   (over {s['sample_size']} recent completions)"
+    )
+    if s["depth_by_topology"]:
+        typer.echo("  depth by topology:")
+        for topo, n in sorted(s["depth_by_topology"].items(), key=lambda kv: -kv[1]):
+            typer.echo(f"    {topo:<24} {n}")
+
+
 def _echo_problems(problems: list[str]) -> list[str]:
     """Print each unresolved store under the table. The rows say WHICH store; this says WHY."""
     if problems:

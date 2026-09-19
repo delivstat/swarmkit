@@ -170,7 +170,12 @@ async def execute_job(
             job.events.append(text)
 
     if store:
-        store.update_job(job.id, status="running", events=job.events)
+        # started_at marks when execution actually began (queue-observability.md) - set on the
+        # first durable write, in both all-in-one and worker modes, so queue wait (started_at minus
+        # created_at) and execution latency (completed_at minus started_at) are recoverable.
+        store.update_job(
+            job.id, status="running", events=job.events, started_at=datetime.now(UTC).isoformat()
+        )
     with progress_listener(_relay):
         await _execute_job_body(
             job,

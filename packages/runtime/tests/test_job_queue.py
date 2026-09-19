@@ -152,6 +152,17 @@ async def test_complete_is_fenced_on_ownership(engine: Any) -> None:
     assert _status(engine, "j")[0] == "completed"
 
 
+@pytest.mark.asyncio
+async def test_claim_stamps_claimed_at(engine: Any) -> None:
+    """claim records claimed_at so queue-wait (claimed_at - created_at) is recoverable
+    (queue-observability.md)."""
+    _seed(engine, "j")
+    assert await PostgresJobQueue(engine, worker_id="w").claim(lease_seconds=30) == "j"
+    with engine.begin() as conn:
+        ca = conn.execute(select(jobs.c.claimed_at).where(jobs.c.id == "j")).scalar()
+    assert ca is not None
+
+
 def test_sqlite_refuses_the_queue(tmp_path: Any) -> None:
     eng = make_engine(f"sqlite:///{tmp_path / 'x.sqlite'}")
     with pytest.raises(QueueUnavailableError, match="Postgres"):

@@ -90,7 +90,12 @@ class PostgresJobQueue:
                 conn.execute(
                     update(jobs)
                     .where(jobs.c.id == job_id)
-                    .values(status=RUNNING, worker_id=self._worker_id, lease_until=until)
+                    .values(
+                        status=RUNNING,
+                        worker_id=self._worker_id,
+                        lease_until=until,
+                        claimed_at=_now().isoformat(),
+                    )
                 )
                 return job_id
 
