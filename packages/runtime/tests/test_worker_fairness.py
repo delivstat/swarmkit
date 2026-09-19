@@ -22,7 +22,7 @@ class _Agent:
 
 
 class _Topo:
-    def __init__(self, root: _Agent) -> None:
+    def __init__(self, root: Any) -> None:
         self.root = root
 
 
