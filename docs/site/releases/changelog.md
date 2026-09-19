@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.255.0** (2026-09-19) — runtime 1.255.0 — worker fairness (worker-fairness.md).
 - **v1.254.0** (2026-09-19) — runtime 1.254.0 — serve --profile production, a fail-closed startup preflight (production-profile.md).
 - **v1.253.0** (2026-09-19) — runtime 1.253.0, schema 1.46.0 — topology input_schema (input-schema.md).
 - **v1.252.0** (2026-09-19) — runtime 1.252.0 — fence every jobs-row write to worker ownership (worker-execution.md).
