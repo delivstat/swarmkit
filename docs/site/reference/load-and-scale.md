@@ -201,7 +201,7 @@ So the real levers, now evidenced:
 - **Move the entire per-run write path off the loop / async** — the LangGraph checkpointer first (it
   is the largest term), then the job-store + usage + trace writes. Piecemeal does not move the knee;
   the checkpointer is the one to start with, not audit.
-- **Or decouple execution into worker processes** (the atomic Postgres job claim already exists) — the
+- **Or decouple execution into worker processes** (a durable job queue with an atomic claim — which does *not* exist yet and would be built; see `design/details/worker-execution.md`) — the
   API loop stops doing run work at all, which also fixes admission latency under load.
 - **Measure with a streaming (SSE) or multi-process driver**, not a poller, so serve's ceiling is not
   masked by the driver's.
