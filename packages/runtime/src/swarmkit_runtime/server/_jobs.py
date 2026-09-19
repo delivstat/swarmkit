@@ -140,8 +140,13 @@ async def execute_job(
     resume: bool = False,
     labels: dict[str, str] | None = None,
     attachments: list[Any] | None = None,
+    fence_worker_id: str | None = None,
 ) -> None:
     """Run topology in background, updating job state.
+
+    *fence_worker_id* (worker-execution.md) fences every durable jobs-row write to this worker's
+    ownership, so a worker whose lease expired mid-run cannot clobber the row a reclaiming worker
+    now owns. None (all-in-one serve) leaves writes unconditional.
 
     ``resume`` continues a run that parked on a human gate, from its checkpoint, instead of starting
     a new one. It shares every surrounding concern deliberately — the semaphore slot, the timeout,
@@ -174,7 +179,11 @@ async def execute_job(
         # first durable write, in both all-in-one and worker modes, so queue wait (started_at minus
         # created_at) and execution latency (completed_at minus started_at) are recoverable.
         store.update_job(
-            job.id, status="running", events=job.events, started_at=datetime.now(UTC).isoformat()
+            job.id,
+            status="running",
+            events=job.events,
+            started_at=datetime.now(UTC).isoformat(),
+            fence_worker_id=fence_worker_id,
         )
     with progress_listener(_relay):
         await _execute_job_body(
@@ -188,6 +197,7 @@ async def execute_job(
             resume=resume,
             labels=labels,
             attachments=attachments,
+            fence_worker_id=fence_worker_id,
         )
 
 
@@ -203,6 +213,7 @@ async def _execute_job_body(
     resume: bool,
     labels: dict[str, str] | None,
     attachments: list[Any] | None,
+    fence_worker_id: str | None = None,
 ) -> None:
     try:
         if semaphore is not None:
@@ -278,6 +289,7 @@ async def _execute_job_body(
                 error=job.error,
                 completed_at=job.completed_at,
                 events=job.events,
+                fence_worker_id=fence_worker_id,
             )
         if canary_router and job.version:
             # The BASE name: a canary-routed job's topology is the qualified `hello@0.4.0`, and

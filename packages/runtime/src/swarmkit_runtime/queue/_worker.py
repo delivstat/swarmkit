@@ -130,6 +130,9 @@ async def _run_one(
             store=store,  # type: ignore[arg-type]
             resume=resume,
             labels=job.labels,
+            # Fence every durable jobs-row write to our ownership: if our lease expired and the run
+            # was reclaimed, our writes no-op instead of clobbering the new owner's row.
+            fence_worker_id=queue._worker_id,
         )
     finally:
         stop.set()

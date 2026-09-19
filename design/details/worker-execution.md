@@ -110,13 +110,23 @@ so it cannot reset the new owner's `lease_until`/`worker_id` (which would let th
 job that is *actively running*, cascading into more duplicate execution). The worker observes the
 fenced-out completion (a `False` return) and logs that it lost the lease.
 
-**Delivery guarantee: at-least-once at the checkpoint boundary.** A run executes to completion at
-least once; under a lease-expiry-with-live-zombie it may execute the *in-flight node* more than once
-(the resume re-runs from the last completed checkpoint), and the durable output is last-writer-wins
-between equivalent results. The fence guarantees lease/ownership integrity — no cascade, no
-third-party reclaim of a live run — not exactly-once execution. Closing the remaining window (a
-zombie's own per-node store writes are not yet fenced) needs fencing tokens on every write and is a
-named follow-up, not shipped here.
+**Every jobs-row write is fenced, not just completion.** A worker threads its `worker_id` through
+`execute_job` as a fencing token (`update_job(..., fence_worker_id=me)` → `WHERE id = :id AND
+worker_id = :me`), so the *intermediate* status/output writes — not only the final `complete()` —
+apply only while the worker still owns the run. A zombie's writes (start-of-run status, terminal
+status/output) no-op once the run has been reclaimed, so it cannot even transiently flip the new
+owner's durable row. All-in-one serve passes no token (there is no owner), so its writes are
+unconditional as before.
+
+**Delivery guarantee: at-least-once execution, effectively-once durable record.** The durable job
+row is written only by the current owner (fenced), so its status/output reflect exactly one run —
+the owner's. Execution itself is at-least-once: under a lease-expiry-with-live-zombie the in-flight
+node may run more than once (the reclaim resumes from the last completed checkpoint), which is
+inherent to lease-based recovery and idempotent-ish via the checkpoint. The remaining unfenced
+surface is narrow and named: the LangGraph checkpointer's own per-node writes (keyed by
+`thread_id = job_id`) and `run_usage` rows — a zombie could write an equivalent checkpoint or a
+duplicate usage row; neither corrupts the job record. Fencing those needs tokens inside the
+checkpointer and is a further step if a deployment needs strict exactly-once accounting.
 
 **Parked runs do not hold a worker.** A run that defers on a human gate (or is stopped) raises out of
 execution; the worker records the terminal `deferred`/`stopped` status and releases. The run resumes
