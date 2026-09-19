@@ -153,6 +153,41 @@ def pg_ws(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 
 @pytest.mark.asyncio
+async def test_api_stream_follows_worker_job_to_completion(pg_ws: Path) -> None:
+    """GET /jobs/{id}/stream on the API tier follows a worker's job — it does not replay a
+    `queued` snapshot and close. The stream is opened while the job is still queued; a worker runs
+    it concurrently; the stream must end with `[done] status=completed`, proving it followed the
+    durable row rather than closing on the enqueue-time state."""
+    from swarmkit_runtime.queue import run_worker  # noqa: PLC0415
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    app = create_app(pg_ws, enqueue_only=True)
+    async with app.router.lifespan_context(app):
+        job_id = (await _submit(app))["job_id"]
+        assert app.state.store.get_job(job_id).status == "queued"
+
+        async def read_stream() -> str:
+            last_done = ""
+            async with (
+                httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1", timeout=30
+                ) as client,
+                client.stream("GET", f"/jobs/{job_id}/stream") as r,
+            ):
+                async for line in r.aiter_lines():
+                    if line.startswith("data: [done] status="):
+                        last_done = line.split("status=", 1)[1].strip()
+            return last_done
+
+        async def run_worker_soon() -> None:
+            await asyncio.sleep(0.2)  # open the stream on a still-queued job first
+            await run_worker(pg_ws, once=True, poll_seconds=0.05)
+
+        done_status, _ = await asyncio.gather(read_stream(), run_worker_soon())
+        assert done_status == "completed", done_status
+
+
+@pytest.mark.asyncio
 async def test_api_enqueues_and_worker_drains(pg_ws: Path) -> None:
     """POST /run enqueues; a worker claims + runs it; the api tier then sees completed."""
     from swarmkit_runtime.queue import run_worker  # noqa: PLC0415
