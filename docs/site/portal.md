@@ -1,3 +1,7 @@
+---
+description: The SwarmKit portal — run topologies, watch runs and the append-only audit log, resolve human-approval gates, and author skills, hosted same-origin by swarmkit serve.
+---
+
 # The portal
 
 `pip install "swarmkit-runtime[ui]"` and `swarmkit serve` host this at the same origin as the API.

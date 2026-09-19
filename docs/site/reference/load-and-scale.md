@@ -1,3 +1,7 @@
+---
+description: How swarmkit serve performs under concurrent load, measured — throughput, the knee, and horizontal scaling with worker processes. Real numbers to size a deployment.
+---
+
 # Load and scale
 
 What `swarmkit serve` does under concurrent load, measured — so you can size a deployment instead of

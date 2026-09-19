@@ -1,3 +1,7 @@
+---
+description: swarmkit serve — the production HTTP and A2A server for running topologies as governed jobs, with event streaming, human-approval gates, auth, and a fail-closed production profile.
+---
+
 # Serve mode
 
 `swarmkit serve` starts a persistent HTTP server for production workloads.

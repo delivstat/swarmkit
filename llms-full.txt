@@ -2867,6 +2867,10 @@ Provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GOO
 ## Published: https://delivstat.github.io/swarmkit/reference/serve/
 ══════════════════════════════════════════════════════════════════════════════
 
+---
+description: swarmkit serve — the production HTTP and A2A server for running topologies as governed jobs, with event streaming, human-approval gates, auth, and a fail-closed production profile.
+---
+
 # Serve mode
 
 `swarmkit serve` starts a persistent HTTP server for production workloads.
