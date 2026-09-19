@@ -358,7 +358,16 @@ class Store:
         stop_requested_at: str | None = None,
         clear_stop_request: bool = False,
         started_at: str | None = None,
-    ) -> None:
+        fence_worker_id: str | None = None,
+    ) -> bool:
+        """Update a job row. Returns whether a row was written.
+
+        *fence_worker_id* (worker-execution.md) restricts the write to a row still owned by that
+        worker — ``WHERE id = :id AND worker_id = :me``. A worker threads its id through
+        ``execute_job`` so that if its lease expired and the run was reclaimed, its intermediate
+        status/output writes no-op instead of clobbering the new owner's row. All-in-one serve
+        passes None (there is no owner), so the write is unconditional as before.
+        """
         values: dict[str, Any] = {}
         for col, val in (
             ("status", status),
@@ -387,9 +396,12 @@ class Store:
             # reads as a resume that does not work.
             values["stop_requested_at"] = None
         if not values:
-            return
+            return False
+        stmt = update(jobs).where(jobs.c.id == job_id)
+        if fence_worker_id is not None:
+            stmt = stmt.where(jobs.c.worker_id == fence_worker_id)
         with self._engine.begin() as conn:
-            conn.execute(update(jobs).where(jobs.c.id == job_id).values(**values))
+            return conn.execute(stmt.values(**values)).rowcount != 0
 
     def get_job(self, job_id: str) -> JobRow | None:
         with self._engine.connect() as conn:
