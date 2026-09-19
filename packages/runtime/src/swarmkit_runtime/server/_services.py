@@ -143,7 +143,8 @@ class JobService:
         # never becomes a job — the background run validates again at the WorkspaceRuntime.run
         # choke point (which also emits the audit event), but a caller must not poll a failed job
         # to learn its request was the wrong shape. Cheap, structural, before attachments.
-        input_schema = getattr(rt.workspace.topologies[resolved_name].raw, "input_schema", None)
+        resolved_topo = rt.workspace.topologies[resolved_name]
+        input_schema = getattr(getattr(resolved_topo, "raw", None), "input_schema", None)
         if input_schema:
             try:
                 check_entry_input(user_input, input_schema)
