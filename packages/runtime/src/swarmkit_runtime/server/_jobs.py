@@ -30,7 +30,7 @@ class Job:
     #: `stopped` is its own status, not a flavour of `deferred` or `failed`: deferred means
     #: "waiting on a human decision that will arrive", and nothing went wrong here.
     status: Literal[
-        "pending", "running", "completed", "failed", "deferred", "stopped", "interrupted"
+        "queued", "pending", "running", "completed", "failed", "deferred", "stopped", "interrupted"
     ]
     input: str
     version: str | None = None
@@ -71,6 +71,13 @@ class JobStore:
     async def get(self, job_id: str) -> Job | None:
         async with self._lock:
             return self._jobs.get(job_id)
+
+    async def remove(self, job_id: str) -> None:
+        """Forget an in-memory job. Used by the API tier (enqueue mode): a job it will never
+        execute must not shadow the durable row a worker keeps current — otherwise GET /jobs/{id}
+        would serve this process's stale ``queued`` stub forever."""
+        async with self._lock:
+            self._jobs.pop(job_id, None)
 
     async def list_all(self) -> list[Job]:
         async with self._lock:

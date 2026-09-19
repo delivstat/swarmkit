@@ -163,8 +163,14 @@ def create_app(  # noqa: PLR0915
     auth_provider: AuthProvider | None = None,
     host: str = "127.0.0.1",
     insecure: bool = False,
+    enqueue_only: bool = False,
 ) -> FastAPI:
-    """Build the FastAPI app for a given workspace."""
+    """Build the FastAPI app for a given workspace.
+
+    *enqueue_only* is the API tier of the API/worker split (``serve --role api``,
+    worker-execution.md): ``POST /run`` persists the job as ``queued`` and returns, and a
+    ``swarmkit worker`` process claims and executes it. Default False is the all-in-one server.
+    """
 
     _auth = auth_provider or NoneAuthProvider()
     # Default-secure lives here (not just in the CLI) so every embedder inherits it: an
@@ -202,6 +208,8 @@ def create_app(  # noqa: PLR0915
         cfg = _parse_server_config(runtime.workspace)
         app.state.server_config = cfg
         app.state.job_semaphore = asyncio.Semaphore(cfg.max_concurrent)
+        # API tier of the API/worker split: POST /run enqueues, a worker executes.
+        app.state.enqueue_only = enqueue_only
         # Close jobs a previous process left in flight. A job started via `POST /run/{topology}`
         # runs as a task in THIS process; when the process dies the task dies with it, and nothing
         # reconciled the durable row — it sat at `running` for ever, indistinguishable from work
