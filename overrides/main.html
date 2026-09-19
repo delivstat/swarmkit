@@ -9,6 +9,9 @@
 -->
 {% block extrahead %}
   {{ super() }}
+  {# Google Search Console: URL-prefix property verification for https://delivstat.github.io/swarmkit/ .
+     Rendered on every page (incl. the homepage Google fetches to verify). Static token, safe to commit. #}
+  <meta name="google-site-verification" content="q94Ibg2ILOuoasjEZVXfRzuYymGUyvGr2vWr508erTM" />
   {# `page` is None on some renders (the 404 page), so guard every access. #}
   {% set _title = config.site_name if (page and page.is_homepage) else ((page.title if page else config.site_name) | default(config.site_name, true)) %}
   {% set _desc = (page.meta.description if page else config.site_description) | default(config.site_description, true) %}
