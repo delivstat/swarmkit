@@ -53,6 +53,12 @@ jobs = Table(
     # an in-memory token: `stop` has to reach a run in another process, and the durable store is
     # the only channel that already connects every writer to every reader.
     Column("stop_requested_at", Text),
+    # Durable job-queue columns (worker-execution.md): which worker holds this run, when its lease
+    # expires (a claimed run whose lease passes with no completion is reclaimable), and the attempt
+    # count (bumped on reclaim, so a resumed run is distinguishable from its abandoned attempt).
+    Column("worker_id", Text),
+    Column("lease_until", Text),
+    Column("attempt", Integer, default=0),
 )
 
 conversations = Table(

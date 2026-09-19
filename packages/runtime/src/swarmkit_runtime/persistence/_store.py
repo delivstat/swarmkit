@@ -228,6 +228,9 @@ class Store:
         ("diff", "TEXT"),
         ("parent_job_id", "TEXT"),
         ("stop_requested_at", "TEXT"),
+        ("worker_id", "TEXT"),
+        ("lease_until", "TEXT"),
+        ("attempt", "INTEGER DEFAULT 0"),
     )
 
     #: Same facility for ``run_usage``: ``provider`` arrived with 1.234.0 so /usage can say which
