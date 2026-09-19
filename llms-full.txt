@@ -2934,6 +2934,11 @@ checkable later; storing content would put arbitrary material into a log meant t
 
 The CLI equivalent is `swarmkit run <ws> <topology> --attach <path>` (repeatable).
 
+The portal's **Jobs** view shows live queue health from `GET /queue/stats` — backlog depth,
+oldest-unclaimed age, queue-wait and execution p95, and depth by topology (queue-observability.md):
+
+![The portal Jobs view with the queue-health strip](img/portal-queue-strip.png)
+
 ### Conversations
 
 | Method | Path | Description |
@@ -2995,6 +3000,13 @@ follow-up `message/send` on the task is refused with `UnsupportedOperationError`
 person resolves it through the review queue; a subscribed client sees the task go `working` again.
 Push notifications, gRPC and card signing are not implemented (`-32003` / `-32004`). Streaming
 methods need `Accept: text/event-stream`. Full mapping: `design/details/a2a-interop.md`.
+
+When both ends are SwarmKit (`a2a-federation.md`), a call returns the callee's run id, token/cost
+usage and an observability pointer, and the caller forwards its remaining budget. The portal's
+**Audit** view turns the returned run id into a link — an `a2a.remote_usage` event opens the callee
+instance's own job detail, so a federated call no longer dead-ends at "called a remote agent":
+
+![The audit log with an a2a.remote_usage deep-link to the callee instance's run](img/portal-a2a-deeplink.png)
 
 ### Webhooks
 
