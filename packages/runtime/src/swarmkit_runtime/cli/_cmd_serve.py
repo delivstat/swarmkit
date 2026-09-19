@@ -156,6 +156,14 @@ def serve(
             "run `swarmkit worker` to execute — worker-execution.md). api requires Postgres.",
         ),
     ] = "all",
+    max_queue_depth: Annotated[
+        int,
+        typer.Option(
+            "--max-queue-depth",
+            help="Queue-mode (--role api) backlog bound: refuse a submit with 429 once this many "
+            "runs are queued, so the backlog cannot grow without limit. 0 = unbounded.",
+        ),
+    ] = 10000,
 ) -> None:
     """Start the SwarmKit HTTP server (design §14.1).
 
@@ -192,6 +200,7 @@ def serve(
             host=host,
             insecure=effective_insecure,
             enqueue_only=(role == "api"),
+            queue_max_depth=max_queue_depth,
         )
     except RuntimeError as exc:
         typer.echo(

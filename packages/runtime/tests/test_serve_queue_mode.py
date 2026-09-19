@@ -92,6 +92,24 @@ async def test_enqueue_only_persists_queued_and_does_not_execute(ws: Path) -> No
 
 
 @pytest.mark.asyncio
+async def test_queue_mode_bounds_the_backlog(ws: Path) -> None:
+    """`serve --role api` refuses a submit with 429 once the queued backlog hits max depth, so the
+    queue cannot grow without limit (no worker drains it here, so depth only grows)."""
+    from swarmkit_runtime.server import create_app  # noqa: PLC0415
+
+    app = create_app(ws, enqueue_only=True, queue_max_depth=2)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1"
+        ) as client:
+            codes = [
+                (await client.post("/run/hello", json={"input": "x"})).status_code for _ in range(3)
+            ]
+        assert codes == [200, 200, 429], codes
+        assert app.state.store.count_jobs("queued") == 2  # the third was rejected, not enqueued
+
+
+@pytest.mark.asyncio
 async def test_all_in_one_still_executes(ws: Path) -> None:
     """The default (no role) is unchanged: submit runs to completion in-process."""
     from swarmkit_runtime.server import create_app  # noqa: PLC0415

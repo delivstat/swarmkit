@@ -260,6 +260,7 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
                 parent_job_id=body.parent_job_id,
                 attachments=[a.model_dump() for a in body.attachments],
                 enqueue_only=getattr(request.app.state, "enqueue_only", False),
+                queue_max_depth=getattr(request.app.state, "queue_max_depth", 0),
             )
         except ServiceError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

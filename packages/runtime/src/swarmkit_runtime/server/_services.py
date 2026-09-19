@@ -116,6 +116,7 @@ class JobService:
         attachments: list[Any] | None = None,
         source: str = "serve",
         enqueue_only: bool = False,
+        queue_max_depth: int = 0,
     ) -> Job:
         """Resolve, gate on capacity, create + persist the job, and start it in the background.
 
@@ -130,6 +131,11 @@ class JobService:
         The resolve still happens here so a bad topology or attachment is a 4xx on submit, not a
         run that only fails once a worker picks it up. Requires a durable store (Postgres); a
         worker cannot claim a job that was never written down.
+
+        *queue_max_depth* bounds the backlog in queue mode: when this many runs are already
+        ``queued``, a further submit is refused with 429 rather than accepted into an unbounded
+        backlog that no worker may reach for an unbounded time. 0 (the default) means unbounded —
+        the ``serve --role api`` CLI sets a non-zero default so the production path is bounded.
         """
         resolved_name, selected_version = self.resolve_topology(rt, canary, topology_name)
         # Resolved HERE rather than inside the background run, so a path that does not exist or
@@ -145,9 +151,17 @@ class JobService:
                 resolved_attachments = resolve_all(attachments, rt.workspace_root)
             except AttachmentError as exc:
                 raise InvalidRequestError(str(exc)) from exc
-        # In-process admission (reject-when-full) is the all-in-one server's cap. In queue mode the
-        # limit is the worker pool + queue depth, not this loop, so the semaphore does not apply.
-        if not enqueue_only and semaphore is not None and semaphore.locked():
+        # Admission, per mode. All-in-one: reject-when-full on the in-process semaphore. Queue mode:
+        # the semaphore does not apply (workers, not this loop, execute), but an unbounded queue
+        # would accept work that may never begin — so bound backlog depth and 429 when it is full.
+        if enqueue_only:
+            if (
+                queue_max_depth > 0
+                and store is not None
+                and store.count_jobs("queued") >= queue_max_depth
+            ):
+                raise BusyError(f"Queue is full ({queue_max_depth} runs waiting). Try again later.")
+        elif semaphore is not None and semaphore.locked():
             raise BusyError("Max concurrent jobs reached. Try again later.")
         job = await self._jobs.create(resolved_name, user_input)
         job.version = selected_version

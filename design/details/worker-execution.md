@@ -95,13 +95,41 @@ the queue entry together so a broker loss cannot lose a governed run's record.
 
 ### Crash recovery: lease + heartbeat
 
-A claim sets `lease_until`. The worker heartbeats (extends the lease) while running. A reaper (any
-worker, or serve) runs `reclaim_expired` — jobs whose `lease_until` has passed with no completion go
-back to `queued`. **Idempotency:** a reclaimed run resumes from its **checkpoint** (the mechanism
-`test_kill9_recovery` already proves) rather than restarting, and the write-through audit means the
-pre-crash trail is intact — so a reclaim continues, it does not duplicate. A run is bound to
-`(job_id, attempt)`; a stale worker finishing after its lease expired detects the version bump and
-discards its result.
+A claim sets `lease_until` and `worker_id`. The worker heartbeats (extends the lease, fenced on
+`worker_id` so only the holder extends it) while running. A reaper (any worker, or serve) runs
+`reclaim_expired` — jobs whose `lease_until` has passed with no completion go back to `queued`,
+`worker_id` cleared and `attempt` bumped.
+
+**Idempotency and the fence.** A reclaimed run resumes from its **checkpoint** (the mechanism
+`test_kill9_recovery` proves) rather than restarting, and the write-through audit means the pre-crash
+trail is intact — so a reclaim *continues*, it does not restart. The dangerous case is not a crash
+(a dead worker writes nothing) but a **zombie**: a worker that stalled past its lease, had its run
+reclaimed by another, then woke and tried to finish. `complete()` is therefore **fenced on
+`worker_id`** — `UPDATE … WHERE id = :id AND worker_id = :me`. A zombie's completion matches no row,
+so it cannot reset the new owner's `lease_until`/`worker_id` (which would let the reaper reclaim a
+job that is *actively running*, cascading into more duplicate execution). The worker observes the
+fenced-out completion (a `False` return) and logs that it lost the lease.
+
+**Delivery guarantee: at-least-once at the checkpoint boundary.** A run executes to completion at
+least once; under a lease-expiry-with-live-zombie it may execute the *in-flight node* more than once
+(the resume re-runs from the last completed checkpoint), and the durable output is last-writer-wins
+between equivalent results. The fence guarantees lease/ownership integrity — no cascade, no
+third-party reclaim of a live run — not exactly-once execution. Closing the remaining window (a
+zombie's own per-node store writes are not yet fenced) needs fencing tokens on every write and is a
+named follow-up, not shipped here.
+
+**Parked runs do not hold a worker.** A run that defers on a human gate (or is stopped) raises out of
+execution; the worker records the terminal `deferred`/`stopped` status and releases. The run resumes
+later as a fresh claim when a human resolves the gate — so a backlog of parked approvals consumes
+queue rows, never worker slots.
+
+### Admission: the queue is bounded
+
+The API tier does **not** apply `max_concurrent` (workers do). An unbounded queue would *accept* work
+no worker may reach for an unbounded time, so `serve --role api` bounds the queued backlog:
+`--max-queue-depth` (default 10,000; 0 = unbounded) refuses a submit with **429** once that many runs
+are `queued`. It is a queue-depth limit, not a per-run concurrency limit; queue-wait/age SLOs and
+per-tenant quotas are named follow-ups.
 
 ### Connection budget — the real operational gotcha
 

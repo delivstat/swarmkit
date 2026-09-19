@@ -369,6 +369,17 @@ class Store:
             row = conn.execute(select(jobs).where(jobs.c.id == job_id)).mappings().first()
         return self._row_to_job(row) if row is not None else None
 
+    def count_jobs(self, status: str) -> int:
+        """How many jobs are in *status*. Used by queue-mode admission to bound backlog depth
+        (``serve --role api``): a submit is refused when too many runs are already ``queued``."""
+        with self._engine.connect() as conn:
+            return int(
+                conn.execute(
+                    select(func.count()).select_from(jobs).where(jobs.c.status == status)
+                ).scalar()
+                or 0
+            )
+
     def sweep_stale_jobs(self, older_than_seconds: float, reason: str) -> int:
         """Close jobs left `running` longer than any job may legitimately run. Returns the count.
 

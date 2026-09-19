@@ -135,5 +135,14 @@ async def _run_one(
         stop.set()
         await hb
         # execute_job set the terminal status on the row; drop the lease so the reaper leaves it be.
-        await queue.complete(job_id, status=job.status)
-    _logger.info("worker finished %s -> %s", job_id, job.status)
+        # Fenced on ownership: if our lease expired and the reaper handed the run to another worker,
+        # this no-ops and we log it — we do NOT reset the new owner's lease (which would let the
+        # reaper reclaim its actively-running job).
+        won = await queue.complete(job_id, status=job.status)
+    if won:
+        _logger.info("worker finished %s -> %s", job_id, job.status)
+    else:
+        _logger.warning(
+            "lost lease on %s before completing (reclaimed by another worker); result discarded",
+            job_id,
+        )
