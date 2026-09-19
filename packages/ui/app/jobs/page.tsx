@@ -9,8 +9,53 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
 import { formatCost, formatTokens, formatWhen, jobSections } from "@/lib/jobs";
-import type { JobListItem, PersistedJob } from "@/lib/types";
+import type { JobListItem, PersistedJob, QueueStats } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
+
+/** A compact queue-health strip (queue-observability.md): backlog depth, oldest-unclaimed age and
+ * queue-wait p95, read from GET /queue/stats. Hidden until there is something queued or running —
+ * an all-in-one server with an empty queue has nothing to say here. */
+function QueueStrip() {
+	const fetchStats = useCallback(() => api.queueStats(), []);
+	const { data } = usePoll<QueueStats>(fetchStats, 4000);
+	if (!data || data.queued + data.running === 0) return null;
+	const cell = (label: string, value: string) => (
+		<div className="flex flex-col">
+			<span className="text-lg font-semibold tabular-nums">{value}</span>
+			<span className="text-xs text-muted-foreground">{label}</span>
+		</div>
+	);
+	const topos = Object.entries(data.depth_by_topology).sort(
+		(a, b) => b[1] - a[1],
+	);
+	return (
+		<section className="rounded-lg border bg-muted/30 p-4">
+			<div className="mb-3 flex items-baseline gap-3">
+				<h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+					Queue
+				</h2>
+			</div>
+			<div className="flex flex-wrap gap-8">
+				{cell("queued", String(data.queued))}
+				{cell("running", String(data.running))}
+				{cell("oldest queued", `${data.oldest_queued_age_seconds.toFixed(0)}s`)}
+				{cell("queue wait p95", `${data.queue_wait_p95_seconds.toFixed(1)}s`)}
+				{cell("exec p95", `${data.execution_p95_seconds.toFixed(1)}s`)}
+			</div>
+			{topos.length > 0 && (
+				<div className="mt-3 text-xs text-muted-foreground">
+					by topology:{" "}
+					{topos.map(([t, n], i) => (
+						<span key={t}>
+							{i > 0 ? " · " : ""}
+							<span className="font-mono">{t}</span> {n}
+						</span>
+					))}
+				</div>
+			)}
+		</section>
+	);
+}
 
 /**
  * Two sections, because there are two stores.
@@ -138,6 +183,7 @@ function JobsView() {
 
 	return (
 		<div className="space-y-8">
+			<QueueStrip />
 			<section>
 				<div className="mb-4 flex items-baseline gap-3">
 					<h2 className="text-xl font-bold">Running now</h2>

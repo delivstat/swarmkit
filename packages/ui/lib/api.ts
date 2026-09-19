@@ -21,6 +21,7 @@ import type {
 	OAuthCredential,
 	OAuthProbe,
 	PersistedJob,
+	QueueStats,
 	RemoteAgentEntry,
 	ReviewGate,
 	SagaDetail,
@@ -119,6 +120,7 @@ export const api = {
 	canary: () => get<CanaryStatus>("/canary"),
 
 	jobs: () => get<JobListItem[]>("/jobs"),
+	queueStats: () => get<QueueStats>("/queue/stats"),
 	/** Durable job rows. `/jobs` is the in-memory store — this is what survives a restart. */
 	/** Every recorded run, or just one pipeline run's stages when `correlationId` is given. */
 	jobsHistory: (correlationId?: string) =>

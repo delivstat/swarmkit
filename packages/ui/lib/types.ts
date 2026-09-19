@@ -750,3 +750,16 @@ export interface OAuthProbe {
 	scopes_supported?: string[];
 	supports_registration?: boolean;
 }
+
+/** GET /queue/stats — durable job-queue health as a subsystem (queue-observability.md). */
+export interface QueueStats {
+	queued: number;
+	running: number;
+	oldest_queued_age_seconds: number;
+	queue_wait_p50_seconds: number;
+	queue_wait_p95_seconds: number;
+	execution_p50_seconds: number;
+	execution_p95_seconds: number;
+	depth_by_topology: Record<string, number>;
+	sample_size: number;
+}

@@ -3022,7 +3022,7 @@ requires-dist = [
 
 [[package]]
 name = "swarmkit-runtime"
-version = "1.256.0"
+version = "1.257.0"
 source = { editable = "packages/runtime" }
 dependencies = [
     { name = "agent-os-kernel" },
@@ -3158,7 +3158,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "swarmkit-webui"
-version = "0.26.0"
+version = "0.27.0"
 source = { editable = "packages/webui" }
 
 [[package]]

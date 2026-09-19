@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useState } from "react";
 
 import { StatusBadge } from "@/components/status-badge";
@@ -12,6 +13,7 @@ import {
 	summarize,
 	truncate,
 } from "@/lib/audit";
+import { remoteRunLink } from "@/lib/remote-run";
 import type { AuditEvent } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
@@ -148,6 +150,22 @@ export default function AuditPage() {
 										</td>
 										<td className="px-4 py-2 text-xs text-muted-foreground">
 											{truncate(summarize(event)) || "-"}
+											{event.event_type === "a2a.remote_usage" &&
+												(() => {
+													// Deep-link to the callee instance's own job
+													// detail (a2a-federation.md): the audit no
+													// longer dead-ends at "called a remote agent".
+													const link = remoteRunLink(event.payload);
+													return link ? (
+														<Link
+															href={link.href}
+															className="ml-2 whitespace-nowrap text-sky-500 hover:underline"
+															onClick={(e) => e.stopPropagation()}
+														>
+															↗ {link.label}
+														</Link>
+													) : null;
+												})()}
 										</td>
 										<td className="px-4 py-2 text-xs">
 											{event.policy_decision ? (
