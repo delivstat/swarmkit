@@ -182,6 +182,7 @@ class A2AClient:
         context_id: str | None,
         task_id: str | None = None,
         data: dict[str, Any] | None = None,
+        budget: dict[str, Any] | None = None,
     ) -> RemoteTask:
         parts: list[dict[str, Any]] = [{"kind": "text", "text": text}]
         if data:
@@ -192,8 +193,15 @@ class A2AClient:
             "messageId": uuid.uuid4().hex,
             "parts": parts,
         }
+        metadata: dict[str, Any] = {}
         if skill_id:
-            message["metadata"] = {"skill": skill_id}
+            metadata["skill"] = skill_id
+        # Forward the caller's remaining allowance so a SwarmKit callee caps the child run
+        # (a2a-federation.md). A non-SwarmKit callee ignores the extra key.
+        if budget:
+            metadata["swarmkit"] = {"budget": budget}
+        if metadata:
+            message["metadata"] = metadata
         if context_id:
             message["contextId"] = context_id
         if task_id:

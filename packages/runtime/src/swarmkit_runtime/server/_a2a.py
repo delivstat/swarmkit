@@ -161,7 +161,7 @@ def build_agent_card(
                         "runtime": runtime_version(),
                         "returns_usage": True,
                         "returns_observability": True,
-                        "honors_budget": False,
+                        "honors_budget": True,
                     },
                 }
             ],
@@ -484,6 +484,14 @@ class A2AHandler:
         if not text.strip():
             raise A2AError(INVALID_PARAMS, "the message has no text or data part")
         context_id = str(message.get("contextId") or uuid.uuid4().hex)
+        # A federated SwarmKit caller forwards its remaining allowance in
+        # message.metadata.swarmkit.budget (a2a-federation.md); install it as this child run's
+        # budget. Advisory across the trust boundary — we honour it, a non-SwarmKit caller simply
+        # never sends it. apply_budget_override takes the stricter of this and our own limits.
+        meta_sk = (
+            message.get("metadata", {}).get("swarmkit", {}) if isinstance(message, dict) else {}
+        )
+        budget_override = meta_sk.get("budget") if isinstance(meta_sk, dict) else None
         try:
             job = await self.jobs.start(
                 rt=self.rt,
@@ -498,6 +506,7 @@ class A2AHandler:
                 labels={LABEL_CONTEXT: context_id},
                 attachments=message_attachments(message),
                 source=SOURCE,
+                budget_override=budget_override if isinstance(budget_override, dict) else None,
             )
         except ServiceError as exc:
             code = INVALID_PARAMS if exc.status in (400, 404, 422) else INTERNAL_ERROR

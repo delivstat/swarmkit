@@ -141,6 +141,7 @@ async def execute_job(
     labels: dict[str, str] | None = None,
     attachments: list[Any] | None = None,
     fence_worker_id: str | None = None,
+    budget_override: dict[str, Any] | None = None,
 ) -> None:
     """Run topology in background, updating job state.
 
@@ -198,6 +199,7 @@ async def execute_job(
             labels=labels,
             attachments=attachments,
             fence_worker_id=fence_worker_id,
+            budget_override=budget_override,
         )
 
 
@@ -214,6 +216,7 @@ async def _execute_job_body(
     labels: dict[str, str] | None,
     attachments: list[Any] | None,
     fence_worker_id: str | None = None,
+    budget_override: dict[str, Any] | None = None,
 ) -> None:
     try:
         if semaphore is not None:
@@ -235,6 +238,7 @@ async def _execute_job_body(
                     # the job id, so GET /observability/runs/{job_id}/trace resolves it directly —
                     # no separate job→run_id mapping. run_id == job_id == thread_id for serve runs.
                     thread_id=job.id,
+                    budget_override=budget_override,
                 )
             )
             result = await asyncio.wait_for(call, timeout=timeout_seconds)
@@ -320,6 +324,7 @@ def _start_job(
     resume: bool = False,
     labels: dict[str, str] | None = None,
     attachments: list[Any] | None = None,
+    budget_override: dict[str, Any] | None = None,
 ) -> None:
     """Create a background task for a job and track it."""
     task = asyncio.create_task(
@@ -334,6 +339,7 @@ def _start_job(
             resume=resume,
             labels=labels,
             attachments=attachments,
+            budget_override=budget_override,
         )
     )
     job_store.track_task(task)
