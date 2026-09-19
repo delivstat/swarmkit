@@ -285,6 +285,16 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
             for j in jobs
         ]
 
+    @app.get("/queue/stats")
+    async def queue_stats(request: Request) -> dict[str, Any]:
+        """Queue health as a subsystem (queue-observability.md): backlog depth, oldest-unclaimed
+        age, queue-wait and execution-latency percentiles over recent completions, depth by
+        topology. Reads the durable store, so it reflects every worker, not just this process."""
+        store: Store | None = getattr(request.app.state, "store", None)
+        if store is None:
+            raise HTTPException(status_code=404, detail="No durable store configured")
+        return store.queue_stats()
+
     @app.get("/jobs/{job_id}")
     async def get_job(job_id: str, request: Request) -> JobResponse:
         """One job, from the in-memory store or — failing that — the durable one.

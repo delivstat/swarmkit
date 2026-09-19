@@ -29,6 +29,25 @@ from swarmkit_runtime.persistence._tables import (
 )
 
 
+def _parse_ts(value: str) -> datetime:
+    """Parse a stored ISO-8601 timestamp; assume UTC when it carries no tz (older rows)."""
+    dt = datetime.fromisoformat(value)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def _secs_between(start: str, end: str) -> float:
+    return (_parse_ts(end) - _parse_ts(start)).total_seconds()
+
+
+def _pct(xs: list[float], p: float) -> float:
+    """Nearest-rank percentile of *xs* (queue-observability.md); 0.0 for an empty window."""
+    if not xs:
+        return 0.0
+    ordered = sorted(xs)
+    k = max(0, min(len(ordered) - 1, round((p / 100) * (len(ordered) - 1))))
+    return round(ordered[k], 3)
+
+
 def normalize_url(url: str) -> str:
     """Point bare ``postgres://`` / ``postgresql://`` URLs at the psycopg 3 driver.
 
@@ -179,6 +198,10 @@ class JobRow:
     #: How many times this run has been (re)claimed by a worker. Bumped on reclaim, so a worker can
     #: tell a fresh run (0) from one resumed after an abandoned attempt (worker-execution.md).
     attempt: int = 0
+    #: Queue lifecycle (queue-observability.md): when a worker claimed the run, and when execution
+    #: actually began. None until they happen (claimed_at stays None for an all-in-one run).
+    claimed_at: str | None = None
+    started_at: str | None = None
 
 
 @dataclass
@@ -234,6 +257,8 @@ class Store:
         ("worker_id", "TEXT"),
         ("lease_until", "TEXT"),
         ("attempt", "INTEGER DEFAULT 0"),
+        ("claimed_at", "TEXT"),
+        ("started_at", "TEXT"),
     )
 
     #: Same facility for ``run_usage``: ``provider`` arrived with 1.234.0 so /usage can say which
@@ -332,6 +357,7 @@ class Store:
         diffs: dict[str, str] | None = None,
         stop_requested_at: str | None = None,
         clear_stop_request: bool = False,
+        started_at: str | None = None,
     ) -> None:
         values: dict[str, Any] = {}
         for col, val in (
@@ -340,6 +366,7 @@ class Store:
             ("error", error),
             ("version", version),
             ("completed_at", completed_at),
+            ("started_at", started_at),
             ("usage_input_tokens", usage_input_tokens),
             ("usage_output_tokens", usage_output_tokens),
             ("usage_cost_usd", usage_cost_usd),
@@ -379,6 +406,63 @@ class Store:
                 ).scalar()
                 or 0
             )
+
+    def queue_stats(self, sample: int = 500) -> dict[str, Any]:
+        """Point-in-time queue health (queue-observability.md): backlog depth, the age of the
+        oldest waiting run, queue-wait and execution-latency percentiles over the most recent
+        *sample* completions, and depth by topology. Engine-agnostic — percentiles are computed in
+        Python (SQLite has no ``percentile_cont``), over a bounded recent window."""
+        now = datetime.now(UTC)
+        with self._engine.connect() as conn:
+            queued = int(
+                conn.execute(
+                    select(func.count()).select_from(jobs).where(jobs.c.status == "queued")
+                ).scalar()
+                or 0
+            )
+            running = int(
+                conn.execute(
+                    select(func.count()).select_from(jobs).where(jobs.c.status == "running")
+                ).scalar()
+                or 0
+            )
+            oldest = conn.execute(
+                select(func.min(jobs.c.created_at)).where(jobs.c.status == "queued")
+            ).scalar()
+            by_topo = conn.execute(
+                select(jobs.c.topology, func.count())
+                .where(jobs.c.status == "queued")
+                .group_by(jobs.c.topology)
+            ).all()
+            recent = conn.execute(
+                select(jobs.c.created_at, jobs.c.claimed_at, jobs.c.started_at, jobs.c.completed_at)
+                .where(jobs.c.status == "completed", jobs.c.completed_at.isnot(None))
+                .order_by(jobs.c.completed_at.desc())
+                .limit(sample)
+            ).all()
+
+        waits: list[float] = []
+        execs: list[float] = []
+        for created, claimed, started, completed in recent:
+            begin = started or claimed  # queue wait ends when execution begins (or claim, fallback)
+            if created and begin:
+                waits.append(_secs_between(created, begin))
+            if started and completed:
+                execs.append(_secs_between(started, completed))
+
+        return {
+            "queued": queued,
+            "running": running,
+            "oldest_queued_age_seconds": (
+                round((now - _parse_ts(oldest)).total_seconds(), 2) if oldest else 0.0
+            ),
+            "queue_wait_p50_seconds": _pct(waits, 50),
+            "queue_wait_p95_seconds": _pct(waits, 95),
+            "execution_p50_seconds": _pct(execs, 50),
+            "execution_p95_seconds": _pct(execs, 95),
+            "depth_by_topology": {str(t): int(c) for t, c in by_topo},
+            "sample_size": len(recent),
+        }
 
     def sweep_stale_jobs(self, older_than_seconds: float, reason: str) -> int:
         """Close jobs left `running` longer than any job may legitimately run. Returns the count.
@@ -431,6 +515,8 @@ class Store:
             parent_job_id=row.get("parent_job_id"),
             stop_requested_at=row.get("stop_requested_at"),
             attempt=int(row.get("attempt") or 0),
+            claimed_at=row.get("claimed_at"),
+            started_at=row.get("started_at"),
             topology=row["topology"],
             status=row["status"],
             input=row["input"],

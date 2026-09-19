@@ -59,6 +59,12 @@ jobs = Table(
     Column("worker_id", Text),
     Column("lease_until", Text),
     Column("attempt", Integer, default=0),
+    # Queue lifecycle timestamps (queue-observability.md): when a worker claimed the run and when
+    # execution actually began. With created_at/completed_at they decompose queue wait vs execution
+    # latency. claimed_at is null for an all-in-one run (nothing claims it); started_at is set in
+    # both modes. Old rows read null and are excluded from percentile windows.
+    Column("claimed_at", Text),
+    Column("started_at", Text),
 )
 
 conversations = Table(

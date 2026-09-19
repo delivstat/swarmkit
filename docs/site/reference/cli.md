@@ -3,7 +3,7 @@
 ## Every command
 
 <!-- BEGIN GENERATED: commands -->
-70 commands, from the CLI itself (`swarmkit <command> --help` for the options).
+71 commands, from the CLI itself (`swarmkit <command> --help` for the options).
 
 | Command | What it does |
 |---|---|
@@ -47,6 +47,7 @@
 | `swarmkit providers list` | List every declared provider, its family, its source, and whether it is ready. |
 | `swarmkit providers show` | Show a provider resolved through its chain — what actually reaches the family. |
 | `swarmkit publish` | Package a workspace for distribution. |
+| `swarmkit queue-stats` | Show durable job-queue health: backlog depth, oldest-unclaimed age, queue-wait and |
 | `swarmkit review answer` | Answer a harness input request (§6.3) with text. Inspect it first with `review show <id>`. |
 | `swarmkit review approve` | Approve a pending review item. |
 | `swarmkit review gate` | Whether a gate is resolved, with its approval policy applied. |
