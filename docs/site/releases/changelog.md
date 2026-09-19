@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.251.0** (2026-09-19) — runtime 1.251.0 — queue observability (queue-observability.md).
 - **v1.250.0** (2026-09-19) — runtime 1.250.0 — worker-execution hardening from an external scaling review.
 - **v1.249.0** (2026-09-19) — runtime 1.249.0 — the API tier's SSE stream follows a worker's job to completion.
 - **v1.248.0** (2026-09-19) — runtime 1.248.0 — the API/worker split for worker execution (worker-execution.md, slice 2).
