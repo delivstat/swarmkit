@@ -164,6 +164,14 @@ def serve(
             "runs are queued, so the backlog cannot grow without limit. 0 = unbounded.",
         ),
     ] = 10000,
+    profile: Annotated[
+        str,
+        typer.Option(
+            "--profile",
+            help="standard (permissive default) or production (fail-closed preflight: refuses to "
+            "start unless auth, SWARMKIT_OAUTH_KEY, sandboxed MCP and non-wildcard CORS are set).",
+        ),
+    ] = "standard",
 ) -> None:
     """Start the SwarmKit HTTP server (design §14.1).
 
@@ -184,6 +192,10 @@ def serve(
     _suppress_noisy_logs()
     import uvicorn  # noqa: PLC0415
 
+    if profile not in ("standard", "production"):
+        typer.echo(f"invalid profile '{profile}' — use standard | production", err=True)
+        raise typer.Exit(code=2)
+
     from swarmkit_runtime.server import create_app  # noqa: PLC0415
 
     auth_provider = _build_auth_provider(workspace_path.resolve())
@@ -201,13 +213,18 @@ def serve(
             insecure=effective_insecure,
             enqueue_only=(role == "api"),
             queue_max_depth=max_queue_depth,
+            profile=profile,
         )
     except RuntimeError as exc:
-        typer.echo(
-            f"{exc}\n(Configure server.auth, bind 127.0.0.1, pass --insecure, or set "
-            "server.auth.require_on_nonloopback: false.)",
-            err=True,
+        # The production preflight's message is already a complete, numbered gap list with its own
+        # remediation; the default-secure refusal wants the bind/auth hint appended.
+        hint = (
+            ""
+            if profile == "production"
+            else "\n(Configure server.auth, bind 127.0.0.1, pass --insecure, or set "
+            "server.auth.require_on_nonloopback: false.)"
         )
+        typer.echo(f"{exc}{hint}", err=True)
         raise typer.Exit(code=2) from exc
 
     # Say what is actually running. `swarmkit serve` is the runtime hosting a SEPARATELY versioned
@@ -222,6 +239,8 @@ def serve(
     )
     if role == "api":
         typer.echo("role: api — enqueue only; start `swarmkit worker` to execute queued jobs.")
+    if profile == "production":
+        typer.echo("profile: production — fail-closed preflight passed.")
     uvicorn.run(app_instance, host=host, port=port)
 
 

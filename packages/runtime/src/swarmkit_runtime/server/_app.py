@@ -165,6 +165,7 @@ def create_app(  # noqa: PLR0915
     insecure: bool = False,
     enqueue_only: bool = False,
     queue_max_depth: int = 0,
+    profile: str = "standard",
 ) -> FastAPI:
     """Build the FastAPI app for a given workspace.
 
@@ -175,6 +176,10 @@ def create_app(  # noqa: PLR0915
     *queue_max_depth* bounds the queued backlog in that mode — a submit is refused with 429 once
     this many runs are waiting, so the queue cannot grow without limit. 0 means unbounded; the CLI
     sets a non-zero default.
+
+    *profile* ``"production"`` runs a fail-closed preflight (production-profile.md) and refuses to
+    start unless the deployment is safe to expose — real auth, a persistent ``SWARMKIT_OAUTH_KEY``,
+    sandboxed MCP, no wildcard CORS, not ``--insecure``. ``"standard"`` (default) is unchanged.
     """
 
     _auth = auth_provider or NoneAuthProvider()
@@ -185,6 +190,15 @@ def create_app(  # noqa: PLR0915
         raise RuntimeError(
             f"refusing to serve with auth provider 'none' on a non-loopback bind ({host!r}). "
             "Configure server.auth (api_key/jwt), bind 127.0.0.1, or pass insecure=True."
+        )
+    # Fail-closed profile: refuse to start unless the deployment is production-safe, listing every
+    # gap at once (production-profile.md). Runs in addition to default-secure above, regardless of
+    # bind. `standard` (default) leaves the permissive laptop behaviour untouched.
+    if profile == "production":
+        from ._production_profile import assert_production_ready  # noqa: PLC0415
+
+        assert_production_ready(
+            workspace_path, auth=_auth, insecure=insecure, cors_origins=cors_origins
         )
     job_store = JobStore()
 

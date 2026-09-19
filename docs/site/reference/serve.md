@@ -165,6 +165,36 @@ Available providers:
 | `api_key` | Bearer keys declared in `workspace.yaml` — `server.auth.config.keys[]`, each a `key_ref: env:<VAR>` (a reference, never the literal), a `client_id` and a `tier` (`read` / `run` / `admin`) or explicit `scopes`. See the [serve auth guide](https://github.com/delivstat/swarmkit/blob/main/docs/guides/serve-auth.md) |
 | `jwt` | JWT with JWKS auto-discovery |
 
+## Production profile (fail-closed preflight)
+
+`swarmkit serve --profile production` refuses to start unless the deployment is safe to expose,
+listing every gap at once instead of running permissively. It is a deployment-time assertion — it
+does not change request handling (governance is already deny-by-default), it checks that you
+configured the safe thing. `--profile standard` (the default) is the unchanged laptop behaviour.
+
+The preflight requires all of:
+
+| Requirement | Why |
+|---|---|
+| Auth is not `none`/anonymous | production does not serve anonymous, on any bind |
+| `--insecure` is not set | the escape hatch is incompatible with the profile |
+| `SWARMKIT_OAUTH_KEY` is set | else the token-encryption key regenerates on restart and silently invalidates stored tokens |
+| Every `mcp_servers` entry is `sandboxed: true` | a tool process must not run unisolated on the host (design §8.8) |
+| No wildcard `--cors-origin *` | exact origins only |
+
+```console
+$ swarmkit serve ./ws --profile production
+--profile production refuses to start: the deployment is not fail-closed.
+  1. auth provider is 'none' — configure server.auth (api_key or jwt); production does not serve anonymous, on any bind
+  2. SWARMKIT_OAUTH_KEY is not set — the OAuth token-encryption key would regenerate on restart and silently invalidate every stored token; set a persistent key
+  3. MCP server 'files' is not sandboxed — set `sandboxed: true` so the tool process runs isolated (design §8.8)
+Fix these, or run without --profile production for the permissive default.
+```
+
+The existing default-secure refusal (an unauthenticated non-loopback bind) still runs regardless of
+profile; production adds to it. `create_app(profile="production")` carries the preflight, so an
+embedder inherits it too.
+
 ## Server configuration
 
 ```yaml
