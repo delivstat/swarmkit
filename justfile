@@ -229,6 +229,12 @@ demo-governed-memory-cli:
 demo-repo-audit:
     uv run python examples/sdlc-pipeline/demo_repo_audit.py
 
+# Demo the runtime around a single model call: agent-as-data → run → trace (call graph, tokens,
+# cost) → append-only audit report. Runs on the mock provider — no keys, no network. README shows
+# how to record it as an asciinema cast for a demo/HN post.
+demo-agentic-runtime:
+    bash examples/agentic-runtime/demo.sh
+
 # Demo comprehension-debt telemetry (slice 3): fast-approve signals from the audit log (report-only,
 # never a gate), plus the disclosed deferred signals. Reads the example's .swarmkit audit store.
 demo-comprehension:
