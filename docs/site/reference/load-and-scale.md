@@ -335,13 +335,50 @@ uv run python examples/loadtest/driver/loadtest.py storm --topology tiny --n 100
 SWARMKIT_STORE_URL=postgresql://... examples/loadtest/run5.sh typical typical 500 50 30 "1,2,4,8"
 SWARMKIT_STORE_URL=postgresql://... uv run python examples/loadtest/run5_drain.py \
     --workspace examples/loadtest/workspaces/typical --backlog 200 --workers 1,2,4,8 --latency-ms 500
+
+# Soak — steady load, sample RSS/fds over time, report the slope (soak-testing.md):
+uv run python examples/loadtest/driver/loadtest.py soak --topology tiny --concurrency 5 \
+    --duration 3600 --sample-interval 30 --pid "$LT_SERVE_PID"
 ```
+
+## Soak testing (2026-09-19)
+
+Bursts pass where soaks fail: a run that leaks a little memory, an fd or a connection per iteration
+looks fine for 20 s and falls over at hour six. The `soak` mode holds a steady, below-capacity load
+and samples the serve process's RSS and open fds over time, reporting the **slope** — flat is the
+pass (`design/details/soak-testing.md` has the full four-soak matrix: steady / churn / approval /
+harness, with per-soak pass criteria).
+
+**Representative steady soak** (all-in-one serve, SQLite, `tiny` topology, 300 ms mock latency,
+concurrency 5, 120 s, sampled every 15 s):
+
+```
+t=   0s  rss= 191 MB  fds= 31    (idle baseline, excluded from the slope)
+t=  15s  rss= 219 MB  fds=172    completed=144
+t=  45s  rss= 223 MB  fds=175    completed=460
+t=  75s  rss= 225 MB  fds=172    completed=773
+t= 105s  rss= 226 MB  fds=161    completed=1081
+completed=1238  errors=0  429=0  ·  RSS +4.2 MB/min, fd −6/min over the steady window
+```
+
+Read it honestly: the RSS rise **decelerates** toward a plateau (per-interval deltas +28, +2, +2,
++0.8, +0.7, +0.3, +0.8 MB) — that is warmup (caches, the compiled-graph cache, connection pools
+filling), not a leak; a leak would climb at a roughly constant rate. The fd count **oscillates**
+~160–220 with no trend (the −6/min is regression noise on how many SSE/poll connections happen to
+be open at each sampling instant). Zero errors, zero 429 over 1,238 runs.
+
+**This is a smoke, not a verdict.** A two-minute window cannot separate warmup from a slow leak — so
+the `soak` mode labels any run under 10 minutes `INCONCLUSIVE`. A leak verdict needs the hours-long
+runbook soaks (steady + churn + approval + harness) on a dedicated box; what the short run proves is
+the harness, and that the warmup curve flattens with no errors.
 
 ## Not yet measured (run these on your hardware)
 
-- **Long soak (1h / 6h / 24h)** — memory growth, fds, DB connections, task cleanup. The harness
-  samples RSS/fds already; run a low, steady concurrency for hours and watch the trend. Bursts pass
-  where soaks fail.
+- **The full soak matrix (1 h / 6 h / 24 h)** — the four soaks in `soak-testing.md` on a dedicated
+  box: steady (RSS/fd/connection slope over hours), churn (restart workers / stop-all / interrupt
+  Postgres → no orphan `running` rows, RSS returns to baseline), approval (park runs on gates for
+  hours → no worker slot held), harness (worktree/subprocess churn → zero orphans). Pass = flat
+  slopes, zero orphans.
 - **A real provider once** — not for throughput, for failure behaviour (rate limits, retries,
   timeouts) the mock cannot produce.
 - **Scale-out past 8 workers, and >1000 concurrency** — Run 5 measured N≤8 workers on one box and

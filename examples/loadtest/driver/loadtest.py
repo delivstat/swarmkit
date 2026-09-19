@@ -7,12 +7,16 @@ Two workloads against a running serve:
   end-to-end p50/p95/p99, and the 429 rate. The point is the *knee*: where p95 turns up.
 - **storm** — fire N submissions as fast as possible at a low `max_concurrent`; report how cleanly
   serve rejects (429 rate + submit p99). Admission throughput, separate from execution.
+- **soak** — hold a steady, below-capacity load for a long duration and sample the serve process's
+  RSS and open fds over time; report the *slope* (soak-testing.md). A burst passes where a soak
+  fails: a leak shows as a trend, not a spike.
 
-It also samples the serve process's RSS and open file descriptors from `/proc` on an interval, so
-a run doubles as a soak/leak probe. No k6, no psutil — httpx + the standard library.
+Samples the serve process's RSS and open file descriptors from `/proc`. No k6, no psutil — httpx +
+the standard library.
 
     uv run python examples/loadtest/driver/loadtest.py ramp --topology tiny --levels 5,10,25,50,100
     uv run python examples/loadtest/driver/loadtest.py storm --topology tiny --n 10000
+    uv run python examples/loadtest/driver/loadtest.py soak --topology tiny --concurrency 5
 """
 
 from __future__ import annotations
@@ -33,6 +37,22 @@ def _pct(xs: list[float], p: float) -> float:
     xs = sorted(xs)
     k = max(0, min(len(xs) - 1, round((p / 100) * (len(xs) - 1))))
     return xs[k]
+
+
+def _slope_per_min(ts: list[float], ys: list[float]) -> float:
+    """Least-squares slope of ys vs ts (seconds), returned per minute. 0.0 for <2 points or a flat
+    time axis. Robust to the per-sample oscillation of a noisy series (open-fd counts), where a
+    first-vs-last estimate would be dominated by which instant the last sample happened to catch."""
+    n = len(ts)
+    if n < 2:
+        return 0.0
+    mean_t = sum(ts) / n
+    mean_y = sum(ys) / n
+    var_t = sum((t - mean_t) ** 2 for t in ts)
+    if var_t == 0:
+        return 0.0
+    cov = sum((t - mean_t) * (y - mean_y) for t, y in zip(ts, ys, strict=False))
+    return round((cov / var_t) * 60.0, 2)
 
 
 @dataclass
@@ -218,10 +238,67 @@ async def storm(args: argparse.Namespace) -> None:
     )
 
 
+async def soak(args: argparse.Namespace) -> None:
+    """Hold a steady, below-capacity load for a long duration and sample the serve process's RSS
+    and open-fd count over time (soak-testing.md). A burst passes where a soak fails: the point is
+    the *slope* — RSS and fds should be flat, not climbing. Prints a time series and a verdict.
+
+    Deliberately steady and modest (not a knee-finding ramp): a leak shows as a trend, and a trend
+    needs a stable workload and hours, not a spike and 20 seconds."""
+    samples: list[dict[str, float]] = []
+    sample = Sample()
+    start = time.perf_counter()
+    stop = start + args.duration
+    async with httpx.AsyncClient(timeout=args.timeout) as client:
+        users = [
+            asyncio.create_task(_hold(client, args.api, args.topology, sample, stop, args.stream))
+            for _ in range(args.concurrency)
+        ]
+
+        async def sampler() -> None:
+            while time.perf_counter() < stop:
+                rss, fds = _proc_stats(args.pid) if args.pid else (0.0, 0)
+                t = time.perf_counter() - start
+                samples.append({"t": round(t, 1), "rss_mb": round(rss, 1), "fds": fds})
+                print(f"  t={t:6.0f}s  rss={rss:8.1f}MB  fds={fds:<5} completed={sample.completed}")
+                await asyncio.sleep(args.sample_interval)
+
+        await asyncio.gather(sampler(), *users)
+
+    # Least-squares slope per minute over the STEADY window. Two deliberate choices: drop the first
+    # sample (idle baseline taken before load ramped — comparing it to under-load samples reports
+    # warmup, cache + pool fill, as a leak), and use a regression rather than first-vs-last because
+    # fds oscillate per sampling instant (how many SSE/poll connections happen to be open) and a
+    # two-point estimate on noise is meaningless. A real leak keeps climbing past warmup — which is
+    # why the honest verdict needs the hours-long runbook, not a two-minute smoke.
+    steady = samples[1:] if len(samples) >= 3 else samples
+    rss_slope = _slope_per_min([s["t"] for s in steady], [s["rss_mb"] for s in steady])
+    fd_slope = _slope_per_min([s["t"] for s in steady], [float(s["fds"]) for s in steady])
+    # Window-aware verdict. Under ~10 min the RSS slope is warmup tail (caches, the compiled-graph
+    # cache, connection pools filling and settling) and cannot be told apart from a slow leak, so
+    # the honest label is INCONCLUSIVE rather than a confident FLAT or an alarmist GROWING. Only a
+    # long soak (the runbook) earns a leak verdict; this mode's short use is a harness smoke.
+    if args.duration < 600:
+        verdict = "INCONCLUSIVE (short window — warmup dominates; run the hours-long soak)"
+    elif abs(rss_slope) < 5 and abs(fd_slope) < 5:
+        verdict = "FLAT (no leak signal)"
+    else:
+        verdict = "GROWING (investigate — slope persists past warmup)"
+    print(
+        f"\nsoak c={args.concurrency} for {args.duration:.0f}s: completed={sample.completed} "
+        f"errors={sample.errors} 429={sample.busy}\n"
+        f"  RSS slope {rss_slope:+.2f} MB/min · fd slope {fd_slope:+.2f} /min → {verdict}"
+    )
+    if args.out:
+        with open(args.out, "w") as fh:
+            fh.write(json.dumps({"samples": samples, "rss_slope_mb_per_min": rss_slope}, indent=2))
+        print(f"wrote {args.out}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("ramp", "storm"):
+    for name in ("ramp", "storm", "soak"):
         sp = sub.add_parser(name)
         sp.add_argument("--api", default=os.environ.get("LT_API", "http://127.0.0.1:8125"))
         sp.add_argument("--topology", default="tiny")
@@ -236,11 +313,18 @@ def main() -> None:
                 action="store_true",
                 help="Follow each run over SSE instead of polling GET /jobs/{id} (Run 5).",
             )
+        elif name == "soak":
+            sp.add_argument("--concurrency", type=int, default=5)
+            sp.add_argument("--duration", type=float, default=3600.0)
+            sp.add_argument("--sample-interval", type=float, default=30.0)
+            sp.add_argument("--out", default="")
+            sp.add_argument("--stream", action="store_true")
         else:
             sp.add_argument("--n", type=int, default=10000)
             sp.add_argument("--connections", type=int, default=200)
     args = p.parse_args()
-    asyncio.run(ramp(args) if args.cmd == "ramp" else storm(args))
+    runner = {"ramp": ramp, "storm": storm, "soak": soak}[args.cmd]
+    asyncio.run(runner(args))
 
 
 if __name__ == "__main__":
