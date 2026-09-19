@@ -1,0 +1,21 @@
+apiVersion: swarmkit/v1
+kind: Topology
+metadata:
+  name: assistant
+  version: 0.1.0
+  description: A single agent. The point of the demo is not the agent — it is the runtime around it.
+agents:
+  root:
+    id: assistant
+    role: root
+    # An agent is data. This block is the whole agent: which model answers, and how it is told
+    # to behave. The runtime — not this file, and not your app — owns the call to that model:
+    # it enforces governance, streams the steps, writes the audit event, and meters the tokens.
+    model:
+      provider: openrouter
+      name: moonshotai/kimi-k2.5
+      temperature: 0.2
+    prompt:
+      system: |
+        You are a concise assistant. Answer the user's question directly in
+        two or three sentences. Do not pad.

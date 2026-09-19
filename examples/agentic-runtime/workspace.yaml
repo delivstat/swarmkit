@@ -1,0 +1,16 @@
+apiVersion: swarmkit/v1
+kind: Workspace
+metadata:
+  id: agentic-runtime-demo
+  name: Agentic Runtime Demo
+  description: >
+    A one-agent workspace whose only job is to show what the SwarmKit runtime
+    does around a single model call: run it, record every step to an
+    append-only audit log, and account for the tokens and cost. No MCP servers,
+    no keys — the demo runs on the built-in mock provider so anyone can
+    reproduce it. See README.md.
+# The audit log and run history the demo reads back live here (SQLite by default).
+storage:
+  checkpoints:
+    backend: sqlite
+    path: ./.swarmkit/state
