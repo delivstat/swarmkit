@@ -185,7 +185,7 @@ def main() -> None:
         sp.add_argument("--api", default=os.environ.get("LT_API", "http://127.0.0.1:8125"))
         sp.add_argument("--topology", default="tiny")
         sp.add_argument("--timeout", type=float, default=120.0)
-        sp.add_argument("--pid", type=int, default=int(os.environ.get("LT_SERVE_PID", "0")))
+        sp.add_argument("--pid", type=int, default=int(os.environ.get("LT_SERVE_PID") or "0"))
         if name == "ramp":
             sp.add_argument("--levels", default="5,10,25,50,100,250")
             sp.add_argument("--duration", type=float, default=20.0)

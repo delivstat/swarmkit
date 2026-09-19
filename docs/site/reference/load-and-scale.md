@@ -13,6 +13,7 @@ These numbers are a **baseline**, dated so a post-improvement run can be compare
 | 1 (baseline) | 2026-09-18 | 1.242.0 | 1 dev machine, WSL2 (shared) | first harness run; synchronous per-run work on the event loop |
 | 2 | 2026-09-18 | 1.243.0 | same box | compile now cached — isolates the DB-on-loop term |
 | 3 | 2026-09-18 | 1.244.0 | same box | audit write off-loop + pool=100 — one of several sync writes moved |
+| 4 | 2026-09-19 | 1.245.0 | same box | profiled a run + isolated driver vs serve — located the cost, corrected earlier runs |
 
 When the optimization lands (moving the synchronous compile/persist sections off the event loop),
 re-run `examples/loadtest/run.sh` on the same box and add Run 2 here beside Run 1 — same tables, so
@@ -169,6 +170,45 @@ trace, not just audit) or switch to an async DB driver, then re-measure. **A not
 driver, serve, and Postgres share one 8-core box, so absolute peaks are contended; the *shape*
 (flat throughput, linear latency, unmoved by three partial fixes) is what these runs establish, and a
 clean number needs the driver on a separate host.
+
+## Run 4 (2026-09-19) — profiling, and a correction to Runs 1–3
+
+Rather than move more writes off the loop blind, this run profiled a single run and isolated the
+driver from serve. Two experiments:
+
+**A. In-process, one run at a time (no HTTP, no poll, no model latency).** 100 sequential
+`WorkspaceRuntime.run` calls: **62 ms/run, ~16 runs/s**. The `cProfile` self-time is *distributed*,
+not one hotspot — the biggest terms are the checkpointer's async I/O wait (`epoll`, ~27%), the
+**four SQLite `commit`s per run** (~15%: create_job, update_job×2, and the usage/trace writes),
+SQLAlchemy statement construction that is rebuilt each run (~8%), and even **five `mkdir`s per run**
+(~1%). No single fix is 80% of it — it is death by a thousand synchronous cuts on the loop.
+
+**B. Over HTTP at zero model latency (isolating the driver).** The polling driver at c=5 gets
+~10 runs/s (vs 16 in-process — the poll adds overhead), and then throughput *degrades* with
+concurrency: SQLite 10 → 8 → 4 runs/s (c=5/25/50), Postgres worse at low c (per-write network
+round-trips, still serialized on the loop).
+
+**The correction:** Runs 1–3 attributed the plateau mostly to "the single event loop serializing
+runs." That is real, but two things were conflated. (1) The **polling driver** (100 ms poll,
+submit-then-poll per virtual user on one loop) is itself a meaningful limiter — some of the earlier
+ceiling was the measurement, not serve. (2) Within serve, the cost that serializes under concurrency
+is the **whole per-run synchronous write path — checkpointer-dominant, then the job-store commits —
+not the audit write** that Run 3 moved. Moving one writer off the loop could not help while the
+checkpointer and job store still write synchronously on it.
+
+So the real levers, now evidenced:
+
+- **Move the entire per-run write path off the loop / async** — the LangGraph checkpointer first (it
+  is the largest term), then the job-store + usage + trace writes. Piecemeal does not move the knee;
+  the checkpointer is the one to start with, not audit.
+- **Or decouple execution into worker processes** (the atomic Postgres job claim already exists) — the
+  API loop stops doing run work at all, which also fixes admission latency under load.
+- **Measure with a streaming (SSE) or multi-process driver**, not a poller, so serve's ceiling is not
+  masked by the driver's.
+
+Both runtime levers are substantial (the checkpointer is an async-saver seam; worker execution is an
+architecture change), so they are deliberately not rushed here — Run 4's value is locating the cost
+correctly so the next change targets the checkpointer/write-path, not another single writer.
 
 ## What this means for sizing
 
