@@ -50,7 +50,7 @@ def audit_db(tmp_path: Path) -> Path:
 def worker_identity() -> AgentIdentity:
     return AgentIdentity.create(
         name="worker-1",
-        sponsor="admin@swarmkit.dev",
+        sponsor="admin@example.com",
         capabilities=["repo:read"],
     )
 

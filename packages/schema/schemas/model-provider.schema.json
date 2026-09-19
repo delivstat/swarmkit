@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/model-provider.schema.json",
+  "$id": "urn:swarmkit:schema:v1:model-provider",
   "title": "SwarmKit ModelProvider",
   "description": "A declarative model provider (design/details/declarative-model-providers.md). A provider is DATA: a base URL, an auth shape, a model catalogue, capabilities and request quirks, layered over a wire-format FAMILY that stays code (openai-compatible, anthropic, google, ollama). `extends` names a family or another provider; fields merge one hop at a time. Capabilities may only NARROW what the family offers. Anything past the DSL's ceiling declares `requires: code` and is refused at load rather than half-working.",
   "type": "object",

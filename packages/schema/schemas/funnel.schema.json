@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/funnel.schema.json",
+  "$id": "urn:swarmkit:schema:v1:funnel",
   "title": "SwarmKitFunnel",
   "description": "A reusable per-artifact quality gate: chains structured-output validation -> LLM-as-judge -> optional harness review -> multi-party human approval into one composition. A first-class, standalone artifact (like a skill or archetype) so the same gate can be referenced by id from many nodes/stages. Every layer is optional except `approve`; present layers run in fixed order (validate, judge, review, approve). The automated layers filter and drive a bounded retry loop but never decide — the only exit is through `approve`. The control flow is compiler-owned and fixed; a funnel configures the layers, it does not rewire the graph. See design/details/gate-funnel.md.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/contract.schema.json",
+  "$id": "urn:swarmkit:schema:v1:contract",
   "title": "SwarmKitContract",
   "description": "An integration contract: the agreed interface between two (or more) applications, identified by id. A first-class artifact so a pipeline's stage `locks` reference real contracts (a checked, pickable vocabulary) instead of free strings — no typo'd lock silently fails to serialise two requirements. The contract is not executed; it makes lock ids real and carries which apps it binds. See design/details/contract-registry.md.",
   "type": "object",

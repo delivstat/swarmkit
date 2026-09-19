@@ -54,7 +54,7 @@ agent has to understand, just extra keys it ignores.
 `build_agent_card` adds an A2A extension under `capabilities.extensions`:
 
 ```json
-{ "uri": "https://swarmkit.dev/a2a/federation/v1",
+{ "uri": "urn:swarmkit:a2a:federation:v1",
   "description": "Returns run id, token/cost usage and an observability pointer per task; honors a passed budget.",
   "params": { "runtime": "1.240.0", "returns_usage": true, "returns_observability": true, "honors_budget": true } }
 ```

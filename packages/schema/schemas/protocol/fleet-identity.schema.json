@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/protocol/fleet-identity.schema.json",
+  "$id": "urn:swarmkit:schema:v1:protocol:fleet-identity",
   "title": "SwarmKit Fleet Identity",
   "description": "A fleet's self-certifying public identity (design details/control-plane/21-fleet-identity.md). The fleet_id is derived from the Ed25519 public key (fleet:<base32 sha256 pubkey>), so it can't be forged without the private key. Non-secret — the panel exposes this at GET /fleet/identity and an instance pins it at register.",
   "type": "object",

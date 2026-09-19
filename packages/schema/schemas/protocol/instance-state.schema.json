@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/protocol/instance-state.schema.json",
+  "$id": "urn:swarmkit:schema:v1:protocol:instance-state",
   "title": "SwarmKit InstanceState",
   "description": "The full observed state of a swarmkit instance — every artifact's content, not just names (unlike the cheap names-only /capabilities probe). Returned by serve `GET /fleet/state` and rides along in register/join; a fleet caches it so the instance stays inspectable offline. See design details/control-plane/19-fleet-enrollment-protocol.md (§InstanceState).",
   "type": "object",

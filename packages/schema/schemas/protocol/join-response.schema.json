@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/protocol/join-response.schema.json",
+  "$id": "urn:swarmkit:schema:v1:protocol:join-response",
   "title": "SwarmKit Fleet Join Response",
   "description": "Mode B response from panel `POST /fleet/join`: the panel creates the instance's registry entry and issues the connector→panel credential the instance then polls with. See design details/control-plane/19-fleet-enrollment-protocol.md (§Mode B).",
   "type": "object",
@@ -15,7 +15,7 @@
       "description": "The instance's record of this join (kept by the instance for multi-fleet)."
     },
     "credential": {
-      "$ref": "https://schemas.swarmkit.dev/v1/protocol/credential.schema.json",
+      "$ref": "urn:swarmkit:schema:v1:protocol:credential",
       "description": "The connector→panel credential (carries a tier); the instance polls the panel with it."
     },
     "synced_at": {

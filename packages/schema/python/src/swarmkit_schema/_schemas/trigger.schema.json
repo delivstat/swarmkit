@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.swarmkit.dev/v1/trigger.schema.json",
+  "$id": "urn:swarmkit:schema:v1:trigger",
   "title": "SwarmKit Trigger",
   "description": "Workspace-level schedule / webhook / file-watch / manual / plugin trigger. Unifies schedules and triggers under one kind. See design §5.4 and design/details/trigger-schema-v1.md.",
   "type": "object",

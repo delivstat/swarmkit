@@ -65,9 +65,9 @@ See task #23 — the first concrete landing of this rule is `swarmkit validate` 
 
 The repo's `llms.txt` (at the root, per llmstxt.org) points LLMs at the high-leverage docs. When you add a design note, a discipline note, or a new top-level doc, update `llms.txt`. It's the catalogue crawlers actually see.
 
-### Stable schema URLs
+### Stable schema identifiers
 
-JSON Schemas declare `$id` URLs (e.g. `https://schemas.swarmkit.dev/v1/topology.schema.json`). Tools that try to dereference a schema follow those URLs. Until the domain exists and serves the canonical files, any tool doing remote `$ref` resolution will fail — noted as a known limitation of the current state; fixing it is on the Milestone 10 track (may get promoted earlier if it blocks a user).
+JSON Schemas declare domain-independent URN `$id`s (e.g. `urn:swarmkit:schema:v1:topology`), and cross-file `$ref`s use the same URNs. Validation is bundled and local — the Python and TypeScript packages ship the canonical files and resolve `$ref`s from an in-memory registry keyed by `$id`, so nothing dereferences a URL. URNs deliberately point at no domain: the identifiers are stable regardless of where (or whether) the schemas are ever hosted.
 
 ## Anti-patterns
 
