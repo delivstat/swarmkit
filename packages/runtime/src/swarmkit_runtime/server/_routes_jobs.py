@@ -182,6 +182,17 @@ def _sse(generator: AsyncGenerator[str]) -> StreamingResponse:
     )
 
 
+#: A durable job in one of these states will not change again on its own, so a stream over it
+#: replays and closes. Anything else (queued, running) is still in flight — a worker may be on it.
+_STREAM_TERMINAL = frozenset({"completed", "failed", "stopped", "deferred"})
+
+#: How often the API tier re-reads a durable row it is following. The trade-off is completion
+#: latency (a run finishing just after a read waits up to this long) against read load on the
+#: store — one light SELECT per followed stream per interval, the same cost a client's GET poll
+#: would incur, but driven server-side and only while the stream is open.
+_FOLLOW_INTERVAL_S = 0.3
+
+
 def _replay(events: list[str], status: str) -> StreamingResponse:
     """Replay a finished job's recorded events and close.
 
@@ -196,6 +207,33 @@ def _replay(events: list[str], status: str) -> StreamingResponse:
         yield f"data: [done] status={status}\n\n"
 
     return _sse(generate())
+
+
+def _follow_durable(request: Request, job_id: str) -> AsyncGenerator[str]:
+    """Follow a durable job this process is not running — a worker's — to completion.
+
+    Re-reads the durable row on an interval, emits events it has not seen yet, and closes with the
+    `[done]` terminator once the row reaches a terminal state. A worker persists events at the run
+    boundaries (start, finish) rather than per node, so the stream is coarser than an in-process
+    one; what it guarantees is prompt, correct completion detection without the client polling.
+    """
+
+    async def generate() -> AsyncGenerator[str]:
+        sent = 0
+        while True:
+            row = _durable_job(request, job_id)
+            if row is None:  # deleted mid-stream — nothing left to follow
+                yield "data: [done] status=unknown\n\n"
+                return
+            for event in row.events[sent:]:
+                yield f"data: {event}\n\n"
+                sent += 1
+            if row.status in _STREAM_TERMINAL:
+                yield f"data: [done] status={row.status}\n\n"
+                return
+            await asyncio.sleep(_FOLLOW_INTERVAL_S)
+
+    return generate()
 
 
 def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PLR0915
@@ -375,13 +413,18 @@ def _register_job_routes(app: FastAPI, job_store: JobStore) -> None:  # noqa: PL
         """A job's events as they happen, as server-sent events."""
         job = await job_store.get(job_id)
         if job is None:
-            # A job this process did not start — a CLI run, a pipeline stage, or anything from
-            # before the last restart. There is nothing live to follow, but 404ing makes the
-            # detail page look broken; replaying what was recorded and closing is the truth.
+            # A job this process did not start. Two shapes: a run that is over (a CLI run, a
+            # pipeline stage, anything from before a restart) — replay what was recorded and
+            # close; or one still in flight elsewhere — most importantly a job a WORKER is running
+            # after `serve --role api` enqueued it (worker-execution.md), which the API tier holds
+            # no live copy of. For the latter, follow the durable row to completion so the API tier
+            # still relays a worker's progress rather than closing on a `queued` snapshot.
             row = _durable_job(request, job_id)
             if row is None:
                 raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
-            return _replay(row.events, row.status)
+            if row.status in _STREAM_TERMINAL:
+                return _replay(row.events, row.status)
+            return _sse(_follow_durable(request, job_id))
 
         async def event_generator() -> AsyncGenerator[str]:
             sent = 0

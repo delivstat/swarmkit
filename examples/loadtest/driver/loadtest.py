@@ -44,8 +44,47 @@ class Sample:
     errors: int = 0
 
 
-async def _one_run(client: httpx.AsyncClient, api: str, topology: str, payload: str) -> tuple:
-    """Submit one run and poll it to completion. Returns (submit_ms, run_ms|None, status)."""
+_TERMINAL = ("completed", "failed", "stopped", "deferred")
+
+
+async def _wait_poll(client: httpx.AsyncClient, api: str, job_id: str, t0: float) -> tuple:
+    """Poll GET /jobs/{id} to completion. Adds up to one poll interval of detection latency per
+    run, and one GET round-trip per interval — which is itself load on the API tier."""
+    for _ in range(600):  # up to ~600 * poll_interval
+        try:
+            j = await client.get(f"{api}/jobs/{job_id}")
+        except httpx.HTTPError:
+            return (None, "error")
+        status = j.json().get("status")
+        if status in _TERMINAL:
+            return ((time.perf_counter() - t0) * 1000, status)
+        await asyncio.sleep(0.1)
+    return (None, "timeout")
+
+
+async def _wait_stream(client: httpx.AsyncClient, api: str, job_id: str, t0: float) -> tuple:
+    """Follow GET /jobs/{id}/stream (SSE) to the `[done]` terminator. One long-lived connection
+    per run instead of a poll loop — no repeated GETs competing with POST /run admission, and
+    completion is detected when the server emits it, not on the next client tick. This is the
+    driver Run 5 uses so the poller does not mask the api+workers throughput."""
+    try:
+        async with client.stream("GET", f"{api}/jobs/{job_id}/stream") as r:
+            if r.status_code != 200:
+                return (None, "error")
+            async for line in r.aiter_lines():
+                if line.startswith("data: [done] status="):
+                    status = line.split("status=", 1)[1].strip()
+                    run_ms = (time.perf_counter() - t0) * 1000
+                    return (run_ms, status if status in _TERMINAL else "error")
+    except httpx.HTTPError:
+        return (None, "error")
+    return (None, "timeout")
+
+
+async def _one_run(
+    client: httpx.AsyncClient, api: str, topology: str, payload: str, stream: bool
+) -> tuple:
+    """Submit one run and wait for it to finish. Returns (submit_ms, run_ms|None, status)."""
     t0 = time.perf_counter()
     try:
         r = await client.post(f"{api}/run/{topology}", json={"input": payload})
@@ -57,24 +96,18 @@ async def _one_run(client: httpx.AsyncClient, api: str, topology: str, payload: 
     if r.status_code != 200:
         return (submit_ms, None, "error")
     job_id = r.json().get("job_id")
-    for _ in range(600):  # up to ~600 * poll_interval
-        try:
-            j = await client.get(f"{api}/jobs/{job_id}")
-        except httpx.HTTPError:
-            return (submit_ms, None, "error")
-        status = j.json().get("status")
-        if status in ("completed", "failed", "stopped", "deferred"):
-            return (submit_ms, (time.perf_counter() - t0) * 1000, status)
-        await asyncio.sleep(0.1)
-    return (submit_ms, None, "timeout")
+    run_ms, status = await (
+        _wait_stream(client, api, job_id, t0) if stream else _wait_poll(client, api, job_id, t0)
+    )
+    return (submit_ms, run_ms, status)
 
 
 async def _hold(
-    client: httpx.AsyncClient, api: str, topology: str, sample: Sample, stop: float
+    client: httpx.AsyncClient, api: str, topology: str, sample: Sample, stop: float, stream: bool
 ) -> None:
     """A single virtual user: run after run until the deadline."""
     while time.perf_counter() < stop:
-        submit_ms, run_ms, status = await _one_run(client, api, topology, "load")
+        submit_ms, run_ms, status = await _one_run(client, api, topology, "load", stream)
         sample.submit_ms.append(submit_ms)
         if status == "busy":
             sample.busy += 1
@@ -106,13 +139,21 @@ async def ramp(args: argparse.Namespace) -> None:
     async with httpx.AsyncClient(timeout=args.timeout) as client:
         for level in levels:
             sample = Sample()
-            stop = time.perf_counter() + args.duration
+            start = time.perf_counter()
+            stop = start + args.duration
             users = [
-                asyncio.create_task(_hold(client, args.api, args.topology, sample, stop))
+                asyncio.create_task(
+                    _hold(client, args.api, args.topology, sample, stop, args.stream)
+                )
                 for _ in range(level)
             ]
             await asyncio.gather(*users)
-            elapsed = args.duration
+            # Real wall time, NOT args.duration. A user starts its last run just before `stop` and
+            # then waits for it — under a deep queue backlog (offered load >> capacity) that wait is
+            # tens of seconds, so gather returns well after `stop`. Dividing completions by the
+            # intended duration instead of the actual span overstates throughput badly there
+            # (~2x on the api+workers ramp). Throughput is completions / time-actually-taken.
+            elapsed = time.perf_counter() - start
             rss, fds = _proc_stats(args.pid) if args.pid else (0.0, 0)
             row = {
                 "concurrency": level,
@@ -190,6 +231,11 @@ def main() -> None:
             sp.add_argument("--levels", default="5,10,25,50,100,250")
             sp.add_argument("--duration", type=float, default=20.0)
             sp.add_argument("--out", default="")
+            sp.add_argument(
+                "--stream",
+                action="store_true",
+                help="Follow each run over SSE instead of polling GET /jobs/{id} (Run 5).",
+            )
         else:
             sp.add_argument("--n", type=int, default=10000)
             sp.add_argument("--connections", type=int, default=200)

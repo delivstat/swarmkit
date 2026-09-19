@@ -14,11 +14,11 @@ These numbers are a **baseline**, dated so a post-improvement run can be compare
 | 2 | 2026-09-18 | 1.243.0 | same box | compile now cached — isolates the DB-on-loop term |
 | 3 | 2026-09-18 | 1.244.0 | same box | audit write off-loop + pool=100 — one of several sync writes moved |
 | 4 | 2026-09-19 | 1.245.0 | same box | profiled a run + isolated driver vs serve — located the cost, corrected earlier runs |
+| 5 | 2026-09-19 | 1.249.0 | same box | the API/worker split under load — throughput scales with worker count (the payoff) |
 
-When the optimization lands (moving the synchronous compile/persist sections off the event loop),
-re-run `examples/loadtest/run.sh` on the same box and add Run 2 here beside Run 1 — same tables, so
-the knee and the plateau move visibly. The harness is deterministic, so the comparison is apples to
-apples.
+Run 5 is the payoff measurement: the fix Runs 1–4 pointed to — decoupling execution into worker
+processes (`design/details/worker-execution.md`) — shipped in 1.247.0–1.249.0, and this run shows
+aggregate throughput now scales with the number of workers, past the single-event-loop ceiling.
 
 ## How serve runs work (the model these numbers reflect)
 
@@ -201,8 +201,9 @@ So the real levers, now evidenced:
 - **Move the entire per-run write path off the loop / async** — the LangGraph checkpointer first (it
   is the largest term), then the job-store + usage + trace writes. Piecemeal does not move the knee;
   the checkpointer is the one to start with, not audit.
-- **Or decouple execution into worker processes** (a durable job queue with an atomic claim — which does *not* exist yet and would be built; see `design/details/worker-execution.md`) — the
-  API loop stops doing run work at all, which also fixes admission latency under load.
+- **Or decouple execution into worker processes** (a durable job queue with an atomic claim; see
+  `design/details/worker-execution.md`) — the API loop stops doing run work at all, which also fixes
+  admission latency under load. *(This shipped after Run 4 — see Run 5 for the measurement.)*
 - **Measure with a streaming (SSE) or multi-process driver**, not a poller, so serve's ceiling is not
   masked by the driver's.
 
@@ -210,16 +211,76 @@ Both runtime levers are substantial (the checkpointer is an async-saver seam; wo
 architecture change), so they are deliberately not rushed here — Run 4's value is locating the cost
 correctly so the next change targets the checkpointer/write-path, not another single writer.
 
+## Run 5 (2026-09-19, runtime 1.249.0) — the API/worker split scales with worker count
+
+Runs 1–4 located the ceiling: a single `swarmkit serve` process serializes the per-run synchronous
+write path on its one event loop. The fix (`design/details/worker-execution.md`) shipped —
+`swarmkit serve --role api` accepts and enqueues, and N `swarmkit worker` processes each claim a
+queued job and execute it on their own loop + DB engine, sharing one Postgres. Run 5 measures
+whether aggregate throughput now scales with N.
+
+Two independent measurements, on the `typical` topology (leader + three reviewers, fan-out off) at
+500 ms mock latency per model call, one shared Postgres:
+
+**A. End-to-end through the API tier**, streaming (`run5.sh` → `serve --role api` + N workers, the
+SSE driver so completion detection does not poll):
+
+| workers | throughput (runs/s) | vs 1 worker | run p50 | run p95 |
+|---|---|---|---|---|
+| 1 | 1.43 | 1.00× | 32.4 s | 33.9 s |
+| 2 | 2.67 | 1.87× | 16.3 s | 19.8 s |
+| 4 | 4.67 | 3.27× | 8.4 s | 16.2 s |
+| 8 | 8.43 | 5.90× | 4.4 s | 12.9 s |
+
+**B. Isolated worker drain** (`run5_drain.py` seeds a fixed backlog straight into Postgres and times
+N workers draining it — no API tier in the measurement, so it isolates execution throughput):
+
+| workers | throughput (runs/s) | per-worker | vs 1 worker |
+|---|---|---|---|
+| 1 | 1.48 | 1.48 | 1.00× |
+| 2 | 2.81 | 1.40 | 1.90× |
+| 4 | 4.83 | 1.21 | 3.26× |
+| 8 | 7.75 | 0.97 | 5.24× |
+
+The two agree within ~5–9%, and both say the same thing: **throughput scales with worker count** —
+5.9× (end-to-end) / 5.2× (isolated) going 1→8 workers, monotonic, with no plateau in this range.
+Compare Runs 1–4, where a single process flattened at ~2.5–5 runs/s past its knee. The
+single-event-loop ceiling is lifted; you buy throughput by adding worker processes.
+
+Two honest caveats the numbers show:
+
+- **Scaling is sublinear** — per-worker throughput falls from 1.48 to 0.97 runs/s (a ~35% drop) as
+  N goes 1→8. The workers share one Postgres (the checkpointer and job-store writes contend) and one
+  box's cores (this is a shared WSL2 dev machine). A bigger Postgres (or PgBouncer, per the
+  connection-budget note), more cores, and per-worker pools sized to fit are what recover it; the
+  shape is expected, not a defect.
+- **Latency here is queue wait, not execution.** Offered load (50 concurrent) far exceeds capacity
+  at low N, so the queue backs up and p50 is dominated by time-in-queue — which is exactly why it
+  *halves each time workers double* (32→16→8→4.4 s). A single run's execution is ~640 ms; the rest
+  is backlog. Size the worker pool to the offered load to keep the queue shallow.
+
+A measurement note worth keeping: the ramp driver first reported ~2× these throughputs because it
+divided completions by the intended window (30 s) rather than the actual wall time. Under a deep
+backlog, each virtual user's last run finishes tens of seconds after the window closes, so the real
+span is longer and the naive rate is inflated. The driver now divides by measured elapsed; a warm
+single-worker cross-check (641 ms/run from Postgres `completed_at` timestamps) confirms the
+corrected figure. Short-run measurements (Runs 1–4) were close either way, but under queueing the
+distinction is 2×.
+
 ## What this means for sizing
 
 - **A single serve process is not a throughput engine for CPU-bound-per-run work.** Plan for
   effective concurrency of ~5–10 per process at this per-run cost. Set `server.jobs.max_concurrent`
   to *bound latency* (keep it near the knee), not to chase throughput — a higher cap past the knee
   buys linear latency growth, not more runs/s.
-- **Scale horizontally for throughput.** Run N serve processes behind a load balancer sharing one
-  Postgres (job claiming is atomic); aggregate throughput scales with N. This is the fleet topology.
-  On one multi-core box, N processes ≈ cores is the first thing to try — it sidesteps the
-  single-loop ceiling directly.
+- **Scale throughput with workers (the primary lever, Run 5).** Run `swarmkit serve --role api` for
+  the front door and N `swarmkit worker` processes for execution, sharing one Postgres (the claim is
+  atomic — `design/details/worker-execution.md`). Aggregate throughput scales with N (measured 5.9×
+  at 8 workers). On one multi-core box, N ≈ cores is the first thing to try; beyond a handful of
+  workers, size `SWARMKIT_STORE_POOL_SIZE` down and/or front Postgres with PgBouncer so
+  `workers × (pool + overflow + checkpointer)` stays under `max_connections`. (Running N all-in-one
+  serve processes behind a load balancer also works and predates the split; the API/worker split is
+  the cleaner shape — the API tier stays responsive because it never executes.)
 - **Pool sizing is a Postgres concept, not a SQLite one — deliberately.** Postgres is a client/server
   database: N pooled connections are N real parallel sessions, and `SWARMKIT_STORE_POOL_SIZE` sizes
   that (keep pool + overflow, times instances, under Postgres `max_connections`). SQLite is an
@@ -233,13 +294,19 @@ correctly so the next change targets the checkpointer/write-path, not another si
 
 ## The honest optimization target
 
-Compile caching (Run 2) and the audit write + configurable pool (Run 3) are done. The remaining
-change — and the one Run 3 shows is needed in full, not in part — is to move the **entire per-run
-store write path off the event loop** (job store, usage and trace, not only audit) — an async driver or `asyncio.to_thread`, a
-coalesced flush for the write-through journal, and a connection pool sized for the target concurrency
-(it defaults to 5 today). That would let one process actually use the
-concurrency the semaphore allows and keep admission/polling responsive under load. This benchmark is
-the evidence for it and the way to measure the change.
+Compile caching (Run 2) and the audit write + configurable pool (Run 3) are done. Runs 1–4 pointed
+at two levers: move the per-run write path off the loop, **or** decouple execution into worker
+processes. The second shipped (worker-execution.md, 1.247.0–1.249.0) and **Run 5 confirms it lifts
+the ceiling** — throughput now scales with worker count. That is the primary answer: parallelism
+comes from processes, and the per-run writes stay synchronous *within* a run where they must be
+ordered (the job row before the id returns, the checkpoint before the next node, append-only audit).
+
+The first lever is still worth doing and now stacks on top: within a single process — the all-in-one
+server, or one worker — the per-run write path (checkpointer-dominant, then the job-store commits)
+is still synchronous on that process's loop, which is why per-worker throughput is ~1.5 runs/s and
+falls under contention. Moving it off-loop (async saver, `asyncio.to_thread`, a coalesced journal
+flush, a pool sized for the target) would raise the per-worker figure and so the whole curve. This
+benchmark remains the evidence and the way to measure that change.
 
 ## Reproduce
 
@@ -248,6 +315,11 @@ examples/loadtest/run.sh tiny    tiny    2000 "5,10,25,50,100" 20      # the ram
 examples/loadtest/run.sh typical typical 2000 "5,25,100"       20 1    # fan-out
 export SWARMKIT_STORE_URL=postgresql://user:pw@host:5432/db            # realistic write load
 uv run python examples/loadtest/driver/loadtest.py storm --topology tiny --n 10000   # admission
+
+# Run 5 — the API/worker split (Postgres required):
+SWARMKIT_STORE_URL=postgresql://... examples/loadtest/run5.sh typical typical 500 50 30 "1,2,4,8"
+SWARMKIT_STORE_URL=postgresql://... uv run python examples/loadtest/run5_drain.py \
+    --workspace examples/loadtest/workspaces/typical --backlog 200 --workers 1,2,4,8 --latency-ms 500
 ```
 
 ## Not yet measured (run these on your hardware)
@@ -257,8 +329,10 @@ uv run python examples/loadtest/driver/loadtest.py storm --topology tiny --n 100
   where soaks fail.
 - **A real provider once** — not for throughput, for failure behaviour (rate limits, retries,
   timeouts) the mock cannot produce.
-- **>1000 concurrency and horizontal scale-out** — N processes behind a load balancer on Postgres,
-  measuring aggregate throughput and the 429 curve.
+- **Scale-out past 8 workers, and >1000 concurrency** — Run 5 measured N≤8 workers on one box and
+  found ~5.9× at 8; push N further (more cores, a bigger Postgres or PgBouncer) to find where
+  per-worker throughput and the connection budget flatten it, and measure the 429/admission curve on
+  the API tier under >1000 concurrent clients.
 - **kill -9 during a run** — automated as `packages/runtime/tests/test_kill9_recovery.py`: the run
   resumes from its checkpoint and, since the audit is a write-through journal, the pre-kill trail
   survives (`design/details/audit-event-journal.md`).
