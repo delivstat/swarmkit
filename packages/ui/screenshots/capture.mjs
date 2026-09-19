@@ -7,9 +7,9 @@
  *   node packages/ui/screenshots/capture.mjs
  */
 import { spawn } from "node:child_process";
+import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { chromium } from "@playwright/test";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -75,7 +75,9 @@ async function mock(page) {
 	await page.route("**/jobs", (r) => r.fulfill(json([])));
 	await page.route(/\/jobs\/history(\?.*)?$/, (r) => r.fulfill(json([])));
 	// Anything else the layout probes (health, capabilities…) — answer empty so nothing hangs.
-	await page.route(/\/(health|capabilities|auth-info)$/, (r) => r.fulfill(json({})));
+	await page.route(/\/(health|capabilities|auth-info)$/, (r) =>
+		r.fulfill(json({})),
+	);
 }
 
 async function main() {
@@ -98,7 +100,9 @@ async function main() {
 		const browser = await chromium.launch({
 			executablePath: process.env.PW_CHROME,
 		});
-		const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+		const page = await browser.newPage({
+			viewport: { width: 1200, height: 800 },
+		});
 		await mock(page);
 
 		await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle" });
@@ -108,7 +112,10 @@ async function main() {
 
 		await page.goto(`${BASE}/audit`, { waitUntil: "networkidle" });
 		await page.waitForTimeout(2500);
-		await page.screenshot({ path: join(HERE, "a2a-deeplink.png"), fullPage: true });
+		await page.screenshot({
+			path: join(HERE, "a2a-deeplink.png"),
+			fullPage: true,
+		});
 		console.log("wrote a2a-deeplink.png");
 
 		await browser.close();
