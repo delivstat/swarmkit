@@ -59,6 +59,9 @@ LABEL_CONTEXT = "a2a.context_id"
 #: Job status -> A2A task state. Exhaustive over `Job.status`'s Literal; a test holds it so.
 JOB_TO_TASK_STATE: dict[str, str] = {
     "pending": "submitted",
+    # Enqueued for a worker to claim (serve --role api). Like `pending`, it is accepted but not yet
+    # executing, so it reads as `submitted` to an A2A client.
+    "queued": "submitted",
     "running": "working",
     "deferred": "input-required",
     "completed": "completed",
