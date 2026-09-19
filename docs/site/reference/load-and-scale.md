@@ -26,8 +26,18 @@ aggregate throughput now scales with the number of workers, past the single-even
   id immediately. You poll `GET /jobs/{id}` (or stream it).
 - One `swarmkit serve` process is **one uvicorn worker = one event loop**. Runs are asyncio tasks on
   that loop, bounded by a semaphore — `server.jobs.max_concurrent` (default 5).
-- Admission is **reject-when-full**: when all slots are taken, `POST /run` returns **429**. serve
-  does not queue beyond `max_concurrent`.
+- **Admission depends on the mode**, and the two modes differ deliberately:
+
+  | | all-in-one (`swarmkit serve`) | API tier (`swarmkit serve --role api`) |
+  |---|---|---|
+  | Who executes | this process (asyncio tasks) | separate `swarmkit worker` processes |
+  | `server.jobs.max_concurrent` | bounds active runs on this loop | does not apply here — it governs each worker |
+  | Backlog | none — nothing is queued beyond the running set | a durable Postgres queue of `queued` jobs |
+  | When you get **429** | all `max_concurrent` slots are taken (reject-when-full) | the queue is full — `--max-queue-depth` runs already `queued` (default 10,000; 0 = unbounded) |
+  | Under sustained overload | callers are rejected immediately | the queue grows to the bound, then rejects; a bounded backlog, not unbounded acceptance |
+
+  The bound on the API tier matters: without it, `--role api` would *accept* work that no worker may
+  reach for an unbounded time. It is a queue-depth limit, not a per-run concurrency limit.
 - A run's model calls are I/O (they `await`), so they overlap freely. But the **CPU- and DB-bound
   sections of a run — topology compile, governance, and the write-through audit persist — are
   synchronous and run on that one event loop.** This is the fact the numbers below turn on.

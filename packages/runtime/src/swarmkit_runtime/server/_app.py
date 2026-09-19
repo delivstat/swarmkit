@@ -164,12 +164,17 @@ def create_app(  # noqa: PLR0915
     host: str = "127.0.0.1",
     insecure: bool = False,
     enqueue_only: bool = False,
+    queue_max_depth: int = 0,
 ) -> FastAPI:
     """Build the FastAPI app for a given workspace.
 
     *enqueue_only* is the API tier of the API/worker split (``serve --role api``,
     worker-execution.md): ``POST /run`` persists the job as ``queued`` and returns, and a
     ``swarmkit worker`` process claims and executes it. Default False is the all-in-one server.
+
+    *queue_max_depth* bounds the queued backlog in that mode — a submit is refused with 429 once
+    this many runs are waiting, so the queue cannot grow without limit. 0 means unbounded; the CLI
+    sets a non-zero default.
     """
 
     _auth = auth_provider or NoneAuthProvider()
@@ -210,6 +215,7 @@ def create_app(  # noqa: PLR0915
         app.state.job_semaphore = asyncio.Semaphore(cfg.max_concurrent)
         # API tier of the API/worker split: POST /run enqueues, a worker executes.
         app.state.enqueue_only = enqueue_only
+        app.state.queue_max_depth = queue_max_depth
         # Close jobs a previous process left in flight. A job started via `POST /run/{topology}`
         # runs as a task in THIS process; when the process dies the task dies with it, and nothing
         # reconciled the durable row — it sat at `running` for ever, indistinguishable from work

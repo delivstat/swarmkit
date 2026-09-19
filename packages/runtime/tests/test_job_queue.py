@@ -127,6 +127,31 @@ async def test_heartbeat_extends_only_our_own_lease(engine: Any) -> None:
     assert lu == "2000-01-01T00:00:00+00:00"  # w2 does not hold it, so no extension
 
 
+@pytest.mark.asyncio
+async def test_complete_is_fenced_on_ownership(engine: Any) -> None:
+    """A worker whose lease expired and whose run was reclaimed by another cannot complete it — the
+    stale completion no-ops (does not clobber the new owner's row or drop its lease). This is what
+    stops the reclaim→double-execution cascade a bare ``WHERE id`` update would allow."""
+    _seed(engine, "j")
+    a = PostgresJobQueue(engine, worker_id="a")
+    b = PostgresJobQueue(engine, worker_id="b")
+
+    # A claims with an already-expired lease, then the reaper returns the run to the queue.
+    assert await a.claim(lease_seconds=-5) == "j"
+    assert await a.reclaim_expired() == ["j"]
+    # B claims the reclaimed run and now owns it.
+    assert await b.claim(lease_seconds=60) == "j"
+
+    # A (the zombie) tries to finish: fenced out — returns False, changes nothing.
+    assert await a.complete("j", status="completed") is False
+    status, worker, attempt = _status(engine, "j")
+    assert status == "running" and worker == "b" and attempt == 1
+
+    # B, the real owner, completes cleanly.
+    assert await b.complete("j", status="completed") is True
+    assert _status(engine, "j")[0] == "completed"
+
+
 def test_sqlite_refuses_the_queue(tmp_path: Any) -> None:
     eng = make_engine(f"sqlite:///{tmp_path / 'x.sqlite'}")
     with pytest.raises(QueueUnavailableError, match="Postgres"):

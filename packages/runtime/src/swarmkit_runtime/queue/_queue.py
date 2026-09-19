@@ -34,7 +34,7 @@ class JobQueue(Protocol):
     async def enqueue(self, job_id: str) -> None: ...
     async def claim(self, *, lease_seconds: int) -> str | None: ...
     async def heartbeat(self, job_id: str, *, lease_seconds: int) -> None: ...
-    async def complete(self, job_id: str, *, status: str) -> None: ...
+    async def complete(self, job_id: str, *, status: str) -> bool: ...
     async def reclaim_expired(self) -> list[str]: ...
 
 
@@ -110,19 +110,27 @@ class PostgresJobQueue:
 
         await asyncio.to_thread(_run)
 
-    async def complete(self, job_id: str, *, status: str) -> None:
+    async def complete(self, job_id: str, *, status: str) -> bool:
         """Mark a run terminal (completed/failed/stopped/deferred) and drop its lease so the reaper
-        never reclaims it."""
+        never reclaims it. Returns whether this worker still owned the job.
 
-        def _run() -> None:
+        Fenced on ``worker_id``: if our lease had already expired and the reaper handed the run to
+        another worker (which set its own ``worker_id``), our completion matches no row and is
+        discarded — the winner's in-flight run is not clobbered by our stale result. Without this
+        guard a ``WHERE id = :id`` update would let a lease-expired worker overwrite the row the
+        current owner is still writing to (the double-execution race worker-execution.md names)."""
+
+        def _run() -> bool:
             with self._engine.begin() as conn:
-                conn.execute(
+                result = conn.execute(
                     update(jobs)
-                    .where(jobs.c.id == job_id)
+                    .where(jobs.c.id == job_id, jobs.c.worker_id == self._worker_id)
                     .values(status=status, worker_id=None, lease_until=None)
                 )
+                # psycopg reports -1 for "unknown" on some paths; treat only a definite 0 as "lost".
+                return result.rowcount != 0
 
-        await asyncio.to_thread(_run)
+        return await asyncio.to_thread(_run)
 
     async def reclaim_expired(self) -> list[str]:
         """Return running jobs whose lease has passed to the queue, bumping ``attempt``.
