@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+<!--
+  SEO: explicit Open Graph + Twitter Card meta so every share (HN, Slack, X, LinkedIn) and every
+  search result renders a rich preview — title, description, product image. Done as a template
+  override rather than the mkdocs-material `social` plugin on purpose: that plugin needs Cairo/Pango
+  system libraries the docs-deploy runner does not install, and would break the build. This needs
+  nothing extra. Material already emits <meta name="description">; we add the og:/twitter: tags.
+-->
+{% block extrahead %}
+  {{ super() }}
+  {# `page` is None on some renders (the 404 page), so guard every access. #}
+  {% set _title = config.site_name if (page and page.is_homepage) else ((page.title if page else config.site_name) | default(config.site_name, true)) %}
+  {% set _desc = (page.meta.description if page else config.site_description) | default(config.site_description, true) %}
+  {% set _url = (page.canonical_url if page else config.site_url) %}
+  {% set _image = config.site_url ~ "assets/social-card.png" %}
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="{{ config.site_name }}" />
+  <meta property="og:title" content="{{ _title }}" />
+  <meta property="og:description" content="{{ _desc }}" />
+  <meta property="og:url" content="{{ _url }}" />
+  <meta property="og:image" content="{{ _image }}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{{ _title }}" />
+  <meta name="twitter:description" content="{{ _desc }}" />
+  <meta name="twitter:image" content="{{ _image }}" />
+{% endblock %}

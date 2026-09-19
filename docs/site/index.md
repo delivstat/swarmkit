@@ -1,5 +1,6 @@
 ---
 title: SwarmKit
+description: Open-source Python framework for governed multi-agent AI — define agents, tools and human-approval gates as data (YAML), run them under real gates, compiled to LangGraph.
 hide:
   - toc
 ---
