@@ -337,6 +337,10 @@ class SwarmKitTopology(BaseModel):
     artifacts: Artifacts | None = None
     intent_monitoring: IntentMonitoring | None = None
     governance: Governance | None = None
+    input_schema: dict[str, Any] | None = Field(
+        None,
+        description='Optional JSON Schema (draft 2020-12) that the caller-supplied input must satisfy before the run starts. Validate-and-reject at the entry point (422 over HTTP, non-zero exit on the CLI, a JSON-RPC error over A2A) with no LLM spend; an object schema requires JSON input, while {"type": "string"} accepts plain text. See design/details/input-schema.md.',
+    )
 
 
 class Agents(BaseModel):

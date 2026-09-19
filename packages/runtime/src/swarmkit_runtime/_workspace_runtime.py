@@ -977,6 +977,15 @@ class WorkspaceRuntime:
         topology = self._workspace.topologies[topology_name]
         run_thread = thread_id or str(uuid4())
 
+        # input_schema (input-schema.md): validate-and-reject at this single choke point, so every
+        # entry (serve, CLI, A2A, triggers) inherits it. A malformed request never becomes a
+        # billable run — this raises InputValidationError before any node executes. Skipped on a
+        # resume (the input was validated on the original submit; a resume carries no new input).
+        if previous_plan is None:
+            await self._validate_entry_input(
+                topology, topology_name, run_thread, user_input, labels
+            )
+
         trace = RunTrace()
         trace.start(run_thread, topology_name)
         _run_scope_token = self._begin_run(trace, labels, topology_name)
@@ -1560,6 +1569,51 @@ class WorkspaceRuntime:
                 },
             )
         )
+
+    async def _validate_entry_input(
+        self,
+        topology: Any,
+        topology_name: str,
+        run_id: str,
+        user_input: str,
+        labels: dict[str, str] | None,
+    ) -> None:
+        """Validate the caller's input against the topology's ``input_schema`` (input-schema.md).
+
+        A no-op when the topology declares none. On failure: an ``input.rejected`` audit event and
+        :class:`InputValidationError` (no node runs, no LLM spend). On success: ``input.validated``.
+        """
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from swarmkit_runtime._input_schema import (  # noqa: PLC0415
+            InputValidationError,
+            check_entry_input,
+        )
+        from swarmkit_runtime.governance import AuditEvent  # noqa: PLC0415
+
+        input_schema = getattr(topology.raw, "input_schema", None)
+        if not input_schema:
+            return
+
+        async def _audit(event_type: str, payload: dict[str, Any]) -> None:
+            await self._audit_provider.record(
+                AuditEvent(
+                    event_type=event_type,
+                    agent_id="runtime",
+                    timestamp=datetime.now(tz=UTC),
+                    topology_id=topology_name,
+                    run_id=run_id,
+                    labels=dict(labels or {}),
+                    payload=payload,
+                )
+            )
+
+        try:
+            check_entry_input(user_input, input_schema)
+        except InputValidationError as exc:
+            await _audit("input.rejected", {"error": str(exc), "fields": exc.fields})
+            raise
+        await _audit("input.validated", {})
 
     async def _journal_write(self, event: Any) -> None:
         """Persist one event the instant it is recorded (audit-event-journal.md).

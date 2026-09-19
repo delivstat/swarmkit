@@ -20,6 +20,7 @@ from typing import Any
 
 import yaml
 
+from swarmkit_runtime._input_schema import InputValidationError, check_entry_input
 from swarmkit_runtime._workspace_runtime import WorkspaceRuntime
 from swarmkit_runtime.attachments import AttachmentError, resolve_all
 from swarmkit_runtime.canary import CanaryRouter
@@ -138,6 +139,17 @@ class JobService:
         the ``serve --role api`` CLI sets a non-zero default so the production path is bounded.
         """
         resolved_name, selected_version = self.resolve_topology(rt, canary, topology_name)
+        # input_schema check at SUBMIT (input-schema.md), so a malformed request is a 422 here and
+        # never becomes a job — the background run validates again at the WorkspaceRuntime.run
+        # choke point (which also emits the audit event), but a caller must not poll a failed job
+        # to learn its request was the wrong shape. Cheap, structural, before attachments.
+        resolved_topo = rt.workspace.topologies[resolved_name]
+        input_schema = getattr(getattr(resolved_topo, "raw", None), "input_schema", None)
+        if input_schema:
+            try:
+                check_entry_input(user_input, input_schema)
+            except InputValidationError as exc:
+                raise InvalidRequestError(str(exc)) from exc
         # Resolved HERE rather than inside the background run, so a path that does not exist or
         # escapes the workspace is a 4xx on this request. Left to the job, the caller would get a
         # job id and have to poll to discover the file was never readable — which is the shape of
