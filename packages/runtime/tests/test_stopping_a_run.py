@@ -526,7 +526,7 @@ def test_the_runtime_installs_the_checker_for_every_run() -> None:
     src = (
         Path(__file__).resolve().parents[1] / "src/swarmkit_runtime/_workspace_runtime.py"
     ).read_text()
-    begin = src[src.index("    def _begin_run(") :][:1400]
+    begin = src[src.index("    def _begin_run(") :][:2200]
 
     assert "set_stop_checker(self._stop_checker(trace.run_id))" in begin
     assert "def _stop_checker(" in src
