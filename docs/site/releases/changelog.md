@@ -8,6 +8,7 @@ The earlier per-series notes ([v1.2](v1.2.md), [v1.1](v1.1.md)) carry hand-writt
 
 ## September 2026
 
+- **v1.258.0** (2026-09-19) — runtime 1.258.0, schema 1.47.0 — replace swarmkit.dev identifiers with domain-independent URNs.
 - **v1.257.0** (2026-09-19) — runtime 1.257.0, swarmkit-webui 0.27.0 — portal: queue-health strip + A2A trace deep-link.
 - **v1.256.0** (2026-09-19) — runtime 1.256.0 — A2A budget forwarding (a2a-federation.md slice 2).
 - **v1.255.0** (2026-09-19) — runtime 1.255.0 — worker fairness (worker-fairness.md).
