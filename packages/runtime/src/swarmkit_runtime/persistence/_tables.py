@@ -65,6 +65,11 @@ jobs = Table(
     # both modes. Old rows read null and are excluded from percentile windows.
     Column("claimed_at", Text),
     Column("started_at", Text),
+    # Worker fairness (worker-fairness.md): the workload class ("model" | "harness") a worker pool
+    # claims, so long harness jobs and short model jobs do not share one FIFO and starve each other,
+    # and an integer priority (higher first) within the queue. Both set at enqueue in queue mode.
+    Column("job_class", Text),
+    Column("priority", Integer, default=0),
 )
 
 conversations = Table(

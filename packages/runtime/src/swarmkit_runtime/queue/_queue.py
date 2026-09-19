@@ -16,7 +16,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
-from sqlalchemy import Engine, select, update
+from sqlalchemy import Engine, func, select, update
 
 from swarmkit_runtime.persistence._tables import jobs
 
@@ -32,7 +32,7 @@ class QueueUnavailableError(RuntimeError):
 
 class JobQueue(Protocol):
     async def enqueue(self, job_id: str) -> None: ...
-    async def claim(self, *, lease_seconds: int) -> str | None: ...
+    async def claim(self, *, lease_seconds: int, classes: set[str] | None = None) -> str | None: ...
     async def heartbeat(self, job_id: str, *, lease_seconds: int) -> None: ...
     async def complete(self, job_id: str, *, status: str) -> bool: ...
     async def reclaim_expired(self) -> list[str]: ...
@@ -67,20 +67,27 @@ class PostgresJobQueue:
 
         await asyncio.to_thread(_run)
 
-    async def claim(self, *, lease_seconds: int) -> str | None:
-        """Atomically claim the oldest queued job and mark it running with a lease. None if empty.
+    async def claim(self, *, lease_seconds: int, classes: set[str] | None = None) -> str | None:
+        """Atomically claim the highest-priority queued job and mark it running with a lease. None
+        if empty.
 
         The ``SELECT … FOR UPDATE SKIP LOCKED`` + ``UPDATE`` in one transaction is the claim: two
         workers racing take two different rows (or one takes it and the other sees none).
+
+        *classes* restricts the claim to those workload classes (worker-fairness.md) — a
+        ``{"model"}`` worker never picks up a ``harness`` job, so a burst of long harness runs does
+        not starve short model runs. None (the default) claims any class. Within the eligible set,
+        higher ``priority`` wins, then oldest ``created_at``.
         """
 
         def _run() -> str | None:
             until = (_now() + timedelta(seconds=lease_seconds)).isoformat()
             with self._engine.begin() as conn:
+                sel = select(jobs.c.id).where(jobs.c.status == QUEUED)
+                if classes is not None:
+                    sel = sel.where(jobs.c.job_class.in_(classes))
                 row = conn.execute(
-                    select(jobs.c.id)
-                    .where(jobs.c.status == QUEUED)
-                    .order_by(jobs.c.created_at)
+                    sel.order_by(func.coalesce(jobs.c.priority, 0).desc(), jobs.c.created_at)
                     .limit(1)
                     .with_for_update(skip_locked=True)
                 ).first()
