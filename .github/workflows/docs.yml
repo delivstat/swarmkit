@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      # The MkDocs theme override lives here, not under docs/ — a template-only change
+      # (e.g. a <head> meta tag) must still redeploy the site, or it silently never ships.
+      - "overrides/**"
       - "design/details/**"
       - "README.md"
       - "mkdocs.yml"
