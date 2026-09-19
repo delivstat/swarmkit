@@ -314,6 +314,10 @@ class WorkspaceRuntime:
     ``from_workspace_path`` classmethod.
     """
 
+    #: The LangGraph checkpointer, built lazily and once (see `_ensure_checkpointer`). Declared here
+    #: so the `hasattr`-guarded lazy build has a known type; unset until first built.
+    _checkpointer: Any
+
     def __init__(
         self,
         *,
@@ -365,6 +369,9 @@ class WorkspaceRuntime:
         # so the cache is invalidated for free (swap_runtime).
         self._graph_cache: dict[str, Any] = {}
         self._compile_lock = asyncio.Lock()
+        # Concurrent first-runs must build the checkpointer once, not race: on SQLite, two tasks
+        # creating the checkpoint tables at the same time hit `database is locked`.
+        self._checkpointer_lock = asyncio.Lock()
 
     def _attach_event_sinks(self) -> None:
         """Build `events:` sinks and hand them to the audit provider.
@@ -635,8 +642,11 @@ class WorkspaceRuntime:
         paths rather than inside ``compile()``, which stays sync for callers that only inspect a
         graph.
         """
-        if not hasattr(self, "_checkpointer"):
-            self._checkpointer = await self._storage().checkpointer()
+        if hasattr(self, "_checkpointer"):
+            return self._checkpointer
+        async with self._checkpointer_lock:
+            if not hasattr(self, "_checkpointer"):  # another task may have built it while we waited
+                self._checkpointer = await self._storage().checkpointer()
         return self._checkpointer
 
     def _get_checkpointer(self) -> Any:
