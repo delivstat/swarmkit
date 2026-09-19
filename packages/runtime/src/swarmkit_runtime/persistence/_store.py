@@ -202,6 +202,10 @@ class JobRow:
     #: actually began. None until they happen (claimed_at stays None for an all-in-one run).
     claimed_at: str | None = None
     started_at: str | None = None
+    #: Worker-fairness (worker-fairness.md): the workload class a worker pool claims, and an
+    #: integer priority (higher first) within the queue. Set at enqueue in queue mode.
+    job_class: str | None = None
+    priority: int = 0
 
 
 @dataclass
@@ -259,6 +263,8 @@ class Store:
         ("attempt", "INTEGER DEFAULT 0"),
         ("claimed_at", "TEXT"),
         ("started_at", "TEXT"),
+        ("job_class", "TEXT"),
+        ("priority", "INTEGER DEFAULT 0"),
     )
 
     #: Same facility for ``run_usage``: ``provider`` arrived with 1.234.0 so /usage can say which
@@ -359,6 +365,8 @@ class Store:
         clear_stop_request: bool = False,
         started_at: str | None = None,
         fence_worker_id: str | None = None,
+        job_class: str | None = None,
+        priority: int | None = None,
     ) -> bool:
         """Update a job row. Returns whether a row was written.
 
@@ -376,6 +384,8 @@ class Store:
             ("version", version),
             ("completed_at", completed_at),
             ("started_at", started_at),
+            ("job_class", job_class),
+            ("priority", priority),
             ("usage_input_tokens", usage_input_tokens),
             ("usage_output_tokens", usage_output_tokens),
             ("usage_cost_usd", usage_cost_usd),
@@ -529,6 +539,8 @@ class Store:
             attempt=int(row.get("attempt") or 0),
             claimed_at=row.get("claimed_at"),
             started_at=row.get("started_at"),
+            job_class=row.get("job_class"),
+            priority=int(row.get("priority") or 0),
             topology=row["topology"],
             status=row["status"],
             input=row["input"],

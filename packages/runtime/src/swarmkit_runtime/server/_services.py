@@ -44,6 +44,29 @@ _ARTIFACT_DIRS = {
 }
 
 
+def _workload_class(topology: Any) -> str:
+    """ "harness" if any agent in the topology's tree runs on a harness executor, else "model"
+    (worker-fairness.md). Routes the job to the matching worker pool so long harness runs and short
+    model runs do not share one FIFO. Defensive over stubs: an object without an executor is
+    "model"."""
+
+    def _walk(agent: Any) -> bool:
+        if getattr(getattr(agent, "executor", None), "kind", "model") == "harness":
+            return True
+        return any(_walk(child) for child in getattr(agent, "children", ()) or ())
+
+    root = getattr(topology, "root", None)
+    return "harness" if root is not None and _walk(root) else "model"
+
+
+def _label_priority(labels: dict[str, str] | None) -> int:
+    """Queue priority from a ``priority`` label (higher first); 0 when absent or unparseable."""
+    try:
+        return int((labels or {}).get("priority", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 class ServiceError(Exception):
     """Base for server service domain errors. ``status`` is the HTTP code the route maps it to."""
 
@@ -200,9 +223,16 @@ class JobService:
                 store.update_job(job.id, version=selected_version)
         if enqueue_only:
             # Mark it claimable and return; a worker (swarmkit worker) drains the queue. The
-            # in-memory Job mirrors the durable status so the submit response reads "queued".
+            # in-memory Job mirrors the durable status so the submit response reads "queued". The
+            # workload class (worker-fairness.md) routes it to the right worker pool, and priority
+            # (from a `priority` label, higher first) orders it within the queue.
             if store:
-                store.update_job(job.id, status="queued")
+                store.update_job(
+                    job.id,
+                    status="queued",
+                    job_class=_workload_class(resolved_topo),
+                    priority=_label_priority(labels),
+                )
             job.status = "queued"
             # Drop the in-memory stub: the API tier never executes this job, so its live copy would
             # stay "queued" forever and shadow the durable row a worker keeps current (GET merges

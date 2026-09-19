@@ -365,6 +365,15 @@ def worker(
         bool,
         typer.Option("--once", help="Claim and run a single job (or exit if empty), then stop."),
     ] = False,
+    worker_class: Annotated[
+        str,
+        typer.Option(
+            "--class",
+            help="Restrict this worker to a workload class: model | harness | any (default). A "
+            "model pool never claims harness jobs and vice versa, so long harness runs cannot "
+            "starve short model runs (worker-fairness.md).",
+        ),
+    ] = "any",
 ) -> None:
     """Run a worker that claims and executes queued jobs (worker-execution.md).
 
@@ -377,12 +386,18 @@ def worker(
     connection budget: physical connections are workers * (pool + overflow + checkpointer); size
     SWARMKIT_STORE_POOL_SIZE down or front Postgres with PgBouncer past a handful of workers.
     """
+    if worker_class not in ("model", "harness", "any"):
+        typer.echo(f"invalid --class '{worker_class}' — use model | harness | any", err=True)
+        raise typer.Exit(code=2)
     _print_banner()
     _suppress_noisy_logs()
     from swarmkit_runtime._versions import runtime_version  # noqa: PLC0415
     from swarmkit_runtime.queue import QueueUnavailableError, run_worker  # noqa: PLC0415
 
-    typer.echo(f"swarmkit-runtime {runtime_version() or '(uninstalled)'} · worker")
+    classes = None if worker_class == "any" else {worker_class}
+    typer.echo(
+        f"swarmkit-runtime {runtime_version() or '(uninstalled)'} · worker (class: {worker_class})"
+    )
     try:
         executed = asyncio.run(
             run_worker(
@@ -390,6 +405,7 @@ def worker(
                 lease_seconds=lease_seconds,
                 poll_seconds=poll_seconds,
                 once=once,
+                classes=classes,
             )
         )
     except QueueUnavailableError as exc:

@@ -39,11 +39,15 @@ async def run_worker(
     max_steps: int = 50,
     once: bool = False,
     should_stop: asyncio.Event | None = None,
+    classes: set[str] | None = None,
 ) -> int:
     """Drain and execute queued jobs until stopped. Returns the number of jobs executed.
 
     ``once`` runs a single claim-execute (or returns 0 if the queue is empty) — for tests and a
     drain-and-exit mode. ``should_stop`` lets a caller signal graceful shutdown between jobs.
+
+    ``classes`` restricts this worker to those workload classes (worker-fairness.md) — e.g.
+    ``{"harness"}`` for a pool that only runs long harness jobs. None (default) claims any class.
     """
     from swarmkit_runtime._workspace_runtime import WorkspaceRuntime  # noqa: PLC0415
     from swarmkit_runtime.persistence import storage_for_workspace  # noqa: PLC0415
@@ -65,7 +69,7 @@ async def run_worker(
         except Exception:
             _logger.warning("reclaim pass failed; continuing", exc_info=True)
 
-        job_id = await queue.claim(lease_seconds=lease_seconds)
+        job_id = await queue.claim(lease_seconds=lease_seconds, classes=classes)
         if job_id is None:
             if once:
                 return executed

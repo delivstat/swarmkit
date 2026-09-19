@@ -163,6 +163,28 @@ async def test_claim_stamps_claimed_at(engine: Any) -> None:
     assert ca is not None
 
 
+@pytest.mark.asyncio
+async def test_claim_respects_class_filter(engine: Any) -> None:
+    """A worker pool restricted to a class never claims another class's jobs (worker-fairness.md),
+    so long harness runs cannot starve short model runs."""
+    _seed(engine, "m1", job_class="model")
+    _seed(engine, "h1", job_class="harness")
+    q = PostgresJobQueue(engine, worker_id="w")
+    assert await q.claim(lease_seconds=30, classes={"harness"}) == "h1"
+    assert await q.claim(lease_seconds=30, classes={"harness"}) is None  # only model left
+    assert await q.claim(lease_seconds=30, classes={"model"}) == "m1"
+
+
+@pytest.mark.asyncio
+async def test_claim_prefers_higher_priority(engine: Any) -> None:
+    """Within the eligible set, a higher priority is claimed first, then oldest created_at."""
+    _seed(engine, "low", priority=1)
+    _seed(engine, "high", priority=9)
+    q = PostgresJobQueue(engine, worker_id="w")
+    assert await q.claim(lease_seconds=30) == "high"
+    assert await q.claim(lease_seconds=30) == "low"
+
+
 def test_sqlite_refuses_the_queue(tmp_path: Any) -> None:
     eng = make_engine(f"sqlite:///{tmp_path / 'x.sqlite'}")
     with pytest.raises(QueueUnavailableError, match="Postgres"):

@@ -291,6 +291,11 @@ distinction is 2×.
   `workers × (pool + overflow + checkpointer)` stays under `max_connections`. (Running N all-in-one
   serve processes behind a load balancer also works and predates the split; the API/worker split is
   the cleaner shape — the API tier stays responsive because it never executes.)
+- **Separate pools for long and short work (worker-fairness.md).** A `harness` run (session-holding,
+  minutes) and a `model` run (seconds) in one FIFO with one pool means a burst of harness runs
+  starves the model runs. Run dedicated pools — `swarmkit worker --class harness` ×M and
+  `swarmkit worker --class model` ×N — so each class drains independently; `--class any` (default)
+  is one undifferentiated pool. A `priority` label (higher first) orders within a class.
 - **Pool sizing is a Postgres concept, not a SQLite one — deliberately.** Postgres is a client/server
   database: N pooled connections are N real parallel sessions, and `SWARMKIT_STORE_POOL_SIZE` sizes
   that (keep pool + overflow, times instances, under Postgres `max_connections`). SQLite is an
